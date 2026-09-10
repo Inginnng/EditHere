@@ -1,6 +1,10 @@
+node_modules/
+dist/
+artifacts/
 bin/
 obj/
-artifacts/
-dist/
 .vs/
 *.user
+*.log
+.env
+.env.local
