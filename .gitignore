@@ -8,3 +8,9 @@ obj/
 *.log
 .env
 .env.local
+
+.tools/
+build/
+out/
+.cache/
+build-*/

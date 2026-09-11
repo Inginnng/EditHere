@@ -1,0 +1,18 @@
+{
+    "Id": "libtiff",
+    "Name": "TIFF Software Distribution (libtiff)",
+    "QDocModule": "qtimageformats",
+    "QtUsage": "Used in the qtiff image plugin if no system libtiff is found.",
+    "SecurityCritical": true,
+
+    "Description": "",
+    "Homepage": "http://www.simplesystems.org/libtiff/",
+    "Version": "4.7.0",
+    "DownloadLocation": "https://download.osgeo.org/libtiff/tiff-4.7.0.tar.gz",
+
+    "License": "libtiff License",
+    "LicenseId": "libtiff",
+    "LicenseFile": "COPYRIGHT",
+    "Copyright": "Copyright (c) 1988-1997 Sam Leffler\nCopyright (c) 1991-1997 Silicon Graphics, Inc."
+}
+

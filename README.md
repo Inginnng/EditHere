@@ -1,81 +1,104 @@
-# Help2Design Web
+# Help2Design Native · 0.4.0
 
-跨平台的截图批注工具，当前版本 0.3.0。打开图片或截取屏幕，点选 / 框选元素，填写修改意见，导出原图像素坐标与批注组成的标准 JSON。
+面向 AI 开发反馈的桌面截图批注工具。打开后直接截屏，点击或框选需要修改的位置，输入意见，导出包含原图像素坐标的标准 JSON。
 
-## 分支
+当前开发分支为 `codex/native`，采用 C++20 + Qt 6 Widgets。Windows 与 macOS 分别接入系统截图、快捷键和辅助功能接口；界面和数据处理不依赖浏览器引擎。
 
-- `desktop`：完整保留 Windows 桌面版 0.2.0，快照提交 `cf9c364`。桌面源码、构建和运行说明都在这个分支。
-- `web`：当前开发分支，使用 Vite、原生 JavaScript、CSS 和 Web Worker。无需桌面运行时、账号或 AI API。
-- 两个版本沿用 `schema/feedback-v1.schema.json`，Schema 版本仍为 `1.0.0`。兼容所需的 `tool` 字段仍为 `Help2Design Capture`。
-
-## 运行与构建
-
-安装 Node.js 22.12 或更新版本，然后在项目目录执行：
-
-```sh
-npm ci
-npm run dev
-```
-
-打开 http://127.0.0.1:5173/ 。端口被占用时会明确报错，不会自动切换到另一个地址。
-
-```sh
-npm test
-npm run build
-npm run preview
-```
-
-生产静态文件位于 `dist/web/`；`npm run preview` 在 http://127.0.0.1:4173/ 预览生产构建。可以将整个 `dist/web/` 放到支持 HTTPS 的静态托管服务，也支持子目录部署。构建不会清除 `dist/` 中保留的桌面便携包。当前仓库没有部署到公网。
+| 分支 | 内容 |
+| --- | --- |
+| `desktop` | 已保留的 Windows WPF 0.2 版本，`cf9c364` |
+| `web` | 已保留的 Web 0.3 版本，`66548c5` |
+| `codex/native` | 当前 C++ / Qt 桌面版本 |
 
 ## 使用
 
-1. 点击「截取屏幕」，在浏览器选择屏幕、窗口或标签页。采集一帧后立即停止共享，进入网页内的灰屏裁剪。也可打开、拖入或粘贴图片，用示例直接体验。
-2. 智能选块模式下悬停定位区域；滚轮向上选更大的包含区域，向下选更小的区域。单击填写批注，拖动手动画框。
-3. 点标注、框选、智能选块、调整分别对应 P / R / B / V。调整模式可以移动标注或拖动框的八个控制点。
-4. 点击编号或说明栏中的编辑按钮修改文字。第一条批注保存后自动展开说明栏；窄屏下说明栏显示在图片下方。
-5. 拖动图片上方的细标题栏，或按住空格 / Alt 拖动，图片和批注栏一起移动。Ctrl / ⌘ + 滚轮缩放，中键切换原始大小与适应视图。
-6. 「导出 JSON」可以复制文本、选择嵌入原图，或保存包含 `feedback.json`、原图 PNG、批注预览 PNG 的 ZIP。
-7. 「更多操作」或图片右键菜单提供复制图片、保存原图、保存预览、保存项目和重新裁剪。保存项目下载包含原图的 JSON，再次打开即可继续编辑。
+Windows 11 上已完成构建、真实屏幕采集和系统控件识别测试。便携包：
+`dist/Help2Design-Native-0.4.0-win-x64.zip`。
+压缩包约 21 MB，解压后约 57 MB。解压完整目录，双击 `Help2Design.exe`。已在移除开发环境路径后验证独立启动，所需 DLL 与插件均从便携目录加载。开发机可直接打开对应 dist 目录里的程序。
 
-一次编辑一张图片。数据保存在当前页面内存中，关闭或替换未保存的批注前会提示；请通过「保存项目」保留工作。重新裁剪会建立新图片并清空旧批注，界面会先提示。
+首次运行直接进入截图。之后使用 **Ctrl + Shift + 2** 或托盘图标再次截图。快捷键被占用时仍可从托盘操作。
 
-| 快捷键 | 功能 |
+- 移动鼠标智能选块，滚轮向上选择更大的包含区域，向下选择更小的区域；直接拖动也可截图。
+- 确定选区后，可以移动选区或拖动八个手柄调整大小。Enter 开始批注，Ctrl+C 直接复制截图，右键返回，Esc 取消。
+- 截图后使用智能、点、框、调整四种工具。单击或画框输入文字，右侧同步显示编号和描述。
+- 调整模式支持移动标记、拖动框的八个手柄、双击编辑文字。Ctrl+Z 撤销，Ctrl+Y 重做，Delete 删除。
+- 拖动顶部栏，或按住空格/Alt 拖动画面，可移动整个批注窗口。Ctrl+滚轮缩放；中键切换适应窗口和原尺寸。
+- 支持打开、拖入或粘贴 PNG/JPEG/WebP/BMP 图片，以及重新打开项目 JSON。
+- Ctrl+S 保存包含原图的项目。关闭窗口后收起到托盘，保留当前内容；退出或替换有修改的项目时提示保存。
+
+Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z。截图快捷键预定为 Command + Shift + 2。
+
+## 导出与坐标
+
+“导出 JSON”可直接复制文本，或保存到一个新目录：原图 PNG、带批注的预览 PNG、`feedback.json`。开启“包含原图数据”后，单个 JSON 即可重新导入恢复。
+
+- 坐标单位始终是**原图像素**，与窗口位置、缩放比例无关；原点在左上角。
+- 点使用 `point: {x, y}`。
+- 框使用 `rectangle: {x1, y1, x2, y2}`。右下边界不包含在框内，宽度等于 `x2 - x1`。
+- `capture.sha256` 标识准确的原始 PNG。未内嵌原图时，重新导入需要同目录的 `capture.imageFile`。
+- Windows 的 `screenBounds` 和 `originalScreenBounds` 为系统物理屏幕坐标，可以为负。Mac 的系统坐标采用逻辑点，当前不将它们混写到物理屏幕坐标字段，故这两个字段为空；批注的原图像素坐标完整保留。
+- 普通批注继续使用 [v1.0 规范](schema/feedback-v1.schema.json)，兼容旧桌面版和 Web 版。包含 Mac 系统辅助功能来源时使用 [v1.1 规范](schema/feedback-v1.1.schema.json)，新增来源值 `accessibility`。
+- 导入还检查唯一 ID、连续编号、图片哈希、实际尺寸、坐标范围和字段类型。JSON Schema 与业务校验共同约束数据。
+
+把 JSON 与原图一起交给 AI。识别得到的是视觉位置或系统辅助功能信息，不包含代码仓库中的 DOM、组件名或源码位置；网页 DOM 标注工具仍是独立产品方向。
+
+## 识别方式与边界
+
+Windows 通过 UI Automation、Mac 通过 Accessibility 获取目标应用公开的元素边界。截图前的元素探测在独立短进程中运行，超时会停止，避免目标应用阻塞截图界面。
+
+图片识别完全在本机运行，使用颜色连通区域、边缘聚合和矩形包含关系。可识别卡片、图片区域和较明确的轮廓，不执行 OCR，也不提供物体语义识别。系统元素信息不可用时，图片识别和手动框选仍可使用。无需网络服务、账号或模型下载。
+
+当前支持从多块屏幕中选择其中一块内的区域，不支持跨显示器拼接选区。混合缩放、多屏布局、受保护画面和不同浏览器的系统元素暴露情况仍需更多设备测试。单图最多 3200 万像素、单边不超过 32767，最多 1000 条批注，每条 10000 字。
+
+## 平台验证状态
+
+| 项目 | 状态 |
 | --- | --- |
-| P / R / B / V | 点标注 / 框选 / 智能选块 / 调整 |
-| Ctrl / ⌘ + Enter | 保存批注文字 |
-| Ctrl / ⌘ + Z | 撤销 |
-| Ctrl / ⌘ + Shift + Z、Ctrl + Y | 重做 |
-| Ctrl / ⌘ + O | 打开图片或项目 |
-| Ctrl / ⌘ + S | 保存含原图的项目 |
-| Ctrl / ⌘ + E | 导出 JSON |
-| Ctrl / ⌘ + C | 复制原图；输入框内保留文字复制 |
-| Ctrl / ⌘ + 0 | 适应图片 |
-| Delete / Backspace | 删除所选批注 |
-| Esc | 取消弹窗、裁剪或当前操作 |
+| Windows x64 | 已在 Windows 11 构建和测试；最低构建目标 Windows 10 1809+，未逐一测试旧系统 |
+| Windows 截图 / UI Automation | 已针对本程序的真实测试窗口验证像素颜色、物理尺寸、按钮名称与边界 |
+| 原图坐标 / 高 DPI 裁剪 | 已自动验证，包括 2 倍缩放的裁剪映射 |
+| 中文界面 / 弹窗 / 导出窗口 | 已通过原生窗口测试和渲染截图检查 |
+| Mac | 已实现平台代码和通用构建脚本；**未编译、未实机验证，也未生成可交付 Mac 包** |
+| Mac ARM / Intel | 构建配置指定 arm64 与 x86_64；需由 Mac 构建结果确认 |
+| 外部桌面自动化 | 本次工具受环境初始化错误影响，未能完成鼠标级全流程人工替代验收 |
 
-## JSON 与原图
+Mac 目标为 macOS 14+，使用 ScreenCaptureKit。首次截图需要用户在系统设置中允许屏幕录制；系统元素识别需要单独的辅助功能授权，托盘菜单提供入口。没有这些权限时会提示，普通导入图片批注不依赖这些权限。
 
-坐标始终使用原图像素，不受画布缩放、页面大小或设备像素比影响。左上角为原点；点使用 `{x, y}`，框使用 `{x1, y1, x2, y2}`，左上边界包含、右下边界不包含。
+GitHub Actions 的 Mac 工作流已经写入仓库，**尚未推送、未运行**。有 Mac 构建环境后可先获得本地测试包，再完成权限、Retina、多屏与快捷键实测。公开发布时还需要产品所有者的 Apple 签名、公证流程。
 
-导入、导出使用 Ajv 校验同一份 JSON Schema，同时检查坐标边界、编号、唯一 ID。导入项目还会核对 PNG 签名、图片尺寸及 SHA-256，防止原图错配。
+## 构建
 
-- 包含 `pngBase64` 的桌面 / Web 项目可以直接打开。
-- 不包含原图的 JSON：同时选中 JSON 和其中 `capture.imageFile` 指定的 PNG。
-- 给 AI 使用时，将 JSON 和原图一起提供；JSON 内的 Base64 不会自动成为聊天附件。
-- Web 新截图的 `screenBounds` 为 `null`；浏览器无法提供可靠的操作系统物理屏幕位置。
+依赖：Qt **6.8.3**（qtbase、qtimageformats，动态库）、CMake 3.24+、Ninja、C++20 编译器。
+Windows 本次使用 MinGW GCC 13.1.0；Mac 使用 Xcode Command Line Tools 和匹配的 Qt SDK。
 
-## 浏览器范围与数据处理
+Windows PowerShell 7 示例，CMake 在 PATH 中：
 
-图片、识别、批注、JSON 和 ZIP 均在本地浏览器处理。应用没有图片上传接口、遥测、外部字体或远程 AI 调用。候选区域通过色块连通域与边缘分组在 Web Worker 中计算，适合卡片、按钮和图片边界；它不执行 OCR、语义物体识别或不可见内容恢复。误选时可以手动画框调整。
+```powershell
+./scripts/build-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -Compiler C:/Qt/Tools/mingw1310_64/bin/g++.exe -Ninja C:/Tools/ninja.exe
+./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
+```
 
-纯 Web 版需要用户主动授权屏幕共享，无法实现系统级全屏灰幕、全局截图快捷键、浏览器外贴图或读取其他应用的 UIA 控件树。共享选项取决于浏览器；不支持屏幕采集的移动端仍可上传或粘贴截图。剪贴板能力同样取决于浏览器权限，不可用时可以保存文件。
+打包脚本使用新的输出目录，避免覆盖已有成果；重复打包可传入新的 `-OutputDirectory`。发布包动态附带 Qt 和 MinGW 运行库，不需要安装 Qt、Python、Node 或 .NET。
 
-屏幕采集和剪贴板需要 HTTPS 或 localhost 等安全上下文，不能直接双击 `index.html` 运行。屏幕采集规则见 [MDN getDisplayMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)。
+Mac（当前脚本未经本机执行）：
 
-普通图片上限 48 MB、3200 万像素，项目 JSON 上限 96 MB；批注最多 1000 条，每条最多 10000 字符。GIF 使用浏览器解码的单帧，不支持动画批注。当前产品是图片 / 截图工具；直接选择和编辑第三方网页 DOM 属于后续独立模块。
+```bash
+export QT_ROOT="$HOME/Qt/6.8.3/macos"
+bash scripts/build-macos.sh
+```
 
-## 验证与依赖
+输出通用 .app 和供本地测试的 .dmg，使用临时签名；这不是已经签名公证的公开发行版。
 
-`npm test` 包含 10 项核心回归：真实桌面导出兼容、原图哈希、严格格式与边界、嵌套选块、框选移动缩放、撤销重做及图像区域识别。浏览器验证覆盖点 / 框批注、滚轮层级、坐标导出、项目保存还原、ZIP 文件内容与响应式布局。系统共享选择器需要真实用户授权，自动验证使用本地生成的视频帧检查采集、裁剪与停止共享流程。
+## 验证与许可
 
-运行依赖为 Ajv、ajv-formats、fflate；Vite 仅负责开发与构建。第三方许可证保留在 `public/third-party-notices.txt`，构建后随静态文件交付。
+构建脚本默认运行三个 Windows 测试组：核心数据与算法、窗口标注交互、实际平台截图与系统元素。测试包含旧 WPF 项目的重新导入。界面与导出样本在 `artifacts/native-ui/`。
+
+独立验证实际 JSON 导出（Python 环境安装 `jsonschema==4.26.0`）：
+
+```text
+python scripts/validate-exports.py
+```
+
+Qt 与 MinGW 的原始许可、版权声明存于 `packaging/licenses/`，随运行包交付；对应 Qt 源码保存在 `dist/native-sources/`。重新收集许可可运行 `scripts/collect-licenses.py`。对外发布应同时提供这些对应源码归档，详见 [第三方说明](packaging/THIRD-PARTY-NOTICES.md)。
+
+平台接口参考：[Qt macOS 支持与通用构建](https://doc.qt.io/qt-6.8/macos.html)、[Apple 截图接口](https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager)、[Qt 开源许可说明](https://www.qt.io/development/open-source-lgpl-obligations)。

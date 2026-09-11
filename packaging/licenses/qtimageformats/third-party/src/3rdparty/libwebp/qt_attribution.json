@@ -1,0 +1,17 @@
+{
+    "Id": "libwebp",
+    "Name": "WebP (libwebp)",
+    "QDocModule": "qtimageformats",
+    "QtUsage": "Used in the qwebp image plugin if no system libwebp is found.",
+    "SecurityCritical": true,
+
+    "Description": "WebP is a new image format that provides lossless and lossy compression for images on the web.",
+    "Homepage": "https://developers.google.com/speed/webp/",
+
+    "Version": "1.5.0",
+    "DownloadLocation": "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.5.0.tar.gz",
+    "License": "BSD 3-clause \"New\" or \"Revised\" License",
+    "LicenseId": "BSD-3-Clause",
+    "LicenseFile": "COPYING",
+    "Copyright": "Copyright (c) 2010, Google Inc. All rights reserved."
+}

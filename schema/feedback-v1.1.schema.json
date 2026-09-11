@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:help2design:feedback:1.1.0",
+  "title": "Help2Design Capture feedback v1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tool", "exportedAt", "capture", "annotations"],
+  "properties": {
+    "schemaVersion": {"const": "1.1.0"},
+    "tool": {"const": "Help2Design Capture"},
+    "exportedAt": {"type": "string", "format": "date-time"},
+    "capture": {"$ref": "#/$defs/capture"},
+    "annotations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/annotation"}}
+  },
+  "$defs": {
+    "point": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y"],
+      "properties": {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}}
+    },
+    "rectangle": {
+      "type": "object", "additionalProperties": false, "required": ["x1", "y1", "x2", "y2"],
+      "properties": {"x1": {"type": "integer", "minimum": 0}, "y1": {"type": "integer", "minimum": 0}, "x2": {"type": "integer", "minimum": 1}, "y2": {"type": "integer", "minimum": 1}}
+    },
+    "screenRectangle": {
+      "type": "object", "additionalProperties": false, "required": ["x1", "y1", "x2", "y2"],
+      "properties": {"x1": {"type": "integer"}, "y1": {"type": "integer"}, "x2": {"type": "integer"}, "y2": {"type": "integer"}}
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "label", "controlType", "automationId", "method", "originalScreenBounds", "clipped"],
+      "properties": {
+        "source": {"enum": ["manual", "uia", "vision", "accessibility"]},
+        "label": {"type": "string"},
+        "controlType": {"type": ["string", "null"]},
+        "automationId": {"type": ["string", "null"]},
+        "method": {"type": "string"},
+        "originalScreenBounds": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/screenRectangle"}]},
+        "clipped": {"type": "boolean"}
+      }
+    },
+    "capture": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "createdAt", "source", "title", "imageFile", "width", "height", "coordinateSpace", "origin", "rectangleConvention", "screenBounds", "sha256", "pngBase64"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "source": {"enum": ["screen", "file", "clipboard", "demo"]},
+        "title": {"type": "string"},
+        "imageFile": {"type": "string", "minLength": 1},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "coordinateSpace": {"const": "image-pixels"},
+        "origin": {"const": "top-left"},
+        "rectangleConvention": {"const": "top-left-inclusive-bottom-right-exclusive"},
+        "screenBounds": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/screenRectangle"}]},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "pngBase64": {"type": ["string", "null"], "contentEncoding": "base64", "contentMediaType": "image/png"}
+      }
+    },
+    "annotation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "number", "kind", "point", "rectangle", "comment", "target", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "number": {"type": "integer", "minimum": 1},
+        "kind": {"enum": ["point", "rectangle"]},
+        "point": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/point"}]},
+        "rectangle": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/rectangle"}]},
+        "comment": {"type": "string", "minLength": 1, "maxLength": 10000, "pattern": "\\S"},
+        "target": {"$ref": "#/$defs/target"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "point"}}}, "then": {"properties": {"point": {"$ref": "#/$defs/point"}, "rectangle": {"type": "null"}}}},
+        {"if": {"properties": {"kind": {"const": "rectangle"}}}, "then": {"properties": {"point": {"type": "null"}, "rectangle": {"$ref": "#/$defs/rectangle"}}}}
+      ]
+    }
+  }
+}
