@@ -1,6 +1,7 @@
 #include "layout.h"
 #include "model.h"
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPainter>
@@ -456,7 +457,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"annotations", "changes"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes"}));
         QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
                  (QJsonObject{{"point", QJsonObject{{"x", 20}, {"y", 20}}}, {"text", "加大标题"}}));
         QCOMPARE(feedback["annotations"].toArray()[1].toObject(),
@@ -476,7 +477,10 @@ class LayoutTests : public QObject {
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            saveBytes(QDir(folder).filePath("feedback-minimal.json"), compact);
+            auto legacy = feedback;
+            legacy.remove("annotationSpace");
+            saveBytes(QDir(folder).filePath("feedback-minimal.json"),
+                      QJsonDocument(legacy).toJson(QJsonDocument::Compact));
             saveBytes(QDir(folder).filePath("feedback-minimal.png"), document.png);
         }
         auto invalid = feedback;
@@ -507,6 +511,211 @@ class LayoutTests : public QObject {
         invalid["changes"] = changes;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
     }
+    void embeddedFeedbackNeedsNoSidecarAndPreservesOriginal() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        auto document = fromImage(sourceImage(), "demo", "内嵌原图反馈");
+        document.layout = createLayout(document.image.size(), tableRegions());
+        transformLayoutGroup(*document.layout, groupId(*document.layout, "1"), {90, 70, 30, 20});
+        Note point;
+        point.point = {100, 80};
+        point.comment = "编辑后添加的批注";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {90, 70, 30, 20};
+        rectangle.comment = "这里加大文字";
+        document.notes = {point, rectangle};
+        const auto feedback = exportFeedback(document, true);
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
+        QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
+        QCOMPARE(feedback["changes"].toArray().size(), 1);
+        QCOMPARE(feedback["image"],
+                 QJsonValue("data:image/png;base64," + QString::fromLatin1(document.png.toBase64())));
+        const auto path = directory.filePath("embedded.json");
+        saveBytes(path, serializeFeedback(document, true));
+        QVERIFY(!QFileInfo::exists(directory.filePath("embedded.png")));
+        const auto restored = loadDocument(path);
+        QCOMPARE(restored.png, document.png);
+        QCOMPARE(restored.image, document.image);
+        QCOMPARE(exportFeedback(restored, true), feedback);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(renderLayout(restored.image, *restored.layout),
+                 renderLayout(document.image, *document.layout));
+
+        const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("feedback-v0.7.json"), serializeFeedback(document, true));
+            saveBytes(QDir(folder).filePath("feedback-v0.7-no-image.json"), serializeFeedback(document));
+        }
+        for (const auto &invalidImage :
+             {QJsonValue(true), QJsonValue("data:image/jpeg;base64,AA=="),
+              QJsonValue("data:image/png;base64,!!!"), QJsonValue("data:image/png;base64,QQ=="),
+              QJsonValue("data:image/png;base64,")}) {
+            auto invalid = feedback;
+            invalid["image"] = invalidImage;
+            saveBytes(path, QJsonDocument(invalid).toJson(QJsonDocument::Compact));
+            QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        }
+        auto invalid = feedback;
+        invalid["annotationSpace"] = "original";
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        invalid = feedback;
+        invalid["extra"] = true;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        auto badPng = document.png;
+        for (int i = 16; i < 24; ++i)
+            badPng[i] = char(0xff); // Reject absurd dimensions before PNG decoding allocates pixels.
+        invalid = feedback;
+        invalid["image"] = "data:image/png;base64," + QString::fromLatin1(badPng.toBase64());
+        saveBytes(path, QJsonDocument(invalid).toJson(QJsonDocument::Compact));
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        QImage wrongImage = document.image;
+        wrongImage.setPixelColor(0, 0, Qt::magenta);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, wrongImage), std::runtime_error);
+    }
+    void legacyAnnotationsMigrateAndFullProjectRoundTrips() {
+        auto document = fromImage(sourceImage(), "demo", "旧格式迁移");
+        document.layout = createLayout(document.image.size(), tableRegions());
+        transformLayoutGroup(*document.layout, groupId(*document.layout, "1"), {90, 70, 30, 20});
+        Note point;
+        point.point = {20, 20};
+        point.comment = "旧格式原图坐标";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {10, 10, 30, 20};
+        rectangle.comment = "旧矩形";
+        document.notes = {point, rectangle};
+        auto legacy = exportFeedback(document);
+        legacy.remove("annotationSpace");
+        auto restored = loadFeedback(legacy, document.image);
+        QCOMPARE(restored.notes[0].point, QPoint(100, 80));
+        QCOMPARE(restored.notes[1].rect, QRect(90, 70, 30, 20));
+
+        // Old v2 contains original coordinates; current documents contain result coordinates.
+        const auto full = exportDocument(restored, true);
+        QCOMPARE(full["annotations"].toArray()[0].toObject()["point"],
+                 QJsonValue(QJsonObject{{"x", 20}, {"y", 20}}));
+        QTemporaryDir directory;
+        const auto path = directory.filePath("old-v2.json");
+        saveBytes(path, QJsonDocument(full).toJson());
+        const auto fullRestored = loadDocument(path);
+        QCOMPARE(fullRestored.notes, restored.notes);
+        QCOMPARE(fullRestored.image, document.image);
+        QCOMPARE(exportFeedback(fullRestored), exportFeedback(restored));
+
+        Note inHole;
+        inHole.point = {20, 20};
+        inHole.comment = "调整后空白处也可以批注";
+        restored.notes = {inHole};
+        QVERIFY_EXCEPTION_THROWN(exportDocument(restored, true), std::runtime_error);
+        QCOMPARE(loadFeedback(exportFeedback(restored, true), {}).notes[0].point, inHole.point);
+    }
+    void annotationsFollowVisibleContentAcrossMovesAndManualCuts() {
+        auto before = createLayout({160, 120}, tableRegions());
+        auto moved = before;
+        const auto cell = groupId(moved, "1");
+        transformLayoutGroup(moved, cell, {90, 70, 30, 20});
+        Note point;
+        point.point = {20, 20};
+        point.comment = "已有批注";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {10, 10, 30, 20};
+        rectangle.comment = "整块";
+        auto notes = remapNotes({point, rectangle}, before, moved);
+        QCOMPARE(notes[0].point, QPoint(100, 80));
+        QCOMPARE(notes[1].rect, QRect(90, 70, 30, 20));
+        Note afterEditing;
+        afterEditing.point = {100, 80};
+        afterEditing.comment = "移动后添加";
+        notes.append(afterEditing);
+        auto movedAgain = moved;
+        transformLayoutGroup(movedAgain, cell, {80, 60, 60, 40});
+        notes = remapNotes(notes, moved, movedAgain);
+        QCOMPARE(notes[0].point, QPoint(100, 80));
+        QCOMPARE(notes[1].rect, QRect(80, 60, 60, 40));
+        QCOMPARE(notes[2].point, QPoint(100, 80));
+
+        auto cut = movedAgain;
+        const auto cutId = addLayoutRegion(cut, {90, 70, 20, 20}, "手动切块");
+        QVERIFY(!cutId.isEmpty());
+        QCOMPARE(remapNotes(notes, movedAgain, cut), notes);
+        auto shifted = cut;
+        transformLayoutGroup(shifted, cutId, {10, 80, 20, 20});
+        const auto remapped = remapNotes(notes, cut, shifted);
+        QCOMPARE(remapped[0].point, QPoint(20, 90));
+        QCOMPARE(remapped[2].point, QPoint(20, 90));
+        QCOMPARE(remapped[1].rect, notes[1].rect); // The whole rectangle no longer shares one transform.
+
+        auto overlap = before;
+        transformLayoutGroup(overlap, cell, {40, 10, 30, 20});
+        point.point = {50, 20};
+        auto lifted = overlap;
+        transformLayoutGroup(lifted, cell, {90, 70, 30, 20});
+        QCOMPARE(remapNotes({point}, overlap, lifted)[0].point, QPoint(100, 80));
+        point.point = {20, 20}; // A hole has no component to follow.
+        QCOMPARE(remapNotes({point}, overlap, lifted)[0].point, QPoint(20, 20));
+
+        auto parentMoved = before;
+        transformLayoutGroup(parentMoved, groupId(parentMoved, "1234"), {50, 50, 90, 60});
+        rectangle.rect = {10, 10, 60, 40};
+        QCOMPARE(remapNotes({rectangle}, before, parentMoved)[0].rect, QRect(50, 50, 90, 60));
+        auto partlyMoved = before;
+        transformLayoutGroup(partlyMoved, cell, {90, 70, 30, 20});
+        QCOMPARE(remapNotes({rectangle}, before, partlyMoved)[0].rect, rectangle.rect);
+    }
+    void fractionalComponentAnnotationsFollowWithoutQuantizationDrift() {
+        auto before = createLayout({160, 120}, tableRegions());
+        const auto cell = groupId(before, "1");
+        transformLayoutGroup(before, cell, {80.25, 60.5, 60.5, 40.25});
+        QVERIFY(!addLayoutRegion(before, {90.25, 70.5, 20.5, 15.25}, "内部细分").isEmpty());
+        Note frame;
+        frame.isPoint = false;
+        frame.rect = layoutBounds(before, cell).toAlignedRect();
+        frame.comment = "浮点组件的整数批注框";
+        auto after = before;
+        transformLayoutGroup(after, cell, {75.5, 52.25, 72.75, 48.5});
+        auto notes = remapNotes({frame}, before, after);
+        QCOMPARE(notes[0].rect, layoutBounds(after, cell).toAlignedRect());
+
+        auto next = after;
+        transformLayoutGroup(next, cell, {90.125, 70.875, 31.375, 20.625});
+        notes = remapNotes(notes, after, next);
+        QCOMPARE(notes[0].rect, layoutBounds(next, cell).toAlignedRect());
+
+        Note arbitrary = frame;
+        arbitrary.rect.adjust(-1, -1, 1, 1); // More than pixel quantization; includes distinct background.
+        QCOMPARE(remapNotes({arbitrary}, before, after)[0].rect, arbitrary.rect);
+        arbitrary.rect = {70, 50, 80, 55};
+        QCOMPARE(remapNotes({arbitrary}, before, after)[0].rect, arbitrary.rect);
+
+        // An outer group enclosing different transforms must not capture a note.
+        auto partlyMoved = before;
+        const auto cut = groupId(partlyMoved, "内部细分");
+        transformLayoutGroup(partlyMoved, cut, {10, 80, 20.5, 15.25});
+        QCOMPARE(remapNotes({frame}, before, partlyMoved)[0].rect, frame.rect);
+    }
+    void annotationsUseRenderedLayerOrderAfterAComponentReturnsToSource() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto one = groupId(state, "1"), two = groupId(state, "2");
+        transformLayoutGroup(state, two, {90, 70, 30, 20});
+        transformLayoutGroup(state, one, {40, 10, 30, 20});
+        transformLayoutGroup(state, two, {40, 10, 30, 20}); // Appended last, but now an unchanged background.
+        QCOMPARE(renderLayout(sourceImage(), state).pixelColor(50, 20), QColor("#f04050"));
+        Note point;
+        point.point = {50, 20};
+        point.comment = "顶层红色";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {40, 10, 30, 20};
+        rectangle.comment = "顶层整块";
+        auto after = state;
+        transformLayoutGroup(after, one, {90, 70, 30, 20});
+        const auto notes = remapNotes({point, rectangle}, state, after);
+        QCOMPARE(notes[0].point, QPoint(100, 80));
+        QCOMPARE(notes[1].rect, QRect(90, 70, 30, 20));
+    }
     void documentRoundTripAndSchemaFixture() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -516,7 +725,7 @@ class LayoutTests : public QObject {
         QVERIFY(!addLayoutRegion(*document.layout, {90, 70, 20, 20}, "手动切分").isEmpty());
         Note note;
         note.isPoint = false;
-        note.rect = {10, 10, 30, 20};
+        note.rect = {85, 60, 60, 40};
         note.comment = "将红色组件右移，并保持角点缩放比例。";
         document.notes.append(note);
         const auto exported = exportDocument(document, true);

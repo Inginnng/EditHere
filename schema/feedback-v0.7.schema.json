@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HelpDesign 0.7 design feedback",
+  "description": "The optional image is the original PNG encoded as a data URL. All coordinates are image pixels with a top-left origin; rectangle x2/y2 are exclusive. Annotations use the result canvas after applying changes. Changes contain only net position or size changes: cut all from rectangles from the original, then draw them at to rectangles in array order over unchanged content. Empty source holes stay transparent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "annotationSpace",
+    "annotations",
+    "changes"
+  ],
+  "properties": {
+    "annotations": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "point",
+              "text"
+            ],
+            "properties": {
+              "point": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32766
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32766
+                  }
+                }
+              },
+              "text": {
+                "$ref": "#/$defs/text"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rectangle",
+              "text"
+            ],
+            "properties": {
+              "rectangle": {
+                "$ref": "#/$defs/annotationRectangle"
+              },
+              "text": {
+                "$ref": "#/$defs/text"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "changes": {
+      "type": "array",
+      "maxItems": 8192,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "$ref": "#/$defs/rectangle"
+          },
+          "to": {
+            "$ref": "#/$defs/rectangle"
+          }
+        }
+      }
+    },
+    "annotationSpace": {
+      "const": "result"
+    },
+    "image": {
+      "pattern": "^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$",
+      "maxLength": 67108885,
+      "description": "Original PNG, maximum 48 MiB decoded and 32 million pixels. Omit only when supplying a same-name PNG alongside the JSON.",
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "rectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "properties": {
+        "x1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "x2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        }
+      }
+    },
+    "annotationRectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "properties": {
+        "x1": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y1": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "x2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000,
+      "pattern": "\\S"
+    }
+  }
+}

@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     app.setApplicationName("HelpDesign");
     app.setOrganizationName("HelpDesign");
-    app.setApplicationVersion("0.6.0");
+    app.setApplicationVersion("0.7.0");
     app.setQuitOnLastWindowClosed(false);
     app.setWindowIcon(glyph("capture", accent()));
     applyTheme();

@@ -1,6 +1,6 @@
 # Third-party components
 
-HelpDesign 0.6.0 uses dynamically linked Qt 6.8.3 (Qt Core, Gui, Widgets,
+HelpDesign 0.7.0 uses dynamically linked Qt 6.8.3 (Qt Core, Gui, Widgets,
 Concurrent, Network and Qt Image Formats), copyright The Qt Company Ltd. and
 contributors, under LGPL version 3 and the components' applicable licenses.
 

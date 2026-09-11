@@ -4,6 +4,7 @@
 #include "ui.h"
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -23,6 +24,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTextCursor>
 #include <QTimer>
 #include <QVariantAnimation>
 #include <QWheelEvent>
@@ -215,7 +217,7 @@ class UiTests : public QObject {
         auto clear = editor.findChild<QPushButton *>("clearLayoutSelection");
         QVERIFY(clear);
         clear->click();
-        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
         const QString firstId = canvas->selected();
 
@@ -294,7 +296,7 @@ class UiTests : public QObject {
         document.layout = createLayout(document.image.size(), document.candidates);
         Note note;
         note.point = {120, 105};
-        note.comment = "将第一格移到右侧，保留原图批注坐标。";
+        note.comment = "将第一格移到右侧，批注跟随组件。";
         document.notes.append(note);
         const auto originalNotes = document.notes;
         const auto initialLayout = *document.layout;
@@ -311,16 +313,18 @@ class UiTests : public QObject {
         QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
         QVERIFY(canvas && editor.explosionActive());
         QVERIFY(QApplication::activeModalWidget() == nullptr);
-        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
         auto destination = canvas->selectionBounds();
         destination.moveLeft(440);
         canvas->transformSelection(destination);
         QVERIFY(editor.document().layout.has_value());
-        QVERIFY(editor.document().notes == originalNotes);
+        QCOMPARE(editor.document().notes[0].point, QPoint(500, 105));
+        QCOMPARE(editor.document().notes[0].comment, note.comment);
+        const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"annotations", "changes"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes"}));
         QCOMPARE(feedback["changes"].toArray().size(), 1);
         QCOMPARE(feedback["changes"].toArray().first().toObject()["from"].toObject(),
                  rectJson(QRect(60, 60, 120, 90)));
@@ -338,6 +342,7 @@ class UiTests : public QObject {
         redo->click();
         QVERIFY(editor.document().layout == appliedLayout);
         QVERIFY(canvas->state() == appliedLayout);
+        QVERIFY(editor.document().notes == appliedNotes);
 
         QStringList pieceIds;
         for (const auto &piece : canvas->state().pieces)
@@ -347,7 +352,7 @@ class UiTests : public QObject {
         QVERIFY(editor.canvas()->layoutPreview());
         QVERIFY(!canvas->isVisible());
         QVERIFY(editor.document().layout == appliedLayout);
-        QVERIFY(editor.document().notes == originalNotes);
+        QVERIFY(editor.document().notes == appliedNotes);
         QTest::qWait(30);
         QCOMPARE(editor.geometry(), geometry);
         QCOMPARE(imageScroll->viewport()->size(), viewport);
@@ -394,6 +399,180 @@ class UiTests : public QObject {
         QVERIFY(!editor.document().layout.has_value());
         editor.hide();
     }
+    void explosionEditsAndAnnotationsShareResult() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto explode = editor.findChild<QPushButton *>("explodeButton");
+        auto component = editor.findChild<QPushButton *>("componentTool");
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(explode && component && imageScroll);
+        explode->click();
+        auto layout = editor.layoutCanvas();
+        QVERIFY(layout && editor.explosionActive() && explode->isChecked());
+        layout->zoomRequested(1.0);
+        QCOMPARE(layout->zoom(), 1.0);
+        const QRect geometry = editor.geometry();
+        const QSize viewport = imageScroll->viewport()->size();
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+        QCOMPARE(layout->selectionBounds(), QRectF(60, 60, 120, 90));
+        const auto componentId = layout->selected();
+        layout->transformSelection(QRectF(440, 60, 120, 90));
+        const auto firstLayout = *editor.document().layout;
+        const auto originalPieceCount = firstLayout.pieces.size();
+        QCOMPARE(renderLayout(document.image, firstLayout).pixelColor(120, 105).alpha(), 0);
+
+        auto completeComment = [&](const QString &comment) {
+            QTimer::singleShot(2500, &editor, [] {
+                if (auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()))
+                    dialog->reject();
+            });
+            QTimer::singleShot(50, &editor, [&, comment] {
+                auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                QVERIFY(dialog);
+                auto text = dialog->findChild<QPlainTextEdit *>("commentInput");
+                QVERIFY(text);
+                text->setPlainText(comment);
+                for (auto button : dialog->findChildren<QPushButton *>())
+                    if (button->text() == "保存") {
+                        button->click();
+                        return;
+                    }
+                QFAIL("Comment save button missing");
+            });
+        };
+
+        // Point and rectangle tools annotate the edited image without disabling explosion.
+        QTest::keyClick(layout, Qt::Key_P);
+        auto result = editor.canvas();
+        QCOMPARE(result->mode(), Canvas::Point);
+        QVERIFY(result->isVisible() && result->layoutPreview());
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        QVERIFY(component->isVisible() && !component->isChecked());
+        QCOMPARE(result->zoom(), 1.0);
+        completeComment("请加大标题字号。");
+        QTest::mouseClick(result, Qt::LeftButton, Qt::NoModifier, QPoint(500, 105));
+        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes[0].point, QPoint(500, 105));
+        QVERIFY(editor.document().layout == firstLayout);
+
+        auto resumeShortcuts = [&] {
+            QVERIFY(QApplication::activeModalWidget() == nullptr);
+            // Qt's offscreen plugin does not reactivate the parent when hiding a dialog.
+            // Native platforms must restore activation themselves, as in normal use.
+            if (QGuiApplication::platformName() == "offscreen") {
+                editor.activateWindow();
+                result->setFocus();
+            }
+            QTRY_VERIFY_WITH_TIMEOUT(editor.isActiveWindow(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(result->hasFocus(), 1000);
+        };
+        resumeShortcuts();
+        QTest::keyClick(result, Qt::Key_R);
+        QCOMPARE(result->mode(), Canvas::Rectangle);
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        QTest::mousePress(result, Qt::LeftButton, Qt::NoModifier, QPoint(450, 70));
+        QTest::mouseMove(result, QPoint(540, 125));
+        completeComment("这个区域的内容需要对齐。");
+        QTest::mouseRelease(result, Qt::LeftButton, Qt::NoModifier, QPoint(540, 125));
+        QCOMPARE(editor.document().notes.size(), 2);
+        QVERIFY(!editor.document().notes[1].isPoint);
+        QCOMPARE(editor.document().notes[1].rect, QRect(450, 70, 90, 55));
+        const auto firstNotes = editor.document().notes;
+        resumeShortcuts();
+        QTest::keyClick(result, Qt::Key_B);
+        QCOMPARE(result->mode(), Canvas::Smart);
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+        QTest::qWait(30);
+        auto notesPanel = editor.findChild<QWidget *>("notesPanel");
+        QVERIFY(notesPanel && notesPanel->isVisible());
+        int visibleNoteCards = 0;
+        for (auto card : notesPanel->findChildren<QWidget *>("noteCard"))
+            if (card->isVisible())
+                ++visibleNoteCards;
+        QCOMPARE(visibleNoteCards, editor.document().notes.size());
+        artifact(editor, "result-annotations.png");
+
+        // A selected annotation in the hidden result canvas must not be deleted in component mode.
+        QCOMPARE(result->selected(), firstNotes.last().id);
+        component->click();
+        QCOMPARE(editor.layoutCanvas(), layout);
+        QVERIFY(layout->isVisible() && component->isChecked());
+        QTest::keyClick(layout, Qt::Key_Delete);
+        QVERIFY(editor.document().notes == firstNotes);
+        QVERIFY(editor.document().layout == firstLayout);
+
+        // Continue component adjustment and carry both annotations with the same pixels.
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {450, 140}));
+        QCOMPARE(layout->selected(), componentId);
+        layout->transformSelection(QRectF(600, 240, 120, 90));
+        const auto secondLayout = *editor.document().layout;
+        const auto secondNotes = editor.document().notes;
+        QCOMPARE(secondNotes[0].point, QPoint(660, 285));
+        QCOMPARE(secondNotes[1].rect, QRect(610, 250, 90, 55));
+        QCOMPARE(secondLayout.pieces.size(), originalPieceCount);
+        auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
+        QVERIFY(undo && redo && undo->isEnabled());
+        undo->click();
+        QVERIFY(editor.document().layout == firstLayout);
+        QVERIFY(editor.document().notes == firstNotes);
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        redo->click();
+        QVERIFY(editor.document().layout == secondLayout);
+        QVERIFY(editor.document().notes == secondNotes);
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+
+        // Annotating a selected component and editing a badge never alter the cuts.
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {610, 320}));
+        QCOMPARE(layout->selected(), componentId);
+        auto annotate = editor.findChild<QPushButton *>("annotateComponent");
+        QVERIFY(annotate && annotate->isEnabled());
+        QSignalSpy geometryChanged(layout, &LayoutCanvas::changed);
+        completeComment("保持这个组件的新位置。");
+        annotate->click();
+        QCOMPARE(editor.document().notes.size(), 3);
+        QVERIFY(!editor.document().notes[2].isPoint);
+        QCOMPARE(editor.document().notes[2].rect, QRect(600, 240, 120, 90));
+        QVERIFY(editor.explosionActive() && explode->isChecked() && layout->isVisible());
+        QVERIFY(layout->state() == secondLayout);
+        QCOMPARE(layout->selected(), componentId);
+        const auto beforeTextEdit = editor.document().notes;
+        completeComment("标题字号改成 24 像素。");
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {660, 285}));
+        QCOMPARE(editor.document().notes.size(), 3);
+        QCOMPARE(editor.document().notes[0].comment, QString("标题字号改成 24 像素。"));
+        QCOMPARE(editor.document().notes[0].point, QPoint(660, 285));
+        QCOMPARE(geometryChanged.count(), 0);
+        QVERIFY(layout->state() == secondLayout);
+        const auto afterTextEdit = editor.document().notes;
+        undo->click();
+        QVERIFY(editor.document().notes == beforeTextEdit);
+        QVERIFY(editor.document().layout == secondLayout);
+        redo->click();
+        QVERIFY(editor.document().notes == afterTextEdit);
+        QVERIFY(editor.document().layout == secondLayout);
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {610, 320}));
+        QCOMPARE(layout->selected(), componentId);
+        QTest::qWait(30);
+        artifact(editor, "explosion-with-annotations.png");
+        const auto feedback = exportFeedback(editor.document());
+        QCOMPARE(feedback["annotationSpace"].toString(), QString("result"));
+        QCOMPARE(feedback["annotations"].toArray().size(), 3);
+        QCOMPARE(feedback["changes"].toArray().size(), 1);
+        QCOMPARE(feedback["changes"].toArray()[0].toObject()["from"].toObject(),
+                 rectJson(QRect(60, 60, 120, 90)));
+        QCOMPARE(feedback["changes"].toArray()[0].toObject()["to"].toObject(),
+                 rectJson(QRect(600, 240, 120, 90)));
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+        editor.hide();
+    }
     void compactFeedbackExportsSavesAndReopens() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -426,13 +605,14 @@ class UiTests : public QObject {
         QVERIFY(!editor.document().dirty);
         QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
         canvas->clearSelection();
-        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
         auto destination = canvas->selectionBounds();
         destination.moveLeft(440);
         canvas->transformSelection(destination);
         QVERIFY(editor.document().dirty);
         const auto expectedFeedback = exportFeedback(editor.document());
+        const auto expectedEmbedded = exportFeedback(editor.document(), true);
         const auto expectedImage = renderLayout(editor.document().image, *editor.document().layout);
         QCOMPARE(expectedFeedback["annotations"].toArray().size(), 2);
         QCOMPARE(expectedFeedback["changes"].toArray().size(), 1);
@@ -453,11 +633,48 @@ class UiTests : public QObject {
             const auto parsed = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QVERIFY(parsed.isObject());
-            QCOMPARE(parsed.object().keys(), QStringList({"annotations", "changes"}));
-            QCOMPARE(parsed.object()["changes"].toArray().size(), 1);
-            QCOMPARE(parsed.object(), expectedFeedback);
-            QVERIFY(dialog->findChildren<QCheckBox *>().isEmpty());
-            QVERIFY(!text->toPlainText().contains("base64", Qt::CaseInsensitive));
+            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
+            QVERIFY(embed && embed->isChecked());
+            auto preview = parsed.object();
+            QCOMPARE(preview.keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
+            QVERIFY(preview["image"].toString().startsWith("data:image/png;base64,"));
+            QVERIFY(preview["image"] != expectedEmbedded["image"]);
+            preview.remove("image");
+            QCOMPARE(preview, expectedFeedback);
+            QPushButton *copy = nullptr;
+            for (auto button : dialog->findChildren<QPushButton *>())
+                if (button->text() == "复制 JSON")
+                    copy = button;
+            QVERIFY(copy && copy->isEnabled());
+            copy->click();
+            const auto copied = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
+            QCOMPARE(error.error, QJsonParseError::NoError);
+            QCOMPARE(copied.object(), expectedEmbedded);
+            const auto encoded =
+                copied.object()["image"].toString().mid(QString("data:image/png;base64,").size());
+            QCOMPARE(QByteArray::fromBase64(encoded.toLatin1()), document.png);
+            QApplication::clipboard()->clear();
+            text->setFocus();
+            text->selectAll();
+            QTest::keyClick(text, Qt::Key_C, Qt::ControlModifier);
+            const auto keyboardCopy =
+                QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
+            QCOMPARE(error.error, QJsonParseError::NoError);
+            QCOMPARE(keyboardCopy.object(), expectedEmbedded);
+            const auto keyboardImage =
+                keyboardCopy.object()["image"].toString().mid(QString("data:image/png;base64,").size());
+            QCOMPARE(QByteArray::fromBase64(keyboardImage.toLatin1()), document.png);
+            text->moveCursor(QTextCursor::Start);
+            artifact(*dialog, "embedded-export.png");
+            embed->click();
+            QVERIFY(!embed->isChecked());
+            const auto compact = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
+            QCOMPARE(error.error, QJsonParseError::NoError);
+            QCOMPARE(compact.object(), expectedFeedback);
+            QVERIFY(!compact.object().contains("image"));
+            copy->click();
+            QCOMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+                     expectedFeedback);
             artifact(*dialog, "compact-export.png");
             exportChecked = true;
             dialog->reject();
@@ -489,20 +706,21 @@ class UiTests : public QObject {
         chooseFile.stop();
         QVERIFY(selectedFile && !saveError && saved);
         QVERIFY(!editor.document().dirty);
-        QVERIFY(QFileInfo::exists(dir.filePath("review.png")));
+        QVERIFY(!QFileInfo::exists(dir.filePath("review.png")));
         QFile savedJson(path);
         QVERIFY(savedJson.open(QIODevice::ReadOnly));
         QJsonParseError error;
         const auto parsed = QJsonDocument::fromJson(savedJson.readAll(), &error);
         QCOMPARE(error.error, QJsonParseError::NoError);
-        QCOMPARE(parsed.object().keys(), QStringList({"annotations", "changes"}));
-        QCOMPARE(parsed.object(), expectedFeedback);
+        QCOMPARE(parsed.object().keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
+        QCOMPARE(parsed.object(), expectedEmbedded);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
+        QCOMPARE(restored.png, document.png);
         QCOMPARE(renderLayout(restored.image, *restored.layout), expectedImage);
         QCOMPARE(restored.notes.size(), 2);
         QVERIFY(restored.notes[0].isPoint);
-        QCOMPARE(restored.notes[0].point, point.point);
+        QCOMPARE(restored.notes[0].point, QPoint(500, 105));
         QCOMPARE(restored.notes[0].comment, point.comment);
         QVERIFY(!restored.notes[1].isPoint);
         QCOMPARE(restored.notes[1].rect, rectangle.rect);

@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QHash>
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -14,6 +15,7 @@
 #include <QSaveFile>
 #include <QSet>
 #include <QUuid>
+#include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -127,11 +129,11 @@ void validateDocument(const Document &d) {
         ids.insert(n.id);
         if (n.isPoint) {
             if (!containsPixel(QRect(QPoint(0, 0), d.image.size()), n.point))
-                fail("点标注超出原图");
+                fail("点标注超出画布");
         } else if (n.rect.isEmpty() || n.rect.x() < 0 || n.rect.y() < 0 ||
                    n.rect.x() + n.rect.width() > d.image.width() ||
                    n.rect.y() + n.rect.height() > d.image.height())
-            fail("框选超出原图");
+            fail("框选超出画布");
         if (!QStringList{"manual", "vision", "uia", "accessibility"}.contains(
                 n.target["source"].toString()) ||
             !n.target["label"].isString() || !n.target["method"].isString() || !n.target["clipped"].isBool())
@@ -147,7 +149,201 @@ void validateDocument(const Document &d) {
             fail("批注日期不正确");
     }
 }
-QJsonObject exportFeedback(const Document &doc) {
+namespace {
+struct NoteTransform {
+    double sx, sy, tx, ty;
+    QPointF map(QPointF point) const {
+        return {point.x() * sx + tx, point.y() * sy + ty};
+    }
+    bool matches(const NoteTransform &other) const {
+        return std::abs(sx - other.sx) < 1e-8 && std::abs(sy - other.sy) < 1e-8 &&
+               std::abs(tx - other.tx) < 1e-8 && std::abs(ty - other.ty) < 1e-8;
+    }
+};
+bool containsLayoutPoint(QRectF rect, QPointF point) {
+    return point.x() >= rect.left() && point.y() >= rect.top() && point.x() < rect.right() &&
+           point.y() < rect.bottom();
+}
+QPointF sourcePoint(const LayoutPiece &piece, QPointF point) {
+    return {piece.source.x() +
+                (point.x() - piece.destination.x()) * piece.source.width() / piece.destination.width(),
+            piece.source.y() +
+                (point.y() - piece.destination.y()) * piece.source.height() / piece.destination.height()};
+}
+NoteTransform noteTransform(const LayoutPiece &before, const LayoutPiece &after) {
+    const double sx =
+        after.destination.width() / after.source.width() * before.source.width() / before.destination.width();
+    const double sy = after.destination.height() / after.source.height() * before.source.height() /
+                      before.destination.height();
+    return {sx, sy,
+            after.destination.x() +
+                (before.source.x() - after.source.x()) * after.destination.width() / after.source.width() -
+                before.destination.x() * sx,
+            after.destination.y() +
+                (before.source.y() - after.source.y()) * after.destination.height() / after.source.height() -
+                before.destination.y() * sy};
+}
+QVector<QRectF> uncoveredRectangles(QRectF rect, QRectF covered) {
+    QVector<QRectF> result;
+    covered = rect.intersected(covered);
+    if (covered.isEmpty())
+        return {rect};
+    // Adjacent transformed cuts can differ by machine precision at a shared
+    // edge. Use the layout engine\'s geometric tolerance, not pixel rounding,
+    // so these microscopic slivers do not become separate background content.
+    if (covered.top() - rect.top() > 1e-7)
+        result.append({rect.left(), rect.top(), rect.width(), covered.top() - rect.top()});
+    if (rect.bottom() - covered.bottom() > 1e-7)
+        result.append({rect.left(), covered.bottom(), rect.width(), rect.bottom() - covered.bottom()});
+    if (covered.left() - rect.left() > 1e-7)
+        result.append({rect.left(), covered.top(), covered.left() - rect.left(), covered.height()});
+    if (rect.right() - covered.right() > 1e-7)
+        result.append({covered.right(), covered.top(), rect.right() - covered.right(), covered.height()});
+    return result;
+}
+using NotePieceMap = QHash<QString, QVector<const LayoutPiece *>>;
+QVector<const LayoutPiece *> visiblePieceOrder(const LayoutState &state) {
+    QVector<const LayoutPiece *> order;
+    // Match paintLayout: changed pieces cover the original background, including
+    // components returned to their source after they were brought to the front.
+    for (bool changed : {true, false})
+        for (auto it = state.pieces.crbegin(); it != state.pieces.crend(); ++it) {
+            const auto a = it->source, b = it->destination;
+            const bool moved = std::abs(a.left() - b.left()) > 1e-7 || std::abs(a.top() - b.top()) > 1e-7 ||
+                               std::abs(a.right() - b.right()) > 1e-7 ||
+                               std::abs(a.bottom() - b.bottom()) > 1e-7;
+            if (moved == changed)
+                order.append(&*it);
+        }
+    return order;
+}
+NotePieceMap correspondingPieces(const LayoutState &before, const LayoutState &after) {
+    QHash<QString, const LayoutPiece *> byId;
+    for (const auto &piece : after.pieces)
+        byId.insert(piece.id, &piece);
+    NotePieceMap result;
+    for (const auto &piece : before.pieces) {
+        const auto *matching = byId.value(piece.id, nullptr);
+        if (matching && matching->source == piece.source) {
+            result.insert(piece.id, {matching});
+            continue;
+        }
+        QVector<const LayoutPiece *> parts;
+        for (const auto &other : after.pieces)
+            if (!piece.source.intersected(other.source).isEmpty())
+                parts.append(&other);
+        result.insert(piece.id, std::move(parts));
+    }
+    return result;
+}
+std::optional<NoteTransform> rectangleNoteTransform(QRectF rectangle,
+                                                    const QVector<const LayoutPiece *> &ordered,
+                                                    const NotePieceMap &correspondence) {
+    QVector<QRectF> remaining{rectangle};
+    std::optional<NoteTransform> transform;
+    // Visible topmost pixels own the annotation. A rectangle moves only when all
+    // of its visible pixels share one transform, including across manual cuts.
+    for (const auto *it : ordered) {
+        if (remaining.isEmpty())
+            break;
+        QVector<QRectF> next;
+        for (const auto &region : remaining) {
+            const QRectF intersection = region.intersected(it->destination);
+            if (intersection.width() <= 1e-7 || intersection.height() <= 1e-7) {
+                next.append(region);
+                continue;
+            }
+            const QRectF source(sourcePoint(*it, intersection.topLeft()),
+                                sourcePoint(*it, intersection.bottomRight()));
+            double mappedArea = 0;
+            for (const auto *mapped : correspondence.value(it->id)) {
+                const auto &piece = *mapped;
+                const QRectF part = source.intersected(piece.source);
+                if (part.isEmpty())
+                    continue;
+                const auto current = noteTransform(*it, piece);
+                if (transform && !transform->matches(current))
+                    return std::nullopt;
+                transform = current;
+                mappedArea += part.width() * part.height();
+            }
+            if (std::abs(mappedArea - source.width() * source.height()) >
+                std::max(1.0, source.width() * source.height()) * 1e-8)
+                return std::nullopt;
+            next.append(uncoveredRectangles(region, intersection));
+            if (next.size() > MaxLayoutPieces)
+                return std::nullopt;
+        }
+        remaining = std::move(next);
+    }
+    return remaining.isEmpty() ? transform : std::nullopt;
+}
+std::optional<QRect> quantizedComponentRectangle(QRect rectangle, const LayoutState &before,
+                                                 const QVector<const LayoutPiece *> &ordered,
+                                                 const NotePieceMap &correspondence) {
+    std::optional<QRect> result;
+    std::optional<NoteTransform> shared;
+    // Selecting a fractional component creates an integer enclosing rectangle.
+    // Only that exact enclosure qualifies; arbitrary cross-component frames keep
+    // the strict rule above. Re-enclose true bounds after mapping to avoid drift.
+    for (const auto &choice : layoutChoices(before, QRectF(rectangle).center())) {
+        if (choice.bounds.toAlignedRect() != rectangle)
+            continue;
+        const auto transform = rectangleNoteTransform(choice.bounds, ordered, correspondence);
+        if (!transform)
+            return std::nullopt;
+        const QRectF mapped(transform->map(choice.bounds.topLeft()),
+                            transform->map(choice.bounds.bottomRight()));
+        const auto enclosed = mapped.toAlignedRect().intersected(QRect(QPoint(0, 0), before.canvas));
+        if (enclosed.isEmpty() || (result && (*result != enclosed || !shared->matches(*transform))))
+            return std::nullopt;
+        result = enclosed;
+        shared = transform;
+    }
+    return result;
+}
+} // namespace
+QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after) {
+    if (before.canvas != after.canvas || before.canvas.isEmpty())
+        return notes;
+    auto result = notes;
+    const auto ordered = visiblePieceOrder(before);
+    const auto correspondence = correspondingPieces(before, after);
+    const int width = after.canvas.width(), height = after.canvas.height();
+    for (auto &note : result) {
+        if (note.isPoint) {
+            // IDs can change during a manual cut; match the original pixels.
+            for (const auto *it : ordered) {
+                if (!containsLayoutPoint(it->destination, note.point))
+                    continue;
+                const auto source = sourcePoint(*it, note.point);
+                for (const auto *mapped : correspondence.value(it->id)) {
+                    const auto &piece = *mapped;
+                    if (!containsLayoutPoint(piece.source, source))
+                        continue;
+                    const auto destination = noteTransform(*it, piece).map(note.point);
+                    note.point = {std::clamp(qRound(destination.x()), 0, width - 1),
+                                  std::clamp(qRound(destination.y()), 0, height - 1)};
+                    break;
+                }
+                break;
+            }
+        } else if (auto transform = rectangleNoteTransform(QRectF(note.rect), ordered, correspondence)) {
+            const auto topLeft = transform->map(QPointF(note.rect.topLeft()));
+            const auto bottomRight = transform->map(
+                QPointF(note.rect.x() + note.rect.width(), note.rect.y() + note.rect.height()));
+            const int x1 = std::clamp(qRound(topLeft.x()), 0, width - 1);
+            const int y1 = std::clamp(qRound(topLeft.y()), 0, height - 1);
+            const int x2 = std::clamp(qRound(bottomRight.x()), x1 + 1, width);
+            const int y2 = std::clamp(qRound(bottomRight.y()), y1 + 1, height);
+            note.rect = {x1, y1, x2 - x1, y2 - y1};
+        } else if (auto enclosed = quantizedComponentRectangle(note.rect, before, ordered, correspondence)) {
+            note.rect = *enclosed;
+        }
+    }
+    return result;
+}
+QJsonObject exportFeedback(const Document &doc, bool embed) {
     validateDocument(doc);
     QJsonArray annotations;
     for (const auto &note : doc.notes) {
@@ -158,16 +354,29 @@ QJsonObject exportFeedback(const Document &doc) {
             annotation.insert("rectangle", rectJson(note.rect));
         annotations.append(annotation);
     }
-    return {{"annotations", annotations},
-            {"changes", doc.layout ? exportLayoutChanges(*doc.layout) : QJsonArray{}}};
+    QJsonObject result{{"annotationSpace", "result"},
+                       {"annotations", annotations},
+                       {"changes", doc.layout ? exportLayoutChanges(*doc.layout) : QJsonArray{}}};
+    if (embed) {
+        validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4, doc.png.size());
+        result.insert("image", "data:image/png;base64," + QString::fromLatin1(doc.png.toBase64()));
+    }
+    return result;
 }
-QByteArray serializeFeedback(const Document &doc) {
-    auto bytes = QJsonDocument(exportFeedback(doc)).toJson(QJsonDocument::Compact);
-    validateProjectStorageSize(bytes.size());
+QByteArray serializeFeedback(const Document &doc, bool embed) {
+    auto bytes = QJsonDocument(exportFeedback(doc, embed)).toJson(QJsonDocument::Compact);
+    validateProjectStorageSize(bytes.size() + 1);
     return bytes + '\n';
 }
 QJsonObject exportDocument(const Document &d, bool embed) {
     validateDocument(d);
+    QVector<Note> legacyNotes = d.notes;
+    if (d.layout) {
+        const auto original = createLayout(d.image.size(), {});
+        legacyNotes = remapNotes(d.notes, *d.layout, original);
+        if (remapNotes(legacyNotes, original, *d.layout) != d.notes)
+            fail("这些批注无法用旧版原图坐标保存，请使用当前反馈格式");
+    }
     QJsonObject capture{
         {"id", d.id},
         {"createdAt", d.createdAt},
@@ -187,7 +396,7 @@ QJsonObject exportDocument(const Document &d, bool embed) {
     QJsonArray notes;
     int number = 0;
     bool ax = false;
-    for (const auto &n : d.notes) {
+    for (const auto &n : legacyNotes) {
         ax |= n.target["source"] == "accessibility";
         notes.append(QJsonObject{
             {"id", n.id},
@@ -235,12 +444,70 @@ static void exactKeys(const QJsonObject &o, const QStringList &keys) {
         if (!o.contains(k))
             fail("项目缺少字段：" + k);
 }
+static void feedbackFields(const QJsonObject &feedback) {
+    QStringList fields{"annotations", "changes"};
+    if (feedback.contains("annotationSpace")) {
+        if (feedback["annotationSpace"] != "result")
+            fail("批注坐标空间不正确");
+        fields.append("annotationSpace");
+        if (feedback.contains("image"))
+            fields.append("image");
+    }
+    exactKeys(feedback, fields);
+}
+static QByteArray feedbackPng(const QJsonValue &value) {
+    const QString prefix = "data:image/png;base64,";
+    if (!value.isString())
+        fail("内嵌原图必须是 PNG data URL");
+    const QString data = value.toString();
+    if (!data.startsWith(prefix))
+        fail("内嵌原图必须是 PNG data URL");
+    const qint64 encodedSize = data.size() - prefix.size();
+    if (encodedSize <= 0 || encodedSize > ((MaxImageFileBytes + 2) / 3) * 4)
+        fail("内嵌原图不能超过 48 MiB");
+    const QByteArray encoded = data.mid(prefix.size()).toLatin1();
+    auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
+    if (!decoded || decoded.decoded.toBase64() != encoded)
+        fail("原图 Base64 不正确");
+    validateProjectStorageSize(0, decoded.decoded.size());
+    return decoded.decoded;
+}
+static QImage readFeedbackPng(QByteArray &png) {
+    if (png.size() < 33 || !png.startsWith(QByteArray::fromHex("89504e470d0a1a0a0000000d49484452")))
+        fail("内嵌原图不是有效的 PNG");
+    const auto *header = reinterpret_cast<const uchar *>(png.constData());
+    const quint32 width = qFromBigEndian<quint32>(header + 16);
+    const quint32 height = qFromBigEndian<quint32>(header + 20);
+    if (!width || !height || width > 32767 || height > 32767 || quint64(width) * height > MaxPixels)
+        fail("内嵌原图尺寸超出限制");
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer, "PNG");
+    const QSize size{int(width), int(height)};
+    if (reader.size() != size)
+        fail("内嵌原图尺寸不正确");
+    auto image = reader.read();
+    if (image.isNull() || image.size() != size)
+        fail("内嵌原图无法读取");
+    return image;
+}
 Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
-    exactKeys(feedback, {"annotations", "changes"});
+    feedbackFields(feedback);
     if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||
         feedback["annotations"].toArray().size() > MaxNotes)
         fail("批注或变化列表格式不正确");
-    auto doc = fromImage(original, "file", "设计反馈");
+    QImage image = original;
+    QByteArray embedded;
+    if (feedback.contains("image")) {
+        embedded = feedbackPng(feedback["image"]);
+        image = readFeedbackPng(embedded);
+        if (!original.isNull() &&
+            image.convertToFormat(QImage::Format_ARGB32) != original.convertToFormat(QImage::Format_ARGB32))
+            fail("内嵌原图与提供的图片不一致");
+    }
+    auto doc = fromImage(image, "file", "设计反馈");
+    if (!embedded.isEmpty())
+        doc.png = embedded;
     for (const auto &value : feedback["annotations"].toArray()) {
         if (!value.isObject())
             fail("批注格式不正确");
@@ -266,7 +533,10 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         doc.notes.append(note);
     }
     if (!feedback["changes"].toArray().isEmpty())
-        doc.layout = importLayoutChanges(feedback["changes"].toArray(), original.size());
+        doc.layout = importLayoutChanges(feedback["changes"].toArray(), image.size());
+    validateDocument(doc);
+    if (doc.layout && !feedback.contains("annotationSpace"))
+        doc.notes = remapNotes(doc.notes, createLayout(image.size(), {}), *doc.layout);
     validateDocument(doc);
     return doc;
 }
@@ -292,8 +562,15 @@ Document loadDocument(const QString &path) {
         fail("JSON 格式不正确");
     auto root = parsed.object();
     if (!root.contains("schemaVersion")) {
-        exactKeys(root, {"annotations", "changes"});
+        feedbackFields(root);
         const QFileInfo jsonFile(path);
+        if (root.contains("image")) {
+            auto document = loadFeedback(root, {});
+            document.imageFile = jsonFile.completeBaseName() + ".png";
+            document.title = jsonFile.completeBaseName();
+            validateDocument(document);
+            return document;
+        }
         const QString imagePath = jsonFile.dir().filePath(jsonFile.completeBaseName() + ".png");
         if (!QFileInfo::exists(imagePath))
             fail("请将 JSON 与同名原图 " + QFileInfo(imagePath).fileName() + " 放在同一目录");
@@ -404,6 +681,9 @@ Document loadDocument(const QString &path) {
     }
     if (version == "2.0.0")
         d.layout = importLayout(root["layout"].toObject(), d.image.size());
+    validateDocument(d);
+    if (d.layout)
+        d.notes = remapNotes(d.notes, createLayout(d.image.size(), {}), *d.layout);
     validateDocument(d);
     return d;
 }
@@ -544,7 +824,7 @@ QImage previewImage(const Document &doc) {
     image.fill(QColor("#f5f5f7"));
     QPainter p(&image);
     p.setRenderHint(QPainter::Antialiasing);
-    p.drawImage(24, 24, doc.image);
+    p.drawImage(24, 24, doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
     auto badge = [&](QPointF c, int n) {
         p.setPen(QPen(Qt::white, 2));
         p.setBrush(QColor("#007aff"));

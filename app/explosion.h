@@ -1,5 +1,5 @@
 #pragma once
-#include "layout.h"
+#include "model.h"
 #include <QWidget>
 class QDoubleSpinBox;
 class QLabel;
@@ -14,6 +14,8 @@ class LayoutCanvas final : public QWidget {
         return state_;
     }
     void setState(LayoutState state);
+    void setAnnotations(QVector<Note> notes);
+    void annotateSelection();
     void cancelInteraction();
     QString selected() const {
         return selected_;
@@ -45,6 +47,8 @@ class LayoutCanvas final : public QWidget {
     void selectionChanged();
     void hintChanged(QString hint);
     void zoomRequested(double value);
+    void noteEditRequested(QString id, QPoint global);
+    void annotationRequested(QRect area, QPoint global);
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -57,11 +61,14 @@ class LayoutCanvas final : public QWidget {
 
   private:
     QPointF pixel(QPointF position) const;
+    QPointF noteAnchor(const Note &note) const;
+    QVector<Note> displayedAnnotations() const;
     void updateHover(QPointF point);
     void commit(const LayoutState &before);
     void select(QString id);
     QImage original_;
-    LayoutState state_, before_;
+    LayoutState state_, before_, annotationState_;
+    QVector<Note> annotations_;
     QVector<LayoutState> undo_, redo_;
     QString selected_, hover_;
     QVector<LayoutChoice> choices_;
@@ -84,7 +91,7 @@ class LayoutInspector final : public QWidget {
     void applyField(int field);
     LayoutCanvas *canvas_;
     QLabel *selection_;
-    QPushButton *clear_, *manual_;
+    QPushButton *clear_, *manual_, *annotate_;
     QVector<QDoubleSpinBox *> fields_;
     bool updating_ = false;
     QString fieldSelection_;

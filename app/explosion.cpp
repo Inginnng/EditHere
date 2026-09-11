@@ -47,6 +47,29 @@ void LayoutCanvas::setState(LayoutState state) {
     clearSelection();
     setZoom(zoom_);
 }
+void LayoutCanvas::setAnnotations(QVector<Note> notes) {
+    annotations_ = std::move(notes);
+    annotationState_ = state_;
+    update();
+}
+QVector<Note> LayoutCanvas::displayedAnnotations() const {
+    return annotationState_ == state_ ? annotations_ : remapNotes(annotations_, annotationState_, state_);
+}
+QPointF LayoutCanvas::noteAnchor(const Note &note) const {
+    QPointF anchor = QPointF(note.isPoint ? note.point : note.rect.topLeft()) * zoom_;
+    if (!note.isPoint)
+        anchor += QPointF(18, 18);
+    anchor.setX(std::clamp(anchor.x(), 14.0, std::max(14.0, width() - 14.0)));
+    anchor.setY(std::clamp(anchor.y(), 14.0, std::max(14.0, height() - 14.0)));
+    return anchor;
+}
+void LayoutCanvas::annotateSelection() {
+    if (selected_.isEmpty())
+        return;
+    const QRect area = selectionBounds().toAlignedRect().intersected(QRect(QPoint(0, 0), state_.canvas));
+    if (!area.isEmpty())
+        emit annotationRequested(area, mapToGlobal((QPointF(area.center()) * zoom_).toPoint()));
+}
 void LayoutCanvas::cancelInteraction() {
     if (dragging_)
         state_ = before_;
@@ -156,6 +179,22 @@ void LayoutCanvas::paintEvent(QPaintEvent *) {
         p.setBrush(QColor(0, 122, 255, 20));
         p.drawRect(screenRect(region(press_, end_)));
     }
+    int number = 0;
+    for (const auto &note : displayedAnnotations()) {
+        if (!note.isPoint) {
+            p.setPen(QPen(accent(), 1.5));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(screenRect(note.rect));
+        }
+        const QPointF anchor = noteAnchor(note);
+        p.setPen(QPen(Qt::white, 2));
+        p.setBrush(accent());
+        p.drawEllipse(anchor, 13, 13);
+        p.setPen(Qt::white);
+        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
+                   QString::number(++number));
+    }
 }
 void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::RightButton) {
@@ -169,6 +208,13 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
     setFocus();
+    const auto notes = displayedAnnotations();
+    for (auto it = notes.crbegin(); it != notes.crend(); ++it) {
+        if (QLineF(event->position(), noteAnchor(*it)).length() < 17) {
+            emit noteEditRequested(it->id, event->globalPosition().toPoint());
+            return;
+        }
+    }
     press_ = end_ = pixel(event->position());
     handle_ = -1;
     if (drawingMode_) {
@@ -233,6 +279,11 @@ void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
             shape = Qt::SizeHorCursor;
         else if (!selected_.isEmpty() && inside(selectionBounds(), end_))
             shape = Qt::SizeAllCursor;
+        for (const auto &note : displayedAnnotations())
+            if (QLineF(event->position(), noteAnchor(note)).length() < 17) {
+                shape = Qt::PointingHandCursor;
+                break;
+            }
         setCursor(shape);
     }
     update();
@@ -411,11 +462,17 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     }
     grid->setColumnStretch(1, 1);
     side->addLayout(grid);
+    annotate_ = textButton("添加批注", true, this);
+    annotate_->setObjectName("annotateComponent");
+    annotate_->setStyleSheet("QPushButton:disabled {background:#eeeeF1;color:#b9b9c0;}");
+    annotate_->setToolTip("为当前组件的位置和范围添加批注");
+    side->addWidget(annotate_);
     clear_ = textButton("取消选择", false, this);
     clear_->setObjectName("clearLayoutSelection");
     side->addWidget(clear_);
-    auto help =
-        mutedLabel("悬停滚轮选范围，选中滚轮缩放。\n拖边调整宽高，拖角等比缩放。\nEsc 取消选择。", this);
+    auto help = mutedLabel(
+        "悬停滚轮选范围，选中滚轮缩放。\n拖边调整宽高，拖角等比缩放。\n点击编号编辑批注，Esc 取消选择。",
+        this);
     help->setWordWrap(true);
     side->addSpacing(4);
     side->addWidget(help);
@@ -423,6 +480,7 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     connect(manual_, &QPushButton::clicked, canvas_, &LayoutCanvas::setDrawing);
     connect(guides, &QCheckBox::toggled, canvas_, &LayoutCanvas::setGuides);
     connect(clear_, &QPushButton::clicked, canvas_, &LayoutCanvas::clearSelection);
+    connect(annotate_, &QPushButton::clicked, canvas_, &LayoutCanvas::annotateSelection);
     connect(canvas_, &LayoutCanvas::changed, this, &LayoutInspector::refresh);
     connect(canvas_, &LayoutCanvas::selectionChanged, this, &LayoutInspector::refresh);
     refresh();
@@ -447,6 +505,7 @@ void LayoutInspector::refresh() {
     for (auto input : fields_)
         input->setEnabled(!id.isEmpty());
     clear_->setEnabled(!id.isEmpty());
+    annotate_->setEnabled(!id.isEmpty());
     manual_->setChecked(canvas_->drawingMode());
     selection_->setText("单击选择一个区域");
     for (const auto &group : canvas_->state().groups)

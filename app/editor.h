@@ -73,6 +73,7 @@ class Editor final : public QWidget {
     void restore(Snapshot snapshot);
     void updateLayoutControls();
     void setExplosionActive(bool enabled);
+    void setComponentEditing(bool enabled);
     void resetLayoutTools();
     void switchCanvas(QWidget *target);
     Canvas *canvas_;
@@ -83,11 +84,12 @@ class Editor final : public QWidget {
     QStackedWidget *detailsStack_;
     std::optional<LayoutState> splitBaseline_;
     bool explosionActive_ = false;
+    bool componentEditing_ = false;
     QScrollArea *imageScroll_, *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;
     QLabel *meta_, *hint_, *noteCount_;
-    QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *layoutView_;
+    QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *componentTool_;
     QVector<QPushButton *> modes_;
     bool fitted_ = true;
     int generation_ = 0;

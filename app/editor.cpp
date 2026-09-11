@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QContextMenuEvent>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -21,6 +22,7 @@
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
@@ -37,7 +39,37 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtConcurrent>
+#include <functional>
 namespace h2d {
+namespace {
+class JsonPreview final : public QPlainTextEdit {
+  public:
+    using QPlainTextEdit::QPlainTextEdit;
+    std::function<void()> copyJson;
+
+  protected:
+    void keyPressEvent(QKeyEvent *event) override {
+        if (event->matches(QKeySequence::Copy)) {
+            if (copyJson)
+                copyJson();
+            event->accept();
+            return;
+        }
+        QPlainTextEdit::keyPressEvent(event);
+    }
+    void contextMenuEvent(QContextMenuEvent *event) override {
+        QMenu menu(this);
+        auto copy = menu.addAction("复制完整 JSON");
+        copy->setEnabled(bool(copyJson) && !toPlainText().isEmpty());
+        connect(copy, &QAction::triggered, this, [this] {
+            if (copyJson)
+                copyJson();
+        });
+        menu.addAction("全选", this, &QPlainTextEdit::selectAll);
+        menu.exec(event->globalPos());
+    }
+};
+} // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
     setWindowTitle("HelpDesign");
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
@@ -63,14 +95,6 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addSpacing(10);
     header->addWidget(meta_);
     header->addStretch();
-    layoutView_ = textButton("批注原图", false, bar);
-    layoutView_->setObjectName("layoutView");
-    layoutView_->hide();
-    header->addWidget(layoutView_);
-    connect(layoutView_, &QPushButton::clicked, this, [this] {
-        canvas_->setLayoutPreview(!canvas_->layoutPreview());
-        updateLayoutControls();
-    });
     explosion_ = textButton("大爆炸", false, bar);
     explosion_->setObjectName("explodeButton");
     explosion_->setEnabled(false);
@@ -131,8 +155,15 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     dock->setContentsMargins(12, 3, 12, 10);
     dock->setSpacing(4);
     dock->addStretch();
+    componentTool_ = textButton("移动组件", false, shell);
+    componentTool_->setObjectName("componentTool");
+    componentTool_->setCheckable(true);
+    componentTool_->setStyleSheet("QPushButton:checked {background:#e5efff;color:#007aff;}");
+    componentTool_->hide();
+    dock->addWidget(componentTool_);
+    connect(componentTool_, &QPushButton::clicked, this, [this] { setComponentEditing(true); });
     QStringList names{"smart", "point", "rect", "select"},
-        labels{"智能选块 (B)", "点标注 (P)", "框选 (R)", "调整与移动 (V)"};
+        labels{"智能选块 (B)", "点标注 (P)", "框选 (R)", "调整批注 (V)"};
     for (int i = 0; i < 4; i++) {
         auto button = iconButton(names[i], labels[i], shell);
         button->setCheckable(true);
@@ -180,7 +211,6 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto grip = new QSizeGrip(shell);
     dock->addWidget(grip);
     layout->addLayout(dock);
-    connect(canvas_, &Canvas::layoutEditRequested, this, &Editor::explode);
     connect(canvas_, &Canvas::editRequested, this, &Editor::editNote);
     connect(canvas_, &Canvas::hintChanged, hint_, &QLabel::setText);
     connect(canvas_, &Canvas::zoomRequested, this, &Editor::zoom);
@@ -211,7 +241,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     shortcut(QKeySequence(Qt::Key_Delete), &Editor::removeSelected);
     shortcut(QKeySequence(Qt::Key_Escape), [this] {
         if (explosionActive_) {
-            if (!layoutCanvas_->selected().isEmpty() || layoutCanvas_->drawingMode())
+            if (componentEditing_ && (!layoutCanvas_->selected().isEmpty() || layoutCanvas_->drawingMode()))
                 layoutCanvas_->cancelInteraction();
             else
                 setExplosionActive(false);
@@ -300,21 +330,21 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, &Editor::fit);
 }
 void Editor::setMode(Canvas::Mode mode) {
-    if (explosionActive_)
-        setExplosionActive(false);
-    canvas_->setLayoutPreview(false);
+    setComponentEditing(false);
+    canvas_->setLayoutPreview(doc_.layout.has_value());
     canvas_->setMode(mode);
+    canvas_->setFocus();
     updateLayoutControls();
     updateControls();
 }
 void Editor::updateControls() {
     for (int i = 0; i < modes_.size(); i++)
-        modes_[i]->setChecked(i == canvas_->mode());
+        modes_[i]->setChecked(!componentEditing_ && i == canvas_->mode());
     undo_->setEnabled(!undoHistory_.isEmpty());
     redo_->setEnabled(!redoHistory_.isEmpty());
     notesToggle_->setChecked(!detailsStack_->isHidden());
-    for (auto mode : modes_)
-        mode->setEnabled(!explosionActive_);
+    componentTool_->setVisible(explosionActive_);
+    componentTool_->setChecked(componentEditing_);
 }
 QString Editor::coords(const Note &n) const {
     return n.isPoint ? QString("点 (%1, %2)").arg(n.point.x()).arg(n.point.y())
@@ -451,12 +481,14 @@ void Editor::editNote(Note note, bool fresh, QPoint global) {
     changed();
     if (fitted_)
         QTimer::singleShot(0, this, &Editor::fit);
-    canvas_->setFocus();
+    (componentEditing_ ? static_cast<QWidget *>(layoutCanvas_) : static_cast<QWidget *>(canvas_))->setFocus();
 }
 void Editor::changed(bool contentChanged) {
     if (contentChanged)
         doc_.dirty = true;
     canvas_->refresh();
+    if (layoutCanvas_)
+        layoutCanvas_->setAnnotations(doc_.notes);
     renderNotes();
     updateControls();
 }
@@ -494,15 +526,32 @@ void Editor::redo() {
     restore(redoHistory_.takeLast());
 }
 void Editor::updateLayoutControls() {
-    if (!layoutView_)
-        return;
     explosion_->setChecked(explosionActive_);
-    layoutView_->setVisible(doc_.layout.has_value() && !explosionActive_);
-    layoutView_->setText(canvas_->layoutPreview() ? "批注原图" : "查看调整效果");
-    if (!explosionActive_)
-        hint_->setText(canvas_->layoutPreview() ? "调整效果 · 大爆炸可继续编辑 · 批注原图可添加意见"
-                                                : "滚轮切换范围 · 单击批注 · 拖动框选");
+    if (!componentEditing_)
+        hint_->setText(doc_.layout ? "在调整后的画面批注 · 滚轮切换范围 · 单击或拖动框选"
+                                   : "滚轮切换范围 · 单击批注 · 拖动框选");
     updateControls();
+}
+void Editor::setComponentEditing(bool enabled) {
+    enabled = enabled && explosionActive_ && layoutCanvas_;
+    componentEditing_ = enabled;
+    if (enabled) {
+        layoutCanvas_->setAnnotations(doc_.notes);
+        layoutCanvas_->setZoom(canvas_->zoom());
+        switchCanvas(layoutCanvas_);
+        detailsStack_->setCurrentWidget(inspectorScroll_);
+        detailsStack_->show();
+        layoutCanvas_->setFocus();
+        hint_->setText("悬停滚轮选范围 · 拖边改宽高 · 拖角等比 · 点标注或框选可添加意见");
+    } else {
+        if (layoutCanvas_)
+            layoutCanvas_->cancelInteraction();
+        canvas_->setLayoutPreview(doc_.layout.has_value());
+        switchCanvas(canvas_);
+        detailsStack_->setCurrentWidget(notesPanel_);
+        canvas_->setFocus();
+    }
+    updateLayoutControls();
 }
 void Editor::switchCanvas(QWidget *target) {
     if (imageScroll_->widget() == target)
@@ -520,6 +569,8 @@ void Editor::switchCanvas(QWidget *target) {
 }
 void Editor::resetLayoutTools() {
     explosionActive_ = false;
+    componentEditing_ = false;
+    componentTool_->hide();
     splitBaseline_.reset();
     if (layoutCanvas_) {
         disconnect(layoutCanvas_, nullptr, this, nullptr);
@@ -555,31 +606,41 @@ void Editor::setExplosionActive(bool enabled) {
                 const bool contentChanged = doc_.dirty || exportLayoutChanges(*doc_.layout) !=
                                                               exportLayoutChanges(layoutCanvas_->state());
                 remember();
+                const auto notes = remapNotes(doc_.notes, *doc_.layout, layoutCanvas_->state());
+                const bool notesChanged = doc_.notes != notes;
+                doc_.notes = notes;
                 doc_.layout = layoutCanvas_->state();
-                changed(contentChanged);
+                changed(contentChanged || notesChanged);
             });
             connect(layoutCanvas_, &LayoutCanvas::hintChanged, this, [this](const QString &hint) {
-                if (explosionActive_)
+                if (componentEditing_)
                     hint_->setText(hint);
             });
             connect(layoutCanvas_, &LayoutCanvas::zoomRequested, this, &Editor::zoom);
+            connect(layoutCanvas_, &LayoutCanvas::noteEditRequested, this,
+                    [this](const QString &id, QPoint position) {
+                        for (const auto &note : doc_.notes)
+                            if (note.id == id) {
+                                editNote(note, false, position);
+                                break;
+                            }
+                    });
+            connect(layoutCanvas_, &LayoutCanvas::annotationRequested, this,
+                    [this](QRect area, QPoint position) {
+                        Note note;
+                        note.isPoint = false;
+                        note.rect = area;
+                        editNote(note, true, position);
+                    });
         }
         explosionActive_ = true;
-        layoutCanvas_->setZoom(canvas_->zoom());
-        switchCanvas(layoutCanvas_);
-        detailsStack_->setCurrentWidget(inspectorScroll_);
-        detailsStack_->show();
-        layoutCanvas_->setFocus();
-        hint_->setText("悬停滚轮选范围 · 单击确认 · 拖边改宽高 · 拖角等比");
+        canvas_->setLayoutPreview(true);
+        setComponentEditing(true);
         wave_->setGeometry(imageScroll_->viewport()->rect());
         wave_->start();
     } else {
-        layoutCanvas_->cancelInteraction();
         explosionActive_ = false;
-        canvas_->setLayoutPreview(true);
-        switchCanvas(canvas_);
-        detailsStack_->setCurrentWidget(notesPanel_);
-        canvas_->setFocus();
+        setComponentEditing(false);
         wave_->hide();
     }
     updateLayoutControls();
@@ -595,7 +656,7 @@ void Editor::explode() {
     }
 }
 void Editor::removeSelected() {
-    if (explosionActive_ || canvas_->layoutPreview())
+    if (componentEditing_)
         return;
     QString id = canvas_->selected();
     if (id.isEmpty())
@@ -607,7 +668,7 @@ void Editor::removeSelected() {
 }
 void Editor::copyImage() {
     if (hasDocument()) {
-        const bool result = explosionActive_ || canvas_->layoutPreview();
+        const bool result = doc_.layout.has_value();
         QApplication::clipboard()->setImage(result ? renderLayout(doc_.image, *doc_.layout) : doc_.image);
         hint_->setText(result ? "调整效果已复制" : "原图已复制");
     }
@@ -618,7 +679,7 @@ void Editor::showError(const QString &text) {
 bool Editor::saveProject() {
     if (!hasDocument())
         return true;
-    QString path = QFileDialog::getSaveFileName(this, "保存批注与变化",
+    QString path = QFileDialog::getSaveFileName(this, "保存原图、批注与变化",
                                                 projectPath_.isEmpty() ? "feedback.json" : projectPath_,
                                                 "HelpDesign 反馈 (*.json)");
     if (path.isEmpty())
@@ -626,19 +687,11 @@ bool Editor::saveProject() {
     if (!path.endsWith(".json", Qt::CaseInsensitive))
         path += ".json";
     try {
-        const auto bytes = serializeFeedback(doc_);
-        validateProjectStorageSize(bytes.size(), doc_.png.size());
-        const QString imagePath = QFileInfo(path).dir().filePath(QFileInfo(path).completeBaseName() + ".png");
-        QFile existingImage(imagePath);
-        if (existingImage.exists() &&
-            (!existingImage.open(QIODevice::ReadOnly) || existingImage.readAll() != doc_.png))
-            throw std::runtime_error("同名 PNG 已存在且内容不同，请使用其他文件名保存");
-        existingImage.close();
-        saveBytes(imagePath, doc_.png);
+        const auto bytes = serializeFeedback(doc_, true);
         saveBytes(path, bytes);
         projectPath_ = path;
         doc_.dirty = false;
-        hint_->setText("已保存精简 JSON 与同名原图 PNG");
+        hint_->setText("已保存 JSON，包含完整原图、批注与变化");
         return true;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -688,7 +741,7 @@ void Editor::pasteImage() {
 void Editor::saveImage(bool annotated) {
     if (!hasDocument())
         return;
-    const bool layoutPreview = !annotated && (explosionActive_ || canvas_->layoutPreview());
+    const bool layoutPreview = !annotated && doc_.layout.has_value();
     QString path = QFileDialog::getSaveFileName(this,
                                                 annotated       ? "保存批注预览"
                                                 : layoutPreview ? "保存调整效果"
@@ -724,13 +777,17 @@ void Editor::exportJson() {
     font.setBold(true);
     title->setFont(font);
     layout->addWidget(title);
-    auto json = new QPlainTextEdit(&dialog);
+    auto embed = new QCheckBox("包含原图，可独立还原", &dialog);
+    embed->setObjectName("embedOriginal");
+    embed->setChecked(true);
+    layout->addWidget(embed);
+    auto json = new JsonPreview(&dialog);
     json->setAccessibleName("标准化 JSON");
     json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     json->setFont(QFont("Consolas", 10));
     layout->addWidget(json, 1);
-    auto status = mutedLabel("只包含批注和有变化的组件坐标，批注对应原图。", &dialog);
+    auto status = mutedLabel({}, &dialog);
     status->setWordWrap(true);
     layout->addWidget(status);
     auto row = new QHBoxLayout;
@@ -744,9 +801,13 @@ void Editor::exportJson() {
     QByteArray exportBytes;
     auto refresh = [&] {
         try {
-            exportBytes = serializeFeedback(doc_);
+            exportBytes = serializeFeedback(doc_, embed->isChecked());
             const auto feedback = QJsonDocument::fromJson(exportBytes).object();
             QStringList lines{"{"};
+            if (embed->isChecked())
+                lines.append(
+                    "  \"image\": \"data:image/png;base64,[图片编码已折叠，复制或保存包含完整原图]\",");
+            lines.append("  \"annotationSpace\": \"result\",");
             for (const auto &name : {QString("annotations"), QString("changes")}) {
                 lines.append("  \"" + name + "\": [");
                 const auto entries = feedback[name].toArray();
@@ -761,8 +822,10 @@ void Editor::exportJson() {
             json->setPlainText(lines.join('\n'));
             copy->setEnabled(true);
             save->setEnabled(true);
-            status->setText(
-                QString("仅批注与变化 · %1 字符 · 批注对应原图").arg(QString::fromUtf8(exportBytes).size()));
+            status->setText(QString("%1 · %2 字符 · 批注坐标对应调整后的画面")
+                                .arg(embed->isChecked() ? "图片编码仅在预览中折叠，复制/保存包含完整原图"
+                                                        : "未包含原图，重新打开需同名 PNG")
+                                .arg(QString::fromUtf8(exportBytes).size()));
         } catch (const std::exception &error) {
             exportBytes.clear();
             json->clear();
@@ -772,13 +835,16 @@ void Editor::exportJson() {
         }
     };
     refresh();
+    connect(embed, &QCheckBox::toggled, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
-    connect(copy, &QPushButton::clicked, &dialog, [&] {
+    auto copyJson = [&] {
         if (exportBytes.isEmpty())
             return;
         QApplication::clipboard()->setText(QString::fromUtf8(exportBytes));
-        status->setText("JSON 已复制");
-    });
+        status->setText(embed->isChecked() ? "JSON 已复制，包含完整原图" : "JSON 已复制，未包含原图");
+    };
+    json->copyJson = copyJson;
+    connect(copy, &QPushButton::clicked, &dialog, copyJson);
     connect(save, &QPushButton::clicked, &dialog, [&] {
         if (exportBytes.isEmpty())
             return;
@@ -786,7 +852,7 @@ void Editor::exportJson() {
         if (base.isEmpty())
             return;
         try {
-            validateProjectStorageSize(exportBytes.size(), doc_.png.size());
+            validateProjectStorageSize(exportBytes.size(), embed->isChecked() ? 0 : doc_.png.size());
             QString folder =
                 QDir(base).filePath("HelpDesign-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
                                     "-" + uniqueId().left(4));

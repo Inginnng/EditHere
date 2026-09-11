@@ -50,6 +50,7 @@ class Canvas final : public QWidget {
   private:
     int hit(QPointF screen, bool rectangles) const;
     void updateHint();
+    void rebuildDisplay();
     Document *doc_ = nullptr;
     Mode mode_ = Smart;
     double zoom_ = 1;
@@ -62,6 +63,7 @@ class Canvas final : public QWidget {
     std::optional<Candidate> pending_;
     bool layoutPreview_ = false;
     QImage layoutImage_;
+    QVector<Candidate> displayCandidates_;
 };
 } // namespace h2d
 Q_DECLARE_METATYPE(h2d::Note)

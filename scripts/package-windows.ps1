@@ -2,7 +2,7 @@ param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
-    [string]$OutputDirectory = "dist/HelpDesign-0.6.0-win-x64"
+    [string]$OutputDirectory = "dist/HelpDesign-0.7.0-win-x64"
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -14,6 +14,7 @@ if (-not $outputPath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar
 if (Test-Path -LiteralPath $outputPath) { throw "Output already exists. Choose a fresh OutputDirectory." }
 if (-not (Test-Path -LiteralPath (Join-Path $buildPath "HelpDesign.exe"))) { throw "Build the application first." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtbase/LGPL-3.0-only.txt"))) { throw "Third-party license materials are missing." }
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-v0.7.schema.json"))) { throw "The current feedback schema is missing." }
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "HelpDesign.exe") -Destination $outputPath
 $previousPath = $env:PATH

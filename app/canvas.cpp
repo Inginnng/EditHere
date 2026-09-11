@@ -1,6 +1,7 @@
 #include "canvas.h"
 #include "ui.h"
 #include <QFocusEvent>
+#include <QHash>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -20,6 +21,7 @@ void Canvas::setDocument(Document *doc) {
     selected_.clear();
     picker_.reset();
     drawing_ = moving_ = false;
+    rebuildDisplay();
     setZoom(zoom_);
 }
 void Canvas::setMode(Mode mode) {
@@ -42,16 +44,55 @@ void Canvas::select(const QString &id) {
     update();
 }
 void Canvas::refresh() {
-    if (layoutPreview_)
-        setLayoutPreview(true);
+    rebuildDisplay();
+    picker_.reset();
     update();
 }
 void Canvas::setLayoutPreview(bool enabled) {
-    layoutPreview_ = enabled && doc_ && doc_->layout.has_value();
-    layoutImage_ = layoutPreview_ ? renderLayout(doc_->image, *doc_->layout) : QImage();
-    drawing_ = moving_ = panning_ = false;
-    picker_.reset();
+    const bool preview = enabled && doc_ && doc_->layout.has_value();
+    if (layoutPreview_ != preview) {
+        drawing_ = moving_ = panning_ = false;
+        picker_.reset();
+    }
+    layoutPreview_ = preview;
+    rebuildDisplay();
     update();
+}
+void Canvas::rebuildDisplay() {
+    layoutImage_ = {};
+    displayCandidates_.clear();
+    if (!doc_)
+        return;
+    if (!layoutPreview_ || !doc_->layout) {
+        displayCandidates_ = doc_->candidates;
+        return;
+    }
+    const auto &layout = *doc_->layout;
+    layoutImage_ = renderLayout(doc_->image, layout);
+    QHash<QString, QRectF> destinations;
+    for (const auto &piece : layout.pieces)
+        destinations.insert(piece.id, piece.destination);
+    displayCandidates_.reserve(layout.groups.size());
+    for (const auto &group : layout.groups) {
+        QRectF bounds;
+        for (const auto &id : group.pieces) {
+            const auto piece = destinations.value(id);
+            bounds = bounds.isEmpty() ? piece : bounds.united(piece);
+        }
+        // Round outward to include every visible pixel of a resized component.
+        const int x1 = std::clamp(int(std::floor(bounds.x())), 0, doc_->image.width());
+        const int y1 = std::clamp(int(std::floor(bounds.y())), 0, doc_->image.height());
+        const int x2 = std::clamp(int(std::ceil(bounds.x() + bounds.width())), 0, doc_->image.width());
+        const int y2 = std::clamp(int(std::ceil(bounds.y() + bounds.height())), 0, doc_->image.height());
+        const QRect rectangle(x1, y1, x2 - x1, y2 - y1);
+        if (rectangle.isEmpty())
+            continue;
+        auto target = manualTarget();
+        target["source"] = "vision";
+        target["label"] = group.label;
+        target["method"] = "layout-region";
+        displayCandidates_.append({rectangle, target});
+    }
 }
 QPoint Canvas::toImage(QPointF p) const {
     return {std::clamp(qRound(p.x() / zoom_), 0, doc_->image.width()),
@@ -87,9 +128,8 @@ void Canvas::paintEvent(QPaintEvent *) {
                 if ((x / 14 + y / 14) % 2 == 0)
                     p.fillRect(x, y, 14, 14, QColor("#e7e8ed"));
         p.drawImage(rect(), layoutImage_);
-        return;
-    }
-    p.drawImage(rect(), doc_->image);
+    } else
+        p.drawImage(rect(), doc_->image);
     auto outline = [&](QRect r, QColor color, bool fill, bool dashed) {
         QRectF scaled(r.x() * zoom_, r.y() * zoom_, r.width() * zoom_, r.height() * zoom_);
         p.setPen(QPen(color, 1.5, dashed ? Qt::DashLine : Qt::SolidLine));
@@ -156,8 +196,6 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         windowStart_ = window()->pos();
         return;
     }
-    if (layoutPreview_)
-        return;
     QPoint point = toImage(e->position());
     int index = hit(e->position(), mode_ == Adjust);
     handle_ = -1;
@@ -189,7 +227,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         panStart_ = e->globalPosition().toPoint();
         windowStart_ = window()->pos();
     } else {
-        picker_.update(doc_->candidates, point);
+        picker_.update(displayCandidates_, point);
         pending_ = picker_.current();
         drawing_ = true;
         start_ = end_ = point;
@@ -197,8 +235,6 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
-    if (layoutPreview_ && !panning_)
-        return;
     if (!doc_)
         return;
     if (panning_) {
@@ -219,16 +255,12 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         end_ = p;
         update();
     } else if (mode_ == Smart) {
-        picker_.update(doc_->candidates, p);
+        picker_.update(displayCandidates_, p);
         updateHint();
         update();
     }
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
-    if (layoutPreview_) {
-        panning_ = false;
-        return;
-    }
     if (e->button() != Qt::LeftButton || !doc_)
         return;
     if (panning_) {
@@ -268,10 +300,6 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     emit editRequested(n, true, e->globalPosition().toPoint());
 }
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
-    if (layoutPreview_) {
-        emit layoutEditRequested();
-        return;
-    }
     if (doc_ && mode_ == Adjust) {
         moving_ = drawing_ = false;
         int i = hit(e->position(), true);
@@ -282,9 +310,8 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
 void Canvas::wheelEvent(QWheelEvent *e) {
     if (!doc_ || drawing_ || moving_)
         return;
-    if (!layoutPreview_ && mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) &&
-        !(e->modifiers() & Qt::MetaModifier)) {
-        picker_.update(doc_->candidates, toImage(e->position()));
+    if (mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
+        picker_.update(displayCandidates_, toImage(e->position()));
         picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
         updateHint();
         update();
