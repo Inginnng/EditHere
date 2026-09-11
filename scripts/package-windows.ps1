@@ -2,7 +2,7 @@ param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
-    [string]$OutputDirectory = "dist/HelpDesign-0.7.0-win-x64"
+    [string]$OutputDirectory = "dist/HelpDesign-0.8.0-win-x64"
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent

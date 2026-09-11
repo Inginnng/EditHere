@@ -142,12 +142,12 @@ void LayoutCanvas::updateHover(QPointF point) {
 }
 void LayoutCanvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor("#ffffff"));
+    p.fillRect(rect(), QColor(isDarkTheme() ? "#25262b" : "#ffffff"));
     const int check = 14;
     for (int y = 0; y < height(); y += check)
         for (int x = 0; x < width(); x += check)
             if ((x / check + y / check) % 2 == 0)
-                p.fillRect(x, y, check, check, QColor("#e7e8ed"));
+                p.fillRect(x, y, check, check, QColor(isDarkTheme() ? "#34363d" : "#e7e8ed"));
     p.save();
     p.scale(zoom_, zoom_);
     paintLayout(p, original_, state_);
@@ -410,7 +410,6 @@ void LayoutCanvas::redo() {
 }
 LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidget(parent), canvas_(canvas) {
     setObjectName("layoutInspector");
-    setStyleSheet("QWidget#layoutInspector {background:white;border-left:1px solid #e5e5ea;}");
     auto side = new QVBoxLayout(this);
     side->setContentsMargins(18, 18, 18, 16);
     side->setSpacing(12);
@@ -447,10 +446,6 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
         input->setSuffix(i == 4 ? " %" : " px");
         input->setMinimumHeight(34);
         input->setMinimumWidth(112);
-        input->setStyleSheet(
-            "QDoubleSpinBox {background:white;border:1px solid #dddde4;border-radius:7px;padding:4px;}"
-            "QDoubleSpinBox:focus {border-color:#007aff;}"
-            "QDoubleSpinBox:disabled {color:#a0a0aa;background:#f5f5f7;}");
         fields_.append(input);
         grid->addWidget(new QLabel(labels[i], this), i, 0);
         grid->addWidget(input, i, 1);
@@ -464,7 +459,6 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     side->addLayout(grid);
     annotate_ = textButton("添加批注", true, this);
     annotate_->setObjectName("annotateComponent");
-    annotate_->setStyleSheet("QPushButton:disabled {background:#eeeeF1;color:#b9b9c0;}");
     annotate_->setToolTip("为当前组件的位置和范围添加批注");
     side->addWidget(annotate_);
     clear_ = textButton("取消选择", false, this);

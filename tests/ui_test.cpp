@@ -1,10 +1,13 @@
+#include "controller.h"
 #include "editor.h"
 #include "explosion.h"
 #include "overlay.h"
+#include "settingsdialog.h"
 #include "ui.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -15,13 +18,17 @@
 #include <QFutureWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QShortcut>
 #include <QSignalSpy>
+#include <QSystemTrayIcon>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTextCursor>
@@ -104,6 +111,100 @@ class UiTests : public QObject {
         QVERIFY(QFontMetrics(qApp->font()).inFontUcs4('A'));
         QVERIFY(QFontMetrics(qApp->font()).inFontUcs4(0x4e2d));
     }
+
+    void settingsAreAvailableFromTrayWithoutAScreenshot() {
+        auto settings = defaultSettings();
+        settings.shortcuts["capture"] = {};
+        Controller controller(nullptr, settings);
+        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        QVERIFY(tray && tray->contextMenu());
+        auto action = tray->contextMenu()->findChild<QAction *>("traySettings");
+        QVERIFY(action);
+        bool opened = false;
+        QTimer::singleShot(80, &controller, [&] {
+            auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            opened = true;
+            QVERIFY(!dialog->windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+            artifact(*dialog, "settings-shortcuts-light.png");
+            auto theme = dialog->findChild<QComboBox *>("themeMode");
+            QVERIFY(theme);
+            dialog->reject();
+        });
+        QTimer::singleShot(2500, &controller, [] {
+            if (auto dialog = QApplication::activeModalWidget())
+                dialog->close();
+        });
+        action->trigger();
+        QVERIFY(opened);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+    }
+    void shortcutChangesAndThemesPreserveFeedback() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note note;
+        note.point = {120, 105};
+        note.comment = "主题切换只改变界面，不改变原图与批注。";
+        document.notes.append(note);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        const auto feedback = exportFeedback(editor.document(), true);
+        auto keys = defaultSettings().shortcuts;
+        keys["point"] = QKeySequence("Q");
+        keys["smart"] = {};
+        editor.setShortcuts(keys);
+        auto point = editor.findChild<QShortcut *>("shortcutAction_point");
+        auto smart = editor.findChild<QShortcut *>("shortcutAction_smart");
+        QVERIFY(point && smart);
+        QVERIFY(!smart->isEnabled());
+        QCOMPARE(point->key(), QKeySequence("Q"));
+        editor.activateWindow();
+        editor.canvas()->setFocus();
+        QTRY_VERIFY(editor.isActiveWindow());
+        QTest::keyClick(editor.canvas(), Qt::Key_Q);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Point);
+        QTest::keyClick(editor.canvas(), Qt::Key_R);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
+        QTest::keyClick(editor.canvas(), Qt::Key_P);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
+        QTest::keyClick(editor.canvas(), Qt::Key_B);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
+
+        applyTheme(ThemeMode::Dark);
+        QVERIFY(isDarkTheme());
+        QVERIFY(qApp->palette().color(QPalette::Window).lightness() < 80);
+        QVERIFY(qApp->palette().color(QPalette::WindowText).lightness() > 170);
+        QTest::qWait(40);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        artifact(editor, "editor-dark.png");
+        QTimer::singleShot(70, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            artifact(*dialog, "export-dark.png");
+            dialog->reject();
+        });
+        editor.exportJson();
+        auto darkSettings = defaultSettings();
+        darkSettings.theme = ThemeMode::Dark;
+        SettingsDialog settings(darkSettings, &editor);
+        settings.show();
+        QTest::qWait(40);
+        artifact(settings, "settings-dark.png");
+        auto tabs = settings.findChild<QTabWidget *>("settingsTabs");
+        QVERIFY(tabs);
+        tabs->setCurrentIndex(1);
+        QTest::qWait(30);
+        artifact(settings, "settings-appearance-dark.png");
+        settings.hide();
+        applyTheme(ThemeMode::Light);
+        QVERIFY(!isDarkTheme());
+        QVERIFY(qApp->palette().color(QPalette::Window).lightness() > 200);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        editor.hide();
+    }
+
     void pointAndFrame() {
         applyTheme();
         Editor editor;

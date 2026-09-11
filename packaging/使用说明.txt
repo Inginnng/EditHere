@@ -1,8 +1,22 @@
-HelpDesign 0.7.0
+HelpDesign 0.8.0
 
 Windows：先从托盘退出旧版，完整解压后运行 HelpDesign.exe。
 保留同目录 DLL、platforms、imageformats、licenses 等文件；无需额外安装开发环境。
 Mac：已有源码与构建脚本，尚未编译和实机验证，本次不包含 Mac 应用。
+
+设置
+• 右键任务栏右下角的 HelpDesign 托盘图标，选择“设置”。
+• “快捷键”可配置 17 项操作：截图为全局快捷键，其余在应用编辑窗口内使用。
+• 点击输入框后按下新的组合键；清空即停用。“恢复默认”后仍需点击“保存”。
+• 默认全局截图为 Ctrl+Shift+2；打开 Ctrl+O、粘贴 Ctrl+V、保存 Ctrl+S、导出 Ctrl+E、复制 Ctrl+C。
+• 撤销 Ctrl+Z、重做 Ctrl+Y、适应窗口 Ctrl+0、删除 Delete、取消操作或关闭截图 Esc。
+• 智能选块 B、点标注 P、框选标注 R、调整批注 V、切换大爆炸 E、移动组件 M。
+• 相同组合键不能分配给多个操作；系统占用或保存失败时会显示原因并保留原配置。
+• “外观”支持跟随系统、亮色和暗色，默认跟随系统；主题不改变截图原始像素。
+• 修改后保存立即生效，无需重启；取消不改变当前配置。
+• 设置保存在当前用户 AppConfigLocation/settings.ini，程序退出后仍保留。
+• Windows 默认为 %LOCALAPPDATA%/HelpDesign/HelpDesign/settings.ini；Mac 由系统配置目录决定。
+• 下文列出的键位均为默认值，修改后以设置窗口和界面提示为准。
 
 截图
 • Ctrl + Shift + 2 或点击托盘图标截图；Mac 对应 Command + Shift + 2，尚待实测。
@@ -49,7 +63,7 @@ Mac：已有源码与构建脚本，尚未编译和实机验证，本次不包�
 • x2/y2 是不包含自身的右下边界，布局坐标可以含小数。
 • 还原结果时先提取所有 from 并清空原位置，再按 changes 顺序绘制到 to，最后叠加批注。
 • 原图 Base64 会增加文件体积，这是单个 JSON 内嵌图片的正常数据开销。
-• 当前格式见 schema/feedback-v0.7.schema.json；旧版 v1/v1.1/v2 和 0.6 精简反馈仍可打开。
+• 0.8 沿用 0.7 JSON 格式，见 schema/feedback-v0.7.schema.json；旧版 v1/v1.1/v2 和 0.6 精简反馈仍可打开。
 • 旧版原图坐标批注会转换到结果位置，界面不再生成包含全部切块的长 JSON。
 • 关闭当前截图会提示保存未存修改，然后释放原图及切块缓存；程序仍驻留托盘。
 • 重新打开保存的反馈时，从原图与变化信息重建布局。

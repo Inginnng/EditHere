@@ -1,6 +1,7 @@
 #pragma once
 #include "model.h"
 #include <QAbstractNativeEventFilter>
+#include <QKeySequence>
 #include <QObject>
 #include <functional>
 class QWidget;
@@ -25,12 +26,22 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   public:
     explicit GlobalShortcut(QObject *parent = nullptr);
     ~GlobalShortcut() override;
-    bool start();
+    bool start(const QKeySequence &sequence = QKeySequence("Ctrl+Shift+2", QKeySequence::PortableText));
+    void stop();
+    QKeySequence sequence() const {
+        return sequence_;
+    }
+    QString lastError() const {
+        return lastError_;
+    }
     bool nativeEventFilter(const QByteArray &, void *, qintptr *) override;
   signals:
     void triggered();
 
   private:
+    QKeySequence sequence_;
+    QString lastError_;
+    quint32 shortcutId_ = 0;
     void *handle_ = nullptr;
     void *handler_ = nullptr;
 };

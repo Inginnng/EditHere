@@ -1,5 +1,7 @@
 #pragma once
 #include "canvas.h"
+#include <QKeySequence>
+#include <QMap>
 #include <QPointer>
 #include <QWidget>
 class QLabel;
@@ -7,6 +9,7 @@ class QScrollArea;
 class QVBoxLayout;
 class QPushButton;
 class QStackedWidget;
+class QShortcut;
 namespace h2d {
 class LayoutCanvas;
 class LayoutInspector;
@@ -16,6 +19,7 @@ class Editor final : public QWidget {
   public:
     explicit Editor(QWidget *parent = nullptr);
     void setDocument(Document document);
+    void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
         return doc_;
     }
@@ -91,6 +95,7 @@ class Editor final : public QWidget {
     QLabel *meta_, *hint_, *noteCount_;
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *componentTool_;
     QVector<QPushButton *> modes_;
+    QMap<QString, QShortcut *> shortcuts_;
     bool fitted_ = true;
     int generation_ = 0;
     QString projectPath_;

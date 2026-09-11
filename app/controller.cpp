@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "settingsdialog.h"
 #include "ui.h"
 #include <QApplication>
 #include <QClipboard>
@@ -7,10 +8,14 @@
 #include <QScreen>
 #include <QTimer>
 namespace h2d {
-Controller::Controller(QObject *parent)
-    : QObject(parent), editor_(), tray_(glyph("capture", accent()), this), shortcut_(this) {
+Controller::Controller(QObject *parent, const AppSettings &settings)
+    : QObject(parent), settings_(settings), editor_(), tray_(glyph("capture", accent()), this),
+      shortcut_(this) {
+    editor_.setShortcuts(settings_.shortcuts);
+    tray_.setObjectName("helpDesignTray");
     auto menu = new QMenu(&editor_);
-    menu->addAction("截图    " + globalShortcutLabel(), this, &Controller::capture);
+    captureAction_ = menu->addAction("截图", this, &Controller::capture);
+    captureAction_->setObjectName("trayCapture");
     menu->addAction("打开图片或项目", &editor_, [this] { editor_.openFile(); });
     menu->addAction("粘贴图片", &editor_, &Editor::pasteImage);
     menu->addAction("恢复批注窗口", this, &Controller::activate);
@@ -23,9 +28,12 @@ Controller::Controller(QObject *parent)
     });
 #endif
     menu->addSeparator();
+    auto settingsAction = menu->addAction("设置…", this, &Controller::openSettings);
+    settingsAction->setObjectName("traySettings");
+    menu->addSeparator();
     menu->addAction("退出", this, &Controller::quit);
     tray_.setContextMenu(menu);
-    tray_.setToolTip("HelpDesign · " + globalShortcutLabel());
+    updateTrayShortcut();
     tray_.show();
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger)
@@ -33,8 +41,43 @@ Controller::Controller(QObject *parent)
     });
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
-    if (!shortcut_.start())
-        tray_.showMessage("HelpDesign", "截图快捷键已被占用，可点击托盘图标截图。");
+    if (!shortcut_.start(settings_.shortcuts.value("capture")))
+        tray_.showMessage("HelpDesign", "截图快捷键未能注册，请右键托盘打开设置修改。");
+}
+void Controller::updateTrayShortcut() {
+    const auto label = settings_.shortcuts.value("capture").toString(QKeySequence::NativeText);
+    captureAction_->setText(label.isEmpty() ? "截图" : "截图    " + label);
+    tray_.setToolTip(label.isEmpty() ? "HelpDesign" : "HelpDesign · " + label);
+}
+void Controller::openSettings() {
+    if (capturing_ || QApplication::activeModalWidget())
+        return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
+    const auto activeShortcut = shortcut_.sequence();
+    shortcut_.stop();
+    SettingsDialog dialog(settings_, &editor_);
+    dialog.setApplyHandler([this](const AppSettings &next) -> QString {
+        if (auto error = validateSettings(next); !error.isEmpty())
+            return error;
+        const auto oldShortcut = shortcut_.sequence();
+        if (!shortcut_.start(next.shortcuts.value("capture")))
+            return shortcut_.lastError().isEmpty() ? "截图快捷键无法注册，请更换组合键。"
+                                                   : shortcut_.lastError();
+        QString error;
+        if (!saveSettings(next, &error)) {
+            if (!shortcut_.start(oldShortcut))
+                error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
+            return error;
+        }
+        settings_ = next;
+        editor_.setShortcuts(settings_.shortcuts);
+        applyTheme(settings_.theme);
+        updateTrayShortcut();
+        return {};
+    });
+    if (dialog.exec() != QDialog::Accepted && !shortcut_.start(activeShortcut))
+        tray_.showMessage("HelpDesign", "截图快捷键未能恢复，请在设置中更换组合键。");
 }
 void Controller::start(bool demo, const QString &path) {
     if (!path.isEmpty())
@@ -53,7 +96,7 @@ void Controller::activate() {
         capture();
 }
 void Controller::capture() {
-    if (capturing_)
+    if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
         menu->close();

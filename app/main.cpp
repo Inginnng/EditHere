@@ -48,10 +48,10 @@ int main(int argc, char **argv) {
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     app.setApplicationName("HelpDesign");
     app.setOrganizationName("HelpDesign");
-    app.setApplicationVersion("0.7.0");
+    app.setApplicationVersion("0.8.0");
     app.setQuitOnLastWindowClosed(false);
     app.setWindowIcon(glyph("capture", accent()));
-    applyTheme();
+    applyTheme(loadSettings().theme);
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);

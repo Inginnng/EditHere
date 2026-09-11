@@ -10,7 +10,7 @@ cmake --build "$build_path" --parallel
 export H2D_TEST_ARTIFACTS="$project_root/artifacts/native-ui"
 ctest --test-dir "$build_path" --output-on-failure
 if [[ ! -f "$project_root/schema/feedback-v0.7.schema.json" ]]; then printf '%s\n' "The current feedback schema is missing." >&2; exit 1; fi
-output="$project_root/dist/HelpDesign-0.7.0-macos-universal"
+output="$project_root/dist/HelpDesign-0.8.0-macos-universal"
 if [[ -e "$output" ]]; then printf '%s\n' "Output already exists: $output" >&2; exit 1; fi
 mkdir -p "$output"
 cp -R "$build_path/HelpDesign.app" "$output/"

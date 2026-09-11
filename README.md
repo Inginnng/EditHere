@@ -1,4 +1,4 @@
-# HelpDesign · 0.7.0
+# HelpDesign · 0.8.0
 
 面向 AI 开发反馈的桌面截图批注工具。截图松手后直接进入批注，在同一个窗口中标记修改意见、移动或缩放组件，最后复制包含原图、批注与变化的 JSON。
 
@@ -6,9 +6,9 @@
 
 ## 运行
 
-Windows 便携包：`dist/HelpDesign-0.7.0-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
+Windows 便携包：`dist/HelpDesign-0.8.0-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
 
-首次启动直接截图；之后按 **Ctrl + Shift + 2** 或点击托盘图标截图。程序先关闭自身菜单并让系统托盘面板失去焦点，再采集画面。只有截图遮罩置顶，编辑窗口是普通应用窗口。
+下文列出默认快捷键，可在设置中修改对应键盘操作。首次启动直接截图；之后按 **Ctrl + Shift + 2** 或点击托盘图标截图。程序先关闭自身菜单并让系统托盘面板失去焦点，再采集画面。只有截图遮罩置顶，编辑窗口是普通应用窗口。
 
 - 悬停智能选块；滚轮向上选择更大区域，向下选择更小区域。所有已识别、包含鼠标位置的框都可切换，无须互为父子。
 - 单击选块或拖动画框，**松开鼠标立即进入批注**。Esc 取消截图；Ctrl+C 可在悬停选区时直接复制。
@@ -19,6 +19,33 @@ Windows 便携包：`dist/HelpDesign-0.7.0-win-x64.zip`。先从托盘退出旧�
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Command + Shift + 2。Mac 尚未实机验证。
+
+## 设置
+
+右键任务栏右下角的 HelpDesign 托盘图标，选择“设置”。窗口分为“快捷键”和“外观”，修改后点击“保存”立即生效，无需重启；“取消”不改变当前配置。
+
+可配置 17 项快捷键：截图为全局快捷键，在其他应用中也能触发；其余在 HelpDesign 编辑窗口中使用。点击输入框后按下新的组合键，清空可停用对应快捷键。“恢复默认”会重置当前设置草稿，仍需保存才生效。重复分配、系统占用或保存失败会显示原因并保留原有配置。
+
+以下为 Windows 默认键位；Mac 常用编辑组合使用 Command，重做为 Command + Shift + Z，尚待实机验证。
+
+| 范围 | 操作 | 默认快捷键 |
+| --- | --- | --- |
+| 全局 | 截图 | Ctrl + Shift + 2 |
+| 应用内 | 打开图片或项目 | Ctrl + O |
+| 应用内 | 粘贴图片 | Ctrl + V |
+| 应用内 | 保存项目 | Ctrl + S |
+| 应用内 | 导出 JSON | Ctrl + E |
+| 应用内 | 复制图片 | Ctrl + C |
+| 应用内 | 撤销 / 重做 | Ctrl + Z / Ctrl + Y |
+| 应用内 | 适应窗口 | Ctrl + 0 |
+| 应用内 | 删除所选批注 | Delete |
+| 应用内 | 取消操作 / 关闭截图 | Esc |
+| 应用内 | 智能选块 / 点标注 / 框选标注 / 调整批注 | B / P / R / V |
+| 应用内 | 切换大爆炸 / 移动组件 | E / M |
+
+外观支持**跟随系统、亮色、暗色**，默认为跟随系统。切换后，编辑器、批注栏、组件侧栏、菜单和设置窗口统一更新；原图与导出图片的原始像素不受主题影响。
+
+设置保存在当前用户的 Qt `AppConfigLocation/settings.ini`，关闭程序后仍保留。Windows 默认位置为 `%LOCALAPPDATA%/HelpDesign/HelpDesign/settings.ini`；Mac 由系统配置目录决定。
 
 ## 大爆炸
 
@@ -77,13 +104,13 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 }
 ```
 
-还原结果时，先从原图提取所有 `from` 区域并将原位置留空，再按 `changes` 数组顺序绘制到 `to`；最后在结果上解释或绘制批注。未移动区域保持原样。新格式由 `schema/feedback-v0.7.schema.json` 定义。
+还原结果时，先从原图提取所有 `from` 区域并将原位置留空，再按 `changes` 数组顺序绘制到 `to`；最后在结果上解释或绘制批注。未移动区域保持原样。0.8 继续使用 0.7 JSON 格式，由 `schema/feedback-v0.7.schema.json` 定义。
 
 | 格式 | 原图 | 批注坐标 | 布局信息 |
 | --- | --- | --- | --- |
 | 0.5 及以前的 v1/v1.1/v2 项目 | `capture.pngBase64` 可内嵌，或引用外部 PNG | 原图 | v2 保存全部切片、分组及原始/目标坐标 |
 | 0.6 精简反馈 | 外部同名 PNG | 原图 | 仅变化的 `from/to` |
-| 0.7 当前反馈 | `image` 可内嵌，界面默认包含 | 调整后的画面 | 仅变化的 `from/to` |
+| 0.7 / 0.8 当前反馈 | `image` 可内嵌，界面默认包含 | 调整后的画面 | 仅变化的 `from/to` |
 
 应用仍可打开旧版项目及 0.6 精简反馈，并将旧批注转换到调整结果的位置。取消包含原图时，重新打开需要配套的同名原图 PNG。完整切块仅用于当前截图继续编辑；关闭截图会释放这些缓存。重新打开反馈时，从原图和变化重建布局。
 
@@ -116,7 +143,7 @@ Windows PowerShell 7，CMake 在 PATH 中：
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
 ```
 
-构建脚本运行核心数据、布局、界面和 Windows 平台四组测试。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+构建脚本运行核心数据、布局、界面、设置和 Windows 平台五组测试。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
 Mac 构建（尚未实机执行）：
 

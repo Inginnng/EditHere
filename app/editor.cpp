@@ -2,6 +2,7 @@
 #include "detector.h"
 #include "explosion.h"
 #include "platform.h"
+#include "settings.h"
 #include "ui.h"
 #include <QApplication>
 #include <QCheckBox>
@@ -99,7 +100,6 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     explosion_->setObjectName("explodeButton");
     explosion_->setEnabled(false);
     explosion_->setCheckable(true);
-    explosion_->setStyleSheet("QPushButton:checked {background:#7656d9;color:white;}");
     header->addWidget(explosion_);
     connect(explosion_, &QPushButton::clicked, this, &Editor::explode);
     auto capture = iconButton("capture", "重新截图", bar);
@@ -158,7 +158,6 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     componentTool_ = textButton("移动组件", false, shell);
     componentTool_->setObjectName("componentTool");
     componentTool_->setCheckable(true);
-    componentTool_->setStyleSheet("QPushButton:checked {background:#e5efff;color:#007aff;}");
     componentTool_->hide();
     dock->addWidget(componentTool_);
     connect(componentTool_, &QPushButton::clicked, this, [this] { setComponentEditing(true); });
@@ -225,21 +224,24 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         changed();
     });
     connect(canvas_, &Canvas::selectionChanged, this, [this] { renderNotes(); });
-    auto shortcut = [this](QKeySequence key, auto handler) {
-        auto s = new QShortcut(key, this);
+    const auto defaults = defaultSettings();
+    auto shortcut = [this, &defaults](const QString &id, auto handler) {
+        auto s = new QShortcut(defaults.shortcuts.value(id), this);
+        s->setObjectName("shortcutAction_" + id);
         s->setContext(Qt::WidgetWithChildrenShortcut);
+        shortcuts_.insert(id, s);
         connect(s, &QShortcut::activated, this, handler);
     };
-    shortcut(QKeySequence::Undo, &Editor::undo);
-    shortcut(QKeySequence::Redo, &Editor::redo);
-    shortcut(QKeySequence::Save, [this] { saveProject(); });
-    shortcut(QKeySequence::Open, [this] { openFile(); });
-    shortcut(QKeySequence::Copy, &Editor::copyImage);
-    shortcut(QKeySequence::Paste, &Editor::pasteImage);
-    shortcut(QKeySequence("Ctrl+E"), &Editor::exportJson);
-    shortcut(QKeySequence("Ctrl+0"), &Editor::fit);
-    shortcut(QKeySequence(Qt::Key_Delete), &Editor::removeSelected);
-    shortcut(QKeySequence(Qt::Key_Escape), [this] {
+    shortcut("undo", &Editor::undo);
+    shortcut("redo", &Editor::redo);
+    shortcut("save", [this] { saveProject(); });
+    shortcut("open", [this] { openFile(); });
+    shortcut("copy", &Editor::copyImage);
+    shortcut("paste", &Editor::pasteImage);
+    shortcut("export", &Editor::exportJson);
+    shortcut("fit", &Editor::fit);
+    shortcut("delete", &Editor::removeSelected);
+    shortcut("close", [this] {
         if (explosionActive_) {
             if (componentEditing_ && (!layoutCanvas_->selected().isEmpty() || layoutCanvas_->drawingMode()))
                 layoutCanvas_->cancelInteraction();
@@ -248,11 +250,34 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         } else
             this->close();
     });
-    shortcut(QKeySequence("B"), [this] { setMode(Canvas::Smart); });
-    shortcut(QKeySequence("P"), [this] { setMode(Canvas::Point); });
-    shortcut(QKeySequence("R"), [this] { setMode(Canvas::Rectangle); });
-    shortcut(QKeySequence("V"), [this] { setMode(Canvas::Adjust); });
+    shortcut("smart", [this] { setMode(Canvas::Smart); });
+    shortcut("point", [this] { setMode(Canvas::Point); });
+    shortcut("rectangle", [this] { setMode(Canvas::Rectangle); });
+    shortcut("adjust", [this] { setMode(Canvas::Adjust); });
+    shortcut("explode", &Editor::explode);
+    shortcut("component", [this] {
+        if (explosionActive_)
+            setComponentEditing(true);
+    });
+    setShortcuts(defaults.shortcuts);
     resize(1180, 800);
+}
+void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
+    for (auto it = shortcuts_.begin(); it != shortcuts_.end(); ++it) {
+        const auto sequence = bindings.value(it.key());
+        it.value()->setKey(sequence);
+        it.value()->setEnabled(!sequence.isEmpty());
+    }
+    const QStringList ids{"smart", "point", "rectangle", "adjust"};
+    const QStringList labels{"智能选块", "点标注", "框选", "调整批注"};
+    auto label = [&](const QString &id, const QString &name) {
+        const auto key = bindings.value(id).toString(QKeySequence::NativeText);
+        return key.isEmpty() ? name : name + " (" + key + ")";
+    };
+    for (int i = 0; i < modes_.size(); ++i)
+        modes_[i]->setToolTip(label(ids[i], labels[i]));
+    explosion_->setToolTip(label("explode", "大爆炸"));
+    componentTool_->setToolTip(label("component", "移动组件"));
 }
 void Editor::setDocument(Document document) {
     resetLayoutTools();

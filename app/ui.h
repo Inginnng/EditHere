@@ -1,4 +1,5 @@
 #pragma once
+#include "settings.h"
 #include <QColor>
 #include <QIcon>
 #include <QWidget>
@@ -6,8 +7,9 @@ class QPushButton;
 class QLabel;
 namespace h2d {
 QColor accent();
-void applyTheme();
-QIcon glyph(const QString &name, QColor color = QColor("#606069"));
+void applyTheme(ThemeMode mode = ThemeMode::Light);
+bool isDarkTheme();
+QIcon glyph(const QString &name, QColor color = QColor());
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent = nullptr);
 QPushButton *textButton(const QString &text, bool primary = false, QWidget *parent = nullptr);
 QLabel *mutedLabel(const QString &text, QWidget *parent = nullptr);

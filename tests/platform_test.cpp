@@ -14,11 +14,94 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QScreen>
+#include <QSignalSpy>
 #include <QTest>
 using namespace h2d;
 class PlatformTests : public QObject {
     Q_OBJECT
   private slots:
+
+    void globalShortcutRebindingKeepsWorkingRegistration() {
+#ifdef Q_OS_WIN
+        // These unusual keys avoid the default shortcut of an already running HelpDesign.
+        const QKeySequence original("Ctrl+Alt+Shift+F21", QKeySequence::PortableText);
+        const QKeySequence occupied("Ctrl+Alt+Shift+F22", QKeySequence::PortableText);
+        const QKeySequence replacement("Ctrl+Alt+Shift+F23", QKeySequence::PortableText);
+        const QKeySequence temporary("Ctrl+Alt+Shift+F24", QKeySequence::PortableText);
+        auto press = [](WORD key) {
+            const WORD keys[] = {VK_CONTROL, VK_MENU, VK_SHIFT, key};
+            INPUT inputs[8]{};
+            for (int index = 0; index < 4; ++index) {
+                inputs[index].type = INPUT_KEYBOARD;
+                inputs[index].ki.wVk = keys[index];
+                inputs[index + 4].type = INPUT_KEYBOARD;
+                inputs[index + 4].ki.wVk = keys[3 - index];
+                inputs[index + 4].ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            return SendInput(8, inputs, sizeof(INPUT));
+        };
+        GlobalShortcut first, second, released;
+        QSignalSpy firstTriggered(&first, &GlobalShortcut::triggered);
+        QSignalSpy secondTriggered(&second, &GlobalShortcut::triggered);
+        QSignalSpy releasedTriggered(&released, &GlobalShortcut::triggered);
+        QVERIFY2(first.start(original), qPrintable(first.lastError()));
+        QVERIFY2(second.start(occupied), qPrintable(second.lastError()));
+        QCOMPARE(first.sequence(), original);
+        QVERIFY(first.lastError().isEmpty());
+        QVERIFY(first.start(original));
+        QCOMPARE(press(VK_F21), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(firstTriggered.count(), 1, 1500);
+        QCOMPARE(secondTriggered.count(), 0);
+        QCOMPARE(press(VK_F22), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(secondTriggered.count(), 1, 1500);
+        QCOMPARE(firstTriggered.count(), 1);
+
+        QVERIFY(!first.start(QKeySequence("Ctrl+K, Ctrl+C", QKeySequence::PortableText)));
+        QVERIFY(!first.lastError().isEmpty());
+        QCOMPARE(first.sequence(), original);
+        QVERIFY(!first.start(QKeySequence(QKeyCombination(Qt::Key_MediaPlay))));
+        QVERIFY(!first.lastError().isEmpty());
+        QCOMPARE(first.sequence(), original);
+        QVERIFY(!first.start(occupied));
+        QVERIFY(!first.lastError().isEmpty());
+        QCOMPARE(first.sequence(), original);
+        QCOMPARE(press(VK_F21), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(firstTriggered.count(), 2, 1500);
+        QCOMPARE(secondTriggered.count(), 1);
+        QVERIFY(!released.start(original));
+        QVERIFY(released.sequence().isEmpty());
+
+        QVERIFY2(first.start(replacement), qPrintable(first.lastError()));
+        QCOMPARE(first.sequence(), replacement);
+        QVERIFY(first.lastError().isEmpty());
+        QVERIFY2(released.start(original), qPrintable(released.lastError()));
+        QCOMPARE(press(VK_F23), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(firstTriggered.count(), 3, 1500);
+        QCOMPARE(releasedTriggered.count(), 0);
+        QCOMPARE(press(VK_F21), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(releasedTriggered.count(), 1, 1500);
+        QCOMPARE(firstTriggered.count(), 3);
+
+        QVERIFY(first.start({}));
+        QVERIFY(first.sequence().isEmpty());
+        QVERIFY(first.start({}));
+        QVERIFY2(released.start(replacement), qPrintable(released.lastError()));
+        released.stop();
+        released.stop();
+        QVERIFY2(first.start(replacement), qPrintable(first.lastError()));
+        first.stop();
+        QVERIFY2(released.start(replacement), qPrintable(released.lastError()));
+        {
+            GlobalShortcut scoped;
+            QVERIFY2(scoped.start(temporary), qPrintable(scoped.lastError()));
+        }
+        QVERIFY2(first.start(temporary), qPrintable(first.lastError()));
+        QCOMPARE(press(VK_F24), UINT(8));
+        QTRY_COMPARE_WITH_TIMEOUT(firstTriggered.count(), 4, 1500);
+        QCOMPARE(secondTriggered.count(), 1);
+        QCOMPARE(releasedTriggered.count(), 1);
+#endif
+    }
     void editorIsOrdinaryWindow() {
         QWidget editor;
         editor.setWindowFlags(Qt::FramelessWindowHint);

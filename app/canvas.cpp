@@ -122,11 +122,11 @@ void Canvas::paintEvent(QPaintEvent *) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     if (layoutPreview_) {
-        p.fillRect(rect(), Qt::white);
+        p.fillRect(rect(), isDarkTheme() ? QColor("#25262b") : QColor("#ffffff"));
         for (int y = 0; y < height(); y += 14)
             for (int x = 0; x < width(); x += 14)
                 if ((x / 14 + y / 14) % 2 == 0)
-                    p.fillRect(x, y, 14, 14, QColor("#e7e8ed"));
+                    p.fillRect(x, y, 14, 14, isDarkTheme() ? QColor("#34363d") : QColor("#e7e8ed"));
         p.drawImage(rect(), layoutImage_);
     } else
         p.drawImage(rect(), doc_->image);
