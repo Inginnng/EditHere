@@ -3,9 +3,11 @@
 #include "platform.h"
 #include <QApplication>
 #include <QScreen>
+#include <QTimer>
 #include <QWidget>
 #include <QtGui/qscreen_platform.h>
 #include <dwmapi.h>
+#include <memory>
 #include <uiautomation.h>
 #include <windows.h>
 namespace h2d {
@@ -16,6 +18,38 @@ QString bstrText(BSTR value) {
     return text;
 }
 } // namespace
+void prepareScreenCapture(QObject *context, std::function<void()> ready) {
+    // Run after QMenu / the native tray callback has returned to the event loop.
+    QTimer::singleShot(0, context, [context, ready = std::move(ready)]() mutable {
+        struct ActivationWindow {
+            HWND handle = nullptr;
+            ~ActivationWindow() {
+                if (handle)
+                    DestroyWindow(handle);
+            }
+        };
+        auto activation = std::make_shared<ActivationWindow>();
+        // A visible (fully transparent) window can become foreground. Merely hiding
+        // the editor or waiting leaves Explorer's overflow panel active on a tray click.
+        activation->handle = CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED, L"STATIC", L"Help2Design capture preparation", WS_POPUP,
+            GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), 1, 1, nullptr, nullptr,
+            GetModuleHandleW(nullptr), nullptr);
+        if (activation->handle) {
+            SetLayeredWindowAttributes(activation->handle, 0, 0, LWA_ALPHA);
+            ShowWindow(activation->handle, SW_SHOW);
+            SetForegroundWindow(activation->handle);
+        }
+        // Focus loss lets the shell dismiss its own panel. Allow its closing animation
+        // to finish, then wait for the compositor before obtaining the frozen image.
+        QTimer::singleShot(300, context, [activation, ready = std::move(ready)] {
+            if (activation->handle)
+                ShowWindow(activation->handle, SW_HIDE);
+            DwmFlush();
+            ready();
+        });
+    });
+}
 void captureScreens(CaptureCallback callback) {
     QVector<ScreenFrame> frames;
     for (QScreen *screen : QGuiApplication::screens()) {
@@ -28,9 +62,9 @@ void captureScreens(CaptureCallback callback) {
             MONITORINFO info{};
             info.cbSize = sizeof(info);
             if (GetMonitorInfoW(handle->handle(), &info))
-                native = QRect(info.rcMonitor.left, info.rcMonitor.top,
-                               info.rcMonitor.right - info.rcMonitor.left,
-                               info.rcMonitor.bottom - info.rcMonitor.top);
+                native =
+                    QRect(info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
+                          info.rcMonitor.bottom - info.rcMonitor.top);
         }
         frames.append({screen->name(), screen->geometry(), native, image, !native.isEmpty()});
     }
@@ -127,6 +161,8 @@ bool requestAccessibility() {
 }
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     DWORD preference = overlay ? 1 : 2;
     DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
     // Keep our overlay out of capture sources where Windows supports it.

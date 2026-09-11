@@ -16,7 +16,7 @@ class CoreTests : public QObject {
         QCOMPARE(moveRect({20, 20, 60, 40}, {300, -50}, {100, 100}), QRect(40, 0, 60, 40));
         QCOMPARE(moveRect({20, 20, 60, 40}, {-100, -100}, {100, 100}, 4), QRect(20, 20, 1, 1));
     }
-    void hierarchy() {
+    void allContainingRegions() {
         auto target = manualTarget();
         QVector<Candidate> candidates{{{0, 0, 100, 100}, target},
                                       {{10, 10, 10, 10}, target},
@@ -24,16 +24,80 @@ class CoreTests : public QObject {
                                       {{5, 5, 45, 45}, target}};
         CandidatePicker picker;
         picker.update(candidates, {16, 16});
-        QCOMPARE(picker.count(), 3);
+        QCOMPARE(picker.count(), 4);
         QCOMPARE(picker.current()->bounds, QRect(10, 10, 10, 10));
         picker.step(1);
+        QCOMPARE(picker.current()->bounds, QRect(15, 0, 35, 30));
         picker.update(candidates, {17, 17});
         QCOMPARE(picker.level(), 2);
         picker.step(1);
+        QCOMPARE(picker.current()->bounds, QRect(5, 5, 45, 45));
         picker.step(1);
-        QCOMPARE(picker.level(), 3);
+        QCOMPARE(picker.current()->bounds, QRect(0, 0, 100, 100));
+        picker.step(1);
+        QCOMPARE(picker.level(), 4);
+        for (int i = 0; i < 10; ++i)
+            picker.step(-1);
+        QCOMPARE(picker.level(), 1);
+        picker.step(0);
+        QCOMPARE(picker.level(), 1);
         picker.update(candidates, {100, 100});
         QVERIFY(!picker.current());
+        picker.step(1);
+        QVERIFY(!picker.current());
+    }
+    void tableRegionSelection() {
+        const auto target = manualTarget();
+        const QRect cell1(10, 10, 20, 20), row12(10, 10, 40, 20), cell3(10, 30, 20, 20),
+            row34(10, 30, 40, 20), lower3456(10, 30, 40, 40), entire123456(10, 10, 40, 60);
+        QVector<Candidate> candidates{{lower3456, target},    {row12, target}, {cell1, target},
+                                      {entire123456, target}, {cell3, target}, {row34, target}};
+        CandidatePicker picker;
+        picker.update(candidates, {15, 15});
+        QCOMPARE(picker.count(), 3);
+        QCOMPARE(picker.current()->bounds, cell1);
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, row12);
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, entire123456);
+        picker.update(candidates, {15, 35});
+        QCOMPARE(picker.count(), 4);
+        QCOMPARE(picker.current()->bounds, cell3);
+        for (const auto &expected : {row34, lower3456, entire123456}) {
+            picker.step(1);
+            QCOMPARE(picker.current()->bounds, expected);
+        }
+        picker.update(candidates, {16, 35});
+        QCOMPARE(picker.current()->bounds, entire123456);
+        for (const auto &expected : {lower3456, row34, cell3}) {
+            picker.step(-1);
+            QCOMPARE(picker.current()->bounds, expected);
+        }
+    }
+    void equalAreaAndDuplicateRegions() {
+        auto native = manualTarget(), visual = manualTarget();
+        native["source"] = "uia";
+        visual["source"] = "vision";
+        const QRect tall(5, 0, 20, 40), wide(0, 5, 40, 20), larger(0, 0, 50, 50);
+        QVector<Candidate> candidates{{tall, native}, {wide, visual}, {tall, visual}, {larger, visual}};
+        CandidatePicker picker;
+        picker.update(candidates, {15, 15});
+        QCOMPARE(picker.count(), 3);
+        QCOMPARE(picker.current()->bounds, tall);
+        QCOMPARE(picker.current()->target["source"].toString(), QString("uia"));
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, wide);
+        // A new small candidate must not reset an already selected region.
+        candidates.prepend({QRect(12, 12, 10, 10), visual});
+        picker.update(candidates, {16, 15});
+        QCOMPARE(picker.count(), 4);
+        QCOMPARE(picker.current()->bounds, wide);
+        QCOMPARE(picker.level(), 3);
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, larger);
+        picker.reset();
+        picker.update(candidates, {16, 15});
+        QCOMPARE(picker.current()->bounds, QRect(12, 12, 10, 10));
     }
     void history() {
         Note note;
@@ -77,6 +141,50 @@ class CoreTests : public QObject {
         json["capture"] = capture;
         saveBytes(path, QJsonDocument(json).toJson());
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+    }
+    void savedProjectsRespectReadLimits() {
+        // Exercise the exact byte boundaries without allocating image-sized fixtures.
+        validateProjectStorageSize(MaxProjectFileBytes, MaxImageFileBytes);
+        QVERIFY_EXCEPTION_THROWN(validateProjectStorageSize(MaxProjectFileBytes + 1), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(validateProjectStorageSize(0, MaxImageFileBytes + 1), std::runtime_error);
+
+        QTemporaryDir dir;
+        QImage image(24, 18, QImage::Format_ARGB32);
+        image.fill(QColor("#4676c9"));
+        auto doc = fromImage(image, "demo", "保存边界");
+        doc.layout = createLayout(image.size(), {});
+        const auto path = dir.filePath("review.json");
+        saveBytes(path, serializeDocument(doc, true));
+        const auto loaded = loadDocument(path);
+        QVERIFY(loaded.layout == doc.layout);
+        QCOMPARE(loaded.png, doc.png);
+        saveBytes(dir.filePath(doc.imageFile), doc.png);
+        saveBytes(path, serializeDocument(doc, false));
+        QVERIFY(loadDocument(path).layout == doc.layout);
+
+        // Sparse/truncated files verify the reader enforces the same limits before parsing or decoding.
+        QFile oversizedProject(dir.filePath("oversized.json"));
+        QVERIFY(oversizedProject.open(QIODevice::WriteOnly));
+        QVERIFY(oversizedProject.resize(MaxProjectFileBytes + 1));
+        oversizedProject.close();
+        bool projectLimitRejected = false;
+        try {
+            loadDocument(oversizedProject.fileName());
+        } catch (const std::runtime_error &error) {
+            projectLimitRejected = QString::fromUtf8(error.what()).contains("项目文件不能超过");
+        }
+        QVERIFY(projectLimitRejected);
+        QFile oversizedImage(dir.filePath("oversized.png"));
+        QVERIFY(oversizedImage.open(QIODevice::WriteOnly));
+        QVERIFY(oversizedImage.resize(MaxImageFileBytes + 1));
+        oversizedImage.close();
+        bool imageLimitRejected = false;
+        try {
+            loadDocument(oversizedImage.fileName());
+        } catch (const std::runtime_error &error) {
+            imageLimitRejected = QString::fromUtf8(error.what()).contains("图片文件不能超过");
+        }
+        QVERIFY(imageLimitRejected);
     }
     void rejectsInvalidMetadata() {
         QTemporaryDir dir;
@@ -160,6 +268,27 @@ class CoreTests : public QObject {
         auto formats = QImageReader::supportedImageFormats();
         for (auto format : {"png", "jpeg", "bmp", "webp"})
             QVERIFY(formats.contains(format));
+    }
+    void denseDetectionRetainsOuterContainer() {
+        QImage image(1100, 1100, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        const QRect outer(2, 2, 1096, 1096);
+        painter.fillRect(outer, QColor("#e5e5e5"));
+        for (int row = 0; row < 18; ++row)
+            for (int column = 0; column < 18; ++column)
+                painter.fillRect(QRect(20 + column * 58, 20 + row * 58, 32, 26), QColor("#456b51"));
+        painter.end();
+        const auto candidates = detectBlocks(image);
+        QVERIFY(candidates.size() <= 220);
+        QVERIFY(candidates.size() >= 100);
+        bool foundOuter = false, foundCell = false;
+        for (const auto &candidate : candidates) {
+            foundOuter |= candidate.bounds == outer;
+            foundCell |= candidate.bounds.size() == QSize(32, 26);
+        }
+        QVERIFY2(foundOuter, "A dense grid must not evict its large enclosing container.");
+        QVERIFY(foundCell);
     }
     void detection() {
         QImage blank(240, 180, QImage::Format_RGB32);

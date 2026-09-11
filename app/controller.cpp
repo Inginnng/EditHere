@@ -55,12 +55,16 @@ void Controller::activate() {
 void Controller::capture() {
     if (capturing_)
         return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
     if (!editor_.allowReplace())
         return;
     capturing_ = true;
     wasVisible_ = editor_.isVisible();
     editor_.hide();
-    QTimer::singleShot(140, this, [this] {
+    prepareScreenCapture(this, [this] {
+        if (!capturing_)
+            return;
         QPointer<Controller> self(this);
         captureScreens([self](QVector<ScreenFrame> frames, QString error) {
             if (!self)

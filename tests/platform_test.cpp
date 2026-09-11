@@ -1,5 +1,14 @@
 #include "platform.h"
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QEvent>
+#ifdef Q_OS_WIN
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
@@ -10,6 +19,61 @@ using namespace h2d;
 class PlatformTests : public QObject {
     Q_OBJECT
   private slots:
+    void editorIsOrdinaryWindow() {
+        QWidget editor;
+        editor.setWindowFlags(Qt::FramelessWindowHint);
+        editor.resize(180, 100);
+        editor.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&editor));
+        configureNativeWindow(&editor, false);
+#ifdef Q_OS_WIN
+        HWND hwnd = reinterpret_cast<HWND>(editor.winId());
+        QVERIFY(!(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST));
+        configureNativeWindow(&editor, true);
+        QVERIFY(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST);
+        configureNativeWindow(&editor, false);
+        QVERIFY(!(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST));
+#endif
+    }
+    void preparationDismissesTransientWindowBeforeCapture() {
+        class TransientPanel final : public QWidget {
+          public:
+            bool dismissed = false;
+            bool event(QEvent *event) override {
+                if (event->type() == QEvent::WindowDeactivate) {
+                    dismissed = true;
+                    hide();
+                }
+                return QWidget::event(event);
+            }
+        } panel;
+        panel.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+        panel.resize(220, 140);
+        panel.show();
+        panel.raise();
+        panel.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&panel));
+        QElapsedTimer elapsed;
+        elapsed.start();
+        bool completed = false;
+        bool dismissedAtCapture = false;
+        prepareScreenCapture(this, [&] {
+            dismissedAtCapture = panel.dismissed && !panel.isVisible();
+            completed = true;
+        });
+        QVERIFY(!completed);
+        QTRY_VERIFY_WITH_TIMEOUT(completed, 2500);
+        QVERIFY(dismissedAtCapture);
+        QVERIFY(elapsed.elapsed() >= 250);
+    }
+    void preparationIsCancelledWithOwner() {
+        bool completed = false;
+        auto owner = new QObject;
+        prepareScreenCapture(owner, [&] { completed = true; });
+        delete owner;
+        QTest::qWait(350);
+        QVERIFY(!completed);
+    }
     void captureAndAccessibleElement() {
         QWidget window;
         window.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -47,7 +111,8 @@ class PlatformTests : public QObject {
                  qPrintable(color.name()));
         QPoint native = frame.nativeGeometry.topLeft() + pixel(global);
         QProcess probe;
-        probe.setProgram(QCoreApplication::applicationDirPath() + "/Help2Design.exe");
+        probe.setProgram(qEnvironmentVariable("H2D_PLATFORM_PROBE",
+                                              QCoreApplication::applicationDirPath() + "/Help2Design.exe"));
         probe.setArguments({"--inspect", QString::number(native.x()), QString::number(native.y()), "0"});
 #ifdef Q_OS_WIN
         probe.setCreateProcessArgumentsModifier(

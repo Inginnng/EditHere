@@ -27,6 +27,7 @@ class Editor final : public QWidget {
     void pasteImage();
     void exportJson();
     void fit();
+    void explode();
   signals:
     void captureRequested();
     void hiddenToTray();
@@ -53,13 +54,20 @@ class Editor final : public QWidget {
     void showError(const QString &text);
     QString coords(const Note &note) const;
     Document doc_;
-    History history_;
+    struct Snapshot {
+        QVector<Note> notes;
+        std::optional<LayoutState> layout;
+    };
+    QVector<Snapshot> undoHistory_, redoHistory_;
+    void remember();
+    void restore(Snapshot snapshot);
+    void updateLayoutControls();
     Canvas *canvas_;
     QScrollArea *imageScroll_, *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;
     QLabel *meta_, *hint_, *noteCount_;
-    QPushButton *undo_, *redo_, *zoom_, *notesToggle_;
+    QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *layoutView_;
     QVector<QPushButton *> modes_;
     bool fitted_ = true;
     int generation_ = 0;

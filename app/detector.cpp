@@ -62,7 +62,7 @@ QVector<Candidate> detectBlocks(const QImage &original) {
         int xx = int(std::ceil(double(r.x() + r.width()) * original.width() / w)),
             yy = int(std::ceil(double(r.y() + r.height()) * original.height() / h));
         QRect b(x, y, xx - x, yy - y);
-        if (b.width() < 12 || b.height() < 10 || area(b) > qint64(original.width()) * original.height() * .94)
+        if (b.width() < 12 || b.height() < 10 || b == original.rect())
             return;
         auto target = manualTarget();
         target["source"] = "vision";
@@ -140,8 +140,18 @@ QVector<Candidate> detectBlocks(const QImage &original) {
             }
         if (!duplicate)
             output.append(p);
-        if (output.size() >= 220)
-            break;
+    }
+    constexpr int maxCandidates = 220;
+    if (output.size() > maxCandidates) {
+        QVector<Candidate> sampled;
+        sampled.reserve(maxCandidates);
+        // Sample the complete size range instead of dropping every large region.
+        // Stable area ordering also spreads equal-sized cells across the image.
+        for (int i = 0; i < maxCandidates; ++i) {
+            const qsizetype index = qint64(i) * (output.size() - 1) / (maxCandidates - 1);
+            sampled.append(output[index]);
+        }
+        return sampled;
     }
     return output;
 }

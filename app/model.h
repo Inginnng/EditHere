@@ -1,4 +1,5 @@
 #pragma once
+#include "layout.h"
 #include <QImage>
 #include <QJsonObject>
 #include <QRect>
@@ -9,6 +10,8 @@
 namespace h2d {
 constexpr qint64 MaxPixels = 32000000;
 constexpr int MaxNotes = 1000;
+constexpr qint64 MaxImageFileBytes = 48LL * 1024 * 1024;
+constexpr qint64 MaxProjectFileBytes = 96LL * 1024 * 1024;
 QString uniqueId();
 QString timestamp();
 QJsonObject rectJson(const QRect &rect);
@@ -44,12 +47,15 @@ struct Document {
     std::optional<QRect> screenBounds;
     QVector<Note> notes;
     QVector<Candidate> candidates;
+    std::optional<LayoutState> layout;
     bool dirty = false;
 };
 QByteArray encodePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title);
 Document loadDocument(const QString &path);
 QJsonObject exportDocument(const Document &doc, bool embed = false);
+void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0);
+QByteArray serializeDocument(const Document &doc, bool embed = false);
 void validateDocument(const Document &doc);
 void saveBytes(const QString &path, const QByteArray &bytes);
 QImage exampleImage();

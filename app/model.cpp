@@ -118,6 +118,8 @@ void validateDocument(const Document &d) {
         fail("原图文件名不正确");
     if (d.screenBounds && d.screenBounds->isEmpty())
         fail("屏幕范围不正确");
+    if (d.layout)
+        validateLayout(*d.layout, d.image.size());
     QSet<QString> ids;
     for (const auto &n : d.notes) {
         if (n.id.isEmpty() || ids.contains(n.id) || n.comment.trimmed().isEmpty() || n.comment.size() > 10000)
@@ -180,11 +182,32 @@ QJsonObject exportDocument(const Document &d, bool embed) {
             {"createdAt", n.createdAt},
             {"updatedAt", n.updatedAt}});
     }
-    return {{"schemaVersion", ax ? "1.1.0" : "1.0.0"},
-            {"tool", "Help2Design Capture"},
-            {"exportedAt", timestamp()},
-            {"capture", capture},
-            {"annotations", notes}};
+    QJsonObject result{{"schemaVersion", d.layout ? "2.0.0"
+                                         : ax     ? "1.1.0"
+                                                  : "1.0.0"},
+                       {"tool", "Help2Design Capture"},
+                       {"exportedAt", timestamp()},
+                       {"capture", capture},
+                       {"annotations", notes}};
+    if (d.layout)
+        result.insert("layout", exportLayout(*d.layout));
+    return result;
+}
+void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes) {
+    if (jsonBytes < 0 || jsonBytes > MaxProjectFileBytes)
+        fail("项目不能超过 96 MiB，未保存当前修改。请缩小图片或减少批注和分块后重试");
+    if (externalImageBytes < 0 || externalImageBytes > MaxImageFileBytes)
+        fail("配套原图不能超过 48 MiB。请尝试勾选“包含原图数据”，或缩小图片后重试");
+}
+QByteArray serializeDocument(const Document &doc, bool embed) {
+    // Reject an oversized embedded image before allocating its Base64 representation.
+    if (embed)
+        validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4);
+    else
+        validateProjectStorageSize(0, doc.png.size());
+    auto bytes = QJsonDocument(exportDocument(doc, embed)).toJson(QJsonDocument::Indented);
+    validateProjectStorageSize(bytes.size());
+    return bytes;
 }
 static void exactKeys(const QJsonObject &o, const QStringList &keys) {
     if (o.size() != keys.size())
@@ -198,7 +221,7 @@ Document loadDocument(const QString &path) {
     if (!file.open(QIODevice::ReadOnly))
         fail("无法打开文件");
     if (!path.endsWith(".json", Qt::CaseInsensitive)) {
-        if (file.size() > 48 * 1024 * 1024)
+        if (file.size() > MaxImageFileBytes)
             fail("图片文件不能超过 48 MB");
         QImageReader reader(&file);
         reader.setAutoTransform(true);
@@ -207,17 +230,22 @@ Document loadDocument(const QString &path) {
             fail("图片尺寸超出限制");
         return fromImage(reader.read(), "file", QFileInfo(path).fileName());
     }
-    if (file.size() > 96 * 1024 * 1024)
+    if (file.size() > MaxProjectFileBytes)
         fail("项目文件不能超过 96 MB");
     QJsonParseError error;
     const auto parsed = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !parsed.isObject())
         fail("JSON 格式不正确");
     auto root = parsed.object();
-    exactKeys(root, {"schemaVersion", "tool", "exportedAt", "capture", "annotations"});
-    if (!QStringList{"1.0.0", "1.1.0"}.contains(root["schemaVersion"].toString()) ||
-        root["tool"] != "Help2Design Capture")
+    const QString version = root["schemaVersion"].toString();
+    if (!QStringList{"1.0.0", "1.1.0", "2.0.0"}.contains(version) || root["tool"] != "Help2Design Capture")
         fail("不支持这个项目版本");
+    QStringList fields{"schemaVersion", "tool", "exportedAt", "capture", "annotations"};
+    if (version == "2.0.0")
+        fields.append("layout");
+    exactKeys(root, fields);
+    if (version == "2.0.0" && !root["layout"].isObject())
+        fail("大爆炸项目必须包含布局对象");
     if (!QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
         fail("导出日期不正确");
     if (!root["annotations"].isArray() || root["annotations"].toArray().size() > MaxNotes)
@@ -246,7 +274,7 @@ Document loadDocument(const QString &path) {
         png = result.decoded;
     } else if (c["pngBase64"].isNull()) {
         QFile original(QFileInfo(path).dir().filePath(name));
-        if (!original.open(QIODevice::ReadOnly) || original.size() > 48 * 1024 * 1024)
+        if (!original.open(QIODevice::ReadOnly) || original.size() > MaxImageFileBytes)
             fail("请将 JSON 与原图 " + name + " 放在同一目录");
         png = original.readAll();
     } else
@@ -307,6 +335,8 @@ Document loadDocument(const QString &path) {
         }
         d.notes.append(n);
     }
+    if (version == "2.0.0")
+        d.layout = importLayout(root["layout"].toObject(), d.image.size());
     validateDocument(d);
     return d;
 }
@@ -324,30 +354,37 @@ std::optional<Candidate> CandidatePicker::current() const {
     return levels_.isEmpty() ? std::nullopt : std::optional<Candidate>(levels_[index_]);
 }
 void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
-    auto previous = current();
-    bool nearby = anchor_ && (p - *anchor_).manhattanLength() <= 8;
+    const auto previous = current();
+    const bool nearby = anchor_ && (p - *anchor_).manhattanLength() <= 8;
     QVector<Candidate> candidates;
-    for (const auto &c : all)
-        if (containsPixel(c.bounds, p))
-            candidates.append(c);
+    for (const auto &candidate : all) {
+        if (!containsPixel(candidate.bounds, p))
+            continue;
+        const bool duplicate =
+            std::any_of(candidates.cbegin(), candidates.cend(),
+                        [&](const Candidate &other) { return other.bounds == candidate.bounds; });
+        if (!duplicate)
+            candidates.append(candidate);
+    }
     auto area = [](const QRect &r) { return qint64(r.width()) * r.height(); };
+    // Containment of the pointer is the only hierarchy requirement. Overlapping
+    // regions may describe different useful selections without containing each other.
     std::stable_sort(candidates.begin(), candidates.end(),
                      [&](const Candidate &a, const Candidate &b) { return area(a.bounds) < area(b.bounds); });
-    levels_.clear();
+    levels_ = std::move(candidates);
     index_ = 0;
-    for (const auto &c : candidates) {
-        if (levels_.isEmpty() ||
-            (c.bounds.contains(levels_.last().bounds) && area(c.bounds) > area(levels_.last().bounds)))
-            levels_.append(c);
-    }
     if (nearby && previous)
         for (int i = 0; i < levels_.size(); i++)
-            if (levels_[i].bounds == previous->bounds)
+            if (levels_[i].bounds == previous->bounds) {
                 index_ = i;
+                break;
+            }
     if (!nearby)
         anchor_ = p;
 }
 void CandidatePicker::step(int d) {
+    if (d == 0)
+        return;
     index_ = std::clamp(index_ + (d > 0 ? 1 : -1), 0, std::max(0, int(levels_.size()) - 1));
 }
 void History::push(const QVector<Note> &n) {

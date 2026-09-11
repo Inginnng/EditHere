@@ -2,7 +2,7 @@ param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
-    [string]$OutputDirectory = "dist/Help2Design-Native-0.4.0-win-x64"
+    [string]$OutputDirectory = "dist/Help2Design-Native-0.5.0-win-x64"
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent

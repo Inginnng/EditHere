@@ -1,0 +1,424 @@
+#include "layout.h"
+#include "model.h"
+#include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QPainter>
+#include <QSet>
+#include <QTemporaryDir>
+#include <QTest>
+#include <cmath>
+#include <stdexcept>
+using namespace h2d;
+namespace {
+Candidate candidate(QRect bounds, const QString &label) {
+    auto target = manualTarget();
+    target["label"] = label;
+    return {bounds, target};
+}
+QVector<Candidate> tableRegions() {
+    return {candidate({10, 10, 30, 20}, "1"), candidate({40, 10, 30, 20}, "2"),
+            candidate({10, 30, 30, 20}, "3"), candidate({40, 30, 30, 20}, "4"),
+            candidate({10, 10, 60, 40}, "1234")};
+}
+QString groupId(const LayoutState &state, const QString &label) {
+    for (const auto &group : state.groups)
+        if (group.label == label)
+            return group.id;
+    return {};
+}
+const LayoutPiece *pieceById(const LayoutState &state, const QString &id) {
+    for (const auto &piece : state.pieces)
+        if (piece.id == id)
+            return &piece;
+    return nullptr;
+}
+QStringList members(const LayoutState &state, const QString &id) {
+    for (const auto &group : state.groups)
+        if (group.id == id)
+            return group.pieces;
+    return {};
+}
+QImage sourceImage() {
+    QImage image(160, 120, QImage::Format_ARGB32);
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < image.width(); ++x)
+            image.setPixelColor(x, y, QColor((x * 13) % 256, (y * 17) % 256, (x + y) % 256));
+    QPainter painter(&image);
+    painter.fillRect(QRect(10, 10, 30, 20), QColor("#f04050"));
+    painter.fillRect(QRect(40, 10, 30, 20), QColor("#20a060"));
+    painter.fillRect(QRect(10, 30, 30, 20), QColor("#3070e0"));
+    painter.fillRect(QRect(40, 30, 30, 20), QColor("#f0b030"));
+    return image;
+}
+bool rejects(const QJsonObject &json, QSize size) {
+    try {
+        importLayout(json, size);
+        return false;
+    } catch (const std::runtime_error &) {
+        return true;
+    }
+}
+QJsonObject changedPiece(QJsonObject result, int index, const QString &field, const QJsonValue &value) {
+    auto pieces = result["pieces"].toArray();
+    auto piece = pieces[index].toObject();
+    piece[field] = value;
+    pieces[index] = piece;
+    result["pieces"] = pieces;
+    return result;
+}
+QPointF oppositeCorner(QRectF r, int handle) {
+    return {(handle == 0 || handle == 6) ? r.right() : r.left(),
+            (handle == 0 || handle == 2) ? r.bottom() : r.top()};
+}
+} // namespace
+class LayoutTests : public QObject {
+    Q_OBJECT
+  private slots:
+    void initialPartitionsPreserveEveryPixel() {
+        const auto original = sourceImage();
+        auto regions = tableRegions();
+        regions.append(candidate({25, 0, 30, 90}, "crossing"));
+        regions.append(regions.first());
+        auto state = createLayout(original.size(), regions);
+        validateLayout(state, original.size());
+        QCOMPARE(state.groups.size(), 7);
+        QVERIFY(state.pieces.size() > 4);
+        QSet<QString> ids;
+        for (const auto &piece : state.pieces) {
+            QVERIFY(!ids.contains(piece.id));
+            ids.insert(piece.id);
+            QCOMPARE(piece.source, piece.destination);
+        }
+        for (int y = 0; y < original.height(); ++y) {
+            for (int x = 0; x < original.width(); ++x) {
+                const QPointF center(x + 0.5, y + 0.5);
+                int covering = 0;
+                for (const auto &piece : state.pieces)
+                    covering += piece.source.contains(center) ? 1 : 0;
+                QCOMPARE(covering, 1);
+            }
+        }
+        QCOMPARE(renderLayout(original, state).convertToFormat(QImage::Format_ARGB32), original);
+        auto empty = createLayout(original.size(), {});
+        QCOMPARE(empty.pieces.size(), 1);
+        QCOMPARE(empty.groups.size(), 1);
+        QCOMPARE(renderLayout(original, empty).convertToFormat(QImage::Format_ARGB32), original);
+    }
+    void movingARegionLeavesAnEmptyHole() {
+        const auto original = sourceImage();
+        auto state = createLayout(original.size(), tableRegions());
+        const auto id = groupId(state, "1");
+        QVERIFY(!id.isEmpty());
+        const auto before = state.pieces;
+        transformLayoutGroup(state, id, {90, 70, 30, 20});
+        QCOMPARE(layoutBounds(state, id), QRectF(90, 70, 30, 20));
+        validateLayout(state, original.size());
+        for (const auto &piece : before) {
+            const auto *after = pieceById(state, piece.id);
+            QVERIFY(after);
+            QCOMPARE(after->source, piece.source);
+        }
+        const auto rendered = renderLayout(original, state);
+        QCOMPARE(rendered.pixelColor(20, 20).alpha(), 0);
+        QCOMPARE(rendered.pixelColor(100, 80), QColor("#f04050"));
+        QCOMPARE(rendered.pixelColor(50, 20), original.pixelColor(50, 20));
+        QCOMPARE(rendered.pixelColor(5, 5), original.pixelColor(5, 5));
+    }
+    void transformingAParentPreservesChildRelationships() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parentId = groupId(state, "1234");
+        const auto before = state;
+        const auto parentMembers = members(state, parentId);
+        const QRectF oldBounds(10, 10, 60, 40), newBounds(50, 50, 90, 60);
+        transformLayoutGroup(state, parentId, newBounds);
+        QCOMPARE(layoutBounds(state, parentId), newBounds);
+        QCOMPARE(layoutBounds(state, groupId(state, "1")), QRectF(50, 50, 45, 30));
+        QCOMPARE(layoutBounds(state, groupId(state, "2")), QRectF(95, 50, 45, 30));
+        QCOMPARE(layoutBounds(state, groupId(state, "3")), QRectF(50, 80, 45, 30));
+        QCOMPARE(layoutBounds(state, groupId(state, "4")), QRectF(95, 80, 45, 30));
+        for (const auto &piece : before.pieces) {
+            const auto *after = pieceById(state, piece.id);
+            QVERIFY(after);
+            QCOMPARE(after->source, piece.source);
+            if (!parentMembers.contains(piece.id)) {
+                QCOMPARE(after->destination, piece.destination);
+                continue;
+            }
+            QCOMPARE(after->destination.topLeft(),
+                     newBounds.topLeft() + (piece.destination.topLeft() - oldBounds.topLeft()) * 1.5);
+            QCOMPARE(after->destination.size(), piece.destination.size() * 1.5);
+        }
+        validateLayout(state, {160, 120});
+    }
+    void choicesIncludeEveryContainingRegion() {
+        QVector<Candidate> regions{candidate({10, 30, 20, 20}, "3"), candidate({10, 30, 40, 20}, "34"),
+                                   candidate({10, 30, 40, 40}, "3456"), candidate({10, 10, 40, 60}, "123456"),
+                                   candidate({15, 20, 10, 60}, "crossing")};
+        auto state = createLayout({120, 100}, regions);
+        QStringList labels;
+        double previousArea = 0;
+        for (const auto &choice : layoutChoices(state, {20, 40})) {
+            labels.append(choice.label);
+            const auto area = choice.bounds.width() * choice.bounds.height();
+            QVERIFY(area >= previousArea);
+            previousArea = area;
+        }
+        QCOMPARE(labels, QStringList({"3", "crossing", "34", "3456", "123456", "整个图片"}));
+        QVERIFY(layoutChoices(state, {120, 100}).isEmpty());
+        for (const auto &choice : layoutChoices(state, {30, 40}))
+            QVERIFY(choice.label != "3");
+        QVERIFY(!addLayoutRegion(state, {10, 30, 20, 20}, "manual 3").isEmpty());
+        int sameBounds = 0;
+        for (const auto &choice : layoutChoices(state, {20, 40}))
+            sameBounds += choice.bounds == QRectF(10, 30, 20, 20) ? 1 : 0;
+        QCOMPARE(sameBounds, 2);
+    }
+    void cornersKeepTheirAspectRatio_data() {
+        QTest::addColumn<int>("handle");
+        QTest::addColumn<QPointF>("delta");
+        for (int handle : {0, 2, 4, 6})
+            for (auto delta : {QPointF(13, 7), QPointF(-19, 11), QPointF(1000, 1000), QPointF(-1000, -1000),
+                               QPointF(1000, -1000)}) {
+                const auto name = QString("%1-%2-%3").arg(handle).arg(delta.x()).arg(delta.y()).toUtf8();
+                QTest::newRow(name.constData()) << handle << delta;
+            }
+    }
+    void cornersKeepTheirAspectRatio() {
+        QFETCH(int, handle);
+        QFETCH(QPointF, delta);
+        const QRectF before(30, 25, 60, 40);
+        const QSize canvas(160, 120);
+        const auto after = resizeLayoutRect(before, delta, handle, canvas);
+        QVERIFY(after.width() >= 1 - 1e-9 && after.height() >= 1 - 1e-9);
+        QVERIFY(after.left() >= -1e-9 && after.top() >= -1e-9);
+        QVERIFY(after.right() <= canvas.width() + 1e-9 && after.bottom() <= canvas.height() + 1e-9);
+        QVERIFY(std::abs(after.width() / after.height() - 1.5) < 1e-9);
+        QCOMPARE(oppositeCorner(after, handle), oppositeCorner(before, handle));
+    }
+    void edgesOnlyChangeTheirOwnDimension() {
+        const QRectF before(30, 25, 60, 40);
+        const QSize canvas(160, 120);
+        QCOMPARE(resizeLayoutRect(before, {9, 7}, 1, canvas), QRectF(30, 32, 60, 33));
+        QCOMPARE(resizeLayoutRect(before, {9, 7}, 3, canvas), QRectF(30, 25, 69, 40));
+        QCOMPARE(resizeLayoutRect(before, {9, 7}, 5, canvas), QRectF(30, 25, 60, 47));
+        QCOMPARE(resizeLayoutRect(before, {9, 7}, 7, canvas), QRectF(39, 25, 51, 40));
+        for (int handle : {1, 3, 5, 7})
+            for (auto delta : {QPointF(1000, 1000), QPointF(-1000, -1000)}) {
+                const auto after = resizeLayoutRect(before, delta, handle, canvas);
+                QVERIFY(after.width() >= 1 && after.height() >= 1);
+                QVERIFY(QRectF(QPointF(0, 0), canvas).contains(after));
+                if (handle == 1 || handle == 5) {
+                    QCOMPARE(after.x(), before.x());
+                    QCOMPARE(after.width(), before.width());
+                    QCOMPARE(handle == 1 ? after.bottom() : after.top(),
+                             handle == 1 ? before.bottom() : before.top());
+                } else {
+                    QCOMPARE(after.y(), before.y());
+                    QCOMPARE(after.height(), before.height());
+                    QCOMPARE(handle == 7 ? after.right() : after.left(),
+                             handle == 7 ? before.right() : before.left());
+                }
+            }
+    }
+    void wheelScalePreservesRatioAndStaysOnCanvas() {
+        const QRectF before(120, 90, 30, 20);
+        const QSize canvas(160, 120);
+        for (double factor : {0.01, 0.5, 1.25, 1000.0}) {
+            const auto after = scaleLayoutRect(before, factor, canvas);
+            QVERIFY(after.width() >= 1 - 1e-9 && after.height() >= 1 - 1e-9);
+            QVERIFY(QRectF(QPointF(0, 0), canvas).contains(after));
+            QVERIFY(std::abs(after.width() / after.height() - 1.5) < 1e-9);
+        }
+        const auto scaled = scaleLayoutRect({30, 30, 30, 20}, 1.25, canvas);
+        QCOMPARE(scaled.center(), QPointF(45, 40));
+        QCOMPARE(scaled.size(), QSizeF(37.5, 25));
+    }
+    void subpixelChildrenKeepSizeWhenMovedOrResized() {
+        auto state = createLayout({160, 120}, tableRegions());
+        transformLayoutGroup(state, groupId(state, "1234"), {159, 118.5, 1, 1.5});
+        const auto childId = groupId(state, "4");
+        const auto original = layoutBounds(state, childId);
+        QCOMPARE(original, QRectF(159.5, 119.25, 0.5, 0.75));
+        auto moved = original.translated(-10, -10);
+        transformLayoutGroup(state, childId, moved);
+        QCOMPARE(layoutBounds(state, childId), moved);
+        QCOMPARE(constrainLayoutRect(moved, state.canvas), moved);
+
+        const auto resized = resizeLayoutRect(moved, {-0.1, -0.15}, 0, state.canvas);
+        QVERIFY(resized.width() > moved.width() && resized.width() < 1);
+        QVERIFY(std::abs(resized.width() / resized.height() - 2.0 / 3.0) < 1e-9);
+        transformLayoutGroup(state, childId, resized);
+        QCOMPARE(layoutBounds(state, childId), resized);
+        validateLayout(state, state.canvas);
+        QVERIFY(importLayout(exportLayout(state), state.canvas) == state);
+    }
+
+    void subpixelHandlesNeverJumpOrInvertAtCanvasEdges() {
+        const QSize canvas(160, 120);
+        const QRectF full(QPointF(0, 0), canvas);
+        for (const auto &before : {QRectF(0, 0, 0.4, 0.7), QRectF(159.6, 0, 0.4, 0.7),
+                                   QRectF(0, 119.3, 0.4, 0.7), QRectF(159.6, 119.3, 0.4, 0.7)}) {
+            for (int handle = 0; handle < 8; ++handle) {
+                QCOMPARE(resizeLayoutRect(before, {}, handle, canvas), before);
+                for (const auto &delta : {QPointF(1000, 1000), QPointF(-1000, -1000), QPointF(1000, -1000),
+                                          QPointF(-1000, 1000)}) {
+                    const auto after = resizeLayoutRect(before, delta, handle, canvas);
+                    QVERIFY(after.width() > 0 && after.height() > 0);
+                    QVERIFY(after.left() >= -1e-9 && after.top() >= -1e-9);
+                    QVERIFY(after.right() <= full.right() + 1e-9 && after.bottom() <= full.bottom() + 1e-9);
+                    QCOMPARE(constrainLayoutRect(after, canvas), after);
+                    if (handle % 2 == 0) {
+                        QVERIFY(std::abs(after.width() / after.height() - before.width() / before.height()) <
+                                1e-9);
+                        QCOMPARE(oppositeCorner(after, handle), oppositeCorner(before, handle));
+                    } else if (handle == 1 || handle == 5) {
+                        QCOMPARE(after.x(), before.x());
+                        QCOMPARE(after.width(), before.width());
+                    } else {
+                        QCOMPARE(after.y(), before.y());
+                        QCOMPARE(after.height(), before.height());
+                    }
+                }
+            }
+            QCOMPARE(scaleLayoutRect(before, 1, canvas), before);
+            const auto grown = scaleLayoutRect(before, 1.1, canvas);
+            QVERIFY(std::abs(grown.width() / before.width() - 1.1) < 1e-9);
+            QVERIFY(std::abs(grown.height() / before.height() - 1.1) < 1e-9);
+        }
+    }
+
+    void manualCutAfterMoveAndScalePreservesExistingGroups() {
+        const auto original = sourceImage();
+        auto state = createLayout(original.size(), tableRegions());
+        const auto cellId = groupId(state, "1"), parentId = groupId(state, "1234");
+        transformLayoutGroup(state, cellId, {80, 60, 60, 40});
+        const auto beforeCut = renderLayout(original, state);
+        const auto countBefore = members(state, cellId).size();
+        const auto manualId = addLayoutRegion(state, {90, 70, 20, 20}, "精细切片");
+        QVERIFY(!manualId.isEmpty());
+        QCOMPARE(layoutBounds(state, manualId), QRectF(90, 70, 20, 20));
+        QCOMPARE(layoutBounds(state, cellId), QRectF(80, 60, 60, 40));
+        QVERIFY(members(state, cellId).size() > countBefore);
+        QCOMPARE(renderLayout(original, state), beforeCut);
+        const auto parentMembers = members(state, parentId), manualMembers = members(state, manualId);
+        bool foundMappedPart = false;
+        for (const auto &id : members(state, cellId)) {
+            QVERIFY(parentMembers.contains(id));
+            const auto *piece = pieceById(state, id);
+            QVERIFY(piece);
+            if (manualMembers.contains(id)) {
+                QCOMPARE(piece->source, QRectF(15, 15, 10, 10));
+                QCOMPARE(piece->destination, QRectF(90, 70, 20, 20));
+                foundMappedPart = true;
+            }
+        }
+        QVERIFY(foundMappedPart);
+        transformLayoutGroup(state, manualId, {5, 80, 20, 20});
+        auto rendered = renderLayout(original, state);
+        QCOMPARE(rendered.pixelColor(15, 90), QColor("#f04050"));
+        QCOMPARE(rendered.pixelColor(100, 80).alpha(), 0);
+        validateLayout(state, original.size());
+    }
+    void layoutJsonRoundTripRejectsCorruption() {
+        auto state = createLayout({160, 120}, tableRegions());
+        transformLayoutGroup(state, groupId(state, "1"), {85.5, 60.25, 60.5, 40.25});
+        QVERIFY(!addLayoutRegion(state, {90.25, 70.5, 20.5, 15.25}, "fractional").isEmpty());
+        const auto valid = exportLayout(state);
+        const auto decoded = QJsonDocument::fromJson(QJsonDocument(valid).toJson()).object();
+        QVERIFY(importLayout(decoded, state.canvas) == state);
+        auto pieces = valid["pieces"].toArray();
+        QVERIFY(pieces.size() >= 2);
+        QVERIFY(rejects(changedPiece(valid, 1, "source", pieces[0].toObject()["source"]), state.canvas));
+        QVERIFY(rejects(changedPiece(valid, 1, "id", pieces[0].toObject()["id"]), state.canvas));
+        auto destination = pieces[0].toObject()["destination"].toObject();
+        destination["x2"] = state.canvas.width() + 1;
+        QVERIFY(rejects(changedPiece(valid, 0, "destination", destination), state.canvas));
+        auto source = pieces[0].toObject()["source"].toObject();
+        source["x1"] = -1;
+        QVERIFY(rejects(changedPiece(valid, 0, "source", source), state.canvas));
+        source = pieces[0].toObject()["source"].toObject();
+        source["x2"] = source["x1"];
+        QVERIFY(rejects(changedPiece(valid, 0, "source", source), state.canvas));
+        source = pieces[0].toObject()["source"].toObject();
+        source["x1"] = "0";
+        QVERIFY(rejects(changedPiece(valid, 0, "source", source), state.canvas));
+        for (auto references : {QJsonArray{"nonexistent"},
+                                QJsonArray{pieces[0].toObject()["id"], pieces[0].toObject()["id"]}}) {
+            auto bad = valid;
+            auto groups = bad["groups"].toArray();
+            auto group = groups[0].toObject();
+            group["pieceIds"] = references;
+            groups[0] = group;
+            bad["groups"] = groups;
+            QVERIFY(rejects(bad, state.canvas));
+        }
+        auto bad = valid;
+        pieces.removeLast();
+        bad["pieces"] = pieces;
+        QVERIFY(rejects(bad, state.canvas));
+        bad = valid;
+        bad["width"] = 160.5;
+        QVERIFY(rejects(bad, state.canvas));
+        bad = valid;
+        bad["unexpected"] = true;
+        QVERIFY(rejects(bad, state.canvas));
+    }
+    void documentRoundTripAndSchemaFixture() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        auto document = fromImage(sourceImage(), "demo", "大爆炸布局回归");
+        document.layout = createLayout(document.image.size(), tableRegions());
+        transformLayoutGroup(*document.layout, groupId(*document.layout, "1"), {85, 60, 60, 40});
+        QVERIFY(!addLayoutRegion(*document.layout, {90, 70, 20, 20}, "手动切分").isEmpty());
+        Note note;
+        note.isPoint = false;
+        note.rect = {10, 10, 30, 20};
+        note.comment = "将红色组件右移，并保持角点缩放比例。";
+        document.notes.append(note);
+        const auto exported = exportDocument(document, true);
+        QCOMPARE(exported["schemaVersion"].toString(), QString("2.0.0"));
+        QVERIFY(exported["layout"].isObject());
+        const auto path = directory.filePath("feedback-v2.json");
+        saveBytes(path, QJsonDocument(exported).toJson());
+        const auto restored = loadDocument(path);
+        QVERIFY(restored.layout.has_value());
+        QVERIFY(*restored.layout == *document.layout);
+        QCOMPARE(restored.notes, document.notes);
+        QCOMPARE(restored.png, document.png);
+        QCOMPARE(renderLayout(restored.image, *restored.layout),
+                 renderLayout(document.image, *document.layout));
+        QVERIFY(exportDocument(restored, false)["capture"].toObject()["pngBase64"].isNull());
+        const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("feedback-v2.json"), QJsonDocument(exported).toJson());
+        }
+        auto broken = exported;
+        auto layout = broken["layout"].toObject();
+        auto groups = layout["groups"].toArray();
+        auto group = groups[0].toObject();
+        group["pieceIds"] = QJsonArray{"missing-piece"};
+        groups[0] = group;
+        layout["groups"] = groups;
+        broken["layout"] = layout;
+        saveBytes(path, QJsonDocument(broken).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        broken = exported;
+        broken.remove("layout");
+        saveBytes(path, QJsonDocument(broken).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        broken = exported;
+        layout = broken["layout"].toObject();
+        layout["unexpected"] = true;
+        broken["layout"] = layout;
+        saveBytes(path, QJsonDocument(broken).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        broken = exported;
+        broken["schemaVersion"] = "1.0.0";
+        saveBytes(path, QJsonDocument(broken).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+    }
+};
+QTEST_GUILESS_MAIN(LayoutTests)
+#include "layout_test.moc"

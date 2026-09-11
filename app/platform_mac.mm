@@ -41,6 +41,10 @@ QString attributeText(AXUIElementRef element, CFStringRef attribute) {
     return text;
 }
 } // namespace
+void prepareScreenCapture(QObject *context, std::function<void()> ready) {
+    // Cocoa finishes dismissing the status-item menu after its action returns.
+    QTimer::singleShot(250, context, std::move(ready));
+}
 void captureScreens(CaptureCallback callback) {
     if (!CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess()) {
         callback({}, "请在系统设置 → 隐私与安全性 → 屏幕录制中允许 Help2Design，然后重试。");
@@ -191,13 +195,15 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
     NSWindow *window = view.window;
     if (!window)
         return;
-    window.collectionBehavior =
-        NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
     if (overlay) {
+        window.collectionBehavior =
+            NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
         window.level = NSStatusWindowLevel + 1;
         window.hasShadow = NO;
-    } else
-        window.level = NSFloatingWindowLevel;
+    } else {
+        window.collectionBehavior = NSWindowCollectionBehaviorDefault;
+        window.level = NSNormalWindowLevel;
+    }
 }
 QString globalShortcutLabel() {
     return "⌘ + Shift + 2";

@@ -21,6 +21,10 @@ class Canvas final : public QWidget {
         return selected_;
     }
     void refresh();
+    void setLayoutPreview(bool enabled);
+    bool layoutPreview() const {
+        return layoutPreview_;
+    }
     QPoint toImage(QPointF position) const;
   signals:
     void editRequested(h2d::Note note, bool fresh, QPoint global);
@@ -29,6 +33,7 @@ class Canvas final : public QWidget {
     void hintChanged(QString text);
     void zoomRequested(double zoom);
     void contextRequested(QPoint global);
+    void layoutEditRequested();
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -55,6 +60,8 @@ class Canvas final : public QWidget {
     Note original_, preview_;
     int handle_ = -1;
     std::optional<Candidate> pending_;
+    bool layoutPreview_ = false;
+    QImage layoutImage_;
 };
 } // namespace h2d
 Q_DECLARE_METATYPE(h2d::Note)

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 root = Path(__file__).resolve().parents[1]
-for version in ("v1", "v1.1"):
+for version in ("v1", "v1.1", "v2"):
     schema = json.loads((root / "schema" / f"feedback-{version}.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     document = json.loads((root / "artifacts/native-ui" / f"feedback-{version}.json").read_text(encoding="utf-8"))

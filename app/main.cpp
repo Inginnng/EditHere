@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setApplicationName("Help2Design");
     app.setOrganizationName("Help2Design");
-    app.setApplicationVersion("0.4.0");
+    app.setApplicationVersion("0.5.0");
     app.setQuitOnLastWindowClosed(false);
     app.setWindowIcon(glyph("capture", accent()));
     applyTheme();

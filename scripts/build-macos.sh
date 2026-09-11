@@ -9,7 +9,7 @@ cmake -S "$project_root" -B "$build_path" -G Ninja \
 cmake --build "$build_path" --parallel
 export H2D_TEST_ARTIFACTS="$project_root/artifacts/native-ui"
 ctest --test-dir "$build_path" --output-on-failure
-output="$project_root/dist/Help2Design-Native-0.4.0-macos-universal"
+output="$project_root/dist/Help2Design-Native-0.5.0-macos-universal"
 if [[ -e "$output" ]]; then printf '%s\n' "Output already exists: $output" >&2; exit 1; fi
 mkdir -p "$output"
 cp -R "$build_path/Help2Design.app" "$output/"

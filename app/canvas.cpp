@@ -15,6 +15,8 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
 }
 void Canvas::setDocument(Document *doc) {
     doc_ = doc;
+    layoutPreview_ = false;
+    layoutImage_ = {};
     selected_.clear();
     picker_.reset();
     drawing_ = moving_ = false;
@@ -40,6 +42,15 @@ void Canvas::select(const QString &id) {
     update();
 }
 void Canvas::refresh() {
+    if (layoutPreview_)
+        setLayoutPreview(true);
+    update();
+}
+void Canvas::setLayoutPreview(bool enabled) {
+    layoutPreview_ = enabled && doc_ && doc_->layout.has_value();
+    layoutImage_ = layoutPreview_ ? renderLayout(doc_->image, *doc_->layout) : QImage();
+    drawing_ = moving_ = panning_ = false;
+    picker_.reset();
     update();
 }
 QPoint Canvas::toImage(QPointF p) const {
@@ -69,6 +80,15 @@ void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
+    if (layoutPreview_) {
+        p.fillRect(rect(), Qt::white);
+        for (int y = 0; y < height(); y += 14)
+            for (int x = 0; x < width(); x += 14)
+                if ((x / 14 + y / 14) % 2 == 0)
+                    p.fillRect(x, y, 14, 14, QColor("#e7e8ed"));
+        p.drawImage(rect(), layoutImage_);
+        return;
+    }
     p.drawImage(rect(), doc_->image);
     auto outline = [&](QRect r, QColor color, bool fill, bool dashed) {
         QRectF scaled(r.x() * zoom_, r.y() * zoom_, r.width() * zoom_, r.height() * zoom_);
@@ -136,6 +156,8 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         windowStart_ = window()->pos();
         return;
     }
+    if (layoutPreview_)
+        return;
     QPoint point = toImage(e->position());
     int index = hit(e->position(), mode_ == Adjust);
     handle_ = -1;
@@ -175,6 +197,8 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
+    if (layoutPreview_ && !panning_)
+        return;
     if (!doc_)
         return;
     if (panning_) {
@@ -201,6 +225,10 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     }
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    if (layoutPreview_) {
+        panning_ = false;
+        return;
+    }
     if (e->button() != Qt::LeftButton || !doc_)
         return;
     if (panning_) {
@@ -240,6 +268,10 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     emit editRequested(n, true, e->globalPosition().toPoint());
 }
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
+    if (layoutPreview_) {
+        emit layoutEditRequested();
+        return;
+    }
     if (doc_ && mode_ == Adjust) {
         moving_ = drawing_ = false;
         int i = hit(e->position(), true);
@@ -250,7 +282,8 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
 void Canvas::wheelEvent(QWheelEvent *e) {
     if (!doc_ || drawing_ || moving_)
         return;
-    if (mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
+    if (!layoutPreview_ && mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) &&
+        !(e->modifiers() & Qt::MetaModifier)) {
         picker_.update(doc_->candidates, toImage(e->position()));
         picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
         updateHint();

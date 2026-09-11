@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "detector.h"
+#include "explosion.h"
 #include "platform.h"
 #include "ui.h"
 #include <QApplication>
@@ -35,7 +36,7 @@
 namespace h2d {
 Editor::Editor(QWidget *parent) : QWidget(parent) {
     setWindowTitle("Help2Design");
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
     setAcceptDrops(true);
     setMinimumSize(740, 400);
@@ -58,6 +59,19 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addSpacing(10);
     header->addWidget(meta_);
     header->addStretch();
+    layoutView_ = textButton("批注原图", false, bar);
+    layoutView_->setObjectName("layoutView");
+    layoutView_->hide();
+    header->addWidget(layoutView_);
+    connect(layoutView_, &QPushButton::clicked, this, [this] {
+        canvas_->setLayoutPreview(!canvas_->layoutPreview());
+        updateLayoutControls();
+    });
+    explosion_ = textButton("大爆炸", false, bar);
+    explosion_->setObjectName("explodeButton");
+    explosion_->setEnabled(false);
+    header->addWidget(explosion_);
+    connect(explosion_, &QPushButton::clicked, this, &Editor::explode);
     auto capture = iconButton("capture", "重新截图", bar);
     auto open = iconButton("save", "打开图片或项目", bar);
     auto close = iconButton("close", "收起到托盘", bar);
@@ -154,12 +168,13 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto grip = new QSizeGrip(shell);
     dock->addWidget(grip);
     layout->addLayout(dock);
+    connect(canvas_, &Canvas::layoutEditRequested, this, &Editor::explode);
     connect(canvas_, &Canvas::editRequested, this, &Editor::editNote);
     connect(canvas_, &Canvas::hintChanged, hint_, &QLabel::setText);
     connect(canvas_, &Canvas::zoomRequested, this, &Editor::zoom);
     connect(canvas_, &Canvas::contextRequested, this, &Editor::showContext);
     connect(canvas_, &Canvas::geometryChanged, this, [this](Note n) {
-        history_.push(doc_.notes);
+        remember();
         for (auto &stored : doc_.notes)
             if (stored.id == n.id) {
                 stored = n;
@@ -192,9 +207,13 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
 void Editor::setDocument(Document document) {
     doc_ = std::move(document);
     projectPath_.clear();
-    history_.clear();
+    undoHistory_.clear();
+    redoHistory_.clear();
     canvas_->setDocument(&doc_);
     setMode(Canvas::Smart);
+    canvas_->setLayoutPreview(doc_.layout.has_value());
+    explosion_->setEnabled(doc_.layout.has_value());
+    updateLayoutControls();
     notesPanel_->setVisible(!doc_.notes.isEmpty());
     meta_->setText(QString("%1 × %2").arg(doc_.image.width()).arg(doc_.image.height()));
     renderNotes();
@@ -212,8 +231,12 @@ void Editor::setDocument(Document document) {
         if (generation == generation_) {
             auto candidates = watcher->result();
             doc_.candidates += candidates;
+            auto whole = manualTarget();
+            whole["label"] = "整个图片";
+            doc_.candidates.append({QRect(QPoint(0, 0), doc_.image.size()), whole});
             canvas_->refresh();
-            hint_->setText("滚轮 ↑ 更大 ↓ 更小 · 单击批注 · 拖动框选");
+            explosion_->setEnabled(true);
+            updateLayoutControls();
         }
         watcher->deleteLater();
     });
@@ -249,14 +272,16 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, &Editor::fit);
 }
 void Editor::setMode(Canvas::Mode mode) {
+    canvas_->setLayoutPreview(false);
     canvas_->setMode(mode);
+    updateLayoutControls();
     updateControls();
 }
 void Editor::updateControls() {
     for (int i = 0; i < modes_.size(); i++)
         modes_[i]->setChecked(i == canvas_->mode());
-    undo_->setEnabled(history_.canUndo());
-    redo_->setEnabled(history_.canRedo());
+    undo_->setEnabled(!undoHistory_.isEmpty());
+    redo_->setEnabled(!redoHistory_.isEmpty());
     notesToggle_->setChecked(!notesPanel_->isHidden());
 }
 QString Editor::coords(const Note &n) const {
@@ -380,7 +405,7 @@ void Editor::editNote(Note note, bool fresh, QPoint global) {
         return;
     note.comment = text->toPlainText().trimmed();
     note.updatedAt = timestamp();
-    history_.push(doc_.notes);
+    remember();
     if (fresh)
         doc_.notes.append(note);
     else
@@ -402,31 +427,78 @@ void Editor::changed() {
     renderNotes();
     updateControls();
 }
+void Editor::remember() {
+    undoHistory_.append({doc_.notes, doc_.layout});
+    if (undoHistory_.size() > 60)
+        undoHistory_.removeFirst();
+    redoHistory_.clear();
+}
+void Editor::restore(Snapshot snapshot) {
+    bool layoutChanged = doc_.layout != snapshot.layout;
+    doc_.notes = std::move(snapshot.notes);
+    doc_.layout = std::move(snapshot.layout);
+    if (layoutChanged)
+        canvas_->setLayoutPreview(doc_.layout.has_value());
+    canvas_->select({});
+    changed();
+    updateLayoutControls();
+}
 void Editor::undo() {
-    if (history_.canUndo()) {
-        doc_.notes = history_.undo(doc_.notes);
-        changed();
-    }
+    if (undoHistory_.isEmpty())
+        return;
+    redoHistory_.append({doc_.notes, doc_.layout});
+    restore(undoHistory_.takeLast());
 }
 void Editor::redo() {
-    if (history_.canRedo()) {
-        doc_.notes = history_.redo(doc_.notes);
-        changed();
+    if (redoHistory_.isEmpty())
+        return;
+    undoHistory_.append({doc_.notes, doc_.layout});
+    restore(redoHistory_.takeLast());
+}
+void Editor::updateLayoutControls() {
+    if (!layoutView_)
+        return;
+    layoutView_->setVisible(doc_.layout.has_value());
+    layoutView_->setText(canvas_->layoutPreview() ? "批注原图" : "查看调整效果");
+    hint_->setText(canvas_->layoutPreview() ? "布局预览 · 双击继续大爆炸 · 点击“批注原图”添加修改意见"
+                                            : "滚轮切换所有包含鼠标位置的区域 · 单击批注 · 拖动框选");
+}
+void Editor::explode() {
+    if (!hasDocument())
+        return;
+    try {
+        const auto state = doc_.layout ? *doc_.layout : createLayout(doc_.image.size(), doc_.candidates);
+        ExplosionDialog dialog(doc_.image, state, this);
+        if (dialog.exec() != QDialog::Accepted)
+            return;
+        if (!doc_.layout || *doc_.layout != dialog.result()) {
+            remember();
+            doc_.layout = dialog.result();
+            canvas_->setLayoutPreview(true);
+            changed();
+        } else
+            canvas_->setLayoutPreview(true);
+        updateLayoutControls();
+    } catch (const std::exception &error) {
+        showError(QString::fromUtf8(error.what()));
     }
 }
 void Editor::removeSelected() {
+    if (canvas_->layoutPreview())
+        return;
     QString id = canvas_->selected();
     if (id.isEmpty())
         return;
-    history_.push(doc_.notes);
+    remember();
     doc_.notes.removeIf([&](const Note &n) { return n.id == id; });
     canvas_->select({});
     changed();
 }
 void Editor::copyImage() {
     if (hasDocument()) {
-        QApplication::clipboard()->setImage(doc_.image);
-        hint_->setText("原图已复制");
+        QApplication::clipboard()->setImage(canvas_->layoutPreview() ? renderLayout(doc_.image, *doc_.layout)
+                                                                     : doc_.image);
+        hint_->setText(canvas_->layoutPreview() ? "调整效果已复制" : "原图已复制");
     }
 }
 void Editor::showError(const QString &text) {
@@ -443,10 +515,11 @@ bool Editor::saveProject() {
     if (!path.endsWith(".json", Qt::CaseInsensitive))
         path += ".json";
     try {
-        saveBytes(path, QJsonDocument(exportDocument(doc_, true)).toJson(QJsonDocument::Indented));
+        saveBytes(path, serializeDocument(doc_, true));
         projectPath_ = path;
         doc_.dirty = false;
-        hint_->setText("项目已保存，包含原图和全部批注");
+        hint_->setText(doc_.layout ? "项目已保存，包含原图、全部批注和组件布局"
+                                   : "项目已保存，包含原图和全部批注");
         return true;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -456,9 +529,9 @@ bool Editor::saveProject() {
 bool Editor::allowReplace() {
     if (!doc_.dirty)
         return true;
-    auto answer = QMessageBox::question(this, "保留当前批注？", "当前批注尚未保存。是否先保存项目？",
-                                        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
-                                        QMessageBox::Save);
+    auto answer = QMessageBox::question(
+        this, "保留当前修改？", "当前批注或布局修改尚未保存。是否先保存项目？",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (answer == QMessageBox::Cancel)
         return false;
     return answer == QMessageBox::Discard || saveProject();
@@ -496,15 +569,23 @@ void Editor::pasteImage() {
 void Editor::saveImage(bool annotated) {
     if (!hasDocument())
         return;
-    QString path =
-        QFileDialog::getSaveFileName(this, annotated ? "保存批注预览" : "保存原图",
-                                     annotated ? "preview.png" : doc_.imageFile, "PNG 图片 (*.png)");
+    const bool layoutPreview = !annotated && canvas_->layoutPreview();
+    QString path = QFileDialog::getSaveFileName(this,
+                                                annotated       ? "保存批注预览"
+                                                : layoutPreview ? "保存调整效果"
+                                                                : "保存原图",
+                                                annotated       ? "preview.png"
+                                                : layoutPreview ? "layout.png"
+                                                                : doc_.imageFile,
+                                                "PNG 图片 (*.png)");
     if (path.isEmpty())
         return;
     if (!path.endsWith(".png", Qt::CaseInsensitive))
         path += ".png";
     try {
-        saveBytes(path, annotated ? encodePng(previewImage(doc_)) : doc_.png);
+        saveBytes(path, annotated                  ? encodePng(previewImage(doc_))
+                        : canvas_->layoutPreview() ? encodePng(renderLayout(doc_.image, *doc_.layout))
+                                                   : doc_.png);
         hint_->setText("图片已保存");
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -532,15 +613,12 @@ void Editor::exportJson() {
     json->setLineWrapMode(QPlainTextEdit::NoWrap);
     json->setFont(QFont("Consolas", 10));
     layout->addWidget(json, 1);
-    auto status = mutedLabel("将 JSON 和原图一起交给 AI，即可定位修改位置。", &dialog);
+    auto status =
+        mutedLabel(doc_.layout ? "包含组件的原始切片与目标位置。批注坐标对应原图，保存时另附布局效果图。"
+                               : "将 JSON 和原图一起交给 AI，即可定位修改位置。",
+                   &dialog);
     status->setWordWrap(true);
     layout->addWidget(status);
-    auto refresh = [&] {
-        json->setPlainText(QString::fromUtf8(
-            QJsonDocument(exportDocument(doc_, embed->isChecked())).toJson(QJsonDocument::Indented)));
-    };
-    refresh();
-    connect(embed, &QCheckBox::toggled, &dialog, refresh);
     auto row = new QHBoxLayout;
     auto save = textButton("保存 JSON 与图片", false, &dialog), close = textButton("关闭", false, &dialog),
          copy = textButton("复制 JSON", true, &dialog);
@@ -549,12 +627,36 @@ void Editor::exportJson() {
     row->addWidget(close);
     row->addWidget(copy);
     layout->addLayout(row);
+    QByteArray exportBytes;
+    auto refresh = [&] {
+        try {
+            exportBytes = serializeDocument(doc_, embed->isChecked());
+            json->setPlainText(QString::fromUtf8(exportBytes));
+            copy->setEnabled(true);
+            save->setEnabled(true);
+            status->setText(doc_.layout
+                                ? "包含组件的原始切片与目标位置。批注坐标对应原图，保存时另附布局效果图。"
+                                : "将 JSON 和原图一起交给 AI，即可定位修改位置。");
+        } catch (const std::exception &error) {
+            exportBytes.clear();
+            json->clear();
+            copy->setEnabled(false);
+            save->setEnabled(false);
+            status->setText(QString::fromUtf8(error.what()));
+        }
+    };
+    refresh();
+    connect(embed, &QCheckBox::toggled, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
     connect(copy, &QPushButton::clicked, &dialog, [&] {
-        QApplication::clipboard()->setText(json->toPlainText());
+        if (exportBytes.isEmpty())
+            return;
+        QApplication::clipboard()->setText(QString::fromUtf8(exportBytes));
         status->setText("JSON 已复制");
     });
     connect(save, &QPushButton::clicked, &dialog, [&] {
+        if (exportBytes.isEmpty())
+            return;
         QString base = QFileDialog::getExistingDirectory(&dialog, "选择导出目录");
         if (base.isEmpty())
             return;
@@ -570,7 +672,13 @@ void Editor::exportJson() {
                                   ? "annotations-preview.png"
                                   : "preview.png";
             saveBytes(dir.filePath(preview), encodePng(previewImage(doc_)));
-            saveBytes(dir.filePath("feedback.json"), json->toPlainText().toUtf8());
+            if (doc_.layout) {
+                const QString layoutFile = doc_.imageFile.compare("layout.png", Qt::CaseInsensitive) == 0
+                                               ? "layout-result.png"
+                                               : "layout.png";
+                saveBytes(dir.filePath(layoutFile), encodePng(renderLayout(doc_.image, *doc_.layout)));
+            }
+            saveBytes(dir.filePath("feedback.json"), exportBytes);
             status->setText("已保存到：" + folder);
         } catch (const std::exception &e) {
             status->setText(QString::fromUtf8(e.what()));
@@ -583,8 +691,8 @@ void Editor::showContext(QPoint p) {
     menu.addAction("重新截图", this, &Editor::captureRequested);
     menu.addAction("打开图片或项目", this, [this] { openFile(); });
     menu.addSeparator();
-    menu.addAction("复制原图", this, &Editor::copyImage);
-    menu.addAction("保存原图", this, [this] { saveImage(); });
+    menu.addAction(canvas_->layoutPreview() ? "复制调整效果" : "复制原图", this, &Editor::copyImage);
+    menu.addAction(canvas_->layoutPreview() ? "保存调整效果" : "保存原图", this, [this] { saveImage(); });
     menu.addAction("保存批注预览", this, [this] { saveImage(true); });
     menu.addAction("保存项目", this, [this] { saveProject(); });
     menu.addAction("导出 JSON", this, &Editor::exportJson);

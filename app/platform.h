@@ -13,6 +13,8 @@ struct ScreenFrame {
     bool nativePixels = false;
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
+// Let transient tray UI close before reading any screen pixels.
+void prepareScreenCapture(QObject *context, std::function<void()> ready);
 void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
