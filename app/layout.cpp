@@ -196,6 +196,10 @@ LayoutState createLayout(QSize size, const QVector<Candidate> &input) {
     state.pieces.append({uniqueId(), full, full});
     auto candidates = input;
     std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate &a, const Candidate &b) {
+        const bool tableA = a.target["method"].toString().startsWith("table-");
+        const bool tableB = b.target["method"].toString().startsWith("table-");
+        if (tableA != tableB)
+            return tableA;
         return qint64(a.bounds.width()) * a.bounds.height() < qint64(b.bounds.width()) * b.bounds.height();
     });
     QVector<QRectF> seen;

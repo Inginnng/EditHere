@@ -151,8 +151,22 @@ QVector<Candidate> detectBlocks(const QImage &original) {
             const qsizetype index = qint64(i) * (output.size() - 1) / (maxCandidates - 1);
             sampled.append(output[index]);
         }
-        return sampled;
+        output = std::move(sampled);
     }
-    return output;
+    auto structured = detectTableBlocks(original);
+    if (structured.isEmpty())
+        return output;
+    QVector<Candidate> other;
+    for (const auto &candidate : output) {
+        const bool duplicate = std::any_of(structured.cbegin(), structured.cend(), [&](const auto &table) {
+            return overlap(candidate.bounds, table.bounds) > .87;
+        });
+        if (!duplicate)
+            other.append(candidate);
+    }
+    const int count = std::min(int(other.size()), 480 - int(structured.size()));
+    for (int i = 0; i < count; ++i)
+        structured.append(other[count == 1 ? 0 : qint64(i) * (other.size() - 1) / (count - 1)]);
+    return structured;
 }
 } // namespace h2d

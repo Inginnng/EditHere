@@ -1,4 +1,4 @@
-# HelpDesign · 0.8.1
+# HelpDesign · 0.8.2
 
 面向 AI 开发反馈的桌面截图批注工具。截图松手后直接进入批注，在同一个窗口中标记修改意见、移动或缩放组件，最后复制包含原图、批注与变化的 JSON。
 
@@ -12,7 +12,7 @@
 
 ## 运行
 
-Windows 便携包：`dist/HelpDesign-0.8.1-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
+Windows 便携包：`dist/HelpDesign-0.8.2-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
 
 下文列出默认快捷键，可在设置中修改对应键盘操作。首次启动直接截图；之后按 **Ctrl + Shift + 2** 或点击托盘图标截图。程序先关闭自身菜单并让系统托盘面板失去焦点，再采集画面。只有截图遮罩置顶，编辑窗口是普通应用窗口。
 
@@ -25,6 +25,16 @@ Windows 便携包：`dist/HelpDesign-0.8.1-win-x64.zip`。先从托盘退出旧�
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Command + Shift + 2。Mac 尚未实机验证。
+
+## 0.8.2 识别升级
+
+保留色块与内容边缘检测，增加原始分辨率的横竖线、闭合网格和合并单元格检测。浅灰细线、暗色表格、短断线和交替行底色不再只依赖旧版固定边缘阈值；不将线条检测图缩到 1100 像素。
+
+表格候选包含单元格、行、列、整表，滚轮仍遍历包含指针的全部已识别范围。密集场景优先保留整表及行列候选；最多保留 384 个结构候选、合计 480 个图像候选，超限时对单元格采样。大爆炸优先使用这些结构区域，避免被大量文字碎块挤掉。
+
+实现参考 [OpenCV 方向性线条提取](https://docs.opencv.org/4.x/dd/dd7/tutorial_morph_lines_detection.html) 的思路，在现有 C++/Qt 中实现局部对比、短缺口连接及长直线筛选；没有打包 OpenCV 库或模型。无边框、旋转表格、过于模糊的线条、图片内部语义物体仍可能漏检，需要手动画框。
+
+新增检测回归覆盖浅色/暗色/粗线、4K 密集网格、文字与交替底色、合并单元格、短断线、独立表格、边框图片及非表格纹理。测试样例中的 4K 浅灰 18×18 网格从旧版零候选提升为 324 个单元格及行列/整表；这不是所有真实页面的准确率承诺。
 
 ## 0.8.1 改进
 
@@ -130,7 +140,7 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 
 ## 识别与平台边界
 
-图片识别完全在本机运行，采用颜色连通区域和边缘聚合，不需要网络、账号或模型下载。它能识别卡片、图片和较清晰的轮廓，但不是 OCR 或语义物体识别，不能保证每个候选都是用户理解的组件；可手动画框补充。
+图片识别完全在本机运行，采用颜色连通区域、边缘聚合及横竖线网格分析，不需要网络、账号或模型下载。它能识别卡片、图片和较清晰的轮廓，但不是 OCR 或语义物体识别，不能保证每个候选都是用户理解的组件；可手动画框补充。
 
 Windows 使用 UI Automation、Mac 使用 Accessibility 读取目标应用公开的元素边界。探测在独立短进程中运行，超时会停止。识别信息不包含代码仓库里的 DOM、组件名或源码位置；网页 DOM 标注仍是独立方向。
 
@@ -141,7 +151,7 @@ Windows 使用 UI Automation、Mac 使用 Accessibility 读取目标应用公开
 | Windows x64 | 在 Windows 11 开发与测试；最低构建目标为 Windows 10 1809+，未逐一测试旧系统 |
 | Windows 截图与 UI Automation | 已用本程序真实测试窗口校验像素、物理尺寸和按钮边界 |
 | Windows 托盘面板与多屏 | 仍需更多真实环境验收 |
-| Mac | GitHub macOS 构建与四组自动测试已通过，生成临时签名 DMG；**尚未实机验收** |
+| Mac | GitHub macOS 构建与自动测试已通过，生成临时签名 DMG；**尚未实机验收** |
 | Mac ARM / Intel | 已编译 arm64 + x86_64 通用程序，CI 在 Apple 芯片环境运行测试；Intel 尚未运行验收 |
 
 Mac 目标为 macOS 14+，使用 ScreenCaptureKit。首次截图需屏幕录制授权；系统元素识别需辅助功能授权，托盘菜单提供入口。普通图片导入无需这些权限。目前没有可用的 Mac 测试设备。公开 Mac 发行还需产品所有者的 Apple 签名和公证。
@@ -157,7 +167,7 @@ Windows PowerShell 7，CMake 在 PATH 中：
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
 ```
 
-构建脚本运行核心数据、布局、界面、设置和 Windows 平台五组测试。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+构建脚本运行表格检测、核心数据、布局、界面、设置和 Windows 平台六组测试。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
 Mac 构建（CI 已执行，尚未实机验收）：
 
