@@ -184,8 +184,13 @@ bool requestAccessibility() {
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
 void configureNativeWindow(QWidget *widget, bool overlay) {
+    // Offscreen test windows do not have an NSView-backed native handle.
+    if (QGuiApplication::platformName() != "cocoa")
+        return;
     NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
     NSWindow *window = view.window;
+    if (!window)
+        return;
     window.collectionBehavior =
         NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
     if (overlay) {
