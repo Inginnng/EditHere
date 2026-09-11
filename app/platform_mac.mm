@@ -234,8 +234,8 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
         CGSize s{};
         if (pos && size && CFGetTypeID(pos) == AXValueGetTypeID() &&
             CFGetTypeID(size) == AXValueGetTypeID() &&
-            AXValueGetValue((AXValueRef)pos, kAXValueCGPointType, &p) &&
-            AXValueGetValue((AXValueRef)size, kAXValueCGSizeType, &s) && s.width > 0 && s.height > 0) {
+            AXValueGetValue((AXValueRef)pos, kAXValueTypeCGPoint, &p) &&
+            AXValueGetValue((AXValueRef)size, kAXValueTypeCGSize, &s) && s.width > 0 && s.height > 0) {
             auto target = manualTarget();
             target["source"] = "accessibility";
             target["method"] = "macos-ax";

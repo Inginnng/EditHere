@@ -9,7 +9,10 @@ permissions:
   contents: read
 jobs:
   macos:
-    runs-on: macos-latest
+    # Qt 6.8.3 links AGL, which is absent from the Xcode 26 SDK.
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt and build tools
