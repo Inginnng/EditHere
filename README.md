@@ -1,12 +1,18 @@
-# HelpDesign · 0.8.0
+# HelpDesign · 0.8.1
 
 面向 AI 开发反馈的桌面截图批注工具。截图松手后直接进入批注，在同一个窗口中标记修改意见、移动或缩放组件，最后复制包含原图、批注与变化的 JSON。
 
 当前分支为 `codex/native`，使用 C++20 + Qt 6 Widgets。已保留的 `desktop` 分支为 Windows WPF 0.2（`cf9c364`），`web` 分支为 Web 0.3（`66548c5`）。
 
+## 版本管理
+
+日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。
+
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.1` 继续使用 `feedback-v0.7.schema.json`。
+
 ## 运行
 
-Windows 便携包：`dist/HelpDesign-0.8.0-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
+Windows 便携包：`dist/HelpDesign-0.8.1-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
 
 下文列出默认快捷键，可在设置中修改对应键盘操作。首次启动直接截图；之后按 **Ctrl + Shift + 2** 或点击托盘图标截图。程序先关闭自身菜单并让系统托盘面板失去焦点，再采集画面。只有截图遮罩置顶，编辑窗口是普通应用窗口。
 
@@ -19,6 +25,14 @@ Windows 便携包：`dist/HelpDesign-0.8.0-win-x64.zip`。先从托盘退出旧�
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Command + Shift + 2。Mac 尚未实机验证。
+
+## 0.8.1 改进
+
+- 大图透明背景仅绘制可见区域，减少放大后的重绘开销。
+- 横向滚动和零增量滚轮不再误缩小选区；大爆炸拖动失焦时取消未提交操作。
+- 导出先保存 JSON 和原图，附加预览失败会显示具体原因，不阻断核心反馈保存。
+- 复制 JSON 时对剪贴板短暂占用自动重试，失败会明确提示，不再误报成功。
+- 程序、Mac 元数据和打包文件名共用 CMake 版本，日常更新使用末位。
 
 ## 设置
 
@@ -152,6 +166,6 @@ export QT_ROOT="$HOME/Qt/6.8.3/macos"
 bash scripts/build-macos.sh
 ```
 
-脚本生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。私有仓库的 [macOS 构建记录](https://github.com/Inginnng/HelpDesign/actions/runs/34592073641) 保留测试结果和 DMG；屏幕录制授权、辅助功能授权及多屏截图仍需实机验收。
+脚本生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。私有仓库的 [macOS 构建记录](https://github.com/Inginnng/HelpDesign/actions/workflows/native-macos.yml) 保留测试结果和 DMG；屏幕录制授权、辅助功能授权及多屏截图仍需实机验收。
 
 Qt 与 MinGW 的许可、版权声明位于 `packaging/licenses/`，随运行包交付；对应 Qt 源码存于 `dist/native-sources/`。公开分发时需同时提供相应源码归档，见[第三方说明](packaging/THIRD-PARTY-NOTICES.md)。

@@ -58,6 +58,7 @@ class LayoutCanvas final : public QWidget {
     void wheelEvent(QWheelEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void leaveEvent(QEvent *) override;
+    void focusOutEvent(QFocusEvent *) override;
 
   private:
     QPointF pixel(QPointF position) const;

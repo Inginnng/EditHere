@@ -10,6 +10,24 @@
 #include <QStyleHints>
 #include <QToolButton>
 namespace h2d {
+void paintTransparency(QPainter &painter, const QRect &area) {
+    QRect visible = area;
+    if (painter.hasClipping())
+        visible = visible.intersected(painter.clipBoundingRect().toAlignedRect());
+    if (visible.isEmpty())
+        return;
+    painter.save();
+    painter.setClipRect(visible, Qt::IntersectClip);
+    painter.fillRect(visible, isDarkTheme() ? QColor("#25262b") : QColor("#ffffff"));
+    const QColor alternate(isDarkTheme() ? "#34363d" : "#e7e8ed");
+    // Paint only damaged/visible tiles. Keep the canvas origin and vector edges at fractional DPI.
+    const int left = (visible.left() / 14) * 14, top = (visible.top() / 14) * 14;
+    for (int y = top; y <= visible.bottom(); y += 14)
+        for (int x = left; x <= visible.right(); x += 14)
+            if ((x / 14 + y / 14) % 2 == 0)
+                painter.fillRect(x, y, 14, 14, alternate);
+    painter.restore();
+}
 namespace {
 ThemeMode currentTheme = ThemeMode::Light;
 bool darkTheme = false;

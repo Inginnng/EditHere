@@ -1,4 +1,4 @@
-HelpDesign 0.8.0
+HelpDesign（版本见同目录 version.txt）
 
 Windows：先从托盘退出旧版，完整解压后运行 HelpDesign.exe。
 保留同目录 DLL、platforms、imageformats、licenses 等文件；无需额外安装开发环境。

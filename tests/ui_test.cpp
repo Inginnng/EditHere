@@ -13,13 +13,16 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFocusEvent>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFutureWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -274,6 +277,95 @@ class UiTests : public QObject {
         });
         editor.exportJson();
         editor.hide();
+    }
+    void canvasIgnoresHorizontalAndZeroWheelEvents() {
+        auto document = gridDocument();
+        Canvas canvas;
+        canvas.setDocument(&document);
+        canvas.setMode(Canvas::Smart);
+        canvas.show();
+        QTest::qWait(20);
+        const QPoint position(120, 195);
+        auto sendWheel = [&](QPoint delta, Qt::KeyboardModifiers modifiers = Qt::NoModifier,
+                             Qt::ScrollPhase phase = Qt::NoScrollPhase) {
+            QWheelEvent event(QPointF(position), QPointF(canvas.mapToGlobal(position)), QPoint(), delta,
+                              Qt::NoButton, modifiers, phase, false);
+            QApplication::sendEvent(&canvas, &event);
+        };
+        QSignalSpy hints(&canvas, &Canvas::hintChanged);
+        QSignalSpy zooms(&canvas, &Canvas::zoomRequested);
+        QSignalSpy edits(&canvas, &Canvas::editRequested);
+        sendWheel({0, 120});
+        QCOMPARE(hints.size(), 1);
+        sendWheel({120, 0});
+        sendWheel({}, Qt::NoModifier, Qt::ScrollEnd);
+        QCOMPARE(hints.size(), 1);
+        QVERIFY(zooms.isEmpty());
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, position);
+        QCOMPARE(edits.size(), 1);
+        QCOMPARE(qvariant_cast<Note>(edits.first().first()).rect, QRect(60, 150, 240, 90));
+
+        sendWheel({120, 0}, Qt::ControlModifier);
+        sendWheel({}, Qt::ControlModifier, Qt::ScrollEnd);
+        canvas.setMode(Canvas::Point);
+        sendWheel({120, 0});
+        sendWheel({}, Qt::NoModifier, Qt::ScrollEnd);
+        QVERIFY(zooms.isEmpty());
+        sendWheel({0, -120});
+        QCOMPARE(zooms.size(), 1);
+        QVERIFY(zooms.first().first().toDouble() < canvas.zoom());
+    }
+    void explosionCancelsInterruptedGesturesAndPreservesSelectionOnFocusChange() {
+        auto document = gridDocument();
+        const auto baseline = createLayout(document.image.size(), document.candidates);
+        LayoutCanvas canvas(document.image, baseline);
+        LayoutInspector inspector(&canvas);
+        canvas.show();
+        QTest::qWait(20);
+        QSignalSpy changes(&canvas, &LayoutCanvas::changed);
+        const QPoint start(100, 110), end(140, 135);
+        auto pointerMove = [&](QPoint position, Qt::MouseButtons buttons) {
+            QMouseEvent event(QEvent::MouseMove, QPointF(position), QPointF(canvas.mapToGlobal(position)),
+                              Qt::NoButton, buttons, Qt::NoModifier);
+            QApplication::sendEvent(&canvas, &event);
+        };
+        auto loseFocus = [&](Qt::FocusReason reason) {
+            QFocusEvent event(QEvent::FocusOut, reason);
+            QApplication::sendEvent(&canvas, &event);
+        };
+        QTest::mousePress(&canvas, Qt::LeftButton, Qt::NoModifier, start);
+        pointerMove(end, Qt::LeftButton);
+        QVERIFY(canvas.state() != baseline);
+        QVERIFY(changes.isEmpty());
+        loseFocus(Qt::ActiveWindowFocusReason);
+        QVERIFY(canvas.state() == baseline);
+        QVERIFY(canvas.selected().isEmpty());
+        pointerMove(end + QPoint(50, 25), Qt::NoButton);
+        QTest::mouseRelease(&canvas, Qt::LeftButton, Qt::NoModifier, end);
+        QVERIFY(canvas.state() == baseline);
+        QVERIFY(changes.isEmpty());
+
+        canvas.setDrawing(true);
+        QTest::mousePress(&canvas, Qt::LeftButton, Qt::NoModifier, start);
+        pointerMove(end, Qt::LeftButton);
+        loseFocus(Qt::ActiveWindowFocusReason);
+        QVERIFY(!canvas.drawingMode());
+        QTest::mouseRelease(&canvas, Qt::LeftButton, Qt::NoModifier, end);
+        QVERIFY(canvas.state() == baseline);
+        QVERIFY(changes.isEmpty());
+
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, start);
+        const auto selected = canvas.selected();
+        QVERIFY(!selected.isEmpty());
+        loseFocus(Qt::MouseFocusReason);
+        QCOMPARE(canvas.selected(), selected);
+        QVERIFY(canvas.state() == baseline);
+        auto x = inspector.findChild<QDoubleSpinBox *>("layoutX");
+        QVERIFY(x && x->isEnabled());
+        x->setValue(80);
+        QVERIFY(QMetaObject::invokeMethod(x, "editingFinished", Qt::DirectConnection));
+        QCOMPARE(canvas.selectionBounds().x(), 80.0);
+        QCOMPARE(changes.size(), 1);
     }
     void explosionSelectionTransformAndManualRegion() {
         auto document = gridDocument();
@@ -748,16 +840,24 @@ class UiTests : public QObject {
                     copy = button;
             QVERIFY(copy && copy->isEnabled());
             copy->click();
+            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+                         expectedEmbedded);
             const auto copied = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(copied.object(), expectedEmbedded);
+            QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 已复制"));
             const auto encoded =
                 copied.object()["image"].toString().mid(QString("data:image/png;base64,").size());
             QCOMPARE(QByteArray::fromBase64(encoded.toLatin1()), document.png);
             QApplication::clipboard()->clear();
+            dialog->raise();
+            dialog->activateWindow();
             text->setFocus();
+            QTRY_VERIFY(dialog->isActiveWindow() && text->hasFocus());
             text->selectAll();
             QTest::keyClick(text, Qt::Key_C, Qt::ControlModifier);
+            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+                         expectedEmbedded);
             const auto keyboardCopy =
                 QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
@@ -774,8 +874,8 @@ class UiTests : public QObject {
             QCOMPARE(compact.object(), expectedFeedback);
             QVERIFY(!compact.object().contains("image"));
             copy->click();
-            QCOMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
-                     expectedFeedback);
+            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+                         expectedFeedback);
             artifact(*dialog, "compact-export.png");
             exportChecked = true;
             dialog->reject();
@@ -845,6 +945,71 @@ class UiTests : public QObject {
         QVERIFY(editor.layoutCanvas() == nullptr);
         QVERIFY(canvas.isNull());
         QVERIFY(!editor.isVisible());
+    }
+    void previewLimitDoesNotLoseExportedFeedback() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        // A legal comment can make the optional preview taller than its image limit.
+        auto document = gridDocument();
+        Note note;
+        note.point = {120, 100};
+        note.comment = QString("line\n").repeated(1900);
+        document.notes.append(note);
+        document.dirty = true;
+        QVERIFY_EXCEPTION_THROWN(previewImage(document), std::runtime_error);
+        Editor editor;
+        editor.setDocument(document);
+        bool exported = false, choseDirectory = false;
+        QTimer watchdog;
+        watchdog.setInterval(5000);
+        connect(&watchdog, &QTimer::timeout, &editor, [] {
+            if (auto active = QApplication::activeModalWidget())
+                active->close();
+        });
+        watchdog.start();
+        QTimer::singleShot(60, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto save = dialog->findChild<QPushButton *>("saveFeedbackBundle");
+            auto status = dialog->findChild<QLabel *>("exportStatus");
+            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
+            QVERIFY(save && status && embed);
+            // Exercise both standalone and paired-image feedback.
+            for (bool embedded : {true, false}) {
+                embed->setChecked(embedded);
+                QTimer::singleShot(60, dialog, [&] {
+                    auto chooser = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+                    QVERIFY(chooser);
+                    choseDirectory = true;
+                    chooser->setDirectory(directory.path());
+                    QMetaObject::invokeMethod(chooser, "accept", Qt::DirectConnection);
+                });
+                save->click();
+                QVERIFY(choseDirectory);
+                QVERIFY(status->text().contains("JSON 与原图已保存"));
+                QVERIFY(status->text().contains("批注预览未保存"));
+            }
+            auto folders = QDir(directory.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            QCOMPARE(folders.size(), 2);
+            for (const auto &folder : folders) {
+                const QDir output(QDir(directory.path()).filePath(folder));
+                QVERIFY(output.exists("feedback.json"));
+                QVERIFY(output.exists("feedback.png"));
+                QVERIFY(!output.exists("annotations.png"));
+                const auto restored = loadDocument(output.filePath("feedback.json"));
+                QCOMPARE(restored.image, document.image);
+                QCOMPARE(restored.notes.size(), 1);
+                QCOMPARE(restored.notes[0].point, note.point);
+                QCOMPARE(restored.notes[0].comment, note.comment);
+            }
+            exported = true;
+            dialog->reject();
+        });
+        editor.exportJson();
+        watchdog.stop();
+        QVERIFY(exported);
+        QVERIFY(editor.document().dirty);
+        editor.hide();
     }
     void invalidExportKeepsUnsavedWork() {
         QTemporaryDir dir;

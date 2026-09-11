@@ -2,11 +2,13 @@
 #include "ui.h"
 #include <QCheckBox>
 #include <QDoubleSpinBox>
+#include <QFocusEvent>
 #include <QGridLayout>
 #include <QHideEvent>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
@@ -140,14 +142,9 @@ void LayoutCanvas::updateHover(QPointF point) {
                                                   .arg(choices_.size()));
     }
 }
-void LayoutCanvas::paintEvent(QPaintEvent *) {
+void LayoutCanvas::paintEvent(QPaintEvent *event) {
     QPainter p(this);
-    p.fillRect(rect(), QColor(isDarkTheme() ? "#25262b" : "#ffffff"));
-    const int check = 14;
-    for (int y = 0; y < height(); y += check)
-        for (int x = 0; x < width(); x += check)
-            if ((x / check + y / check) % 2 == 0)
-                p.fillRect(x, y, check, check, QColor(isDarkTheme() ? "#34363d" : "#e7e8ed"));
+    paintTransparency(p, event->rect());
     p.save();
     p.scale(zoom_, zoom_);
     paintLayout(p, original_, state_);
@@ -383,6 +380,13 @@ void LayoutCanvas::leaveEvent(QEvent *) {
         hover_.clear();
         update();
     }
+}
+void LayoutCanvas::focusOutEvent(QFocusEvent *event) {
+    // A lost release event must not keep a preview attached to the pointer.
+    // Ordinary focus changes to the inspector preserve the selected component.
+    if (dragging_ || drawing_)
+        cancelInteraction();
+    QWidget::focusOutEvent(event);
 }
 void LayoutCanvas::undo() {
     if (dragging_ || drawing_) {

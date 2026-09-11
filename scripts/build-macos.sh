@@ -10,15 +10,18 @@ cmake --build "$build_path" --parallel
 export H2D_TEST_ARTIFACTS="$project_root/artifacts/native-ui"
 ctest --test-dir "$build_path" --output-on-failure
 if [[ ! -f "$project_root/schema/feedback-v0.7.schema.json" ]]; then printf '%s\n' "The current feedback schema is missing." >&2; exit 1; fi
-output="$project_root/dist/HelpDesign-0.8.0-macos-universal"
-if [[ -e "$output" ]]; then printf '%s\n' "Output already exists: $output" >&2; exit 1; fi
+build_version="$(cat "$build_path/version.txt")"
+if [[ ! "$build_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s\n' "Invalid build version." >&2; exit 1; fi
+output="$project_root/dist/HelpDesign-$build_version-macos-universal"
+if [[ -e "$output" || -e "$output.dmg" ]]; then printf '%s\n' "Output folder or DMG already exists: $output" >&2; exit 1; fi
 mkdir -p "$output"
 cp -R "$build_path/HelpDesign.app" "$output/"
+cp "$build_path/version.txt" "$output/"
 "$QT_ROOT/bin/macdeployqt" "$output/HelpDesign.app" -always-overwrite
 cp -R "$project_root/packaging/licenses" "$output/"
 cp -R "$project_root/schema" "$output/"
 cp "$project_root/packaging/使用说明.txt" "$project_root/packaging/THIRD-PARTY-NOTICES.md" "$output/"
 # Local test signing only. Distribution signing/notarization needs the product owner's Apple identity.
 codesign --force --deep --sign - "$output/HelpDesign.app"
-hdiutil create -volname HelpDesign -srcfolder "$output" -ov -format UDZO "$output.dmg"
+hdiutil create -volname HelpDesign -srcfolder "$output" -format UDZO "$output.dmg"
 printf '%s\n' "Local test build: $output.dmg"

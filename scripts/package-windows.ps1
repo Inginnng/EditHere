@@ -2,21 +2,27 @@ param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
-    [string]$OutputDirectory = "dist/HelpDesign-0.8.0-win-x64"
+    [string]$OutputDirectory = ""
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $QtRoot) { $QtRoot = Join-Path $projectRoot ".tools/qt/6.8.3/mingw_64" }
 $QtRoot = (Resolve-Path -LiteralPath $QtRoot).Path
 $buildPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $BuildDirectory))
+if (-not (Test-Path -LiteralPath (Join-Path $buildPath "HelpDesign.exe"))) { throw "Build the application first." }
+$versionPath = Join-Path $buildPath "version.txt"
+if (-not (Test-Path -LiteralPath $versionPath)) { throw "Build version is missing. Rebuild the application first." }
+$buildVersion = [IO.File]::ReadAllText($versionPath).Trim()
+if ($buildVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid build version in $versionPath." }
+if (-not $OutputDirectory) { $OutputDirectory = "dist/HelpDesign-$buildVersion-win-x64" }
 $outputPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory))
 if (-not $outputPath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Output must be inside the project." }
-if (Test-Path -LiteralPath $outputPath) { throw "Output already exists. Choose a fresh OutputDirectory." }
-if (-not (Test-Path -LiteralPath (Join-Path $buildPath "HelpDesign.exe"))) { throw "Build the application first." }
+if ((Test-Path -LiteralPath $outputPath) -or (Test-Path -LiteralPath ($outputPath + ".zip"))) { throw "Output folder or ZIP already exists. Choose a fresh OutputDirectory." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtbase/LGPL-3.0-only.txt"))) { throw "Third-party license materials are missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-v0.7.schema.json"))) { throw "The current feedback schema is missing." }
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "HelpDesign.exe") -Destination $outputPath
+Copy-Item -LiteralPath $versionPath -Destination $outputPath
 $previousPath = $env:PATH
 try {
     $env:PATH = (Join-Path $QtRoot "bin") + ";" + $env:PATH

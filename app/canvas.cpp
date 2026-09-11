@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QWheelEvent>
 #include <algorithm>
@@ -115,18 +116,14 @@ int Canvas::hit(QPointF p, bool rectangles) const {
                 return i;
     return -1;
 }
-void Canvas::paintEvent(QPaintEvent *) {
+void Canvas::paintEvent(QPaintEvent *event) {
     if (!doc_)
         return;
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     if (layoutPreview_) {
-        p.fillRect(rect(), isDarkTheme() ? QColor("#25262b") : QColor("#ffffff"));
-        for (int y = 0; y < height(); y += 14)
-            for (int x = 0; x < width(); x += 14)
-                if ((x / 14 + y / 14) % 2 == 0)
-                    p.fillRect(x, y, 14, 14, isDarkTheme() ? QColor("#34363d") : QColor("#e7e8ed"));
+        paintTransparency(p, event->rect());
         p.drawImage(rect(), layoutImage_);
     } else
         p.drawImage(rect(), doc_->image);
@@ -310,13 +307,18 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
 void Canvas::wheelEvent(QWheelEvent *e) {
     if (!doc_ || drawing_ || moving_)
         return;
+    const int delta = e->angleDelta().y();
+    if (!delta) {
+        e->ignore();
+        return;
+    }
     if (mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
         picker_.update(displayCandidates_, toImage(e->position()));
-        picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
+        picker_.step(delta > 0 ? 1 : -1);
         updateHint();
         update();
     } else
-        emit zoomRequested(zoom_ * (e->angleDelta().y() > 0 ? 1.12 : 1 / 1.12));
+        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
     e->accept();
 }
 void Canvas::updateHint() {

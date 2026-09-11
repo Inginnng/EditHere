@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(HelpDesign VERSION 0.8.0 LANGUAGES CXX)
+project(HelpDesign VERSION 0.8.1 LANGUAGES CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -35,7 +35,20 @@ elseif(APPLE)
 endif()
 qt_add_executable(HelpDesign WIN32 MACOSX_BUNDLE app/main.cpp)
 target_link_libraries(HelpDesign PRIVATE h2d_ui)
-set_target_properties(HelpDesign PROPERTIES MACOSX_BUNDLE_GUI_IDENTIFIER "com.help2design.capture" MACOSX_BUNDLE_BUNDLE_NAME "HelpDesign" MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist")
+target_compile_definitions(HelpDesign PRIVATE HELPDESIGN_VERSION="${PROJECT_VERSION}")
+set_target_properties(HelpDesign PROPERTIES
+  MACOSX_BUNDLE_GUI_IDENTIFIER "com.help2design.capture"
+  MACOSX_BUNDLE_BUNDLE_NAME "HelpDesign"
+  MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+  MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+  MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist")
+# Package the version of the successfully linked executable, not just the latest configuration.
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" CONTENT "${PROJECT_VERSION}\n")
+add_custom_command(TARGET HelpDesign POST_BUILD
+  BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+    "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
+  VERBATIM)
 enable_testing()
 qt_add_executable(core_tests tests/core_test.cpp)
 target_link_libraries(core_tests PRIVATE h2d_core Qt6::Test)

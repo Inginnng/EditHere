@@ -5,10 +5,12 @@
 #include <QWidget>
 class QPushButton;
 class QLabel;
+class QPainter;
 namespace h2d {
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 bool isDarkTheme();
+void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent = nullptr);
 QPushButton *textButton(const QString &text, bool primary = false, QWidget *parent = nullptr);

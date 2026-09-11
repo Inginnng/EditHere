@@ -813,11 +813,13 @@ void Editor::exportJson() {
     json->setFont(QFont("Consolas", 10));
     layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog);
+    status->setObjectName("exportStatus");
     status->setWordWrap(true);
     layout->addWidget(status);
     auto row = new QHBoxLayout;
     auto save = textButton("保存 JSON 与图片", false, &dialog), close = textButton("关闭", false, &dialog),
          copy = textButton("复制 JSON", true, &dialog);
+    save->setObjectName("saveFeedbackBundle");
     row->addWidget(save);
     row->addStretch();
     row->addWidget(close);
@@ -862,11 +864,36 @@ void Editor::exportJson() {
     refresh();
     connect(embed, &QCheckBox::toggled, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+    QTimer clipboardRetry(&dialog);
+    clipboardRetry.setInterval(100);
+    QString pendingClipboard;
+    bool pendingIncludesImage = false;
+    int clipboardAttempts = 0;
+    auto writeClipboard = [&] {
+        auto clipboard = QApplication::clipboard();
+        clipboard->setText(pendingClipboard);
+        if (clipboard->ownsClipboard() || clipboard->text() == pendingClipboard) {
+            clipboardRetry.stop();
+            pendingClipboard.clear();
+            status->setText(pendingIncludesImage ? "JSON 已复制，包含完整原图" : "JSON 已复制，未包含原图");
+        } else if (++clipboardAttempts >= 5) {
+            clipboardRetry.stop();
+            pendingClipboard.clear();
+            status->setText("剪贴板暂时被其他应用占用，未能复制。请重试或保存 JSON。");
+        } else {
+            status->setText("正在等待剪贴板…");
+            clipboardRetry.start();
+        }
+    };
+    connect(&clipboardRetry, &QTimer::timeout, &dialog, writeClipboard);
     auto copyJson = [&] {
         if (exportBytes.isEmpty())
             return;
-        QApplication::clipboard()->setText(QString::fromUtf8(exportBytes));
-        status->setText(embed->isChecked() ? "JSON 已复制，包含完整原图" : "JSON 已复制，未包含原图");
+        clipboardRetry.stop();
+        pendingClipboard = QString::fromUtf8(exportBytes);
+        pendingIncludesImage = embed->isChecked();
+        clipboardAttempts = 0;
+        writeClipboard();
     };
     json->copyJson = copyJson;
     connect(copy, &QPushButton::clicked, &dialog, copyJson);
@@ -885,11 +912,24 @@ void Editor::exportJson() {
                 throw std::runtime_error("无法创建导出目录");
             QDir dir(folder);
             saveBytes(dir.filePath("feedback.png"), doc_.png);
-            saveBytes(dir.filePath("annotations.png"), encodePng(previewImage(doc_)));
-            if (doc_.layout && !exportFeedback(doc_)["changes"].toArray().isEmpty())
-                saveBytes(dir.filePath("result.png"), encodePng(renderLayout(doc_.image, *doc_.layout)));
             saveBytes(dir.filePath("feedback.json"), exportBytes);
-            status->setText("已保存到：" + folder);
+            // Optional visual previews must not prevent saving the original and feedback.
+            QStringList unavailable;
+            try {
+                saveBytes(dir.filePath("annotations.png"), encodePng(previewImage(doc_)));
+            } catch (const std::exception &e) {
+                unavailable.append("批注预览未保存：" + QString::fromUtf8(e.what()));
+            }
+            if (doc_.layout && !exportFeedback(doc_)["changes"].toArray().isEmpty()) {
+                try {
+                    saveBytes(dir.filePath("result.png"), encodePng(renderLayout(doc_.image, *doc_.layout)));
+                } catch (const std::exception &e) {
+                    unavailable.append("调整效果图未保存：" + QString::fromUtf8(e.what()));
+                }
+            }
+            status->setText(unavailable.isEmpty()
+                                ? "已保存到：" + folder
+                                : "JSON 与原图已保存到：" + folder + "\n" + unavailable.join('\n'));
         } catch (const std::exception &e) {
             status->setText(QString::fromUtf8(e.what()));
         }
