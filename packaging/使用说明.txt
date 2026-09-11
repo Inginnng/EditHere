@@ -2,7 +2,7 @@ HelpDesign 0.8.0
 
 Windows：先从托盘退出旧版，完整解压后运行 HelpDesign.exe。
 保留同目录 DLL、platforms、imageformats、licenses 等文件；无需额外安装开发环境。
-Mac：已有源码与构建脚本，尚未编译和实机验证，本次不包含 Mac 应用。
+Mac：请使用单独的 .app/.dmg 版本。首次截图需屏幕录制授权，元素识别需辅助功能授权；尚未完成实机验收。
 
 设置
 • 右键任务栏右下角的 HelpDesign 托盘图标，选择“设置”。

@@ -127,14 +127,14 @@ Windows 使用 UI Automation、Mac 使用 Accessibility 读取目标应用公开
 | Windows x64 | 在 Windows 11 开发与测试；最低构建目标为 Windows 10 1809+，未逐一测试旧系统 |
 | Windows 截图与 UI Automation | 已用本程序真实测试窗口校验像素、物理尺寸和按钮边界 |
 | Windows 托盘面板与多屏 | 仍需更多真实环境验收 |
-| Mac | 已有平台代码及构建脚本，**未编译、未实机验证，未生成可交付包** |
-| Mac ARM / Intel | 配置为 arm64 + x86_64，需 Mac 构建确认 |
+| Mac | GitHub macOS 构建与四组自动测试已通过，生成临时签名 DMG；**尚未实机验收** |
+| Mac ARM / Intel | 已编译 arm64 + x86_64 通用程序，CI 在 Apple 芯片环境运行测试；Intel 尚未运行验收 |
 
 Mac 目标为 macOS 14+，使用 ScreenCaptureKit。首次截图需屏幕录制授权；系统元素识别需辅助功能授权，托盘菜单提供入口。普通图片导入无需这些权限。目前没有可用的 Mac 测试设备。公开 Mac 发行还需产品所有者的 Apple 签名和公证。
 
 ## 构建与验证
 
-依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac 使用 Xcode Command Line Tools。
+依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。
 
 Windows PowerShell 7，CMake 在 PATH 中：
 
@@ -145,13 +145,13 @@ Windows PowerShell 7，CMake 在 PATH 中：
 
 构建脚本运行核心数据、布局、界面、设置和 Windows 平台五组测试。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
-Mac 构建（尚未实机执行）：
+Mac 构建（CI 已执行，尚未实机验收）：
 
 ```bash
 export QT_ROOT="$HOME/Qt/6.8.3/macos"
 bash scripts/build-macos.sh
 ```
 
-脚本配置生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。
+脚本生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。私有仓库的 [macOS 构建记录](https://github.com/Inginnng/HelpDesign/actions/runs/34592073641) 保留测试结果和 DMG；屏幕录制授权、辅助功能授权及多屏截图仍需实机验收。
 
 Qt 与 MinGW 的许可、版权声明位于 `packaging/licenses/`，随运行包交付；对应 Qt 源码存于 `dist/native-sources/`。公开分发时需同时提供相应源码归档，见[第三方说明](packaging/THIRD-PARTY-NOTICES.md)。
