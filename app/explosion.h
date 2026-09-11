@@ -1,11 +1,10 @@
 #pragma once
 #include "layout.h"
-#include <QDialog>
 #include <QWidget>
 class QDoubleSpinBox;
-class QScrollArea;
 class QLabel;
 class QPushButton;
+class QVariantAnimation;
 namespace h2d {
 class LayoutCanvas final : public QWidget {
     Q_OBJECT
@@ -14,6 +13,8 @@ class LayoutCanvas final : public QWidget {
     const LayoutState &state() const {
         return state_;
     }
+    void setState(LayoutState state);
+    void cancelInteraction();
     QString selected() const {
         return selected_;
     }
@@ -70,33 +71,37 @@ class LayoutCanvas final : public QWidget {
     QPointF press_, end_, hoverAnchor_{-1000, -1000};
     QRectF initial_;
 };
-class ExplosionDialog final : public QDialog {
+class LayoutInspector final : public QWidget {
     Q_OBJECT
   public:
-    ExplosionDialog(const QImage &original, LayoutState state, QWidget *parent = nullptr);
-    const LayoutState &result() const {
-        return canvas_->state();
-    }
-    LayoutCanvas *canvas() const {
-        return canvas_;
-    }
+    explicit LayoutInspector(LayoutCanvas *canvas, QWidget *parent = nullptr);
 
   protected:
-    void showEvent(QShowEvent *) override;
-    void resizeEvent(QResizeEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
 
   private:
-    void fit();
     void refresh();
     void applyField(int field);
     LayoutCanvas *canvas_;
-    QScrollArea *scroll_;
-    QLabel *hint_, *selection_, *count_;
-    QPushButton *undo_, *redo_, *clear_, *manual_;
+    QLabel *selection_;
+    QPushButton *clear_, *manual_;
     QVector<QDoubleSpinBox *> fields_;
-    bool updating_ = false, fitted_ = true;
+    bool updating_ = false;
     QString fieldSelection_;
     QRectF scaleBase_;
+};
+class ExplosionWave final : public QWidget {
+    Q_OBJECT
+  public:
+    explicit ExplosionWave(QWidget *parent = nullptr);
+    void start();
+
+  protected:
+    void paintEvent(QPaintEvent *) override;
+    void hideEvent(QHideEvent *) override;
+
+  private:
+    QVariantAnimation *animation_;
+    qreal progress_ = 0;
 };
 } // namespace h2d

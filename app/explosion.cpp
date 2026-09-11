@@ -1,19 +1,17 @@
 #include "explosion.h"
 #include "ui.h"
-#include <QApplication>
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QGridLayout>
+#include <QHideEvent>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
-#include <QScreen>
-#include <QScrollArea>
-#include <QShortcut>
-#include <QTimer>
 #include <QVBoxLayout>
+#include <QVariantAnimation>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -37,6 +35,25 @@ LayoutCanvas::LayoutCanvas(QImage original, LayoutState state, QWidget *parent)
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setZoom(1);
+}
+void LayoutCanvas::setState(LayoutState state) {
+    dragging_ = drawing_ = drawingMode_ = false;
+    state_ = std::move(state);
+    before_ = {};
+    undo_.clear();
+    redo_.clear();
+    handle_ = -1;
+    setCursor(Qt::ArrowCursor);
+    clearSelection();
+    setZoom(zoom_);
+}
+void LayoutCanvas::cancelInteraction() {
+    if (dragging_)
+        state_ = before_;
+    dragging_ = drawing_ = drawingMode_ = false;
+    handle_ = -1;
+    setCursor(Qt::ArrowCursor);
+    clearSelection();
 }
 void LayoutCanvas::setZoom(double value) {
     zoom_ = std::clamp(value, .03, 4.0);
@@ -340,53 +357,28 @@ void LayoutCanvas::redo() {
     clearSelection();
     emit changed();
 }
-ExplosionDialog::ExplosionDialog(const QImage &original, LayoutState state, QWidget *parent)
-    : QDialog(parent) {
-    setObjectName("explosionDialog");
-    setWindowTitle("大爆炸 · 调整组件");
-    setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
-    setMinimumSize(800, 500);
-    resize(1220, 820);
-    auto root = new QVBoxLayout(this);
-    root->setContentsMargins(18, 14, 18, 14);
-    root->setSpacing(12);
-    auto header = new QHBoxLayout;
-    auto title = new QLabel("大爆炸", this);
-    title->setStyleSheet("font-size:20px;font-weight:600;");
-    header->addWidget(title);
-    header->addSpacing(12);
-    count_ = mutedLabel({}, this);
-    header->addWidget(count_);
-    header->addStretch();
+LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidget(parent), canvas_(canvas) {
+    setObjectName("layoutInspector");
+    setStyleSheet("QWidget#layoutInspector {background:white;border-left:1px solid #e5e5ea;}");
+    auto side = new QVBoxLayout(this);
+    side->setContentsMargins(18, 18, 18, 16);
+    side->setSpacing(12);
+    auto heading = new QLabel("组件调整", this);
+    heading->setStyleSheet("font-weight:600;font-size:15px;");
+    side->addWidget(heading);
+    auto tools = new QHBoxLayout;
     manual_ = textButton("手动分块", false, this);
     manual_->setCheckable(true);
     manual_->setObjectName("manualRegion");
-    header->addWidget(manual_);
-    undo_ = iconButton("undo", "撤销", this);
-    redo_ = iconButton("redo", "重做", this);
-    header->addWidget(undo_);
-    header->addWidget(redo_);
+    tools->addWidget(manual_);
     auto guides = new QCheckBox("显示区域", this);
+    guides->setObjectName("layoutGuides");
     guides->setChecked(true);
-    header->addWidget(guides);
-    root->addLayout(header);
-    auto middle = new QHBoxLayout;
-    scroll_ = new QScrollArea(this);
-    scroll_->setAlignment(Qt::AlignCenter);
-    scroll_->setStyleSheet("QScrollArea {background:#ededf1;border-radius:12px;}");
-    canvas_ = new LayoutCanvas(original, std::move(state));
-    scroll_->setWidget(canvas_);
-    middle->addWidget(scroll_, 1);
-    auto panel = new QWidget(this);
-    panel->setFixedWidth(244);
-    panel->setStyleSheet("QWidget {background:#fbfbfd;}");
-    auto side = new QVBoxLayout(panel);
-    side->setContentsMargins(14, 12, 4, 12);
-    auto heading = new QLabel("组件属性", panel);
-    heading->setStyleSheet("font-weight:600;font-size:14px;");
-    side->addWidget(heading);
-    selection_ = mutedLabel("单击选择一个区域", panel);
+    tools->addWidget(guides);
+    side->addLayout(tools);
+    selection_ = mutedLabel("单击选择一个区域", this);
     selection_->setWordWrap(true);
+    selection_->setMinimumHeight(32);
     side->addWidget(selection_);
     auto grid = new QGridLayout;
     grid->setHorizontalSpacing(10);
@@ -394,7 +386,7 @@ ExplosionDialog::ExplosionDialog(const QImage &original, LayoutState state, QWid
     QStringList labels{"X", "Y", "宽度", "高度", "等比缩放"},
         names{"layoutX", "layoutY", "layoutWidth", "layoutHeight", "layoutScale"};
     for (int i = 0; i < 5; ++i) {
-        auto input = new QDoubleSpinBox(panel);
+        auto input = new QDoubleSpinBox(this);
         input->setObjectName(names[i]);
         input->setDecimals(2);
         input->setRange(i < 2 ? 0 : .01, i == 4 ? 100000 : 32767);
@@ -403,10 +395,13 @@ ExplosionDialog::ExplosionDialog(const QImage &original, LayoutState state, QWid
         input->setButtonSymbols(QAbstractSpinBox::NoButtons);
         input->setSuffix(i == 4 ? " %" : " px");
         input->setMinimumHeight(34);
+        input->setMinimumWidth(112);
         input->setStyleSheet(
-            "QDoubleSpinBox {background:white;border:1px solid #ddddE4;border-radius:7px;padding:4px;}");
+            "QDoubleSpinBox {background:white;border:1px solid #dddde4;border-radius:7px;padding:4px;}"
+            "QDoubleSpinBox:focus {border-color:#007aff;}"
+            "QDoubleSpinBox:disabled {color:#a0a0aa;background:#f5f5f7;}");
         fields_.append(input);
-        grid->addWidget(new QLabel(labels[i], panel), i, 0);
+        grid->addWidget(new QLabel(labels[i], this), i, 0);
         grid->addWidget(input, i, 1);
         connect(input, &QDoubleSpinBox::valueChanged, this, [this, input] {
             if (!updating_)
@@ -414,89 +409,37 @@ ExplosionDialog::ExplosionDialog(const QImage &original, LayoutState state, QWid
         });
         connect(input, &QDoubleSpinBox::editingFinished, this, [this, i] { applyField(i); });
     }
+    grid->setColumnStretch(1, 1);
     side->addLayout(grid);
-    clear_ = textButton("取消选择", false, panel);
+    clear_ = textButton("取消选择", false, this);
     clear_->setObjectName("clearLayoutSelection");
     side->addWidget(clear_);
-    auto help = mutedLabel(
-        "悬停 + 滚轮：切换范围\n选中 + 滚轮：缩放组件\n\n拖边缘：调整宽高\n拖角点：等比例缩放\n方向键：移动 "
-        "1 px\n\n空白棋盘格代表透明区域。",
-        panel);
+    auto help =
+        mutedLabel("悬停滚轮选范围，选中滚轮缩放。\n拖边调整宽高，拖角等比缩放。\nEsc 取消选择。", this);
     help->setWordWrap(true);
+    side->addSpacing(4);
     side->addWidget(help);
     side->addStretch();
-    middle->addWidget(panel);
-    root->addLayout(middle, 1);
-    hint_ = mutedLabel("悬停滚轮切换所有区域 · 单击确认", this);
-    hint_->setWordWrap(true);
-    root->addWidget(hint_);
-    auto footer = new QHBoxLayout;
-    auto fitButton = textButton("适应画布", false, this);
-    footer->addWidget(fitButton);
-    footer->addStretch();
-    auto cancel = textButton("取消", false, this), done = textButton("完成调整", true, this);
-    done->setObjectName("applyExplosion");
-    footer->addWidget(cancel);
-    footer->addWidget(done);
-    root->addLayout(footer);
-    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
-    connect(done, &QPushButton::clicked, this, &QDialog::accept);
-    connect(fitButton, &QPushButton::clicked, this, &ExplosionDialog::fit);
     connect(manual_, &QPushButton::clicked, canvas_, &LayoutCanvas::setDrawing);
     connect(guides, &QCheckBox::toggled, canvas_, &LayoutCanvas::setGuides);
     connect(clear_, &QPushButton::clicked, canvas_, &LayoutCanvas::clearSelection);
-    connect(undo_, &QPushButton::clicked, canvas_, &LayoutCanvas::undo);
-    connect(redo_, &QPushButton::clicked, canvas_, &LayoutCanvas::redo);
-    connect(canvas_, &LayoutCanvas::hintChanged, hint_, &QLabel::setText);
-    connect(canvas_, &LayoutCanvas::changed, this, &ExplosionDialog::refresh);
-    connect(canvas_, &LayoutCanvas::selectionChanged, this, &ExplosionDialog::refresh);
-    connect(canvas_, &LayoutCanvas::zoomRequested, this, [this](double zoom) {
-        if (zoom == 0)
-            fit();
-        else {
-            fitted_ = false;
-            canvas_->setZoom(zoom);
-        }
-    });
-    auto undoKey = new QShortcut(QKeySequence::Undo, this), redoKey = new QShortcut(QKeySequence::Redo, this);
-    connect(undoKey, &QShortcut::activated, canvas_, &LayoutCanvas::undo);
-    connect(redoKey, &QShortcut::activated, canvas_, &LayoutCanvas::redo);
+    connect(canvas_, &LayoutCanvas::changed, this, &LayoutInspector::refresh);
+    connect(canvas_, &LayoutCanvas::selectionChanged, this, &LayoutInspector::refresh);
     refresh();
 }
-void ExplosionDialog::showEvent(QShowEvent *event) {
-    QDialog::showEvent(event);
-    auto screen = parentWidget() ? parentWidget()->screen() : QGuiApplication::primaryScreen();
-    auto available = screen->availableGeometry();
-    resize(std::min(1220, available.width() - 40), std::min(820, available.height() - 50));
-    QTimer::singleShot(0, this, [this] {
-        fit();
-        canvas_->setFocus();
-    });
-}
-void ExplosionDialog::resizeEvent(QResizeEvent *e) {
-    QDialog::resizeEvent(e);
-    if (fitted_)
-        QTimer::singleShot(0, this, &ExplosionDialog::fit);
-}
-void ExplosionDialog::fit() {
-    fitted_ = true;
-    auto size = scroll_->viewport()->size() - QSize(36, 36);
-    canvas_->setZoom(std::min({1.0, double(std::max(80, size.width())) / canvas_->state().canvas.width(),
-                               double(std::max(80, size.height())) / canvas_->state().canvas.height()}));
-}
-void ExplosionDialog::keyPressEvent(QKeyEvent *event) {
+void LayoutInspector::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Escape) {
-        canvas_->setDrawing(false);
+        canvas_->cancelInteraction();
         canvas_->setFocus();
         event->accept();
         return;
     }
-    QDialog::keyPressEvent(event);
+    QWidget::keyPressEvent(event);
 }
-void ExplosionDialog::refresh() {
+void LayoutInspector::refresh() {
     updating_ = true;
     const auto id = canvas_->selected();
-    auto r = canvas_->selectionBounds();
+    const auto r = canvas_->selectionBounds();
     if (id != fieldSelection_) {
         fieldSelection_ = id;
         scaleBase_ = r;
@@ -505,9 +448,6 @@ void ExplosionDialog::refresh() {
         input->setEnabled(!id.isEmpty());
     clear_->setEnabled(!id.isEmpty());
     manual_->setChecked(canvas_->drawingMode());
-    undo_->setEnabled(canvas_->canUndo());
-    redo_->setEnabled(canvas_->canRedo());
-    count_->setText(QString("%1 个可选区域").arg(canvas_->state().groups.size()));
     selection_->setText("单击选择一个区域");
     for (const auto &group : canvas_->state().groups)
         if (group.id == id) {
@@ -525,7 +465,7 @@ void ExplosionDialog::refresh() {
         input->setProperty("edited", false);
     updating_ = false;
 }
-void ExplosionDialog::applyField(int field) {
+void LayoutInspector::applyField(int field) {
     if (updating_ || canvas_->selected().isEmpty() || !fields_[field]->property("edited").toBool())
         return;
     auto r = canvas_->selectionBounds();
@@ -544,5 +484,75 @@ void ExplosionDialog::applyField(int field) {
     }
     canvas_->transformSelection(constrainLayoutRect(r, canvas_->state().canvas));
     refresh();
+}
+ExplosionWave::ExplosionWave(QWidget *parent) : QWidget(parent), animation_(new QVariantAnimation(this)) {
+    setObjectName("explosionWave");
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_TranslucentBackground);
+    setFocusPolicy(Qt::NoFocus);
+    animation_->setObjectName("explosionWaveAnimation");
+    animation_->setDuration(1100);
+    animation_->setStartValue(0.0);
+    animation_->setEndValue(1.0);
+    animation_->setEasingCurve(QEasingCurve::InOutSine);
+    connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+        progress_ = value.toReal();
+        update();
+    });
+    connect(animation_, &QVariantAnimation::finished, this, &QWidget::hide);
+    hide();
+}
+void ExplosionWave::start() {
+    animation_->stop();
+    progress_ = 0;
+    show();
+    raise();
+    animation_->start();
+}
+void ExplosionWave::hideEvent(QHideEvent *event) {
+    animation_->stop();
+    QWidget::hideEvent(event);
+}
+void ExplosionWave::paintEvent(QPaintEvent *) {
+    if (width() < 1 || height() < 1)
+        return;
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const qreal opacity = std::clamp(std::min(progress_ / .12, (1 - progress_) / .2), 0.0, 1.0);
+    p.setOpacity(opacity);
+    p.setClipRect(rect());
+    QConicalGradient rim(rect().center(), 35 - progress_ * 280);
+    rim.setColorAt(0, QColor(80, 161, 255, 65));
+    rim.setColorAt(.25, QColor(183, 119, 255, 65));
+    rim.setColorAt(.5, QColor(255, 124, 168, 65));
+    rim.setColorAt(.75, QColor(97, 231, 232, 65));
+    rim.setColorAt(1, QColor(80, 161, 255, 65));
+    p.setPen(QPen(QBrush(rim), 5));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(rect()).adjusted(2.5, 2.5, -2.5, -2.5), 10, 10);
+
+    // The wave's normal runs from the upper-right corner toward the lower-left.
+    const qreal span = std::hypot(qreal(width()), qreal(height())) + 160;
+    const qreal travel = (width() + height()) / std::sqrt(2.0);
+    const qreal position = -75 + progress_ * (travel + 150);
+    p.translate(width(), 0);
+    p.rotate(135);
+    QPainterPath wave;
+    wave.moveTo(position - 16, -span);
+    wave.cubicTo(position - 44, -span * .35, position + 38, span * .3, position - 12, span);
+    QLinearGradient spectrum(0, -span * .65, 0, span * .65);
+    spectrum.setColorAt(0, QColor("#6fe7f7"));
+    spectrum.setColorAt(.26, QColor("#7fa3ff"));
+    spectrum.setColorAt(.5, QColor("#ce91ff"));
+    spectrum.setColorAt(.74, QColor("#ff9cbc"));
+    spectrum.setColorAt(1, QColor("#ffe2a9"));
+    p.setBrush(Qt::NoBrush);
+    for (const auto &[width, alpha] :
+         {std::pair<qreal, qreal>{68, .035}, {38, .07}, {18, .16}, {6, .5}, {1.8, .88}}) {
+        p.setOpacity(opacity * alpha);
+        p.setPen(QPen(QBrush(spectrum), width, Qt::SolidLine, Qt::RoundCap));
+        p.drawPath(wave);
+    }
 }
 } // namespace h2d

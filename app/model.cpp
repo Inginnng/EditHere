@@ -147,6 +147,25 @@ void validateDocument(const Document &d) {
             fail("批注日期不正确");
     }
 }
+QJsonObject exportFeedback(const Document &doc) {
+    validateDocument(doc);
+    QJsonArray annotations;
+    for (const auto &note : doc.notes) {
+        QJsonObject annotation{{"text", note.comment}};
+        if (note.isPoint)
+            annotation.insert("point", QJsonObject{{"x", note.point.x()}, {"y", note.point.y()}});
+        else
+            annotation.insert("rectangle", rectJson(note.rect));
+        annotations.append(annotation);
+    }
+    return {{"annotations", annotations},
+            {"changes", doc.layout ? exportLayoutChanges(*doc.layout) : QJsonArray{}}};
+}
+QByteArray serializeFeedback(const Document &doc) {
+    auto bytes = QJsonDocument(exportFeedback(doc)).toJson(QJsonDocument::Compact);
+    validateProjectStorageSize(bytes.size());
+    return bytes + '\n';
+}
 QJsonObject exportDocument(const Document &d, bool embed) {
     validateDocument(d);
     QJsonObject capture{
@@ -197,7 +216,7 @@ void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes) {
     if (jsonBytes < 0 || jsonBytes > MaxProjectFileBytes)
         fail("项目不能超过 96 MiB，未保存当前修改。请缩小图片或减少批注和分块后重试");
     if (externalImageBytes < 0 || externalImageBytes > MaxImageFileBytes)
-        fail("配套原图不能超过 48 MiB。请尝试勾选“包含原图数据”，或缩小图片后重试");
+        fail("配套原图不能超过 48 MiB，请缩小图片后重试");
 }
 QByteArray serializeDocument(const Document &doc, bool embed) {
     // Reject an oversized embedded image before allocating its Base64 representation.
@@ -215,6 +234,41 @@ static void exactKeys(const QJsonObject &o, const QStringList &keys) {
     for (const auto &k : keys)
         if (!o.contains(k))
             fail("项目缺少字段：" + k);
+}
+Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
+    exactKeys(feedback, {"annotations", "changes"});
+    if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||
+        feedback["annotations"].toArray().size() > MaxNotes)
+        fail("批注或变化列表格式不正确");
+    auto doc = fromImage(original, "file", "设计反馈");
+    for (const auto &value : feedback["annotations"].toArray()) {
+        if (!value.isObject())
+            fail("批注格式不正确");
+        auto annotation = value.toObject();
+        const bool point = annotation.contains("point");
+        exactKeys(annotation, point ? QStringList{"point", "text"} : QStringList{"rectangle", "text"});
+        if (!annotation["text"].isString())
+            fail("批注文字格式不正确");
+        Note note;
+        note.isPoint = point;
+        note.comment = annotation["text"].toString();
+        if (point) {
+            if (!annotation["point"].isObject())
+                fail("点标注格式不正确");
+            const auto position = annotation["point"].toObject();
+            exactKeys(position, {"x", "y"});
+            note.point = {integer(position["x"]), integer(position["y"])};
+        } else {
+            if (!annotation["rectangle"].isObject())
+                fail("框标注格式不正确");
+            note.rect = jsonRect(annotation["rectangle"].toObject());
+        }
+        doc.notes.append(note);
+    }
+    if (!feedback["changes"].toArray().isEmpty())
+        doc.layout = importLayoutChanges(feedback["changes"].toArray(), original.size());
+    validateDocument(doc);
+    return doc;
 }
 Document loadDocument(const QString &path) {
     QFile file(path);
@@ -237,6 +291,19 @@ Document loadDocument(const QString &path) {
     if (error.error != QJsonParseError::NoError || !parsed.isObject())
         fail("JSON 格式不正确");
     auto root = parsed.object();
+    if (!root.contains("schemaVersion")) {
+        exactKeys(root, {"annotations", "changes"});
+        const QFileInfo jsonFile(path);
+        const QString imagePath = jsonFile.dir().filePath(jsonFile.completeBaseName() + ".png");
+        if (!QFileInfo::exists(imagePath))
+            fail("请将 JSON 与同名原图 " + QFileInfo(imagePath).fileName() + " 放在同一目录");
+        const auto imageDocument = loadDocument(imagePath);
+        auto document = loadFeedback(root, imageDocument.image);
+        document.png = imageDocument.png;
+        document.imageFile = QFileInfo(imagePath).fileName();
+        document.title = jsonFile.completeBaseName();
+        return document;
+    }
     const QString version = root["schemaVersion"].toString();
     if (!QStringList{"1.0.0", "1.1.0", "2.0.0"}.contains(version) || root["tool"] != "Help2Design Capture")
         fail("不支持这个项目版本");

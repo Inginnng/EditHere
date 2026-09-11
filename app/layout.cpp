@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <tuple>
 namespace h2d {
 namespace {
 void require(bool condition, const char *message) {
@@ -75,6 +76,90 @@ QStringList cut(LayoutState &state, QRectF region) {
     }
     state.pieces = std::move(next);
     return selected;
+}
+bool close(double a, double b) {
+    return std::abs(a - b) <= epsilon;
+}
+bool sameRectangle(QRectF a, QRectF b) {
+    return close(a.left(), b.left()) && close(a.top(), b.top()) && close(a.right(), b.right()) &&
+           close(a.bottom(), b.bottom());
+}
+struct ChangeRegion {
+    QRectF from, to;
+    int layer = 0;
+    bool active = true;
+};
+bool sameTransform(const ChangeRegion &a, const ChangeRegion &b) {
+    const double sx = a.to.width() / a.from.width(), sy = a.to.height() / a.from.height();
+    QRectF mapped(a.to.x() + (b.from.x() - a.from.x()) * sx, a.to.y() + (b.from.y() - a.from.y()) * sy,
+                  b.from.width() * sx, b.from.height() * sy);
+    return sameRectangle(mapped, b.to);
+}
+bool adjacent(QRectF a, QRectF b, bool horizontal) {
+    return horizontal
+               ? close(a.top(), b.top()) && close(a.height(), b.height()) && close(a.right(), b.left())
+               : close(a.left(), b.left()) && close(a.width(), b.width()) && close(a.bottom(), b.top());
+}
+bool mergeKeepsDrawingOrder(const QVector<ChangeRegion> &regions, int a, int b) {
+    const auto &earlier = regions[regions[a].layer < regions[b].layer ? a : b];
+    const auto &later = regions[regions[a].layer < regions[b].layer ? b : a];
+    for (int i = 0; i < regions.size(); ++i) {
+        const auto &other = regions[i];
+        if (i != a && i != b && other.active && other.layer > earlier.layer && other.layer < later.layer &&
+            positive(earlier.to.intersected(other.to)))
+            return false;
+    }
+    return true;
+}
+QVector<ChangeRegion> combinedChanges(const LayoutState &state) {
+    QVector<ChangeRegion> regions;
+    for (int i = 0; i < state.pieces.size(); ++i) {
+        const auto &piece = state.pieces[i];
+        if (!sameRectangle(piece.source, piece.destination))
+            regions.append({piece.source, piece.destination, i});
+    }
+    // Full shared edges and an identical affine transform allow a rectangular
+    // component to absorb detector-only subdivisions. Never merge across a hole
+    // or move an earlier layer over a different, intersecting change.
+    bool merged;
+    do {
+        merged = false;
+        for (bool horizontal : {true, false}) {
+            QVector<int> order;
+            for (int i = 0; i < regions.size(); ++i)
+                if (regions[i].active)
+                    order.append(i);
+            std::sort(order.begin(), order.end(), [&](int a, int b) {
+                auto ra = regions[a].from, rb = regions[b].from;
+                if (horizontal)
+                    return std::make_tuple(ra.y(), ra.height(), ra.x()) <
+                           std::make_tuple(rb.y(), rb.height(), rb.x());
+                return std::make_tuple(ra.x(), ra.width(), ra.y()) <
+                       std::make_tuple(rb.x(), rb.width(), rb.y());
+            });
+            int previous = -1;
+            for (int current : order) {
+                if (previous >= 0 && adjacent(regions[previous].from, regions[current].from, horizontal) &&
+                    sameTransform(regions[previous], regions[current]) &&
+                    mergeKeepsDrawingOrder(regions, previous, current)) {
+                    auto &a = regions[previous];
+                    auto &b = regions[current];
+                    a.from = a.from.united(b.from);
+                    a.to = a.to.united(b.to);
+                    a.layer = std::max(a.layer, b.layer);
+                    b.active = false;
+                    merged = true;
+                } else {
+                    previous = current;
+                }
+            }
+        }
+    } while (merged);
+    regions.erase(
+        std::remove_if(regions.begin(), regions.end(), [](const auto &region) { return !region.active; }),
+        regions.end());
+    std::sort(regions.begin(), regions.end(), [](const auto &a, const auto &b) { return a.layer < b.layer; });
+    return regions;
 }
 QJsonObject geometry(QRectF r) {
     return {{"x1", r.left()}, {"y1", r.top()}, {"x2", r.right()}, {"y2", r.bottom()}};
@@ -270,9 +355,12 @@ void transformLayoutGroup(LayoutState &state, const QString &id, QRectF destinat
 void paintLayout(QPainter &painter, const QImage &original, const LayoutState &state) {
     painter.save();
     painter.setClipRect(QRectF(QPointF(0, 0), state.canvas));
-    // Rectangular partitions share exact boundaries. No background copy is left beneath moved pieces.
-    for (const auto &piece : state.pieces)
-        painter.drawImage(piece.destination, original, piece.source);
+    // Unchanged components are the original background. A component returned
+    // to its source has no change record, so its draw order must match reload.
+    for (bool changed : {false, true})
+        for (const auto &piece : state.pieces)
+            if ((!sameRectangle(piece.source, piece.destination)) == changed)
+                painter.drawImage(piece.destination, original, piece.source);
     painter.restore();
 }
 QImage renderLayout(const QImage &original, const LayoutState &state) {
@@ -321,6 +409,75 @@ void validateLayout(const LayoutState &state, QSize original) {
             members.insert(id);
         }
     }
+}
+QJsonArray exportLayoutChanges(const LayoutState &state) {
+    validateLayout(state, state.canvas);
+    QJsonArray changes;
+    for (const auto &region : combinedChanges(state))
+        changes.append(QJsonObject{{"from", geometry(region.from)}, {"to", geometry(region.to)}});
+    return changes;
+}
+LayoutState importLayoutChanges(const QJsonArray &changes, QSize original) {
+    require(changes.size() <= MaxLayoutPieces, "变化数量超出限制");
+    QVector<ChangeRegion> regions;
+    for (const auto &value : changes) {
+        require(value.isObject(), "变化格式不正确");
+        const auto object = value.toObject();
+        keys(object, {"from", "to"});
+        const auto from = rectangle(object["from"]), to = rectangle(object["to"]);
+        require(fits(from, original) && fits(to, original), "变化坐标超出原图");
+        require(!sameRectangle(from, to), "变化列表不能包含未变化的区域");
+        regions.append({from, to, int(regions.size())});
+    }
+    QVector<QRectF> sources;
+    for (const auto &region : regions)
+        sources.append(region.from);
+    std::sort(sources.begin(), sources.end(), [](auto a, auto b) { return a.left() < b.left(); });
+    for (int i = 0; i < sources.size(); ++i)
+        for (int j = i + 1; j < sources.size() && sources[j].left() < sources[i].right() - epsilon; ++j)
+            require(!positive(sources[i].intersected(sources[j])), "变化重复引用原图区域");
+
+    auto state = createLayout(original, {});
+    QStringList moved;
+    // Cut every region while destination coordinates are still the original
+    // coordinates. Only then apply moves, so swaps and overlapping destinations
+    // never accidentally cut an already moved component.
+    for (const auto &region : regions) {
+        const auto selected = cut(state, region.from);
+        const QSet<QString> selectedSet(selected.begin(), selected.end());
+        const QString id = uniqueId();
+        state.pieces.erase(std::remove_if(state.pieces.begin(), state.pieces.end(),
+                                          [&](const auto &piece) { return selectedSet.contains(piece.id); }),
+                           state.pieces.end());
+        state.pieces.append({id, region.from, region.from});
+        for (auto &group : state.groups) {
+            group.pieces.erase(std::remove_if(group.pieces.begin(), group.pieces.end(),
+                                              [&](const auto &piece) { return selectedSet.contains(piece); }),
+                               group.pieces.end());
+            if (group.origin == "canvas")
+                group.pieces.append(id);
+        }
+        if (state.groups.size() < MaxLayoutGroups)
+            state.groups.append(
+                {uniqueId(), QString("调整 %1").arg(moved.size() + 1), "detected", region.from, {id}});
+        moved.append(id);
+    }
+    QSet<QString> movedSet(moved.begin(), moved.end());
+    QHash<QString, LayoutPiece> movedPieces;
+    QVector<LayoutPiece> background;
+    for (const auto &piece : state.pieces)
+        if (movedSet.contains(piece.id))
+            movedPieces.insert(piece.id, piece);
+        else
+            background.append(piece);
+    for (int i = 0; i < regions.size(); ++i) {
+        auto piece = movedPieces.value(moved[i]);
+        piece.destination = regions[i].to;
+        background.append(piece);
+    }
+    state.pieces = std::move(background);
+    validateLayout(state, original);
+    return state;
 }
 QJsonObject exportLayout(const LayoutState &state) {
     validateLayout(state, state.canvas);

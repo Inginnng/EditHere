@@ -4,44 +4,23 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QFutureWatcher>
-#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QKeyEvent>
-#include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPushButton>
 #include <QtConcurrent>
 #include <cmath>
 namespace h2d {
 Overlay::Overlay(ScreenFrame frame, QWidget *parent) : QWidget(parent), frame_(std::move(frame)) {
     setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-    setWindowTitle("Help2Design · 选择截图区域");
+    setWindowTitle("HelpDesign · 选择截图区域");
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setCursor(Qt::CrossCursor);
     setGeometry(frame_.logicalGeometry);
     setAttribute(Qt::WA_DeleteOnClose, false);
-    toolbar_ = new QWidget(this);
-    toolbar_->setStyleSheet("QWidget { background:#fbfbfd; color:#25252a; border-radius:10px; }");
-    auto row = new QHBoxLayout(toolbar_);
-    row->setContentsMargins(10, 7, 10, 7);
-    row->setSpacing(6);
-    size_ = mutedLabel({}, toolbar_);
-    row->addWidget(size_);
-    auto reset = textButton("重选", false, toolbar_), copy = iconButton("copy", "复制截图", toolbar_),
-         cancel = iconButton("close", "取消截图", toolbar_), accept = textButton("开始批注", true, toolbar_);
-    row->addWidget(reset);
-    row->addWidget(copy);
-    row->addWidget(cancel);
-    row->addWidget(accept);
-    connect(reset, &QPushButton::clicked, this, &Overlay::resetSelection);
-    connect(cancel, &QPushButton::clicked, this, &Overlay::cancelled);
-    connect(copy, &QPushButton::clicked, this, [this] { finish(true); });
-    connect(accept, &QPushButton::clicked, this, [this] { finish(false); });
-    toolbar_->hide();
     debounce_.setSingleShot(true);
     debounce_.setInterval(150);
     connect(&debounce_, &QTimer::timeout, this, &Overlay::requestProbe);
@@ -75,8 +54,7 @@ QVector<Candidate> Overlay::candidates() const {
 }
 void Overlay::resetSelection() {
     selected_ = {};
-    drawing_ = adjusting_ = false;
-    toolbar_->hide();
+    drawing_ = false;
     picker_.reset();
     update();
 }
@@ -97,20 +75,13 @@ void Overlay::paintEvent(QPaintEvent *) {
         p.setBrush(Qt::NoBrush);
         p.setPen(QPen(accent(), 1.5));
         p.drawRect(localRect(active));
-        if (!selected_.isEmpty()) {
-            p.setBrush(Qt::white);
-            for (auto h : handles(active)) {
-                QRectF point = localRect(QRect(h, QSize(1, 1)));
-                p.drawRect(QRectF(point.x() - 3.5, point.y() - 3.5, 7, 7));
-            }
-        }
     }
     if (selected_.isEmpty()) {
         QString text = picker_.current() ? QString("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
                                                .arg(picker_.current()->target["label"].toString().left(30))
                                                .arg(picker_.level())
                                                .arg(picker_.count())
-                                         : "拖动截图 · 单击选块 · Esc 取消";
+                                         : "拖动截图 · 单击选块 · 松手进入批注 · Esc 取消";
         p.setFont(QFont("Microsoft YaHei", 10));
         int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         QRectF hint((width() - w) / 2, 24, w, 36);
@@ -121,24 +92,6 @@ void Overlay::paintEvent(QPaintEvent *) {
         p.drawText(hint, Qt::AlignCenter, text);
     }
 }
-void Overlay::paintSelection() {
-    update();
-    if (selected_.isEmpty() || drawing_ || adjusting_) {
-        toolbar_->hide();
-        return;
-    }
-    size_->setText(QString("%1 × %2").arg(selected_.width()).arg(selected_.height()));
-    toolbar_->adjustSize();
-    QRectF r = localRect(selected_);
-    int x =
-        std::clamp(qRound(r.right()) - toolbar_->width(), 8, std::max(8, width() - toolbar_->width() - 8));
-    int y = qRound(r.bottom()) + 12;
-    if (y + toolbar_->height() > height() - 8)
-        y = std::max(8, qRound(r.top()) - toolbar_->height() - 12);
-    toolbar_->move(x, y);
-    toolbar_->show();
-    toolbar_->raise();
-}
 void Overlay::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::RightButton) {
         if (selected_.isEmpty())
@@ -147,38 +100,18 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
             resetSelection();
         return;
     }
-    if (e->button() != Qt::LeftButton)
+    if (e->button() != Qt::LeftButton || finished_)
         return;
     emit selectionBegan();
     start_ = cursor_ = pixelPoint(e->position());
-    handle_ = -1;
-    if (!selected_.isEmpty()) {
-        auto hs = handles(selected_);
-        for (int i = 0; i < hs.size(); i++) {
-            auto r = localRect(QRect(hs[i], QSize(1, 1)));
-            if (QLineF(e->position(), r.topLeft()).length() < 9) {
-                handle_ = i;
-                break;
-            }
-        }
-        if (handle_ >= 0 || containsPixel(selected_, start_)) {
-            adjusting_ = true;
-            beforeDrag_ = selected_;
-            toolbar_->hide();
-            return;
-        }
-    }
     picker_.update(candidates(), start_);
     drawing_ = true;
     selected_ = {};
-    toolbar_->hide();
     update();
 }
 void Overlay::mouseMoveEvent(QMouseEvent *e) {
     cursor_ = pixelPoint(e->position());
-    if (adjusting_)
-        selected_ = moveRect(beforeDrag_, cursor_ - start_, frame_.image.size(), handle_);
-    else if (drawing_)
+    if (drawing_)
         selected_ = dragRect(start_, cursor_, frame_.image.size());
     else if (selected_.isEmpty()) {
         picker_.update(candidates(), cursor_);
@@ -189,11 +122,6 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
 void Overlay::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton)
         return;
-    if (adjusting_) {
-        adjusting_ = false;
-        paintSelection();
-        return;
-    }
     if (!drawing_)
         return;
     drawing_ = false;
@@ -203,18 +131,15 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
         selected_ = picker_.current()->bounds;
     else
         selected_ = dragRect(start_, end, frame_.image.size());
-    paintSelection();
-}
-void Overlay::mouseDoubleClickEvent(QMouseEvent *) {
-    if (!selected_.isEmpty())
-        finish(false);
+    finish(false);
 }
 void Overlay::wheelEvent(QWheelEvent *e) {
-    if (drawing_ || adjusting_ || !selected_.isEmpty())
+    if (drawing_ || finished_ || !selected_.isEmpty())
         return;
     cursor_ = pixelPoint(e->position());
     picker_.update(candidates(), cursor_);
-    picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
+    if (e->angleDelta().y() != 0)
+        picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
     update();
     e->accept();
 }

@@ -53,6 +53,9 @@ struct Document {
 QByteArray encodePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title);
 Document loadDocument(const QString &path);
+QJsonObject exportFeedback(const Document &doc);
+QByteArray serializeFeedback(const Document &doc);
+Document loadFeedback(const QJsonObject &feedback, const QImage &original);
 QJsonObject exportDocument(const Document &doc, bool embed = false);
 void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0);
 QByteArray serializeDocument(const Document &doc, bool embed = false);

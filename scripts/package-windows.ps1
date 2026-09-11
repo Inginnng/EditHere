@@ -2,7 +2,7 @@ param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
-    [string]$OutputDirectory = "dist/Help2Design-Native-0.5.0-win-x64"
+    [string]$OutputDirectory = "dist/HelpDesign-0.6.0-win-x64"
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -12,15 +12,15 @@ $buildPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $BuildDirectory))
 $outputPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory))
 if (-not $outputPath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Output must be inside the project." }
 if (Test-Path -LiteralPath $outputPath) { throw "Output already exists. Choose a fresh OutputDirectory." }
-if (-not (Test-Path -LiteralPath (Join-Path $buildPath "Help2Design.exe"))) { throw "Build the application first." }
+if (-not (Test-Path -LiteralPath (Join-Path $buildPath "HelpDesign.exe"))) { throw "Build the application first." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtbase/LGPL-3.0-only.txt"))) { throw "Third-party license materials are missing." }
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
-Copy-Item -LiteralPath (Join-Path $buildPath "Help2Design.exe") -Destination $outputPath
+Copy-Item -LiteralPath (Join-Path $buildPath "HelpDesign.exe") -Destination $outputPath
 $previousPath = $env:PATH
 try {
     $env:PATH = (Join-Path $QtRoot "bin") + ";" + $env:PATH
     if ($CompilerBin) { $env:PATH = $CompilerBin + ";" + $env:PATH }
-    & (Join-Path $QtRoot "bin/windeployqt.exe") --release --compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation,tls --include-plugins qwebp (Join-Path $outputPath "Help2Design.exe")
+    & (Join-Path $QtRoot "bin/windeployqt.exe") --release --compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation,tls --include-plugins qwebp (Join-Path $outputPath "HelpDesign.exe")
     if ($LASTEXITCODE) { throw "Qt deployment failed." }
 } finally { $env:PATH = $previousPath }
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse

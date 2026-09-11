@@ -364,6 +364,149 @@ class LayoutTests : public QObject {
         bad["unexpected"] = true;
         QVERIFY(rejects(bad, state.canvas));
     }
+    void minimalChangesOnlyKeepActualTransforms() {
+        auto state = createLayout({160, 120}, tableRegions());
+        QVERIFY(exportLayoutChanges(state).isEmpty());
+        const auto cell = groupId(state, "1");
+        transformLayoutGroup(state, cell, {90, 70, 30, 20});
+        auto changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(), 1);
+        QCOMPARE(changes[0].toObject(),
+                 (QJsonObject{{"from", rectJson({10, 10, 30, 20})}, {"to", rectJson({90, 70, 30, 20})}}));
+        transformLayoutGroup(state, cell, {10, 10, 30, 20});
+        QVERIFY(exportLayoutChanges(state).isEmpty());
+        QCOMPARE(renderLayout(sourceImage(), state).convertToFormat(QImage::Format_ARGB32), sourceImage());
+    }
+    void minimalChangesMergeAParentAndKeepNestedEditsSeparate() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parent = groupId(state, "1234");
+        transformLayoutGroup(state, parent, {50, 50, 90, 60});
+        auto changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(), 1);
+        QCOMPARE(changes[0].toObject(),
+                 (QJsonObject{{"from", rectJson({10, 10, 60, 40})}, {"to", rectJson({50, 50, 90, 60})}}));
+        auto restored = importLayoutChanges(changes, state.canvas);
+        QCOMPARE(renderLayout(sourceImage(), restored), renderLayout(sourceImage(), state));
+
+        transformLayoutGroup(state, groupId(state, "1"), {10, 70, 45, 30});
+        changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(),
+                 3); // A differently moved child and the two rectangles of the L-shaped remainder.
+        restored = importLayoutChanges(changes, state.canvas);
+        QCOMPARE(renderLayout(sourceImage(), restored), renderLayout(sourceImage(), state));
+        double area = 0;
+        for (const auto &value : changes) {
+            const auto from = value.toObject()["from"].toObject();
+            area += (from["x2"].toDouble() - from["x1"].toDouble()) *
+                    (from["y2"].toDouble() - from["y1"].toDouble());
+        }
+        QCOMPARE(area, 2400.0);
+    }
+    void minimalChangesPreserveLayerOrderAndSwaps() {
+        auto state = createLayout({160, 120}, tableRegions());
+        transformLayoutGroup(state, groupId(state, "1"), {80, 10, 30, 20});
+        transformLayoutGroup(state, groupId(state, "3"), {90, 10, 30, 20});
+        transformLayoutGroup(state, groupId(state, "2"), {110, 10, 30, 20});
+        auto changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(), 3); // Merging adjacent 1 and 2 would cover component 3 incorrectly.
+        auto restored = importLayoutChanges(changes, state.canvas);
+        QCOMPARE(renderLayout(sourceImage(), restored), renderLayout(sourceImage(), state));
+        QCOMPARE(renderLayout(sourceImage(), restored).pixelColor(100, 20), QColor("#3070e0"));
+
+        state = createLayout({160, 120}, tableRegions());
+        transformLayoutGroup(state, groupId(state, "1"), {40, 10, 30, 20});
+        transformLayoutGroup(state, groupId(state, "2"), {10, 10, 30, 20});
+        restored = importLayoutChanges(exportLayoutChanges(state), state.canvas);
+        QCOMPARE(renderLayout(sourceImage(), restored), renderLayout(sourceImage(), state));
+        QCOMPARE(renderLayout(sourceImage(), restored).pixelColor(20, 20), QColor("#20a060"));
+        QCOMPARE(renderLayout(sourceImage(), restored).pixelColor(50, 20), QColor("#f04050"));
+
+        // Returning a region to its source removes its record even after it was brought to the front.
+        transformLayoutGroup(state, groupId(state, "2"), {40, 10, 30, 20});
+        changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(), 1);
+        restored = importLayoutChanges(changes, state.canvas);
+        QCOMPARE(renderLayout(sourceImage(), restored), renderLayout(sourceImage(), state));
+    }
+    void minimalChangesCollapseDenseDetectorPartitions() {
+        QVector<Candidate> candidates;
+        for (int y = 0; y < 10; ++y)
+            for (int x = 0; x < 20; ++x)
+                candidates.append(candidate({10 + x * 4, 10 + y * 4, 4, 4}, QString("%1-%2").arg(x).arg(y)));
+        candidates.append(candidate({10, 10, 80, 40}, "table"));
+        auto state = createLayout({200, 150}, candidates);
+        QVERIFY(state.pieces.size() >= 200);
+        transformLayoutGroup(state, groupId(state, "table"), {100, 80, 80, 40});
+        auto changes = exportLayoutChanges(state);
+        QCOMPARE(changes.size(), 1);
+        QCOMPARE(changes[0].toObject()["from"], QJsonValue(rectJson({10, 10, 80, 40})));
+    }
+    void minimalFeedbackRoundTripsAndRejectsCorruption() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        auto document = fromImage(sourceImage(), "demo", "精简反馈");
+        document.layout = createLayout(document.image.size(), tableRegions());
+        transformLayoutGroup(*document.layout, groupId(*document.layout, "1234"), {50, 50, 90, 60});
+        Note point;
+        point.point = {20, 20};
+        point.comment = "加大标题";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {10, 10, 60, 40};
+        rectangle.comment = "表格右移";
+        document.notes = {point, rectangle};
+        const auto feedback = exportFeedback(document);
+        QCOMPARE(feedback.keys(), QStringList({"annotations", "changes"}));
+        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
+                 (QJsonObject{{"point", QJsonObject{{"x", 20}, {"y", 20}}}, {"text", "加大标题"}}));
+        QCOMPARE(feedback["annotations"].toArray()[1].toObject(),
+                 (QJsonObject{{"rectangle", rectJson({10, 10, 60, 40})}, {"text", "表格右移"}}));
+        const auto compact = serializeFeedback(document);
+        QVERIFY(compact.size() < 350);
+        const auto path = directory.filePath("feedback-minimal.json");
+        saveBytes(path, compact);
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path),
+                                 std::runtime_error); // The matching source image is required.
+        saveBytes(directory.filePath("feedback-minimal.png"), document.png);
+        const auto restored = loadDocument(path);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(renderLayout(restored.image, *restored.layout),
+                 renderLayout(document.image, *document.layout));
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("feedback-minimal.json"), compact);
+            saveBytes(QDir(folder).filePath("feedback-minimal.png"), document.png);
+        }
+        auto invalid = feedback;
+        invalid["tool"] = "unexpected";
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        invalid = feedback;
+        auto changes = feedback["changes"].toArray();
+        changes.append(changes.first());
+        invalid["changes"] = changes;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        invalid = feedback;
+        auto annotations = feedback["annotations"].toArray();
+        auto badPoint = annotations[0].toObject();
+        badPoint["rectangle"] = rectJson({10, 10, 60, 40});
+        annotations[0] = badPoint;
+        invalid["annotations"] = annotations;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        invalid = feedback;
+        changes = feedback["changes"].toArray();
+        auto change = changes[0].toObject();
+        change["to"] = rectJson({159, 119, 100, 100});
+        changes[0] = change;
+        invalid["changes"] = changes;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        invalid = feedback;
+        change["to"] = change["from"];
+        changes[0] = change;
+        invalid["changes"] = changes;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+    }
     void documentRoundTripAndSchemaFixture() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

@@ -3,21 +3,28 @@
 #include "overlay.h"
 #include "ui.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QFontMetrics>
+#include <QFutureWatcher>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QVariantAnimation>
 #include <QWheelEvent>
 using namespace h2d;
 class UiTests : public QObject {
@@ -29,6 +36,12 @@ class UiTests : public QObject {
             QDir().mkpath(folder);
             QVERIFY(widget.grab().save(QDir(folder).filePath(name)));
         }
+    }
+    QPushButton *toolButton(Editor &editor, const QString &tooltip) {
+        for (auto button : editor.findChildren<QPushButton *>())
+            if (button->toolTip() == tooltip)
+                return button;
+        return nullptr;
     }
     Document gridDocument() {
         QImage image(800, 600, QImage::Format_ARGB32);
@@ -95,6 +108,14 @@ class UiTests : public QObject {
         editor.setDocument(fromImage(exampleImage(), "demo", "示例"));
         editor.resize(1240, 820);
         QTest::qWait(80);
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
+        auto notesPanel = editor.findChild<QWidget *>("notesPanel");
+        QVERIFY(imageScroll && notesPanel && notesPanel->isVisible());
+        QVERIFY(editor.document().notes.isEmpty());
+        const QRect originalGeometry = editor.geometry();
+        const QSize originalViewport = imageScroll->viewport()->size();
+        const QRect originalNotesGeometry = notesPanel->geometry();
+        artifact(editor, "empty-notes-layout.png");
         Canvas *canvas = editor.canvas();
         canvas->setMode(Canvas::Point);
         auto complete = [this] {
@@ -116,6 +137,10 @@ class UiTests : public QObject {
         QPoint target(qRound(200 * canvas->zoom()), qRound(100 * canvas->zoom()));
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, target);
         QCOMPARE(editor.document().notes.size(), 1);
+        QTest::qWait(30);
+        QCOMPARE(editor.geometry(), originalGeometry);
+        QCOMPARE(imageScroll->viewport()->size(), originalViewport);
+        QCOMPARE(notesPanel->geometry(), originalNotesGeometry);
         QVERIFY(editor.document().notes.first().comment.startsWith("Refine"));
         QVERIFY((editor.document().notes[0].point - QPoint(200, 100)).manhattanLength() <= 2);
         canvas->setMode(Canvas::Rectangle);
@@ -148,14 +173,37 @@ class UiTests : public QObject {
         editor.hide();
     }
     void explosionSelectionTransformAndManualRegion() {
-        const auto document = gridDocument();
-        ExplosionDialog dialog(document.image, createLayout(document.image.size(), document.candidates));
-        dialog.show();
-        dialog.resize(1220, 820);
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
         QTest::qWait(80);
-        auto canvas = dialog.canvas();
-        QVERIFY(canvas);
-        QVERIFY(!dialog.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
+        auto explode = editor.findChild<QPushButton *>("explodeButton");
+        QVERIFY(imageScroll && explode && explode->isEnabled());
+        const QRect geometry = editor.geometry();
+        const QSize viewport = imageScroll->viewport()->size();
+        explode->click();
+        auto canvas = editor.layoutCanvas();
+        QVERIFY(canvas && editor.explosionActive() && explode->isChecked());
+        QVERIFY(!editor.document().dirty);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        QCOMPARE(canvas->window(), &editor);
+        QVERIFY(!editor.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+        QTest::qWait(30);
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+
+        auto animation = editor.findChild<QVariantAnimation *>("explosionWaveAnimation");
+        auto wave = editor.findChild<QWidget *>("explosionWave");
+        QVERIFY(animation && wave && wave->isVisible());
+        QVERIFY(wave->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QCOMPARE(animation->state(), QAbstractAnimation::Running);
+        animation->pause();
+        animation->setCurrentTime(400);
+        artifact(editor, "inline-wave.png");
+        animation->resume();
 
         const QPointF three(120, 195);
         QTest::mouseMove(canvas, canvasPoint(canvas, three));
@@ -164,7 +212,7 @@ class UiTests : public QObject {
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, three));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 240, 270));
 
-        auto clear = dialog.findChild<QPushButton *>("clearLayoutSelection");
+        auto clear = editor.findChild<QPushButton *>("clearLayoutSelection");
         QVERIFY(clear);
         clear->click();
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
@@ -191,7 +239,7 @@ class UiTests : public QObject {
         QVERIFY(qAbs(afterWheel.width() / afterWheel.height() - afterCorner.width() / afterCorner.height()) <
                 0.001);
 
-        auto x = dialog.findChild<QDoubleSpinBox *>("layoutX");
+        auto x = editor.findChild<QDoubleSpinBox *>("layoutX");
         QVERIFY(x && x->isEnabled());
         x->setValue(440.25);
         QVERIFY(QMetaObject::invokeMethod(x, "editingFinished", Qt::DirectConnection));
@@ -201,7 +249,7 @@ class UiTests : public QObject {
         QVERIFY(moved.pixelColor(460, 105).alpha() > 0);
 
         const auto beforeManual = canvas->state();
-        auto manual = dialog.findChild<QPushButton *>("manualRegion");
+        auto manual = editor.findChild<QPushButton *>("manualRegion");
         QVERIFY(manual);
         manual->click();
         QVERIFY(canvas->drawingMode());
@@ -210,21 +258,25 @@ class UiTests : public QObject {
         QVERIFY(!canvas->selected().isEmpty());
         QVERIFY(!canvas->drawingMode());
         const auto afterManual = canvas->state();
-        canvas->undo();
+        auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
+        QVERIFY(undo && redo && undo->isEnabled());
+        undo->click();
         QVERIFY(canvas->state() == beforeManual);
-        QVERIFY(canvas->canRedo());
-        canvas->redo();
+        QVERIFY(redo->isEnabled());
+        redo->click();
         QVERIFY(canvas->state() == afterManual);
+        QVERIFY(editor.document().layout == afterManual);
 
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
                           canvasPoint(canvas, layoutBounds(canvas->state(), firstId).center()));
         QCOMPARE(canvas->selected(), firstId);
-        QTest::qWait(30);
-        artifact(dialog, "explosion-editor.png");
+        animation->stop();
+        wave->hide();
+        artifact(editor, "inline-explosion.png");
         const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty())
             QVERIFY(renderLayout(document.image, canvas->state())
-                        .save(QDir(folder).filePath("explosion-result.png")));
+                        .save(QDir(folder).filePath("inline-result.png")));
         QTest::keyClick(canvas, Qt::Key_Escape);
         QVERIFY(canvas->selected().isEmpty());
         manual->click();
@@ -232,80 +284,248 @@ class UiTests : public QObject {
         QTest::keyClick(canvas, Qt::Key_Escape);
         QVERIFY(!canvas->drawingMode());
         QVERIFY(!manual->isChecked());
-        QVERIFY(dialog.isVisible());
-        dialog.close();
+        QVERIFY(editor.isVisible());
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+        editor.hide();
     }
-    void editorAppliesLayoutAndRestoresHistory() {
+    void editorRetainsInlineLayoutUntilScreenshotCloses() {
         auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
         Note note;
         note.point = {120, 105};
         note.comment = "将第一格移到右侧，保留原图批注坐标。";
         document.notes.append(note);
         const auto originalNotes = document.notes;
+        const auto initialLayout = *document.layout;
         Editor editor;
         editor.setDocument(document);
         editor.resize(1240, 820);
-        QVERIFY(!editor.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+        QTest::qWait(80);
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
         auto explode = editor.findChild<QPushButton *>("explodeButton");
-        QVERIFY(explode);
-        QTRY_VERIFY_WITH_TIMEOUT(explode->isEnabled(), 5000);
-        bool applied = false;
-        QTimer::singleShot(80, [&] {
-            auto dialog = qobject_cast<ExplosionDialog *>(QApplication::activeModalWidget());
-            QVERIFY(dialog);
-            // Always close a failed modal interaction, so a regression cannot hang the suite.
-            QTimer::singleShot(3000, dialog, &QDialog::reject);
-            dialog->resize(1220, 820);
-            QTest::qWait(40);
-            auto canvas = dialog->canvas();
-            // A deliberate manual region makes this integration check independent of detector granularity.
-            auto manual = dialog->findChild<QPushButton *>("manualRegion");
-            QVERIFY(manual);
-            manual->click();
-            drag(canvas, {60, 60}, {180, 150});
-            QVERIFY(!canvas->selected().isEmpty());
-            auto destination = canvas->selectionBounds();
-            destination.moveLeft(440);
-            canvas->transformSelection(destination);
-            auto apply = dialog->findChild<QPushButton *>("applyExplosion");
-            QVERIFY(apply);
-            applied = true;
-            apply->click();
-        });
+        QVERIFY(imageScroll && explode && explode->isEnabled());
+        const QRect geometry = editor.geometry();
+        const QSize viewport = imageScroll->viewport()->size();
         explode->click();
-        QVERIFY(applied);
+        QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
+        QVERIFY(canvas && editor.explosionActive());
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
+        QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
+        auto destination = canvas->selectionBounds();
+        destination.moveLeft(440);
+        canvas->transformSelection(destination);
         QVERIFY(editor.document().layout.has_value());
         QVERIFY(editor.document().notes == originalNotes);
-        QVERIFY(editor.canvas()->layoutPreview());
-        QCOMPARE(exportDocument(editor.document())["schemaVersion"].toString(), QString("2.0.0"));
         const auto appliedLayout = *editor.document().layout;
+        const auto feedback = exportFeedback(editor.document());
+        QCOMPARE(feedback.keys(), QStringList({"annotations", "changes"}));
+        QCOMPARE(feedback["changes"].toArray().size(), 1);
+        QCOMPARE(feedback["changes"].toArray().first().toObject()["from"].toObject(),
+                 rectJson(QRect(60, 60, 120, 90)));
+        QCOMPARE(feedback["changes"].toArray().first().toObject()["to"].toObject(),
+                 rectJson(QRect(440, 60, 120, 90)));
 
-        QPushButton *undo = nullptr, *redo = nullptr;
-        for (auto button : editor.findChildren<QPushButton *>()) {
-            if (button->toolTip() == "撤销")
-                undo = button;
-            else if (button->toolTip() == "重做")
-                redo = button;
-        }
+        auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
         QVERIFY(undo && redo && undo->isEnabled());
         undo->click();
-        QVERIFY(!editor.document().layout.has_value());
+        QVERIFY(editor.document().layout == initialLayout);
+        QVERIFY(canvas->state() == initialLayout);
         QVERIFY(editor.document().notes == originalNotes);
-        QVERIFY(!editor.canvas()->layoutPreview());
+        QVERIFY(editor.explosionActive());
         QVERIFY(redo->isEnabled());
         redo->click();
-        QVERIFY(editor.document().layout.has_value());
-        QVERIFY(*editor.document().layout == appliedLayout);
-        QVERIFY(editor.document().notes == originalNotes);
+        QVERIFY(editor.document().layout == appliedLayout);
+        QVERIFY(canvas->state() == appliedLayout);
+
+        QStringList pieceIds;
+        for (const auto &piece : canvas->state().pieces)
+            pieceIds.append(piece.id);
+        explode->click();
+        QVERIFY(!editor.explosionActive() && !explode->isChecked());
         QVERIFY(editor.canvas()->layoutPreview());
-        QTest::qWait(40);
-        artifact(editor, "layout-preview.png");
-        auto layoutView = editor.findChild<QPushButton *>("layoutView");
-        QVERIFY(layoutView && layoutView->isVisible());
-        layoutView->click();
-        QVERIFY(!editor.canvas()->layoutPreview());
+        QVERIFY(!canvas->isVisible());
+        QVERIFY(editor.document().layout == appliedLayout);
         QVERIFY(editor.document().notes == originalNotes);
+        QTest::qWait(30);
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+        artifact(editor, "inline-result-preview.png");
+
+        explode->click();
+        QVERIFY(editor.explosionActive() && explode->isChecked());
+        QCOMPARE(editor.layoutCanvas(), canvas.data());
+        QVERIFY(canvas->state() == appliedLayout);
+        QStringList resumedIds;
+        for (const auto &piece : canvas->state().pieces)
+            resumedIds.append(piece.id);
+        QCOMPARE(resumedIds, pieceIds);
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+
+        bool discarded = false;
+        QTimer dismiss;
+        connect(&dismiss, &QTimer::timeout, &editor, [&] {
+            if (auto prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                if (auto discard = prompt->button(QMessageBox::Discard)) {
+                    discarded = true;
+                    discard->click();
+                }
+            }
+        });
+        QTimer::singleShot(3000, &editor, [] {
+            if (auto active = QApplication::activeModalWidget())
+                active->close();
+        });
+        dismiss.start(20);
+        editor.close();
+        dismiss.stop();
+        QVERIFY(discarded);
+        QVERIFY(!editor.isVisible());
+        QVERIFY(!editor.hasDocument());
+        QVERIFY(!editor.document().layout.has_value());
+        QVERIFY(editor.layoutCanvas() == nullptr);
+        QVERIFY(canvas.isNull());
+        QVERIFY(!editor.explosionActive());
+        editor.setDocument(gridDocument());
+        QVERIFY(editor.hasDocument());
+        QVERIFY(editor.layoutCanvas() == nullptr);
+        QVERIFY(!editor.document().layout.has_value());
         editor.hide();
+    }
+    void compactFeedbackExportsSavesAndReopens() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note point;
+        point.point = {120, 105};
+        point.comment = "把第一格移到右边。";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {60, 150, 240, 90};
+        rectangle.comment = "这一行的文字保持左对齐。";
+        document.notes = {point, rectangle};
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(60);
+        editor.explode();
+        QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
+        QVERIFY(canvas && editor.explosionActive());
+        QVERIFY(!editor.document().dirty);
+
+        // Editing only the temporary partition does not create user feedback.
+        auto manual = editor.findChild<QPushButton *>("manualRegion");
+        QVERIFY(manual);
+        const int groupCount = canvas->state().groups.size();
+        manual->click();
+        drag(canvas, {500, 400}, {600, 450});
+        QCOMPARE(canvas->state().groups.size(), groupCount + 1);
+        QVERIFY(!editor.document().dirty);
+        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
+        canvas->clearSelection();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {120, 105}));
+        QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
+        auto destination = canvas->selectionBounds();
+        destination.moveLeft(440);
+        canvas->transformSelection(destination);
+        QVERIFY(editor.document().dirty);
+        const auto expectedFeedback = exportFeedback(editor.document());
+        const auto expectedImage = renderLayout(editor.document().image, *editor.document().layout);
+        QCOMPARE(expectedFeedback["annotations"].toArray().size(), 2);
+        QCOMPARE(expectedFeedback["changes"].toArray().size(), 1);
+
+        QPushButton *exportButton = nullptr;
+        for (auto button : editor.findChildren<QPushButton *>())
+            if (button->text() == "导出 JSON")
+                exportButton = button;
+        QVERIFY(exportButton);
+        bool exportChecked = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            QTimer::singleShot(3000, dialog, &QDialog::reject);
+            auto text = dialog->findChild<QPlainTextEdit *>();
+            QVERIFY(text && text->isVisible());
+            QJsonParseError error;
+            const auto parsed = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
+            QCOMPARE(error.error, QJsonParseError::NoError);
+            QVERIFY(parsed.isObject());
+            QCOMPARE(parsed.object().keys(), QStringList({"annotations", "changes"}));
+            QCOMPARE(parsed.object()["changes"].toArray().size(), 1);
+            QCOMPARE(parsed.object(), expectedFeedback);
+            QVERIFY(dialog->findChildren<QCheckBox *>().isEmpty());
+            QVERIFY(!text->toPlainText().contains("base64", Qt::CaseInsensitive));
+            artifact(*dialog, "compact-export.png");
+            exportChecked = true;
+            dialog->reject();
+        });
+        exportButton->click();
+        QVERIFY(exportChecked);
+        QVERIFY(editor.document().dirty);
+
+        const QString path = dir.filePath("review.json");
+        bool selectedFile = false, saveError = false;
+        QTimer chooseFile;
+        connect(&chooseFile, &QTimer::timeout, &editor, [&] {
+            auto active = QApplication::activeModalWidget();
+            if (auto dialog = qobject_cast<QFileDialog *>(active); dialog && !selectedFile) {
+                selectedFile = true;
+                dialog->selectFile(path);
+                QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+            } else if (auto error = qobject_cast<QMessageBox *>(active)) {
+                saveError = true;
+                error->accept();
+            }
+        });
+        QTimer::singleShot(3000, &editor, [] {
+            if (auto active = QApplication::activeModalWidget())
+                active->close();
+        });
+        chooseFile.start(20);
+        const bool saved = editor.saveProject();
+        chooseFile.stop();
+        QVERIFY(selectedFile && !saveError && saved);
+        QVERIFY(!editor.document().dirty);
+        QVERIFY(QFileInfo::exists(dir.filePath("review.png")));
+        QFile savedJson(path);
+        QVERIFY(savedJson.open(QIODevice::ReadOnly));
+        QJsonParseError error;
+        const auto parsed = QJsonDocument::fromJson(savedJson.readAll(), &error);
+        QCOMPARE(error.error, QJsonParseError::NoError);
+        QCOMPARE(parsed.object().keys(), QStringList({"annotations", "changes"}));
+        QCOMPARE(parsed.object(), expectedFeedback);
+        const auto restored = loadDocument(path);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(renderLayout(restored.image, *restored.layout), expectedImage);
+        QCOMPARE(restored.notes.size(), 2);
+        QVERIFY(restored.notes[0].isPoint);
+        QCOMPARE(restored.notes[0].point, point.point);
+        QCOMPARE(restored.notes[0].comment, point.comment);
+        QVERIFY(!restored.notes[1].isPoint);
+        QCOMPARE(restored.notes[1].rect, rectangle.rect);
+        QCOMPARE(restored.notes[1].comment, rectangle.comment);
+        QCOMPARE(exportFeedback(restored), expectedFeedback);
+
+        bool unexpectedPrompt = false;
+        QTimer rejectUnexpectedPrompt;
+        connect(&rejectUnexpectedPrompt, &QTimer::timeout, &editor, [&] {
+            if (auto active = QApplication::activeModalWidget()) {
+                unexpectedPrompt = true;
+                active->close();
+            }
+        });
+        rejectUnexpectedPrompt.start(20);
+        editor.close();
+        rejectUnexpectedPrompt.stop();
+        QVERIFY(!unexpectedPrompt);
+        QVERIFY(!editor.hasDocument());
+        QVERIFY(!editor.document().layout.has_value());
+        QVERIFY(editor.layoutCanvas() == nullptr);
+        QVERIFY(canvas.isNull());
+        QVERIFY(!editor.isVisible());
     }
     void invalidExportKeepsUnsavedWork() {
         QTemporaryDir dir;
@@ -361,6 +581,7 @@ class UiTests : public QObject {
         QVERIFY(selectedFile && errorShown);
         QVERIFY(!saved);
         QVERIFY(!QFileInfo::exists(path));
+        QVERIFY(!QFileInfo::exists(dir.filePath("invalid-project.png")));
         QVERIFY(editor.document().dirty);
         QVERIFY(editor.document().layout == document.layout);
         editor.hide();
@@ -375,12 +596,44 @@ class UiTests : public QObject {
         QSignalSpy accepted(&overlay, &Overlay::accepted);
         QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {30, 70});
         QTest::mouseMove(&overlay, {300, 260});
-        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
         artifact(overlay, "crop-overlay.png");
-        QTest::keyClick(&overlay, Qt::Key_Return);
+        QCOMPARE(accepted.count(), 0);
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
         QCOMPARE(accepted.count(), 1);
         QCOMPARE(accepted.first().first().toRect(), QRect(60, 140, 540, 380));
+        QVERIFY(overlay.findChildren<QPushButton *>().isEmpty());
+        QTest::keyClick(&overlay, Qt::Key_Return);
+        QTest::mouseClick(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QCOMPARE(accepted.count(), 1);
         overlay.hide();
+    }
+    void detectedBlockClickImmediatelyStartsAnnotation() {
+        QImage image(160, 120, QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        ScreenFrame frame{"click-test", {0, 0, 160, 120}, {}, image, false};
+        Overlay overlay(frame);
+        overlay.show();
+        QSignalSpy accepted(&overlay, &Overlay::accepted);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mouseMove(&overlay, {80, 60});
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
+        QCOMPARE(accepted.count(), 0);
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
+        QCOMPARE(accepted.count(), 1);
+        QCOMPARE(accepted.first().first().toRect(), QRect(0, 0, 160, 120));
+        QVERIFY(overlay.findChildren<QPushButton *>().isEmpty());
+        QTest::mouseClick(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
+        QCOMPARE(accepted.count(), 1);
+        overlay.hide();
+
+        Overlay cancelledOverlay(frame);
+        cancelledOverlay.show();
+        QSignalSpy cancelled(&cancelledOverlay, &Overlay::cancelled);
+        QSignalSpy notAccepted(&cancelledOverlay, &Overlay::accepted);
+        QTest::keyClick(&cancelledOverlay, Qt::Key_Escape);
+        QCOMPARE(cancelled.count(), 1);
+        QCOMPARE(notAccepted.count(), 0);
+        cancelledOverlay.hide();
     }
 };
 QTEST_MAIN(UiTests)

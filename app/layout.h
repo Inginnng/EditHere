@@ -1,5 +1,6 @@
 #pragma once
 #include <QImage>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QRectF>
 #include <QStringList>
@@ -41,6 +42,8 @@ void transformLayoutGroup(LayoutState &state, const QString &id, QRectF destinat
 void paintLayout(QPainter &painter, const QImage &original, const LayoutState &state);
 QImage renderLayout(const QImage &original, const LayoutState &state);
 void validateLayout(const LayoutState &state, QSize originalSize);
+QJsonArray exportLayoutChanges(const LayoutState &state);
+LayoutState importLayoutChanges(const QJsonArray &changes, QSize originalSize);
 QJsonObject exportLayout(const LayoutState &state);
 LayoutState importLayout(const QJsonObject &json, QSize originalSize);
 } // namespace h2d

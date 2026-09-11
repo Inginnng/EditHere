@@ -79,8 +79,8 @@ class PlatformTests : public QObject {
         window.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         window.resize(420, 220);
         window.setStyleSheet("QWidget { background: #326ca8; }");
-        QPushButton button("Help2Design platform test button", &window);
-        button.setAccessibleName("Help2Design platform test button");
+        QPushButton button("HelpDesign platform test button", &window);
+        button.setAccessibleName("HelpDesign platform test button");
         button.setGeometry(30, 90, 350, 70);
         auto screen = QGuiApplication::primaryScreen();
         window.move(screen->availableGeometry().topLeft() + QPoint(80, 80));
@@ -112,7 +112,7 @@ class PlatformTests : public QObject {
         QPoint native = frame.nativeGeometry.topLeft() + pixel(global);
         QProcess probe;
         probe.setProgram(qEnvironmentVariable("H2D_PLATFORM_PROBE",
-                                              QCoreApplication::applicationDirPath() + "/Help2Design.exe"));
+                                              QCoreApplication::applicationDirPath() + "/HelpDesign.exe"));
         probe.setArguments({"--inspect", QString::number(native.x()), QString::number(native.y()), "0"});
 #ifdef Q_OS_WIN
         probe.setCreateProcessArgumentsModifier(

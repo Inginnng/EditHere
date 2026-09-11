@@ -1,12 +1,12 @@
 # Third-party components
 
-Help2Design Native 0.5.0 uses dynamically linked Qt 6.8.3 (Qt Core, Gui, Widgets,
+HelpDesign 0.6.0 uses dynamically linked Qt 6.8.3 (Qt Core, Gui, Widgets,
 Concurrent, Network and Qt Image Formats), copyright The Qt Company Ltd. and
 contributors, under LGPL version 3 and the components' applicable licenses.
 
-Qt is not part of Help2Design's application code. The shared libraries
+Qt is not part of HelpDesign's application code. The shared libraries
 and image plugins remain separately replaceable by compatible modified versions.
-No Help2Design restriction prohibits reverse engineering for debugging modifications
+No HelpDesign restriction prohibits reverse engineering for debugging modifications
 to these LGPL libraries. The license texts, copyright notices and upstream
 attributions are included in the licenses directory. Some notices cover source-tree
 components beyond the subset present in this runtime.

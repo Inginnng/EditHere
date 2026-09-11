@@ -41,13 +41,17 @@ int main(int argc, char **argv) {
     }
 
     QApplication app(argc, argv);
+    // Keep the previous local lock and IPC address so an already running version
+    // remains the sole owner of screenshots and unsaved feedback.
     app.setApplicationName("Help2Design");
     app.setOrganizationName("Help2Design");
-    app.setApplicationVersion("0.5.0");
+    const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    app.setApplicationName("HelpDesign");
+    app.setOrganizationName("HelpDesign");
+    app.setApplicationVersion("0.6.0");
     app.setQuitOnLastWindowClosed(false);
     app.setWindowIcon(glyph("capture", accent()));
     applyTheme();
-    const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);

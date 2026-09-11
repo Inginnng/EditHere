@@ -6,7 +6,11 @@ class QLabel;
 class QScrollArea;
 class QVBoxLayout;
 class QPushButton;
+class QStackedWidget;
 namespace h2d {
+class LayoutCanvas;
+class LayoutInspector;
+class ExplosionWave;
 class Editor final : public QWidget {
     Q_OBJECT
   public:
@@ -28,6 +32,12 @@ class Editor final : public QWidget {
     void exportJson();
     void fit();
     void explode();
+    bool explosionActive() const {
+        return explosionActive_;
+    }
+    LayoutCanvas *layoutCanvas() const {
+        return layoutCanvas_;
+    }
   signals:
     void captureRequested();
     void hiddenToTray();
@@ -40,7 +50,7 @@ class Editor final : public QWidget {
 
   private:
     void editNote(Note note, bool fresh, QPoint global);
-    void changed();
+    void changed(bool contentChanged = true);
     void renderNotes();
     void showContext(QPoint global);
     void copyImage();
@@ -62,7 +72,17 @@ class Editor final : public QWidget {
     void remember();
     void restore(Snapshot snapshot);
     void updateLayoutControls();
+    void setExplosionActive(bool enabled);
+    void resetLayoutTools();
+    void switchCanvas(QWidget *target);
     Canvas *canvas_;
+    LayoutCanvas *layoutCanvas_ = nullptr;
+    LayoutInspector *layoutInspector_ = nullptr;
+    ExplosionWave *wave_ = nullptr;
+    QScrollArea *inspectorScroll_ = nullptr;
+    QStackedWidget *detailsStack_;
+    std::optional<LayoutState> splitBaseline_;
+    bool explosionActive_ = false;
     QScrollArea *imageScroll_, *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;

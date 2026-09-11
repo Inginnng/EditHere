@@ -32,7 +32,7 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
         // A visible (fully transparent) window can become foreground. Merely hiding
         // the editor or waiting leaves Explorer's overflow panel active on a tray click.
         activation->handle = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED, L"STATIC", L"Help2Design capture preparation", WS_POPUP,
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED, L"STATIC", L"HelpDesign capture preparation", WS_POPUP,
             GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), 1, 1, nullptr, nullptr,
             GetModuleHandleW(nullptr), nullptr);
         if (activation->handle) {

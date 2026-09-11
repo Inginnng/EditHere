@@ -17,15 +17,15 @@ Controller::Controller(QObject *parent)
 #ifdef Q_OS_MAC
     menu->addAction("启用系统元素识别", this, [this] {
         if (requestAccessibility())
-            tray_.showMessage("Help2Design", "已启用系统元素识别");
+            tray_.showMessage("HelpDesign", "已启用系统元素识别");
         else
-            tray_.showMessage("Help2Design", "请在系统设置中授予辅助功能权限，图片识别仍可直接使用。");
+            tray_.showMessage("HelpDesign", "请在系统设置中授予辅助功能权限，图片识别仍可直接使用。");
     });
 #endif
     menu->addSeparator();
     menu->addAction("退出", this, &Controller::quit);
     tray_.setContextMenu(menu);
-    tray_.setToolTip("Help2Design · " + globalShortcutLabel());
+    tray_.setToolTip("HelpDesign · " + globalShortcutLabel());
     tray_.show();
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger)
@@ -34,7 +34,7 @@ Controller::Controller(QObject *parent)
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
     if (!shortcut_.start())
-        tray_.showMessage("Help2Design", "截图快捷键已被占用，可点击托盘图标截图。");
+        tray_.showMessage("HelpDesign", "截图快捷键已被占用，可点击托盘图标截图。");
 }
 void Controller::start(bool demo, const QString &path) {
     if (!path.isEmpty())

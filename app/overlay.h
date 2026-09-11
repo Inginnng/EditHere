@@ -3,7 +3,6 @@
 #include <QProcess>
 #include <QTimer>
 #include <QWidget>
-class QLabel;
 namespace h2d {
 class Overlay final : public QWidget {
     Q_OBJECT
@@ -24,7 +23,6 @@ class Overlay final : public QWidget {
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
-    void mouseDoubleClickEvent(QMouseEvent *) override;
     void wheelEvent(QWheelEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void closeEvent(QCloseEvent *) override;
@@ -32,19 +30,15 @@ class Overlay final : public QWidget {
   private:
     QPoint pixelPoint(QPointF point) const;
     QRectF localRect(QRect rect) const;
-    void paintSelection();
     void requestProbe();
     QVector<Candidate> candidates() const;
     void finish(bool copy);
     ScreenFrame frame_;
     QVector<Candidate> visual_, native_;
     CandidatePicker picker_;
-    QRect selected_, beforeDrag_;
+    QRect selected_;
     QPoint start_, cursor_;
-    bool drawing_ = false, adjusting_ = false, finished_ = false;
-    int handle_ = -1;
-    QWidget *toolbar_;
-    QLabel *size_;
+    bool drawing_ = false, finished_ = false;
     QTimer debounce_;
     QProcess *probe_ = nullptr;
 };
