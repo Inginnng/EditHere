@@ -22,6 +22,11 @@ class SettingsTests : public QObject {
         QVERIFY(loadSettings(path) == defaults);
         auto changed = defaults;
         changed.theme = ThemeMode::Dark;
+        changed.captureOnStartup = false;
+        changed.fitImageOnOpen = false;
+        changed.embedOriginal = false;
+        changed.checkUpdatesOnStartup = true;
+        changed.defaultTool = 2;
         changed.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         changed.shortcuts["point"] = {};
         changed.shortcuts["rectangle"] = QKeySequence("Ctrl+,");
@@ -93,6 +98,26 @@ class SettingsTests : public QObject {
         settings.shortcuts["capture"] = settings.shortcuts["save"];
         QVERIFY(!validateSettings(settings).isEmpty());
     }
+    void legacyAndMalformedNewPreferences() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("settings.ini");
+        QSettings source(path, QSettings::IniFormat);
+        source.setValue("version", 1);
+        source.setValue("appearance/theme", "dark");
+        source.setValue("shortcuts/capture", "Ctrl+Alt+9");
+        source.sync();
+        auto expected = defaultSettings();
+        expected.theme = ThemeMode::Dark;
+        expected.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
+        QVERIFY(loadSettings(path) == expected);
+        source.setValue("defaults/tool", "nonsense");
+        source.setValue("defaults/embedOriginal", "invalid");
+        source.setValue("updates/checkOnStartup", "invalid");
+        source.sync();
+        QVERIFY(loadSettings(path) == expected);
+        expected.defaultTool = 4;
+        QVERIFY(!validateSettings(expected).isEmpty());
+    }
     void failedWriteReportsError() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -103,6 +128,11 @@ class SettingsTests : public QObject {
     void resetAndCancelOnlyChangeDraft() {
         auto original = defaultSettings();
         original.theme = ThemeMode::Dark;
+        original.captureOnStartup = false;
+        original.fitImageOnOpen = false;
+        original.embedOriginal = false;
+        original.checkUpdatesOnStartup = true;
+        original.defaultTool = 1;
         original.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         SettingsDialog dialog(original);
         int applyCount = 0;

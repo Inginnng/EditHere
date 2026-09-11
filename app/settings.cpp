@@ -55,6 +55,8 @@ AppSettings defaultSettings() {
 QString validateSettings(const AppSettings &settings) {
     if (themeName(settings.theme).isEmpty())
         return "请选择有效的外观模式。";
+    if (settings.defaultTool < 0 || settings.defaultTool > 3)
+        return "请选择有效的默认标注工具。";
     QMap<int, QString> assigned;
     const auto definitions = shortcutDefinitions();
     for (const auto &definition : definitions) {
@@ -97,6 +99,23 @@ AppSettings loadSettings(const QString &filePath) {
         result.theme = ThemeMode::Dark;
     else if (theme != "system")
         return defaultSettings();
+    // Missing or malformed new preferences keep their individual defaults on upgrade.
+    auto boolean = [&](const QString &key, bool fallback) {
+        const auto value = source.value(key).toString().toLower();
+        if (value == "true" || value == "1")
+            return true;
+        if (value == "false" || value == "0")
+            return false;
+        return fallback;
+    };
+    result.captureOnStartup = boolean("defaults/captureOnStartup", true);
+    result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
+    result.embedOriginal = boolean("defaults/embedOriginal", true);
+    result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
+    bool validTool = false;
+    const auto tool = source.value("defaults/tool", 0).toInt(&validTool);
+    if (validTool && tool >= 0 && tool <= 3)
+        result.defaultTool = tool;
     for (const auto &definition : shortcutDefinitions()) {
         const auto key = "shortcuts/" + definition.id;
         if (!source.contains(key))
@@ -127,6 +146,11 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     QSettings target(path, QSettings::IniFormat);
     target.setAtomicSyncRequired(true);
     target.setValue("version", 1);
+    target.setValue("defaults/captureOnStartup", settings.captureOnStartup);
+    target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
+    target.setValue("defaults/embedOriginal", settings.embedOriginal);
+    target.setValue("defaults/tool", settings.defaultTool);
+    target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("appearance/theme", themeName(settings.theme));
     for (const auto &definition : shortcutDefinitions())
         target.setValue("shortcuts/" + definition.id,

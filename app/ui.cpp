@@ -104,9 +104,9 @@ QLineEdit:focus,QKeySequenceEdit:focus,QDoubleSpinBox:focus,QSpinBox:focus,QComb
 QLineEdit:disabled,QKeySequenceEdit:disabled,QDoubleSpinBox:disabled,QSpinBox:disabled,QComboBox:disabled { color:@disabled@; background:@disabledBg@; }
 QKeySequenceEdit QLineEdit { border:0; border-radius:0; padding:0; background:transparent; }
 QComboBox { padding-right:26px; }
-QComboBox::drop-down { subcontrol-origin:padding; subcontrol-position:top right; width:24px; border:0; }
+QComboBox::drop-down { subcontrol-origin:padding; subcontrol-position:top right; width:24px; }
 QComboBox QAbstractItemView { background:@surface@; color:@text@; border:1px solid @border@; selection-background-color:@accent@; selection-color:white; outline:0; }
-QCheckBox,QRadioButton { spacing:7px; background:transparent; }
+QCheckBox,QRadioButton { spacing:7px; }
 QCheckBox:disabled,QRadioButton:disabled { color:@disabled@; }
 QCheckBox::indicator,QRadioButton::indicator { width:16px; height:16px; }
 QGroupBox { border:1px solid @border@; border-radius:9px; margin-top:12px; padding-top:12px; }

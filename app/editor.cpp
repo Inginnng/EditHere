@@ -286,7 +286,8 @@ void Editor::setDocument(Document document) {
     undoHistory_.clear();
     redoHistory_.clear();
     canvas_->setDocument(&doc_);
-    setMode(Canvas::Smart);
+    setMode(static_cast<Canvas::Mode>(preferences_.defaultTool));
+    fitted_ = preferences_.fitImageOnOpen;
     canvas_->setLayoutPreview(doc_.layout.has_value());
     explosion_->setEnabled(doc_.layout.has_value());
     updateLayoutControls();
@@ -301,8 +302,15 @@ void Editor::setDocument(Document document) {
                           : QGuiApplication::primaryScreen()->availableGeometry();
     resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
     move(available.center() - rect().center());
-    QTimer::singleShot(0, this, &Editor::fit);
     const int generation = ++generation_;
+    QTimer::singleShot(0, this, [this, generation] {
+        if (generation != generation_)
+            return;
+        if (preferences_.fitImageOnOpen)
+            fit();
+        else
+            zoom(1.0);
+    });
     auto watcher = new QFutureWatcher<QVector<Candidate>>(this);
     connect(watcher, &QFutureWatcher<QVector<Candidate>>::finished, this, [this, watcher, generation] {
         if (generation == generation_) {
@@ -804,7 +812,7 @@ void Editor::exportJson() {
     layout->addWidget(title);
     auto embed = new QCheckBox("包含原图，可独立还原", &dialog);
     embed->setObjectName("embedOriginal");
-    embed->setChecked(true);
+    embed->setChecked(preferences_.embedOriginal);
     layout->addWidget(embed);
     auto json = new JsonPreview(&dialog);
     json->setAccessibleName("标准化 JSON");

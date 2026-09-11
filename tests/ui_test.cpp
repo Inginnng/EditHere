@@ -118,7 +118,12 @@ class UiTests : public QObject {
     void settingsAreAvailableFromTrayWithoutAScreenshot() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.captureOnStartup = false;
         Controller controller(nullptr, settings);
+        controller.start(false);
+        QTest::qWait(100);
+        for (auto widget : QApplication::topLevelWidgets())
+            QVERIFY(!qobject_cast<Overlay *>(widget));
         auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
         QVERIFY(tray && tray->contextMenu());
         auto action = tray->contextMenu()->findChild<QAction *>("traySettings");
@@ -141,6 +146,55 @@ class UiTests : public QObject {
         action->trigger();
         QVERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
+    }
+    void defaultPreferencesApplyToNextImageAndExport() {
+        Editor editor;
+        auto preferences = defaultSettings();
+        preferences.defaultTool = Canvas::Rectangle;
+        preferences.fitImageOnOpen = false;
+        preferences.embedOriginal = false;
+        editor.setPreferences(preferences);
+        editor.setDocument(gridDocument());
+        QTest::qWait(100);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
+        QCOMPARE(editor.canvas()->zoom(), 1.0);
+        bool inspected = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
+            QVERIFY(embed);
+            QVERIFY(!embed->isChecked());
+            inspected = true;
+            dialog->reject();
+        });
+        QTimer::singleShot(2000, &editor, [] {
+            if (auto dialog = QApplication::activeModalWidget())
+                dialog->close();
+        });
+        editor.exportJson();
+        QVERIFY(inspected);
+        preferences.defaultTool = Canvas::Point;
+        editor.setPreferences(preferences);
+        QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
+        editor.setDocument(gridDocument());
+        QCOMPARE(editor.canvas()->mode(), Canvas::Point);
+        editor.hide();
+        SettingsDialog dialog(preferences);
+        auto tabs = dialog.findChild<QTabWidget *>("settingsTabs");
+        QVERIFY(tabs);
+        dialog.show();
+        tabs->setCurrentIndex(2);
+        QTest::qWait(50);
+        artifact(dialog, "settings-defaults-light.png");
+        dialog.showUpdates();
+        QTest::qWait(50);
+        artifact(dialog, "settings-updates-light.png");
+        auto status = dialog.findChild<QLabel *>("updateStatus");
+        QVERIFY(status && status->text().contains("尚未"));
+        applyTheme(ThemeMode::Dark);
+        artifact(dialog, "settings-updates-dark.png");
+        applyTheme(ThemeMode::System);
     }
     void shortcutChangesAndThemesPreserveFeedback() {
         auto document = gridDocument();

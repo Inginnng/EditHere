@@ -12,7 +12,7 @@ class Controller final : public QObject {
     void capture();
     void activate();
     void quit();
-    void openSettings();
+    void openSettings(bool updates = false);
 
   private:
     void clearOverlays();
@@ -25,6 +25,7 @@ class Controller final : public QObject {
     QSystemTrayIcon tray_;
     GlobalShortcut shortcut_;
     QVector<Overlay *> overlays_;
+    bool startupUpdateChecked_ = false;
     bool capturing_ = false, wasVisible_ = false;
 };
 } // namespace h2d

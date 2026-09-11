@@ -8,6 +8,11 @@ enum class ThemeMode { System, Light, Dark };
 struct AppSettings {
     ThemeMode theme = ThemeMode::System;
     QMap<QString, QKeySequence> shortcuts;
+    bool captureOnStartup = true;
+    bool fitImageOnOpen = true;
+    bool embedOriginal = true;
+    bool checkUpdatesOnStartup = false;
+    int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.
     bool operator==(const AppSettings &) const = default;
 };
 struct ShortcutDefinition {

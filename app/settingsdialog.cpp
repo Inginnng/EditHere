@@ -1,6 +1,9 @@
 #include "settingsdialog.h"
 #include "ui.h"
+#include "updatechecker.h"
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QKeySequenceEdit>
@@ -9,6 +12,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QTabWidget>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 namespace h2d {
@@ -26,7 +30,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     titleFont.setWeight(QFont::DemiBold);
     title->setFont(titleFont);
     root->addWidget(title);
-    auto tabs = new QTabWidget(this);
+    auto tabs = tabs_ = new QTabWidget(this);
     tabs->setObjectName("settingsTabs");
     root->addWidget(tabs, 1);
     auto shortcuts = new QWidget;
@@ -98,6 +102,93 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     appearanceLayout->addWidget(theme_);
     appearanceLayout->addStretch();
     tabs->addTab(appearance, "外观");
+    auto defaults = new QWidget;
+    auto defaultsLayout = new QVBoxLayout(defaults);
+    defaultsLayout->setContentsMargins(20, 22, 20, 20);
+    defaultsLayout->setSpacing(18);
+    auto defaultsDescription = mutedLabel("为下一次截图和导出设置习惯。不会改变正在编辑的内容。", defaults);
+    defaultsDescription->setWordWrap(true);
+    defaultsLayout->addWidget(defaultsDescription);
+    captureOnStartup_ = new QCheckBox("启动后立即截图", defaults);
+    captureOnStartup_->setObjectName("captureOnStartup");
+    captureOnStartup_->setToolTip("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。");
+    fitImageOnOpen_ = new QCheckBox("打开图片时自动适应窗口", defaults);
+    fitImageOnOpen_->setObjectName("fitImageOnOpen");
+    fitImageOnOpen_->setToolTip("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。");
+    embedOriginal_ = new QCheckBox("导出 JSON 默认包含原图", defaults);
+    embedOriginal_->setObjectName("defaultEmbedOriginal");
+    defaultsLayout->addWidget(captureOnStartup_);
+    defaultsLayout->addWidget(fitImageOnOpen_);
+    defaultsLayout->addWidget(embedOriginal_);
+    auto exportHint = mutedLabel("包含原图的 JSON 可独立还原。保存项目始终包含原图。", defaults);
+    exportHint->setWordWrap(true);
+    defaultsLayout->addWidget(exportHint);
+    auto toolForm = new QFormLayout;
+    defaultTool_ = new QComboBox(defaults);
+    defaultTool_->setObjectName("defaultTool");
+    defaultTool_->addItems({"智能选块", "点标注", "框选标注", "调整批注"});
+    defaultTool_->setAccessibleName("默认标注工具");
+    toolForm->addRow("默认标注工具", defaultTool_);
+    defaultsLayout->addLayout(toolForm);
+    defaultsLayout->addStretch();
+    tabs->addTab(defaults, "默认行为");
+
+    auto about = new QWidget;
+    auto aboutLayout = new QVBoxLayout(about);
+    aboutLayout->setContentsMargins(20, 22, 20, 20);
+    aboutLayout->setSpacing(18);
+    auto version = new QLabel("HelpDesign  " HELPDESIGN_VERSION, about);
+    version->setObjectName("settingsSection");
+    aboutLayout->addWidget(version);
+    auto description = mutedLabel("截图、批注与布局调整，让设计修改意见更清楚。", about);
+    description->setWordWrap(true);
+    aboutLayout->addWidget(description);
+    checkUpdatesOnStartup_ = new QCheckBox("启动时检查更新", about);
+    checkUpdatesOnStartup_->setObjectName("checkUpdatesOnStartup");
+    aboutLayout->addWidget(checkUpdatesOnStartup_);
+    auto updateHint = mutedLabel(
+        "仅检查正式版，有更新时提醒。不会自动下载或安装。检查只访问 GitHub，不上传截图或批注。", about);
+    updateHint->setWordWrap(true);
+    aboutLayout->addWidget(updateHint);
+    auto status = new QLabel("尚未检查更新。", about);
+    status->setObjectName("updateStatus");
+    status->setWordWrap(true);
+    status->setTextFormat(Qt::PlainText);
+    aboutLayout->addWidget(status);
+    auto check = textButton("检查更新", true, about);
+    check->setObjectName("checkUpdates");
+    auto releases = textButton("打开发布页", false, about);
+    releases->setObjectName("openReleases");
+    auto updateActions = new QHBoxLayout;
+    updateActions->addWidget(check);
+    updateActions->addWidget(releases);
+    updateActions->addStretch();
+    aboutLayout->addLayout(updateActions);
+    auto privateHint = mutedLabel("私有仓库需要访问权限。若已安装 GitHub CLI "
+                                  "并登录，会使用其现有登录状态；否则可在浏览器登录后查看发布页。",
+                                  about);
+    privateHint->setWordWrap(true);
+    aboutLayout->addWidget(privateHint);
+    aboutLayout->addStretch();
+    tabs->addTab(about, "关于与更新");
+    updater_ = new UpdateChecker(this);
+    connect(check, &QPushButton::clicked, this, [this, status, check] {
+        status->setText("正在检查更新…");
+        check->setEnabled(false);
+        updater_->check();
+    });
+    connect(updater_, &UpdateChecker::finished, this,
+            [status, check, releases](UpdateChecker::Status state, const QString &message, const QUrl &url) {
+                status->setText(message);
+                check->setEnabled(true);
+                releases->setText(state == UpdateChecker::Available ? "前往下载" : "打开发布页");
+                releases->setProperty("releaseUrl", url);
+            });
+    connect(releases, &QPushButton::clicked, this, [releases, status] {
+        const auto url = releases->property("releaseUrl").toUrl();
+        if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
+            status->setText("无法打开浏览器，请访问 github.com/Inginnng/HelpDesign/releases。");
+    });
     error_ = new QLabel(this);
     error_->setObjectName("errorLabel");
     error_->setProperty("error", true);
@@ -126,13 +217,28 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     connect(theme_, &QComboBox::currentIndexChanged, this, [this] { error_->hide(); });
     setDraft(settings);
 }
+void SettingsDialog::showUpdates(bool checkNow) {
+    tabs_->setCurrentIndex(3);
+    if (checkNow)
+        QTimer::singleShot(0, findChild<QPushButton *>("checkUpdates"), &QPushButton::click);
+}
 void SettingsDialog::setDraft(const AppSettings &settings) {
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
     theme_->setCurrentIndex(theme_->findData(static_cast<int>(settings.theme)));
+    captureOnStartup_->setChecked(settings.captureOnStartup);
+    fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
+    embedOriginal_->setChecked(settings.embedOriginal);
+    checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
+    defaultTool_->setCurrentIndex(settings.defaultTool);
 }
 AppSettings SettingsDialog::settings() const {
     AppSettings result;
+    result.captureOnStartup = captureOnStartup_->isChecked();
+    result.fitImageOnOpen = fitImageOnOpen_->isChecked();
+    result.embedOriginal = embedOriginal_->isChecked();
+    result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
+    result.defaultTool = defaultTool_->currentIndex();
     result.theme = static_cast<ThemeMode>(theme_->currentData().toInt());
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         result.shortcuts.insert(it.key(), it.value()->keySequence());

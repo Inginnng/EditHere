@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "settingsdialog.h"
 #include "ui.h"
+#include "updatechecker.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QMenu>
@@ -11,6 +12,7 @@ namespace h2d {
 Controller::Controller(QObject *parent, const AppSettings &settings)
     : QObject(parent), settings_(settings), editor_(), tray_(glyph("capture", accent()), this),
       shortcut_(this) {
+    editor_.setPreferences(settings_);
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("helpDesignTray");
     auto menu = new QMenu(&editor_);
@@ -30,6 +32,8 @@ Controller::Controller(QObject *parent, const AppSettings &settings)
     menu->addSeparator();
     auto settingsAction = menu->addAction("设置…", this, &Controller::openSettings);
     settingsAction->setObjectName("traySettings");
+    auto updatesAction = menu->addAction("检查更新…", this, [this] { openSettings(true); });
+    updatesAction->setObjectName("trayUpdates");
     menu->addSeparator();
     menu->addAction("退出", this, &Controller::quit);
     tray_.setContextMenu(menu);
@@ -49,7 +53,7 @@ void Controller::updateTrayShortcut() {
     captureAction_->setText(label.isEmpty() ? "截图" : "截图    " + label);
     tray_.setToolTip(label.isEmpty() ? "HelpDesign" : "HelpDesign · " + label);
 }
-void Controller::openSettings() {
+void Controller::openSettings(bool updates) {
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
@@ -57,6 +61,8 @@ void Controller::openSettings() {
     const auto activeShortcut = shortcut_.sequence();
     shortcut_.stop();
     SettingsDialog dialog(settings_, &editor_);
+    if (updates)
+        dialog.showUpdates(true);
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;
@@ -71,6 +77,7 @@ void Controller::openSettings() {
             return error;
         }
         settings_ = next;
+        editor_.setPreferences(settings_);
         editor_.setShortcuts(settings_.shortcuts);
         applyTheme(settings_.theme);
         updateTrayShortcut();
@@ -84,8 +91,22 @@ void Controller::start(bool demo, const QString &path) {
         editor_.openFile(path);
     else if (demo)
         editor_.setDocument(fromImage(exampleImage(), "demo", "示例产品页面"));
-    else
+    else if (settings_.captureOnStartup)
         capture();
+    if (!startupUpdateChecked_) {
+        startupUpdateChecked_ = true;
+        if (settings_.checkUpdatesOnStartup) {
+            auto checker = new UpdateChecker(this);
+            connect(checker, &UpdateChecker::finished, this,
+                    [this, checker](UpdateChecker::Status status, const QString &message, const QUrl &) {
+                        if (status == UpdateChecker::Available)
+                            tray_.showMessage("HelpDesign 更新", message + "\n右键托盘选择检查更新。",
+                                              QSystemTrayIcon::Information);
+                        checker->deleteLater();
+                    });
+            QTimer::singleShot(3000, checker, &UpdateChecker::check);
+        }
+    }
 }
 void Controller::activate() {
     if (editor_.hasDocument()) {

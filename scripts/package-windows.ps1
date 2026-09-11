@@ -27,7 +27,7 @@ $previousPath = $env:PATH
 try {
     $env:PATH = (Join-Path $QtRoot "bin") + ";" + $env:PATH
     if ($CompilerBin) { $env:PATH = $CompilerBin + ";" + $env:PATH }
-    & (Join-Path $QtRoot "bin/windeployqt.exe") --release --compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation,tls --include-plugins qwebp (Join-Path $outputPath "HelpDesign.exe")
+    & (Join-Path $QtRoot "bin/windeployqt.exe") --release --compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation --include-plugins qwebp (Join-Path $outputPath "HelpDesign.exe")
     if ($LASTEXITCODE) { throw "Qt deployment failed." }
 } finally { $env:PATH = $previousPath }
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse

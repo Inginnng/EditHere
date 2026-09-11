@@ -1,5 +1,6 @@
 #pragma once
 #include "canvas.h"
+#include "settings.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QPointer>
@@ -19,6 +20,9 @@ class Editor final : public QWidget {
   public:
     explicit Editor(QWidget *parent = nullptr);
     void setDocument(Document document);
+    void setPreferences(const AppSettings &settings) {
+        preferences_ = settings;
+    }
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
         return doc_;
@@ -68,6 +72,7 @@ class Editor final : public QWidget {
     void showError(const QString &text);
     QString coords(const Note &note) const;
     Document doc_;
+    AppSettings preferences_;
     struct Snapshot {
         QVector<Note> notes;
         std::optional<LayoutState> layout;

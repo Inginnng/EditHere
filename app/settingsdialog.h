@@ -3,6 +3,8 @@
 #include <QDialog>
 #include <functional>
 class QComboBox;
+class QCheckBox;
+class QTabWidget;
 class QKeySequenceEdit;
 class QLabel;
 namespace h2d {
@@ -11,12 +13,16 @@ class SettingsDialog final : public QDialog {
   public:
     explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr);
     AppSettings settings() const;
+    void showUpdates(bool checkNow = false);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
 
   private:
     void setDraft(const AppSettings &settings);
     void save();
-    QComboBox *theme_;
+    QComboBox *theme_, *defaultTool_;
+    QCheckBox *captureOnStartup_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
+    QTabWidget *tabs_;
+    class UpdateChecker *updater_;
     QLabel *error_;
     QMap<QString, QKeySequenceEdit *> keys_;
     std::function<QString(const AppSettings &)> apply_;
