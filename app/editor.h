@@ -121,7 +121,7 @@ class Editor final : public QWidget {
     QVBoxLayout *noteLayout_;
     QHBoxLayout *dock_;
     QWidget *inspectorSeparator_ = nullptr;
-    QLabel *meta_, *hint_, *noteCount_;
+    QLabel *meta_, *hint_, *noteCount_, *emptyNotes_;
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;

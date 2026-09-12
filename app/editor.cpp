@@ -133,12 +133,16 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto capture = iconButton("capture", "重新截图", bar);
     auto open = iconButton("open", "导入图片或项目", bar);
     open->setObjectName("importDocument");
+    auto minimize = iconButton("minus", "最小化", bar);
+    minimize->setObjectName("minimizeWindow");
     auto close = iconButton("close", "关闭当前截图", bar);
     header->addWidget(open);
     header->addWidget(capture);
+    header->addWidget(minimize);
     header->addWidget(close);
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
+    connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
     connect(close, &QPushButton::clicked, this, &QWidget::close);
     layout->addWidget(bar);
     auto content = new QHBoxLayout;
@@ -180,6 +184,11 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     noteLayout_->setContentsMargins(0, 2, 0, 0);
     noteLayout_->setSpacing(6);
     noteLayout_->setAlignment(Qt::AlignTop);
+    emptyNotes_ = mutedLabel("圈出位置，或添加一条全局意见。", noteContainer_);
+    emptyNotes_->setObjectName("emptyNotes");
+    emptyNotes_->setWordWrap(true);
+    emptyNotes_->hide();
+    noteLayout_->addWidget(emptyNotes_);
     notesScroll_->setWidget(noteContainer_);
     side->addWidget(notesScroll_, 1);
     inspectorSeparator_ = new QWidget(notesPanel_);
@@ -367,6 +376,7 @@ void Editor::setDocument(Document document) {
     detailsStack_->setCurrentWidget(notesPanel_);
     meta_->setText(QString("%1 × %2").arg(doc_.image.width()).arg(doc_.image.height()));
     renderNotes();
+    if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
     configureNativeWindow(this, false);
     QRect available = QGuiApplication::screenAt(QCursor::pos())
@@ -510,7 +520,7 @@ void Editor::renderNotes() {
             it = noteCards_.erase(it);
         } else ++it;
     }
-    if (auto empty = noteContainer_->findChild<QLabel *>("emptyNotes")) { empty->hide(); empty->deleteLater(); }
+    emptyNotes_->setVisible(doc_.notes.isEmpty());
     noteCount_->setText(QString("批注 %1 条").arg(doc_.notes.size()));
     int number = 0;
     for (const auto &n : doc_.notes) {
@@ -605,10 +615,6 @@ void Editor::renderNotes() {
         text->setAccessibleName(QString("批注 %1 内容").arg(number));
         text->fitContent();
         noteLayout_->insertWidget(number-1,card,0,Qt::AlignTop);
-    }
-    if (doc_.notes.isEmpty()) {
-        auto empty = mutedLabel("圈出位置，或添加一条全局意见。", noteContainer_);
-        empty->setObjectName("emptyNotes"); empty->setWordWrap(true); noteLayout_->addWidget(empty);
     }
     renderingNotes_ = false;
 }

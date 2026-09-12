@@ -20,6 +20,7 @@
 #include <QGraphicsEffect>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
@@ -345,6 +346,184 @@ class UiTests : public QObject {
         });
         editor.exportJson();
         editor.hide();
+    }
+    void emptyNoteHintSurvivesSynchronousDocumentChanges() {
+        const auto emptyDocument = gridDocument();
+        auto annotatedDocument = emptyDocument;
+        Note note;
+        note.isGlobal = true;
+        note.comment = "保留这条全局意见。";
+        annotatedDocument.notes.append(note);
+        Editor editor;
+        editor.setDocument(emptyDocument);
+
+        // Stay in this event-loop turn: deleteLater() must not be needed to keep the hint unique.
+        for (int i = 0; i < 3; ++i) {
+            editor.setDocument(emptyDocument);
+            QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+            QVERIFY(editor.findChild<QLabel *>("emptyNotes")->isVisible());
+            editor.setDocument(annotatedDocument);
+            QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+            QVERIFY(editor.findChild<QLabel *>("emptyNotes")->isHidden());
+        }
+        editor.setDocument(emptyDocument);
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QPointer<QLabel> hint = editor.findChild<QLabel *>("emptyNotes");
+        QVERIFY(hint->isVisible());
+        QCOMPARE(hint->text(), QString("圈出位置，或添加一条全局意见。"));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QTest::qWait(20);
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QVERIFY(hint && hint->isVisible());
+        editor.hide();
+    }
+    void emptyNoteHintReturnsAfterDraftCancellationAndLastDeletion() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        QTest::qWait(80);
+        auto add = editor.findChild<QPushButton *>("addGlobalNote");
+        QVERIFY(add);
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QPointer<QLabel> hint = editor.findChild<QLabel *>("emptyNotes");
+        for (int i = 0; i < 3; ++i) {
+            add->click();
+            QCOMPARE(editor.document().notes.size(), 1);
+            QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+            QVERIFY(hint && hint->isHidden());
+            auto draft = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+            QVERIFY(draft);
+            // Send Escape synchronously so all refreshes run before deferred widget deletion.
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(draft, &escape);
+            QVERIFY(editor.hasDocument() && editor.isVisible());
+            QVERIFY(editor.document().notes.isEmpty());
+            QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+            QVERIFY(hint && hint->isVisible());
+        }
+
+        auto document = gridDocument();
+        Note note;
+        note.isGlobal = true;
+        note.comment = "删除最后一条意见后应恢复空提示。";
+        document.notes.append(note);
+        editor.setDocument(document);
+        QVERIFY(hint && hint->isHidden());
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + note.id);
+        QVERIFY(input);
+        QPushButton *remove = nullptr;
+        for (auto button : input->parentWidget()->findChildren<QPushButton *>())
+            if (button->toolTip() == "删除批注") remove = button;
+        QVERIFY(remove);
+        editor.canvas()->select(note.id);
+        remove->click();
+        QVERIFY(editor.document().notes.isEmpty());
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QVERIFY(hint && hint->isVisible());
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QTest::qWait(20);
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QVERIFY(hint && hint->isVisible());
+        QVERIFY(editor.findChildren<QWidget *>("noteCard").isEmpty());
+        editor.hide();
+    }
+    void minimizeRestoresDocumentAndLayout() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note note;
+        note.isGlobal = true;
+        note.comment = "最小化后继续调整当前截图。";
+        document.notes.append(note);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto minimize = editor.findChild<QPushButton *>("minimizeWindow");
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(minimize && minimize->isVisible() && minimize->isEnabled() && imageScroll);
+        QCOMPARE(minimize->toolTip(), QString("最小化"));
+        editor.explode();
+        QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
+        QVERIFY(canvas && canvas->isVisible());
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
+        QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
+        canvas->transformSelection(QRectF(440, 60, 120, 90));
+        QVERIFY(editor.document().dirty);
+        QTest::qWait(30);
+        const auto before = editor.document();
+        const auto feedback = exportFeedback(before);
+        const QRect geometry = editor.geometry();
+        const QSize viewport = imageScroll->viewport()->size();
+        const QString selection = canvas->selected();
+        QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
+
+        minimize->click();
+        QTRY_VERIFY(editor.isMinimized());
+        QVERIFY(editor.hasDocument());
+        QCOMPARE(hiddenToTray.count(), 0);
+        editor.showNormal();
+        editor.activateWindow();
+        QTRY_VERIFY(editor.isVisible() && !editor.isMinimized());
+        QVERIFY(canvas && editor.layoutCanvas() == canvas && canvas->isVisible());
+        QVERIFY(editor.explosionActive());
+        QCOMPARE(editor.document().id, before.id);
+        QCOMPARE(editor.document().png, before.png);
+        QVERIFY(editor.document().notes == before.notes);
+        QVERIFY(editor.document().layout == before.layout);
+        QCOMPARE(exportFeedback(editor.document()), feedback);
+        QVERIFY(editor.document().dirty);
+        QCOMPARE(canvas->selected(), selection);
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(imageScroll->viewport()->size(), viewport);
+        QCOMPARE(hiddenToTray.count(), 0);
+
+        minimize->click();
+        QTRY_VERIFY(editor.isMinimized());
+        const auto replacement = gridDocument();
+        editor.setDocument(replacement);
+        QTRY_VERIFY(editor.isVisible() && !editor.isMinimized());
+        QCOMPARE(editor.document().id, replacement.id);
+        QVERIFY(editor.document().notes.isEmpty());
+        QVERIFY(editor.layoutCanvas() == nullptr);
+        QCOMPARE(editor.findChildren<QLabel *>("emptyNotes").size(), 1);
+        QVERIFY(editor.findChild<QLabel *>("emptyNotes")->isVisible());
+        QCOMPARE(hiddenToTray.count(), 0);
+        editor.hide();
+    }
+    void controllerActivationRestoresMinimizedDocument() {
+        auto settings = defaultSettings();
+        settings.shortcuts["capture"] = {};
+        settings.captureOnStartup = false;
+        settings.checkUpdatesOnStartup = false;
+        Controller controller(nullptr, settings);
+        controller.start(false);
+        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        QVERIFY(tray && tray->contextMenu());
+        auto editor = qobject_cast<Editor *>(tray->contextMenu()->parentWidget());
+        QVERIFY(editor);
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        document.layout->pieces[0].destination.moveLeft(440);
+        document.dirty = true;
+        Note note;
+        note.isGlobal = true;
+        note.comment = "恢复窗口后保留未保存的意见和布局。";
+        document.notes.append(note);
+        editor->setDocument(document);
+        QTest::qWait(30);
+        auto minimize = editor->findChild<QPushButton *>("minimizeWindow");
+        QVERIFY(minimize && minimize->isVisible());
+        QSignalSpy hiddenToTray(editor, &Editor::hiddenToTray);
+        minimize->click();
+        QTRY_VERIFY(editor->isMinimized());
+        controller.activate();
+        QTRY_VERIFY(editor->isVisible() && !editor->isMinimized());
+        QCOMPARE(editor->document().id, document.id);
+        QCOMPARE(editor->document().png, document.png);
+        QVERIFY(editor->document().notes == document.notes);
+        QVERIFY(editor->document().layout == document.layout);
+        QVERIFY(editor->document().dirty);
+        QCOMPARE(hiddenToTray.count(), 0);
+        editor->hide();
     }
     void inlineNotesCommitOnBlurAndCancelEmptyDraft() {
         Editor editor;

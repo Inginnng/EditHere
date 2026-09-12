@@ -22,6 +22,7 @@ class InlineNoteEdit final : public QPlainTextEdit {
     bool needsCollapse() const { return needsCollapse_; }
 
   protected:
+    bool event(QEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;

@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileOpenEvent>
+#include <QIcon>
 #include <functional>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -66,7 +67,10 @@ int main(int argc, char **argv) {
     app.setOrganizationName("HelpDesign");
     app.setApplicationVersion(HELPDESIGN_VERSION);
     app.setQuitOnLastWindowClosed(false);
-    app.setWindowIcon(glyph("capture", accent()));
+    QIcon appIcon;
+    for (const int size : {16, 20, 24, 32, 48, 64, 128, 256, 512})
+        appIcon.addFile(QString(":/icons/helpdesign-%1.png").arg(size), QSize(size, size));
+    app.setWindowIcon(appIcon);
     applyTheme(loadSettings().theme);
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));

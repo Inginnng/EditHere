@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>HelpDesign</title>
+  <desc>A white capture frame and annotation pen on a blue rounded square.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#318FFF"/>
+      <stop offset="1" stop-color="#0864DF"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#blue)"/>
+  <path d="M 222 352 H 172 Q 144 352 144 324 V 188 Q 144 160 172 160 H 340 Q 368 160 368 188 V 218" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 250 314 L 332 232 Q 340 224 348 232 L 370 254 Q 378 262 370 270 L 288 352 L 240 366 Z" fill="#FFFFFF"/>
+</svg>

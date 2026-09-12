@@ -1,0 +1,2 @@
+// The first icon group supplies the Windows executable and shell icon.
+1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/icons/helpdesign.ico"

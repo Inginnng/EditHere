@@ -129,6 +129,16 @@ void InlineNoteEdit::setExpanded(bool expanded) {
         presentationChanged();
 }
 
+bool InlineNoteEdit::event(QEvent *event) {
+    // Cancel the note before the editor's Escape shortcut can close the screenshot.
+    if (event->type() == QEvent::ShortcutOverride &&
+        static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
+        event->accept();
+        return true;
+    }
+    return QPlainTextEdit::event(event);
+}
+
 void InlineNoteEdit::focusInEvent(QFocusEvent *event) {
     setExpanded(true);
     QPlainTextEdit::focusInEvent(event);

@@ -10,7 +10,8 @@
 #include <QTimer>
 namespace h2d {
 Controller::Controller(QObject *parent, const AppSettings &settings)
-    : QObject(parent), settings_(settings), editor_(), tray_(glyph("capture", accent()), this),
+    : QObject(parent), settings_(settings), editor_(),
+      tray_(QApplication::windowIcon().isNull() ? glyph("capture", accent()) : QApplication::windowIcon(), this),
       shortcut_(this) {
     editor_.setPreferences(settings_);
     editor_.setShortcuts(settings_.shortcuts);
@@ -113,6 +114,8 @@ void Controller::start(bool demo, const QString &path) {
 }
 void Controller::activate() {
     if (editor_.hasDocument()) {
+        if (editor_.isMinimized())
+            editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
         editor_.show();
         editor_.raise();
         editor_.activateWindow();
