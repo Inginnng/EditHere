@@ -1,4 +1,4 @@
-# HelpDesign · 0.8.8
+# HelpDesign · 0.8.9
 
 面向 AI 开发反馈的桌面截图批注工具。截图松手后直接进入批注，在同一个窗口中标记修改意见、移动或缩放组件，最后复制包含原图、批注与变化的 JSON。
 
@@ -8,11 +8,11 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.8` 的精简反馈由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.9` 的精简反馈由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
 
 ## 运行
 
-Windows 便携包：`dist/HelpDesign-0.8.8-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
+Windows 便携包：`dist/HelpDesign-0.8.9-win-x64.zip`。先从托盘退出旧版，再完整解压并运行 `HelpDesign.exe`。请保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。
 
 下文列出默认快捷键，可在设置中修改对应键盘操作。首次启动直接截图；之后按 **Ctrl + Shift + 2** 或点击托盘图标截图。程序先关闭自身菜单并让系统托盘面板失去焦点，再采集画面。只有截图遮罩置顶，编辑窗口是普通应用窗口。
 
@@ -25,6 +25,10 @@ Windows 便携包：`dist/HelpDesign-0.8.8-win-x64.zip`。先从托盘退出旧�
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Command + Shift + 2。Mac 尚未实机验证。
+
+## 0.8.9 恢复弧形光浪
+
+按实际使用反馈恢复 0.8.7 的弧形虹彩光浪：从右上向左下掠过，边缘辉光同步移动，使用柔光缓存保持流畅。0.8.8 的圆形涟漪与液态边框不再作为当前动效；界面统一、批注和工具栏功能保持不变。
 
 ## 0.8.8 圆形涟漪与液态边框
 
