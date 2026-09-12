@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QSettings>
+#include <QSet>
 #include <QStandardPaths>
 namespace h2d {
 namespace {
@@ -21,6 +22,20 @@ QString themeName(ThemeMode mode) {
     }
     return {};
 }
+QString validateToolbarActions(const QStringList &actions) {
+    QSet<QString> known;
+    for (const auto &definition : toolbarActionDefinitions())
+        known.insert(definition.id);
+    QSet<QString> selected;
+    for (const auto &id : actions) {
+        if (!known.contains(id))
+            return "包含无法识别的工具栏操作。";
+        if (selected.contains(id))
+            return "工具栏操作不能重复。";
+        selected.insert(id);
+    }
+    return {};
+}
 bool validCombination(QKeyCombination combination) {
     const auto key = combination.key();
     return key != Qt::Key_unknown && key != 0 && key != Qt::Key_Shift && key != Qt::Key_Control &&
@@ -33,7 +48,11 @@ QVector<ShortcutDefinition> shortcutDefinitions() {
             {"paste", "粘贴图片", false, QKeySequence(QKeySequence::Paste)},
             {"save", "保存项目", false, QKeySequence(QKeySequence::Save)},
             {"export", "导出 JSON", false, QKeySequence(Qt::CTRL | Qt::Key_E)},
-            {"copy", "复制图片", false, QKeySequence(QKeySequence::Copy)},
+            {"copy", "复制带批注图片", false, QKeySequence(QKeySequence::Copy)},
+            {"copyJson", "复制 JSON", false, {}},
+            {"saveImage", "保存图片", false, {}},
+            {"hideAnnotations", "隐藏 / 显示批注标记", false, {}},
+            {"addGlobalNote", "添加全局批注", false, {}},
             {"undo", "撤销", false, QKeySequence(QKeySequence::Undo)},
             {"redo", "重做", false, QKeySequence(QKeySequence::Redo)},
             {"fit", "适应窗口", false, QKeySequence(Qt::CTRL | Qt::Key_0)},
@@ -44,7 +63,14 @@ QVector<ShortcutDefinition> shortcutDefinitions() {
             {"rectangle", "框选标注", false, QKeySequence(Qt::Key_R)},
             {"adjust", "调整批注", false, QKeySequence(Qt::Key_V)},
             {"explode", "切换大爆炸", false, QKeySequence(Qt::Key_E)},
-            {"component", "移动组件", false, QKeySequence(Qt::Key_M)}};
+            {"component", "调整组件", false, QKeySequence(Qt::Key_M)}};
+}
+QVector<ToolbarActionDefinition> toolbarActionDefinitions() {
+    return {{"saveProject", "保存项目"},
+            {"saveImage", "保存图片"},
+            {"copyJson", "复制 JSON"},
+            {"exportJson", "导出 JSON"},
+            {"copyImage", "复制带批注图片"}};
 }
 AppSettings defaultSettings() {
     AppSettings settings;
@@ -57,6 +83,9 @@ QString validateSettings(const AppSettings &settings) {
         return "请选择有效的外观模式。";
     if (settings.defaultTool < 0 || settings.defaultTool > 3)
         return "请选择有效的默认标注工具。";
+    const auto toolbarError = validateToolbarActions(settings.toolbarActions);
+    if (!toolbarError.isEmpty())
+        return toolbarError;
     QMap<int, QString> assigned;
     const auto definitions = shortcutDefinitions();
     for (const auto &definition : definitions) {
@@ -112,6 +141,11 @@ AppSettings loadSettings(const QString &filePath) {
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
+    if (source.contains("toolbar/actions")) {
+        const auto actions = source.value("toolbar/actions").toStringList();
+        if (validateToolbarActions(actions).isEmpty())
+            result.toolbarActions = actions;
+    }
     bool validTool = false;
     const auto tool = source.value("defaults/tool", 0).toInt(&validTool);
     if (validTool && tool >= 0 && tool <= 3)
@@ -152,6 +186,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("appearance/theme", themeName(settings.theme));
+    target.setValue("toolbar/actions", settings.toolbarActions);
     for (const auto &definition : shortcutDefinitions())
         target.setValue("shortcuts/" + definition.id,
                         settings.shortcuts.value(definition.id).toString(QKeySequence::PortableText));

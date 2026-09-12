@@ -62,6 +62,38 @@
                 "$ref": "#/$defs/text"
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "description": "Whole-design feedback with no pointed location."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "change",
+              "text"
+            ],
+            "properties": {
+              "change": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8191,
+                "description": "Zero-based index of an existing entry in changes."
+              },
+              "text": {
+                "$ref": "#/$defs/text"
+              }
+            }
           }
         ]
       }

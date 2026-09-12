@@ -11,6 +11,43 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void globalFeedbackAndPortableProject() {
+        auto doc = fromImage(exampleImage(), "demo", "风格意见");
+        Note global;
+        global.isGlobal = true;
+        global.comment = "整体采用克制、通透的杂志风格";
+        global.point = {-100, -100}; // A global note intentionally has no valid image position.
+        doc.notes = {global};
+        const auto feedback = exportFeedback(doc, true);
+        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
+                 (QJsonObject{{"text", global.comment}}));
+        const auto imported = loadFeedback(feedback, {});
+        QVERIFY(imported.notes[0].isGlobal);
+        QCOMPARE(imported.notes[0].comment, global.comment);
+        QVERIFY(!imported.notes[0].movementSource);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("风格设计.HELPDESIGN");
+        saveBytes(path, serializeDocument(doc, true));
+        const auto restored = loadDocument(path);
+        QCOMPARE(restored.image, doc.image);
+        QCOMPARE(restored.notes[0].id, global.id);
+        QVERIFY(restored.notes[0].isGlobal);
+        QCOMPARE(restored.notes[0].comment, global.comment);
+        QVERIFY(!restored.layout);
+        const auto project = QJsonDocument::fromJson(serializeDocument(restored, true)).object();
+        QCOMPARE(project["schemaVersion"].toString(), QString("3.0.0"));
+        QCOMPARE(project["annotationSpace"].toString(), QString("result"));
+        QVERIFY(project["annotations"].toArray()[0].toObject()["point"].isNull());
+        QVERIFY(project["annotations"].toArray()[0].toObject()["rectangle"].isNull());
+        auto invalid = project;
+        auto annotations = invalid["annotations"].toArray();
+        auto annotation = annotations[0].toObject();
+        annotation["point"] = QJsonObject{{"x", 1}, {"y", 1}};
+        annotations[0] = annotation;
+        invalid["annotations"] = annotations;
+        saveBytes(path, QJsonDocument(invalid).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+    }
     void geometry() {
         QCOMPARE(dragRect({220, 80}, {-5, 15}, {200, 100}), QRect(0, 15, 200, 65));
         QCOMPARE(moveRect({20, 20, 60, 40}, {300, -50}, {100, 100}), QRect(40, 0, 60, 40));

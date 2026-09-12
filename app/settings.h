@@ -2,12 +2,14 @@
 #include <QKeySequence>
 #include <QMap>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 namespace h2d {
 enum class ThemeMode { System, Light, Dark };
 struct AppSettings {
     ThemeMode theme = ThemeMode::System;
     QMap<QString, QKeySequence> shortcuts;
+    QStringList toolbarActions = {"saveProject", "saveImage", "copyJson", "exportJson", "copyImage"};
     bool captureOnStartup = true;
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
@@ -20,7 +22,11 @@ struct ShortcutDefinition {
     bool global = false;
     QKeySequence defaultKey;
 };
+struct ToolbarActionDefinition {
+    QString id, label;
+};
 QVector<ShortcutDefinition> shortcutDefinitions();
+QVector<ToolbarActionDefinition> toolbarActionDefinitions();
 AppSettings defaultSettings();
 AppSettings loadSettings(const QString &filePath = {});
 bool saveSettings(const AppSettings &settings, QString *error = nullptr, const QString &filePath = {});

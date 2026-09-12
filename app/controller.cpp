@@ -30,7 +30,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings)
     });
 #endif
     menu->addSeparator();
-    auto settingsAction = menu->addAction("设置…", this, &Controller::openSettings);
+    auto settingsAction = menu->addAction("设置…", this, [this] { openSettings(); });
     settingsAction->setObjectName("traySettings");
     auto updatesAction = menu->addAction("检查更新…", this, [this] { openSettings(true); });
     updatesAction->setObjectName("trayUpdates");
@@ -45,6 +45,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings)
     });
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
+    connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
         tray_.showMessage("HelpDesign", "截图快捷键未能注册，请右键托盘打开设置修改。");
 }
@@ -53,7 +54,7 @@ void Controller::updateTrayShortcut() {
     captureAction_->setText(label.isEmpty() ? "截图" : "截图    " + label);
     tray_.setToolTip(label.isEmpty() ? "HelpDesign" : "HelpDesign · " + label);
 }
-void Controller::openSettings(bool updates) {
+void Controller::openSettings(bool updates, bool toolbar) {
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
@@ -63,6 +64,8 @@ void Controller::openSettings(bool updates) {
     SettingsDialog dialog(settings_, &editor_);
     if (updates)
         dialog.showUpdates(true);
+    else if (toolbar)
+        dialog.showToolbar();
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;

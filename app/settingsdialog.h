@@ -14,6 +14,7 @@ class SettingsDialog final : public QDialog {
     explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr);
     AppSettings settings() const;
     void showUpdates(bool checkNow = false);
+    void showToolbar();
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
 
   private:
@@ -25,6 +26,7 @@ class SettingsDialog final : public QDialog {
     class UpdateChecker *updater_;
     QLabel *error_;
     QMap<QString, QKeySequenceEdit *> keys_;
+    QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;
 };
 } // namespace h2d

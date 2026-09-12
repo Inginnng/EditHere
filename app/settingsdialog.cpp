@@ -133,7 +133,35 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addStretch();
     tabs->addTab(defaults, "默认行为");
 
+    auto toolbar = new QWidget;
+    toolbar->setObjectName("settingsToolbarPage");
+    auto toolbarLayout = new QVBoxLayout(toolbar);
+    toolbarLayout->setContentsMargins(20, 22, 20, 20);
+    toolbarLayout->setSpacing(18);
+    auto toolbarTitle = new QLabel("显示在底部工具栏", toolbar);
+    toolbarTitle->setObjectName("settingsSection");
+    toolbarLayout->addWidget(toolbarTitle);
+    auto toolbarDescription = mutedLabel("标注、调整和缩放工具始终保留。选择你常用的输出操作，保存后立即生效。", toolbar);
+    toolbarDescription->setWordWrap(true);
+    toolbarLayout->addWidget(toolbarDescription);
+    for (const auto &definition : toolbarActionDefinitions()) {
+        auto checkbox = new QCheckBox(definition.label, toolbar);
+        checkbox->setObjectName("toolbar_" + definition.id);
+        checkbox->setAccessibleName("在工具栏显示" + definition.label);
+        if (definition.id == "saveImage")
+            checkbox->setToolTip("保存包含批注和布局调整的图片。");
+        toolbarActions_.insert(definition.id, checkbox);
+        toolbarLayout->addWidget(checkbox);
+        connect(checkbox, &QCheckBox::toggled, this, [this] { error_->hide(); });
+    }
+    auto toolbarHint = mutedLabel("隐藏后仍可使用快捷键，或通过工具栏设置入口重新显示。", toolbar);
+    toolbarHint->setWordWrap(true);
+    toolbarLayout->addWidget(toolbarHint);
+    toolbarLayout->addStretch();
+    tabs->addTab(toolbar, "工具栏");
+
     auto about = new QWidget;
+    about->setObjectName("settingsAboutPage");
     auto aboutLayout = new QVBoxLayout(about);
     aboutLayout->setContentsMargins(20, 22, 20, 20);
     aboutLayout->setSpacing(18);
@@ -218,13 +246,18 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     setDraft(settings);
 }
 void SettingsDialog::showUpdates(bool checkNow) {
-    tabs_->setCurrentIndex(3);
+    tabs_->setCurrentWidget(findChild<QWidget *>("settingsAboutPage"));
     if (checkNow)
         QTimer::singleShot(0, findChild<QPushButton *>("checkUpdates"), &QPushButton::click);
+}
+void SettingsDialog::showToolbar() {
+    tabs_->setCurrentWidget(findChild<QWidget *>("settingsToolbarPage"));
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
+    for (auto it = toolbarActions_.cbegin(); it != toolbarActions_.cend(); ++it)
+        it.value()->setChecked(settings.toolbarActions.contains(it.key()));
     theme_->setCurrentIndex(theme_->findData(static_cast<int>(settings.theme)));
     captureOnStartup_->setChecked(settings.captureOnStartup);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
@@ -240,6 +273,10 @@ AppSettings SettingsDialog::settings() const {
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.defaultTool = defaultTool_->currentIndex();
     result.theme = static_cast<ThemeMode>(theme_->currentData().toInt());
+    result.toolbarActions.clear();
+    for (const auto &definition : toolbarActionDefinitions())
+        if (toolbarActions_.value(definition.id)->isChecked())
+            result.toolbarActions.append(definition.id);
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         result.shortcuts.insert(it.key(), it.value()->keySequence());
     return result;

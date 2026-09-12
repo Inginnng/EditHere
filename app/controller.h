@@ -12,7 +12,7 @@ class Controller final : public QObject {
     void capture();
     void activate();
     void quit();
-    void openSettings(bool updates = false);
+    void openSettings(bool updates = false, bool toolbar = false);
 
   private:
     void clearOverlays();

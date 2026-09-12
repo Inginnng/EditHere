@@ -2,6 +2,7 @@
 #include "detector.h"
 #include "explosion.h"
 #include "platform.h"
+#include "projectfiles.h"
 #include "settings.h"
 #include "ui.h"
 #include <QApplication>
@@ -20,6 +21,16 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QFutureWatcher>
+#include <QFocusEvent>
+#include <QFontMetrics>
+#include <QSignalBlocker>
+#include <QStyle>
+#include <QStandardPaths>
+#include <QSet>
+#include <QTextDocument>
+#include <QToolTip>
+#include <QWheelEvent>
+#include <cmath>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -43,6 +54,42 @@
 #include <functional>
 namespace h2d {
 namespace {
+class InlineNoteEdit final : public QPlainTextEdit {
+  public:
+    using QPlainTextEdit::QPlainTextEdit;
+    std::function<void()> started, finished, cancelled;
+    void fitContent() {
+        QTextDocument measure;
+        measure.setDefaultFont(font());
+        measure.setDocumentMargin(0);
+        measure.setPlainText(toPlainText().isEmpty() ? QStringLiteral(" ") : toPlainText());
+        measure.setTextWidth(std::max(60, width() - 18));
+        setFixedHeight(std::clamp(int(std::ceil(measure.size().height())) + 16, 40, 160));
+    }
+  protected:
+    void focusInEvent(QFocusEvent *event) override {
+        QPlainTextEdit::focusInEvent(event);
+        if (started) started();
+    }
+    void focusOutEvent(QFocusEvent *event) override {
+        QPlainTextEdit::focusOutEvent(event);
+        if (finished) finished();
+    }
+    void resizeEvent(QResizeEvent *event) override {
+        QPlainTextEdit::resizeEvent(event);
+        fitContent();
+    }
+    void keyPressEvent(QKeyEvent *event) override {
+        if (event->key() == Qt::Key_Escape) {
+            if (cancelled) cancelled();
+            clearFocus();
+        } else if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+                   event->modifiers().testFlag(Qt::ControlModifier)) {
+            if (finished) finished();
+            clearFocus();
+        } else QPlainTextEdit::keyPressEvent(event);
+    }
+};
 class JsonPreview final : public QPlainTextEdit {
   public:
     using QPlainTextEdit::QPlainTextEdit;
@@ -96,14 +143,22 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addSpacing(10);
     header->addWidget(meta_);
     header->addStretch();
+    hideAnnotations_ = iconButton("eye", "隐藏画面批注", bar);
+    hideAnnotations_->setObjectName("hideAnnotations");
+    hideAnnotations_->setCheckable(true);
+    header->addWidget(hideAnnotations_);
+    connect(hideAnnotations_, &QPushButton::clicked, this, &Editor::toggleAnnotations);
     explosion_ = textButton("大爆炸", false, bar);
+    explosion_->setProperty("glyphName", "explode");
+    explosion_->setIcon(glyph("explode"));
     explosion_->setObjectName("explodeButton");
     explosion_->setEnabled(false);
     explosion_->setCheckable(true);
     header->addWidget(explosion_);
     connect(explosion_, &QPushButton::clicked, this, &Editor::explode);
     auto capture = iconButton("capture", "重新截图", bar);
-    auto open = iconButton("save", "打开图片或项目", bar);
+    auto open = iconButton("open", "导入图片或项目", bar);
+    open->setObjectName("importDocument");
     auto close = iconButton("close", "关闭当前截图", bar);
     header->addWidget(open);
     header->addWidget(capture);
@@ -121,27 +176,38 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     imageScroll_->setWidgetResizable(false);
     canvas_ = new Canvas;
     imageScroll_->setWidget(canvas_);
+    imageScroll_->viewport()->installEventFilter(this);
     content->addWidget(imageScroll_, 1);
     notesPanel_ = new QWidget(shell);
     notesPanel_->setObjectName("notesPanel");
-    notesPanel_->setFixedWidth(280);
+    notesPanel_->setFixedWidth(360);
     auto side = new QVBoxLayout(notesPanel_);
-    side->setContentsMargins(12, 12, 12, 6);
+    side->setContentsMargins(8, 8, 8, 6);
+    side->setSpacing(6);
     noteCount_ = new QLabel("批注", notesPanel_);
-    side->addWidget(noteCount_);
+    auto noteHeader = new QHBoxLayout;
+    noteHeader->setContentsMargins(5, 0, 2, 0);
+    noteHeader->addWidget(noteCount_);
+    noteHeader->addStretch();
+    auto globalNote = iconButton("note-add", "添加全局批注", notesPanel_);
+    globalNote->setObjectName("addGlobalNote");
+    globalNote->setFixedSize(28, 28);
+    noteHeader->addWidget(globalNote);
+    connect(globalNote, &QPushButton::clicked, this, &Editor::addGlobalNote);
+    side->addLayout(noteHeader);
     notesScroll_ = new QScrollArea(notesPanel_);
     notesScroll_->setWidgetResizable(true);
     noteContainer_ = new QWidget;
     noteContainer_->setObjectName("noteContainer");
     noteLayout_ = new QVBoxLayout(noteContainer_);
-    noteLayout_->setContentsMargins(0, 8, 0, 0);
-    noteLayout_->setSpacing(10);
+    noteLayout_->setContentsMargins(0, 2, 0, 0);
+    noteLayout_->setSpacing(6);
     noteLayout_->setAlignment(Qt::AlignTop);
     notesScroll_->setWidget(noteContainer_);
     side->addWidget(notesScroll_);
     detailsStack_ = new QStackedWidget(shell);
     detailsStack_->setObjectName("detailsStack");
-    detailsStack_->setFixedWidth(280);
+    detailsStack_->setFixedWidth(360);
     detailsStack_->addWidget(notesPanel_);
     content->addWidget(detailsStack_);
     wave_ = new ExplosionWave(imageScroll_->viewport());
@@ -150,22 +216,18 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     hint_ = mutedLabel("滚轮 ↑ 更大 ↓ 更小 · 单击批注 · 拖动框选", shell);
     hint_->setAlignment(Qt::AlignCenter);
     hint_->setFixedHeight(26);
-    layout->addWidget(hint_);
+    hint_->setObjectName("editorHint");
+    hint_->hide();
     auto dock = new QHBoxLayout;
     dock->setContentsMargins(12, 3, 12, 10);
     dock->setSpacing(4);
     dock->addStretch();
-    componentTool_ = textButton("移动组件", false, shell);
-    componentTool_->setObjectName("componentTool");
-    componentTool_->setCheckable(true);
-    componentTool_->hide();
-    dock->addWidget(componentTool_);
-    connect(componentTool_, &QPushButton::clicked, this, [this] { setComponentEditing(true); });
     QStringList names{"smart", "point", "rect", "select"},
         labels{"智能选块 (B)", "点标注 (P)", "框选 (R)", "调整批注 (V)"};
     for (int i = 0; i < 4; i++) {
         auto button = iconButton(names[i], labels[i], shell);
         button->setCheckable(true);
+        button->setObjectName("mode_" + names[i]);
         modes_.append(button);
         dock->addWidget(button);
         connect(button, &QPushButton::clicked, this, [this, i] { setMode(static_cast<Canvas::Mode>(i)); });
@@ -188,8 +250,9 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(minus, &QPushButton::clicked, this, [this] { zoom(canvas_->zoom() / 1.2); });
     connect(plus, &QPushButton::clicked, this, [this] { zoom(canvas_->zoom() * 1.2); });
     connect(zoom_, &QPushButton::clicked, this, &Editor::fit);
-    notesToggle_ = iconButton("notes", "显示或隐藏批注", shell);
+    notesToggle_ = iconButton("notes", "收起批注框", shell);
     notesToggle_->setCheckable(true);
+    notesToggle_->setObjectName("collapseNotes");
     dock->addWidget(notesToggle_);
     connect(notesToggle_, &QPushButton::clicked, this, [this] {
         detailsStack_->setVisible(!detailsStack_->isVisible());
@@ -197,15 +260,23 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
             QTimer::singleShot(0, this, &Editor::fit);
         updateControls();
     });
-    auto copy = iconButton("copy", "复制图片", shell), more = iconButton("more", "更多操作", shell);
-    dock->addWidget(copy);
+    for (const auto &definition : toolbarActionDefinitions()) {
+        const QString icon = definition.id == "saveProject" ? "save" : definition.id == "saveImage" ? "image-save" :
+                             definition.id == "copyJson" ? "json-copy" : definition.id == "exportJson" ? "json" : "image-copy";
+        auto button = iconButton(icon, definition.label, shell);
+        button->setObjectName(definition.id);
+        outputButtons_.insert(definition.id, button);
+        dock->addWidget(button);
+        if (definition.id == "saveProject") connect(button, &QPushButton::clicked, this, [this] { saveProject(); });
+        else if (definition.id == "saveImage") connect(button, &QPushButton::clicked, this, [this] { saveImage(true); });
+        else if (definition.id == "copyJson") connect(button, &QPushButton::clicked, this, &Editor::copyJson);
+        else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
+        else connect(button, &QPushButton::clicked, this, &Editor::copyImage);
+    }
+    auto more = iconButton("more", "更多操作", shell);
+    more->setObjectName("moreActions");
     dock->addWidget(more);
-    connect(copy, &QPushButton::clicked, this, &Editor::copyImage);
-    connect(more, &QPushButton::clicked, this,
-            [this, more] { showContext(more->mapToGlobal(QPoint(0, 0))); });
-    auto exportButton = textButton("导出 JSON", true, shell);
-    dock->addWidget(exportButton);
-    connect(exportButton, &QPushButton::clicked, this, &Editor::exportJson);
+    connect(more, &QPushButton::clicked, this, [this, more] { showContext(more->mapToGlobal(QPoint(0, 0))); });
     dock->addStretch();
     auto grip = new QSizeGrip(shell);
     dock->addWidget(grip);
@@ -214,6 +285,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(canvas_, &Canvas::hintChanged, hint_, &QLabel::setText);
     connect(canvas_, &Canvas::zoomRequested, this, &Editor::zoom);
     connect(canvas_, &Canvas::contextRequested, this, &Editor::showContext);
+    connect(canvas_, &Canvas::regionRequested, this, &Editor::addManualRegion);
+    connect(canvas_, &Canvas::movementAnnotationRequested, this, &Editor::editMovement);
     connect(canvas_, &Canvas::geometryChanged, this, [this](Note n) {
         remember();
         for (auto &stored : doc_.notes)
@@ -237,6 +310,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     shortcut("save", [this] { saveProject(); });
     shortcut("open", [this] { openFile(); });
     shortcut("copy", &Editor::copyImage);
+    shortcut("copyJson", &Editor::copyJson);
+    shortcut("saveImage", [this] { saveImage(true); });
+    shortcut("hideAnnotations", &Editor::toggleAnnotations);
+    shortcut("addGlobalNote", &Editor::addGlobalNote);
     shortcut("paste", &Editor::pasteImage);
     shortcut("export", &Editor::exportJson);
     shortcut("fit", &Editor::fit);
@@ -260,7 +337,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
             setComponentEditing(true);
     });
     setShortcuts(defaults.shortcuts);
-    resize(1180, 800);
+    updateToolbar();
+    resize(1260, 850);
 }
 void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
     for (auto it = shortcuts_.begin(); it != shortcuts_.end(); ++it) {
@@ -277,9 +355,13 @@ void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
     for (int i = 0; i < modes_.size(); ++i)
         modes_[i]->setToolTip(label(ids[i], labels[i]));
     explosion_->setToolTip(label("explode", "大爆炸"));
-    componentTool_->setToolTip(label("component", "移动组件"));
+
 }
 void Editor::setDocument(Document document) {
+    finishNoteEdit();
+    annotationsVisible_ = true;
+    hideAnnotations_->setChecked(false);
+    canvas_->setAnnotationsVisible(true);
     resetLayoutTools();
     doc_ = std::move(document);
     projectPath_.clear();
@@ -359,162 +441,259 @@ void Editor::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
     if (wave_)
         wave_->setGeometry(imageScroll_->viewport()->rect());
+    updateToolbar();
     if (fitted_)
         QTimer::singleShot(0, this, &Editor::fit);
 }
+void Editor::setPreferences(const AppSettings &settings) {
+    preferences_ = settings;
+    if (zoom_) updateToolbar();
+}
+void Editor::updateToolbar() {
+    const bool compact = width() < 1100;
+    for (const auto &definition : toolbarActionDefinitions()) {
+        auto button = outputButtons_.value(definition.id);
+        if (!button) continue;
+        button->setVisible(preferences_.toolbarActions.contains(definition.id));
+        const bool labelled = !compact && (definition.id == "exportJson" || definition.id == "copyImage");
+        button->setProperty("tool", !labelled);
+        button->setProperty("primary", definition.id == "exportJson");
+        button->setText(labelled ? definition.label : QString());
+        button->setFixedSize(labelled ? (definition.id == "exportJson" ? 118 : 160) : 34, 34);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->setIcon(glyph(button->property("glyphName").toString(), definition.id == "exportJson" ? QColor(Qt::white) : QColor()));
+    }
+}
 void Editor::setMode(Canvas::Mode mode) {
-    setComponentEditing(false);
-    canvas_->setLayoutPreview(doc_.layout.has_value());
+    finishNoteEdit();
     canvas_->setMode(mode);
-    canvas_->setFocus();
+    if (explosionActive_ && (mode == Canvas::Smart || mode == Canvas::Rectangle)) {
+        setComponentEditing(true);
+        layoutCanvas_->setDrawing(mode == Canvas::Rectangle);
+    } else {
+        setComponentEditing(false);
+        canvas_->setLayoutPreview(doc_.layout.has_value());
+        canvas_->setFocus();
+    }
     updateLayoutControls();
     updateControls();
 }
 void Editor::updateControls() {
     for (int i = 0; i < modes_.size(); i++)
-        modes_[i]->setChecked(!componentEditing_ && i == canvas_->mode());
+        modes_[i]->setChecked(i == (componentEditing_ ? (layoutCanvas_->drawingMode() ? Canvas::Rectangle : Canvas::Smart) : canvas_->mode()));
     undo_->setEnabled(!undoHistory_.isEmpty());
     redo_->setEnabled(!redoHistory_.isEmpty());
     notesToggle_->setChecked(!detailsStack_->isHidden());
-    componentTool_->setVisible(explosionActive_);
-    componentTool_->setChecked(componentEditing_);
+    notesToggle_->setToolTip(detailsStack_->isHidden() ? "展开批注框" : "收起批注框");
+    for (auto button : outputButtons_) button->setEnabled(hasDocument());
+    hideAnnotations_->setEnabled(hasDocument());
 }
 QString Editor::coords(const Note &n) const {
-    return n.isPoint ? QString("点 (%1, %2)").arg(n.point.x()).arg(n.point.y())
-                     : QString("框 (%1, %2) → (%3, %4)")
-                           .arg(n.rect.x())
-                           .arg(n.rect.y())
-                           .arg(n.rect.x() + n.rect.width())
-                           .arg(n.rect.y() + n.rect.height());
+    if (n.isGlobal) return QStringLiteral("全局");
+    if (n.movementSource) return QStringLiteral("位置变化");
+    return n.isPoint ? QString("【点 (%1,%2)】").arg(n.point.x()).arg(n.point.y())
+                     : QString("【框 (%1,%2)→(%3,%4)】").arg(n.rect.x()).arg(n.rect.y())
+                           .arg(n.rect.x() + n.rect.width()).arg(n.rect.y() + n.rect.height());
 }
 void Editor::renderNotes() {
-    while (auto item = noteLayout_->takeAt(0)) {
-        if (item->widget())
-            item->widget()->deleteLater();
-        delete item;
+    if (renderingNotes_) return;
+    renderingNotes_ = true;
+    QSet<QString> retained;
+    for (const auto &note : doc_.notes) retained.insert(note.id);
+    for (auto it = noteCards_.begin(); it != noteCards_.end();) {
+        if (!retained.contains(it.key())) {
+            if (it.value()) { noteLayout_->removeWidget(it.value()); it.value()->hide(); it.value()->deleteLater(); }
+            noteEditors_.remove(it.key());
+            it = noteCards_.erase(it);
+        } else ++it;
     }
+    if (auto empty = noteContainer_->findChild<QLabel *>("emptyNotes")) { empty->hide(); empty->deleteLater(); }
     noteCount_->setText(QString("批注  %1").arg(doc_.notes.size()));
     int number = 0;
     for (const auto &n : doc_.notes) {
-        auto card = new QFrame(noteContainer_);
-        card->setObjectName("noteCard");
+        QWidget *card = noteCards_.value(n.id);
+        if (!card) {
+            auto frame = new QFrame(noteContainer_);
+            card = frame;
+            card->setObjectName("noteCard");
+            card->setProperty("noteId", n.id);
+            card->setFocusPolicy(Qt::ClickFocus);
+            card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+            auto l = new QVBoxLayout(card);
+            l->setContentsMargins(7, 5, 7, 5);
+            l->setSpacing(3);
+            auto row = new QHBoxLayout;
+            row->setSpacing(4);
+            auto badge = new QLabel(card);
+            badge->setObjectName("noteBadge");
+            badge->setAlignment(Qt::AlignCenter);
+            badge->setFixedSize(22, 22);
+            row->addWidget(badge);
+            auto position = mutedLabel({}, card);
+            position->setObjectName("noteCoordinates");
+            position->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            row->addWidget(position, 1);
+            auto edit = iconButton("edit", "编辑批注", card), remove = iconButton("trash", "删除批注", card);
+            edit->setFixedSize(24, 24); remove->setFixedSize(24, 24);
+            edit->setIconSize({16, 16}); remove->setIconSize({16, 16});
+            row->addWidget(edit); row->addWidget(remove);
+            l->addLayout(row);
+            auto text = new InlineNoteEdit(card);
+            text->setObjectName("noteText_" + n.id);
+            text->setProperty("noteId", n.id);
+            text->setAccessibleName("批注内容");
+            text->setPlaceholderText("写下你的想法…");
+            text->setTabChangesFocus(true);
+            text->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            text->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            l->addWidget(text);
+            noteCards_.insert(n.id, card); noteEditors_.insert(n.id, text);
+            text->started = [this, id=n.id] { beginNoteEdit(id); };
+            text->finished = [this, id=n.id] { QTimer::singleShot(0, this, [this,id] { if (editingId_ == id) finishNoteEdit(); }); };
+            text->cancelled = [this] { cancelNoteEdit(); };
+            connect(text, &QPlainTextEdit::textChanged, this, [this,text,id=n.id] {
+                text->fitContent();
+                if (renderingNotes_) return;
+                beginNoteEdit(id);
+                QString value = text->toPlainText();
+                if (value.size() > 10000) { value.truncate(10000); QSignalBlocker blocker(text); text->setPlainText(value); }
+                for (auto &note : doc_.notes) if (note.id == id) { note.comment=value; break; }
+                doc_.dirty = true;
+                canvas_->refresh();
+                if (layoutCanvas_) layoutCanvas_->setAnnotations(doc_.notes);
+            });
+            connect(edit, &QPushButton::clicked, this, [this,id=n.id] { focusNote(id); });
+            connect(remove, &QPushButton::clicked, this, [this,id=n.id] {
+                finishNoteEdit(); remember();
+                doc_.notes.removeIf([&](const Note &note) { return note.id==id; });
+                canvas_->select({}); changed();
+            });
+        }
         card->setProperty("selected", n.id == canvas_->selected());
-        auto l = new QVBoxLayout(card);
-        l->setContentsMargins(12, 10, 12, 12);
-        auto row = new QHBoxLayout;
-        auto badge = new QLabel(QString::number(++number), card);
-        badge->setObjectName("badge");
-        badge->setAlignment(Qt::AlignCenter);
-        badge->setFixedSize(24, 24);
-        row->addWidget(badge);
-        row->addStretch();
-        auto edit = iconButton("edit", QString("编辑批注 %1").arg(number), card),
-             remove = iconButton("trash", QString("删除批注 %1").arg(number), card);
-        edit->setFixedSize(28, 28);
-        remove->setFixedSize(28, 28);
-        row->addWidget(edit);
-        row->addWidget(remove);
-        l->addLayout(row);
-        auto text = new QLabel(n.comment, card);
-        text->setTextFormat(Qt::PlainText);
-        text->setWordWrap(true);
-        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        l->addWidget(text);
-        auto position = mutedLabel(coords(n), card);
-        position->setWordWrap(true);
-        l->addWidget(position);
-        noteLayout_->addWidget(card);
-        connect(edit, &QPushButton::clicked, this, [this, id = n.id] {
-            for (const auto &note : doc_.notes)
-                if (note.id == id) {
-                    editNote(note, false, QCursor::pos());
-                    break;
-                }
-        });
-        connect(remove, &QPushButton::clicked, this, [this, id = n.id] {
-            canvas_->select(id);
-            removeSelected();
-        });
+        card->style()->unpolish(card); card->style()->polish(card);
+        card->findChild<QLabel *>("noteBadge")->setText(QString::number(++number));
+        auto position = card->findChild<QLabel *>("noteCoordinates");
+        position->setText(coords(n)); position->setToolTip(coords(n));
+        auto text = static_cast<InlineNoteEdit *>(noteEditors_.value(n.id).data());
+        if (!text->hasFocus() && text->toPlainText()!=n.comment) { QSignalBlocker blocker(text); text->setPlainText(n.comment); }
+        text->setAccessibleName(QString("批注 %1 内容").arg(number));
+        text->fitContent();
+        noteLayout_->insertWidget(number-1,card,0,Qt::AlignTop);
     }
     if (doc_.notes.isEmpty()) {
-        auto empty = mutedLabel("点选或画框，留下第一条修改意见。", noteContainer_);
-        empty->setWordWrap(true);
-        noteLayout_->addWidget(empty);
+        auto empty = mutedLabel("圈出位置，或添加一条全局意见。", noteContainer_);
+        empty->setObjectName("emptyNotes"); empty->setWordWrap(true); noteLayout_->addWidget(empty);
     }
+    renderingNotes_ = false;
 }
-void Editor::editNote(Note note, bool fresh, QPoint global) {
-    if (fresh && doc_.notes.size() >= MaxNotes) {
-        showError("最多支持 1000 条批注");
-        return;
+void Editor::beginNoteEdit(const QString &id) {
+    if (finishingEdit_ || editingId_==id) return;
+    finishNoteEdit();
+    editingBaseline_={doc_.notes,doc_.layout}; editingWasDirty_=doc_.dirty; editingId_=id;
+    canvas_->select(id);
+}
+void Editor::finishNoteEdit() {
+    if (editingId_.isEmpty() || finishingEdit_) return;
+    finishingEdit_=true;
+    const QString id=editingId_;
+    for (auto &note : doc_.notes) if (note.id==id) {
+        note.comment=note.comment.trimmed();
+        if (note.comment.isEmpty() && id!=draftId_)
+            for (const auto &before : editingBaseline_.notes) if (before.id==id) note=before;
+        break;
     }
-    QDialog dialog(this);
-    dialog.setWindowTitle(fresh ? "添加批注" : "编辑批注");
-    dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-    dialog.setFixedWidth(380);
-    auto layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(22, 20, 22, 18);
-    auto heading = new QLabel(fresh ? QString("批注 %1").arg(doc_.notes.size() + 1) : "修改批注", &dialog);
-    QFont title = heading->font();
-    title.setPointSize(title.pointSize() + 3);
-    title.setBold(true);
-    heading->setFont(title);
-    layout->addWidget(heading);
-    layout->addWidget(mutedLabel(coords(note), &dialog));
-    auto text = new QPlainTextEdit(note.comment, &dialog);
-    text->setAccessibleName("修改意见");
-    text->setObjectName("commentInput");
-    text->setPlaceholderText("希望这里怎么改？");
-    text->setFixedHeight(130);
-    layout->addWidget(text);
-    auto error = mutedLabel({}, &dialog);
-    layout->addWidget(error);
-    auto actions = new QHBoxLayout;
-#ifdef Q_OS_MAC
-    actions->addWidget(mutedLabel("⌘ + Enter 保存", &dialog));
-#else
-    actions->addWidget(mutedLabel("Ctrl + Enter 保存", &dialog));
-#endif
-    actions->addStretch();
-    auto cancel = textButton("取消", false, &dialog), save = textButton("保存", true, &dialog);
-    actions->addWidget(cancel);
-    actions->addWidget(save);
-    layout->addLayout(actions);
-    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
-    auto accept = [&] {
-        if (text->toPlainText().trimmed().isEmpty() || text->toPlainText().size() > 10000) {
-            error->setText("请输入 1 至 10000 字的修改意见");
-            return;
-        }
-        dialog.accept();
-    };
-    connect(save, &QPushButton::clicked, &dialog, accept);
-    auto key = new QShortcut(QKeySequence("Ctrl+Return"), &dialog);
-    connect(key, &QShortcut::activated, &dialog, accept);
-    dialog.adjustSize();
-    QRect screen = QGuiApplication::screenAt(global) ? QGuiApplication::screenAt(global)->availableGeometry()
-                                                     : QGuiApplication::primaryScreen()->availableGeometry();
-    dialog.move(std::clamp(global.x() + 18, screen.left() + 12, screen.right() - dialog.width() - 12),
-                std::clamp(global.y() + 16, screen.top() + 12, screen.bottom() - dialog.height() - 12));
-    text->setFocus();
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-    note.comment = text->toPlainText().trimmed();
-    note.updatedAt = timestamp();
-    remember();
-    if (fresh)
-        doc_.notes.append(note);
-    else
-        for (auto &n : doc_.notes)
-            if (n.id == note.id) {
-                n = note;
-                break;
-            }
-    canvas_->select(note.id);
+    if (id==draftId_) doc_.notes.removeIf([&](const Note &note) { return note.id==id && note.comment.isEmpty(); });
+    const bool modified=doc_.notes!=editingBaseline_.notes;
+    if (modified) {
+        for (auto &note : doc_.notes) if (note.id==id) note.updatedAt=timestamp();
+        undoHistory_.append(editingBaseline_); if (undoHistory_.size()>60) undoHistory_.removeFirst(); redoHistory_.clear();
+    }
+    doc_.dirty=editingWasDirty_ || modified;
+    editingId_.clear(); draftId_.clear();
+    finishingEdit_=false;
+    changed(false);
+}
+void Editor::cancelNoteEdit() {
+    if (editingId_.isEmpty()) return;
+    doc_.notes=editingBaseline_.notes; doc_.dirty=editingWasDirty_;
+    editingId_.clear(); draftId_.clear();
+    canvas_->select({}); changed(false);
+}
+void Editor::focusNote(const QString &id) {
+    beginNoteEdit(id);
     detailsStack_->show();
-    changed();
-    if (fitted_)
-        QTimer::singleShot(0, this, &Editor::fit);
-    (componentEditing_ ? static_cast<QWidget *>(layoutCanvas_) : static_cast<QWidget *>(canvas_))->setFocus();
+    canvas_->select(id);
+    renderNotes();
+    if (auto text=noteEditors_.value(id)) {
+        notesScroll_->ensureWidgetVisible(noteCards_.value(id),0,12);
+        text->setFocus(Qt::OtherFocusReason);
+    }
+    updateControls();
+}
+void Editor::editNote(Note note, bool fresh, QPoint) {
+    finishNoteEdit();
+    if (fresh) {
+        if (doc_.notes.size()>=MaxNotes) { showError("最多支持 1000 条批注"); return; }
+        editingBaseline_={doc_.notes,doc_.layout}; editingWasDirty_=doc_.dirty;
+        editingId_=note.id; draftId_=note.id;
+        doc_.notes.append(note);
+    }
+    focusNote(note.id);
+}
+void Editor::addGlobalNote() {
+    if (!hasDocument()) return;
+    Note note; note.isGlobal=true;
+    editNote(note,true,{});
+}
+void Editor::editMovement(QRectF source, QRectF destination) {
+    for (const auto &note : doc_.notes) if (note.movementSource && *note.movementSource==source) { focusNote(note.id); return; }
+    Note note; note.isPoint=false; note.rect=destination.toAlignedRect(); note.movementSource=source;
+    editNote(note,true,{});
+}
+void Editor::addManualRegion(QRect area) {
+    finishNoteEdit();
+    try {
+        if (!doc_.layout) doc_.layout=createLayout(doc_.image.size(),doc_.candidates);
+        if (!splitBaseline_) splitBaseline_=doc_.layout;
+        remember();
+        addLayoutRegion(*doc_.layout, area);
+        if (layoutCanvas_) layoutCanvas_->setState(*doc_.layout);
+        canvas_->setLayoutPreview(true);
+        changed();
+    } catch(const std::exception &error) { showError(QString::fromUtf8(error.what())); }
+}
+void Editor::toggleAnnotations() {
+    annotationsVisible_=!annotationsVisible_;
+    hideAnnotations_->setChecked(!annotationsVisible_);
+    hideAnnotations_->setToolTip(annotationsVisible_ ? "隐藏画面批注" : "显示画面批注");
+    hideAnnotations_->setProperty("glyphName",annotationsVisible_ ? "eye" : "eye-off");
+    hideAnnotations_->setIcon(glyph(annotationsVisible_ ? "eye" : "eye-off"));
+    canvas_->setAnnotationsVisible(annotationsVisible_);
+    if(layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
+}
+bool Editor::eventFilter(QObject *object, QEvent *event) {
+    if (object==imageScroll_->viewport() && event->type()==QEvent::Wheel && hasDocument()) {
+        const auto wheel=static_cast<QWheelEvent *>(event);
+        QWidget *active=imageScroll_->widget();
+        const auto point=active->mapFrom(imageScroll_->viewport(),wheel->position().toPoint());
+        if (!active->rect().contains(point)) {
+            const int delta=wheel->angleDelta().y()!=0 ? wheel->angleDelta().y() : wheel->pixelDelta().y();
+            if(delta!=0) zoom(canvas_->zoom() * (delta>0 ? 1.12 : 1/1.12));
+            wheel->accept(); return true;
+        }
+    }
+    return QWidget::eventFilter(object,event);
+}
+void Editor::toast(const QString &message) {
+    hint_->setText(message);
+    QToolTip::showText(mapToGlobal(QPoint(width()/2,height()-65)),message,this,{},2000);
+}
+void Editor::copyJson() {
+    finishNoteEdit();
+    if (!hasDocument()) return;
+    try { QApplication::clipboard()->setText(QString::fromUtf8(serializeFeedback(doc_,preferences_.embedOriginal))); toast("JSON 已复制"); }
+    catch(const std::exception &error) { showError(QString::fromUtf8(error.what())); }
 }
 void Editor::changed(bool contentChanged) {
     if (contentChanged)
@@ -526,6 +705,7 @@ void Editor::changed(bool contentChanged) {
     updateControls();
 }
 void Editor::remember() {
+    finishNoteEdit();
     undoHistory_.append({doc_.notes, doc_.layout});
     if (undoHistory_.size() > 60)
         undoHistory_.removeFirst();
@@ -547,12 +727,14 @@ void Editor::restore(Snapshot snapshot) {
     updateLayoutControls();
 }
 void Editor::undo() {
+    finishNoteEdit();
     if (undoHistory_.isEmpty())
         return;
     redoHistory_.append({doc_.notes, doc_.layout});
     restore(undoHistory_.takeLast());
 }
 void Editor::redo() {
+    finishNoteEdit();
     if (redoHistory_.isEmpty())
         return;
     undoHistory_.append({doc_.notes, doc_.layout});
@@ -560,6 +742,7 @@ void Editor::redo() {
 }
 void Editor::updateLayoutControls() {
     explosion_->setChecked(explosionActive_);
+    explosion_->setIcon(glyph("explode",explosionActive_ ? QColor(Qt::white) : QColor()));
     if (!componentEditing_)
         hint_->setText(doc_.layout ? "在调整后的画面批注 · 滚轮切换范围 · 单击或拖动框选"
                                    : "滚轮切换范围 · 单击批注 · 拖动框选");
@@ -572,7 +755,8 @@ void Editor::setComponentEditing(bool enabled) {
         layoutCanvas_->setAnnotations(doc_.notes);
         layoutCanvas_->setZoom(canvas_->zoom());
         switchCanvas(layoutCanvas_);
-        detailsStack_->setCurrentWidget(inspectorScroll_);
+        inspectorScroll_->show();
+        detailsStack_->setCurrentWidget(notesPanel_);
         detailsStack_->show();
         layoutCanvas_->setFocus();
         hint_->setText("悬停滚轮选范围 · 拖边改宽高 · 拖角等比 · 点标注或框选可添加意见");
@@ -582,6 +766,7 @@ void Editor::setComponentEditing(bool enabled) {
         canvas_->setLayoutPreview(doc_.layout.has_value());
         switchCanvas(canvas_);
         detailsStack_->setCurrentWidget(notesPanel_);
+        if (inspectorScroll_) inspectorScroll_->hide();
         canvas_->setFocus();
     }
     updateLayoutControls();
@@ -603,7 +788,7 @@ void Editor::switchCanvas(QWidget *target) {
 void Editor::resetLayoutTools() {
     explosionActive_ = false;
     componentEditing_ = false;
-    componentTool_->hide();
+
     splitBaseline_.reset();
     if (layoutCanvas_) {
         disconnect(layoutCanvas_, nullptr, this, nullptr);
@@ -628,11 +813,18 @@ void Editor::setExplosionActive(bool enabled) {
             splitBaseline_ = doc_.layout;
         if (!layoutCanvas_) {
             layoutCanvas_ = new LayoutCanvas(doc_.image, *doc_.layout, this);
-            inspectorScroll_ = new QScrollArea(detailsStack_);
+            inspectorScroll_ = new QScrollArea(notesPanel_);
+            inspectorScroll_->setObjectName("componentInspectorScroll");
+            inspectorScroll_->setMaximumHeight(220);
             inspectorScroll_->setWidgetResizable(true);
             layoutInspector_ = new LayoutInspector(layoutCanvas_);
             inspectorScroll_->setWidget(layoutInspector_);
-            detailsStack_->addWidget(inspectorScroll_);
+            auto resizeInspector = [this] {
+                if(inspectorScroll_ && layoutInspector_) inspectorScroll_->setFixedHeight(std::clamp(layoutInspector_->sizeHint().height(),50,210));
+            };
+            connect(layoutCanvas_,&LayoutCanvas::selectionChanged,this,resizeInspector);
+            resizeInspector();
+            static_cast<QVBoxLayout *>(notesPanel_->layout())->insertWidget(1,inspectorScroll_);
             connect(layoutCanvas_, &LayoutCanvas::changed, this, [this] {
                 if (!layoutCanvas_ || doc_.layout == layoutCanvas_->state())
                     return;
@@ -650,6 +842,8 @@ void Editor::setExplosionActive(bool enabled) {
                     hint_->setText(hint);
             });
             connect(layoutCanvas_, &LayoutCanvas::zoomRequested, this, &Editor::zoom);
+            connect(layoutCanvas_, &LayoutCanvas::movementAnnotationRequested,this,&Editor::editMovement);
+            layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
             connect(layoutCanvas_, &LayoutCanvas::noteEditRequested, this,
                     [this](const QString &id, QPoint position) {
                         for (const auto &note : doc_.notes)
@@ -679,6 +873,7 @@ void Editor::setExplosionActive(bool enabled) {
     updateLayoutControls();
 }
 void Editor::explode() {
+    finishNoteEdit();
     if (!hasDocument())
         return;
     try {
@@ -689,6 +884,7 @@ void Editor::explode() {
     }
 }
 void Editor::removeSelected() {
+    finishNoteEdit();
     if (componentEditing_)
         return;
     QString id = canvas_->selected();
@@ -700,31 +896,35 @@ void Editor::removeSelected() {
     changed();
 }
 void Editor::copyImage() {
+    finishNoteEdit();
     if (hasDocument()) {
-        const bool result = doc_.layout.has_value();
-        QApplication::clipboard()->setImage(result ? renderLayout(doc_.image, *doc_.layout) : doc_.image);
-        hint_->setText(result ? "调整效果已复制" : "原图已复制");
+        QApplication::clipboard()->setImage(previewImage(doc_));
+        toast("带批注图片已复制");
     }
 }
 void Editor::showError(const QString &text) {
     QMessageBox::warning(this, "HelpDesign", text);
 }
 bool Editor::saveProject() {
+    finishNoteEdit();
     if (!hasDocument())
         return true;
-    QString path = QFileDialog::getSaveFileName(this, "保存原图、批注与变化",
-                                                projectPath_.isEmpty() ? "feedback.json" : projectPath_,
-                                                "HelpDesign 反馈 (*.json)");
+    QString path = QFileDialog::getSaveFileName(this, "保存 HelpDesign 项目",
+                                                projectPath_.isEmpty() ? "设计反馈.helpdesign" : projectPath_,
+                                                "HelpDesign 项目 (*.helpdesign)");
     if (path.isEmpty())
         return false;
-    if (!path.endsWith(".json", Qt::CaseInsensitive))
-        path += ".json";
+    if (!path.endsWith(".helpdesign", Qt::CaseInsensitive))
+        path += ".helpdesign";
     try {
-        const auto bytes = serializeFeedback(doc_, true);
+        const auto bytes = serializeDocument(doc_, true);
         saveBytes(path, bytes);
         projectPath_ = path;
         doc_.dirty = false;
-        hint_->setText("已保存 JSON，包含完整原图、批注与变化");
+        QString associationError;
+        if (!QStandardPaths::isTestModeEnabled())
+            registerProjectFileAssociation(&associationError);
+        toast(associationError.isEmpty() ? "项目已保存，可双击继续编辑" : "项目已保存，可从 HelpDesign 导入继续编辑");
         return true;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -732,6 +932,7 @@ bool Editor::saveProject() {
     }
 }
 bool Editor::allowReplace() {
+    finishNoteEdit();
     if (!doc_.dirty)
         return true;
     auto answer = QMessageBox::question(
@@ -745,7 +946,7 @@ void Editor::openFile(const QString &provided) {
     QString path = provided;
     if (path.isEmpty())
         path = QFileDialog::getOpenFileName(this, "打开图片或项目", {},
-                                            "图片或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json)");
+                                            "图片或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.helpdesign)");
     if (path.isEmpty())
         return;
     try {
@@ -753,7 +954,7 @@ void Editor::openFile(const QString &provided) {
         if (!allowReplace())
             return;
         setDocument(std::move(next));
-        if (path.endsWith(".json", Qt::CaseInsensitive))
+        if (path.endsWith(".helpdesign", Qt::CaseInsensitive))
             projectPath_ = path;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -772,11 +973,12 @@ void Editor::pasteImage() {
     }
 }
 void Editor::saveImage(bool annotated) {
+    finishNoteEdit();
     if (!hasDocument())
         return;
     const bool layoutPreview = !annotated && doc_.layout.has_value();
     QString path = QFileDialog::getSaveFileName(this,
-                                                annotated       ? "保存批注预览"
+                                                annotated       ? "保存带批注图片"
                                                 : layoutPreview ? "保存调整效果"
                                                                 : "保存原图",
                                                 annotated       ? "preview.png"
@@ -797,6 +999,7 @@ void Editor::saveImage(bool annotated) {
     }
 }
 void Editor::exportJson() {
+    finishNoteEdit();
     if (!hasDocument())
         return;
     QDialog dialog(this);
@@ -827,6 +1030,9 @@ void Editor::exportJson() {
     auto row = new QHBoxLayout;
     auto save = textButton("保存 JSON 与图片", false, &dialog), close = textButton("关闭", false, &dialog),
          copy = textButton("复制 JSON", true, &dialog);
+    save->setProperty("glyphName","save");save->setIcon(glyph("save"));
+    close->setProperty("glyphName","close");close->setIcon(glyph("close"));
+    copy->setProperty("glyphName","json-copy");copy->setIcon(glyph("json-copy",Qt::white));
     save->setObjectName("saveFeedbackBundle");
     row->addWidget(save);
     row->addStretch();
@@ -946,17 +1152,13 @@ void Editor::exportJson() {
 }
 void Editor::showContext(QPoint p) {
     QMenu menu(this);
-    menu.addAction("重新截图", this, &Editor::captureRequested);
-    menu.addAction("打开图片或项目", this, [this] { openFile(); });
+    menu.addAction(glyph("settings"),"自定义工具栏…",this,&Editor::toolbarSettingsRequested);
     menu.addSeparator();
-    menu.addAction(canvas_->layoutPreview() ? "复制调整效果" : "复制原图", this, &Editor::copyImage);
-    menu.addAction(canvas_->layoutPreview() ? "保存调整效果" : "保存原图", this, [this] { saveImage(); });
-    menu.addAction("保存批注预览", this, [this] { saveImage(true); });
-    menu.addAction("保存项目", this, [this] { saveProject(); });
-    menu.addAction("导出 JSON", this, &Editor::exportJson);
+    menu.addAction(glyph("capture"),"重新截图",this,&Editor::captureRequested);
+    menu.addAction(glyph("open"),"导入图片或项目",this,[this] { openFile(); });
+    menu.addAction(glyph("fit"),"适应图片",this,&Editor::fit);
     menu.addSeparator();
-    menu.addAction("适应图片", this, &Editor::fit);
-    menu.addAction("关闭当前截图", this, &QWidget::close);
+    menu.addAction(glyph("close"),"关闭当前截图",this,&QWidget::close);
     menu.exec(p);
 }
 void Editor::closeEvent(QCloseEvent *e) {

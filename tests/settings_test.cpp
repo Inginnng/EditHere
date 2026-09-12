@@ -1,6 +1,8 @@
 #include "settings.h"
 #include "settingsdialog.h"
 #include <QComboBox>
+#include <QCheckBox>
+#include <QTabWidget>
 #include <QFile>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -27,6 +29,7 @@ class SettingsTests : public QObject {
         changed.embedOriginal = false;
         changed.checkUpdatesOnStartup = true;
         changed.defaultTool = 2;
+        changed.toolbarActions = {"saveProject", "copyJson"};
         changed.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         changed.shortcuts["point"] = {};
         changed.shortcuts["rectangle"] = QKeySequence("Ctrl+,");
@@ -118,6 +121,64 @@ class SettingsTests : public QObject {
         expected.defaultTool = 4;
         QVERIFY(!validateSettings(expected).isEmpty());
     }
+    void toolbarValidationPersistenceAndMigration() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("settings.ini");
+        auto settings = defaultSettings();
+        QCOMPARE(settings.toolbarActions.size(), toolbarActionDefinitions().size());
+        for (const auto &definition : toolbarActionDefinitions())
+            QVERIFY(settings.toolbarActions.contains(definition.id));
+        for (const auto &id : {"copyJson", "saveImage", "hideAnnotations", "addGlobalNote"}) {
+            QVERIFY(settings.shortcuts.contains(id));
+            QVERIFY(settings.shortcuts.value(id).isEmpty());
+        }
+        settings.theme = ThemeMode::Dark;
+        settings.toolbarActions.clear();
+        QString error;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path) == settings);
+        settings.toolbarActions = {"saveProject", "saveProject"};
+        QVERIFY(!validateSettings(settings).isEmpty());
+        QVERIFY(!saveSettings(settings, &error, path));
+        QVERIFY(loadSettings(path).toolbarActions.isEmpty());
+        settings.toolbarActions = {"copyImage", "unrecognized"};
+        QVERIFY(!validateSettings(settings).isEmpty());
+        QVERIFY(!saveSettings(settings, &error, path));
+        // A damaged toolbar preference must not erase the user's other preferences.
+        QSettings source(path, QSettings::IniFormat);
+        source.setValue("toolbar/actions", QStringList{"copyImage", "unrecognized"});
+        source.sync();
+        auto recovered = loadSettings(path);
+        QCOMPARE(recovered.theme, ThemeMode::Dark);
+        QCOMPARE(recovered.toolbarActions, defaultSettings().toolbarActions);
+        source.setValue("toolbar/actions", QStringList{"copyJson", "copyJson"});
+        source.sync();
+        QCOMPARE(loadSettings(path).toolbarActions, defaultSettings().toolbarActions);
+        // Existing users without the preference get all five actions on upgrade.
+        source.remove("toolbar/actions");
+        source.sync();
+        QCOMPARE(loadSettings(path).toolbarActions, defaultSettings().toolbarActions);
+    }
+    void toolbarDraftAndUpdateNavigation() {
+        SettingsDialog dialog(defaultSettings());
+        auto tabs = dialog.findChild<QTabWidget *>("settingsTabs");
+        QVERIFY(tabs);
+        dialog.showToolbar();
+        QCOMPARE(tabs->currentWidget()->objectName(), QString("settingsToolbarPage"));
+        for (const auto &definition : toolbarActionDefinitions()) {
+            auto checkbox = dialog.findChild<QCheckBox *>("toolbar_" + definition.id);
+            QVERIFY(checkbox);
+            QVERIFY(checkbox->isChecked());
+            checkbox->setChecked(false);
+        }
+        QVERIFY(dialog.settings().toolbarActions.isEmpty());
+        dialog.findChild<QCheckBox *>("toolbar_copyJson")->setChecked(true);
+        QCOMPARE(dialog.settings().toolbarActions, QStringList{"copyJson"});
+        dialog.showUpdates();
+        QCOMPARE(tabs->currentWidget()->objectName(), QString("settingsAboutPage"));
+        dialog.findChild<QPushButton *>("settingsReset")->click();
+        QCOMPARE(dialog.settings().toolbarActions, defaultSettings().toolbarActions);
+    }
     void failedWriteReportsError() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -133,6 +194,7 @@ class SettingsTests : public QObject {
         original.embedOriginal = false;
         original.checkUpdatesOnStartup = true;
         original.defaultTool = 1;
+        original.toolbarActions = {"copyImage"};
         original.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         SettingsDialog dialog(original);
         int applyCount = 0;

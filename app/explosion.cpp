@@ -15,9 +15,78 @@
 #include <QVBoxLayout>
 #include <QVariantAnimation>
 #include <QWheelEvent>
+#include <QTimer>
 #include <algorithm>
 #include <cmath>
+#include <exception>
 namespace h2d {
+namespace {
+QVector<QPair<QRectF, QRectF>> movementRegions(const LayoutState &state) {
+    QVector<QPair<QRectF, QRectF>> result;
+    const auto read = [](QJsonObject r) {
+        return QRectF(QPointF(r["x1"].toDouble(), r["y1"].toDouble()),
+                      QPointF(r["x2"].toDouble(), r["y2"].toDouble()));
+    };
+    QJsonArray changes;
+    try {
+        changes = exportLayoutChanges(state);
+    } catch (const std::exception &) {
+        // An invalid unsaved layout must remain inspectable. Export validation
+        // reports the error; visual arrows must never prevent opening the editor.
+        return {};
+    }
+    for (const auto &value : changes) {
+        const auto change = value.toObject();
+        const auto from = read(change["from"].toObject()), to = read(change["to"].toObject());
+        if (QLineF(from.center(), to.center()).length() > .01)
+            result.append({from, to});
+    }
+    return result;
+}
+bool backgroundBounds(QRectF bounds, QSize canvas) {
+    const double fraction = bounds.width() * bounds.height() /
+                            std::max(1.0, double(canvas.width()) * canvas.height());
+    return fraction >= .94 || (fraction >= .65 &&
+           (bounds.width() >= canvas.width() * .95 || bounds.height() >= canvas.height() * .95));
+}
+double segmentDistance(QPointF point, QPointF start, QPointF finish) {
+    const auto vector = finish - start;
+    const double lengthSquared = QPointF::dotProduct(vector, vector);
+    const double t = lengthSquared > .0001
+        ? std::clamp(QPointF::dotProduct(point - start, vector) / lengthSquared, 0.0, 1.0) : 0;
+    return QLineF(point, start + vector * t).length();
+}
+void paintMovement(QPainter &p, const QPair<QRectF, QRectF> &movement,
+                   double zoom, bool hovered, double phase) {
+    const auto start = movement.first.center() * zoom;
+    const auto finish = movement.second.center() * zoom;
+    const auto line = QLineF(start, finish);
+    if (line.length() < .5)
+        return;
+    const auto unit = (finish - start) / line.length();
+    const QPointF normal(-unit.y(), unit.x());
+    const double pulse = .5 + .5 * std::sin(phase);
+    if (hovered) {
+        p.setPen(QPen(QColor(0, 122, 255, 26 + qRound(pulse * 22)), 10 + pulse * 4,
+                      Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(line);
+        p.setPen(QPen(QColor(0, 122, 255, 85), 1, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        for (const auto &r : {movement.first, movement.second})
+            p.drawRect(QRectF(r.topLeft() * zoom, r.size() * zoom));
+    }
+    p.setPen(QPen(QColor(255, 255, 255, 215), hovered ? 5 : 4, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(line);
+    p.setPen(QPen(accent(), hovered ? 2.6 : 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawLine(line);
+    const double head = std::min(9.0, std::max(4.0, line.length() * .35));
+    p.drawPolyline(QPolygonF{finish - unit * head + normal * head * .5,
+                            finish, finish - unit * head - normal * head * .5});
+    p.setBrush(Qt::white);
+    p.drawEllipse(start, hovered ? 3.8 : 3.1, hovered ? 3.8 : 3.1);
+}
+} // namespace
+
 namespace {
 QVector<QPointF> controlPoints(QRectF r) {
     return {r.topLeft(),     {r.center().x(), r.top()},    r.topRight(),   {r.right(), r.center().y()},
@@ -36,11 +105,19 @@ LayoutCanvas::LayoutCanvas(QImage original, LayoutState state, QWidget *parent)
     setAccessibleName("大爆炸组件画布");
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
+    hoverTimer_ = new QTimer(this);
+    hoverTimer_->setInterval(32);
+    connect(hoverTimer_, &QTimer::timeout, this, [this] {
+        hoverPhase_ += .13;
+        update();
+    });
+    rebuildMovements();
     setZoom(1);
 }
 void LayoutCanvas::setState(LayoutState state) {
     dragging_ = drawing_ = drawingMode_ = false;
     state_ = std::move(state);
+    rebuildMovements();
     before_ = {};
     undo_.clear();
     redo_.clear();
@@ -53,6 +130,44 @@ void LayoutCanvas::setAnnotations(QVector<Note> notes) {
     annotations_ = std::move(notes);
     annotationState_ = state_;
     update();
+}
+void LayoutCanvas::setAnnotationsVisible(bool visible) {
+    annotationsVisible_ = visible;
+    hoveredNote_.clear();
+    hoveredMovement_ = -1;
+    hoverTimer_->stop();
+    update();
+}
+void LayoutCanvas::rebuildMovements() {
+    movements_ = movementRegions(state_);
+    hoveredMovement_ = -1;
+}
+int LayoutCanvas::hitMovement(QPointF screen) const {
+    if (annotationsVisible_)
+        for (int i = movements_.size() - 1; i >= 0; --i)
+            if (segmentDistance(screen, movements_[i].first.center() * zoom_,
+                                movements_[i].second.center() * zoom_) < 8)
+                return i;
+    return -1;
+}
+void LayoutCanvas::updateAnnotationHover(QPointF screen) {
+    QString nextNote;
+    if (annotationsVisible_)
+        for (const auto &note : displayedAnnotations())
+            if (!note.isGlobal && QLineF(screen, noteAnchor(note)).length() < 17) {
+                nextNote = note.id;
+                break;
+            }
+    const int nextMovement = nextNote.isEmpty() ? hitMovement(screen) : -1;
+    if (nextNote != hoveredNote_ || nextMovement != hoveredMovement_)
+        hoverPhase_ = 0;
+    hoveredNote_ = nextNote;
+    hoveredMovement_ = nextMovement;
+    if (!hoveredNote_.isEmpty() || hoveredMovement_ >= 0) {
+        if (!hoverTimer_->isActive())
+            hoverTimer_->start();
+    } else
+        hoverTimer_->stop();
 }
 QVector<Note> LayoutCanvas::displayedAnnotations() const {
     return annotationState_ == state_ ? annotations_ : remapNotes(annotations_, annotationState_, state_);
@@ -73,8 +188,10 @@ void LayoutCanvas::annotateSelection() {
         emit annotationRequested(area, mapToGlobal((QPointF(area.center()) * zoom_).toPoint()));
 }
 void LayoutCanvas::cancelInteraction() {
-    if (dragging_)
+    if (dragging_) {
         state_ = before_;
+        rebuildMovements();
+    }
     dragging_ = drawing_ = drawingMode_ = false;
     handle_ = -1;
     setCursor(Qt::ArrowCursor);
@@ -105,8 +222,10 @@ void LayoutCanvas::select(QString id) {
                          : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Esc 返回选块");
 }
 void LayoutCanvas::clearSelection() {
-    if (dragging_)
+    if (dragging_) {
         state_ = before_;
+        rebuildMovements();
+    }
     drawing_ = dragging_ = false;
     hover_.clear();
     choices_.clear();
@@ -176,21 +295,34 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
         p.setBrush(QColor(0, 122, 255, 20));
         p.drawRect(screenRect(region(press_, end_)));
     }
+    if (annotationsVisible_)
+        for (int i = 0; i < movements_.size(); ++i)
+            paintMovement(p, movements_[i], zoom_, i == hoveredMovement_, hoverPhase_);
     int number = 0;
     for (const auto &note : displayedAnnotations()) {
+        ++number;
+        if (!annotationsVisible_ || note.isGlobal)
+            continue;
+        const bool hovered = note.id == hoveredNote_;
+        const double pulse = hovered ? .5 + .5 * std::sin(hoverPhase_) : 0;
         if (!note.isPoint) {
             p.setPen(QPen(accent(), 1.5));
             p.setBrush(Qt::NoBrush);
             p.drawRect(screenRect(note.rect));
         }
         const QPointF anchor = noteAnchor(note);
+        if (hovered) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 122, 255, 38 + qRound(pulse * 14)));
+            p.drawEllipse(anchor, 18 + pulse * 2, 18 + pulse * 2);
+        }
         p.setPen(QPen(Qt::white, 2));
         p.setBrush(accent());
-        p.drawEllipse(anchor, 13, 13);
+        p.drawEllipse(anchor, 13 + pulse * 1.5, 13 + pulse * 1.5);
         p.setPen(Qt::white);
         p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
         p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
-                   QString::number(++number));
+                   QString::number(number));
     }
 }
 void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
@@ -207,10 +339,15 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     setFocus();
     const auto notes = displayedAnnotations();
     for (auto it = notes.crbegin(); it != notes.crend(); ++it) {
-        if (QLineF(event->position(), noteAnchor(*it)).length() < 17) {
+        if (annotationsVisible_ && !it->isGlobal && QLineF(event->position(), noteAnchor(*it)).length() < 17) {
             emit noteEditRequested(it->id, event->globalPosition().toPoint());
             return;
         }
+    }
+    const int movement = hitMovement(event->position());
+    if (movement >= 0) {
+        emit movementAnnotationRequested(movements_[movement].first, movements_[movement].second);
+        return;
     }
     press_ = end_ = pixel(event->position());
     handle_ = -1;
@@ -255,6 +392,7 @@ void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
         transformLayoutGroup(state_, selected_, destination);
         emit selectionChanged();
     } else if (!drawing_) {
+        updateAnnotationHover(event->position());
         updateHover(end_);
         int handle = -1;
         if (!selected_.isEmpty()) {
@@ -276,11 +414,8 @@ void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
             shape = Qt::SizeHorCursor;
         else if (!selected_.isEmpty() && inside(selectionBounds(), end_))
             shape = Qt::SizeAllCursor;
-        for (const auto &note : displayedAnnotations())
-            if (QLineF(event->position(), noteAnchor(note)).length() < 17) {
-                shape = Qt::PointingHandCursor;
-                break;
-            }
+        if (!hoveredNote_.isEmpty() || hoveredMovement_ >= 0)
+            shape = Qt::PointingHandCursor;
         setCursor(shape);
     }
     update();
@@ -292,6 +427,7 @@ void LayoutCanvas::commit(const LayoutState &before) {
     if (undo_.size() > 60)
         undo_.removeFirst();
     redo_.clear();
+    rebuildMovements();
     emit changed();
     emit selectionChanged();
     update();
@@ -335,20 +471,29 @@ void LayoutCanvas::wheelEvent(QWheelEvent *event) {
     const int delta = event->angleDelta().y();
     if (!delta)
         return;
+    const QPointF point = pixel(event->position());
     if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
         emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
-    } else if (!selected_.isEmpty()) {
+    } else if (!selected_.isEmpty() && inside(selectionBounds(), point)) {
         transformSelection(scaleLayoutRect(selectionBounds(), delta > 0 ? 1.05 : 1 / 1.05, state_.canvas));
     } else {
-        updateHover(pixel(event->position()));
-        if (!choices_.isEmpty()) {
+        updateHover(point);
+        const bool specific = std::any_of(choices_.cbegin(), choices_.cend(), [&](const LayoutChoice &choice) {
+            for (const auto &group : state_.groups)
+                if (group.id == choice.id)
+                    return group.origin != "canvas" &&
+                           !(group.label == "色块区域" && backgroundBounds(choice.bounds, state_.canvas));
+            return false;
+        });
+        if (specific) {
             level_ = std::clamp(level_ + (delta > 0 ? 1 : -1), 0, int(choices_.size()) - 1);
             hover_ = choices_[level_].id;
             emit hintChanged(QString("%1 · %2 / %3 · 滚轮切换范围，单击确认")
                                  .arg(choices_[level_].label)
                                  .arg(level_ + 1)
                                  .arg(choices_.size()));
-        }
+        } else
+            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
     }
     event->accept();
     update();
@@ -376,12 +521,18 @@ void LayoutCanvas::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
 }
 void LayoutCanvas::leaveEvent(QEvent *) {
+    hoveredNote_.clear();
+    hoveredMovement_ = -1;
+    hoverTimer_->stop();
     if (!dragging_ && !drawing_) {
         hover_.clear();
         update();
     }
 }
 void LayoutCanvas::focusOutEvent(QFocusEvent *event) {
+    hoveredNote_.clear();
+    hoveredMovement_ = -1;
+    hoverTimer_->stop();
     // A lost release event must not keep a preview attached to the pointer.
     // Ordinary focus changes to the inspector preserve the selected component.
     if (dragging_ || drawing_)
@@ -397,6 +548,7 @@ void LayoutCanvas::undo() {
         return;
     redo_.append(state_);
     state_ = undo_.takeLast();
+    rebuildMovements();
     clearSelection();
     emit changed();
 }
@@ -409,38 +561,56 @@ void LayoutCanvas::redo() {
         return;
     undo_.append(state_);
     state_ = redo_.takeLast();
+    rebuildMovements();
     clearSelection();
     emit changed();
 }
 LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidget(parent), canvas_(canvas) {
     setObjectName("layoutInspector");
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto side = new QVBoxLayout(this);
-    side->setContentsMargins(18, 18, 18, 16);
-    side->setSpacing(12);
+    side->setContentsMargins(12, 10, 12, 10);
+    side->setSpacing(7);
+    auto headingRow = new QHBoxLayout;
+    headingRow->setSpacing(5);
     auto heading = new QLabel("组件调整", this);
-    heading->setStyleSheet("font-weight:600;font-size:15px;");
-    side->addWidget(heading);
-    auto tools = new QHBoxLayout;
-    manual_ = textButton("手动分块", false, this);
-    manual_->setCheckable(true);
-    manual_->setObjectName("manualRegion");
-    tools->addWidget(manual_);
-    auto guides = new QCheckBox("显示区域", this);
+    heading->setStyleSheet("font-weight:600;font-size:12px;");
+    headingRow->addWidget(heading);
+    headingRow->addStretch();
+    auto guides = new QCheckBox("区域", this);
     guides->setObjectName("layoutGuides");
+    guides->setToolTip("显示可选区域边界");
     guides->setChecked(true);
-    tools->addWidget(guides);
-    side->addLayout(tools);
+    headingRow->addWidget(guides);
+    annotate_ = iconButton("plus", "为当前组件添加批注", this);
+    annotate_->setObjectName("annotateComponent");
+    annotate_->setFixedSize(26, 26);
+    headingRow->addWidget(annotate_);
+    clear_ = iconButton("close", "取消选择", this);
+    clear_->setObjectName("clearLayoutSelection");
+    clear_->setFixedSize(26, 26);
+    headingRow->addWidget(clear_);
+    side->addLayout(headingRow);
     selection_ = mutedLabel("单击选择一个区域", this);
-    selection_->setWordWrap(true);
-    selection_->setMinimumHeight(32);
+    selection_->setStyleSheet("font-size:11px;");
     side->addWidget(selection_);
-    auto grid = new QGridLayout;
+    fieldsPanel_ = new QWidget(this);
+    auto grid = new QGridLayout(fieldsPanel_);
+    grid->setContentsMargins(0, 0, 0, 0);
     grid->setHorizontalSpacing(10);
-    grid->setVerticalSpacing(10);
-    QStringList labels{"X", "Y", "宽度", "高度", "等比缩放"},
+    grid->setVerticalSpacing(5);
+    QStringList labels{"X", "Y", "宽", "高", "缩放"},
         names{"layoutX", "layoutY", "layoutWidth", "layoutHeight", "layoutScale"};
     for (int i = 0; i < 5; ++i) {
-        auto input = new QDoubleSpinBox(this);
+        auto cell = new QWidget(fieldsPanel_);
+        auto row = new QHBoxLayout(cell);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(5);
+        auto label = new QLabel(labels[i], cell);
+        label->setFixedWidth(i == 4 ? 30 : 14);
+        label->setStyleSheet("font-size:11px;");
+        row->addWidget(label);
+        auto input = new QDoubleSpinBox(cell);
         input->setObjectName(names[i]);
         input->setDecimals(2);
         input->setRange(i < 2 ? 0 : .01, i == 4 ? 100000 : 32767);
@@ -448,34 +618,21 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
         input->setKeyboardTracking(false);
         input->setButtonSymbols(QAbstractSpinBox::NoButtons);
         input->setSuffix(i == 4 ? " %" : " px");
-        input->setMinimumHeight(34);
-        input->setMinimumWidth(112);
+        input->setFixedHeight(28);
+        input->setMinimumWidth(70);
+        input->setStyleSheet("font-size:11px;padding:3px 5px;");
         fields_.append(input);
-        grid->addWidget(new QLabel(labels[i], this), i, 0);
-        grid->addWidget(input, i, 1);
+        row->addWidget(input, 1);
+        grid->addWidget(cell, i / 2, i % 2);
         connect(input, &QDoubleSpinBox::valueChanged, this, [this, input] {
             if (!updating_)
                 input->setProperty("edited", true);
         });
         connect(input, &QDoubleSpinBox::editingFinished, this, [this, i] { applyField(i); });
     }
+    grid->setColumnStretch(0, 1);
     grid->setColumnStretch(1, 1);
-    side->addLayout(grid);
-    annotate_ = textButton("添加批注", true, this);
-    annotate_->setObjectName("annotateComponent");
-    annotate_->setToolTip("为当前组件的位置和范围添加批注");
-    side->addWidget(annotate_);
-    clear_ = textButton("取消选择", false, this);
-    clear_->setObjectName("clearLayoutSelection");
-    side->addWidget(clear_);
-    auto help = mutedLabel(
-        "悬停滚轮选范围，选中滚轮缩放。\n拖边调整宽高，拖角等比缩放。\n点击编号编辑批注，Esc 取消选择。",
-        this);
-    help->setWordWrap(true);
-    side->addSpacing(4);
-    side->addWidget(help);
-    side->addStretch();
-    connect(manual_, &QPushButton::clicked, canvas_, &LayoutCanvas::setDrawing);
+    side->addWidget(fieldsPanel_);
     connect(guides, &QCheckBox::toggled, canvas_, &LayoutCanvas::setGuides);
     connect(clear_, &QPushButton::clicked, canvas_, &LayoutCanvas::clearSelection);
     connect(annotate_, &QPushButton::clicked, canvas_, &LayoutCanvas::annotateSelection);
@@ -504,7 +661,10 @@ void LayoutInspector::refresh() {
         input->setEnabled(!id.isEmpty());
     clear_->setEnabled(!id.isEmpty());
     annotate_->setEnabled(!id.isEmpty());
-    manual_->setChecked(canvas_->drawingMode());
+    fieldsPanel_->setVisible(!id.isEmpty());
+    selection_->setVisible(!id.isEmpty());
+    clear_->setVisible(!id.isEmpty());
+    annotate_->setVisible(!id.isEmpty());
     selection_->setText("单击选择一个区域");
     for (const auto &group : canvas_->state().groups)
         if (group.id == id) {

@@ -4,6 +4,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileOpenEvent>
+#include <functional>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalServer>
@@ -16,6 +18,20 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+class HelpDesignApplication final : public QApplication {
+  public:
+    using QApplication::QApplication;
+    std::function<void(const QString &)> openProject;
+  protected:
+    bool event(QEvent *event) override {
+        if(event->type()==QEvent::FileOpen) {
+            auto request=static_cast<QFileOpenEvent *>(event);
+            const QString path=request->file().isEmpty() && request->url().isLocalFile() ? request->url().toLocalFile() : request->file();
+            if(!path.isEmpty() && openProject) {openProject(path);return true;}
+        }
+        return QApplication::event(event);
+    }
+};
 int main(int argc, char **argv) {
     using namespace h2d;
 #ifdef Q_OS_WIN
@@ -40,7 +56,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    QApplication app(argc, argv);
+    HelpDesignApplication app(argc, argv);
     // Keep the previous local lock and IPC address so an already running version
     // remains the sole owner of screenshots and unsaved feedback.
     app.setApplicationName("Help2Design");
@@ -78,6 +94,7 @@ int main(int argc, char **argv) {
     server.setSocketOptions(QLocalServer::UserAccessOption);
     server.listen(serverName);
     Controller controller;
+    app.openProject=[&controller](const QString &path) {controller.start(false,path);};
     QObject::connect(&server, &QLocalServer::newConnection, &app, [&] {
         while (auto socket = server.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::readyRead, &app, [&, socket] {

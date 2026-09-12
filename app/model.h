@@ -28,6 +28,8 @@ QJsonObject manualTarget();
 struct Note {
     QString id = uniqueId();
     bool isPoint = true;
+    bool isGlobal = false;
+    std::optional<QRectF> movementSource;
     QPoint point;
     QRect rect;
     QString comment;
@@ -55,6 +57,8 @@ Document fromImage(const QImage &image, const QString &source, const QString &ti
 Document loadDocument(const QString &path);
 QJsonObject exportFeedback(const Document &doc, bool embed = false);
 QByteArray serializeFeedback(const Document &doc, bool embed = false);
+int movementAnnotationIndex(const Note &note, const LayoutState &layout);
+std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);
 Document loadFeedback(const QJsonObject &feedback, const QImage &original);
 QJsonObject exportDocument(const Document &doc, bool embed = false);

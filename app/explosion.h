@@ -5,6 +5,7 @@ class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
 class QVariantAnimation;
+class QTimer;
 namespace h2d {
 class LayoutCanvas final : public QWidget {
     Q_OBJECT
@@ -15,6 +16,8 @@ class LayoutCanvas final : public QWidget {
     }
     void setState(LayoutState state);
     void setAnnotations(QVector<Note> notes);
+    void setAnnotationsVisible(bool visible);
+    bool annotationsVisible() const { return annotationsVisible_; }
     void annotateSelection();
     void cancelInteraction();
     QString selected() const {
@@ -49,6 +52,7 @@ class LayoutCanvas final : public QWidget {
     void zoomRequested(double value);
     void noteEditRequested(QString id, QPoint global);
     void annotationRequested(QRect area, QPoint global);
+    void movementAnnotationRequested(QRectF source, QRectF destination);
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -65,6 +69,9 @@ class LayoutCanvas final : public QWidget {
     QPointF noteAnchor(const Note &note) const;
     QVector<Note> displayedAnnotations() const;
     void updateHover(QPointF point);
+    void rebuildMovements();
+    int hitMovement(QPointF screen) const;
+    void updateAnnotationHover(QPointF screen);
     void commit(const LayoutState &before);
     void select(QString id);
     QImage original_;
@@ -78,6 +85,12 @@ class LayoutCanvas final : public QWidget {
     bool dragging_ = false, drawingMode_ = false, drawing_ = false, guides_ = true;
     QPointF press_, end_, hoverAnchor_{-1000, -1000};
     QRectF initial_;
+    QVector<QPair<QRectF, QRectF>> movements_;
+    bool annotationsVisible_ = true;
+    QString hoveredNote_;
+    int hoveredMovement_ = -1;
+    QTimer *hoverTimer_;
+    double hoverPhase_ = 0;
 };
 class LayoutInspector final : public QWidget {
     Q_OBJECT
@@ -92,7 +105,8 @@ class LayoutInspector final : public QWidget {
     void applyField(int field);
     LayoutCanvas *canvas_;
     QLabel *selection_;
-    QPushButton *clear_, *manual_, *annotate_;
+    QPushButton *clear_, *annotate_;
+    QWidget *fieldsPanel_;
     QVector<QDoubleSpinBox *> fields_;
     bool updating_ = false;
     QString fieldSelection_;

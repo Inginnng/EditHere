@@ -10,4 +10,18 @@
 <key>NSHighResolutionCapable</key><true/>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSScreenCaptureUsageDescription</key><string>截取你选择的屏幕画面，以便添加设计修改批注。图像仅保存在本机。</string>
+<key>CFBundleDocumentTypes</key><array><dict>
+<key>CFBundleTypeName</key><string>HelpDesign 项目</string>
+<key>CFBundleTypeRole</key><string>Editor</string>
+<key>LSHandlerRank</key><string>Owner</string>
+<key>LSItemContentTypes</key><array><string>com.helpdesign.project</string></array>
+</dict></array>
+<key>UTExportedTypeDeclarations</key><array><dict>
+<key>UTTypeIdentifier</key><string>com.helpdesign.project</string>
+<key>UTTypeDescription</key><string>HelpDesign 项目</string>
+<key>UTTypeConformsTo</key><array><string>public.json</string></array>
+<key>UTTypeTagSpecification</key><dict>
+<key>public.filename-extension</key><array><string>helpdesign</string></array>
+<key>public.mime-type</key><string>application/x-helpdesign-project</string>
+</dict></dict></array>
 </dict></plist>

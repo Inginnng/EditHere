@@ -90,8 +90,8 @@ QPushButton[tool="true"] { background:transparent; padding:4px; min-width:24px; 
 QPushButton[tool="true"]:hover { background:@hover@; }
 QPushButton[tool="true"]:checked, QPushButton#componentTool:checked { background:@selected@; color:@accent@; }
 QPushButton[tool="true"]:disabled { background:transparent; color:@disabled@; }
-QPushButton#explodeButton:checked { background:@purple@; color:white; }
-QPushButton#explodeButton:checked:hover { background:@purpleHover@; }
+QPushButton#explodeButton:checked { background:@accent@; color:white; }
+QPushButton#explodeButton:checked:hover { background:@accentHover@; }
 QPushButton#explodeButton:disabled { background:@disabledBg@; color:@disabled@; }
 QLabel[muted="true"] { color:@muted@; }
 QLabel#brand { font-weight:600; font-size:13px; }
@@ -123,6 +123,11 @@ QWidget#notesPanel,QWidget#layoutInspector { background:@surface@; border-left:1
 QWidget#noteContainer { background:@surface@; }
 QFrame#noteCard { background:@surface@; border:1px solid @border@; border-radius:10px; }
 QFrame#noteCard[selected="true"] { background:@cardSelected@; border-color:@focus@; }
+QLabel#noteBadge { background:@accent@; color:white; border-radius:11px; font-weight:600; font-size:11px; }
+QLabel#noteCoordinates { font-size:10px; color:@muted@; }
+QFrame#noteCard QPlainTextEdit { background:transparent; border:1px solid transparent; border-radius:5px; padding:5px; font-size:12px; }
+QFrame#noteCard QPlainTextEdit:focus { background:@surface@; border-color:@focus@; }
+QFrame#noteCard QPushButton[tool="true"] { min-width:16px; min-height:16px; padding:2px; }
 QLabel#badge { background:@accent@; color:white; border-radius:12px; font-weight:600; }
 QScrollArea { border:0; background:transparent; }
 QScrollBar:vertical { background:transparent; width:7px; margin:2px; }
@@ -171,7 +176,7 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
         if (auto button = qobject_cast<QPushButton *>(widget)) {
             const auto name = button->property("glyphName").toString();
             if (!name.isEmpty())
-                button->setIcon(glyph(name));
+                button->setIcon(glyph(name,button->property("primary").toBool() || (button->objectName()=="explodeButton" && button->isChecked()) ? QColor(Qt::white) : QColor()));
         }
         if (auto input = qobject_cast<QKeySequenceEdit *>(widget))
             for (auto clear : input->findChildren<QToolButton *>())
@@ -215,7 +220,36 @@ QIcon glyph(const QString &name, QColor color) {
     p.scale(2, 2);
     p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.setBrush(Qt::NoBrush);
-    if (name == "point") {
+    if (name == "open") {
+        p.drawLine(3, 8, 3, 20); p.drawLine(3,20,21,20); p.drawLine(21,20,21,10);
+        p.drawLine(3,8,9,8); p.drawLine(9,8,11,11); p.drawLine(11,11,15,11);
+        p.drawLine(17,3,17,14); p.drawLine(13,10,17,14); p.drawLine(21,10,17,14);
+    } else if (name == "eye" || name == "eye-off") {
+        QPainterPath path; path.moveTo(2,12); path.cubicTo(7,4,17,4,22,12); path.cubicTo(17,20,7,20,2,12); p.drawPath(path);
+        p.drawEllipse(QPointF(12,12),3,3);
+        if (name=="eye-off") {p.setPen(QPen(color,2.0));p.drawLine(3,3,21,21);}
+    } else if (name == "explode") {
+        p.drawRoundedRect(QRectF(3,3,7,7),1,1);p.drawRoundedRect(QRectF(14,3,7,7),1,1);
+        p.drawRoundedRect(QRectF(3,14,7,7),1,1);p.drawRoundedRect(QRectF(14,14,7,7),1,1);
+    } else if (name == "note-add") {
+        p.drawRoundedRect(QRectF(3,3,17,17),3,3);p.drawLine(7,8,15,8);p.drawLine(7,12,11,12);
+        p.drawLine(16,15,16,23);p.drawLine(12,19,20,19);
+    } else if (name == "json" || name == "json-copy") {
+        p.drawLine(8,4,5,4);p.drawLine(5,4,5,10);p.drawLine(5,10,3,12);p.drawLine(3,12,5,14);p.drawLine(5,14,5,20);p.drawLine(5,20,8,20);
+        p.drawLine(16,4,19,4);p.drawLine(19,4,19,10);p.drawLine(19,10,21,12);p.drawLine(21,12,19,14);p.drawLine(19,14,19,20);p.drawLine(19,20,16,20);
+        if(name=="json-copy") {p.drawLine(10,9,14,9);p.drawLine(10,12,14,12);p.drawLine(10,15,13,15);}
+        else {p.drawLine(12,8,12,16);p.drawLine(9,13,12,16);p.drawLine(15,13,12,16);}
+    } else if (name == "image-copy" || name == "image-save") {
+        p.drawRoundedRect(QRectF(3,4,17,15),2,2);p.drawEllipse(QPointF(8,9),1.5,1.5);
+        p.drawPolyline(QPolygonF{{4,17},{10,12},{14,16},{17,13},{20,16}});
+        if(name=="image-copy") {p.drawLine(7,22,23,22);p.drawLine(23,22,23,8);}
+        else {p.drawLine(17,15,17,23);p.drawLine(14,20,17,23);p.drawLine(20,20,17,23);}
+    } else if (name == "settings") {
+        p.drawLine(3,6,21,6);p.drawLine(3,12,21,12);p.drawLine(3,18,21,18);
+        p.drawEllipse(QPointF(8,6),2,2);p.drawEllipse(QPointF(16,12),2,2);p.drawEllipse(QPointF(10,18),2,2);
+    } else if (name == "fit") {
+        p.drawRect(QRectF(4,4,16,16));p.drawLine(8,8,11,8);p.drawLine(8,8,8,11);p.drawLine(16,16,13,16);p.drawLine(16,16,16,13);
+    } else if (name == "point") {
         p.drawEllipse(QPointF(12, 12), 7, 7);
         p.drawEllipse(QPointF(12, 12), 2, 2);
     } else if (name == "rect")

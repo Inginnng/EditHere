@@ -574,6 +574,63 @@ class LayoutTests : public QObject {
         wrongImage.setPixelColor(0, 0, Qt::magenta);
         QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, wrongImage), std::runtime_error);
     }
+    void movementNotesAndLosslessProjectRoundTrip() {
+        auto doc = fromImage(sourceImage(), "demo", "移动意见");
+        const auto original = createLayout(doc.image.size(), tableRegions());
+        doc.layout = original;
+        const auto cell = groupId(*doc.layout, "1");
+        transformLayoutGroup(*doc.layout, cell, {90, 70, 30, 20});
+        Note movement;
+        movement.isPoint = false;
+        movement.movementSource = QRectF(10, 10, 30, 20);
+        movement.rect = {90, 70, 30, 20};
+        movement.comment = "保持这个位置，视觉更轻盈";
+        Note global;
+        global.isGlobal = true;
+        global.comment = "整体采用杂志风格";
+        Note inHole;
+        inHole.point = {20, 20};
+        inHole.comment = "调整后的空白保留";
+        doc.notes = {movement, global, inHole};
+        QCOMPARE(movementAnnotationIndex(movement, *doc.layout), 0);
+        QCOMPARE(*movementAnnotationDestination(movement, *doc.layout), QRectF(90, 70, 30, 20));
+        const auto feedback = exportFeedback(doc, true);
+        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
+                 (QJsonObject{{"change", 0}, {"text", movement.comment}}));
+        const auto imported = loadFeedback(feedback, {});
+        QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
+        QCOMPARE(imported.notes[0].rect, movement.rect);
+        QVERIFY(imported.notes[1].isGlobal);
+        QCOMPARE(imported.notes[2].point, inHole.point);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("设计.helpdesign");
+        saveBytes(path, serializeDocument(doc, true));
+        const auto restored = loadDocument(path);
+        QCOMPARE(restored.notes, doc.notes);
+        QCOMPARE(restored.layout, doc.layout);
+        QCOMPARE(restored.image, doc.image);
+        QCOMPARE(exportFeedback(restored), exportFeedback(doc));
+        // Notes added in transparent holes must survive without a lossy reverse mapping.
+        QCOMPARE(restored.notes[2].point, inHole.point);
+        auto movedAgain = *doc.layout;
+        transformLayoutGroup(movedAgain, cell, {80, 60, 45, 30});
+        const auto remapped = remapNotes(doc.notes, *doc.layout, movedAgain);
+        QCOMPARE(remapped[0].rect, QRect(80, 60, 45, 30));
+        QCOMPARE(remapped[0].movementSource, movement.movementSource);
+        QCOMPARE(remapped[1], global);
+        doc.notes = remapNotes(doc.notes, *doc.layout, original);
+        doc.layout = original;
+        const auto reverted = exportFeedback(doc);
+        QVERIFY(reverted["changes"].toArray().isEmpty());
+        QVERIFY(!reverted["annotations"].toArray()[0].toObject().contains("change"));
+        QCOMPARE(doc.notes[0].rect, QRect(10, 10, 30, 20));
+        QVERIFY(reverted["annotations"].toArray()[0].toObject().contains("rectangle"));
+        for (const auto badReference : {-1.0, 1.0, 0.5}) {
+            auto invalid = feedback;
+            invalid["annotations"] = QJsonArray{QJsonObject{{"change", badReference}, {"text", "移动"}}};
+            QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, {}), std::runtime_error);
+        }
+    }
     void legacyAnnotationsMigrateAndFullProjectRoundTrips() {
         auto document = fromImage(sourceImage(), "demo", "旧格式迁移");
         document.layout = createLayout(document.image.size(), tableRegions());

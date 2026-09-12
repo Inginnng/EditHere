@@ -11,6 +11,7 @@ class QVBoxLayout;
 class QPushButton;
 class QStackedWidget;
 class QShortcut;
+class QPlainTextEdit;
 namespace h2d {
 class LayoutCanvas;
 class LayoutInspector;
@@ -20,9 +21,7 @@ class Editor final : public QWidget {
   public:
     explicit Editor(QWidget *parent = nullptr);
     void setDocument(Document document);
-    void setPreferences(const AppSettings &settings) {
-        preferences_ = settings;
-    }
+    void setPreferences(const AppSettings &settings);
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
         return doc_;
@@ -49,8 +48,10 @@ class Editor final : public QWidget {
   signals:
     void captureRequested();
     void hiddenToTray();
+    void toolbarSettingsRequested();
 
   protected:
+    bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
@@ -60,6 +61,17 @@ class Editor final : public QWidget {
     void editNote(Note note, bool fresh, QPoint global);
     void changed(bool contentChanged = true);
     void renderNotes();
+    void beginNoteEdit(const QString &id);
+    void finishNoteEdit();
+    void cancelNoteEdit();
+    void focusNote(const QString &id);
+    void addGlobalNote();
+    void editMovement(QRectF source, QRectF destination);
+    void addManualRegion(QRect area);
+    void toggleAnnotations();
+    void copyJson();
+    void updateToolbar();
+    void toast(const QString &message);
     void showContext(QPoint global);
     void copyImage();
     void saveImage(bool annotated = false);
@@ -94,11 +106,18 @@ class Editor final : public QWidget {
     std::optional<LayoutState> splitBaseline_;
     bool explosionActive_ = false;
     bool componentEditing_ = false;
+    QMap<QString, QPointer<QWidget>> noteCards_;
+    QMap<QString, QPointer<QPlainTextEdit>> noteEditors_;
+    QString editingId_, draftId_;
+    Snapshot editingBaseline_;
+    bool editingWasDirty_ = false, renderingNotes_ = false, finishingEdit_ = false;
+    bool annotationsVisible_ = true;
+    QMap<QString, QPushButton *> outputButtons_;
     QScrollArea *imageScroll_, *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;
     QLabel *meta_, *hint_, *noteCount_;
-    QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *componentTool_;
+    QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
     bool fitted_ = true;

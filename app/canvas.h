@@ -1,6 +1,7 @@
 #pragma once
 #include "model.h"
 #include <QWidget>
+class QTimer;
 namespace h2d {
 class Canvas final : public QWidget {
     Q_OBJECT
@@ -22,6 +23,8 @@ class Canvas final : public QWidget {
     }
     void refresh();
     void setLayoutPreview(bool enabled);
+    void setAnnotationsVisible(bool visible);
+    bool annotationsVisible() const { return annotationsVisible_; }
     bool layoutPreview() const {
         return layoutPreview_;
     }
@@ -34,6 +37,8 @@ class Canvas final : public QWidget {
     void zoomRequested(double zoom);
     void contextRequested(QPoint global);
     void layoutEditRequested();
+    void regionRequested(QRect area);
+    void movementAnnotationRequested(QRectF source, QRectF destination);
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -49,6 +54,9 @@ class Canvas final : public QWidget {
 
   private:
     int hit(QPointF screen, bool rectangles) const;
+    QPointF noteAnchor(const Note &note) const;
+    int hitMovement(QPointF screen) const;
+    void updateAnnotationHover(QPointF screen);
     void updateHint();
     void rebuildDisplay();
     Document *doc_ = nullptr;
@@ -64,6 +72,12 @@ class Canvas final : public QWidget {
     bool layoutPreview_ = false;
     QImage layoutImage_;
     QVector<Candidate> displayCandidates_;
+    QVector<QPair<QRectF, QRectF>> movements_;
+    bool annotationsVisible_ = true;
+    QString hoveredNote_;
+    int hoveredMovement_ = -1;
+    QTimer *hoverTimer_;
+    double hoverPhase_ = 0;
 };
 } // namespace h2d
 Q_DECLARE_METATYPE(h2d::Note)

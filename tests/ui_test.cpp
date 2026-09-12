@@ -31,6 +31,8 @@
 #include <QShortcut>
 #include <QSignalSpy>
 #include <QSystemTrayIcon>
+#include <QStandardPaths>
+#include <QScrollBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -99,10 +101,27 @@ class UiTests : public QObject {
         QTest::mouseMove(canvas, canvasPoint(canvas, end));
         QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, end));
     }
+    void finishInlineNote(Editor &editor, const QString &comment, const QString &id = {}) {
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        const QString noteId = id.isEmpty() ? editor.document().notes.last().id : id;
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + noteId);
+        QVERIFY(input);
+        QTRY_VERIFY_WITH_TIMEOUT(input->isVisible(), 1500);
+        QCOMPARE(input->property("noteId").toString(), noteId);
+        input->setFocus();
+        input->setPlainText(comment);
+        auto surface = editor.layoutCanvas() && editor.layoutCanvas()->isVisible()
+                           ? static_cast<QWidget *>(editor.layoutCanvas()) : static_cast<QWidget *>(editor.canvas());
+        surface->setFocus();
+        QTRY_VERIFY(!input->hasFocus());
+        QTest::qWait(20); // Finish the queued focus-out transaction before testing undo.
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+    }
   private slots:
     void initTestCase() {
         // Keep the save-failure test's file chooser inspectable through Qt on every platform.
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+        QStandardPaths::setTestModeEnabled(true);
 #ifdef Q_OS_WIN
         if (QGuiApplication::platformName() == "offscreen") {
             const QString fonts = qEnvironmentVariable("WINDIR") + "/Fonts/";
@@ -265,7 +284,7 @@ class UiTests : public QObject {
     void pointAndFrame() {
         applyTheme();
         Editor editor;
-        editor.setDocument(fromImage(exampleImage(), "demo", "示例"));
+        editor.setDocument(gridDocument());
         editor.resize(1240, 820);
         QTest::qWait(80);
         auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
@@ -277,46 +296,38 @@ class UiTests : public QObject {
         const QRect originalNotesGeometry = notesPanel->geometry();
         artifact(editor, "empty-notes-layout.png");
         Canvas *canvas = editor.canvas();
-        canvas->setMode(Canvas::Point);
-        auto complete = [this] {
-            auto dialog = QApplication::activeModalWidget();
-            QVERIFY(dialog);
-            auto text = dialog->findChild<QPlainTextEdit *>("commentInput");
-            QVERIFY(text);
-            QTest::keyClicks(text, "Refine the button spacing. ");
-            text->insertPlainText("标题字重调轻，卡片间距保持一致。");
-            artifact(*dialog, "note-dialog.png");
-            for (auto b : dialog->findChildren<QPushButton *>())
-                if (b->text() == "保存") {
-                    b->click();
-                    return;
-                }
-            QFAIL("Save button missing");
-        };
-        QTimer::singleShot(80, complete);
+        editor.findChild<QPushButton *>("mode_point")->click();
         QPoint target(qRound(200 * canvas->zoom()), qRound(100 * canvas->zoom()));
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, target);
         QCOMPARE(editor.document().notes.size(), 1);
-        QTest::qWait(30);
+        finishInlineNote(editor, "Refine the button spacing. 标题字重调轻，卡片间距保持一致。");
         QCOMPARE(editor.geometry(), originalGeometry);
         QCOMPARE(imageScroll->viewport()->size(), originalViewport);
         QCOMPARE(notesPanel->geometry(), originalNotesGeometry);
         QVERIFY(editor.document().notes.first().comment.startsWith("Refine"));
         QVERIFY((editor.document().notes[0].point - QPoint(200, 100)).manhattanLength() <= 2);
-        canvas->setMode(Canvas::Rectangle);
-        QPoint start(qRound(100 * canvas->zoom()), qRound(250 * canvas->zoom()));
-        QPoint end(qRound(400 * canvas->zoom()), qRound(600 * canvas->zoom()));
+
+        // Rectangle creates a reusable manual region; clicking it starts its inline annotation.
+        editor.findChild<QPushButton *>("mode_rect")->click();
+        QSignalSpy regions(canvas, &Canvas::regionRequested);
+        QPoint start(qRound(400 * canvas->zoom()), qRound(250 * canvas->zoom()));
+        QPoint end(qRound(700 * canvas->zoom()), qRound(590 * canvas->zoom()));
         QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, start);
         QTest::mouseMove(canvas, end);
-        QTimer::singleShot(80, complete);
         QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, end);
+        QCOMPARE(regions.size(), 1);
+        QCOMPARE(editor.document().notes.size(), 1);
+        QVERIFY(editor.document().layout.has_value());
+        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(qRound(550 * canvas->zoom()), qRound(420 * canvas->zoom())));
         QCOMPARE(editor.document().notes.size(), 2);
+        finishInlineNote(editor, "这一块整体更轻盈，留白更从容。");
         QVERIFY(!editor.document().notes.last().isPoint);
         QVERIFY(editor.document().notes.last().rect.width() > 290);
-        canvas->setMode(Canvas::Adjust);
-        QTest::qWait(40);
+        editor.findChild<QPushButton *>("mode_select")->click();
         artifact(editor, "editor.png");
-        auto note = editor.document().notes.last();
+        const auto note = editor.document().notes.last();
         QPoint handle(qRound((note.rect.x() + note.rect.width()) * canvas->zoom()),
                       qRound((note.rect.y() + note.rect.height()) * canvas->zoom()));
         QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, handle);
@@ -330,6 +341,207 @@ class UiTests : public QObject {
             dialog->close();
         });
         editor.exportJson();
+        editor.hide();
+    }
+    void inlineNotesCommitOnBlurAndCancelEmptyDraft() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        QTest::qWait(80);
+        auto point = editor.findChild<QPushButton *>("mode_point");
+        auto plus = toolButton(editor, "放大");
+        auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
+        QVERIFY(point && plus && undo && redo);
+        point->click();
+        auto canvas = editor.canvas();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(qRound(110 * canvas->zoom()), qRound(100 * canvas->zoom())));
+        QCOMPARE(editor.document().notes.size(), 1);
+        const QString id = editor.document().notes[0].id;
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + id);
+        QVERIFY(input && input->hasFocus());
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        input->setPlainText("  整体更轻盈，减少装饰。  ");
+        QTest::mouseClick(plus, Qt::LeftButton); // An ordinary click outside the editor commits the draft.
+        QTRY_VERIFY(!input->hasFocus());
+        QTRY_COMPARE(editor.document().notes[0].comment, QString("整体更轻盈，减少装饰。"));
+        QVERIFY(undo->isEnabled());
+        undo->click();
+        QVERIFY(editor.document().notes.isEmpty());
+        redo->click();
+        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes[0].id, id);
+        QCOMPARE(editor.document().notes[0].comment, QString("整体更轻盈，减少装饰。"));
+
+        input = editor.findChild<QPlainTextEdit *>("noteText_" + id);
+        QVERIFY(input);
+        input->setFocus();
+        input->setPlainText("文字修改应当作为一次撤销。");
+        QTest::mouseClick(plus, Qt::LeftButton);
+        QTRY_VERIFY(!input->hasFocus());
+        QTest::qWait(20);
+        undo->click();
+        QCOMPARE(editor.document().notes[0].comment, QString("整体更轻盈，减少装饰。"));
+        redo->click();
+        QCOMPARE(editor.document().notes[0].comment, QString("文字修改应当作为一次撤销。"));
+
+        const auto beforeEmpty = editor.document().notes;
+        editor.findChild<QPushButton *>("addGlobalNote")->click();
+        QCOMPARE(editor.document().notes.size(), 2);
+        QVERIFY(editor.document().notes.last().isGlobal);
+        QTest::mouseClick(plus, Qt::LeftButton);
+        QTRY_COMPARE(editor.document().notes.size(), 1);
+        QVERIFY(editor.document().notes == beforeEmpty);
+        artifact(editor, "inline-note-editor.png");
+        editor.hide();
+    }
+    void globalNotesRemainCompactAndExportWithoutCoordinates() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto add = editor.findChild<QPushButton *>("addGlobalNote");
+        QVERIFY(add);
+        for (int i = 0; i < 8; ++i) {
+            add->click();
+            QCOMPARE(editor.document().notes.size(), i + 1);
+            QVERIFY(editor.document().notes.last().isGlobal);
+            finishInlineNote(editor, QString("整体意见 %1：留白更从容。").arg(i + 1));
+        }
+        auto notesPanel = editor.findChild<QWidget *>("notesPanel");
+        auto scroll = notesPanel->findChild<QScrollArea *>();
+        QVERIFY(scroll);
+        scroll->verticalScrollBar()->setValue(0);
+        QTest::qWait(20);
+        const auto cards = notesPanel->findChildren<QWidget *>("noteCard");
+        QCOMPARE(cards.size(), 8);
+        int fullyVisible = 0;
+        for (auto card : cards) {
+            QVERIFY2(card->height() <= 105, "Short notes must not expand into tall fixed-height cards");
+            const QRect area(card->mapTo(scroll->viewport(), QPoint()), card->size());
+            if (scroll->viewport()->rect().contains(area)) ++fullyVisible;
+        }
+        QVERIFY2(fullyVisible >= 6, "The reserved sidebar should show more than five short notes at once");
+        const auto feedback = exportFeedback(editor.document());
+        QCOMPARE(feedback["annotations"].toArray().size(), 8);
+        for (const auto &value : feedback["annotations"].toArray())
+            QCOMPARE(value.toObject().keys(), QStringList{"text"});
+        QVERIFY(feedback["changes"].toArray().isEmpty());
+        artifact(editor, "compact-global-notes.png");
+        editor.hide();
+    }
+    void annotationVisibilityPreservesDataAndCopyIncludesMarks() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note note;
+        note.point = {120, 80};
+        note.comment = "保持自然、克制的视觉风格。";
+        document.notes.append(note);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        editor.explode();
+        auto layout = editor.layoutCanvas();
+        QVERIFY(layout);
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 130}));
+        layout->transformSelection(QRectF(440, 60, 120, 90));
+        const auto feedback = exportFeedback(editor.document(), true);
+        const auto state = *editor.document().layout;
+        auto hide = editor.findChild<QPushButton *>("hideAnnotations");
+        QVERIFY(hide);
+        hide->click();
+        QVERIFY(hide->isChecked());
+        QVERIFY(!editor.canvas()->annotationsVisible());
+        QVERIFY(!layout->annotationsVisible());
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QVERIFY(editor.document().layout == state);
+        editor.explode();
+        QVERIFY(!editor.canvas()->annotationsVisible());
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        auto copy = editor.findChild<QPushButton *>("copyImage");
+        QVERIFY(copy);
+        copy->click();
+        const auto expected = previewImage(editor.document()).convertToFormat(QImage::Format_ARGB32);
+        QTRY_COMPARE(QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32), expected);
+        hide->click();
+        QVERIFY(editor.canvas()->annotationsVisible());
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        editor.hide();
+    }
+    void blankViewportWheelZoomsBothSurfacesWithoutChangingLayout() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto scroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(scroll);
+        const auto baseline = exportFeedback(editor.document());
+        auto send = [&](QPoint delta) {
+            const QPoint position(2, 2);
+            QVERIFY(!scroll->widget()->rect().contains(scroll->widget()->mapFrom(scroll->viewport(), position)));
+            QWheelEvent event(QPointF(position), QPointF(scroll->viewport()->mapToGlobal(position)), QPoint(),
+                              delta, Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(scroll->viewport(), &event);
+        };
+        double before = editor.canvas()->zoom();
+        send({120, 0});
+        QCOMPARE(editor.canvas()->zoom(), before);
+        send({0, -120});
+        QVERIFY(editor.canvas()->zoom() < before);
+        editor.explode();
+        before = editor.layoutCanvas()->zoom();
+        send({0, -120});
+        QVERIFY(editor.layoutCanvas()->zoom() < before);
+        QCOMPARE(editor.layoutCanvas()->zoom(), editor.canvas()->zoom());
+        QCOMPARE(exportFeedback(editor.document()), baseline);
+        editor.hide();
+    }
+    void toolbarPreferencesKeepCoreToolsAndSettingsReachable() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        for (const auto &definition : toolbarActionDefinitions()) {
+            auto action = editor.findChild<QPushButton *>(definition.id);
+            QVERIFY(action && action->isVisible());
+            QCOMPARE(action->toolTip(), definition.label);
+        }
+        QVERIFY(!editor.findChild<QPushButton *>("componentTool"));
+        QVERIFY(!editor.findChild<QPushButton *>("manualRegion"));
+        auto preferences = defaultSettings();
+        preferences.toolbarActions = {"copyJson"};
+        editor.setPreferences(preferences);
+        for (const auto &definition : toolbarActionDefinitions())
+            QCOMPARE(editor.findChild<QPushButton *>(definition.id)->isVisible(), definition.id == "copyJson");
+        preferences.toolbarActions.clear();
+        editor.setPreferences(preferences);
+        for (const auto &id : {"mode_smart", "mode_point", "mode_rect", "mode_select", "collapseNotes", "moreActions"})
+            QVERIFY(editor.findChild<QPushButton *>(id)->isVisible());
+        for (const auto &name : {"撤销", "重做", "缩小", "放大", "适应图片"})
+            QVERIFY(toolButton(editor, name)->isVisible());
+        QSignalSpy settingsRequested(&editor, &Editor::toolbarSettingsRequested);
+        bool selected = false;
+        QTimer::singleShot(30, &editor, [&] {
+            auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            QVERIFY(menu);
+            for (auto action : menu->actions()) if (action->text() == "自定义工具栏…") {
+                selected = true;
+                action->trigger();
+                menu->close();
+                return;
+            }
+            menu->close();
+            QFAIL("Toolbar customization must remain available when all output actions are hidden");
+        });
+        QTimer::singleShot(1500, &editor, [] { if (auto menu = QApplication::activePopupWidget()) menu->close(); });
+        editor.findChild<QPushButton *>("moreActions")->click();
+        QVERIFY(selected);
+        QCOMPARE(settingsRequested.size(), 1);
+        editor.setPreferences(defaultSettings());
+        for (const auto &definition : toolbarActionDefinitions())
+            QVERIFY(editor.findChild<QPushButton *>(definition.id)->isVisible());
         editor.hide();
     }
     void canvasIgnoresHorizontalAndZeroWheelEvents() {
@@ -498,7 +710,7 @@ class UiTests : public QObject {
         QVERIFY(moved.pixelColor(460, 105).alpha() > 0);
 
         const auto beforeManual = canvas->state();
-        auto manual = editor.findChild<QPushButton *>("manualRegion");
+        auto manual = editor.findChild<QPushButton *>("mode_rect");
         QVERIFY(manual);
         manual->click();
         QVERIFY(canvas->drawingMode());
@@ -517,7 +729,7 @@ class UiTests : public QObject {
         QVERIFY(editor.document().layout == afterManual);
 
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
-                          canvasPoint(canvas, layoutBounds(canvas->state(), firstId).center()));
+                          canvasPoint(canvas, layoutBounds(canvas->state(), firstId).bottomLeft() + QPointF(16, -16)));
         QCOMPARE(canvas->selected(), firstId);
         animation->stop();
         wave->hide();
@@ -532,7 +744,7 @@ class UiTests : public QObject {
         QVERIFY(canvas->drawingMode());
         QTest::keyClick(canvas, Qt::Key_Escape);
         QVERIFY(!canvas->drawingMode());
-        QVERIFY(!manual->isChecked());
+        QVERIFY(!canvas->drawingMode());
         QVERIFY(editor.isVisible());
         QCOMPARE(editor.geometry(), geometry);
         QCOMPARE(imageScroll->viewport()->size(), viewport);
@@ -654,7 +866,7 @@ class UiTests : public QObject {
         editor.resize(1240, 820);
         QTest::qWait(80);
         auto explode = editor.findChild<QPushButton *>("explodeButton");
-        auto component = editor.findChild<QPushButton *>("componentTool");
+        auto component = editor.findChild<QPushButton *>("mode_smart");
         auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
         QVERIFY(explode && component && imageScroll);
         explode->click();
@@ -668,29 +880,8 @@ class UiTests : public QObject {
         QCOMPARE(layout->selectionBounds(), QRectF(60, 60, 120, 90));
         const auto componentId = layout->selected();
         layout->transformSelection(QRectF(440, 60, 120, 90));
-        const auto firstLayout = *editor.document().layout;
-        const auto originalPieceCount = firstLayout.pieces.size();
-        QCOMPARE(renderLayout(document.image, firstLayout).pixelColor(120, 105).alpha(), 0);
-
-        auto completeComment = [&](const QString &comment) {
-            QTimer::singleShot(2500, &editor, [] {
-                if (auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()))
-                    dialog->reject();
-            });
-            QTimer::singleShot(50, &editor, [&, comment] {
-                auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-                QVERIFY(dialog);
-                auto text = dialog->findChild<QPlainTextEdit *>("commentInput");
-                QVERIFY(text);
-                text->setPlainText(comment);
-                for (auto button : dialog->findChildren<QPushButton *>())
-                    if (button->text() == "保存") {
-                        button->click();
-                        return;
-                    }
-                QFAIL("Comment save button missing");
-            });
-        };
+        const auto movedLayout = *editor.document().layout;
+        QCOMPARE(renderLayout(document.image, movedLayout).pixelColor(120, 105).alpha(), 0);
 
         // Point and rectangle tools annotate the edited image without disabling explosion.
         QTest::keyClick(layout, Qt::Key_P);
@@ -700,37 +891,32 @@ class UiTests : public QObject {
         QVERIFY(editor.explosionActive() && explode->isChecked());
         QVERIFY(component->isVisible() && !component->isChecked());
         QCOMPARE(result->zoom(), 1.0);
-        completeComment("请加大标题字号。");
-        QTest::mouseClick(result, Qt::LeftButton, Qt::NoModifier, QPoint(500, 105));
+        QTest::mouseClick(result, Qt::LeftButton, Qt::NoModifier, QPoint(500, 80));
         QCOMPARE(editor.document().notes.size(), 1);
-        QCOMPARE(editor.document().notes[0].point, QPoint(500, 105));
-        QVERIFY(editor.document().layout == firstLayout);
+        finishInlineNote(editor, "标题希望更有编辑感。");
+        QCOMPARE(editor.document().notes[0].point, QPoint(500, 80));
+        QVERIFY(editor.document().layout == movedLayout);
 
-        auto resumeShortcuts = [&] {
-            QVERIFY(QApplication::activeModalWidget() == nullptr);
-            // Qt's offscreen plugin does not reactivate the parent when hiding a dialog.
-            // Native platforms must restore activation themselves, as in normal use.
-            if (QGuiApplication::platformName() == "offscreen") {
-                editor.activateWindow();
-                result->setFocus();
-            }
-            QTRY_VERIFY_WITH_TIMEOUT(editor.isActiveWindow(), 1000);
-            QTRY_VERIFY_WITH_TIMEOUT(result->hasFocus(), 1000);
-        };
-        resumeShortcuts();
-        QTest::keyClick(result, Qt::Key_R);
-        QCOMPARE(result->mode(), Canvas::Rectangle);
-        QVERIFY(editor.explosionActive() && explode->isChecked());
-        QTest::mousePress(result, Qt::LeftButton, Qt::NoModifier, QPoint(450, 70));
-        QTest::mouseMove(result, QPoint(540, 125));
-        completeComment("这个区域的内容需要对齐。");
-        QTest::mouseRelease(result, Qt::LeftButton, Qt::NoModifier, QPoint(540, 125));
+        // In explosion mode the shared frame tool partitions first, then annotates the selection.
+        editor.findChild<QPushButton *>("mode_rect")->click();
+        QVERIFY(layout->isVisible() && layout->drawingMode());
+        const auto beforeManualFeedback = exportFeedback(editor.document())["changes"].toArray();
+        drag(layout, {450, 70}, {540, 125});
+        QCOMPARE(editor.document().notes.size(), 1);
+        QVERIFY(!layout->drawingMode());
+        QCOMPARE(layout->selectionBounds(), QRectF(450, 70, 90, 55));
+        QCOMPARE(exportFeedback(editor.document())["changes"].toArray(), beforeManualFeedback);
+        auto annotate = editor.findChild<QPushButton *>("annotateComponent");
+        QVERIFY(annotate && annotate->isEnabled());
+        annotate->click();
         QCOMPARE(editor.document().notes.size(), 2);
+        finishInlineNote(editor, "这个区域的内容需要对齐。");
         QVERIFY(!editor.document().notes[1].isPoint);
         QCOMPARE(editor.document().notes[1].rect, QRect(450, 70, 90, 55));
         const auto firstNotes = editor.document().notes;
-        resumeShortcuts();
-        QTest::keyClick(result, Qt::Key_B);
+        const auto firstLayout = *editor.document().layout;
+        const auto originalPieceCount = firstLayout.pieces.size();
+        component->click();
         QCOMPARE(result->mode(), Canvas::Smart);
         QVERIFY(editor.explosionActive() && explode->isChecked());
         QCOMPARE(editor.geometry(), geometry);
@@ -738,6 +924,8 @@ class UiTests : public QObject {
         QTest::qWait(30);
         auto notesPanel = editor.findChild<QWidget *>("notesPanel");
         QVERIFY(notesPanel && notesPanel->isVisible());
+        auto inspector = editor.findChild<QScrollArea *>("componentInspectorScroll");
+        QVERIFY(inspector && inspector->isVisible() && notesPanel->isVisible());
         int visibleNoteCards = 0;
         for (auto card : notesPanel->findChildren<QWidget *>("noteCard"))
             if (card->isVisible())
@@ -755,12 +943,13 @@ class UiTests : public QObject {
         QVERIFY(editor.document().layout == firstLayout);
 
         // Continue component adjustment and carry both annotations with the same pixels.
+        layout->clearSelection();
         QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {450, 140}));
         QCOMPARE(layout->selected(), componentId);
         layout->transformSelection(QRectF(600, 240, 120, 90));
         const auto secondLayout = *editor.document().layout;
         const auto secondNotes = editor.document().notes;
-        QCOMPARE(secondNotes[0].point, QPoint(660, 285));
+        QCOMPARE(secondNotes[0].point, QPoint(660, 260));
         QCOMPARE(secondNotes[1].rect, QRect(610, 250, 90, 55));
         QCOMPARE(secondLayout.pieces.size(), originalPieceCount);
         auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
@@ -777,11 +966,10 @@ class UiTests : public QObject {
         // Annotating a selected component and editing a badge never alter the cuts.
         QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {610, 320}));
         QCOMPARE(layout->selected(), componentId);
-        auto annotate = editor.findChild<QPushButton *>("annotateComponent");
         QVERIFY(annotate && annotate->isEnabled());
         QSignalSpy geometryChanged(layout, &LayoutCanvas::changed);
-        completeComment("保持这个组件的新位置。");
         annotate->click();
+        finishInlineNote(editor, "保持这个组件的新位置。");
         QCOMPARE(editor.document().notes.size(), 3);
         QVERIFY(!editor.document().notes[2].isPoint);
         QCOMPARE(editor.document().notes[2].rect, QRect(600, 240, 120, 90));
@@ -789,11 +977,11 @@ class UiTests : public QObject {
         QVERIFY(layout->state() == secondLayout);
         QCOMPARE(layout->selected(), componentId);
         const auto beforeTextEdit = editor.document().notes;
-        completeComment("标题字号改成 24 像素。");
-        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {660, 285}));
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {660, 260}));
+        finishInlineNote(editor, "标题字号改成 24 像素。", firstNotes[0].id);
         QCOMPARE(editor.document().notes.size(), 3);
         QCOMPARE(editor.document().notes[0].comment, QString("标题字号改成 24 像素。"));
-        QCOMPARE(editor.document().notes[0].point, QPoint(660, 285));
+        QCOMPARE(editor.document().notes[0].point, QPoint(660, 260));
         QCOMPARE(geometryChanged.count(), 0);
         QVERIFY(layout->state() == secondLayout);
         const auto afterTextEdit = editor.document().notes;
@@ -843,7 +1031,7 @@ class UiTests : public QObject {
         QVERIFY(!editor.document().dirty);
 
         // Editing only the temporary partition does not create user feedback.
-        auto manual = editor.findChild<QPushButton *>("manualRegion");
+        auto manual = editor.findChild<QPushButton *>("mode_rect");
         QVERIFY(manual);
         const int groupCount = canvas->state().groups.size();
         manual->click();
@@ -938,7 +1126,7 @@ class UiTests : public QObject {
         QVERIFY(exportChecked);
         QVERIFY(editor.document().dirty);
 
-        const QString path = dir.filePath("review.json");
+        const QString path = dir.filePath("review.helpdesign");
         bool selectedFile = false, saveError = false;
         QTimer chooseFile;
         connect(&chooseFile, &QTimer::timeout, &editor, [&] {
@@ -967,8 +1155,11 @@ class UiTests : public QObject {
         QJsonParseError error;
         const auto parsed = QJsonDocument::fromJson(savedJson.readAll(), &error);
         QCOMPARE(error.error, QJsonParseError::NoError);
-        QCOMPARE(parsed.object().keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
-        QCOMPARE(parsed.object(), expectedEmbedded);
+        QCOMPARE(parsed.object()["schemaVersion"].toString(), QString("3.0.0"));
+        QCOMPARE(parsed.object()["tool"].toString(), QString("HelpDesign"));
+        QVERIFY(parsed.object()["capture"].isObject());
+        QVERIFY(parsed.object()["layout"].isObject());
+        QCOMPARE(parsed.object()["annotations"].toArray().size(), 2);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(restored.png, document.png);
@@ -1095,7 +1286,7 @@ class UiTests : public QObject {
         QVERIFY(editor.document().dirty);
         QVERIFY(editor.document().layout == document.layout);
 
-        const QString path = dir.filePath("invalid-project.json");
+        const QString path = dir.filePath("invalid-project.helpdesign");
         bool selectedFile = false, errorShown = false;
         QTimer driver;
         connect(&driver, &QTimer::timeout, &editor, [&] {
