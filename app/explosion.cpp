@@ -578,7 +578,7 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     auto headingRow = new QHBoxLayout;
     headingRow->setSpacing(5);
     auto heading = new QLabel("组件调整", this);
-    heading->setStyleSheet("font-weight:600;font-size:12px;");
+    heading->setProperty("sectionTitle", true);
     headingRow->addWidget(heading);
     headingRow->addStretch();
     auto guides = new QCheckBox("显示分解框", this);
@@ -713,7 +713,7 @@ ExplosionWave::ExplosionWave(QWidget *parent) : QWidget(parent), animation_(new 
     setAttribute(Qt::WA_TranslucentBackground);
     setFocusPolicy(Qt::NoFocus);
     animation_->setObjectName("explosionWaveAnimation");
-    animation_->setDuration(1280);
+    animation_->setDuration(1540);
     animation_->setStartValue(0.0);
     animation_->setEndValue(1.0);
     animation_->setEasingCurve(QEasingCurve::Linear);
@@ -736,65 +736,130 @@ void ExplosionWave::hideEvent(QHideEvent *event) {
     QWidget::hideEvent(event);
 }
 void ExplosionWave::paintEvent(QPaintEvent *) {
-    if (width() < 1 || height() < 1)
+    if (width() < 1 || height() < 1 || progress_ <= 0 || progress_ >= 1)
         return;
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setClipRect(rect());
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(rect()), 8, 8);
+    p.setClipPath(clip);
     const auto smooth = [](qreal value) {
         const qreal t = std::clamp(value, 0.0, 1.0);
         return t * t * (3 - 2 * t);
     };
-    const qreal opacity = smooth(progress_ / .13) * smooth((1 - progress_) / .26);
+    const qreal envelope = smooth(progress_ / .16) * smooth((1 - progress_) / .30);
+    const qreal strength = envelope * (isDarkTheme() ? .76 : 1.0);
     static const QEasingCurve travelCurve = [] {
         QEasingCurve curve(QEasingCurve::BezierSpline);
-        curve.addCubicBezierSegment(QPointF(.54, 0), QPointF(.2, 1), QPointF(1, 1));
+        curve.addCubicBezierSegment(QPointF(.52, 0), QPointF(.22, 1), QPointF(1, 1));
         return curve;
     }();
     const qreal travelProgress = travelCurve.valueForProgress(progress_);
+    constexpr qreal pi = 3.14159265358979323846;
+    constexpr qreal angle = 32 * pi / 180;
+    const qreal cosine = std::cos(angle), sine = std::sin(angle);
+    const qreal travel = width() * cosine + height() * sine;
+    const qreal radius = std::clamp(std::min(width(), height()) * .095, 38.0, 86.0);
+    const qreal position = -radius * 1.8 + travelProgress * (travel + radius * 3.6);
+    const qreal low = -height() * cosine, high = width() * sine;
+    const QPointF origin(width(), 0), normal(-cosine, sine);
 
-    // Paint in logical pixels so the same soft band scales cleanly on high-DPI screens.
-    // Its normal points from the upper-right corner toward the lower-left corner.
-    constexpr qreal angle = 32 * 3.14159265358979323846 / 180;
-    const qreal travel = width() * std::cos(angle) + height() * std::sin(angle);
-    const qreal span = width() * std::sin(angle) + height() * std::cos(angle);
-    const qreal halfWidth = std::clamp(width() * .23, 140.0, 340.0) *
-                            (.92 + .18 * std::sin(progress_ * 3.14159265358979323846));
-    const qreal position = -halfWidth + travelProgress * (travel + 2 * halfWidth);
+    // A corner reflection gathers before the wave arrives, then leaves the image clear.
+    const qreal gather = smooth(progress_ / .09) * (1 - smooth((progress_ - .12) / .25));
+    QRadialGradient reflection(origin, radius * 4.4);
+    reflection.setColorAt(0, QColor(180, 208, 255, 60));
+    reflection.setColorAt(.26, QColor(172, 161, 248, 24));
+    reflection.setColorAt(.62, QColor(132, 216, 250, 9));
+    reflection.setColorAt(1, QColor(132, 216, 250, 0));
+    p.setOpacity(gather * (isDarkTheme() ? .65 : 1));
+    p.fillRect(rect(), reflection);
+
+    // The soft ribbon is generated once per viewport size in logical pixels.
+    // Animation only composites this small strip; high-DPI scaling stays smooth,
+    // while the fine wavefront and window reflection remain vector paths.
+    const qreal textureLeft = -radius * 5.5, textureTop = low - radius * 4;
+    if (glowViewport_ != size() || glow_.isNull()) {
+        glowViewport_ = size();
+        glow_ = QImage(int(std::ceil(radius * 10.5)), int(std::ceil(high - low + radius * 8)),
+                       QImage::Format_ARGB32_Premultiplied);
+        constexpr int samples = 1024;
+        qreal gaussian[samples + 1];
+        for (int i = 0; i <= samples; ++i) {
+            const qreal distance = 4.0 * i / samples;
+            gaussian[i] = std::exp(-distance * distance * .5);
+        }
+        const auto profile = [&](qreal distance) {
+            const qreal index = std::abs(distance) * samples / 4.0;
+            if (index >= samples) return 0.0;
+            const int first = int(index);
+            return gaussian[first] + (gaussian[first + 1] - gaussian[first]) * (index - first);
+        };
+        const QVector<QColor> colors{QColor(129, 219, 247), QColor(153, 184, 255),
+                                     QColor(196, 156, 244), QColor(242, 179, 211), QColor(250, 217, 185)};
+        for (int y = 0; y < glow_.height(); ++y) {
+            const qreal v = textureTop + y + .5;
+            const qreal n = (v - low) / std::max(1.0, high - low);
+            const qreal ripple = std::sin(n * pi * 2) * radius * .10;
+            const qreal front = std::sin(n * pi) * radius * 1.8 + ripple;
+            const qreal echo = -radius * .88 + std::sin(n * pi) * radius * 2.05 + ripple;
+            const qreal shade = std::clamp(n, 0.0, 1.0) * (colors.size() - 1);
+            const int first = std::min(int(shade), int(colors.size()) - 2);
+            const qreal mix = shade - first;
+            const auto channel = [mix](int a, int b) { return a + (b - a) * mix; };
+            const qreal red = channel(colors[first].red(), colors[first + 1].red());
+            const qreal green = channel(colors[first].green(), colors[first + 1].green());
+            const qreal blue = channel(colors[first].blue(), colors[first + 1].blue());
+            auto pixels = reinterpret_cast<QRgb *>(glow_.scanLine(y));
+            for (int x = 0; x < glow_.width(); ++x) {
+                const qreal u = textureLeft + x + .5;
+                const qreal mainAlpha = .24 * profile((u - front) / (radius * .68));
+                const qreal echoAlpha = .075 * profile((u - echo) / (radius * .46));
+                const qreal alpha = mainAlpha + echoAlpha * (1 - mainAlpha);
+                pixels[x] = qRgba(qRound(red * alpha), qRound(green * alpha),
+                                  qRound(blue * alpha), qRound(255 * alpha));
+            }
+        }
+    }
     p.save();
-    p.translate(width(), 0);
+    p.translate(origin);
     p.rotate(148);
-    const auto band = [&](qreal radius, qreal strength) {
-        QLinearGradient spectrum(position - radius, 0, position + radius, 0);
-        spectrum.setColorAt(0, QColor(193, 241, 253, 0));
-        spectrum.setColorAt(.10, QColor(193, 241, 253, 12));
-        spectrum.setColorAt(.23, QColor(193, 241, 253, 68));
-        spectrum.setColorAt(.40, QColor(164, 221, 255, 153));
-        spectrum.setColorAt(.57, QColor(188, 146, 247, 138));
-        spectrum.setColorAt(.73, QColor(242, 184, 231, 148));
-        spectrum.setColorAt(.86, QColor(249, 215, 179, 97));
-        spectrum.setColorAt(.95, QColor(249, 215, 179, 16));
-        spectrum.setColorAt(1, QColor(249, 215, 179, 0));
-        p.setOpacity(opacity * strength);
-        p.fillRect(QRectF(position - radius, -span, radius * 2, span * 2), spectrum);
-    };
-    // Smooth gradient tails provide the glow without a full-window blur buffer.
-    band(halfWidth * 1.28, .20);
-    band(halfWidth, .64);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setOpacity(strength);
+    p.drawImage(QPointF(position + textureLeft, textureTop), glow_);
+    QPainterPath front;
+    for (int i = 0; i <= 64; ++i) {
+        const qreal v = textureTop + (high - low + radius * 8) * i / 64;
+        const qreal n = (v - low) / std::max(1.0, high - low);
+        const QPointF point(position + std::sin(n * pi) * radius * 1.8 +
+                            std::sin(n * pi * 2) * radius * .10, v);
+        if (i == 0) front.moveTo(point);
+        else front.lineTo(point);
+    }
+    p.setBrush(Qt::NoBrush);
+    QLinearGradient pearl(0, low, 0, high);
+    pearl.setColorAt(0, QColor(210, 249, 255));
+    pearl.setColorAt(.48, QColor(242, 236, 255));
+    pearl.setColorAt(1, QColor(255, 235, 223));
+    p.setOpacity(strength * .14);
+    p.setPen(QPen(QBrush(pearl), 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPath(front);
     p.restore();
 
-    QConicalGradient rim(rect().center(), 35 - travelProgress * 160);
-    rim.setColorAt(0, QColor(111, 231, 247));
-    rim.setColorAt(.25, QColor(164, 191, 255));
-    rim.setColorAt(.5, QColor(206, 145, 255));
-    rim.setColorAt(.75, QColor(255, 185, 207));
-    rim.setColorAt(1, QColor(111, 231, 247));
+    // The border lights only where the same wave is passing; it never spins independently.
+    QLinearGradient rim(origin + normal * (position - radius * 2.8),
+                        origin + normal * (position + radius * 1.5));
+    rim.setColorAt(0, QColor(172, 188, 255, 0));
+    rim.setColorAt(.24, QColor(213, 173, 245, 70));
+    rim.setColorAt(.54, QColor(181, 206, 255, 200));
+    rim.setColorAt(.70, QColor(220, 247, 255, 245));
+    rim.setColorAt(1, QColor(161, 224, 253, 0));
     p.setBrush(Qt::NoBrush);
-    for (const auto &[lineWidth, strength] :
-         {std::pair<qreal, qreal>{14, .055}, {7, .075}, {2, .18}}) {
-        p.setOpacity(opacity * strength);
+    for (const auto &[lineWidth, alpha] :
+         {std::pair<qreal, qreal>{12, .065}, {5, .13}, {1.3, .55}}) {
+        p.setOpacity(strength * alpha);
         p.setPen(QPen(QBrush(rim), lineWidth));
-        p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 10, 10);
+        p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 8, 8);
     }
 }
+
 } // namespace h2d

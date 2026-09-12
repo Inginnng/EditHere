@@ -95,6 +95,7 @@ QPushButton#explodeButton:checked:hover { background:@accentHover@; }
 QPushButton#explodeButton:disabled { background:@disabledBg@; color:@disabled@; }
 QLabel[muted="true"] { color:@muted@; }
 QLabel#brand { font-weight:600; font-size:13px; }
+QLabel[sectionTitle="true"] { font-weight:600; font-size:12px; }
 QLabel[error="true"] { color:@error@; }
 QLabel#settingsSection {font-weight:600;padding-top:6px;}
 QTextEdit,QPlainTextEdit { background:@surface@; border:1px solid @border@; border-radius:9px; padding:9px; selection-background-color:@accent@; selection-color:white; color:@text@; }
@@ -119,7 +120,8 @@ QListWidget,QListView,QTreeView,QTableView { background:@surface@; alternate-bac
 QListWidget::item,QListView::item { padding:7px 10px; border-radius:5px; }
 QListWidget::item:hover,QListView::item:hover { background:@hover@; }
 QHeaderView::section { background:@button@; color:@muted@; border:0; border-bottom:1px solid @border@; padding:7px; }
-QWidget#notesPanel,QWidget#layoutInspector { background:@surface@; border-left:1px solid @border@; }
+QWidget#notesPanel { background:@surface@; border-left:1px solid @border@; }
+QWidget#layoutInspector { background:@surface@; border:0; }
 QWidget#noteContainer { background:@surface@; }
 QFrame#noteCard { background:@surface@; border:1px solid @border@; border-radius:10px; }
 QFrame#noteCard[selected="true"] { background:@cardSelected@; border-color:@focus@; }
@@ -129,7 +131,7 @@ QPushButton#foldNote { color:@accent@; background:transparent; border:0; padding
 QPushButton#foldNote:hover { background:@selected@; }
 QLabel#noteCoordinates { font-size:10px; color:@muted@; }
 QFrame#noteCard QPlainTextEdit { background:transparent; border:1px solid transparent; border-radius:5px; padding:5px; font-size:12px; }
-QFrame#noteCard QPlainTextEdit:focus { background:@surface@; border-color:@focus@; }
+QFrame#noteCard QPlainTextEdit:focus { background:transparent; border-color:transparent; }
 QFrame#noteCard QPushButton[tool="true"] { min-width:16px; min-height:16px; padding:2px; }
 QLabel#badge { background:@accent@; color:white; border-radius:12px; font-weight:600; }
 QScrollArea { border:0; background:transparent; }
@@ -214,7 +216,8 @@ void applyTheme(ThemeMode mode) {
     refreshTheme();
 }
 QIcon glyph(const QString &name, QColor color) {
-    if (!color.isValid())
+    const bool themed = !color.isValid();
+    if (themed)
         color = QColor(darkTheme ? "#d4d5dd" : "#606069");
     QPixmap pixmap(48, 48);
     pixmap.fill(Qt::transparent);
@@ -241,7 +244,14 @@ QIcon glyph(const QString &name, QColor color) {
         p.drawLine(8,4,5,4);p.drawLine(5,4,5,10);p.drawLine(5,10,3,12);p.drawLine(3,12,5,14);p.drawLine(5,14,5,20);p.drawLine(5,20,8,20);
         p.drawLine(16,4,19,4);p.drawLine(19,4,19,10);p.drawLine(19,10,21,12);p.drawLine(21,12,19,14);p.drawLine(19,14,19,20);p.drawLine(19,20,16,20);
         if(name=="json-copy") {p.drawLine(10,9,14,9);p.drawLine(10,12,14,12);p.drawLine(10,15,13,15);}
-        else {p.drawLine(12,8,12,16);p.drawLine(9,13,12,16);p.drawLine(15,13,12,16);}
+        else {
+            QPainterPath eye;
+            eye.moveTo(8,12);
+            eye.cubicTo(10,8.5,14,8.5,16,12);
+            eye.cubicTo(14,15.5,10,15.5,8,12);
+            p.drawPath(eye);
+            p.drawEllipse(QPointF(12,12),1.2,1.2);
+        }
     } else if (name == "image-copy" || name == "image-save") {
         p.drawRoundedRect(QRectF(3,4,17,15),2,2);p.drawEllipse(QPointF(8,9),1.5,1.5);
         p.drawPolyline(QPolygonF{{4,17},{10,12},{14,16},{17,13},{20,16}});
@@ -341,8 +351,18 @@ QIcon glyph(const QString &name, QColor color) {
         if (name == "plus")
             p.drawLine(12, 5, 12, 19);
     }
+    p.end();
     pixmap.setDevicePixelRatio(2);
-    return QIcon(pixmap);
+    QIcon icon(pixmap);
+    if (themed) {
+        QPixmap checked = pixmap;
+        QPainter tint(&checked);
+        tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        tint.fillRect(checked.rect(), accent());
+        tint.end();
+        icon.addPixmap(checked, QIcon::Normal, QIcon::On);
+    }
+    return icon;
 }
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent) {
     auto b = new QPushButton(parent);

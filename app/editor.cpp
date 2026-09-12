@@ -160,6 +160,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     side->setSpacing(6);
     noteCount_ = new QLabel("批注 0 条", notesPanel_);
     noteCount_->setObjectName("noteCount");
+    noteCount_->setProperty("sectionTitle", true);
     auto noteHeader = new QHBoxLayout;
     noteHeader->setContentsMargins(5, 0, 2, 0);
     noteHeader->addWidget(noteCount_);

@@ -958,6 +958,83 @@ class UiTests : public QObject {
         QCOMPARE(canvas.selectionBounds().x(), 80.0);
         QCOMPARE(changes.size(), 1);
     }
+    void explosionWaveRestartsAndFinishesWithoutTakingInput() {
+        QWidget host;
+        host.resize(480, 320);
+        QPlainTextEdit input(&host);
+        input.setGeometry(host.rect());
+        ExplosionWave wave(&host);
+        wave.setGeometry(host.rect());
+        host.show();
+        input.setFocus();
+        QTRY_VERIFY(input.hasFocus());
+
+        auto animation = wave.findChild<QVariantAnimation *>("explosionWaveAnimation");
+        QVERIFY(animation);
+        QVERIFY(animation->duration() > 0);
+        QVERIFY(wave.isHidden());
+        QCOMPARE(animation->state(), QAbstractAnimation::Stopped);
+        QVERIFY(wave.testAttribute(Qt::WA_TransparentForMouseEvents));
+        QCOMPARE(wave.focusPolicy(), Qt::NoFocus);
+        QSignalSpy finished(animation, &QVariantAnimation::finished);
+
+        wave.start();
+        QVERIFY(wave.isVisible());
+        QCOMPARE(animation->state(), QAbstractAnimation::Running);
+        QVERIFY(input.hasFocus());
+        const auto hit = host.childAt(host.rect().center());
+        QVERIFY(hit && (hit == &input || input.isAncestorOf(hit)));
+        animation->setCurrentTime(animation->duration() / 2);
+        QVERIFY(animation->currentTime() > 0);
+
+        wave.start();
+        QCOMPARE(animation->currentTime(), 0);
+        QCOMPARE(animation->state(), QAbstractAnimation::Running);
+        QVERIFY(wave.isVisible());
+        QVERIFY(input.hasFocus());
+        QVERIFY(finished.isEmpty());
+
+        // Advance near the end, then let the animation's own timer finish the lifecycle.
+        animation->setCurrentTime(animation->duration() - 1);
+        QTRY_VERIFY_WITH_TIMEOUT(wave.isHidden(), 1000);
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(animation->state(), QAbstractAnimation::Stopped);
+        QSignalSpy frames(animation, &QVariantAnimation::valueChanged);
+        QTest::qWait(60);
+        QVERIFY(frames.isEmpty());
+        QVERIFY(input.hasFocus());
+    }
+    void explosionWaveHidingCancelsTheAnimationAndCanRestart() {
+        QWidget host;
+        host.resize(480, 320);
+        ExplosionWave wave(&host);
+        wave.setGeometry(host.rect());
+        host.show();
+        auto animation = wave.findChild<QVariantAnimation *>("explosionWaveAnimation");
+        QVERIFY(animation);
+        QSignalSpy finished(animation, &QVariantAnimation::finished);
+
+        wave.start();
+        animation->setCurrentTime(animation->duration() / 3);
+        wave.hide();
+        QVERIFY(wave.isHidden());
+        QCOMPARE(animation->state(), QAbstractAnimation::Stopped);
+        const int stoppedTime = animation->currentTime();
+        QSignalSpy frames(animation, &QVariantAnimation::valueChanged);
+        QTest::qWait(60);
+        QCOMPARE(animation->currentTime(), stoppedTime);
+        QVERIFY(frames.isEmpty());
+        QVERIFY(finished.isEmpty());
+
+        wave.start();
+        QVERIFY(wave.isVisible());
+        QCOMPARE(animation->currentTime(), 0);
+        QCOMPARE(animation->state(), QAbstractAnimation::Running);
+        host.hide();
+        QVERIFY(!wave.isVisible());
+        QCOMPARE(animation->state(), QAbstractAnimation::Stopped);
+        QVERIFY(finished.isEmpty());
+    }
     void explosionSelectionTransformAndManualRegion() {
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), document.candidates);
@@ -1133,6 +1210,30 @@ class UiTests : public QObject {
         QVERIFY(editor.document().layout == appliedLayout);
         QVERIFY(canvas->state() == appliedLayout);
         QVERIFY(editor.document().notes == appliedNotes);
+
+        // Replaying the decorative wave must preserve the edited result and the active selection.
+        auto wave = editor.findChild<ExplosionWave *>("explosionWave");
+        auto animation = editor.findChild<QVariantAnimation *>("explosionWaveAnimation");
+        QVERIFY(wave && animation);
+        canvas->setFocus();
+        QTRY_VERIFY(canvas->hasFocus());
+        const QString selected = canvas->selected();
+        const bool dirty = editor.document().dirty;
+        const auto feedbackBeforeWave = serializeFeedback(editor.document(), true);
+        QSignalSpy layoutChanges(canvas, &LayoutCanvas::changed);
+        wave->start();
+        animation->setCurrentTime(animation->duration() / 2);
+        wave->start();
+        animation->setCurrentTime(animation->duration());
+        QVERIFY(wave->isHidden());
+        QVERIFY(canvas->hasFocus());
+        QCOMPARE(canvas->selected(), selected);
+        QVERIFY(layoutChanges.isEmpty());
+        QVERIFY(editor.document().layout == appliedLayout);
+        QVERIFY(canvas->state() == appliedLayout);
+        QVERIFY(editor.document().notes == appliedNotes);
+        QCOMPARE(editor.document().dirty, dirty);
+        QCOMPARE(serializeFeedback(editor.document(), true), feedbackBeforeWave);
 
         QStringList pieceIds;
         for (const auto &piece : canvas->state().pieces)
