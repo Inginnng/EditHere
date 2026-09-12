@@ -549,10 +549,10 @@ ExplosionWave::ExplosionWave(QWidget *parent) : QWidget(parent), animation_(new 
     setAttribute(Qt::WA_TranslucentBackground);
     setFocusPolicy(Qt::NoFocus);
     animation_->setObjectName("explosionWaveAnimation");
-    animation_->setDuration(1100);
+    animation_->setDuration(1280);
     animation_->setStartValue(0.0);
     animation_->setEndValue(1.0);
-    animation_->setEasingCurve(QEasingCurve::InOutSine);
+    animation_->setEasingCurve(QEasingCurve::Linear);
     connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
         progress_ = value.toReal();
         update();
@@ -576,40 +576,61 @@ void ExplosionWave::paintEvent(QPaintEvent *) {
         return;
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    const qreal opacity = std::clamp(std::min(progress_ / .12, (1 - progress_) / .2), 0.0, 1.0);
-    p.setOpacity(opacity);
     p.setClipRect(rect());
-    QConicalGradient rim(rect().center(), 35 - progress_ * 280);
-    rim.setColorAt(0, QColor(80, 161, 255, 65));
-    rim.setColorAt(.25, QColor(183, 119, 255, 65));
-    rim.setColorAt(.5, QColor(255, 124, 168, 65));
-    rim.setColorAt(.75, QColor(97, 231, 232, 65));
-    rim.setColorAt(1, QColor(80, 161, 255, 65));
-    p.setPen(QPen(QBrush(rim), 5));
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(QRectF(rect()).adjusted(2.5, 2.5, -2.5, -2.5), 10, 10);
+    const auto smooth = [](qreal value) {
+        const qreal t = std::clamp(value, 0.0, 1.0);
+        return t * t * (3 - 2 * t);
+    };
+    const qreal opacity = smooth(progress_ / .13) * smooth((1 - progress_) / .26);
+    static const QEasingCurve travelCurve = [] {
+        QEasingCurve curve(QEasingCurve::BezierSpline);
+        curve.addCubicBezierSegment(QPointF(.54, 0), QPointF(.2, 1), QPointF(1, 1));
+        return curve;
+    }();
+    const qreal travelProgress = travelCurve.valueForProgress(progress_);
 
-    // The wave's normal runs from the upper-right corner toward the lower-left.
-    const qreal span = std::hypot(qreal(width()), qreal(height())) + 160;
-    const qreal travel = (width() + height()) / std::sqrt(2.0);
-    const qreal position = -75 + progress_ * (travel + 150);
+    // Paint in logical pixels so the same soft band scales cleanly on high-DPI screens.
+    // Its normal points from the upper-right corner toward the lower-left corner.
+    constexpr qreal angle = 32 * 3.14159265358979323846 / 180;
+    const qreal travel = width() * std::cos(angle) + height() * std::sin(angle);
+    const qreal span = width() * std::sin(angle) + height() * std::cos(angle);
+    const qreal halfWidth = std::clamp(width() * .23, 140.0, 340.0) *
+                            (.92 + .18 * std::sin(progress_ * 3.14159265358979323846));
+    const qreal position = -halfWidth + travelProgress * (travel + 2 * halfWidth);
+    p.save();
     p.translate(width(), 0);
-    p.rotate(135);
-    QPainterPath wave;
-    wave.moveTo(position - 16, -span);
-    wave.cubicTo(position - 44, -span * .35, position + 38, span * .3, position - 12, span);
-    QLinearGradient spectrum(0, -span * .65, 0, span * .65);
-    spectrum.setColorAt(0, QColor("#6fe7f7"));
-    spectrum.setColorAt(.26, QColor("#7fa3ff"));
-    spectrum.setColorAt(.5, QColor("#ce91ff"));
-    spectrum.setColorAt(.74, QColor("#ff9cbc"));
-    spectrum.setColorAt(1, QColor("#ffe2a9"));
+    p.rotate(148);
+    const auto band = [&](qreal radius, qreal strength) {
+        QLinearGradient spectrum(position - radius, 0, position + radius, 0);
+        spectrum.setColorAt(0, QColor(193, 241, 253, 0));
+        spectrum.setColorAt(.10, QColor(193, 241, 253, 12));
+        spectrum.setColorAt(.23, QColor(193, 241, 253, 68));
+        spectrum.setColorAt(.40, QColor(164, 221, 255, 153));
+        spectrum.setColorAt(.57, QColor(188, 146, 247, 138));
+        spectrum.setColorAt(.73, QColor(242, 184, 231, 148));
+        spectrum.setColorAt(.86, QColor(249, 215, 179, 97));
+        spectrum.setColorAt(.95, QColor(249, 215, 179, 16));
+        spectrum.setColorAt(1, QColor(249, 215, 179, 0));
+        p.setOpacity(opacity * strength);
+        p.fillRect(QRectF(position - radius, -span, radius * 2, span * 2), spectrum);
+    };
+    // Smooth gradient tails provide the glow without a full-window blur buffer.
+    band(halfWidth * 1.28, .20);
+    band(halfWidth, .64);
+    p.restore();
+
+    QConicalGradient rim(rect().center(), 35 - travelProgress * 160);
+    rim.setColorAt(0, QColor(111, 231, 247));
+    rim.setColorAt(.25, QColor(164, 191, 255));
+    rim.setColorAt(.5, QColor(206, 145, 255));
+    rim.setColorAt(.75, QColor(255, 185, 207));
+    rim.setColorAt(1, QColor(111, 231, 247));
     p.setBrush(Qt::NoBrush);
-    for (const auto &[width, alpha] :
-         {std::pair<qreal, qreal>{68, .035}, {38, .07}, {18, .16}, {6, .5}, {1.8, .88}}) {
-        p.setOpacity(opacity * alpha);
-        p.setPen(QPen(QBrush(spectrum), width, Qt::SolidLine, Qt::RoundCap));
-        p.drawPath(wave);
+    for (const auto &[lineWidth, strength] :
+         {std::pair<qreal, qreal>{14, .055}, {7, .075}, {2, .18}}) {
+        p.setOpacity(opacity * strength);
+        p.setPen(QPen(QBrush(rim), lineWidth));
+        p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 10, 10);
     }
 }
 } // namespace h2d
