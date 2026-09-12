@@ -47,7 +47,7 @@ QVector<ShortcutDefinition> shortcutDefinitions() {
             {"open", "打开图片或项目", false, QKeySequence(QKeySequence::Open)},
             {"paste", "粘贴图片", false, QKeySequence(QKeySequence::Paste)},
             {"save", "保存项目", false, QKeySequence(QKeySequence::Save)},
-            {"export", "导出 JSON", false, QKeySequence(Qt::CTRL | Qt::Key_E)},
+            {"export", "查看 JSON", false, QKeySequence(Qt::CTRL | Qt::Key_E)},
             {"copy", "复制带批注图片", false, QKeySequence(QKeySequence::Copy)},
             {"copyJson", "复制 JSON", false, {}},
             {"saveImage", "保存图片", false, {}},
@@ -68,9 +68,11 @@ QVector<ShortcutDefinition> shortcutDefinitions() {
 QVector<ToolbarActionDefinition> toolbarActionDefinitions() {
     return {{"saveProject", "保存项目"},
             {"saveImage", "保存图片"},
+            {"exportJson", "查看 JSON"},
             {"copyJson", "复制 JSON"},
-            {"exportJson", "导出 JSON"},
-            {"copyImage", "复制带批注图片"}};
+            {"copyImage", "复制带批注图片"},
+            {"capture", "重新截图"},
+            {"fit", "适应图片"}};
 }
 AppSettings defaultSettings() {
     AppSettings settings;

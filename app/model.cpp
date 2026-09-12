@@ -969,11 +969,12 @@ QImage previewImage(const Document &doc) {
                 continue;
             const auto direction = (to - from) / line.length();
             const QPointF normal(-direction.y(), direction.x());
-            const double head = std::min(11.0, line.length() * 0.4);
-            p.setPen(QPen(QColor("#7657dd"), 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            p.setBrush(QColor("#7657dd"));
+            const double head = std::min(8.0, line.length() * 0.4);
+            const QColor arrow(0, 122, 255, 95);
+            p.setPen(QPen(arrow, 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            p.setBrush(arrow);
             p.drawLine(from, to);
-            p.drawEllipse(from, 3, 3);
+            p.drawEllipse(from, 2, 2);
             p.drawLine(to, to - direction * head + normal * head * 0.5);
             p.drawLine(to, to - direction * head - normal * head * 0.5);
         }
@@ -989,7 +990,7 @@ QImage previewImage(const Document &doc) {
     int y = 72, i = 0, x = doc.image.width() + 60;
     p.setFont(QFont("Microsoft YaHei", 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
-    p.drawText(x, 44, QString("批注 %1").arg(doc.notes.size()));
+    p.drawText(x, 44, QString("批注 %1 条").arg(doc.notes.size()));
     for (const auto &n : doc.notes) {
         if (!n.isGlobal && !n.isPoint) {
             p.setPen(QPen(QColor("#007aff"), 2));

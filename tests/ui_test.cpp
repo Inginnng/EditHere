@@ -17,6 +17,7 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFutureWatcher>
+#include <QGraphicsEffect>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
@@ -307,7 +308,7 @@ class UiTests : public QObject {
         QVERIFY(editor.document().notes.first().comment.startsWith("Refine"));
         QVERIFY((editor.document().notes[0].point - QPoint(200, 100)).manhattanLength() <= 2);
 
-        // Rectangle creates a reusable manual region; clicking it starts its inline annotation.
+        // Releasing a frame stores its reusable region and immediately focuses an inline draft.
         editor.findChild<QPushButton *>("mode_rect")->click();
         QSignalSpy regions(canvas, &Canvas::regionRequested);
         QPoint start(qRound(400 * canvas->zoom()), qRound(250 * canvas->zoom()));
@@ -316,13 +317,15 @@ class UiTests : public QObject {
         QTest::mouseMove(canvas, end);
         QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, end);
         QCOMPARE(regions.size(), 1);
-        QCOMPARE(editor.document().notes.size(), 1);
-        QVERIFY(editor.document().layout.has_value());
-        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
-        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
-                          QPoint(qRound(550 * canvas->zoom()), qRound(420 * canvas->zoom())));
         QCOMPARE(editor.document().notes.size(), 2);
+        QVERIFY(editor.document().layout.has_value());
+        auto frameInput = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(frameInput);
+        QTRY_VERIFY(frameInput->hasFocus());
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        QVERIFY(exportLayoutChanges(*editor.document().layout).isEmpty());
         finishInlineNote(editor, "这一块整体更轻盈，留白更从容。");
+        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
         QVERIFY(!editor.document().notes.last().isPoint);
         QVERIFY(editor.document().notes.last().rect.width() > 290);
         editor.findChild<QPushButton *>("mode_select")->click();
@@ -429,6 +432,218 @@ class UiTests : public QObject {
         artifact(editor, "compact-global-notes.png");
         editor.hide();
     }
+    void newGlobalNoteIsFocusedAndVisibleAfterMoreThanTenNotes() {
+        for (bool explosion : {false, true}) {
+            auto document = gridDocument();
+            document.layout = createLayout(document.image.size(), document.candidates);
+            for (int i = 0; i < 12; ++i) {
+                Note note;
+                note.isGlobal = true;
+                note.comment = QString("整体意见 %1：保持视觉风格一致。").arg(i + 1);
+                document.notes.append(note);
+            }
+            Editor editor;
+            editor.setDocument(document);
+            editor.resize(1240, 760);
+            QTest::qWait(80);
+            if (explosion) {
+                editor.explode();
+                auto layout = editor.layoutCanvas();
+                QVERIFY(layout);
+                QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+            }
+            auto scroll = editor.findChild<QScrollArea *>("notesScroll");
+            auto count = editor.findChild<QLabel *>("noteCount");
+            auto add = editor.findChild<QPushButton *>("addGlobalNote");
+            QVERIFY(scroll && count && add);
+            QCOMPARE(count->text(), QString("批注 12 条"));
+            QTRY_VERIFY(scroll->verticalScrollBar()->maximum() > 0);
+            scroll->verticalScrollBar()->setValue(0);
+            add->click();
+            QCOMPARE(editor.document().notes.size(), 13);
+            QCOMPARE(count->text(), QString("批注 13 条"));
+            auto input = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+            QVERIFY(input);
+            QTRY_VERIFY(input->hasFocus());
+            auto cursorVisible = [&] {
+                const QRect cursor(input->viewport()->mapTo(scroll->viewport(), input->cursorRect().topLeft()),
+                                   input->cursorRect().size());
+                return scroll->viewport()->rect().contains(cursor);
+            };
+            QTRY_VERIFY2(cursorVisible(), "A newly inserted note's actual text cursor must be inside the sidebar viewport");
+            QVERIFY(scroll->verticalScrollBar()->value() > 0);
+            finishInlineNote(editor, "新增意见：统一材质与色调。");
+            QCOMPARE(editor.document().notes.last().comment, QString("新增意见：统一材质与色调。"));
+            if (explosion) {
+                auto inspector = editor.findChild<QScrollArea *>("componentInspectorScroll");
+                QVERIFY(inspector && inspector->isVisible());
+            }
+            artifact(editor, explosion ? "new-note-after-twelve-explosion.png" : "new-note-after-twelve.png");
+            editor.hide();
+        }
+    }
+    void longNotesExpandFullyAndFoldWhenAnotherNoteIsAddedOrEdited() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1240, 760);
+        QTest::qWait(80);
+        auto add = editor.findChild<QPushButton *>("addGlobalNote");
+        auto scroll = editor.findChild<QScrollArea *>("notesScroll");
+        QVERIFY(add && scroll);
+        auto foldFor = [&](const QString &id) -> QPushButton * {
+            for (auto fold : editor.findChildren<QPushButton *>("foldNote"))
+                if (fold->property("noteId").toString() == id) return fold;
+            return nullptr;
+        };
+        auto cardFor = [&](const QString &id) -> QWidget * {
+            for (auto card : editor.findChildren<QWidget *>("noteCard"))
+                if (card->property("noteId").toString() == id) return card;
+            return nullptr;
+        };
+        add->click();
+        const QString shortId = editor.document().notes.last().id;
+        finishInlineNote(editor, "第一行意见\n第二行意见", shortId);
+        auto shortFold = foldFor(shortId);
+        QVERIFY(shortFold && !shortFold->isVisible());
+        add->click();
+        const QString longId = editor.document().notes.last().id;
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + longId);
+        auto fold = foldFor(longId);
+        QVERIFY(input && fold);
+        QTRY_VERIFY(input->hasFocus());
+        QStringList lines;
+        for (int i = 0; i < 42; ++i)
+            lines.append(QString("第 %1 条：让留白更从容，保留自然质感与完整的设计说明。").arg(i + 1));
+        const QString fullText = lines.join('\n');
+        input->setPlainText(fullText);
+        input->moveCursor(QTextCursor::End);
+        QTRY_VERIFY(fold->isVisible());
+        QCOMPARE(fold->text(), QString("收起"));
+        QCOMPARE(input->verticalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+        QCOMPARE(input->horizontalScrollBarPolicy(), Qt::ScrollBarAlwaysOff);
+        QTRY_COMPARE(input->verticalScrollBar()->maximum(), 0);
+        QTRY_VERIFY(input->height() > scroll->viewport()->height());
+        auto cursorVisible = [&] {
+            const QRect cursor(input->viewport()->mapTo(scroll->viewport(), input->cursorRect().topLeft()),
+                               input->cursorRect().size());
+            return scroll->viewport()->rect().contains(cursor);
+        };
+        QTRY_VERIFY2(cursorVisible(), "Typing beyond the visible sidebar must scroll the outer list to the cursor");
+        // Let all text-change reveal callbacks finish: cursor-only keyboard navigation must work too.
+        QTest::qWait(40);
+        QTest::keyClick(input, Qt::Key_Home, Qt::ControlModifier);
+        QCOMPARE(input->textCursor().position(), 0);
+        QTRY_VERIFY2(cursorVisible(), "Ctrl+Home must reveal the cursor through the outer notes list");
+        QTest::qWait(40);
+        QTest::keyClick(input, Qt::Key_End, Qt::ControlModifier);
+        QCOMPARE(input->textCursor().position(), fullText.size());
+        QTRY_VERIFY2(cursorVisible(), "Ctrl+End must reveal the cursor without changing any text");
+        QCOMPARE(input->toPlainText(), fullText);
+        QTRY_COMPARE(input->verticalScrollBar()->maximum(), 0);
+        const int expandedHeight = input->height();
+        QCOMPARE(input->toPlainText(), fullText);
+        QCOMPARE(editor.document().notes.last().comment, fullText);
+        QVERIFY(input->viewport()->graphicsEffect() && !input->viewport()->graphicsEffect()->isEnabled());
+        artifact(editor, "long-note-expanded.png");
+
+        fold->click();
+        QTRY_COMPARE(fold->text(), QString("展开"));
+        QVERIFY(input->height() < expandedHeight / 3);
+        QVERIFY(input->height() <= input->fontMetrics().lineSpacing() * 3 + 16);
+        QCOMPARE(input->verticalScrollBar()->value(), 0);
+        QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
+        QCOMPARE(input->toPlainText(), fullText);
+        QCOMPARE(exportFeedback(editor.document())["annotations"].toArray().last().toObject()["text"].toString(), fullText);
+        artifact(editor, "long-note-collapsed.png");
+        fold->click();
+        QTRY_COMPARE(fold->text(), QString("收起"));
+        QTRY_COMPARE(input->height(), expandedHeight);
+        QTRY_COMPARE(input->verticalScrollBar()->maximum(), 0);
+        QCOMPARE(input->toPlainText(), fullText);
+
+        // Adding another note folds the previous one, without discarding text or moving data.
+        add->click();
+        const QString thirdId = editor.document().notes.last().id;
+        auto third = editor.findChild<QPlainTextEdit *>("noteText_" + thirdId);
+        QVERIFY(third);
+        QTRY_VERIFY(third->hasFocus());
+        QCOMPARE(fold->text(), QString("展开"));
+        QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
+        finishInlineNote(editor, "新的一条整体意见。", thirdId);
+        QCOMPARE(editor.document().notes[1].comment, fullText);
+        auto longCard = cardFor(longId);
+        auto shortCard = cardFor(shortId);
+        QVERIFY(longCard && shortCard);
+        QPushButton *editLongNote = nullptr, *editShortNote = nullptr;
+        for (auto button : longCard->findChildren<QPushButton *>())
+            if (button->toolTip() == "编辑批注") editLongNote = button;
+        for (auto button : shortCard->findChildren<QPushButton *>())
+            if (button->toolTip() == "编辑批注") editShortNote = button;
+        QVERIFY(editLongNote && editShortNote);
+        editLongNote->click();
+        QTRY_VERIFY(input->hasFocus());
+        QCOMPARE(fold->text(), QString("收起"));
+        QTRY_COMPARE(input->height(), expandedHeight);
+        editShortNote->click();
+        auto shortInput = editor.findChild<QPlainTextEdit *>("noteText_" + shortId);
+        QVERIFY(shortInput);
+        QTRY_VERIFY(shortInput->hasFocus());
+        QCOMPARE(fold->text(), QString("展开"));
+        QVERIFY(!shortFold->isVisible());
+        QCOMPARE(input->toPlainText(), fullText);
+        QCOMPARE(editor.document().notes[1].comment, fullText);
+        editor.hide();
+    }
+    void componentInspectorStaysBelowTheScrollableNotes() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        for (int i = 0; i < 12; ++i) {
+            Note note;
+            note.isGlobal = true;
+            note.comment = QString("组件布局意见 %1：大小与间距保持统一。").arg(i + 1);
+            document.notes.append(note);
+        }
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto notes = editor.findChild<QWidget *>("notesPanel");
+        auto scroll = editor.findChild<QScrollArea *>("notesScroll");
+        auto separator = editor.findChild<QWidget *>("inspectorSeparator");
+        QVERIFY(notes && scroll && separator && !separator->isVisible());
+        editor.explode();
+        auto layout = editor.layoutCanvas();
+        QVERIFY(layout);
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+        auto inspector = editor.findChild<QScrollArea *>("componentInspectorScroll");
+        auto guides = editor.findChild<QCheckBox *>("layoutGuides");
+        QVERIFY(inspector && guides);
+        QCOMPARE(guides->text(), QString("显示分解框"));
+        QTRY_VERIFY(inspector->isVisible() && separator->isVisible());
+        QTest::qWait(30);
+        const QRect scrollRect(scroll->mapTo(notes, QPoint()), scroll->size());
+        const QRect separatorRect(separator->mapTo(notes, QPoint()), separator->size());
+        const QRect inspectorRect(inspector->mapTo(notes, QPoint()), inspector->size());
+        QVERIFY(scrollRect.bottom() < separatorRect.top());
+        QVERIFY(separatorRect.bottom() < inspectorRect.top());
+        QVERIFY(notes->height() - 1 - inspectorRect.bottom() <= 8);
+        QVERIFY(separatorRect.height() <= 2 && separatorRect.width() >= notes->width() - 24);
+        QTRY_VERIFY(scroll->verticalScrollBar()->maximum() > 0);
+        scroll->verticalScrollBar()->setValue(scroll->verticalScrollBar()->maximum());
+        QTest::qWait(30);
+        QCOMPARE(QRect(inspector->mapTo(notes, QPoint()), inspector->size()), inspectorRect);
+        QCOMPARE(QRect(separator->mapTo(notes, QPoint()), separator->size()), separatorRect);
+        QVERIFY(scroll->viewport()->height() >= 180);
+        for (auto label : notes->findChildren<QLabel *>("noteCoordinates")) {
+            QVERIFY(!label->text().contains("【"));
+            QVERIFY(!label->text().contains("】"));
+        }
+        artifact(editor, "bottom-component-inspector.png");
+        editor.explode();
+        QVERIFY(!inspector->isVisible() && !separator->isVisible());
+        QCOMPARE(editor.document().notes.size(), 12);
+        editor.hide();
+    }
     void annotationVisibilityPreservesDataAndCopyIncludesMarks() {
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), document.candidates);
@@ -501,26 +716,84 @@ class UiTests : public QObject {
     void toolbarPreferencesKeepCoreToolsAndSettingsReachable() {
         Editor editor;
         editor.setDocument(gridDocument());
-        editor.resize(1240, 820);
+        editor.resize(1600, 900);
         QTest::qWait(80);
+        const auto defaults = defaultSettings();
         for (const auto &definition : toolbarActionDefinitions()) {
             auto action = editor.findChild<QPushButton *>(definition.id);
-            QVERIFY(action && action->isVisible());
+            QVERIFY(action);
+            QCOMPARE(action->isVisible(), defaults.toolbarActions.contains(definition.id));
             QCOMPARE(action->toolTip(), definition.label);
         }
         QVERIFY(!editor.findChild<QPushButton *>("componentTool"));
         QVERIFY(!editor.findChild<QPushButton *>("manualRegion"));
-        auto preferences = defaultSettings();
-        preferences.toolbarActions = {"copyJson"};
+        auto separator = editor.findChild<QWidget *>("toolbarSeparator");
+        auto collapse = editor.findChild<QPushButton *>("collapseNotes");
+        auto save = editor.findChild<QPushButton *>("saveProject");
+        QVERIFY(separator && collapse && save && separator->isVisible());
+        const QRect separatorRect(separator->mapTo(&editor, QPoint()), separator->size());
+        const QRect collapseRect(collapse->mapTo(&editor, QPoint()), collapse->size());
+        const QRect saveRect(save->mapTo(&editor, QPoint()), save->size());
+        QVERIFY(separatorRect.left() > collapseRect.right());
+        QVERIFY(separatorRect.right() < saveRect.left());
+        QVERIFY(separatorRect.width() <= 2 && separatorRect.height() >= 15);
+
+        auto preferences = defaults;
+        preferences.toolbarActions = {"copyJson", "capture", "fit"};
         editor.setPreferences(preferences);
         for (const auto &definition : toolbarActionDefinitions())
-            QCOMPARE(editor.findChild<QPushButton *>(definition.id)->isVisible(), definition.id == "copyJson");
+            QCOMPARE(editor.findChild<QPushButton *>(definition.id)->isVisible(),
+                     preferences.toolbarActions.contains(definition.id));
+        QSignalSpy captures(&editor, &Editor::captureRequested);
+        editor.findChild<QPushButton *>("capture")->click();
+        QCOMPARE(captures.size(), 1);
+        auto imageWell = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(imageWell);
+        editor.canvas()->zoomRequested(0.25);
+        QCOMPARE(editor.canvas()->zoom(), 0.25);
+        editor.findChild<QPushButton *>("fit")->click();
+        QVERIFY(editor.canvas()->zoom() > 0.25);
+
         preferences.toolbarActions.clear();
         editor.setPreferences(preferences);
         for (const auto &id : {"mode_smart", "mode_point", "mode_rect", "mode_select", "collapseNotes", "moreActions"})
             QVERIFY(editor.findChild<QPushButton *>(id)->isVisible());
-        for (const auto &name : {"撤销", "重做", "缩小", "放大", "适应图片"})
+        for (const auto &name : {"撤销", "重做", "缩小", "放大"})
             QVERIFY(toolButton(editor, name)->isVisible());
+        for (const auto &definition : toolbarActionDefinitions())
+            QVERIFY(!editor.findChild<QPushButton *>(definition.id)->isVisible());
+
+        // Hidden actions remain operational through the same menu; choosing them needs no hidden UI.
+        auto triggerMore = [&](const QString &id) {
+            bool selected = false;
+            QTimer::singleShot(30, &editor, [&] {
+                auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                QVERIFY(menu);
+                for (const auto &definition : toolbarActionDefinitions()) {
+                    auto action = menu->findChild<QAction *>("more_" + definition.id);
+                    QVERIFY(action && action->isEnabled());
+                    QCOMPARE(action->text(), definition.label);
+                }
+                auto action = menu->findChild<QAction *>("more_" + id);
+                QVERIFY(action);
+                selected = true;
+                action->trigger();
+                menu->close();
+            });
+            QTimer::singleShot(1500, &editor, [] { if (auto menu = QApplication::activePopupWidget()) menu->close(); });
+            editor.findChild<QPushButton *>("moreActions")->click();
+            QVERIFY(selected);
+        };
+        QApplication::clipboard()->clear();
+        triggerMore("copyJson");
+        QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+                     exportFeedback(editor.document(), true));
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        triggerMore("capture");
+        QCOMPARE(captures.size(), 2);
+        editor.canvas()->zoomRequested(0.25);
+        triggerMore("fit");
+        QVERIFY(editor.canvas()->zoom() > 0.25);
         QSignalSpy settingsRequested(&editor, &Editor::toolbarSettingsRequested);
         bool selected = false;
         QTimer::singleShot(30, &editor, [&] {
@@ -533,15 +806,67 @@ class UiTests : public QObject {
                 return;
             }
             menu->close();
-            QFAIL("Toolbar customization must remain available when all output actions are hidden");
+            QFAIL("Toolbar customization must remain available when all optional actions are hidden");
         });
         QTimer::singleShot(1500, &editor, [] { if (auto menu = QApplication::activePopupWidget()) menu->close(); });
         editor.findChild<QPushButton *>("moreActions")->click();
         QVERIFY(selected);
         QCOMPARE(settingsRequested.size(), 1);
-        editor.setPreferences(defaultSettings());
+        editor.setPreferences(defaults);
         for (const auto &definition : toolbarActionDefinitions())
-            QVERIFY(editor.findChild<QPushButton *>(definition.id)->isVisible());
+            QCOMPARE(editor.findChild<QPushButton *>(definition.id)->isVisible(),
+                     defaults.toolbarActions.contains(definition.id));
+        editor.hide();
+    }
+    void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        auto copy = editor.findChild<QPushButton *>("copyJson");
+        auto view = editor.findChild<QPushButton *>("exportJson");
+        QVERIFY(copy && view && copy->isVisible() && view->isVisible());
+        QCOMPARE(copy->text(), QString("复制 JSON"));
+        QVERIFY(copy->property("primary").toBool());
+        QVERIFY(view->text().isEmpty());
+        QVERIFY(!view->property("primary").toBool());
+        QCOMPARE(view->toolTip(), QString("查看 JSON"));
+        QVERIFY(copy->width() > view->width() * 2);
+        editor.findChild<QPushButton *>("addGlobalNote")->click();
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(input);
+        QTRY_VERIFY(input->hasFocus());
+        input->setPlainText("  复制按钮应当提交正在编辑的意见，并包含完整原图。  ");
+        QApplication::clipboard()->clear();
+        copy->click();
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes[0].comment, QString("复制按钮应当提交正在编辑的意见，并包含完整原图。"));
+        const auto expected = exportFeedback(editor.document(), true);
+        QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(), expected);
+        const QString image = expected["image"].toString();
+        QVERIFY(image.startsWith("data:image/png;base64,"));
+        QCOMPARE(QByteArray::fromBase64(image.mid(QString("data:image/png;base64,").size()).toLatin1()),
+                 editor.document().png);
+        bool opened = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto preview = dialog->findChild<QPlainTextEdit *>();
+            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
+            QVERIFY(preview && embed && embed->isChecked());
+            auto json = QJsonDocument::fromJson(preview->toPlainText().toUtf8()).object();
+            QVERIFY(json["image"].toString().startsWith("data:image/png;base64,"));
+            json.remove("image"); // The readable preview abbreviates only the base64 value.
+            auto withoutImage = expected;
+            withoutImage.remove("image");
+            QCOMPARE(json, withoutImage);
+            opened = true;
+            dialog->reject();
+        });
+        QTimer::singleShot(1800, &editor, [] { if (auto modal = QApplication::activeModalWidget()) modal->close(); });
+        view->click();
+        QVERIFY(opened);
         editor.hide();
     }
     void canvasIgnoresHorizontalAndZeroWheelEvents() {
@@ -719,6 +1044,12 @@ class UiTests : public QObject {
         QVERIFY(!canvas->selected().isEmpty());
         QVERIFY(!canvas->drawingMode());
         const auto afterManual = canvas->state();
+        QCOMPARE(editor.document().notes.size(), 1);
+        auto manualDraft = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(manualDraft);
+        QTRY_VERIFY(manualDraft->hasFocus());
+        canvas->setFocus();
+        QTRY_VERIFY(editor.document().notes.isEmpty());
         auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
         QVERIFY(undo && redo && undo->isEnabled());
         undo->click();
@@ -897,19 +1228,20 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().notes[0].point, QPoint(500, 80));
         QVERIFY(editor.document().layout == movedLayout);
 
-        // In explosion mode the shared frame tool partitions first, then annotates the selection.
+        // The shared frame tool also starts its annotation immediately in explosion mode.
         editor.findChild<QPushButton *>("mode_rect")->click();
         QVERIFY(layout->isVisible() && layout->drawingMode());
         const auto beforeManualFeedback = exportFeedback(editor.document())["changes"].toArray();
         drag(layout, {450, 70}, {540, 125});
-        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes.size(), 2);
+        auto frameInput = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(frameInput);
+        QTRY_VERIFY(frameInput->hasFocus());
         QVERIFY(!layout->drawingMode());
         QCOMPARE(layout->selectionBounds(), QRectF(450, 70, 90, 55));
-        QCOMPARE(exportFeedback(editor.document())["changes"].toArray(), beforeManualFeedback);
+        QCOMPARE(exportLayoutChanges(*editor.document().layout), beforeManualFeedback);
         auto annotate = editor.findChild<QPushButton *>("annotateComponent");
         QVERIFY(annotate && annotate->isEnabled());
-        annotate->click();
-        QCOMPARE(editor.document().notes.size(), 2);
         finishInlineNote(editor, "这个区域的内容需要对齐。");
         QVERIFY(!editor.document().notes[1].isPoint);
         QCOMPARE(editor.document().notes[1].rect, QRect(450, 70, 90, 55));
@@ -1037,6 +1369,12 @@ class UiTests : public QObject {
         manual->click();
         drag(canvas, {500, 400}, {600, 450});
         QCOMPARE(canvas->state().groups.size(), groupCount + 1);
+        QCOMPARE(editor.document().notes.size(), 3);
+        auto manualDraft = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(manualDraft);
+        QTRY_VERIFY(manualDraft->hasFocus());
+        canvas->setFocus();
+        QTRY_COMPARE(editor.document().notes.size(), 2);
         QVERIFY(!editor.document().dirty);
         QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
         canvas->clearSelection();
@@ -1052,11 +1390,9 @@ class UiTests : public QObject {
         QCOMPARE(expectedFeedback["annotations"].toArray().size(), 2);
         QCOMPARE(expectedFeedback["changes"].toArray().size(), 1);
 
-        QPushButton *exportButton = nullptr;
-        for (auto button : editor.findChildren<QPushButton *>())
-            if (button->text() == "导出 JSON")
-                exportButton = button;
+        auto exportButton = editor.findChild<QPushButton *>("exportJson");
         QVERIFY(exportButton);
+        QCOMPARE(exportButton->toolTip(), QString("查看 JSON"));
         bool exportChecked = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());

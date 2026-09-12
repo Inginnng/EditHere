@@ -124,6 +124,9 @@ QWidget#noteContainer { background:@surface@; }
 QFrame#noteCard { background:@surface@; border:1px solid @border@; border-radius:10px; }
 QFrame#noteCard[selected="true"] { background:@cardSelected@; border-color:@focus@; }
 QLabel#noteBadge { background:@accent@; color:white; border-radius:11px; font-weight:600; font-size:11px; }
+QWidget#toolbarSeparator,QWidget#inspectorSeparator { background:@border@; border:0; }
+QPushButton#foldNote { color:@accent@; background:transparent; border:0; padding:0 3px; min-height:16px; font-size:11px; }
+QPushButton#foldNote:hover { background:@selected@; }
 QLabel#noteCoordinates { font-size:10px; color:@muted@; }
 QFrame#noteCard QPlainTextEdit { background:transparent; border:1px solid transparent; border-radius:5px; padding:5px; font-size:12px; }
 QFrame#noteCard QPlainTextEdit:focus { background:@surface@; border-color:@focus@; }

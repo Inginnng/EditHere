@@ -119,6 +119,40 @@ class CanvasFeedbackTests : public QObject {
         QCOMPARE(note.rect, QRect(330, 220, 160, 120));
         QVERIFY(edits.first().at(1).toBool());
     }
+    void manualLayoutRegionRequestsAnnotationAfterCaching() {
+        const auto doc = document();
+        const auto original = createLayout(doc.image.size(), doc.candidates);
+        LayoutCanvas canvas(doc.image, original);
+        canvas.setDrawing(true);
+        canvas.show();
+        QStringList events;
+        LayoutState cached = original;
+        QRect annotation;
+        connect(&canvas, &LayoutCanvas::changed, &canvas, [&] {
+            events.append("cached");
+            cached = canvas.state();
+        });
+        connect(&canvas, &LayoutCanvas::annotationRequested, &canvas, [&](QRect area, QPoint) {
+            events.append("annotation");
+            annotation = area;
+            QVERIFY(cached == canvas.state());
+            QVERIFY(!canvas.drawingMode());
+            QVERIFY(!canvas.selected().isEmpty());
+            // Losing canvas focus to the inline editor must not discard the new region.
+            canvas.cancelInteraction();
+            QVERIFY(cached == canvas.state());
+        });
+        QTest::mousePress(&canvas, Qt::LeftButton, Qt::NoModifier, {330, 220});
+        QTest::mouseRelease(&canvas, Qt::LeftButton, Qt::NoModifier, {490, 340});
+        QCOMPARE(events, QStringList({"cached", "annotation"}));
+        QCOMPARE(annotation, QRect(330, 220, 160, 120));
+        QVERIFY(cached != original);
+        const auto saved = cached;
+        QTest::mousePress(&canvas, Qt::LeftButton, Qt::NoModifier, {390, 275});
+        QTest::mouseRelease(&canvas, Qt::LeftButton, Qt::NoModifier, {390, 275});
+        QCOMPARE(canvas.state(), saved);
+        QCOMPARE(events.size(), 2); // Merely selecting the component creates no second draft.
+    }
     void badgesEditInAdjustModeAndHideWithoutDeletingNotes() {
         auto doc = document();
         Note global;

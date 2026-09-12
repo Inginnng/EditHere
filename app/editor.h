@@ -8,6 +8,7 @@
 class QLabel;
 class QScrollArea;
 class QVBoxLayout;
+class QHBoxLayout;
 class QPushButton;
 class QStackedWidget;
 class QShortcut;
@@ -65,6 +66,8 @@ class Editor final : public QWidget {
     void finishNoteEdit();
     void cancelNoteEdit();
     void focusNote(const QString &id);
+    void revealNote(const QString &id);
+    void collapseOtherNotes(const QString &id);
     void addGlobalNote();
     void editMovement(QRectF source, QRectF destination);
     void addManualRegion(QRect area);
@@ -116,6 +119,8 @@ class Editor final : public QWidget {
     QScrollArea *imageScroll_, *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;
+    QHBoxLayout *dock_;
+    QWidget *inspectorSeparator_ = nullptr;
     QLabel *meta_, *hint_, *noteCount_;
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;

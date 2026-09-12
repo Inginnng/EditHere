@@ -67,23 +67,26 @@ void paintMovement(QPainter &p, const QPair<QRectF, QRectF> &movement,
     const QPointF normal(-unit.y(), unit.x());
     const double pulse = .5 + .5 * std::sin(phase);
     if (hovered) {
-        p.setPen(QPen(QColor(0, 122, 255, 26 + qRound(pulse * 22)), 10 + pulse * 4,
+        p.setPen(QPen(QColor(0, 122, 255, 18 + qRound(pulse * 16)), 3,
                       Qt::SolidLine, Qt::RoundCap));
         p.drawLine(line);
-        p.setPen(QPen(QColor(0, 122, 255, 85), 1, Qt::DashLine));
+        p.setPen(QPen(QColor(0, 122, 255, 65 + qRound(pulse * 20)), .8, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
         for (const auto &r : {movement.first, movement.second})
             p.drawRect(QRectF(r.topLeft() * zoom, r.size() * zoom));
     }
-    p.setPen(QPen(QColor(255, 255, 255, 215), hovered ? 5 : 4, Qt::SolidLine, Qt::RoundCap));
+    p.setPen(QPen(QColor(255, 255, 255, hovered ? 155 : 65), hovered ? 2.7 : 2.2,
+                  Qt::SolidLine, Qt::RoundCap));
     p.drawLine(line);
-    p.setPen(QPen(accent(), hovered ? 2.6 : 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    auto color = accent();
+    color.setAlpha(hovered ? 220 : 95);
+    p.setPen(QPen(color, hovered ? 1.35 : 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.drawLine(line);
-    const double head = std::min(9.0, std::max(4.0, line.length() * .35));
+    const double head = std::min(7.5, std::max(3.5, line.length() * .35));
     p.drawPolyline(QPolygonF{finish - unit * head + normal * head * .5,
                             finish, finish - unit * head - normal * head * .5});
-    p.setBrush(Qt::white);
-    p.drawEllipse(start, hovered ? 3.8 : 3.1, hovered ? 3.8 : 3.1);
+    p.setBrush(QColor(255, 255, 255, hovered ? 220 : 95));
+    p.drawEllipse(start, hovered ? 2.5 : 2.2, hovered ? 2.5 : 2.2);
 }
 } // namespace
 
@@ -449,6 +452,7 @@ void LayoutCanvas::mouseReleaseEvent(QMouseEvent *event) {
                     drawingMode_ = false;
                     select(id);
                     commit(before);
+                    annotateSelection();
                 } else
                     emit hintChanged("这个区域没有图像内容，请框选已有组件");
             } catch (const std::exception &e) {
@@ -577,9 +581,9 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     heading->setStyleSheet("font-weight:600;font-size:12px;");
     headingRow->addWidget(heading);
     headingRow->addStretch();
-    auto guides = new QCheckBox("区域", this);
+    auto guides = new QCheckBox("显示分解框", this);
     guides->setObjectName("layoutGuides");
-    guides->setToolTip("显示可选区域边界");
+    guides->setToolTip("显示分解框");
     guides->setChecked(true);
     headingRow->addWidget(guides);
     annotate_ = iconButton("plus", "为当前组件添加批注", this);

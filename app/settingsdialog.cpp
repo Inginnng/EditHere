@@ -141,7 +141,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto toolbarTitle = new QLabel("显示在底部工具栏", toolbar);
     toolbarTitle->setObjectName("settingsSection");
     toolbarLayout->addWidget(toolbarTitle);
-    auto toolbarDescription = mutedLabel("标注、调整和缩放工具始终保留。选择你常用的输出操作，保存后立即生效。", toolbar);
+    auto toolbarDescription = mutedLabel("标注、调整和缩放工具始终保留。勾选常用操作，保存后立即显示在工具栏。", toolbar);
     toolbarDescription->setWordWrap(true);
     toolbarLayout->addWidget(toolbarDescription);
     for (const auto &definition : toolbarActionDefinitions()) {
@@ -150,11 +150,15 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         checkbox->setAccessibleName("在工具栏显示" + definition.label);
         if (definition.id == "saveImage")
             checkbox->setToolTip("保存包含批注和布局调整的图片。");
+        else if (definition.id == "exportJson")
+            checkbox->setToolTip("打开 JSON 预览，可查看、复制或保存文件。");
+        else if (definition.id == "copyJson")
+            checkbox->setToolTip("将 JSON 直接复制到剪贴板。");
         toolbarActions_.insert(definition.id, checkbox);
         toolbarLayout->addWidget(checkbox);
         connect(checkbox, &QCheckBox::toggled, this, [this] { error_->hide(); });
     }
-    auto toolbarHint = mutedLabel("隐藏后仍可使用快捷键，或通过工具栏设置入口重新显示。", toolbar);
+    auto toolbarHint = mutedLabel("未勾选的操作会收进“更多”菜单，仍可使用快捷键。", toolbar);
     toolbarHint->setWordWrap(true);
     toolbarLayout->addWidget(toolbarHint);
     toolbarLayout->addStretch();

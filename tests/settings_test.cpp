@@ -125,16 +125,21 @@ class SettingsTests : public QObject {
         QTemporaryDir directory;
         const auto path = directory.filePath("settings.ini");
         auto settings = defaultSettings();
-        QCOMPARE(settings.toolbarActions.size(), toolbarActionDefinitions().size());
-        for (const auto &definition : toolbarActionDefinitions())
-            QVERIFY(settings.toolbarActions.contains(definition.id));
+        QCOMPARE(settings.toolbarActions.size(), 5);
+        for (const auto &id : {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"})
+            QVERIFY(settings.toolbarActions.contains(id));
+        QVERIFY(!settings.toolbarActions.contains("capture"));
+        QVERIFY(!settings.toolbarActions.contains("fit"));
         for (const auto &id : {"copyJson", "saveImage", "hideAnnotations", "addGlobalNote"}) {
             QVERIFY(settings.shortcuts.contains(id));
             QVERIFY(settings.shortcuts.value(id).isEmpty());
         }
         settings.theme = ThemeMode::Dark;
-        settings.toolbarActions.clear();
+        settings.toolbarActions = {"capture", "fit", "copyJson"};
         QString error;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path) == settings);
+        settings.toolbarActions.clear();
         QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
         QVERIFY(loadSettings(path) == settings);
         settings.toolbarActions = {"saveProject", "saveProject"};
@@ -158,6 +163,16 @@ class SettingsTests : public QObject {
         source.remove("toolbar/actions");
         source.sync();
         QCOMPARE(loadSettings(path).toolbarActions, defaultSettings().toolbarActions);
+        // Renaming exportJson must preserve the former selection and Ctrl+E binding.
+        const QStringList legacyActions{"saveProject", "saveImage", "copyJson", "exportJson", "copyImage"};
+        source.setValue("toolbar/actions", legacyActions);
+        source.setValue("shortcuts/export", "Ctrl+E");
+        source.sync();
+        auto migrated = loadSettings(path);
+        QCOMPARE(migrated.toolbarActions, legacyActions);
+        QCOMPARE(migrated.shortcuts.value("export"), QKeySequence("Ctrl+E"));
+        QVERIFY2(saveSettings(migrated, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path) == migrated);
     }
     void toolbarDraftAndUpdateNavigation() {
         SettingsDialog dialog(defaultSettings());
@@ -168,12 +183,16 @@ class SettingsTests : public QObject {
         for (const auto &definition : toolbarActionDefinitions()) {
             auto checkbox = dialog.findChild<QCheckBox *>("toolbar_" + definition.id);
             QVERIFY(checkbox);
-            QVERIFY(checkbox->isChecked());
+            QCOMPARE(checkbox->isChecked(), defaultSettings().toolbarActions.contains(definition.id));
             checkbox->setChecked(false);
         }
         QVERIFY(dialog.settings().toolbarActions.isEmpty());
         dialog.findChild<QCheckBox *>("toolbar_copyJson")->setChecked(true);
         QCOMPARE(dialog.settings().toolbarActions, QStringList{"copyJson"});
+        dialog.findChild<QCheckBox *>("toolbar_capture")->setChecked(true);
+        dialog.findChild<QCheckBox *>("toolbar_fit")->setChecked(true);
+        QCOMPARE(dialog.settings().toolbarActions, (QStringList{"copyJson", "capture", "fit"}));
+        QVERIFY(validateSettings(dialog.settings()).isEmpty());
         dialog.showUpdates();
         QCOMPARE(tabs->currentWidget()->objectName(), QString("settingsAboutPage"));
         dialog.findChild<QPushButton *>("settingsReset")->click();

@@ -9,7 +9,7 @@ enum class ThemeMode { System, Light, Dark };
 struct AppSettings {
     ThemeMode theme = ThemeMode::System;
     QMap<QString, QKeySequence> shortcuts;
-    QStringList toolbarActions = {"saveProject", "saveImage", "copyJson", "exportJson", "copyImage"};
+    QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"};
     bool captureOnStartup = true;
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
