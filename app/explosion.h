@@ -125,7 +125,5 @@ class ExplosionWave final : public QWidget {
   private:
     QVariantAnimation *animation_;
     qreal progress_ = 0;
-    QImage glow_;
-    QSize glowViewport_;
 };
 } // namespace h2d
