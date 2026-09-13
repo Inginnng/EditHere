@@ -489,6 +489,286 @@ class UiTests : public QObject {
         QCOMPARE(hiddenToTray.count(), 0);
         editor.hide();
     }
+    void mainHeaderSettingsOpensTheExistingSettingsDialog() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString settingsFile = temporary.filePath("settings.json");
+        auto settings = defaultSettings();
+        settings.shortcuts["capture"] = {};
+        settings.captureOnStartup = false;
+        settings.checkUpdatesOnStartup = false;
+        Controller controller(nullptr, settings, settingsFile);
+        controller.start(false);
+        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        QVERIFY(tray && tray->contextMenu());
+        auto editor = qobject_cast<Editor *>(tray->contextMenu()->parentWidget());
+        QVERIFY(editor);
+        editor->setDocument(gridDocument());
+        editor->resize(1240, 820);
+        QTest::qWait(60);
+        auto settingsButton = editor->findChild<QPushButton *>("openSettings");
+        auto minimize = editor->findChild<QPushButton *>("minimizeWindow");
+        auto fullscreen = editor->findChild<QPushButton *>("fullscreenWindow");
+        auto close = editor->findChild<QPushButton *>("closeWindow");
+        QVERIFY(settingsButton && minimize && fullscreen && close);
+        QVERIFY(settingsButton->isVisible() && settingsButton->isEnabled());
+        QCOMPARE(settingsButton->toolTip(), QString("设置"));
+        QVERIFY(minimize->geometry().right() < fullscreen->geometry().left());
+        QVERIFY(fullscreen->geometry().right() < close->geometry().left());
+        const auto before = exportFeedback(editor->document(), true);
+        QSignalSpy requested(editor, &Editor::settingsRequested);
+        int opened = 0;
+        auto inspectSettings = [&] {
+            auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto tabs = dialog->findChild<QTabWidget *>("settingsTabs");
+            QVERIFY(tabs);
+            QCOMPARE(tabs->currentIndex(), 0);
+            QVERIFY(!dialog->windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+            ++opened;
+            dialog->reject();
+        };
+        QTimer::singleShot(60, &controller, inspectSettings);
+        QTimer::singleShot(2000, &controller, [] {
+            if (auto modal = QApplication::activeModalWidget()) modal->close();
+        });
+        settingsButton->click();
+        QCOMPARE(opened, 1);
+        QCOMPARE(requested.count(), 1);
+        QVERIFY(QApplication::activeModalWidget() == nullptr);
+        QCOMPARE(exportFeedback(editor->document(), true), before);
+        QVERIFY(!QFileInfo::exists(settingsFile));
+
+        QTimer::singleShot(60, &controller, [&] {
+            auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            QVERIFY(menu);
+            auto action = menu->findChild<QAction *>("editorSettings");
+            menu->close();
+            QVERIFY(action && action->isEnabled());
+            QTimer::singleShot(60, &controller, inspectSettings);
+            action->trigger();
+        });
+        QTimer::singleShot(2000, &controller, [] {
+            if (auto popup = QApplication::activePopupWidget()) popup->close();
+            if (auto modal = QApplication::activeModalWidget()) modal->close();
+        });
+        QTest::mouseClick(editor->canvas(), Qt::RightButton, Qt::NoModifier, QPoint(40, 40));
+        QCOMPARE(opened, 2);
+        QCOMPARE(requested.count(), 2);
+        QCOMPARE(exportFeedback(editor->document(), true), before);
+        QVERIFY(!QFileInfo::exists(settingsFile));
+        artifact(*editor, "main-header-controls.png");
+        editor->hide();
+    }
+    void fullscreenPreservesTheEditingSession_data() {
+        QTest::addColumn<bool>("explosion");
+        QTest::addColumn<bool>("maximized");
+        QTest::newRow("annotation-normal") << false << false;
+        QTest::newRow("explosion-normal") << true << false;
+        QTest::newRow("annotation-maximized") << false << true;
+        QTest::newRow("explosion-maximized") << true << true;
+    }
+    void fullscreenPreservesTheEditingSession() {
+        QFETCH(bool, explosion);
+        QFETCH(bool, maximized);
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note note;
+        note.isGlobal = true;
+        note.comment = "全屏前后的布局和意见保持一致。";
+        document.notes.append(note);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1100, 720);
+        if (maximized) editor.showMaximized();
+        QTest::qWait(60);
+        if (maximized) QTRY_VERIFY(editor.isMaximized());
+        if (explosion) {
+            editor.explode();
+            auto canvas = editor.layoutCanvas();
+            QVERIFY(canvas && canvas->isVisible());
+            QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
+            canvas->transformSelection(QRectF(440, 60, 120, 90));
+        }
+        auto plus = toolButton(editor, "放大");
+        auto fullscreen = editor.findChild<QPushButton *>("fullscreenWindow");
+        auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(plus && fullscreen && imageScroll);
+        for (int i = 0; editor.canvas()->zoom() < 2.0 && i < 16; ++i) plus->click();
+        QTest::qWait(30);
+        auto horizontal = imageScroll->horizontalScrollBar();
+        auto vertical = imageScroll->verticalScrollBar();
+        QVERIFY(horizontal->maximum() > 240 && vertical->maximum() > 200);
+        horizontal->setValue(240);
+        vertical->setValue(200);
+        const QPoint offsets(horizontal->value(), vertical->value());
+        const QRect geometry = editor.geometry();
+        const auto before = editor.document();
+        const auto feedback = exportFeedback(before, true);
+        const double zoom = editor.canvas()->zoom();
+        QPointer<LayoutCanvas> layoutCanvas = editor.layoutCanvas();
+        const QString selection = layoutCanvas ? layoutCanvas->selected() : QString();
+        QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
+        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+
+        fullscreen->click();
+        QTRY_VERIFY(editor.isFullScreen());
+        QVERIFY(fullscreen->isChecked() && fullscreen->isVisible());
+        QCOMPARE(fullscreen->toolTip(), QString("退出全屏"));
+        QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
+        QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+        QCOMPARE(editor.canvas()->zoom(), zoom);
+        QCOMPARE(editor.explosionActive(), explosion);
+        QVERIFY(!editor.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
+        if (explosion) {
+            QVERIFY(layoutCanvas && editor.layoutCanvas() == layoutCanvas);
+            QCOMPARE(layoutCanvas->zoom(), zoom);
+            QCOMPARE(layoutCanvas->selected(), selection);
+        }
+        horizontal->setValue(0);
+        vertical->setValue(0);
+        fullscreen->click();
+        QTRY_VERIFY(!editor.isFullScreen());
+        QTRY_COMPARE(editor.isMaximized(), maximized);
+        if (!maximized) QTRY_COMPARE(editor.geometry(), geometry);
+        QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), offsets);
+        QVERIFY(!fullscreen->isChecked());
+        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+        QCOMPARE(editor.canvas()->zoom(), zoom);
+        QVERIFY(editor.document().layout == before.layout);
+        QVERIFY(editor.document().notes == before.notes);
+        QCOMPARE(editor.document().dirty, before.dirty);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(hiddenToTray.count(), 0);
+
+        fullscreen->click();
+        QTRY_VERIFY(editor.isFullScreen());
+        editor.activateWindow();
+        QTRY_VERIFY(editor.isActiveWindow());
+        if (!explosion && !maximized) {
+            // Escape belongs to the active guide or note editor before the window control.
+            editor.showGuide();
+            auto next = editor.findChild<QPushButton *>("guideNext");
+            QVERIFY(next && editor.guideActive());
+            QTest::keyClick(next, Qt::Key_Escape);
+            QVERIFY(!editor.guideActive() && editor.isFullScreen());
+            auto add = editor.findChild<QPushButton *>("addGlobalNote");
+            QVERIFY(add);
+            add->click();
+            auto input = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+            QVERIFY(input);
+            QTRY_VERIFY(input->hasFocus());
+            QTest::keyClick(input, Qt::Key_Escape);
+            QVERIFY(editor.isFullScreen());
+            QTRY_COMPARE(editor.document().notes.size(), before.notes.size());
+            artifact(editor, "fullscreen-annotation.png");
+        }
+        QWidget *surface = explosion ? static_cast<QWidget *>(editor.layoutCanvas())
+                                     : static_cast<QWidget *>(editor.canvas());
+        surface->setFocus();
+        QTest::keyClick(surface, Qt::Key_Escape);
+        QTRY_VERIFY(!editor.isFullScreen());
+        QTRY_COMPARE(editor.isMaximized(), maximized);
+        QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), offsets);
+        QCOMPARE(editor.explosionActive(), explosion);
+        QCOMPARE(editor.document().id, before.id);
+        QCOMPARE(editor.document().png, before.png);
+        QVERIFY(editor.document().layout == before.layout);
+        QVERIFY(editor.document().notes == before.notes);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(hiddenToTray.count(), 0);
+        QVERIFY(editor.isVisible() && editor.hasDocument());
+        editor.hide();
+    }
+    void middleDraggingPansTheImageWithoutEditing_data() {
+        QTest::addColumn<bool>("explosion");
+        QTest::addColumn<bool>("blankViewport");
+        QTest::newRow("annotation-canvas") << false << false;
+        QTest::newRow("explosion-canvas") << true << false;
+        QTest::newRow("annotation-blank-viewport") << false << true;
+        QTest::newRow("explosion-blank-viewport") << true << true;
+    }
+    void middleDraggingPansTheImageWithoutEditing() {
+        QFETCH(bool, explosion);
+        QFETCH(bool, blankViewport);
+        auto document = gridDocument();
+        if (blankViewport) {
+            QImage image(1600, 80, QImage::Format_ARGB32);
+            image.fill(QColor("#f3f4f7"));
+            document = fromImage(image, "demo", "宽图画布留白");
+            document.candidates.append({QRect(60, 10, 120, 50), manualTarget()});
+        }
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note note;
+        note.isGlobal = true;
+        note.comment = "拖动视野不会改变组件位置。";
+        document.notes.append(note);
+        Editor editor;
+        auto preferences = defaultSettings();
+        preferences.fitImageOnOpen = false;
+        editor.setPreferences(preferences);
+        editor.setDocument(document);
+        editor.resize(1100, 720);
+        QTest::qWait(60);
+        if (explosion) {
+            editor.explode();
+            auto canvas = editor.layoutCanvas();
+            QVERIFY(canvas);
+            const QPointF target = blankViewport ? QPointF(100, 35) : QPointF(100, 110);
+            QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, target));
+            QVERIFY(!canvas->selected().isEmpty());
+        }
+        auto plus = toolButton(editor, "放大");
+        auto scroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(plus && scroll);
+        for (int i = 0; editor.canvas()->zoom() < 2.0 && i < 16; ++i) plus->click();
+        QTest::qWait(30);
+        auto horizontal = scroll->horizontalScrollBar();
+        auto vertical = scroll->verticalScrollBar();
+        QVERIFY(horizontal->maximum() > 240);
+        horizontal->setValue(240);
+        if (!blankViewport) {
+            QVERIFY(vertical->maximum() > 200);
+            vertical->setValue(200);
+        }
+        const QPoint beforeOffset(horizontal->value(), vertical->value());
+        const QRect geometry = editor.geometry();
+        const auto before = editor.document();
+        const auto feedback = exportFeedback(before, true);
+        const double zoom = editor.canvas()->zoom();
+        const QString selection = explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected();
+        QWidget *canvas = explosion ? static_cast<QWidget *>(editor.layoutCanvas())
+                                    : static_cast<QWidget *>(editor.canvas());
+        QWidget *surface = blankViewport ? scroll->viewport() : canvas;
+        const QPoint viewportPosition = blankViewport ? QPoint(140, scroll->viewport()->height() - 20)
+                                                      : QPoint(160, 160);
+        const QPoint start = scroll->viewport()->mapToGlobal(viewportPosition);
+        if (blankViewport) QVERIFY(!canvas->rect().contains(canvas->mapFromGlobal(start)));
+        const QPoint delta = blankViewport ? QPoint(55, 0) : QPoint(55, 35);
+        auto mouse = [&](QEvent::Type type, const QPoint &global, Qt::MouseButton button,
+                         Qt::MouseButtons buttons) {
+            QMouseEvent event(type, QPointF(surface->mapFromGlobal(global)), QPointF(global),
+                              button, buttons, Qt::NoModifier);
+            QApplication::sendEvent(surface, &event);
+        };
+        mouse(QEvent::MouseButtonPress, start, Qt::MiddleButton, Qt::MiddleButton);
+        mouse(QEvent::MouseMove, start + delta, Qt::NoButton, Qt::MiddleButton);
+        mouse(QEvent::MouseButtonRelease, start + delta, Qt::MiddleButton, Qt::NoButton);
+        QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), beforeOffset - delta);
+        QCOMPARE(editor.geometry(), geometry);
+        QCOMPARE(editor.canvas()->zoom(), zoom);
+        QCOMPARE(editor.explosionActive(), explosion);
+        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected(), selection);
+        QCOMPARE(editor.document().dirty, before.dirty);
+        QVERIFY(editor.document().layout == before.layout);
+        QVERIFY(editor.document().notes == before.notes);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        // Releasing the middle button must end the pan, including on empty viewport space.
+        mouse(QEvent::MouseMove, start + delta + QPoint(30, 20), Qt::NoButton, Qt::NoButton);
+        QCOMPARE(QPoint(horizontal->value(), vertical->value()), beforeOffset - delta);
+        QCOMPARE(editor.geometry(), geometry);
+        editor.hide();
+    }
     void controllerActivationRestoresMinimizedDocument() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};

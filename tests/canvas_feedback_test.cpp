@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QFontDatabase>
+#include <QFocusEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
@@ -34,6 +35,11 @@ class CanvasFeedbackTests : public QObject {
     static void move(QWidget &widget, QPointF point) {
         QMouseEvent event(QEvent::MouseMove, point, widget.mapToGlobal(point.toPoint()),
                           Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &event);
+    }
+    static void pointer(QWidget &widget, QEvent::Type type, QPointF local, QPointF global,
+                        Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, local, global, button, buttons, Qt::NoModifier);
         QApplication::sendEvent(&widget, &event);
     }
     static QString firstGroup(const LayoutState &state) {
@@ -116,6 +122,173 @@ class CanvasFeedbackTests : public QObject {
         QApplication::setFont(QFont("Microsoft YaHei UI", 9));
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void middleDragPansWithoutEditing_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::newRow("annotation-canvas") << false;
+        QTest::newRow("explosion-canvas") << true;
+    }
+    void middleDragPansWithoutEditing() {
+        QFETCH(bool, exploded);
+        auto doc = document();
+        doc.layout = createLayout(doc.image.size(), doc.candidates);
+        Note note;
+        note.point = {90, 90};
+        note.comment = "保留这条批注";
+        doc.notes = {note};
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setMode(Canvas::Adjust);
+        canvas.select(note.id);
+        LayoutCanvas layout(doc.image, *doc.layout);
+        QTest::mouseClick(&layout, Qt::LeftButton, Qt::NoModifier, {90, 90});
+        layout.setAnnotations(doc.notes);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        const auto initialState = layout.state();
+        const auto initialNotes = doc.notes;
+        const auto initialSelection = exploded ? layout.selected() : canvas.selected();
+        QVERIFY(!initialSelection.isEmpty());
+        QSignalSpy pans(&widget, SIGNAL(panRequested(QPoint)));
+        QSignalSpy zooms(&widget, SIGNAL(zoomRequested(double)));
+        QSignalSpy edits(&canvas, &Canvas::editRequested);
+        QSignalSpy geometry(&canvas, &Canvas::geometryChanged);
+        QSignalSpy regions(&canvas, &Canvas::regionRequested);
+        QSignalSpy layoutEdits(&layout, &LayoutCanvas::noteEditRequested);
+        QSignalSpy annotations(&layout, &LayoutCanvas::annotationRequested);
+        QSignalSpy changed(&layout, &LayoutCanvas::changed);
+        QSignalSpy canvasMovement(&canvas, &Canvas::movementAnnotationRequested);
+        QSignalSpy layoutMovement(&layout, &LayoutCanvas::movementAnnotationRequested);
+        QTest::mouseClick(&widget, Qt::MiddleButton, Qt::NoModifier, {90, 90});
+        QVERIFY(zooms.isEmpty());
+        QVERIFY(pans.isEmpty());
+        pointer(widget, QEvent::MouseButtonPress, {90, 90}, {600, 500},
+                Qt::MiddleButton, Qt::MiddleButton);
+        QCOMPARE(widget.cursor().shape(), Qt::ClosedHandCursor);
+        pointer(widget, QEvent::MouseMove, {130, 110}, {640, 520}, Qt::NoButton, Qt::MiddleButton);
+        // The canvas moved under the mouse after scrolling; only screen-space movement counts.
+        pointer(widget, QEvent::MouseMove, {300, 70}, {650, 525}, Qt::NoButton, Qt::MiddleButton);
+        QCOMPARE(pans.size(), 2);
+        QCOMPARE(pans[0][0].toPoint(), QPoint(40, 20));
+        QCOMPARE(pans[1][0].toPoint(), QPoint(10, 5));
+        wheel(widget, {90, 90});
+        pointer(widget, QEvent::MouseButtonRelease, {300, 70}, {650, 525},
+                Qt::MiddleButton, Qt::NoButton);
+        QVERIFY(widget.cursor().shape() != Qt::ClosedHandCursor);
+        move(widget, {380, 200});
+        QCOMPARE(pans.size(), 2);
+        QCOMPARE(canvas.zoom(), 1.0);
+        QCOMPARE(layout.zoom(), 1.0);
+        QCOMPARE(layout.state(), initialState);
+        QCOMPARE(doc.notes, initialNotes);
+        QCOMPARE(exploded ? layout.selected() : canvas.selected(), initialSelection);
+        QVERIFY(edits.isEmpty());
+        QVERIFY(geometry.isEmpty());
+        QVERIFY(regions.isEmpty());
+        QVERIFY(layoutEdits.isEmpty());
+        QVERIFY(annotations.isEmpty());
+        QVERIFY(changed.isEmpty());
+        QVERIFY(zooms.isEmpty());
+        QVERIFY(canvasMovement.isEmpty());
+        QVERIFY(layoutMovement.isEmpty());
+    }
+    void middleDragCancellationDoesNotStick_data() {
+        middleDragPansWithoutEditing_data();
+    }
+    void middleDragCancellationDoesNotStick() {
+        QFETCH(bool, exploded);
+        auto doc = document();
+        const auto initialState = createLayout(doc.image.size(), doc.candidates);
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        LayoutCanvas layout(doc.image, initialState);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        QSignalSpy pans(&widget, SIGNAL(panRequested(QPoint)));
+        QSignalSpy edits(&canvas, &Canvas::editRequested);
+        QSignalSpy regions(&canvas, &Canvas::regionRequested);
+        QSignalSpy geometry(&canvas, &Canvas::geometryChanged);
+        QSignalSpy annotations(&layout, &LayoutCanvas::annotationRequested);
+        QSignalSpy changed(&layout, &LayoutCanvas::changed);
+        const auto pressMiddle = [&] {
+            pointer(widget, QEvent::MouseButtonPress, {90, 90}, {600, 500},
+                    Qt::MiddleButton, Qt::MiddleButton);
+            QCOMPARE(widget.cursor().shape(), Qt::ClosedHandCursor);
+        };
+        const auto moveMiddle = [&] {
+            pointer(widget, QEvent::MouseMove, {110, 100}, {620, 510}, Qt::NoButton, Qt::MiddleButton);
+        };
+        // Recover even when the OS did not deliver the middle release.
+        pressMiddle();
+        move(widget, {110, 100});
+        QVERIFY(widget.cursor().shape() != Qt::ClosedHandCursor);
+        moveMiddle();
+        QVERIFY(pans.isEmpty());
+        pressMiddle();
+        QFocusEvent blur(QEvent::FocusOut);
+        QApplication::sendEvent(&widget, &blur);
+        QVERIFY(widget.cursor().shape() != Qt::ClosedHandCursor);
+        moveMiddle();
+        QVERIFY(pans.isEmpty());
+        // Losing focus while Middle is held must also suppress a later left-button chord.
+        pointer(widget, QEvent::MouseButtonPress, {90, 90}, {600, 500},
+                Qt::LeftButton, Qt::MiddleButton | Qt::LeftButton);
+        pointer(widget, QEvent::MouseButtonRelease, {90, 90}, {600, 500},
+                Qt::LeftButton, Qt::MiddleButton);
+        pointer(widget, QEvent::MouseButtonRelease, {90, 90}, {600, 500},
+                Qt::MiddleButton, Qt::NoButton);
+        QVERIFY(edits.isEmpty());
+        QVERIFY(annotations.isEmpty());
+        // A fresh press recovers even if there was no move between a lost release and this press.
+        pressMiddle();
+        pressMiddle();
+        moveMiddle();
+        QCOMPARE(pans.size(), 1);
+        pointer(widget, QEvent::MouseButtonRelease, {110, 100}, {620, 510},
+                Qt::MiddleButton, Qt::NoButton);
+        pans.clear();
+        // A left-button chord must not select a component or start a new annotation.
+        pressMiddle();
+        pointer(widget, QEvent::MouseButtonPress, {90, 90}, {600, 500},
+                Qt::LeftButton, Qt::MiddleButton | Qt::LeftButton);
+        pointer(widget, QEvent::MouseMove, {150, 140}, {660, 550},
+                Qt::NoButton, Qt::MiddleButton | Qt::LeftButton);
+        pointer(widget, QEvent::MouseButtonRelease, {150, 140}, {660, 550},
+                Qt::MiddleButton, Qt::LeftButton);
+        pointer(widget, QEvent::MouseMove, {200, 180}, {710, 590}, Qt::NoButton, Qt::LeftButton);
+        pointer(widget, QEvent::MouseButtonRelease, {200, 180}, {710, 590},
+                Qt::LeftButton, Qt::NoButton);
+        QVERIFY(widget.cursor().shape() != Qt::ClosedHandCursor);
+        QVERIFY(pans.isEmpty());
+        // Starting middle during a left drag discards that uncommitted preview.
+        pointer(widget, QEvent::MouseButtonPress, {90, 90}, {600, 500},
+                Qt::LeftButton, Qt::LeftButton);
+        pointer(widget, QEvent::MouseMove, {150, 140}, {660, 550}, Qt::NoButton, Qt::LeftButton);
+        pointer(widget, QEvent::MouseButtonPress, {150, 140}, {660, 550},
+                Qt::MiddleButton, Qt::LeftButton | Qt::MiddleButton);
+        pointer(widget, QEvent::MouseButtonRelease, {150, 140}, {660, 550},
+                Qt::LeftButton, Qt::MiddleButton);
+        pointer(widget, QEvent::MouseButtonRelease, {150, 140}, {660, 550},
+                Qt::MiddleButton, Qt::NoButton);
+        QCOMPARE(layout.state(), initialState);
+        QVERIFY(edits.isEmpty());
+        QVERIFY(regions.isEmpty());
+        QVERIFY(geometry.isEmpty());
+        QVERIFY(annotations.isEmpty());
+        QVERIFY(changed.isEmpty());
+        QVERIFY(pans.isEmpty());
+        // The next ordinary middle drag still works after every cancellation path.
+        pressMiddle();
+        moveMiddle();
+        QCOMPARE(pans.size(), 1);
+        QCOMPARE(pans[0][0].toPoint(), QPoint(20, 10));
+        pointer(widget, QEvent::MouseButtonRelease, {110, 100}, {620, 510},
+                Qt::MiddleButton, Qt::NoButton);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, {90, 90});
+        if (exploded)
+            QVERIFY(!layout.selected().isEmpty());
+        else
+            QCOMPARE(edits.size(), 1);
     }
     void invalidLayoutRemainsInspectableAndExportStillRejectsIt() {
         auto doc = document();

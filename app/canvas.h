@@ -35,6 +35,7 @@ class Canvas final : public QWidget {
     void selectionChanged(QString id);
     void hintChanged(QString text);
     void zoomRequested(double zoom);
+    void panRequested(QPoint delta);
     void contextRequested(QPoint global);
     void layoutEditRequested();
     void regionRequested(QRect area);
@@ -59,13 +60,15 @@ class Canvas final : public QWidget {
     void updateAnnotationHover(QPointF screen);
     void updateHint();
     void rebuildDisplay();
+    void stopMiddlePan(bool suppressMouse = false);
     Document *doc_ = nullptr;
     Mode mode_ = Smart;
     double zoom_ = 1;
     QString selected_;
     CandidatePicker picker_;
     bool drawing_ = false, moving_ = false, panning_ = false, space_ = false;
-    QPoint start_, end_, panStart_, windowStart_;
+    bool middlePanning_ = false, suppressMouse_ = false;
+    QPoint start_, end_, panStart_, windowStart_, middlePanLast_;
     Note original_, preview_;
     int handle_ = -1;
     std::optional<Candidate> pending_;

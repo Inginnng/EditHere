@@ -50,6 +50,7 @@ class LayoutCanvas final : public QWidget {
     void selectionChanged();
     void hintChanged(QString hint);
     void zoomRequested(double value);
+    void panRequested(QPoint delta);
     void noteEditRequested(QString id, QPoint global);
     void annotationRequested(QRect area, QPoint global);
     void movementAnnotationRequested(QRectF source, QRectF destination);
@@ -70,6 +71,7 @@ class LayoutCanvas final : public QWidget {
     QVector<Note> displayedAnnotations() const;
     void updateHover(QPointF point);
     void rebuildMovements();
+    void stopMiddlePan(bool suppressMouse = false);
     int hitMovement(QPointF screen) const;
     void updateAnnotationHover(QPointF screen);
     void commit(const LayoutState &before);
@@ -83,6 +85,8 @@ class LayoutCanvas final : public QWidget {
     int level_ = 0, handle_ = -1;
     double zoom_ = 1;
     bool dragging_ = false, drawingMode_ = false, drawing_ = false, guides_ = true;
+    bool middlePanning_ = false, suppressMouse_ = false;
+    QPoint middlePanLast_;
     QPointF press_, end_, hoverAnchor_{-1000, -1000};
     QRectF initial_;
     QVector<MovementMarker> movements_;

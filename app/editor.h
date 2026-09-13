@@ -55,11 +55,13 @@ class Editor final : public QWidget {
     void guideDismissed();
     void hiddenToTray();
     void toolbarSettingsRequested();
+    void settingsRequested();
 
   protected:
     bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    void changeEvent(QEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 
@@ -80,6 +82,10 @@ class Editor final : public QWidget {
     void copyJson();
     void updateToolbar();
     void toast(const QString &message);
+    void toggleFullscreen();
+    void updateFullscreenButton();
+    void panImage(QPoint delta);
+    void stopViewportPan();
     void showContext(QPoint global);
     void copyImage();
     void saveImage(bool annotated = false);
@@ -131,6 +137,12 @@ class Editor final : public QWidget {
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
+    QPushButton *fullscreen_ = nullptr;
+    Qt::WindowStates beforeFullscreenState_;
+    QRect beforeFullscreenGeometry_;
+    QPoint beforeFullscreenScroll_;
+    bool viewportPanning_ = false;
+    QPoint viewportPanPosition_;
     bool fitted_ = true;
     int generation_ = 0;
     QString projectPath_;

@@ -297,6 +297,20 @@ QIcon glyph(const QString &name, QColor color) {
         path.lineTo(14, 9);
         path.cubicTo(23, 9, 23, 21, 11, 20);
         p.drawPath(path);
+    } else if (name == "fullscreen" || name == "fullscreen-exit") {
+        for (int corner = 0; corner < 4; ++corner) {
+            p.save();
+            p.translate(12, 12);
+            p.rotate(corner * 90);
+            if (name == "fullscreen") {
+                p.drawLine(-8, -3, -8, -8);
+                p.drawLine(-8, -8, -3, -8);
+            } else {
+                p.drawLine(-3, -8, -3, -3);
+                p.drawLine(-3, -3, -8, -3);
+            }
+            p.restore();
+        }
     } else if (name == "close") {
         p.drawLine(7, 7, 17, 17);
         p.drawLine(17, 7, 7, 17);
@@ -399,14 +413,14 @@ DragBar::DragBar(QWidget *parent) : QWidget(parent) {
     setCursor(Qt::OpenHandCursor);
 }
 void DragBar::mousePressEvent(QMouseEvent *e) {
-    if (e->button() == Qt::LeftButton) {
+    if (e->button() == Qt::LeftButton && !window()->isFullScreen() && !window()->isMaximized()) {
         dragging_ = true;
         offset_ = e->globalPosition().toPoint() - window()->pos();
         setCursor(Qt::ClosedHandCursor);
     }
 }
 void DragBar::mouseMoveEvent(QMouseEvent *e) {
-    if (dragging_)
+    if (dragging_ && !window()->isFullScreen() && !window()->isMaximized())
         window()->move(e->globalPosition().toPoint() - offset_);
 }
 void DragBar::mouseReleaseEvent(QMouseEvent *) {

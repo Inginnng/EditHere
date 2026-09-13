@@ -41,6 +41,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
@@ -138,17 +139,30 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(help, &QPushButton::clicked, this, &Editor::showGuide);
     auto open = iconButton("open", "导入图片或项目", bar);
     open->setObjectName("importDocument");
+    auto settings = iconButton("settings", "设置", bar);
+    settings->setObjectName("openSettings");
+    connect(settings, &QPushButton::clicked, this, [this] {
+        finishNoteEdit();
+        emit settingsRequested();
+    });
     auto minimize = iconButton("minus", "最小化", bar);
     minimize->setObjectName("minimizeWindow");
+    fullscreen_ = iconButton("fullscreen", "全屏", bar);
+    fullscreen_->setObjectName("fullscreenWindow");
+    fullscreen_->setCheckable(true);
     auto close = iconButton("close", "关闭当前截图", bar);
+    close->setObjectName("closeWindow");
     header->addWidget(open);
     header->addWidget(capture);
+    header->addWidget(settings);
     header->addWidget(help);
     header->addWidget(minimize);
+    header->addWidget(fullscreen_);
     header->addWidget(close);
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
+    connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
     connect(close, &QPushButton::clicked, this, &QWidget::close);
     layout->addWidget(bar);
     auto content = new QHBoxLayout;
@@ -161,6 +175,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     canvas_ = new Canvas;
     imageScroll_->setWidget(canvas_);
     imageScroll_->viewport()->installEventFilter(this);
+    imageScroll_->viewport()->setMouseTracking(true);
     content->addWidget(imageScroll_, 1);
     notesPanel_ = new QWidget(shell);
     notesPanel_->setObjectName("notesPanel");
@@ -290,6 +305,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(canvas_, &Canvas::hintChanged, hint_, &QLabel::setText);
     connect(canvas_, &Canvas::zoomRequested, this, &Editor::zoom);
     connect(canvas_, &Canvas::contextRequested, this, &Editor::showContext);
+    connect(canvas_, &Canvas::panRequested, this, &Editor::panImage);
     connect(canvas_, &Canvas::regionRequested, this, &Editor::addManualRegion);
     connect(canvas_, &Canvas::movementAnnotationRequested, this, &Editor::editMovement);
     connect(canvas_, &Canvas::geometryChanged, this, [this](Note n) {
@@ -324,6 +340,14 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     shortcut("fit", &Editor::fit);
     shortcut("delete", &Editor::removeSelected);
     shortcut("close", [this] {
+        if (guideActive()) {
+            dismissGuide();
+            return;
+        }
+        if (isFullScreen()) {
+            toggleFullscreen();
+            return;
+        }
         if (explosionActive_) {
             if (componentEditing_ && (!layoutCanvas_->selected().isEmpty() || layoutCanvas_->drawingMode()))
                 layoutCanvas_->cancelInteraction();
@@ -408,8 +432,10 @@ void Editor::setDocument(Document document) {
     QRect available = QGuiApplication::screenAt(QCursor::pos())
                           ? QGuiApplication::screenAt(QCursor::pos())->availableGeometry()
                           : QGuiApplication::primaryScreen()->availableGeometry();
-    resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
-    move(available.center() - rect().center());
+    if (!isFullScreen() && !isMaximized()) {
+        resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
+        move(available.center() - rect().center());
+    }
     const int generation = ++generation_;
     QTimer::singleShot(0, this, [this, generation] {
         if (generation != generation_)
@@ -438,6 +464,60 @@ void Editor::setDocument(Document document) {
     activateWindow();
     canvas_->setFocus();
     updateControls();
+}
+void Editor::toggleFullscreen() {
+    stopViewportPan();
+    if (!isFullScreen()) {
+        beforeFullscreenState_ = windowState() & ~Qt::WindowMinimized;
+        beforeFullscreenGeometry_ = isMaximized() ? normalGeometry() : geometry();
+        beforeFullscreenScroll_ = {imageScroll_->horizontalScrollBar()->value(),
+                                   imageScroll_->verticalScrollBar()->value()};
+        showFullScreen();
+    } else {
+        if (beforeFullscreenState_.testFlag(Qt::WindowMaximized))
+            showMaximized();
+        else {
+            showNormal();
+            if (beforeFullscreenGeometry_.isValid())
+                setGeometry(beforeFullscreenGeometry_);
+        }
+        const int generation = generation_;
+        const QPoint position = beforeFullscreenScroll_;
+        QTimer::singleShot(0, this, [this, generation, position] {
+            if (generation == generation_ && !isFullScreen()) {
+                imageScroll_->horizontalScrollBar()->setValue(position.x());
+                imageScroll_->verticalScrollBar()->setValue(position.y());
+            }
+        });
+    }
+    updateFullscreenButton();
+}
+void Editor::updateFullscreenButton() {
+    if (!fullscreen_) return;
+    const bool full = isFullScreen();
+    const QString name = full ? "fullscreen-exit" : "fullscreen";
+    const QString label = full ? "退出全屏" : "全屏";
+    fullscreen_->setChecked(full);
+    fullscreen_->setProperty("glyphName", name);
+    fullscreen_->setIcon(glyph(name));
+    fullscreen_->setToolTip(label);
+    fullscreen_->setAccessibleName(label);
+}
+void Editor::changeEvent(QEvent *event) {
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange)
+        updateFullscreenButton();
+    if (event->type() == QEvent::ActivationChange && !isActiveWindow())
+        stopViewportPan();
+}
+void Editor::panImage(QPoint delta) {
+    imageScroll_->horizontalScrollBar()->setValue(imageScroll_->horizontalScrollBar()->value() - delta.x());
+    imageScroll_->verticalScrollBar()->setValue(imageScroll_->verticalScrollBar()->value() - delta.y());
+}
+void Editor::stopViewportPan() {
+    if (!viewportPanning_) return;
+    viewportPanning_ = false;
+    imageScroll_->viewport()->unsetCursor();
 }
 void Editor::fit() {
     if (!hasDocument())
@@ -763,6 +843,40 @@ void Editor::toggleAnnotations() {
     if(layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
+    if (object == imageScroll_->viewport()) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            const auto mouse = static_cast<QMouseEvent *>(event);
+            if (hasDocument() && mouse->button() == Qt::MiddleButton &&
+                mouse->buttons() == Qt::MiddleButton) {
+                viewportPanning_ = true;
+                viewportPanPosition_ = mouse->globalPosition().toPoint();
+                imageScroll_->viewport()->setCursor(Qt::ClosedHandCursor);
+                event->accept();
+                return true;
+            }
+            if (viewportPanning_) return true;
+        } else if (event->type() == QEvent::MouseMove && viewportPanning_) {
+            const auto mouse = static_cast<QMouseEvent *>(event);
+            if (!(mouse->buttons() & Qt::MiddleButton)) {
+                stopViewportPan();
+                return false;
+            }
+            const auto position = mouse->globalPosition().toPoint();
+            panImage(position - viewportPanPosition_);
+            viewportPanPosition_ = position;
+            event->accept();
+            return true;
+        } else if (event->type() == QEvent::MouseButtonRelease && viewportPanning_) {
+            if (static_cast<QMouseEvent *>(event)->button() == Qt::MiddleButton)
+                stopViewportPan();
+            event->accept();
+            return true;
+        } else if (event->type() == QEvent::Hide || event->type() == QEvent::FocusOut ||
+                   event->type() == QEvent::UngrabMouse) {
+            stopViewportPan();
+        }
+        if (viewportPanning_ && event->type() == QEvent::Wheel) return true;
+    }
     if (object==imageScroll_->viewport() && event->type()==QEvent::Wheel && hasDocument()) {
         const auto wheel=static_cast<QWheelEvent *>(event);
         QWidget *active=imageScroll_->widget();
@@ -888,6 +1002,7 @@ void Editor::setComponentEditing(bool enabled) {
     updateLayoutControls();
 }
 void Editor::switchCanvas(QWidget *target) {
+    stopViewportPan();
     if (imageScroll_->widget() == target)
         return;
     const int x = imageScroll_->horizontalScrollBar()->value();
@@ -959,6 +1074,7 @@ void Editor::setExplosionActive(bool enabled) {
                     hint_->setText(hint);
             });
             connect(layoutCanvas_, &LayoutCanvas::zoomRequested, this, &Editor::zoom);
+            connect(layoutCanvas_, &LayoutCanvas::panRequested, this, &Editor::panImage);
             connect(layoutCanvas_, &LayoutCanvas::movementAnnotationRequested,this,&Editor::editMovement);
             layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
             connect(layoutCanvas_, &LayoutCanvas::noteEditRequested, this,
@@ -1270,6 +1386,8 @@ void Editor::exportJson() {
 void Editor::showContext(QPoint p) {
     finishNoteEdit();
     QMenu menu(this);
+    auto settings = menu.addAction(glyph("settings"), "设置…", this, &Editor::settingsRequested);
+    settings->setObjectName("editorSettings");
     menu.addAction(glyph("settings"),"自定义工具栏…",this,&Editor::toolbarSettingsRequested);
     bool hiddenActions=false;
     for (const auto &definition : toolbarActionDefinitions()) {
@@ -1291,6 +1409,7 @@ void Editor::closeEvent(QCloseEvent *e) {
     if (!allowReplace())
         return;
     ++generation_;
+    stopViewportPan();
     resetLayoutTools();
     doc_ = {};
     undoHistory_.clear();

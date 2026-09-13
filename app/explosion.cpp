@@ -97,6 +97,7 @@ LayoutCanvas::LayoutCanvas(QImage original, LayoutState state, QWidget *parent)
 }
 void LayoutCanvas::setState(LayoutState state) {
     dragging_ = drawing_ = drawingMode_ = false;
+    stopMiddlePan();
     state_ = std::move(state);
     rebuildMovements();
     before_ = {};
@@ -186,6 +187,7 @@ void LayoutCanvas::cancelInteraction() {
         rebuildMovements();
     }
     dragging_ = drawing_ = drawingMode_ = false;
+    stopMiddlePan();
     handle_ = -1;
     setCursor(Qt::ArrowCursor);
     clearSelection();
@@ -227,6 +229,7 @@ void LayoutCanvas::clearSelection() {
 }
 void LayoutCanvas::setDrawing(bool enabled) {
     drawingMode_ = enabled;
+    stopMiddlePan();
     clearSelection();
     setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
     emit hintChanged(enabled ? "拖动画框创建一个可调整的区域" : "悬停滚轮切换所有区域 · 单击确认");
@@ -318,13 +321,45 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
                    QString::number(number));
     }
 }
+void LayoutCanvas::stopMiddlePan(bool suppressMouse) {
+    middlePanning_ = false;
+    suppressMouse_ = suppressMouse;
+    setCursor(drawingMode_ ? Qt::CrossCursor : Qt::ArrowCursor);
+}
 void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
-    if (event->button() == Qt::RightButton) {
-        setDrawing(false);
+    if ((suppressMouse_ && event->buttons() == event->button()) ||
+        (middlePanning_ && event->button() == Qt::MiddleButton &&
+         event->buttons() == Qt::MiddleButton))
+        stopMiddlePan();
+    if (middlePanning_ || suppressMouse_ ||
+        (event->button() != Qt::MiddleButton && event->buttons().testFlag(Qt::MiddleButton))) {
+        stopMiddlePan(event->buttons() != Qt::NoButton);
+        event->accept();
         return;
     }
     if (event->button() == Qt::MiddleButton) {
-        emit zoomRequested(std::abs(zoom_ - 1) < .01 ? 0 : 1);
+        setFocus();
+        if (dragging_) {
+            state_ = before_;
+            rebuildMovements();
+            emit selectionChanged();
+        }
+        dragging_ = drawing_ = false;
+        handle_ = -1;
+        hoveredNote_.clear();
+        hoveredMovement_ = -1;
+        hoverTimer_->stop();
+        middlePanning_ = event->buttons() == Qt::MiddleButton;
+        suppressMouse_ = !middlePanning_;
+        middlePanLast_ = event->globalPosition().toPoint();
+        if (middlePanning_)
+            setCursor(Qt::ClosedHandCursor);
+        update();
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::RightButton) {
+        setDrawing(false);
         return;
     }
     if (event->button() != Qt::LeftButton)
@@ -381,6 +416,20 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     }
 }
 void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
+    if (middlePanning_ || suppressMouse_) {
+        if (!middlePanning_ || event->buttons() != Qt::MiddleButton)
+            stopMiddlePan(event->buttons() != Qt::NoButton);
+        else {
+            // Scrolling changes local coordinates, so use the pointer's screen position.
+            const QPoint current = event->globalPosition().toPoint();
+            const QPoint delta = current - middlePanLast_;
+            middlePanLast_ = current;
+            if (!delta.isNull())
+                emit panRequested(delta);
+        }
+        event->accept();
+        return;
+    }
     end_ = pixel(event->position());
     if (dragging_) {
         state_ = before_;
@@ -431,6 +480,11 @@ void LayoutCanvas::commit(const LayoutState &before) {
     update();
 }
 void LayoutCanvas::mouseReleaseEvent(QMouseEvent *event) {
+    if (middlePanning_ || suppressMouse_ || event->button() == Qt::MiddleButton) {
+        stopMiddlePan(event->buttons() != Qt::NoButton);
+        event->accept();
+        return;
+    }
     if (event->button() != Qt::LeftButton)
         return;
     if (dragging_) {
@@ -465,8 +519,10 @@ void LayoutCanvas::transformSelection(QRectF destination) {
     commit(before);
 }
 void LayoutCanvas::wheelEvent(QWheelEvent *event) {
-    if (dragging_ || drawing_)
+    if (dragging_ || drawing_ || middlePanning_ || suppressMouse_) {
+        event->accept();
         return;
+    }
     const int delta = event->angleDelta().y();
     if (!delta)
         return;
@@ -503,6 +559,10 @@ void LayoutCanvas::keyPressEvent(QKeyEvent *event) {
         event->accept();
         return;
     }
+    if (middlePanning_ || suppressMouse_) {
+        event->accept();
+        return;
+    }
     QPointF delta;
     if (event->key() == Qt::Key_Left)
         delta = {-1, 0};
@@ -536,6 +596,7 @@ void LayoutCanvas::focusOutEvent(QFocusEvent *event) {
     // Ordinary focus changes to the inspector preserve the selected component.
     if (dragging_ || drawing_)
         cancelInteraction();
+    stopMiddlePan();
     QWidget::focusOutEvent(event);
 }
 void LayoutCanvas::undo() {

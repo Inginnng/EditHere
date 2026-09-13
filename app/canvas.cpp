@@ -80,13 +80,15 @@ void Canvas::setDocument(Document *doc) {
     hoveredMovement_ = -1;
     hoverTimer_->stop();
     picker_.reset();
-    drawing_ = moving_ = false;
+    drawing_ = moving_ = panning_ = false;
+    stopMiddlePan();
     rebuildDisplay();
     setZoom(zoom_);
 }
 void Canvas::setMode(Mode mode) {
     mode_ = mode;
-    drawing_ = moving_ = false;
+    drawing_ = moving_ = panning_ = false;
+    stopMiddlePan();
     picker_.reset();
     setCursor(mode == Adjust ? Qt::ArrowCursor : Qt::CrossCursor);
     update();
@@ -112,6 +114,7 @@ void Canvas::setLayoutPreview(bool enabled) {
     const bool preview = enabled && doc_ && doc_->layout.has_value();
     if (layoutPreview_ != preview) {
         drawing_ = moving_ = panning_ = false;
+        stopMiddlePan();
         picker_.reset();
     }
     layoutPreview_ = preview;
@@ -299,16 +302,43 @@ void Canvas::paintEvent(QPaintEvent *event) {
     if (drawing_ && (mode_ == Rectangle || (end_ - start_).manhattanLength() * zoom_ > 5))
         outline(dragRect(start_, end_, doc_->image.size()), accent(), true, true);
 }
+void Canvas::stopMiddlePan(bool suppressMouse) {
+    middlePanning_ = false;
+    suppressMouse_ = suppressMouse;
+    setCursor(space_ ? Qt::OpenHandCursor : mode_ == Adjust ? Qt::ArrowCursor : Qt::CrossCursor);
+}
 void Canvas::mousePressEvent(QMouseEvent *e) {
     if (!doc_)
         return;
-    if (e->button() == Qt::RightButton) {
-        drawing_ = moving_ = false;
-        emit contextRequested(e->globalPosition().toPoint());
+    if ((suppressMouse_ && e->buttons() == e->button()) ||
+        (middlePanning_ && e->button() == Qt::MiddleButton &&
+         e->buttons() == Qt::MiddleButton))
+        stopMiddlePan();
+    if (middlePanning_ || suppressMouse_ ||
+        (e->button() != Qt::MiddleButton && e->buttons().testFlag(Qt::MiddleButton))) {
+        stopMiddlePan(e->buttons() != Qt::NoButton);
+        e->accept();
         return;
     }
     if (e->button() == Qt::MiddleButton) {
-        emit zoomRequested(std::abs(zoom_ - 1) < .01 ? 0 : 1);
+        setFocus();
+        drawing_ = moving_ = panning_ = false;
+        pending_.reset();
+        hoveredNote_.clear();
+        hoveredMovement_ = -1;
+        hoverTimer_->stop();
+        middlePanning_ = e->buttons() == Qt::MiddleButton;
+        suppressMouse_ = !middlePanning_;
+        middlePanLast_ = e->globalPosition().toPoint();
+        if (middlePanning_)
+            setCursor(Qt::ClosedHandCursor);
+        update();
+        e->accept();
+        return;
+    }
+    if (e->button() == Qt::RightButton) {
+        drawing_ = moving_ = false;
+        emit contextRequested(e->globalPosition().toPoint());
         return;
     }
     if (e->button() != Qt::LeftButton)
@@ -386,8 +416,23 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (!doc_)
         return;
+    if (middlePanning_ || suppressMouse_) {
+        if (!middlePanning_ || e->buttons() != Qt::MiddleButton)
+            stopMiddlePan(e->buttons() != Qt::NoButton);
+        else {
+            // Scrolling changes local coordinates, so use the pointer's screen position.
+            const QPoint current = e->globalPosition().toPoint();
+            const QPoint delta = current - middlePanLast_;
+            middlePanLast_ = current;
+            if (!delta.isNull())
+                emit panRequested(delta);
+        }
+        e->accept();
+        return;
+    }
     if (panning_) {
-        window()->move(windowStart_ + e->globalPosition().toPoint() - panStart_);
+        if (!window()->isFullScreen() && !window()->isMaximized())
+            window()->move(windowStart_ + e->globalPosition().toPoint() - panStart_);
         return;
     }
     QPoint p = toImage(e->position());
@@ -412,6 +457,11 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     }
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    if (middlePanning_ || suppressMouse_ || e->button() == Qt::MiddleButton) {
+        stopMiddlePan(e->buttons() != Qt::NoButton);
+        e->accept();
+        return;
+    }
     if (e->button() != Qt::LeftButton || !doc_)
         return;
     if (panning_) {
@@ -464,7 +514,8 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     emit editRequested(n, true, e->globalPosition().toPoint());
 }
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
-    if (doc_ && mode_ == Adjust) {
+    if (e->button() == Qt::LeftButton && !middlePanning_ && !suppressMouse_ &&
+        doc_ && mode_ == Adjust) {
         moving_ = drawing_ = false;
         int i = hit(e->position(), true);
         if (i >= 0)
@@ -472,8 +523,10 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
     }
 }
 void Canvas::wheelEvent(QWheelEvent *e) {
-    if (!doc_ || drawing_ || moving_)
+    if (!doc_ || drawing_ || moving_ || middlePanning_ || suppressMouse_) {
+        e->accept();
         return;
+    }
     const int delta = e->angleDelta().y();
     if (!delta) {
         e->ignore();
@@ -517,10 +570,12 @@ void Canvas::updateHint() {
 void Canvas::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) {
         space_ = true;
-        setCursor(Qt::OpenHandCursor);
+        if (!middlePanning_)
+            setCursor(Qt::OpenHandCursor);
         e->accept();
     } else if (e->key() == Qt::Key_Escape) {
         drawing_ = moving_ = panning_ = false;
+        stopMiddlePan();
         update();
         e->accept();
     } else
@@ -529,7 +584,8 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
 void Canvas::keyReleaseEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) {
         space_ = false;
-        setCursor(mode_ == Adjust ? Qt::ArrowCursor : Qt::CrossCursor);
+        if (!middlePanning_)
+            setCursor(mode_ == Adjust ? Qt::ArrowCursor : Qt::CrossCursor);
     } else
         QWidget::keyReleaseEvent(e);
 }
@@ -548,6 +604,7 @@ void Canvas::focusOutEvent(QFocusEvent *e) {
     hoverTimer_->stop();
     space_ = false;
     drawing_ = moving_ = panning_ = false;
+    stopMiddlePan();
     update();
     QWidget::focusOutEvent(e);
 }

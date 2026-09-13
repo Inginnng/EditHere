@@ -60,6 +60,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
             tray_.showMessage("HelpDesign", "无法记录引导状态，下次启动时可能再次显示。\n" + error);
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
+    connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
         tray_.showMessage("HelpDesign", "截图快捷键未能注册，请右键托盘打开设置修改。");
 }
