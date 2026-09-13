@@ -85,7 +85,7 @@ class LayoutCanvas final : public QWidget {
     bool dragging_ = false, drawingMode_ = false, drawing_ = false, guides_ = true;
     QPointF press_, end_, hoverAnchor_{-1000, -1000};
     QRectF initial_;
-    QVector<QPair<QRectF, QRectF>> movements_;
+    QVector<MovementMarker> movements_;
     bool annotationsVisible_ = true;
     QString hoveredNote_;
     int hoveredMovement_ = -1;

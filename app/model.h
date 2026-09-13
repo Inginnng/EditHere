@@ -38,6 +38,11 @@ struct Note {
     QString updatedAt = createdAt;
     bool operator==(const Note &) const = default;
 };
+struct MovementMarker {
+    QRectF source, destination;
+    int number = 0;
+    int noteIndex = -1;
+};
 struct Document {
     QString id = uniqueId();
     QString createdAt = timestamp();
@@ -58,6 +63,8 @@ Document loadDocument(const QString &path);
 QJsonObject exportFeedback(const Document &doc, bool embed = false);
 QByteArray serializeFeedback(const Document &doc, bool embed = false);
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
+QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
+QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);
 Document loadFeedback(const QJsonObject &feedback, const QImage &original);

@@ -2,7 +2,10 @@
 #include "explosion.h"
 #include "ui.h"
 #include <QApplication>
+#include <QDir>
+#include <QFontDatabase>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTest>
@@ -39,7 +42,81 @@ class CanvasFeedbackTests : public QObject {
                 return group.id;
         return {};
     }
+    static QRectF movementSource(int row) {
+        return {60, 100 + row * 150.0, 140, 70};
+    }
+    static QRectF movementDestination(int row) {
+        return {470, 100 + row * 150.0, 140, 70};
+    }
+    static QPointF movementMidpoint(int row, double zoom = 1) {
+        return (movementSource(row).center() + movementDestination(row).center()) * (zoom / 2);
+    }
+    static Note movementNote(int row) {
+        Note note;
+        note.isPoint = false;
+        note.movementSource = movementSource(row);
+        note.rect = movementDestination(row).toRect();
+        note.comment = "将这个内容块移到右侧，保留左侧留白。";
+        return note;
+    }
+    static Document numberedMovements(bool annotated = true) {
+        QImage image(800, 600, QImage::Format_ARGB32);
+        image.fill(QColor("#edf1f5"));
+        QPainter painter(&image);
+        painter.setPen(QColor("#203047"));
+        painter.setFont(QFont("Microsoft YaHei UI", 19, QFont::DemiBold));
+        painter.drawText(QRect(40, 20, 720, 44), Qt::AlignVCenter, "内容布局 · 移动位置");
+        QVector<Candidate> candidates;
+        for (int row = 0; row < 3; ++row) {
+            const auto source = movementSource(row).toRect();
+            painter.fillRect(source, QColor("#ffffff"));
+            painter.fillRect(QRect(source.x(), source.y(), 5, source.height()), QColor("#007aff"));
+            painter.setFont(QFont("Microsoft YaHei UI", 11, QFont::DemiBold));
+            painter.drawText(source.adjusted(16, 8, -8, -30), Qt::AlignVCenter,
+                             QString("内容模块 %1").arg(row + 1));
+            painter.setFont(QFont("Microsoft YaHei UI", 9));
+            painter.drawText(source.adjusted(16, 36, -8, -8), Qt::AlignVCenter, "保持信息层次");
+            auto target = manualTarget();
+            target["method"] = "test-region";
+            target["label"] = QString("内容模块 %1").arg(row + 1);
+            candidates.append({source, target});
+        }
+        painter.end();
+        auto doc = fromImage(image, "test", "移动箭头编号");
+        doc.candidates = candidates;
+        doc.layout = createLayout(image.size(), candidates);
+        for (int row = 0; row < 3; ++row)
+            for (const auto &group : doc.layout->groups)
+                if (group.originalBounds == movementSource(row)) {
+                    transformLayoutGroup(*doc.layout, group.id, movementDestination(row));
+                    break;
+                }
+        if (annotated) {
+            Note global;
+            global.isGlobal = true;
+            global.comment = "整体增加留白。";
+            Note point;
+            point.point = {700, 85};
+            point.comment = "标题保持清晰。";
+            doc.notes = {global, point, movementNote(0)};
+        }
+        return doc;
+    }
+    static QImage rendered(QWidget &widget) {
+        QImage image(widget.size(), QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+        widget.render(&image);
+        return image;
+    }
   private slots:
+    void initTestCase() {
+#ifdef Q_OS_WIN
+        QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR") + "/Fonts/segoeui.ttf");
+        QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR") + "/Fonts/msyh.ttc");
+        QApplication::setFont(QFont("Microsoft YaHei UI", 9));
+#endif
+        applyTheme(ThemeMode::Light);
+    }
     void invalidLayoutRemainsInspectableAndExportStillRejectsIt() {
         auto doc = document();
         doc.layout = createLayout(doc.image.size(), doc.candidates);
@@ -223,6 +300,200 @@ class CanvasFeedbackTests : public QObject {
         layout.setAnnotationsVisible(false);
         QTest::mouseClick(&layout, Qt::LeftButton, Qt::NoModifier, midpoint.toPoint());
         QCOMPARE(layoutMoves.size(), 1);
+    }
+    void numberedMovementBadgesOpenExistingNotesAndDrafts_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::newRow("canvas") << false;
+        QTest::newRow("explosion") << true;
+    }
+    void numberedMovementBadgesOpenExistingNotesAndDrafts() {
+        QFETCH(bool, exploded);
+        auto doc = numberedMovements();
+        const auto savedNotes = doc.notes;
+        const auto savedLayout = *doc.layout;
+        QCOMPARE(exportLayoutChanges(savedLayout).size(), 3);
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setLayoutPreview(true);
+        canvas.setMode(Canvas::Adjust);
+        LayoutCanvas layout(doc.image, savedLayout);
+        layout.setAnnotations(doc.notes);
+        layout.setGuides(false);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        QSignalSpy canvasEdits(&canvas, &Canvas::editRequested);
+        QSignalSpy layoutEdits(&layout, &LayoutCanvas::noteEditRequested);
+        QSignalSpy canvasMoves(&canvas, &Canvas::movementAnnotationRequested);
+        QSignalSpy layoutMoves(&layout, &LayoutCanvas::movementAnnotationRequested);
+        auto &edits = exploded ? layoutEdits : canvasEdits;
+        auto &moves = exploded ? layoutMoves : canvasMoves;
+        auto editedId = [&] {
+            return exploded ? edits.last().at(0).toString() : qvariant_cast<Note>(edits.last().at(0)).id;
+        };
+        auto setVisible = [&](bool visible) {
+            if (exploded) layout.setAnnotationsVisible(visible);
+            else canvas.setAnnotationsVisible(visible);
+        };
+        int editCount = 0, moveCount = 0;
+        for (const double zoom : {.5, 1.0, 1.75}) {
+            if (exploded) layout.setZoom(zoom);
+            else canvas.setZoom(zoom);
+            // These points miss the line's 8 px tolerance but lie inside the full 17 px badge hit area.
+            for (const int offset : {12, 16}) {
+                QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                                  (movementMidpoint(0, zoom) + QPointF(0, offset)).toPoint());
+                QCOMPARE(edits.size(), ++editCount);
+                QCOMPARE(editedId(), doc.notes[2].id);
+                if (!exploded) QVERIFY(!edits.last().at(1).toBool());
+                QCOMPARE(moves.size(), moveCount);
+                QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                                  (movementMidpoint(1, zoom) + QPointF(0, offset)).toPoint());
+                QCOMPARE(moves.size(), ++moveCount);
+                QCOMPARE(moves.last().at(0).toRectF(), movementSource(1));
+                QCOMPARE(moves.last().at(1).toRectF(), movementDestination(1));
+                QCOMPARE(edits.size(), editCount);
+            }
+            // The existing annotation must also open when its arrow is clicked away from the badge.
+            const auto linePoint = (movementSource(0).center() * .75 +
+                                    movementDestination(0).center() * .25) * zoom;
+            QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, linePoint.toPoint());
+            QCOMPARE(edits.size(), ++editCount);
+            QCOMPARE(editedId(), doc.notes[2].id);
+            QCOMPARE(moves.size(), moveCount);
+            setVisible(false);
+            QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                              (movementMidpoint(0, zoom) + QPointF(0, 12)).toPoint());
+            QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                              (movementMidpoint(1, zoom) + QPointF(0, 12)).toPoint());
+            QCOMPARE(edits.size(), editCount);
+            QCOMPARE(moves.size(), moveCount);
+            setVisible(true);
+            QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                              (movementMidpoint(0, zoom) + QPointF(0, 12)).toPoint());
+            QCOMPARE(edits.size(), ++editCount);
+            QCOMPARE(editedId(), doc.notes[2].id);
+        }
+        QCOMPARE(doc.notes, savedNotes);
+        QCOMPARE(*doc.layout, savedLayout);
+        QCOMPARE(layout.state(), savedLayout);
+        // Saving a draft turns the same numbered arrow into an existing-note edit target immediately.
+        doc.notes.append(movementNote(1));
+        canvas.refresh();
+        layout.setAnnotations(doc.notes);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                          (movementMidpoint(1, 1.75) + QPointF(0, 16)).toPoint());
+        QCOMPARE(edits.size(), ++editCount);
+        QCOMPARE(editedId(), doc.notes.last().id);
+        QCOMPARE(moves.size(), moveCount);
+        QCOMPARE(doc.notes.size(), savedNotes.size() + 1);
+    }
+    void mergedMovementKeepsAdditionalNoteBadgesEditable_data() {
+        numberedMovementBadgesOpenExistingNotesAndDrafts_data();
+    }
+    void mergedMovementKeepsAdditionalNoteBadgesEditable() {
+        QFETCH(bool, exploded);
+        auto doc = numberedMovements();
+        auto additional = movementNote(0);
+        additional.movementSource = QRectF(130, 100, 70, 70);
+        additional.rect = QRect(540, 100, 70, 70);
+        additional.comment = "同一移动中的另一处意见。";
+        doc.notes.append(additional);
+        QCOMPARE(movementAnnotationIndex(doc.notes[2], *doc.layout),
+                 movementAnnotationIndex(additional, *doc.layout));
+        const auto savedNotes = doc.notes;
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setLayoutPreview(true);
+        canvas.setMode(Canvas::Adjust);
+        canvas.setZoom(1.25);
+        LayoutCanvas layout(doc.image, *doc.layout);
+        layout.setAnnotations(doc.notes);
+        layout.setZoom(1.25);
+        layout.setGuides(false);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        QSignalSpy canvasEdits(&canvas, &Canvas::editRequested);
+        QSignalSpy layoutEdits(&layout, &LayoutCanvas::noteEditRequested);
+        QSignalSpy canvasMoves(&canvas, &Canvas::movementAnnotationRequested);
+        QSignalSpy layoutMoves(&layout, &LayoutCanvas::movementAnnotationRequested);
+        auto &edits = exploded ? layoutEdits : canvasEdits;
+        auto editedId = [&] {
+            return exploded ? edits.last().at(0).toString() : qvariant_cast<Note>(edits.last().at(0)).id;
+        };
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                          (movementMidpoint(0, 1.25) + QPointF(0, 12)).toPoint());
+        QCOMPARE(edits.size(), 1);
+        QCOMPARE(editedId(), doc.notes[2].id);
+        // Only the first note moves onto the shared arrow. The other keeps its own corner badge.
+        const auto additionalBadge = QPointF(additional.rect.topLeft()) * 1.25 + QPointF(18, 18);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, additionalBadge.toPoint());
+        QCOMPARE(edits.size(), 2);
+        QCOMPARE(editedId(), additional.id);
+        QVERIFY(canvasMoves.isEmpty());
+        QVERIFY(layoutMoves.isEmpty());
+        QCOMPARE(doc.notes, savedNotes);
+    }
+    void numberedMovementAppearanceAndFixedScreenSize_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::addColumn<bool>("annotated");
+        QTest::addColumn<bool>("dark");
+        for (const bool exploded : {false, true})
+            for (const bool annotated : {false, true})
+                for (const bool dark : {false, true}) {
+                    const auto name = QString("%1-%2-%3")
+                                          .arg(exploded ? "explosion" : "canvas",
+                                               annotated ? "mixed-notes" : "no-notes", dark ? "dark" : "light");
+                    QTest::newRow(qPrintable(name)) << exploded << annotated << dark;
+                }
+    }
+    void numberedMovementAppearanceAndFixedScreenSize() {
+        QFETCH(bool, exploded);
+        QFETCH(bool, annotated);
+        QFETCH(bool, dark);
+        applyTheme(dark ? ThemeMode::Dark : ThemeMode::Light);
+        auto doc = numberedMovements(annotated);
+        const auto savedNotes = doc.notes;
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setLayoutPreview(true);
+        canvas.setMode(Canvas::Adjust);
+        LayoutCanvas layout(doc.image, *doc.layout);
+        layout.setAnnotations(doc.notes);
+        layout.setGuides(false);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        for (const double zoom : {.5, 1.0, 1.75}) {
+            if (exploded) {
+                layout.setZoom(zoom);
+                layout.setAnnotationsVisible(false);
+            } else {
+                canvas.setZoom(zoom);
+                canvas.setAnnotationsVisible(false);
+            }
+            const auto hidden = rendered(widget);
+            if (exploded) layout.setAnnotationsVisible(true);
+            else canvas.setAnnotationsVisible(true);
+            const auto visible = rendered(widget);
+            for (int row = 0; row < 3; ++row) {
+                const auto center = movementMidpoint(row, zoom).toPoint();
+                // A visible circle extends 12 px perpendicular to its arrow at every zoom.
+                const QRect rim(center + QPoint(-2, 10), QSize(5, 5));
+                QVERIFY(visible.copy(rim) != hidden.copy(rim));
+                // Its radius must not grow with the image zoom, and hiding must remove its pixels.
+                const QRect outside(center + QPoint(-1, 19), QSize(3, 3));
+                QCOMPARE(visible.copy(outside), hidden.copy(outside));
+            }
+            const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+            if (zoom == 1 && !folder.isEmpty()) {
+                QVERIFY(QDir().mkpath(folder));
+                const auto name = QString("movement-numbers-%1-%2-%3.png")
+                                      .arg(exploded ? "explosion" : "canvas",
+                                           annotated ? "mixed-notes" : "no-notes", dark ? "dark" : "light");
+                QVERIFY(visible.save(QDir(folder).filePath(name)));
+            }
+        }
+        QCOMPARE(doc.notes, savedNotes);
+        applyTheme(ThemeMode::Light);
     }
     void layoutBadgesRespectHiddenAndGlobalAnnotations() {
         auto doc = document();

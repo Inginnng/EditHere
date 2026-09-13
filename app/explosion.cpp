@@ -21,28 +21,6 @@
 #include <exception>
 namespace h2d {
 namespace {
-QVector<QPair<QRectF, QRectF>> movementRegions(const LayoutState &state) {
-    QVector<QPair<QRectF, QRectF>> result;
-    const auto read = [](QJsonObject r) {
-        return QRectF(QPointF(r["x1"].toDouble(), r["y1"].toDouble()),
-                      QPointF(r["x2"].toDouble(), r["y2"].toDouble()));
-    };
-    QJsonArray changes;
-    try {
-        changes = exportLayoutChanges(state);
-    } catch (const std::exception &) {
-        // An invalid unsaved layout must remain inspectable. Export validation
-        // reports the error; visual arrows must never prevent opening the editor.
-        return {};
-    }
-    for (const auto &value : changes) {
-        const auto change = value.toObject();
-        const auto from = read(change["from"].toObject()), to = read(change["to"].toObject());
-        if (QLineF(from.center(), to.center()).length() > .01)
-            result.append({from, to});
-    }
-    return result;
-}
 bool backgroundBounds(QRectF bounds, QSize canvas) {
     const double fraction = bounds.width() * bounds.height() /
                             std::max(1.0, double(canvas.width()) * canvas.height());
@@ -56,10 +34,10 @@ double segmentDistance(QPointF point, QPointF start, QPointF finish) {
         ? std::clamp(QPointF::dotProduct(point - start, vector) / lengthSquared, 0.0, 1.0) : 0;
     return QLineF(point, start + vector * t).length();
 }
-void paintMovement(QPainter &p, const QPair<QRectF, QRectF> &movement,
+void paintMovement(QPainter &p, const MovementMarker &movement,
                    double zoom, bool hovered, double phase) {
-    const auto start = movement.first.center() * zoom;
-    const auto finish = movement.second.center() * zoom;
+    const auto start = movement.source.center() * zoom;
+    const auto finish = movement.destination.center() * zoom;
     const auto line = QLineF(start, finish);
     if (line.length() < .5)
         return;
@@ -72,7 +50,7 @@ void paintMovement(QPainter &p, const QPair<QRectF, QRectF> &movement,
         p.drawLine(line);
         p.setPen(QPen(QColor(0, 122, 255, 65 + qRound(pulse * 20)), .8, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
-        for (const auto &r : {movement.first, movement.second})
+        for (const auto &r : {movement.source, movement.destination})
             p.drawRect(QRectF(r.topLeft() * zoom, r.size() * zoom));
     }
     p.setPen(QPen(QColor(255, 255, 255, hovered ? 155 : 65), hovered ? 2.7 : 2.2,
@@ -132,6 +110,7 @@ void LayoutCanvas::setState(LayoutState state) {
 void LayoutCanvas::setAnnotations(QVector<Note> notes) {
     annotations_ = std::move(notes);
     annotationState_ = state_;
+    rebuildMovements();
     update();
 }
 void LayoutCanvas::setAnnotationsVisible(bool visible) {
@@ -142,14 +121,20 @@ void LayoutCanvas::setAnnotationsVisible(bool visible) {
     update();
 }
 void LayoutCanvas::rebuildMovements() {
-    movements_ = movementRegions(state_);
+    movements_.clear();
+    try {
+        movements_ = movementMarkers(state_, annotations_);
+    } catch (const std::exception &) {
+        // Keep an invalid unsaved layout inspectable; export reports its validation error.
+    }
     hoveredMovement_ = -1;
 }
 int LayoutCanvas::hitMovement(QPointF screen) const {
     if (annotationsVisible_)
         for (int i = movements_.size() - 1; i >= 0; --i)
-            if (segmentDistance(screen, movements_[i].first.center() * zoom_,
-                                movements_[i].second.center() * zoom_) < 8)
+            if (segmentDistance(screen, movements_[i].source.center() * zoom_,
+                                movements_[i].destination.center() * zoom_) < 8 ||
+                QLineF(screen, movementMarkerAnchor(movements_[i], zoom_, size())).length() < 17)
                 return i;
     return -1;
 }
@@ -176,6 +161,10 @@ QVector<Note> LayoutCanvas::displayedAnnotations() const {
     return annotationState_ == state_ ? annotations_ : remapNotes(annotations_, annotationState_, state_);
 }
 QPointF LayoutCanvas::noteAnchor(const Note &note) const {
+    for (const auto &movement : movements_)
+        if (movement.noteIndex >= 0 && movement.noteIndex < annotations_.size() &&
+            annotations_[movement.noteIndex].id == note.id)
+            return movementMarkerAnchor(movement, zoom_, size());
     QPointF anchor = QPointF(note.isPoint ? note.point : note.rect.topLeft()) * zoom_;
     if (!note.isPoint)
         anchor += QPointF(18, 18);
@@ -301,6 +290,25 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
     if (annotationsVisible_)
         for (int i = 0; i < movements_.size(); ++i)
             paintMovement(p, movements_[i], zoom_, i == hoveredMovement_, hoverPhase_);
+    if (annotationsVisible_)
+        for (int i = 0; i < movements_.size(); ++i) {
+            const auto &movement = movements_[i];
+            if (movement.noteIndex >= 0) continue; // Its existing note badge is drawn below.
+            const QPointF anchor = movementMarkerAnchor(movement, zoom_, size());
+            const bool hovered = i == hoveredMovement_;
+            if (hovered) {
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0, 122, 255, 38));
+                p.drawEllipse(anchor, 18, 18);
+            }
+            p.setPen(QPen(accent(), 1.5));
+            p.setBrush(palette().color(QPalette::Base));
+            p.drawEllipse(anchor, 13, 13);
+            p.setPen(accent());
+            p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+            p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
+                       QString::number(movement.number));
+        }
     int number = 0;
     for (const auto &note : displayedAnnotations()) {
         ++number;
@@ -349,7 +357,12 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     }
     const int movement = hitMovement(event->position());
     if (movement >= 0) {
-        emit movementAnnotationRequested(movements_[movement].first, movements_[movement].second);
+        const int noteIndex = movements_[movement].noteIndex;
+        if (noteIndex >= 0 && noteIndex < notes.size()) {
+            emit noteEditRequested(notes[noteIndex].id, event->globalPosition().toPoint());
+            return;
+        }
+        emit movementAnnotationRequested(movements_[movement].source, movements_[movement].destination);
         return;
     }
     press_ = end_ = pixel(event->position());

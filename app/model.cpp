@@ -348,6 +348,47 @@ std::optional<QRect> quantizedComponentRectangle(QRect rectangle, const LayoutSt
 int movementAnnotationIndex(const Note &note, const LayoutState &layout) {
     return movementIndex(note, exportLayoutChanges(layout));
 }
+QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes) {
+    const auto changes = exportLayoutChanges(layout);
+    QVector<int> firstNotes(changes.size(), -1);
+    for (int i = 0; i < notes.size(); ++i) {
+        const int change = movementIndex(notes[i], changes);
+        if (change >= 0 && firstNotes[change] < 0)
+            firstNotes[change] = i;
+    }
+    QVector<MovementMarker> markers;
+    int nextNumber = notes.size() + 1;
+    for (int i = 0; i < changes.size(); ++i) {
+        const auto change = changes[i].toObject();
+        const auto source = floatingJsonRect(change["from"].toObject());
+        const auto destination = floatingJsonRect(change["to"].toObject());
+        if (QLineF(source.center(), destination.center()).length() <= 0.01)
+            continue;
+        const int noteIndex = firstNotes[i];
+        markers.append({source, destination, noteIndex >= 0 ? noteIndex + 1 : nextNumber++, noteIndex});
+    }
+    return markers;
+}
+QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport) {
+    const QLineF line(marker.source.center() * zoom, marker.destination.center() * zoom);
+    const auto clampAnchor = [&](QPointF anchor) {
+        anchor.setX(std::clamp(anchor.x(), 14.0, std::max(14.0, viewport.width() - 14.0)));
+        anchor.setY(std::clamp(anchor.y(), 14.0, std::max(14.0, viewport.height() - 14.0)));
+        return anchor;
+    };
+    QPointF anchor = line.center();
+    if (line.length() > 0 && line.length() < 40) {
+        const QPointF normal(-line.dy() / line.length(), line.dx() / line.length());
+        const auto positive = anchor + normal * 20;
+        const auto negative = anchor - normal * 20;
+        // Keep short arrows visible and prefer the side that fits inside the canvas.
+        anchor = QLineF(positive, clampAnchor(positive)).length() <=
+                         QLineF(negative, clampAnchor(negative)).length()
+                     ? positive
+                     : negative;
+    }
+    return clampAnchor(anchor);
+}
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout) {
     if (!note.movementSource || note.isGlobal)
         return std::nullopt;
@@ -959,25 +1000,21 @@ QImage previewImage(const Document &doc) {
     QPainter p(&image);
     p.setRenderHint(QPainter::Antialiasing);
     p.drawImage(24, 24, doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
-    if (doc.layout) {
-        for (const auto &entry : exportLayoutChanges(*doc.layout)) {
-            const auto change = entry.toObject();
-            const auto from = floatingJsonRect(change["from"].toObject()).center() + QPointF(24, 24);
-            const auto to = floatingJsonRect(change["to"].toObject()).center() + QPointF(24, 24);
-            const QLineF line(from, to);
-            if (line.length() < 0.5)
-                continue;
-            const auto direction = (to - from) / line.length();
-            const QPointF normal(-direction.y(), direction.x());
-            const double head = std::min(8.0, line.length() * 0.4);
-            const QColor arrow(0, 122, 255, 95);
-            p.setPen(QPen(arrow, 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            p.setBrush(arrow);
-            p.drawLine(from, to);
-            p.drawEllipse(from, 2, 2);
-            p.drawLine(to, to - direction * head + normal * head * 0.5);
-            p.drawLine(to, to - direction * head - normal * head * 0.5);
-        }
+    const auto markers = doc.layout ? movementMarkers(*doc.layout, doc.notes) : QVector<MovementMarker>{};
+    for (const auto &marker : markers) {
+        const auto from = marker.source.center() + QPointF(24, 24);
+        const auto to = marker.destination.center() + QPointF(24, 24);
+        const QLineF line(from, to);
+        const auto direction = (to - from) / line.length();
+        const QPointF normal(-direction.y(), direction.x());
+        const double head = std::min(8.0, line.length() * 0.4);
+        const QColor arrow(0, 122, 255, 95);
+        p.setPen(QPen(arrow, 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(arrow);
+        p.drawLine(from, to);
+        p.drawEllipse(from, 2, 2);
+        p.drawLine(to, to - direction * head + normal * head * 0.5);
+        p.drawLine(to, to - direction * head - normal * head * 0.5);
     }
     auto badge = [&](QPointF c, int n) {
         p.setPen(QPen(Qt::white, 2));
@@ -987,6 +1024,21 @@ QImage previewImage(const Document &doc) {
         p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
         p.drawText(QRectF(c.x() - 14, c.y() - 14, 28, 28), Qt::AlignCenter, QString::number(n));
     };
+    QHash<int, QPointF> movementAnchors;
+    for (const auto &marker : markers) {
+        const auto anchor = movementMarkerAnchor(marker, 1, doc.image.size()) + QPointF(24, 24);
+        if (marker.noteIndex >= 0) {
+            movementAnchors.insert(marker.noteIndex, anchor);
+            continue;
+        }
+        p.setPen(QPen(QColor("#007aff"), 1.5));
+        p.setBrush(Qt::white);
+        p.drawEllipse(anchor, 13, 13);
+        p.setPen(QColor("#007aff"));
+        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
+                   QString::number(marker.number));
+    }
     int y = 72, i = 0, x = doc.image.width() + 60;
     p.setFont(QFont("Microsoft YaHei", 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
@@ -998,7 +1050,8 @@ QImage previewImage(const Document &doc) {
             p.drawRect(QRectF(n.rect).translated(24, 24));
         }
         if (!n.isGlobal)
-            badge(QPointF(n.isPoint ? n.point : n.rect.topLeft()) + QPointF(24, 24), i + 1);
+            badge(movementAnchors.value(i, QPointF(n.isPoint ? n.point : n.rect.topLeft()) + QPointF(24, 24)),
+                  i + 1);
         p.setPen(Qt::NoPen);
         p.setBrush(Qt::white);
         p.drawRoundedRect(QRectF(x, y, 324, heights[i]), 12, 12);

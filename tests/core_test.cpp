@@ -48,6 +48,135 @@ class CoreTests : public QObject {
         saveBytes(path, QJsonDocument(invalid).toJson());
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
     }
+    void movementNumbersMatchNotesAndStayOutOfJson() {
+        QImage image(360, 220, QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        auto doc = fromImage(image, "demo", "箭头编号");
+        doc.layout = createLayout(image.size(), {});
+        const auto first = addLayoutRegion(*doc.layout, {20, 20, 40, 30});
+        const auto second = addLayoutRegion(*doc.layout, {20, 100, 40, 30});
+        const auto third = addLayoutRegion(*doc.layout, {20, 160, 40, 30});
+        transformLayoutGroup(*doc.layout, first, {200, 20, 40, 30});
+        transformLayoutGroup(*doc.layout, second, {200, 100, 40, 30});
+        transformLayoutGroup(*doc.layout, third, {220, 160, 40, 30});
+        const auto plain = movementMarkers(*doc.layout, {});
+        QCOMPARE(plain.size(), 3);
+        for (int i = 0; i < plain.size(); ++i) {
+            QCOMPARE(plain[i].number, i + 1);
+            QCOMPARE(plain[i].noteIndex, -1);
+        }
+        // Numbering a movement alone must not create an empty sidebar card.
+        QCOMPARE(previewImage(doc).size(), QSize(768, 268));
+        Note global;
+        global.isGlobal = true;
+        global.comment = "整体留白";
+        Note point;
+        point.point = {300, 180};
+        point.comment = "按钮";
+        Note movement;
+        movement.isPoint = false;
+        movement.movementSource = QRectF(20, 100, 40, 30);
+        movement.rect = {200, 100, 40, 30};
+        movement.comment = "这个位置";
+        Note rectangle;
+        rectangle.isPoint = false;
+        rectangle.rect = {260, 130, 40, 30};
+        rectangle.comment = "保留这块";
+        doc.notes = {global, point, movement, rectangle};
+        const auto originalNotes = doc.notes;
+        const auto feedback = exportFeedback(doc);
+        const auto markers = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(markers.size(), 3);
+        QCOMPARE(markers[0].number, 5);
+        QCOMPARE(markers[0].noteIndex, -1);
+        QCOMPARE(markers[1].number, 3);
+        QCOMPARE(markers[1].noteIndex, 2);
+        QCOMPARE(markers[2].number, 6);
+        QCOMPARE(markers[2].noteIndex, -1);
+        const auto preview = previewImage(doc);
+        const auto annotatedAnchor = movementMarkerAnchor(markers[1], 1, image.size()).toPoint() + QPoint(24, 24);
+        QCOMPARE(preview.pixelColor(annotatedAnchor + QPoint(-9, 0)), QColor("#007aff"));
+        // The linked note's badge moves to the arrow; its old corner has no duplicate circle.
+        QCOMPARE(preview.pixelColor(movement.rect.topLeft() + QPoint(17, 17)), QColor(Qt::white));
+        const auto hollowAnchor = movementMarkerAnchor(markers[0], 1, image.size()).toPoint() + QPoint(24, 24);
+        QCOMPARE(preview.pixelColor(hollowAnchor + QPoint(-9, 0)), QColor(Qt::white));
+        int bluePixels = 0;
+        for (int y = -14; y <= 14; ++y)
+            for (int x = -14; x <= 14; ++x) {
+                const auto color = preview.pixelColor(hollowAnchor + QPoint(x, y));
+                bluePixels += color.red() < 40 && color.green() < 160 && color.blue() > 230;
+            }
+        QVERIFY(bluePixels > 30);
+        QCOMPARE(doc.notes, originalNotes);
+        QCOMPARE(exportFeedback(doc), feedback);
+        QCOMPARE(feedback.keys(), (QStringList{"annotationSpace", "annotations", "changes"}));
+        QCOMPARE(feedback["annotations"].toArray().size(), 4);
+        QCOMPARE(feedback["annotations"].toArray()[2].toObject(),
+                 (QJsonObject{{"change", 1}, {"text", movement.comment}}));
+        for (const auto &change : feedback["changes"].toArray())
+            QCOMPARE(change.toObject().keys(), (QStringList{"from", "to"}));
+        const auto project = QJsonDocument::fromJson(serializeDocument(doc, true)).object();
+        QCOMPARE(project.keys(), (QStringList{"annotationSpace", "annotations", "capture", "exportedAt",
+                                              "layout", "schemaVersion", "tool"}));
+        QCOMPARE(project["annotations"].toArray().size(), 4);
+        // Deleting a note releases its number without leaving a stale link on the arrow.
+        doc.notes.removeAt(2);
+        const auto afterDelete = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(afterDelete.size(), 3);
+        for (int i = 0; i < afterDelete.size(); ++i) {
+            QCOMPARE(afterDelete[i].number, i + 4);
+            QCOMPARE(afterDelete[i].noteIndex, -1);
+        }
+    }
+    void mergedMovementNumbersAndRevertedLayout() {
+        auto layout = createLayout({240, 160}, {});
+        const auto left = addLayoutRegion(layout, {20, 20, 20, 40});
+        const auto right = addLayoutRegion(layout, {40, 20, 20, 40});
+        const auto original = layout;
+        transformLayoutGroup(layout, left, {100, 60, 20, 40});
+        transformLayoutGroup(layout, right, {120, 60, 20, 40});
+        Note leftNote;
+        leftNote.isPoint = false;
+        leftNote.movementSource = QRectF(20, 20, 20, 40);
+        leftNote.rect = {100, 60, 20, 40};
+        leftNote.comment = "左半部分";
+        Note rightNote;
+        rightNote.isPoint = false;
+        rightNote.movementSource = QRectF(40, 20, 20, 40);
+        rightNote.rect = {120, 60, 20, 40};
+        rightNote.comment = "右半部分";
+        const auto markers = movementMarkers(layout, {leftNote, rightNote});
+        QCOMPARE(markers.size(), 1);
+        QCOMPARE(markers[0].source, QRectF(20, 20, 40, 40));
+        QCOMPARE(markers[0].destination, QRectF(100, 60, 40, 40));
+        QCOMPARE(markers[0].number, 1);
+        QCOMPARE(markers[0].noteIndex, 0);
+        QCOMPARE(movementAnnotationIndex(rightNote, layout), 0);
+        const auto remaining = movementMarkers(layout, {rightNote});
+        QCOMPARE(remaining.size(), 1);
+        QCOMPARE(remaining[0].noteIndex, 0);
+        QCOMPARE(remaining[0].number, 1);
+        QVERIFY(movementMarkers(original, {leftNote, rightNote}).isEmpty());
+        transformLayoutGroup(layout, left, {20, 20, 20, 40});
+        transformLayoutGroup(layout, right, {40, 20, 20, 40});
+        QVERIFY(movementMarkers(layout, {leftNote, rightNote}).isEmpty());
+        // A resize about the same center has no directional arrow to number.
+        transformLayoutGroup(layout, left, {15, 10, 30, 60});
+        QVERIFY(!exportLayoutChanges(layout).isEmpty());
+        QVERIFY(movementMarkers(layout, {leftNote}).isEmpty());
+    }
+    void shortMovementBadgeLeavesTheArrowVisible() {
+        MovementMarker marker{QRectF(20, 140, 20, 10), QRectF(22, 140, 20, 10), 1, -1};
+        const auto anchor = movementMarkerAnchor(marker, 1, {240, 160});
+        const auto midpoint = (marker.source.center() + marker.destination.center()) * 0.5;
+        QVERIFY(QLineF(anchor, midpoint).length() >= 20);
+        QVERIFY(anchor.x() >= 14 && anchor.x() <= 226);
+        QVERIFY(anchor.y() >= 14 && anchor.y() <= 146);
+        QVERIFY(anchor.y() < midpoint.y());
+        marker.destination.translate(100, -80);
+        QCOMPARE(movementMarkerAnchor(marker, 1, {240, 160}),
+                 (marker.source.center() + marker.destination.center()) * 0.5);
+    }
     void geometry() {
         QCOMPARE(dragRect({220, 80}, {-5, 15}, {200, 100}), QRect(0, 15, 200, 65));
         QCOMPARE(moveRect({20, 20, 60, 40}, {300, -50}, {100, 100}), QRect(40, 0, 60, 40));

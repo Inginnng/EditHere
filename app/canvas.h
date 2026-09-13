@@ -72,7 +72,7 @@ class Canvas final : public QWidget {
     bool layoutPreview_ = false;
     QImage layoutImage_;
     QVector<Candidate> displayCandidates_;
-    QVector<QPair<QRectF, QRectF>> movements_;
+    QVector<MovementMarker> movements_;
     bool annotationsVisible_ = true;
     QString hoveredNote_;
     int hoveredMovement_ = -1;
