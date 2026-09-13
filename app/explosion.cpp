@@ -134,7 +134,8 @@ int LayoutCanvas::hitMovement(QPointF screen) const {
         for (int i = movements_.size() - 1; i >= 0; --i)
             if (segmentDistance(screen, movements_[i].source.center() * zoom_,
                                 movements_[i].destination.center() * zoom_) < 8 ||
-                QLineF(screen, movementMarkerAnchor(movements_[i], zoom_, size())).length() < 17)
+                (movements_[i].noteIndex >= 0 &&
+                 QLineF(screen, movementMarkerAnchor(movements_[i], zoom_, size())).length() < 17))
                 return i;
     return -1;
 }
@@ -290,25 +291,6 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
     if (annotationsVisible_)
         for (int i = 0; i < movements_.size(); ++i)
             paintMovement(p, movements_[i], zoom_, i == hoveredMovement_, hoverPhase_);
-    if (annotationsVisible_)
-        for (int i = 0; i < movements_.size(); ++i) {
-            const auto &movement = movements_[i];
-            if (movement.noteIndex >= 0) continue; // Its existing note badge is drawn below.
-            const QPointF anchor = movementMarkerAnchor(movement, zoom_, size());
-            const bool hovered = i == hoveredMovement_;
-            if (hovered) {
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(0, 122, 255, 38));
-                p.drawEllipse(anchor, 18, 18);
-            }
-            p.setPen(QPen(accent(), 1.5));
-            p.setBrush(palette().color(QPalette::Base));
-            p.drawEllipse(anchor, 13, 13);
-            p.setPen(accent());
-            p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
-            p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
-                       QString::number(movement.number));
-        }
     int number = 0;
     for (const auto &note : displayedAnnotations()) {
         ++number;

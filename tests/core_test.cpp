@@ -62,10 +62,10 @@ class CoreTests : public QObject {
         const auto plain = movementMarkers(*doc.layout, {});
         QCOMPARE(plain.size(), 3);
         for (int i = 0; i < plain.size(); ++i) {
-            QCOMPARE(plain[i].number, i + 1);
+            QCOMPARE(plain[i].number, 0);
             QCOMPARE(plain[i].noteIndex, -1);
         }
-        // Numbering a movement alone must not create an empty sidebar card.
+        // A movement without a note adds neither a badge nor an empty sidebar card.
         QCOMPARE(previewImage(doc).size(), QSize(768, 268));
         Note global;
         global.isGlobal = true;
@@ -87,26 +87,26 @@ class CoreTests : public QObject {
         const auto feedback = exportFeedback(doc);
         const auto markers = movementMarkers(*doc.layout, doc.notes);
         QCOMPARE(markers.size(), 3);
-        QCOMPARE(markers[0].number, 5);
+        QCOMPARE(markers[0].number, 0);
         QCOMPARE(markers[0].noteIndex, -1);
         QCOMPARE(markers[1].number, 3);
         QCOMPARE(markers[1].noteIndex, 2);
-        QCOMPARE(markers[2].number, 6);
+        QCOMPARE(markers[2].number, 0);
         QCOMPARE(markers[2].noteIndex, -1);
         const auto preview = previewImage(doc);
         const auto annotatedAnchor = movementMarkerAnchor(markers[1], 1, image.size()).toPoint() + QPoint(24, 24);
         QCOMPARE(preview.pixelColor(annotatedAnchor + QPoint(-9, 0)), QColor("#007aff"));
         // The linked note's badge moves to the arrow; its old corner has no duplicate circle.
         QCOMPARE(preview.pixelColor(movement.rect.topLeft() + QPoint(17, 17)), QColor(Qt::white));
-        const auto hollowAnchor = movementMarkerAnchor(markers[0], 1, image.size()).toPoint() + QPoint(24, 24);
-        QCOMPARE(preview.pixelColor(hollowAnchor + QPoint(-9, 0)), QColor(Qt::white));
+        const auto bareAnchor = movementMarkerAnchor(markers[0], 1, image.size()).toPoint() + QPoint(24, 24);
+        QCOMPARE(preview.pixelColor(bareAnchor + QPoint(-9, 10)), QColor(Qt::white));
         int bluePixels = 0;
         for (int y = -14; y <= 14; ++y)
             for (int x = -14; x <= 14; ++x) {
-                const auto color = preview.pixelColor(hollowAnchor + QPoint(x, y));
+                const auto color = preview.pixelColor(bareAnchor + QPoint(x, y));
                 bluePixels += color.red() < 40 && color.green() < 160 && color.blue() > 230;
             }
-        QVERIFY(bluePixels > 30);
+        QCOMPARE(bluePixels, 0);
         QCOMPARE(doc.notes, originalNotes);
         QCOMPARE(exportFeedback(doc), feedback);
         QCOMPARE(feedback.keys(), (QStringList{"annotationSpace", "annotations", "changes"}));
@@ -124,11 +124,11 @@ class CoreTests : public QObject {
         const auto afterDelete = movementMarkers(*doc.layout, doc.notes);
         QCOMPARE(afterDelete.size(), 3);
         for (int i = 0; i < afterDelete.size(); ++i) {
-            QCOMPARE(afterDelete[i].number, i + 4);
+            QCOMPARE(afterDelete[i].number, 0);
             QCOMPARE(afterDelete[i].noteIndex, -1);
         }
     }
-    void mergedMovementNumbersAndRevertedLayout() {
+    void separatelyMovedRegionsKeepTheirOwnTrajectories() {
         auto layout = createLayout({240, 160}, {});
         const auto left = addLayoutRegion(layout, {20, 20, 20, 40});
         const auto right = addLayoutRegion(layout, {40, 20, 20, 40});
@@ -146,16 +146,25 @@ class CoreTests : public QObject {
         rightNote.rect = {120, 60, 20, 40};
         rightNote.comment = "右半部分";
         const auto markers = movementMarkers(layout, {leftNote, rightNote});
-        QCOMPARE(markers.size(), 1);
-        QCOMPARE(markers[0].source, QRectF(20, 20, 40, 40));
-        QCOMPARE(markers[0].destination, QRectF(100, 60, 40, 40));
+        // Identical translations may share a compact pixel change, but these were
+        // two separately selected components, each with its own annotation target.
+        QCOMPARE(exportLayoutChanges(layout).size(), 1);
+        QCOMPARE(markers.size(), 2);
+        QCOMPARE(markers[0].source, *leftNote.movementSource);
+        QCOMPARE(markers[0].destination, QRectF(leftNote.rect));
         QCOMPARE(markers[0].number, 1);
         QCOMPARE(markers[0].noteIndex, 0);
+        QCOMPARE(markers[1].source, *rightNote.movementSource);
+        QCOMPARE(markers[1].destination, QRectF(rightNote.rect));
+        QCOMPARE(markers[1].number, 2);
+        QCOMPARE(markers[1].noteIndex, 1);
         QCOMPARE(movementAnnotationIndex(rightNote, layout), 0);
         const auto remaining = movementMarkers(layout, {rightNote});
-        QCOMPARE(remaining.size(), 1);
-        QCOMPARE(remaining[0].noteIndex, 0);
-        QCOMPARE(remaining[0].number, 1);
+        QCOMPARE(remaining.size(), 2);
+        QCOMPARE(remaining[0].noteIndex, -1);
+        QCOMPARE(remaining[0].number, 0);
+        QCOMPARE(remaining[1].noteIndex, 0);
+        QCOMPARE(remaining[1].number, 1);
         QVERIFY(movementMarkers(original, {leftNote, rightNote}).isEmpty());
         transformLayoutGroup(layout, left, {20, 20, 20, 40});
         transformLayoutGroup(layout, right, {40, 20, 20, 40});
@@ -164,6 +173,78 @@ class CoreTests : public QObject {
         transformLayoutGroup(layout, left, {15, 10, 30, 60});
         QVERIFY(!exportLayoutChanges(layout).isEmpty());
         QVERIFY(movementMarkers(layout, {leftNote}).isEmpty());
+    }
+    void nestedMovementNotesFollowTheirOwnFrames() {
+        QImage image(800, 600, QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        auto doc = fromImage(image, "demo", "嵌套移动");
+        doc.layout = createLayout(image.size(), {});
+        const QRectF parentSource(40, 40, 200, 160), childSource(40, 40, 100, 80);
+        const QRectF parentDestination(350, 280, 300, 240), childDestination(600, 30, 150, 120);
+        const auto parent = addLayoutRegion(*doc.layout, parentSource);
+        const auto child = addLayoutRegion(*doc.layout, childSource);
+        transformLayoutGroup(*doc.layout, parent, parentDestination);
+        const auto parentOnly = *doc.layout;
+        auto markers = movementMarkers(*doc.layout, {});
+        QCOMPARE(markers.size(), 1);
+        QCOMPARE(markers[0].source, parentSource);
+        QCOMPARE(markers[0].destination, parentDestination);
+        QCOMPARE(markers[0].number, 0);
+        Note parentNote;
+        parentNote.isPoint = false;
+        parentNote.movementSource = parentSource;
+        parentNote.rect = parentDestination.toRect();
+        parentNote.comment = "整体移到这里";
+        doc.notes = {parentNote};
+        transformLayoutGroup(*doc.layout, child, childDestination);
+        doc.notes = remapNotes(doc.notes, parentOnly, *doc.layout);
+        QCOMPARE(doc.notes[0].rect, parentDestination.toRect());
+        QCOMPARE(movementAnnotationDestination(doc.notes[0], *doc.layout).value(), parentDestination);
+        markers = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(markers.size(), 2);
+        QCOMPARE(markers[0].destination, parentDestination);
+        QCOMPARE(markers[0].noteIndex, 0);
+        QCOMPARE(markers[1].source, childSource);
+        QCOMPARE(markers[1].destination, childDestination);
+        QCOMPARE(markers[1].noteIndex, -1);
+        QCOMPARE(markers[1].number, 0);
+        Note childNote;
+        childNote.isPoint = false;
+        childNote.movementSource = childSource;
+        childNote.rect = childDestination.toRect();
+        childNote.comment = "这个小块另放";
+        // Insert the child first: containment must not steal the parent's badge.
+        doc.notes.prepend(childNote);
+        markers = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(markers[0].noteIndex, 1);
+        QCOMPARE(markers[0].number, 2);
+        QCOMPARE(markers[1].noteIndex, 0);
+        QCOMPARE(markers[1].number, 1);
+        // Compact reconstruction still describes disjoint pixels, and keeps both texts.
+        const auto feedback = exportFeedback(doc, true);
+        QCOMPARE(feedback["changes"].toArray().size(), 3);
+        QCOMPARE(feedback["annotations"].toArray().size(), 2);
+        QCOMPARE(feedback["annotations"].toArray()[1].toObject(),
+                 (QJsonObject{{"rectangle", QJsonObject{{"x1", 350}, {"y1", 280}, {"x2", 650}, {"y2", 520}}},
+                              {"text", parentNote.comment}}));
+        const auto feedbackDoc = loadFeedback(feedback, {});
+        QCOMPARE(renderLayout(feedbackDoc.image, *feedbackDoc.layout), renderLayout(doc.image, *doc.layout));
+        QTemporaryDir directory;
+        const auto path = directory.filePath("nested.helpdesign");
+        saveBytes(path, serializeDocument(doc, true));
+        const auto restored = loadDocument(path);
+        QCOMPARE(*restored.layout, *doc.layout);
+        const auto restoredMarkers = movementMarkers(*restored.layout, restored.notes);
+        QCOMPARE(restoredMarkers.size(), 2);
+        for (int i = 0; i < markers.size(); ++i) {
+            QCOMPARE(restoredMarkers[i].source, markers[i].source);
+            QCOMPARE(restoredMarkers[i].destination, markers[i].destination);
+            QCOMPARE(restoredMarkers[i].number, markers[i].number);
+            QCOMPARE(restoredMarkers[i].noteIndex, markers[i].noteIndex);
+        }
+        // Undoing the child edit restores the parent's single arrow and annotation frame.
+        QCOMPARE(movementMarkers(parentOnly, {parentNote}).size(), 1);
+        QCOMPARE(remapNotes(doc.notes, *doc.layout, parentOnly)[1].rect, parentNote.rect);
     }
     void shortMovementBadgeLeavesTheArrowVisible() {
         MovementMarker marker{QRectF(20, 140, 20, 10), QRectF(22, 140, 20, 10), 1, -1};

@@ -192,6 +192,7 @@ LayoutState createLayout(QSize size, const QVector<Candidate> &input) {
             "图片尺寸不正确");
     LayoutState state;
     state.canvas = size;
+    state.movements.emplace();
     QRectF full(QPointF(0, 0), size);
     state.pieces.append({uniqueId(), full, full});
     auto candidates = input;
@@ -326,31 +327,95 @@ QRectF scaleLayoutRect(QRectF r, double factor, QSize canvas) {
     return constrainLayoutRect(QRectF(r.center() - QPointF(size.width() / 2, size.height() / 2), size),
                                canvas);
 }
+namespace {
+QRectF originalGroupBounds(const LayoutState &state, const LayoutGroup &group) {
+    if (!group.originalBounds.isNull())
+        return group.originalBounds;
+    const QSet<QString> members(group.pieces.begin(), group.pieces.end());
+    QRectF result;
+    for (const auto &piece : state.pieces)
+        if (members.contains(piece.id))
+            result = result.isEmpty() ? piece.source : result.united(piece.source);
+    return result;
+}
+QRectF transformedRectangle(QRectF r, QRectF before, QRectF after) {
+    return {after.x() + (r.x() - before.x()) * after.width() / before.width(),
+            after.y() + (r.y() - before.y()) * after.height() / before.height(),
+            r.width() * after.width() / before.width(), r.height() * after.height() / before.height()};
+}
+} // namespace
+QVector<LayoutMovement> layoutMovements(const LayoutState &state) {
+    if (state.movements)
+        return *state.movements;
+    QVector<LayoutMovement> result;
+    // Old project / feedback files preserve pixels but cannot recover which
+    // nested group the user selected. Keep their existing visible changes.
+    for (const auto &region : combinedChanges(state)) {
+        QString id;
+        for (const auto &group : state.groups)
+            if (sameRectangle(originalGroupBounds(state, group), region.from) &&
+                sameRectangle(layoutBounds(state, group.id), region.to)) {
+                id = group.id;
+                break;
+            }
+        result.append({id, region.from, region.to});
+    }
+    return result;
+}
 void transformLayoutGroup(LayoutState &state, const QString &id, QRectF destination) {
     auto old = layoutBounds(state, id);
     if (old.isEmpty())
         return;
     destination = constrainLayoutRect(destination, state.canvas);
-    if (destination == old)
+    if (sameRectangle(destination, old))
         return;
     QStringList ids;
+    QRectF source;
     for (const auto &group : state.groups)
         if (group.id == id) {
             ids = group.pieces;
+            source = originalGroupBounds(state, group);
             break;
         }
     QSet<QString> selected(ids.begin(), ids.end());
+    if (!state.movements)
+        state.movements = layoutMovements(state);
+    bool tracked = false;
+    for (auto &movement : *state.movements) {
+        bool included = false;
+        if (!movement.groupId.isEmpty()) {
+            for (const auto &group : state.groups)
+                if (group.id == movement.groupId) {
+                    included = std::all_of(group.pieces.begin(), group.pieces.end(),
+                                           [&](const auto &piece) { return selected.contains(piece); });
+                    break;
+                }
+        } else {
+            included = true;
+            for (const auto &piece : state.pieces)
+                if (positive(piece.source.intersected(movement.source)) && !selected.contains(piece.id)) {
+                    included = false;
+                    break;
+                }
+        }
+        if (included) {
+            // Keep the group's own frame: child edits may have changed its
+            // current union. Existing independent child trajectories follow a
+            // later parent transform without acquiring extra history entries.
+            movement.destination = constrainLayoutRect(
+                transformedRectangle(movement.destination, old, destination), state.canvas);
+        }
+        tracked |= movement.groupId == id;
+    }
+    if (!tracked)
+        state.movements->append({id, source, destination});
     QVector<LayoutPiece> background, foreground;
     for (auto piece : state.pieces) {
         if (!selected.contains(piece.id)) {
             background.append(piece);
             continue;
         }
-        auto d = piece.destination;
-        piece.destination = {destination.x() + (d.x() - old.x()) * destination.width() / old.width(),
-                             destination.y() + (d.y() - old.y()) * destination.height() / old.height(),
-                             d.width() * destination.width() / old.width(),
-                             d.height() * destination.height() / old.height()};
+        piece.destination = transformedRectangle(piece.destination, old, destination);
         foreground.append(piece);
     }
     background += foreground;
@@ -413,6 +478,23 @@ void validateLayout(const LayoutState &state, QSize original) {
             members.insert(id);
         }
     }
+    if (state.movements) {
+        require(state.movements->size() <= MaxLayoutMovements, "布局轨迹数量超出限制");
+        QSet<QString> trackedGroups;
+        for (const auto &movement : *state.movements) {
+            require(fits(movement.source, original) && fits(movement.destination, state.canvas),
+                    "布局轨迹坐标不正确");
+            if (!movement.groupId.isEmpty()) {
+                require(groupIds.contains(movement.groupId) && !trackedGroups.contains(movement.groupId),
+                        "布局轨迹区域引用无效或重复");
+                trackedGroups.insert(movement.groupId);
+                for (const auto &group : state.groups)
+                    if (group.id == movement.groupId)
+                        require(sameRectangle(movement.source, originalGroupBounds(state, group)),
+                                "布局轨迹原始区域不正确");
+            }
+        }
+    }
 }
 QJsonArray exportLayoutChanges(const LayoutState &state) {
     validateLayout(state, state.canvas);
@@ -442,6 +524,7 @@ LayoutState importLayoutChanges(const QJsonArray &changes, QSize original) {
             require(!positive(sources[i].intersected(sources[j])), "变化重复引用原图区域");
 
     auto state = createLayout(original, {});
+    state.movements.reset();
     QStringList moved;
     // Cut every region while destination coordinates are still the original
     // coordinates. Only then apply moves, so swaps and overlapping destinations
@@ -498,15 +581,27 @@ QJsonObject exportLayout(const LayoutState &state) {
                                                             ? QJsonValue(QJsonValue::Null)
                                                             : QJsonValue(geometry(group.originalBounds))},
                                   {"pieceIds", QJsonArray::fromStringList(group.pieces)}});
-    return {{"coordinateSpace", "image-pixels"},
-            {"background", "transparent"},
-            {"width", state.canvas.width()},
-            {"height", state.canvas.height()},
-            {"pieces", pieces},
-            {"groups", groups}};
+    QJsonObject result{{"coordinateSpace", "image-pixels"},
+                       {"background", "transparent"},
+                       {"width", state.canvas.width()},
+                       {"height", state.canvas.height()},
+                       {"pieces", pieces},
+                       {"groups", groups}};
+    if (state.movements) {
+        QJsonArray movements;
+        for (const auto &movement : *state.movements)
+            movements.append(QJsonObject{{"groupId", movement.groupId},
+                                         {"source", geometry(movement.source)},
+                                         {"destination", geometry(movement.destination)}});
+        result["movements"] = movements;
+    }
+    return result;
 }
 LayoutState importLayout(const QJsonObject &json, QSize original) {
-    keys(json, {"coordinateSpace", "background", "width", "height", "pieces", "groups"});
+    QStringList fields{"coordinateSpace", "background", "width", "height", "pieces", "groups"};
+    if (json.contains("movements"))
+        fields.append("movements");
+    keys(json, fields);
     require(json["coordinateSpace"] == "image-pixels" && json["background"] == "transparent" &&
                 json["width"].isDouble() && json["width"].toDouble() == original.width() &&
                 json["height"].isDouble() && json["height"].toDouble() == original.height() &&
@@ -537,6 +632,18 @@ LayoutState importLayout(const QJsonObject &json, QSize original) {
             group.pieces.append(id.toString());
         }
         state.groups.append(group);
+    }
+    if (json.contains("movements")) {
+        require(json["movements"].isArray() && json["movements"].toArray().size() <= MaxLayoutMovements,
+                "布局轨迹数量或格式不正确");
+        state.movements.emplace();
+        for (const auto &value : json["movements"].toArray()) {
+            const auto object = value.toObject();
+            keys(object, {"groupId", "source", "destination"});
+            require(object["groupId"].isString(), "布局轨迹区域编号不正确");
+            state.movements->append({object["groupId"].toString(), rectangle(object["source"]),
+                                     rectangle(object["destination"])});
+        }
     }
     validateLayout(state, original);
     return state;

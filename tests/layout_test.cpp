@@ -152,6 +152,151 @@ class LayoutTests : public QObject {
         }
         validateLayout(state, {160, 120});
     }
+    void trajectoriesTrackSelectedGroupsInsteadOfNestedPixelPartitions() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parent = groupId(state, "1234"), child = groupId(state, "1");
+        QVERIFY(state.movements.has_value());
+        QVERIFY(layoutMovements(state).isEmpty());
+        const auto untouched = state;
+        transformLayoutGroup(state, parent, layoutBounds(state, parent));
+        QVERIFY(state == untouched);
+
+        transformLayoutGroup(state, parent, {50, 50, 90, 60});
+        auto movements = layoutMovements(state);
+        QCOMPARE(movements.size(), 1);
+        QCOMPARE(movements[0].groupId, parent);
+        QCOMPARE(movements[0].source, QRectF(10, 10, 60, 40));
+        QCOMPARE(movements[0].destination, QRectF(50, 50, 90, 60));
+        const auto onlyParent = state;
+
+        transformLayoutGroup(state, child, {10, 70, 45, 30});
+        movements = layoutMovements(state);
+        QCOMPARE(movements.size(), 2);
+        QCOMPARE(movements[0], layoutMovements(onlyParent)[0]);
+        QCOMPARE(movements[1].groupId, child);
+        QCOMPARE(movements[1].source, QRectF(10, 10, 30, 20));
+        QCOMPARE(movements[1].destination, QRectF(10, 70, 45, 30));
+        // Pixel reconstruction needs three disjoint rectangles for the L-shaped
+        // parent remainder. The visual history still describes two user edits.
+        QCOMPARE(exportLayoutChanges(state).size(), 3);
+        QCOMPARE(renderLayout(sourceImage(), importLayoutChanges(exportLayoutChanges(state), state.canvas)),
+                 renderLayout(sourceImage(), state));
+        QVERIFY(importLayout(exportLayout(state), state.canvas) == state);
+        state = onlyParent; // The same value snapshots back undo / redo in the editor.
+        QCOMPARE(layoutMovements(state).size(), 1);
+        state = untouched;
+        QVERIFY(layoutMovements(state).isEmpty());
+    }
+    void laterParentTransformsUpdateIndependentChildTrajectoriesOnce() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parent = groupId(state, "1234"), child = groupId(state, "1");
+        transformLayoutGroup(state, parent, {50, 50, 90, 60});
+        transformLayoutGroup(state, child, {10, 70, 45, 30});
+        QCOMPARE(layoutBounds(state, parent), QRectF(10, 50, 130, 60));
+        auto scaled = state;
+        transformLayoutGroup(scaled, parent, {20, 20, 65, 30});
+        QCOMPARE(layoutMovements(scaled).size(), 2);
+        QCOMPARE(layoutMovements(scaled)[0].destination, QRectF(40, 20, 45, 30));
+        QCOMPARE(layoutMovements(scaled)[1].destination, QRectF(20, 30, 22.5, 15));
+        QCOMPARE(layoutMovements(scaled)[1].destination, layoutBounds(scaled, child));
+        QVERIFY(importLayout(exportLayout(scaled), scaled.canvas) == scaled);
+        transformLayoutGroup(state, parent, {20, 30, 130, 60});
+        auto movements = layoutMovements(state);
+        QCOMPARE(movements.size(), 2);
+        // The parent retains its own frame instead of adopting the displaced
+        // child's expanded union as the parent's final location.
+        QCOMPARE(movements[0].source, QRectF(10, 10, 60, 40));
+        QCOMPARE(movements[0].destination, QRectF(60, 30, 90, 60));
+        QCOMPARE(movements[1].source, QRectF(10, 10, 30, 20));
+        QCOMPARE(movements[1].destination, QRectF(20, 50, 45, 30));
+        transformLayoutGroup(state, child, {20, 70, 45, 30});
+        movements = layoutMovements(state);
+        QCOMPARE(movements.size(), 2);
+        QCOMPARE(movements[0].destination, QRectF(60, 30, 90, 60));
+        QCOMPARE(movements[1].destination, QRectF(20, 70, 45, 30));
+        const auto beforeNoOp = state;
+        transformLayoutGroup(state, child, layoutBounds(state, child));
+        transformLayoutGroup(state, "missing-group", {0, 0, 10, 10});
+        QVERIFY(state == beforeNoOp);
+        transformLayoutGroup(state, child, {10, 10, 30, 20});
+        QCOMPARE(layoutMovements(state).size(), 2);
+        QCOMPARE(layoutMovements(state)[1].source, layoutMovements(state)[1].destination);
+        QVERIFY(importLayout(exportLayout(state), state.canvas) == state);
+        validateLayout(state, state.canvas);
+    }
+    void manualCutsKeepExistingTrajectoriesAndUseOriginalPixelBounds() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parent = groupId(state, "1234");
+        transformLayoutGroup(state, parent, {30, 30, 60, 40});
+        const auto parentMovement = layoutMovements(state)[0];
+        const auto manual = addLayoutRegion(state, {35, 35, 10, 10}, "移动后细分");
+        QVERIFY(!manual.isEmpty());
+        QCOMPARE(layoutMovements(state).size(), 1);
+        QCOMPARE(layoutMovements(state)[0], parentMovement);
+        transformLayoutGroup(state, manual, {5, 80, 10, 10});
+        QCOMPARE(layoutMovements(state).size(), 2);
+        QCOMPARE(layoutMovements(state)[0], parentMovement);
+        QCOMPARE(layoutMovements(state)[1].source, QRectF(15, 15, 10, 10));
+        QCOMPARE(layoutMovements(state)[1].destination, QRectF(5, 80, 10, 10));
+        QVERIFY(importLayout(exportLayout(state), state.canvas) == state);
+    }
+    void legacyLayoutsRetainTheirChangesWhenTrackingStarts() {
+        auto state = createLayout({160, 120}, tableRegions());
+        const auto parent = groupId(state, "1234"), child = groupId(state, "1");
+        transformLayoutGroup(state, parent, {50, 50, 90, 60});
+        auto legacyJson = exportLayout(state);
+        legacyJson.remove("movements");
+        auto legacy = importLayout(legacyJson, state.canvas);
+        QVERIFY(!legacy.movements);
+        QCOMPARE(layoutMovements(legacy).size(), 1);
+        QCOMPARE(layoutMovements(legacy)[0].groupId, parent);
+        QCOMPARE(exportLayout(legacy), legacyJson);
+        const auto beforeNoOp = legacy;
+        transformLayoutGroup(legacy, parent, layoutBounds(legacy, parent));
+        QVERIFY(legacy == beforeNoOp);
+        transformLayoutGroup(legacy, child, {10, 70, 45, 30});
+        QVERIFY(legacy.movements.has_value());
+        QCOMPARE(layoutMovements(legacy).size(), 2);
+        QCOMPARE(layoutMovements(legacy)[0].source, QRectF(10, 10, 60, 40));
+        QCOMPARE(layoutMovements(legacy)[0].destination, QRectF(50, 50, 90, 60));
+        QCOMPARE(layoutMovements(legacy)[1].source, QRectF(10, 10, 30, 20));
+        QVERIFY(importLayout(exportLayout(legacy), legacy.canvas) == legacy);
+
+        auto feedback = importLayoutChanges(exportLayoutChanges(state), state.canvas);
+        QVERIFY(!feedback.movements);
+        const auto record = layoutMovements(feedback)[0];
+        QVERIFY(!record.groupId.isEmpty());
+        transformLayoutGroup(feedback, record.groupId, {20, 30, 90, 60});
+        QCOMPARE(layoutMovements(feedback).size(), 1);
+        QCOMPARE(layoutMovements(feedback)[0].source, record.source);
+        QCOMPARE(layoutMovements(feedback)[0].destination, QRectF(20, 30, 90, 60));
+    }
+    void trajectoryMetadataRejectsCorruption() {
+        auto state = createLayout({160, 120}, tableRegions());
+        transformLayoutGroup(state, groupId(state, "1234"), {50, 50, 90, 60});
+        const auto valid = exportLayout(state);
+        auto bad = valid;
+        bad["movements"] = QJsonValue(QJsonValue::Null);
+        QVERIFY(rejects(bad, state.canvas));
+        auto movement = valid["movements"].toArray()[0].toObject();
+        bad["movements"] = QJsonArray{movement, movement};
+        QVERIFY(rejects(bad, state.canvas));
+        movement["groupId"] = "missing-group";
+        bad["movements"] = QJsonArray{movement};
+        QVERIFY(rejects(bad, state.canvas));
+        movement = valid["movements"].toArray()[0].toObject();
+        movement["source"] = QJsonObject{{"x1", 10}, {"y1", 10}, {"x2", 20}, {"y2", 20}};
+        bad["movements"] = QJsonArray{movement};
+        QVERIFY(rejects(bad, state.canvas));
+        movement = valid["movements"].toArray()[0].toObject();
+        movement["destination"] = QJsonObject{{"x1", 50}, {"y1", 50}, {"x2", 161}, {"y2", 110}};
+        bad["movements"] = QJsonArray{movement};
+        QVERIFY(rejects(bad, state.canvas));
+        movement = valid["movements"].toArray()[0].toObject();
+        movement["unknown"] = true;
+        bad["movements"] = QJsonArray{movement};
+        QVERIFY(rejects(bad, state.canvas));
+    }
     void choicesIncludeEveryContainingRegion() {
         QVector<Candidate> regions{candidate({10, 30, 20, 20}, "3"), candidate({10, 30, 40, 20}, "34"),
                                    candidate({10, 30, 40, 40}, "3456"), candidate({10, 10, 40, 60}, "123456"),
@@ -792,7 +937,9 @@ class LayoutTests : public QObject {
         saveBytes(path, QJsonDocument(exported).toJson());
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
-        QVERIFY(*restored.layout == *document.layout);
+        auto legacyLayout = *document.layout;
+        legacyLayout.movements.reset(); // The legacy v2 export predates user-group trajectories.
+        QVERIFY(*restored.layout == legacyLayout);
         QCOMPARE(restored.notes, document.notes);
         QCOMPARE(restored.png, document.png);
         QCOMPARE(renderLayout(restored.image, *restored.layout),

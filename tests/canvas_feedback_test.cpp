@@ -348,11 +348,16 @@ class CanvasFeedbackTests : public QObject {
                 QCOMPARE(moves.size(), moveCount);
                 QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
                                   (movementMidpoint(1, zoom) + QPointF(0, offset)).toPoint());
-                QCOMPARE(moves.size(), ++moveCount);
-                QCOMPARE(moves.last().at(0).toRectF(), movementSource(1));
-                QCOMPARE(moves.last().at(1).toRectF(), movementDestination(1));
+                // An unannotated arrow has no badge and no invisible circular hit target.
+                QCOMPARE(moves.size(), moveCount);
                 QCOMPARE(edits.size(), editCount);
             }
+            QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier,
+                              movementMidpoint(1, zoom).toPoint());
+            QCOMPARE(moves.size(), ++moveCount);
+            QCOMPARE(moves.last().at(0).toRectF(), movementSource(1));
+            QCOMPARE(moves.last().at(1).toRectF(), movementDestination(1));
+            QCOMPARE(edits.size(), editCount);
             // The existing annotation must also open when its arrow is clicked away from the badge.
             const auto linePoint = (movementSource(0).center() * .75 +
                                     movementDestination(0).center() * .25) * zoom;
@@ -376,7 +381,7 @@ class CanvasFeedbackTests : public QObject {
         QCOMPARE(doc.notes, savedNotes);
         QCOMPARE(*doc.layout, savedLayout);
         QCOMPARE(layout.state(), savedLayout);
-        // Saving a draft turns the same numbered arrow into an existing-note edit target immediately.
+        // Saving an annotation adds its number and makes the badge an existing-note edit target immediately.
         doc.notes.append(movementNote(1));
         canvas.refresh();
         layout.setAnnotations(doc.notes);
@@ -386,6 +391,143 @@ class CanvasFeedbackTests : public QObject {
         QCOMPARE(editedId(), doc.notes.last().id);
         QCOMPARE(moves.size(), moveCount);
         QCOMPARE(doc.notes.size(), savedNotes.size() + 1);
+    }
+    void nestedMovementsKeepOneArrowPerSelectedComponent_data() {
+        numberedMovementBadgesOpenExistingNotesAndDrafts_data();
+    }
+    void nestedMovementsKeepOneArrowPerSelectedComponent() {
+        QFETCH(bool, exploded);
+        QImage image(900, 700, QImage::Format_ARGB32);
+        image.fill(QColor("#edf1f5"));
+        const QRectF parentSource(80, 80, 240, 200), parentDestination(480, 120, 240, 200);
+        const QRectF childSource(80, 80, 120, 100), childDestination(450, 480, 120, 100);
+        QVector<Candidate> candidates;
+        auto target = manualTarget();
+        target["method"] = "test-region";
+        candidates.append({parentSource.toRect(), target});
+        QPainter painter(&image);
+        painter.setFont(QFont("Microsoft YaHei UI", 24, QFont::DemiBold));
+        for (int row = 0; row < 2; ++row)
+            for (int column = 0; column < 2; ++column) {
+                const QRect cell(80 + column * 120, 80 + row * 100, 120, 100);
+                candidates.append({cell, target});
+                painter.fillRect(cell, QColor(row ? "#dce9f5" : "#ffffff"));
+                painter.setPen(QColor("#a9bbce"));
+                painter.drawRect(cell.adjusted(0, 0, -1, -1));
+                painter.setPen(QColor("#203047"));
+                painter.drawText(cell, Qt::AlignCenter, QString::number(row * 2 + column + 1));
+            }
+        painter.end();
+        auto doc = fromImage(image, "test", "嵌套组件移动");
+        doc.candidates = candidates;
+        doc.layout = createLayout(image.size(), candidates);
+        QString parentId, childId;
+        for (const auto &group : doc.layout->groups) {
+            if (group.originalBounds == parentSource) parentId = group.id;
+            if (group.originalBounds == childSource) childId = group.id;
+        }
+        QVERIFY(!parentId.isEmpty());
+        QVERIFY(!childId.isEmpty());
+        transformLayoutGroup(*doc.layout, parentId, parentDestination);
+        auto markers = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(markers.size(), 1);
+        QCOMPARE(markers[0].source, parentSource);
+        QCOMPARE(markers[0].destination, parentDestination);
+        QCOMPARE(markers[0].number, 0);
+        QCOMPARE(markers[0].noteIndex, -1);
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setLayoutPreview(true);
+        canvas.setMode(Canvas::Adjust);
+        LayoutCanvas layout(doc.image, *doc.layout);
+        layout.setGuides(false);
+        QWidget &widget = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        widget.show();
+        QSignalSpy canvasEdits(&canvas, &Canvas::editRequested);
+        QSignalSpy layoutEdits(&layout, &LayoutCanvas::noteEditRequested);
+        QSignalSpy canvasMoves(&canvas, &Canvas::movementAnnotationRequested);
+        QSignalSpy layoutMoves(&layout, &LayoutCanvas::movementAnnotationRequested);
+        auto &edits = exploded ? layoutEdits : canvasEdits;
+        auto &moves = exploded ? layoutMoves : canvasMoves;
+        auto editedId = [&] {
+            return exploded ? edits.last().at(0).toString() : qvariant_cast<Note>(edits.last().at(0)).id;
+        };
+        const auto parentMidpoint = (parentSource.center() + parentDestination.center()) / 2;
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, parentMidpoint.toPoint());
+        QCOMPARE(moves.size(), 1);
+        QCOMPARE(moves.last().at(0).toRectF(), parentSource);
+        QCOMPARE(moves.last().at(1).toRectF(), parentDestination);
+        Note parentNote;
+        parentNote.isPoint = false;
+        parentNote.movementSource = parentSource;
+        parentNote.rect = parentDestination.toRect();
+        parentNote.comment = "整体向右移动，保持表格关系。";
+        doc.notes.append(parentNote);
+        const auto beforeChildMove = *doc.layout;
+        transformLayoutGroup(*doc.layout, childId, childDestination);
+        doc.notes = remapNotes(doc.notes, beforeChildMove, *doc.layout);
+        QCOMPARE(doc.notes.size(), 1);
+        QCOMPARE(doc.notes[0].id, parentNote.id);
+        QCOMPARE(doc.notes[0].rect, parentDestination.toRect());
+        const auto parentNoteDestination = movementAnnotationDestination(doc.notes[0], *doc.layout);
+        QVERIFY(parentNoteDestination.has_value());
+        QCOMPARE(*parentNoteDestination, parentDestination);
+        markers = movementMarkers(*doc.layout, doc.notes);
+        QCOMPARE(markers.size(), 2);
+        bool parentFound = false, childFound = false;
+        for (const auto &marker : markers) {
+            if (marker.source == parentSource) {
+                parentFound = true;
+                QCOMPARE(marker.destination, parentDestination);
+                QCOMPARE(marker.number, 1);
+                QCOMPARE(marker.noteIndex, 0);
+            } else if (marker.source == childSource) {
+                childFound = true;
+                QCOMPARE(marker.destination, childDestination);
+                QCOMPARE(marker.number, 0);
+                QCOMPARE(marker.noteIndex, -1);
+            } else {
+                QFAIL("A child inherited from the parent move must not gain an independent trajectory.");
+            }
+        }
+        QVERIFY(parentFound);
+        QVERIFY(childFound);
+        // Pixel reconstruction needs a child and two remaining rectangles, but the UI needs two arrows.
+        QCOMPARE(exportLayoutChanges(*doc.layout).size(), 3);
+        canvas.refresh();
+        layout.setState(*doc.layout);
+        layout.setAnnotations(doc.notes);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, parentMidpoint.toPoint());
+        QCOMPARE(edits.size(), 1);
+        QCOMPARE(editedId(), parentNote.id);
+        QCOMPARE(moves.size(), 1);
+        const auto childMidpoint = (childSource.center() + childDestination.center()) / 2;
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, childMidpoint.toPoint());
+        QCOMPARE(moves.size(), 2);
+        QCOMPARE(moves.last().at(0).toRectF(), childSource);
+        QCOMPARE(moves.last().at(1).toRectF(), childDestination);
+        QCOMPARE(edits.size(), 1);
+        const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            QVERIFY(rendered(widget).save(QDir(folder).filePath(
+                QString("nested-movements-%1.png").arg(exploded ? "explosion" : "canvas"))));
+        }
+        auto childNote = parentNote;
+        childNote.id = Note().id;
+        childNote.movementSource = childSource;
+        childNote.rect = childDestination.toRect();
+        childNote.comment = "单独下移第一个单元格。";
+        doc.notes.append(childNote);
+        canvas.refresh();
+        layout.setAnnotations(doc.notes);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, parentMidpoint.toPoint());
+        QCOMPARE(edits.size(), 2);
+        QCOMPARE(editedId(), parentNote.id);
+        QTest::mouseClick(&widget, Qt::LeftButton, Qt::NoModifier, childMidpoint.toPoint());
+        QCOMPARE(edits.size(), 3);
+        QCOMPARE(editedId(), childNote.id);
+        QCOMPARE(moves.size(), 2);
     }
     void mergedMovementKeepsAdditionalNoteBadgesEditable_data() {
         numberedMovementBadgesOpenExistingNotesAndDrafts_data();
@@ -476,9 +618,15 @@ class CanvasFeedbackTests : public QObject {
             const auto visible = rendered(widget);
             for (int row = 0; row < 3; ++row) {
                 const auto center = movementMidpoint(row, zoom).toPoint();
-                // A visible circle extends 12 px perpendicular to its arrow at every zoom.
+                // Only an annotated arrow has a numbered circle, with a fixed screen-space radius.
                 const QRect rim(center + QPoint(-2, 10), QSize(5, 5));
-                QVERIFY(visible.copy(rim) != hidden.copy(rim));
+                if (annotated && row == 0)
+                    QVERIFY(visible.copy(rim) != hidden.copy(rim));
+                else
+                    QCOMPARE(visible.copy(rim), hidden.copy(rim));
+                // The bare trajectory remains visible before it has any annotation.
+                const QRect line(center + QPoint(-2, -2), QSize(5, 5));
+                QVERIFY(visible.copy(line) != hidden.copy(line));
                 // Its radius must not grow with the image zoom, and hiding must remove its pixels.
                 const QRect outside(center + QPoint(-1, 19), QSize(3, 3));
                 QCOMPARE(visible.copy(outside), hidden.copy(outside));

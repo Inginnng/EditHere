@@ -579,6 +579,35 @@
           "items": {
             "$ref": "#/$defs/layoutGroup"
           }
+        },
+        "movements": {
+          "description": "Optional project-only interaction history. Missing in legacy files; an empty array means no group has been independently transformed.",
+          "type": "array",
+          "maxItems": 8704,
+          "items": {
+            "$ref": "#/$defs/layoutMovement"
+          }
+        }
+      }
+    },
+    "layoutMovement": {
+      "description": "A user-selected group trajectory from its original screenshot bounds to its own current frame. Nested piece changes do not create extra trajectories. An empty groupId preserves a legacy pixel change without a matching group.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groupId",
+        "source",
+        "destination"
+      ],
+      "properties": {
+        "groupId": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/layoutRectangle"
+        },
+        "destination": {
+          "$ref": "#/$defs/layoutRectangle"
         }
       }
     }

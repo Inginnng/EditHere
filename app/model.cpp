@@ -18,6 +18,7 @@
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace h2d {
@@ -192,6 +193,26 @@ int movementIndex(const Note &note, const QJsonArray &changes) {
     }
     return -1;
 }
+// Pixel export may split a moved parent around its edited children. Match visual
+// trajectories separately, giving a child's own trajectory priority over its parent.
+int movementIndex(const Note &note, const QVector<LayoutMovement> &movements) {
+    if (!note.movementSource || note.isGlobal)
+        return -1;
+    int best = -1;
+    double smallestArea = std::numeric_limits<double>::max();
+    for (int i = 0; i < movements.size(); ++i) {
+        const auto source = movements[i].source;
+        if (sameMovementRect(source, *note.movementSource))
+            return i;
+        const double area = source.width() * source.height();
+        if (area < smallestArea &&
+            sameMovementRect(source.intersected(*note.movementSource), *note.movementSource)) {
+            best = i;
+            smallestArea = area;
+        }
+    }
+    return best;
+}
 struct NoteTransform {
     double sx, sy, tx, ty;
     QPointF map(QPointF point) const {
@@ -349,23 +370,20 @@ int movementAnnotationIndex(const Note &note, const LayoutState &layout) {
     return movementIndex(note, exportLayoutChanges(layout));
 }
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes) {
-    const auto changes = exportLayoutChanges(layout);
-    QVector<int> firstNotes(changes.size(), -1);
+    const auto movements = layoutMovements(layout);
+    QVector<int> firstNotes(movements.size(), -1);
     for (int i = 0; i < notes.size(); ++i) {
-        const int change = movementIndex(notes[i], changes);
-        if (change >= 0 && firstNotes[change] < 0)
-            firstNotes[change] = i;
+        const int movement = movementIndex(notes[i], movements);
+        if (movement >= 0 && firstNotes[movement] < 0)
+            firstNotes[movement] = i;
     }
     QVector<MovementMarker> markers;
-    int nextNumber = notes.size() + 1;
-    for (int i = 0; i < changes.size(); ++i) {
-        const auto change = changes[i].toObject();
-        const auto source = floatingJsonRect(change["from"].toObject());
-        const auto destination = floatingJsonRect(change["to"].toObject());
-        if (QLineF(source.center(), destination.center()).length() <= 0.01)
+    for (int i = 0; i < movements.size(); ++i) {
+        const auto &movement = movements[i];
+        if (QLineF(movement.source.center(), movement.destination.center()).length() <= 0.01)
             continue;
         const int noteIndex = firstNotes[i];
-        markers.append({source, destination, noteIndex >= 0 ? noteIndex + 1 : nextNumber++, noteIndex});
+        markers.append({movement.source, movement.destination, noteIndex >= 0 ? noteIndex + 1 : 0, noteIndex});
     }
     return markers;
 }
@@ -392,6 +410,10 @@ QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF v
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout) {
     if (!note.movementSource || note.isGlobal)
         return std::nullopt;
+    // The selected parent retains its own frame even when a child moves outside it.
+    for (const auto &movement : layoutMovements(layout))
+        if (sameMovementRect(movement.source, *note.movementSource))
+            return movement.destination;
     std::optional<NoteTransform> transform;
     double covered = 0;
     for (const auto &piece : layout.pieces) {
@@ -548,8 +570,12 @@ static QJsonObject documentObject(const Document &d, bool embed, bool current) {
                        {"exportedAt", timestamp()},
                        {"capture", capture},
                        {"annotations", notes}};
-    if (d.layout)
-        result.insert("layout", exportLayout(*d.layout));
+    if (d.layout) {
+        auto layout = exportLayout(*d.layout);
+        if (!current)
+            layout.remove("movements");
+        result.insert("layout", layout);
+    }
     if (current) {
         result.insert("annotationSpace", "result");
         if (!d.layout)
@@ -1025,20 +1051,10 @@ QImage previewImage(const Document &doc) {
         p.drawText(QRectF(c.x() - 14, c.y() - 14, 28, 28), Qt::AlignCenter, QString::number(n));
     };
     QHash<int, QPointF> movementAnchors;
-    for (const auto &marker : markers) {
-        const auto anchor = movementMarkerAnchor(marker, 1, doc.image.size()) + QPointF(24, 24);
-        if (marker.noteIndex >= 0) {
-            movementAnchors.insert(marker.noteIndex, anchor);
-            continue;
-        }
-        p.setPen(QPen(QColor("#007aff"), 1.5));
-        p.setBrush(Qt::white);
-        p.drawEllipse(anchor, 13, 13);
-        p.setPen(QColor("#007aff"));
-        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
-        p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
-                   QString::number(marker.number));
-    }
+    for (const auto &marker : markers)
+        if (marker.noteIndex >= 0)
+            movementAnchors.insert(marker.noteIndex,
+                                   movementMarkerAnchor(marker, 1, doc.image.size()) + QPointF(24, 24));
     int y = 72, i = 0, x = doc.image.width() + 60;
     p.setFont(QFont("Microsoft YaHei", 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
