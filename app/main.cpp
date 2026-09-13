@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "autostart.h"
 #include "ui.h"
 #include <QApplication>
 #include <QCoreApplication>
@@ -57,6 +58,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    initializeLaunchAtLoginDetection();
     HelpDesignApplication app(argc, argv);
     // Keep the previous local lock and IPC address so an already running version
     // remains the sole owner of screenshots and unsaved feedback.
@@ -77,6 +79,7 @@ int main(int argc, char **argv) {
     lock.setStaleLockTime(0);
     const QString serverName = "Help2Design-native-" + QString::number(qHash(state));
     const QStringList args = app.arguments();
+    const bool background = args.contains("--autostart");
     QString path;
     for (int i = 1; i < args.size(); i++)
         if (!args[i].startsWith("--")) {
@@ -84,6 +87,8 @@ int main(int argc, char **argv) {
             break;
         }
     if (!lock.tryLock(0)) {
+        if ((background || wasLaunchedAtLogin()) && path.isEmpty())
+            return 0;
         QLocalSocket socket;
         socket.connectToServer(serverName);
         if (socket.waitForConnected(800)) {
@@ -112,6 +117,6 @@ int main(int argc, char **argv) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
-    QTimer::singleShot(0, &app, [&] { controller.start(args.contains("--demo"), path); });
+    QTimer::singleShot(0, &app, [&] { controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !hasSeenGuide()); });
     return app.exec();
 }

@@ -17,6 +17,7 @@ namespace h2d {
 class LayoutCanvas;
 class LayoutInspector;
 class ExplosionWave;
+class GuideOverlay;
 class Editor final : public QWidget {
     Q_OBJECT
   public:
@@ -39,6 +40,9 @@ class Editor final : public QWidget {
     void pasteImage();
     void exportJson();
     void fit();
+    void showGuide();
+    void dismissGuide();
+    bool guideActive() const;
     void explode();
     bool explosionActive() const {
         return explosionActive_;
@@ -48,6 +52,7 @@ class Editor final : public QWidget {
     }
   signals:
     void captureRequested();
+    void guideDismissed();
     void hiddenToTray();
     void toolbarSettingsRequested();
 
@@ -86,6 +91,7 @@ class Editor final : public QWidget {
     void zoom(double value);
     void showError(const QString &text);
     QString coords(const Note &note) const;
+    GuideOverlay *guide_ = nullptr;
     Document doc_;
     AppSettings preferences_;
     struct Snapshot {

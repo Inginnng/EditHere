@@ -15,16 +15,20 @@ class SettingsDialog final : public QDialog {
     AppSettings settings() const;
     void showUpdates(bool checkNow = false);
     void showToolbar();
+    void setLaunchAtLoginNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
+
+  signals:
+    void guideRequested();
 
   private:
     void setDraft(const AppSettings &settings);
     void save();
     QComboBox *theme_, *defaultTool_;
-    QCheckBox *captureOnStartup_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
+    QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
-    QLabel *error_;
+    QLabel *error_, *launchAtLoginNotice_;
     QMap<QString, QKeySequenceEdit *> keys_;
     QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;

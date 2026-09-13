@@ -7,8 +7,10 @@ namespace h2d {
 class Controller final : public QObject {
     Q_OBJECT
   public:
-    explicit Controller(QObject *parent = nullptr, const AppSettings &settings = loadSettings());
-    void start(bool demo, const QString &path = {});
+    explicit Controller(QObject *parent = nullptr, const AppSettings &settings = loadSettings(),
+                        const QString &settingsFile = {});
+    void start(bool demo, const QString &path = {}, bool background = false, bool firstUse = false);
+    void showGuide();
     void capture();
     void activate();
     void quit();
@@ -20,6 +22,8 @@ class Controller final : public QObject {
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
     void updateTrayShortcut();
     AppSettings settings_;
+    QString settingsFile_;
+    bool guidePending_ = false;
     QAction *captureAction_ = nullptr;
     Editor editor_;
     QSystemTrayIcon tray_;

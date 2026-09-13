@@ -11,6 +11,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 using namespace h2d;
 class SettingsTests : public QObject {
     Q_OBJECT
@@ -21,10 +22,12 @@ class SettingsTests : public QObject {
         const auto path = directory.filePath("config/settings.ini");
         const auto defaults = defaultSettings();
         QVERIFY(validateSettings(defaults).isEmpty());
+        QVERIFY(!defaults.launchAtLogin);
         QVERIFY(loadSettings(path) == defaults);
         auto changed = defaults;
         changed.theme = ThemeMode::Dark;
         changed.captureOnStartup = false;
+        changed.launchAtLogin = true;
         changed.fitImageOnOpen = false;
         changed.embedOriginal = false;
         changed.checkUpdatesOnStartup = true;
@@ -39,6 +42,7 @@ class SettingsTests : public QObject {
         QVERIFY(loadSettings(path) == changed);
         QSettings persisted(path, QSettings::IniFormat);
         QCOMPARE(persisted.value("appearance/theme").toString(), QString("dark"));
+        QVERIFY(persisted.value("defaults/launchAtLogin").toBool());
         QCOMPARE(persisted.value("shortcuts/capture").toString(), QString("Ctrl+Alt+9"));
         QVERIFY(persisted.contains("shortcuts/point"));
         QVERIFY(persisted.value("shortcuts/point").toString().isEmpty());
@@ -113,6 +117,8 @@ class SettingsTests : public QObject {
         expected.theme = ThemeMode::Dark;
         expected.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         QVERIFY(loadSettings(path) == expected);
+        QVERIFY(!loadSettings(path).launchAtLogin);
+        source.setValue("defaults/launchAtLogin", "invalid");
         source.setValue("defaults/tool", "nonsense");
         source.setValue("defaults/embedOriginal", "invalid");
         source.setValue("updates/checkOnStartup", "invalid");
@@ -209,6 +215,7 @@ class SettingsTests : public QObject {
         auto original = defaultSettings();
         original.theme = ThemeMode::Dark;
         original.captureOnStartup = false;
+        original.launchAtLogin = true;
         original.fitImageOnOpen = false;
         original.embedOriginal = false;
         original.checkUpdatesOnStartup = true;
@@ -230,6 +237,151 @@ class SettingsTests : public QObject {
         QCOMPARE(dialog.result(), int(QDialog::Rejected));
         QCOMPARE(applyCount, 0);
         QCOMPARE(original.theme, ThemeMode::Dark);
+        QVERIFY(original.launchAtLogin);
+    }
+    void launchAtLoginFailureKeepsDraftUntilSaved() {
+        SettingsDialog dialog(defaultSettings());
+        auto login = dialog.findChild<QCheckBox *>("launchAtLogin");
+        auto save = dialog.findChild<QPushButton *>("settingsSave");
+        auto error = dialog.findChild<QLabel *>("errorLabel");
+        QVERIFY(login && save && error);
+        QVERIFY(!login->isChecked());
+        login->setChecked(true);
+        AppSettings persisted = defaultSettings();
+        dialog.setApplyHandler([&](const AppSettings &draft) {
+            if (draft.launchAtLogin)
+                return QString("无法设置开机启动，请检查系统权限。");
+            persisted = draft;
+            return QString();
+        });
+        dialog.show();
+        save->click();
+        QVERIFY(dialog.isVisible());
+        QVERIFY(error->isVisible());
+        QVERIFY(error->text().contains("开机启动"));
+        QVERIFY(login->isChecked());
+        QVERIFY(!persisted.launchAtLogin);
+        login->setChecked(false);
+        QVERIFY(!error->isVisible());
+        save->click();
+        QCOMPARE(dialog.result(), int(QDialog::Accepted));
+        QVERIFY(!dialog.isVisible());
+        QVERIFY(!persisted.launchAtLogin);
+    }
+    void launchAtLoginNoticeDoesNotChangeDraft() {
+        SettingsDialog dialog(defaultSettings());
+        auto notice = dialog.findChild<QLabel *>("launchAtLoginNotice");
+        QVERIFY(notice);
+        QVERIFY(notice->isHidden());
+        const auto message = QString("请前往系统设置批准 HelpDesign 登录项。");
+        dialog.setLaunchAtLoginNotice(message);
+        QCOMPARE(notice->text(), message);
+        QVERIFY(!notice->isHidden());
+        QVERIFY(dialog.settings() == defaultSettings());
+        dialog.setLaunchAtLoginNotice({});
+        QVERIFY(notice->isHidden());
+    }
+    void replayGuideClosesWithoutApplyingDraft() {
+        const auto original = defaultSettings();
+        SettingsDialog dialog(original);
+        auto guide = dialog.findChild<QPushButton *>("restartGuide");
+        auto login = dialog.findChild<QCheckBox *>("launchAtLogin");
+        QVERIFY(guide && login);
+        QVERIFY(guide->toolTip().contains("未保存"));
+        login->setChecked(true);
+        int applyCount = 0;
+        dialog.setApplyHandler([&](const AppSettings &) {
+            ++applyCount;
+            return QString();
+        });
+        QSignalSpy requested(&dialog, &SettingsDialog::guideRequested);
+        QSignalSpy rejected(&dialog, &QDialog::rejected);
+        bool closedBeforeRequest = false;
+        connect(&dialog, &SettingsDialog::guideRequested, &dialog, [&] {
+            closedBeforeRequest = !dialog.isVisible() && dialog.result() == QDialog::Rejected;
+        });
+        QTimer::singleShot(0, guide, &QPushButton::click);
+        QCOMPARE(dialog.exec(), int(QDialog::Rejected));
+        QCOMPARE(requested.count(), 1);
+        QCOMPARE(rejected.count(), 1);
+        QVERIFY(closedBeforeRequest);
+        QCOMPARE(applyCount, 0);
+        QVERIFY(!original.launchAtLogin);
+    }
+    void guideStateSurvivesOldDraftAndRestoredDefaults() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("config/settings.ini");
+        QVERIFY(!hasSeenGuide(path));
+        auto preferences = defaultSettings();
+        preferences.theme = ThemeMode::Dark;
+        preferences.launchAtLogin = true;
+        QString error;
+        QVERIFY2(saveSettings(preferences, &error, path), qPrintable(error));
+        QVERIFY(!hasSeenGuide(path));
+        SettingsDialog staleDialog(loadSettings(path));
+        error = "old error";
+        QVERIFY2(markGuideSeen(&error, path), qPrintable(error));
+        QVERIFY(error.isEmpty());
+        QVERIFY(hasSeenGuide(path));
+        QVERIFY(loadSettings(path) == preferences);
+        staleDialog.setApplyHandler([&](const AppSettings &draft) {
+            saveSettings(draft, &error, path);
+            return error;
+        });
+        staleDialog.findChild<QPushButton *>("settingsSave")->click();
+        QCOMPARE(staleDialog.result(), int(QDialog::Accepted));
+        QVERIFY(hasSeenGuide(path));
+        SettingsDialog resetDialog(loadSettings(path));
+        resetDialog.setApplyHandler([&](const AppSettings &draft) {
+            saveSettings(draft, &error, path);
+            return error;
+        });
+        resetDialog.findChild<QPushButton *>("settingsReset")->click();
+        QVERIFY(resetDialog.settings() == defaultSettings());
+        QVERIFY(hasSeenGuide(path));
+        resetDialog.findChild<QPushButton *>("settingsSave")->click();
+        QCOMPARE(resetDialog.result(), int(QDialog::Accepted));
+        QVERIFY(loadSettings(path) == defaultSettings());
+        QVERIFY(hasSeenGuide(path));
+        QVERIFY2(markGuideSeen(&error, path), qPrintable(error));
+        QVERIFY(hasSeenGuide(path));
+    }
+    void guideStateCreationAndMalformedValues() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("new/settings.ini");
+        QString error;
+        QVERIFY2(markGuideSeen(&error, path), qPrintable(error));
+        QVERIFY(hasSeenGuide(path));
+        QVERIFY(loadSettings(path) == defaultSettings());
+        QSettings source(path, QSettings::IniFormat);
+        for (const auto &value : {"invalid", "false", "0", ""}) {
+            source.setValue("onboarding/seen", value);
+            source.sync();
+            QVERIFY(!hasSeenGuide(path));
+        }
+        for (const auto &value : {"true", "1"}) {
+            source.setValue("onboarding/seen", value);
+            source.sync();
+            QVERIFY(hasSeenGuide(path));
+        }
+    }
+    void failedGuideWriteReportsError() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QString error;
+        QVERIFY(!markGuideSeen(&error, directory.path()));
+        QVERIFY(!error.isEmpty());
+        QFile blocker(directory.filePath("blocked"));
+        QVERIFY(blocker.open(QIODevice::WriteOnly));
+        QCOMPARE(blocker.write("keep"), qint64(4));
+        blocker.close();
+        error.clear();
+        QVERIFY(!markGuideSeen(&error, blocker.fileName() + "/settings.ini"));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(blocker.open(QIODevice::ReadOnly));
+        QCOMPARE(blocker.readAll(), QByteArray("keep"));
     }
     void saveValidatesBeforeApplyingAndKeepsErrorsVisible() {
         SettingsDialog dialog(defaultSettings());
@@ -238,7 +390,8 @@ class SettingsTests : public QObject {
         auto save = dialog.findChild<QPushButton *>("settingsSave");
         auto error = dialog.findChild<QLabel *>("errorLabel");
         auto theme = dialog.findChild<QComboBox *>("themeMode");
-        QVERIFY(point && rectangle && save && error && theme);
+        auto login = dialog.findChild<QCheckBox *>("launchAtLogin");
+        QVERIFY(point && rectangle && save && error && theme && login);
         QCOMPARE(point->maximumSequenceLength(), 1);
         QVERIFY(point->isClearButtonEnabled());
         int applyCount = 0;
@@ -254,6 +407,7 @@ class SettingsTests : public QObject {
         QVERIFY(error->isVisible());
         QVERIFY(dialog.isVisible());
         point->clear();
+        login->setChecked(true);
         theme->setCurrentIndex(theme->findData(static_cast<int>(ThemeMode::Light)));
         QTest::mouseClick(save, Qt::LeftButton);
         QCOMPARE(applyCount, 1);
@@ -271,6 +425,7 @@ class SettingsTests : public QObject {
         QCOMPARE(accepted.count(), 1);
         QVERIFY(!dialog.isVisible());
         QCOMPARE(applied.theme, ThemeMode::Light);
+        QVERIFY(applied.launchAtLogin);
         QVERIFY(applied.shortcuts["point"].isEmpty());
     }
 };

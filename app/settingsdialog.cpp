@@ -112,12 +112,27 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     captureOnStartup_ = new QCheckBox("启动后立即截图", defaults);
     captureOnStartup_->setObjectName("captureOnStartup");
     captureOnStartup_->setToolTip("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。");
+    launchAtLogin_ = new QCheckBox("开机时启动 HelpDesign", defaults);
+    launchAtLogin_->setObjectName("launchAtLogin");
+    launchAtLogin_->setToolTip("登录系统后驻留托盘，不会自动截图。请保留程序所在文件夹；移动后需重新设置。");
     fitImageOnOpen_ = new QCheckBox("打开图片时自动适应窗口", defaults);
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
     fitImageOnOpen_->setToolTip("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。");
     embedOriginal_ = new QCheckBox("导出 JSON 默认包含原图", defaults);
     embedOriginal_->setObjectName("defaultEmbedOriginal");
     defaultsLayout->addWidget(captureOnStartup_);
+    auto loginLayout = new QVBoxLayout;
+    loginLayout->setSpacing(6);
+    loginLayout->addWidget(launchAtLogin_);
+    auto loginHint = mutedLabel("登录系统后驻留托盘，不会自动截图。", defaults);
+    loginHint->setWordWrap(true);
+    loginLayout->addWidget(loginHint);
+    launchAtLoginNotice_ = mutedLabel({}, defaults);
+    launchAtLoginNotice_->setObjectName("launchAtLoginNotice");
+    launchAtLoginNotice_->setWordWrap(true);
+    launchAtLoginNotice_->hide();
+    loginLayout->addWidget(launchAtLoginNotice_);
+    defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
     defaultsLayout->addWidget(embedOriginal_);
     auto exportHint = mutedLabel("包含原图的 JSON 可独立还原。保存项目始终包含原图。", defaults);
@@ -230,12 +245,16 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto actions = new QHBoxLayout;
     auto reset = textButton("恢复默认", false, this);
     reset->setObjectName("settingsReset");
+    auto guide = textButton("使用引导", false, this);
+    guide->setObjectName("restartGuide");
+    guide->setToolTip("关闭设置并打开使用引导；未保存的设置将不会保存。");
     auto cancel = textButton("取消", false, this);
     cancel->setObjectName("settingsCancel");
     auto saveButton = textButton("保存", true, this);
     saveButton->setObjectName("settingsSave");
     saveButton->setDefault(true);
     actions->addWidget(reset);
+    actions->addWidget(guide);
     actions->addStretch();
     actions->addWidget(cancel);
     actions->addWidget(saveButton);
@@ -245,8 +264,13 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         error_->hide();
     });
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    connect(guide, &QPushButton::clicked, this, [this] {
+        reject();
+        emit guideRequested();
+    });
     connect(saveButton, &QPushButton::clicked, this, &SettingsDialog::save);
     connect(theme_, &QComboBox::currentIndexChanged, this, [this] { error_->hide(); });
+    connect(launchAtLogin_, &QCheckBox::toggled, this, [this] { error_->hide(); });
     setDraft(settings);
 }
 void SettingsDialog::showUpdates(bool checkNow) {
@@ -257,6 +281,10 @@ void SettingsDialog::showUpdates(bool checkNow) {
 void SettingsDialog::showToolbar() {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsToolbarPage"));
 }
+void SettingsDialog::setLaunchAtLoginNotice(const QString &notice) {
+    launchAtLoginNotice_->setText(notice);
+    launchAtLoginNotice_->setVisible(!notice.isEmpty());
+}
 void SettingsDialog::setDraft(const AppSettings &settings) {
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
@@ -264,6 +292,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
         it.value()->setChecked(settings.toolbarActions.contains(it.key()));
     theme_->setCurrentIndex(theme_->findData(static_cast<int>(settings.theme)));
     captureOnStartup_->setChecked(settings.captureOnStartup);
+    launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     embedOriginal_->setChecked(settings.embedOriginal);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
@@ -272,6 +301,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
 AppSettings SettingsDialog::settings() const {
     AppSettings result;
     result.captureOnStartup = captureOnStartup_->isChecked();
+    result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.embedOriginal = embedOriginal_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();

@@ -140,6 +140,7 @@ AppSettings loadSettings(const QString &filePath) {
         return fallback;
     };
     result.captureOnStartup = boolean("defaults/captureOnStartup", true);
+    result.launchAtLogin = boolean("defaults/launchAtLogin", false);
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
@@ -183,6 +184,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setAtomicSyncRequired(true);
     target.setValue("version", 1);
     target.setValue("defaults/captureOnStartup", settings.captureOnStartup);
+    target.setValue("defaults/launchAtLogin", settings.launchAtLogin);
     target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
     target.setValue("defaults/tool", settings.defaultTool);
@@ -196,6 +198,31 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     if (target.status() != QSettings::NoError) {
         if (error)
             *error = "无法保存设置，请检查配置文件的访问权限。";
+        return false;
+    }
+    if (error)
+        error->clear();
+    return true;
+}
+bool hasSeenGuide(const QString &filePath) {
+    QSettings source(settingsPath(filePath), QSettings::IniFormat);
+    const auto value = source.value("onboarding/seen").toString().toLower();
+    return source.status() == QSettings::NoError && (value == "true" || value == "1");
+}
+bool markGuideSeen(QString *error, const QString &filePath) {
+    const auto path = settingsPath(filePath);
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        if (error)
+            *error = "无法创建设置目录。";
+        return false;
+    }
+    QSettings target(path, QSettings::IniFormat);
+    target.setAtomicSyncRequired(true);
+    target.setValue("onboarding/seen", true);
+    target.sync();
+    if (target.status() != QSettings::NoError) {
+        if (error)
+            *error = "无法保存引导状态，请检查配置文件的访问权限。";
         return false;
     }
     if (error)

@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "guide.h"
 #include "inlinenoteedit.h"
 #include "detector.h"
 #include "explosion.h"
@@ -131,6 +132,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addWidget(explosion_);
     connect(explosion_, &QPushButton::clicked, this, &Editor::explode);
     auto capture = iconButton("capture", "重新截图", bar);
+    capture->setObjectName("captureImage");
+    auto help = iconButton("help", "使用引导", bar);
+    help->setObjectName("showGuide");
+    connect(help, &QPushButton::clicked, this, &Editor::showGuide);
     auto open = iconButton("open", "导入图片或项目", bar);
     open->setObjectName("importDocument");
     auto minimize = iconButton("minus", "最小化", bar);
@@ -138,6 +143,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto close = iconButton("close", "关闭当前截图", bar);
     header->addWidget(open);
     header->addWidget(capture);
+    header->addWidget(help);
     header->addWidget(minimize);
     header->addWidget(close);
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
@@ -339,6 +345,25 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     updateToolbar();
     resize(1260, 850);
 }
+void Editor::showGuide() {
+    finishNoteEdit();
+    if (!hasDocument()) setDocument(fromImage(exampleImage(), "demo", "引导示例"));
+    if (!guide_) {
+        guide_ = new GuideOverlay(this);
+        connect(guide_, &GuideOverlay::dismissed, this, &Editor::guideDismissed);
+    }
+    if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
+    raise();
+    activateWindow();
+    guide_->start();
+}
+void Editor::dismissGuide() {
+    if (guide_) guide_->dismiss();
+}
+bool Editor::guideActive() const {
+    return guide_ && guide_->isVisible();
+}
 void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
     for (auto it = shortcuts_.begin(); it != shortcuts_.end(); ++it) {
         const auto sequence = bindings.value(it.key());
@@ -357,6 +382,7 @@ void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
 
 }
 void Editor::setDocument(Document document) {
+    dismissGuide();
     finishNoteEdit();
     annotationsVisible_ = true;
     hideAnnotations_->setChecked(false);
@@ -1261,6 +1287,7 @@ void Editor::showContext(QPoint p) {
 }
 void Editor::closeEvent(QCloseEvent *e) {
     e->ignore();
+    if (guideActive()) { dismissGuide(); return; }
     if (!allowReplace())
         return;
     ++generation_;

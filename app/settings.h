@@ -11,6 +11,7 @@ struct AppSettings {
     QMap<QString, QKeySequence> shortcuts;
     QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"};
     bool captureOnStartup = true;
+    bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
     bool checkUpdatesOnStartup = false;
@@ -30,5 +31,7 @@ QVector<ToolbarActionDefinition> toolbarActionDefinitions();
 AppSettings defaultSettings();
 AppSettings loadSettings(const QString &filePath = {});
 bool saveSettings(const AppSettings &settings, QString *error = nullptr, const QString &filePath = {});
+bool hasSeenGuide(const QString &filePath = {});
+bool markGuideSeen(QString *error = nullptr, const QString &filePath = {});
 QString validateSettings(const AppSettings &settings);
 } // namespace h2d

@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "autostart.h"
 #include "settingsdialog.h"
 #include "ui.h"
 #include "updatechecker.h"
@@ -9,8 +10,8 @@
 #include <QScreen>
 #include <QTimer>
 namespace h2d {
-Controller::Controller(QObject *parent, const AppSettings &settings)
-    : QObject(parent), settings_(settings), editor_(),
+Controller::Controller(QObject *parent, const AppSettings &settings, const QString &settingsFile)
+    : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
       tray_(QApplication::windowIcon().isNull() ? glyph("capture", accent()) : QApplication::windowIcon(), this),
       shortcut_(this) {
     editor_.setPreferences(settings_);
@@ -19,8 +20,14 @@ Controller::Controller(QObject *parent, const AppSettings &settings)
     auto menu = new QMenu(&editor_);
     captureAction_ = menu->addAction("截图", this, &Controller::capture);
     captureAction_->setObjectName("trayCapture");
-    menu->addAction("打开图片或项目", &editor_, [this] { editor_.openFile(); });
-    menu->addAction("粘贴图片", &editor_, &Editor::pasteImage);
+    menu->addAction("打开图片或项目", &editor_, [this] {
+        editor_.openFile();
+        if (guidePending_ && editor_.hasDocument()) showGuide();
+    });
+    menu->addAction("粘贴图片", &editor_, [this] {
+        editor_.pasteImage();
+        if (guidePending_ && editor_.hasDocument()) showGuide();
+    });
     menu->addAction("恢复批注窗口", this, &Controller::activate);
 #ifdef Q_OS_MAC
     menu->addAction("启用系统元素识别", this, [this] {
@@ -46,6 +53,12 @@ Controller::Controller(QObject *parent, const AppSettings &settings)
     });
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
+    connect(&editor_, &Editor::guideDismissed, this, [this] {
+        guidePending_ = false;
+        QString error;
+        if (!hasSeenGuide(settingsFile_) && !markGuideSeen(&error, settingsFile_))
+            tray_.showMessage("HelpDesign", "无法记录引导状态，下次启动时可能再次显示。\n" + error);
+    });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
         tray_.showMessage("HelpDesign", "截图快捷键未能注册，请右键托盘打开设置修改。");
@@ -62,7 +75,15 @@ void Controller::openSettings(bool updates, bool toolbar) {
         menu->close();
     const auto activeShortcut = shortcut_.sequence();
     shortcut_.stop();
-    SettingsDialog dialog(settings_, &editor_);
+    auto draft = settings_;
+    QString startupReadError;
+    const bool registered = launchAtLoginEnabled(&startupReadError);
+    if (startupReadError.isEmpty())
+        draft.launchAtLogin = registered;
+    SettingsDialog dialog(draft, &editor_);
+    dialog.setLaunchAtLoginNotice(startupReadError.isEmpty() ? launchAtLoginNotice() : startupReadError);
+    bool guideRequested = false;
+    connect(&dialog, &SettingsDialog::guideRequested, &dialog, [&] { guideRequested = true; });
     if (updates)
         dialog.showUpdates(true);
     else if (toolbar)
@@ -70,12 +91,25 @@ void Controller::openSettings(bool updates, bool toolbar) {
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;
+        QString startupError;
+        const bool wasRegistered = launchAtLoginEnabled(&startupError);
+        if (!startupError.isEmpty())
+            return startupError;
         const auto oldShortcut = shortcut_.sequence();
         if (!shortcut_.start(next.shortcuts.value("capture")))
             return shortcut_.lastError().isEmpty() ? "截图快捷键无法注册，请更换组合键。"
                                                    : shortcut_.lastError();
         QString error;
-        if (!saveSettings(next, &error)) {
+        const bool startupChanged = wasRegistered != next.launchAtLogin;
+        if (startupChanged && !setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
+            if (!shortcut_.start(oldShortcut))
+                error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
+            return error;
+        }
+        if (!saveSettings(next, &error, settingsFile_)) {
+            QString rollbackError;
+            if (startupChanged && !setLaunchAtLoginEnabled(wasRegistered, &rollbackError))
+                error += "\n开机自启未能恢复：" + rollbackError;
             if (!shortcut_.start(oldShortcut))
                 error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
             return error;
@@ -87,16 +121,37 @@ void Controller::openSettings(bool updates, bool toolbar) {
         updateTrayShortcut();
         return {};
     });
-    if (dialog.exec() != QDialog::Accepted && !shortcut_.start(activeShortcut))
+    const bool accepted = dialog.exec() == QDialog::Accepted;
+    if (!accepted && !shortcut_.start(activeShortcut))
         tray_.showMessage("HelpDesign", "截图快捷键未能恢复，请在设置中更换组合键。");
+    if (accepted) {
+        const auto notice = launchAtLoginNotice();
+        if (!notice.isEmpty()) tray_.showMessage("HelpDesign 开机自启", notice);
+    }
+    if (guideRequested)
+        showGuide();
 }
-void Controller::start(bool demo, const QString &path) {
+void Controller::showGuide() {
+    if (capturing_ || QApplication::activeModalWidget())
+        return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
+    guidePending_ = false;
+    editor_.showGuide();
+}
+void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
+    guidePending_ = guidePending_ || firstUse;
     if (!path.isEmpty())
         editor_.openFile(path);
     else if (demo)
         editor_.setDocument(fromImage(exampleImage(), "demo", "示例产品页面"));
-    else if (settings_.captureOnStartup)
-        capture();
+    // A login launch stays in the tray, including before the first manual use.
+    if (!background) {
+        if (guidePending_)
+            showGuide();
+        else if (path.isEmpty() && !demo && settings_.captureOnStartup)
+            capture();
+    }
     if (!startupUpdateChecked_) {
         startupUpdateChecked_ = true;
         if (settings_.checkUpdatesOnStartup) {
@@ -113,6 +168,10 @@ void Controller::start(bool demo, const QString &path) {
     }
 }
 void Controller::activate() {
+    if (guidePending_) {
+        showGuide();
+        return;
+    }
     if (editor_.hasDocument()) {
         if (editor_.isMinimized())
             editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
@@ -125,6 +184,11 @@ void Controller::activate() {
 void Controller::capture() {
     if (capturing_ || QApplication::activeModalWidget())
         return;
+    if (guidePending_) {
+        showGuide();
+        return;
+    }
+    editor_.dismissGuide();
     if (auto menu = tray_.contextMenu())
         menu->close();
     if (!editor_.allowReplace())

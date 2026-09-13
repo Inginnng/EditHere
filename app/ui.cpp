@@ -230,6 +230,14 @@ QIcon glyph(const QString &name, QColor color) {
         p.drawLine(3, 8, 3, 20); p.drawLine(3,20,21,20); p.drawLine(21,20,21,10);
         p.drawLine(3,8,9,8); p.drawLine(9,8,11,11); p.drawLine(11,11,15,11);
         p.drawLine(17,3,17,14); p.drawLine(13,10,17,14); p.drawLine(21,10,17,14);
+    } else if (name == "help") {
+        p.drawEllipse(QRectF(3, 3, 18, 18));
+        QPainterPath question;
+        question.moveTo(9, 8.5);
+        question.cubicTo(9, 5.5, 15, 5.5, 15, 9);
+        question.cubicTo(15, 11, 12, 11.5, 12, 14);
+        p.drawPath(question);
+        p.drawPoint(QPointF(12, 17));
     } else if (name == "eye" || name == "eye-off") {
         QPainterPath path; path.moveTo(2,12); path.cubicTo(7,4,17,4,22,12); path.cubicTo(17,20,7,20,2,12); p.drawPath(path);
         p.drawEllipse(QPointF(12,12),3,3);
