@@ -1,11 +1,11 @@
-param(
+﻿param(
     [string]$OutputDirectory = "",
     [string]$ContactSheetPath = ""
 )
 # Rebuild the committed PNG, ICO and ICNS files from helpdesign.svg.
 # Requires Windows PowerShell 5.1 (built-in System.Drawing); no downloaded tools.
 # Run: powershell.exe -NoProfile -File scripts/generate-app-icons.ps1
-# The small SVG renderer supports the absolute M/L/H/V/Q/Z commands used here.
+# The small SVG renderer supports the absolute M/L/H/V/Q/A/Z (circular arcs) commands used here.
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot "assets/icons" }
@@ -39,7 +39,7 @@ public static class HelpDesignIconGenerator {
         p.CloseFigure(); return p;
     }
     static GraphicsPath SvgPath(string data) {
-        var tokens = Regex.Matches(data, @"[MLHVQZ]|-?\d+(?:\.\d+)?");
+        var tokens = Regex.Matches(data, @"[MLHVQAZ]|-?\d+(?:\.\d+)?");
         int i=0; float x=0, y=0; var p = new GraphicsPath();
         Func<float> next = () => Number(tokens[i++].Value);
         while(i<tokens.Count) {
@@ -52,6 +52,22 @@ public static class HelpDesignIconGenerator {
                 float a=next(), b=next(), c=next(), d=next();
                 p.AddBezier(x,y,x+(a-x)*2/3,y+(b-y)*2/3,c+(a-c)*2/3,d+(b-d)*2/3,c,d);
                 x=c; y=d;
+            } else if(command=="A") {
+                double radius=next(), ry=next(), rotation=next();
+                bool large=next()!=0, sweep=next()!=0;
+                float endX=next(), endY=next();
+                if(Math.Abs(radius-ry)>0.00001 || rotation!=0) throw new InvalidDataException("Only circular arcs supported");
+                double dx=(x-endX)/2.0, dy=(y-endY)/2.0, distance=dx*dx+dy*dy;
+                if(distance<1e-16) { x=endX; y=endY; continue; }
+                if(radius<=0) { p.AddLine(x,y,endX,endY); x=endX; y=endY; continue; }
+                radius=Math.Max(radius,Math.Sqrt(distance));
+                double factor=(large==sweep?-1:1)*Math.Sqrt(Math.Max(0,(radius*radius-distance)/distance));
+                double cx=(x+endX)/2.0+factor*dy, cy=(y+endY)/2.0-factor*dx;
+                double start=Math.Atan2(y-cy,x-cx), end=Math.Atan2(endY-cy,endX-cx), delta=end-start;
+                if(sweep && delta<0)delta+=2*Math.PI;
+                if(!sweep && delta>0)delta-=2*Math.PI;
+                p.AddArc((float)(cx-radius),(float)(cy-radius),(float)(radius*2),(float)(radius*2),(float)(start*180/Math.PI),(float)(delta*180/Math.PI));
+                x=endX; y=endY;
             } else if(command=="Z") { p.CloseFigure(); }
             else throw new InvalidDataException("Unsupported SVG path command: "+command);
         }
@@ -65,7 +81,9 @@ public static class HelpDesignIconGenerator {
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                g.ScaleTransform(size*scale/512f, size*scale/512f);
+                var viewBox=svg.DocumentElement.GetAttribute("viewBox").Split(new[]{' '},StringSplitOptions.RemoveEmptyEntries);
+                g.ScaleTransform(size*scale/Number(viewBox[2]), size*scale/Number(viewBox[3]));
+                g.TranslateTransform(-Number(viewBox[0]),-Number(viewBox[1]));
                 foreach(XmlNode n in svg.DocumentElement.ChildNodes) {
                     if(n.LocalName=="rect") {
                         float x=Attr(n,"x"), y=Attr(n,"y"), w=Attr(n,"width"), h=Attr(n,"height"), r=Attr(n,"rx");
