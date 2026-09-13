@@ -15,6 +15,7 @@ class QShortcut;
 class QPlainTextEdit;
 namespace h2d {
 class LayoutCanvas;
+class ImageArea;
 class LayoutInspector;
 class ExplosionWave;
 class GuideOverlay;
@@ -95,6 +96,7 @@ class Editor final : public QWidget {
     void undo();
     void redo();
     void zoom(double value);
+    void zoomAt(double value, QPointF viewportAnchor);
     void showError(const QString &text);
     QString coords(const Note &note) const;
     GuideOverlay *guide_ = nullptr;
@@ -128,7 +130,8 @@ class Editor final : public QWidget {
     bool editingWasDirty_ = false, renderingNotes_ = false, finishingEdit_ = false;
     bool annotationsVisible_ = true;
     QMap<QString, QPushButton *> outputButtons_;
-    QScrollArea *imageScroll_, *notesScroll_;
+    ImageArea *imageScroll_;
+    QScrollArea *notesScroll_;
     QWidget *notesPanel_, *noteContainer_;
     QVBoxLayout *noteLayout_;
     QHBoxLayout *dock_;
@@ -140,7 +143,7 @@ class Editor final : public QWidget {
     QPushButton *fullscreen_ = nullptr;
     Qt::WindowStates beforeFullscreenState_;
     QRect beforeFullscreenGeometry_;
-    QPoint beforeFullscreenScroll_;
+    QPointF beforeFullscreenOrigin_;
     bool viewportPanning_ = false;
     QPoint viewportPanPosition_;
     bool fitted_ = true;

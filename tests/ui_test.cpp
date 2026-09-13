@@ -683,14 +683,19 @@ class UiTests : public QObject {
     void middleDraggingPansTheImageWithoutEditing_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("blankViewport");
-        QTest::newRow("annotation-canvas") << false << false;
-        QTest::newRow("explosion-canvas") << true << false;
-        QTest::newRow("annotation-blank-viewport") << false << true;
-        QTest::newRow("explosion-blank-viewport") << true << true;
+        QTest::addColumn<bool>("fitted");
+        for (bool explosion : {false, true})
+            for (bool blank : {false, true})
+                for (bool fitted : {false, true}) {
+                    const QByteArray name = QByteArray(explosion ? "explosion" : "annotation") +
+                        (blank ? "-blank-viewport" : "-canvas") + (fitted ? "-fitted" : "-zoomed");
+                    QTest::newRow(name.constData()) << explosion << blank << fitted;
+                }
     }
     void middleDraggingPansTheImageWithoutEditing() {
         QFETCH(bool, explosion);
         QFETCH(bool, blankViewport);
+        QFETCH(bool, fitted);
         auto document = gridDocument();
         if (blankViewport) {
             QImage image(1600, 80, QImage::Format_ARGB32);
@@ -721,30 +726,34 @@ class UiTests : public QObject {
         auto plus = toolButton(editor, "放大");
         auto scroll = editor.findChild<QScrollArea *>("imageWell");
         QVERIFY(plus && scroll);
-        for (int i = 0; editor.canvas()->zoom() < 2.0 && i < 16; ++i) plus->click();
+        if (fitted) editor.fit();
+        else for (int i = 0; editor.canvas()->zoom() < 2.0 && i < 16; ++i) plus->click();
         QTest::qWait(30);
         auto horizontal = scroll->horizontalScrollBar();
         auto vertical = scroll->verticalScrollBar();
-        QVERIFY(horizontal->maximum() > 240);
-        horizontal->setValue(240);
-        if (!blankViewport) {
-            QVERIFY(vertical->maximum() > 200);
-            vertical->setValue(200);
+        QWidget *canvas = explosion ? static_cast<QWidget *>(editor.layoutCanvas())
+                                    : static_cast<QWidget *>(editor.canvas());
+        QCOMPARE(scroll->widget(), canvas);
+        if (!fitted) {
+            horizontal->setValue(240);
+            if (!blankViewport) vertical->setValue(200);
+        } else {
+            QVERIFY(canvas->width() <= scroll->viewport()->width());
+            QVERIFY(canvas->height() <= scroll->viewport()->height());
         }
         const QPoint beforeOffset(horizontal->value(), vertical->value());
+        const QPoint beforePosition = canvas->pos();
         const QRect geometry = editor.geometry();
         const auto before = editor.document();
         const auto feedback = exportFeedback(before, true);
         const double zoom = editor.canvas()->zoom();
         const QString selection = explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected();
-        QWidget *canvas = explosion ? static_cast<QWidget *>(editor.layoutCanvas())
-                                    : static_cast<QWidget *>(editor.canvas());
         QWidget *surface = blankViewport ? scroll->viewport() : canvas;
         const QPoint viewportPosition = blankViewport ? QPoint(140, scroll->viewport()->height() - 20)
                                                       : QPoint(160, 160);
         const QPoint start = scroll->viewport()->mapToGlobal(viewportPosition);
         if (blankViewport) QVERIFY(!canvas->rect().contains(canvas->mapFromGlobal(start)));
-        const QPoint delta = blankViewport ? QPoint(55, 0) : QPoint(55, 35);
+        else QVERIFY(canvas->rect().contains(canvas->mapFromGlobal(start)));
         auto mouse = [&](QEvent::Type type, const QPoint &global, Qt::MouseButton button,
                          Qt::MouseButtons buttons) {
             QMouseEvent event(type, QPointF(surface->mapFromGlobal(global)), QPointF(global),
@@ -752,9 +761,21 @@ class UiTests : public QObject {
             QApplication::sendEvent(surface, &event);
         };
         mouse(QEvent::MouseButtonPress, start, Qt::MiddleButton, Qt::MiddleButton);
-        mouse(QEvent::MouseMove, start + delta, Qt::NoButton, Qt::MiddleButton);
-        mouse(QEvent::MouseButtonRelease, start + delta, Qt::MiddleButton, Qt::NoButton);
-        QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), beforeOffset - delta);
+        // Continue the same gesture until the entire image has passed every viewport edge.
+        const int farX = canvas->width() + scroll->viewport()->width() + 300;
+        const int farY = canvas->height() + scroll->viewport()->height() + 300;
+        const QVector<QPoint> offsets{{farX, 0}, {-farX, 0}, {0, farY}, {0, -farY}, {130, -85}};
+        for (const QPoint &offset : offsets) {
+            mouse(QEvent::MouseMove, start + offset, Qt::NoButton, Qt::MiddleButton);
+            QTRY_COMPARE(canvas->pos(), beforePosition + offset);
+            QCOMPARE(QPoint(horizontal->value(), vertical->value()), beforeOffset - offset);
+            if (offset.x() == farX) QVERIFY(canvas->geometry().left() > scroll->viewport()->width());
+            if (offset.x() == -farX) QVERIFY(canvas->geometry().right() < 0);
+            if (offset.y() == farY) QVERIFY(canvas->geometry().top() > scroll->viewport()->height());
+            if (offset.y() == -farY) QVERIFY(canvas->geometry().bottom() < 0);
+        }
+        const QPoint finalOffset = offsets.last();
+        mouse(QEvent::MouseButtonRelease, start + finalOffset, Qt::MiddleButton, Qt::NoButton);
         QCOMPARE(editor.geometry(), geometry);
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QCOMPARE(editor.explosionActive(), explosion);
@@ -764,8 +785,121 @@ class UiTests : public QObject {
         QVERIFY(editor.document().notes == before.notes);
         QCOMPARE(exportFeedback(editor.document(), true), feedback);
         // Releasing the middle button must end the pan, including on empty viewport space.
-        mouse(QEvent::MouseMove, start + delta + QPoint(30, 20), Qt::NoButton, Qt::NoButton);
-        QCOMPARE(QPoint(horizontal->value(), vertical->value()), beforeOffset - delta);
+        mouse(QEvent::MouseMove, start + finalOffset + QPoint(30, 20), Qt::NoButton, Qt::NoButton);
+        QCOMPARE(canvas->pos(), beforePosition + finalOffset);
+        QCOMPARE(editor.geometry(), geometry);
+
+        const QPoint pannedPosition = canvas->pos();
+        editor.explode();
+        QCOMPARE(scroll->widget()->pos(), pannedPosition);
+        QCOMPARE(editor.canvas()->zoom(), zoom);
+        editor.explode();
+        QCOMPARE(scroll->widget(), canvas);
+        QCOMPARE(canvas->pos(), pannedPosition);
+        QCOMPARE(editor.canvas()->zoom(), zoom);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(editor.document().dirty, before.dirty);
+        editor.fit();
+        QTRY_VERIFY(qAbs(canvas->geometry().center().x() - scroll->viewport()->rect().center().x()) <= 1);
+        QTRY_VERIFY(qAbs(canvas->geometry().center().y() - scroll->viewport()->rect().center().y()) <= 1);
+        QVERIFY(canvas->width() <= scroll->viewport()->width());
+        QVERIFY(canvas->height() <= scroll->viewport()->height());
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        editor.hide();
+    }
+    void wheelZoomKeepsThePixelUnderThePointer_data() {
+        QTest::addColumn<bool>("explosion");
+        QTest::addColumn<bool>("blankViewport");
+        QTest::addColumn<int>("modifier");
+        for (bool explosion : {false, true})
+            for (bool blank : {false, true})
+                for (int modifier : {int(Qt::NoModifier), int(Qt::ControlModifier), int(Qt::MetaModifier)}) {
+                    const QByteArray name = QByteArray(explosion ? "explosion" : "annotation") +
+                        (blank ? "-blank-viewport" : "-canvas") +
+                        (modifier == Qt::ControlModifier ? "-ctrl" : modifier == Qt::MetaModifier ? "-meta" : "-plain");
+                    QTest::newRow(name.constData()) << explosion << blank << modifier;
+                }
+    }
+    void wheelZoomKeepsThePixelUnderThePointer() {
+        QFETCH(bool, explosion);
+        QFETCH(bool, blankViewport);
+        QFETCH(int, modifier);
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Editor editor;
+        editor.setDocument(document);
+        editor.resize(1100, 720);
+        QTest::qWait(60);
+        if (explosion) {
+            editor.explode();
+            auto layout = editor.layoutCanvas();
+            QVERIFY(layout);
+            QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+            QVERIFY(!layout->selected().isEmpty());
+        }
+        editor.fit();
+        QTest::qWait(30);
+        auto scroll = editor.findChild<QScrollArea *>("imageWell");
+        QVERIFY(scroll);
+        QWidget *canvas = explosion ? static_cast<QWidget *>(editor.layoutCanvas())
+                                    : static_cast<QWidget *>(editor.canvas());
+        QCOMPARE(scroll->widget(), canvas);
+        // Start with an off-center camera: anchored zoom must preserve a deliberate pan.
+        const QPoint start = canvas->mapToGlobal(canvas->rect().center());
+        auto mouse = [&](QEvent::Type type, const QPoint &global, Qt::MouseButton button,
+                         Qt::MouseButtons buttons) {
+            QMouseEvent event(type, QPointF(canvas->mapFromGlobal(global)), QPointF(global),
+                              button, buttons, Qt::NoModifier);
+            QApplication::sendEvent(canvas, &event);
+        };
+        mouse(QEvent::MouseButtonPress, start, Qt::MiddleButton, Qt::MiddleButton);
+        mouse(QEvent::MouseMove, start + QPoint(85, -45), Qt::NoButton, Qt::MiddleButton);
+        mouse(QEvent::MouseButtonRelease, start + QPoint(85, -45), Qt::MiddleButton, Qt::NoButton);
+        const double initialZoom = editor.canvas()->zoom();
+        const QPoint initialPosition = canvas->pos();
+        // Plain wheel uses empty image content; modifiers must zoom even over a selected component.
+        const QPointF imagePoint = modifier == Qt::NoModifier ? QPointF(650.25, 450.75) : QPointF(100.25, 110.75);
+        const QPointF cursor = blankViewport ? QPointF(8.25, 8.75)
+            : QPointF(canvas->pos()) + imagePoint * initialZoom;
+        QVERIFY(scroll->viewport()->rect().contains(cursor.toPoint()));
+        if (blankViewport) QVERIFY(!QRectF(canvas->geometry()).contains(cursor));
+        else QVERIFY(QRectF(canvas->geometry()).contains(cursor));
+        const QPointF anchoredPixel = (cursor - QPointF(canvas->pos())) / initialZoom;
+        const auto before = editor.document();
+        const auto feedback = exportFeedback(before, true);
+        const QString selection = explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected();
+        const QRect geometry = editor.geometry();
+        bool largerThanViewport = false;
+        for (int cycle = 0; cycle < 2; ++cycle) {
+            for (int step = 0; step < 16; ++step) {
+                QWidget *surface = blankViewport ? scroll->viewport() : canvas;
+                const QPointF local = blankViewport ? cursor : cursor - QPointF(canvas->pos());
+                const QPointF global = QPointF(scroll->viewport()->mapToGlobal(QPoint())) + cursor;
+                const double oldZoom = editor.canvas()->zoom();
+                QWheelEvent event(local, global, QPoint(), QPoint(0, step < 8 ? 120 : -120),
+                                  Qt::NoButton, Qt::KeyboardModifiers(modifier), Qt::NoScrollPhase, false);
+                QApplication::sendEvent(surface, &event);
+                const double newZoom = editor.canvas()->zoom();
+                if (step < 8) QVERIFY(newZoom > oldZoom);
+                else QVERIFY(newZoom < oldZoom);
+                const QPointF mapped = QPointF(canvas->pos()) + anchoredPixel * newZoom;
+                QVERIFY2(qAbs(mapped.x() - cursor.x()) <= 1.2 && qAbs(mapped.y() - cursor.y()) <= 1.2,
+                         qPrintable(QString("Cursor anchor drifted: expected (%1, %2), actual (%3, %4)")
+                             .arg(cursor.x()).arg(cursor.y()).arg(mapped.x()).arg(mapped.y())));
+                largerThanViewport |= canvas->width() > scroll->viewport()->width() &&
+                                      canvas->height() > scroll->viewport()->height();
+                if (explosion) QCOMPARE(editor.layoutCanvas()->zoom(), newZoom);
+            }
+            QVERIFY(qAbs(editor.canvas()->zoom() - initialZoom) < 1e-9);
+            QVERIFY((canvas->pos() - initialPosition).manhattanLength() <= 2);
+        }
+        QVERIFY(largerThanViewport);
+        QCOMPARE(editor.explosionActive(), explosion);
+        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected(), selection);
+        QCOMPARE(editor.document().dirty, before.dirty);
+        QVERIFY(editor.document().layout == before.layout);
+        QVERIFY(editor.document().notes == before.notes);
+        QCOMPARE(exportFeedback(editor.document(), true), feedback);
         QCOMPARE(editor.geometry(), geometry);
         editor.hide();
     }

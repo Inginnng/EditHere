@@ -527,7 +527,7 @@ void Canvas::wheelEvent(QWheelEvent *e) {
         e->accept();
         return;
     }
-    const int delta = e->angleDelta().y();
+    const int delta = e->angleDelta().y() != 0 ? e->angleDelta().y() : e->pixelDelta().y();
     if (!delta) {
         e->ignore();
         return;
@@ -552,11 +552,11 @@ void Canvas::wheelEvent(QWheelEvent *e) {
         if (specific)
             picker_.step(delta > 0 ? 1 : -1);
         else
-            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
+            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), e->position());
         updateHint();
         update();
     } else
-        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
+        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), e->position());
     e->accept();
 }
 void Canvas::updateHint() {

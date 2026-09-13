@@ -49,7 +49,7 @@ class LayoutCanvas final : public QWidget {
     void changed();
     void selectionChanged();
     void hintChanged(QString hint);
-    void zoomRequested(double value);
+    void zoomRequested(double value, QPointF anchor = {});
     void panRequested(QPoint delta);
     void noteEditRequested(QString id, QPoint global);
     void annotationRequested(QRect area, QPoint global);

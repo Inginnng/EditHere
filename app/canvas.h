@@ -34,7 +34,7 @@ class Canvas final : public QWidget {
     void geometryChanged(h2d::Note note);
     void selectionChanged(QString id);
     void hintChanged(QString text);
-    void zoomRequested(double zoom);
+    void zoomRequested(double zoom, QPointF anchor = {});
     void panRequested(QPoint delta);
     void contextRequested(QPoint global);
     void layoutEditRequested();

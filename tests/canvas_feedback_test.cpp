@@ -150,7 +150,7 @@ class CanvasFeedbackTests : public QObject {
         const auto initialSelection = exploded ? layout.selected() : canvas.selected();
         QVERIFY(!initialSelection.isEmpty());
         QSignalSpy pans(&widget, SIGNAL(panRequested(QPoint)));
-        QSignalSpy zooms(&widget, SIGNAL(zoomRequested(double)));
+        QSignalSpy zooms(&widget, SIGNAL(zoomRequested(double,QPointF)));
         QSignalSpy edits(&canvas, &Canvas::editRequested);
         QSignalSpy geometry(&canvas, &Canvas::geometryChanged);
         QSignalSpy regions(&canvas, &Canvas::regionRequested);

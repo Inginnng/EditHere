@@ -523,12 +523,12 @@ void LayoutCanvas::wheelEvent(QWheelEvent *event) {
         event->accept();
         return;
     }
-    const int delta = event->angleDelta().y();
+    const int delta = event->angleDelta().y() != 0 ? event->angleDelta().y() : event->pixelDelta().y();
     if (!delta)
         return;
     const QPointF point = pixel(event->position());
     if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
-        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
+        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), event->position());
     } else if (!selected_.isEmpty() && inside(selectionBounds(), point)) {
         transformSelection(scaleLayoutRect(selectionBounds(), delta > 0 ? 1.05 : 1 / 1.05, state_.canvas));
     } else {
@@ -548,7 +548,7 @@ void LayoutCanvas::wheelEvent(QWheelEvent *event) {
                                  .arg(level_ + 1)
                                  .arg(choices_.size()));
         } else
-            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12));
+            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), event->position());
     }
     event->accept();
     update();

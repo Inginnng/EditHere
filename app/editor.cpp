@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "imagearea.h"
 #include "guide.h"
 #include "inlinenoteedit.h"
 #include "detector.h"
@@ -168,12 +169,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto content = new QHBoxLayout;
     content->setSpacing(0);
     content->setContentsMargins(0, 0, 0, 0);
-    imageScroll_ = new QScrollArea(shell);
+    imageScroll_ = new ImageArea(shell);
     imageScroll_->setObjectName("imageWell");
-    imageScroll_->setAlignment(Qt::AlignCenter);
-    imageScroll_->setWidgetResizable(false);
     canvas_ = new Canvas;
-    imageScroll_->setWidget(canvas_);
+    imageScroll_->setCanvas(canvas_);
     imageScroll_->viewport()->installEventFilter(this);
     imageScroll_->viewport()->setMouseTracking(true);
     content->addWidget(imageScroll_, 1);
@@ -303,7 +302,9 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     layout->addLayout(dock);
     connect(canvas_, &Canvas::editRequested, this, &Editor::editNote);
     connect(canvas_, &Canvas::hintChanged, hint_, &QLabel::setText);
-    connect(canvas_, &Canvas::zoomRequested, this, &Editor::zoom);
+    connect(canvas_, &Canvas::zoomRequested, this, [this](double value, QPointF anchor) {
+        zoomAt(value, QPointF(canvas_->pos()) + anchor);
+    });
     connect(canvas_, &Canvas::contextRequested, this, &Editor::showContext);
     connect(canvas_, &Canvas::panRequested, this, &Editor::panImage);
     connect(canvas_, &Canvas::regionRequested, this, &Editor::addManualRegion);
@@ -442,8 +443,10 @@ void Editor::setDocument(Document document) {
             return;
         if (preferences_.fitImageOnOpen)
             fit();
-        else
+        else {
             zoom(1.0);
+            imageScroll_->centerImage();
+        }
     });
     auto watcher = new QFutureWatcher<QVector<Candidate>>(this);
     connect(watcher, &QFutureWatcher<QVector<Candidate>>::finished, this, [this, watcher, generation] {
@@ -470,8 +473,7 @@ void Editor::toggleFullscreen() {
     if (!isFullScreen()) {
         beforeFullscreenState_ = windowState() & ~Qt::WindowMinimized;
         beforeFullscreenGeometry_ = isMaximized() ? normalGeometry() : geometry();
-        beforeFullscreenScroll_ = {imageScroll_->horizontalScrollBar()->value(),
-                                   imageScroll_->verticalScrollBar()->value()};
+        beforeFullscreenOrigin_ = imageScroll_->imageOrigin();
         showFullScreen();
     } else {
         if (beforeFullscreenState_.testFlag(Qt::WindowMaximized))
@@ -482,11 +484,10 @@ void Editor::toggleFullscreen() {
                 setGeometry(beforeFullscreenGeometry_);
         }
         const int generation = generation_;
-        const QPoint position = beforeFullscreenScroll_;
+        const QPointF position = beforeFullscreenOrigin_;
         QTimer::singleShot(0, this, [this, generation, position] {
             if (generation == generation_ && !isFullScreen()) {
-                imageScroll_->horizontalScrollBar()->setValue(position.x());
-                imageScroll_->verticalScrollBar()->setValue(position.y());
+                imageScroll_->setImageOrigin(position);
             }
         });
     }
@@ -511,8 +512,9 @@ void Editor::changeEvent(QEvent *event) {
         stopViewportPan();
 }
 void Editor::panImage(QPoint delta) {
-    imageScroll_->horizontalScrollBar()->setValue(imageScroll_->horizontalScrollBar()->value() - delta.x());
-    imageScroll_->verticalScrollBar()->setValue(imageScroll_->verticalScrollBar()->value() - delta.y());
+    if (!hasDocument() || delta.isNull()) return;
+    fitted_ = false;
+    imageScroll_->setImageOrigin(imageScroll_->imageOrigin() + delta);
 }
 void Editor::stopViewportPan() {
     if (!viewportPanning_) return;
@@ -528,19 +530,27 @@ void Editor::fit() {
                                double(std::max(80, area.height())) / doc_.image.height()}));
     if (layoutCanvas_)
         layoutCanvas_->setZoom(canvas_->zoom());
+    imageScroll_->centerImage();
     zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
 }
 void Editor::zoom(double value) {
+    zoomAt(value, QPointF(imageScroll_->viewport()->width() / 2.0,
+                          imageScroll_->viewport()->height() / 2.0));
+}
+void Editor::zoomAt(double value, QPointF viewportAnchor) {
     if (!hasDocument())
         return;
     if (value == 0) {
         fit();
         return;
     }
+    if (!std::isfinite(value)) return;
+    const QPointF imagePoint = (viewportAnchor - imageScroll_->imageOrigin()) / canvas_->zoom();
     fitted_ = false;
     canvas_->setZoom(value);
     if (layoutCanvas_)
         layoutCanvas_->setZoom(canvas_->zoom());
+    imageScroll_->setImageOrigin(viewportAnchor - imagePoint * canvas_->zoom());
     zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
 }
 void Editor::resizeEvent(QResizeEvent *e) {
@@ -549,7 +559,9 @@ void Editor::resizeEvent(QResizeEvent *e) {
         wave_->setGeometry(imageScroll_->viewport()->rect());
     updateToolbar();
     if (fitted_)
-        QTimer::singleShot(0, this, &Editor::fit);
+        QTimer::singleShot(0, this, [this] {
+            if (fitted_) fit();
+        });
 }
 void Editor::setPreferences(const AppSettings &settings) {
     preferences_ = settings;
@@ -883,7 +895,7 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
         const auto point=active->mapFrom(imageScroll_->viewport(),wheel->position().toPoint());
         if (!active->rect().contains(point)) {
             const int delta=wheel->angleDelta().y()!=0 ? wheel->angleDelta().y() : wheel->pixelDelta().y();
-            if(delta!=0) zoom(canvas_->zoom() * (delta>0 ? 1.12 : 1/1.12));
+            if(delta!=0) zoomAt(canvas_->zoom() * (delta>0 ? 1.12 : 1/1.12), wheel->position());
             wheel->accept(); return true;
         }
     }
@@ -1005,16 +1017,14 @@ void Editor::switchCanvas(QWidget *target) {
     stopViewportPan();
     if (imageScroll_->widget() == target)
         return;
-    const int x = imageScroll_->horizontalScrollBar()->value();
-    const int y = imageScroll_->verticalScrollBar()->value();
+    const QPointF origin = imageScroll_->imageOrigin();
     if (auto previous = imageScroll_->takeWidget()) {
         previous->hide();
         previous->setParent(this);
     }
-    imageScroll_->setWidget(target);
+    imageScroll_->setCanvas(target);
     target->show();
-    imageScroll_->horizontalScrollBar()->setValue(x);
-    imageScroll_->verticalScrollBar()->setValue(y);
+    imageScroll_->setImageOrigin(origin);
 }
 void Editor::resetLayoutTools() {
     explosionActive_ = false;
@@ -1073,7 +1083,9 @@ void Editor::setExplosionActive(bool enabled) {
                 if (componentEditing_)
                     hint_->setText(hint);
             });
-            connect(layoutCanvas_, &LayoutCanvas::zoomRequested, this, &Editor::zoom);
+            connect(layoutCanvas_, &LayoutCanvas::zoomRequested, this, [this](double value, QPointF anchor) {
+                zoomAt(value, QPointF(layoutCanvas_->pos()) + anchor);
+            });
             connect(layoutCanvas_, &LayoutCanvas::panRequested, this, &Editor::panImage);
             connect(layoutCanvas_, &LayoutCanvas::movementAnnotationRequested,this,&Editor::editMovement);
             layoutCanvas_->setAnnotationsVisible(annotationsVisible_);

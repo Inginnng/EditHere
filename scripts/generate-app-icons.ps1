@@ -70,9 +70,11 @@ public static class HelpDesignIconGenerator {
                     if(n.LocalName=="rect") {
                         float x=Attr(n,"x"), y=Attr(n,"y"), w=Attr(n,"width"), h=Attr(n,"height"), r=Attr(n,"rx");
                         var stops=svg.GetElementsByTagName("stop");
-                        using(var fill=new LinearGradientBrush(new PointF(x,y),new PointF(x,y+h),
-                            ColorTranslator.FromHtml(stops[0].Attributes["stop-color"].Value),
-                            ColorTranslator.FromHtml(stops[1].Attributes["stop-color"].Value)))
+                        using(Brush fill=n.Attributes["fill"].Value.StartsWith("url(", StringComparison.Ordinal)
+                            ? (Brush)new LinearGradientBrush(new PointF(x,y),new PointF(x,y+h),
+                                ColorTranslator.FromHtml(stops[0].Attributes["stop-color"].Value),
+                                ColorTranslator.FromHtml(stops[1].Attributes["stop-color"].Value))
+                            : new SolidBrush(ColorTranslator.FromHtml(n.Attributes["fill"].Value)))
                         using(var path=RoundRect(x,y,w,h,r)) { g.FillPath(fill,path); }
                     } else if(n.LocalName=="path") {
                         using(var path=SvgPath(n.Attributes["d"].Value)) {
