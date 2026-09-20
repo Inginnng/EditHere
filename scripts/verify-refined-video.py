@@ -1,12 +1,18 @@
 from pathlib import Path
-import hashlib, json, subprocess, sys
+import argparse, hashlib, json, subprocess, sys
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-root, out = (Path(x).resolve() for x in sys.argv[1:3])
+parser = argparse.ArgumentParser(description='Verify the rendered introduction, web video and Agent chapter.')
+parser.add_argument('root', type=Path)
+parser.add_argument('output', type=Path)
+parser.add_argument('--variant', choices=['refined', 'A1'], default='refined')
+args = parser.parse_args()
+root, out = args.root.resolve(), args.output.resolve()
+variant = args.variant
 ff = root / '.cache/promo-video-deps/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe'
-files = ['EditHere-introduction-refined-1080p.mp4', 'EditHere-introduction-refined-web.mp4', 'EditHere-agent-chapter-refined-1080p.mp4']
-report = {'durationSeconds':246, 'agentStartsAt':183.1, 'wordmarks':'original SVG paths, no font dependency', 'music':'new original score with rebuilt clean narration', 'files':{}}
+files = [f'EditHere-introduction-{variant}-1080p.mp4', f'EditHere-introduction-{variant}-web.mp4', f'EditHere-agent-chapter-{variant}-1080p.mp4']
+report = {'durationSeconds':246, 'agentStartsAt':183.1, 'wordmarks':('A1 amber-cap wordmark based on Manrope outlines' if variant=='A1' else 'Previous outlined wordmark'), 'music':'Existing original score and narration mix reused unchanged', 'files':{}}
 for name in files:
     p=out/name
     result=subprocess.run([str(ff),'-v','error','-i',str(p),'-f','null','-'],capture_output=True,text=True)
@@ -32,8 +38,8 @@ for t in [17.5,34.0,133.5,206.0]:
     assert error<3.0,(t,error)
     report['nativeFootageChecks'].append({'time':t,'meanPixelDifference':round(error,3)})
 cap.release();old.release()
-report['audio']=json.loads((out/'EditHere-introduction-refined-1080p.audio-verification.json').read_text(encoding='utf8'))
+report['audio']=json.loads((out/f'EditHere-introduction-{variant}-1080p.audio-verification.json').read_text(encoding='utf8'))
 report['mix']=json.loads((out/'audio-verification.json').read_text(encoding='utf8'))
 (out/'verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
-(out/'SHA256SUMS-refined.txt').write_text(''.join(v['sha256']+'  '+k+'\n' for k,v in report['files'].items()),encoding='utf8')
+(out/f'SHA256SUMS-{variant}.txt').write_text(''.join(v['sha256']+'  '+k+'\n' for k,v in report['files'].items()),encoding='utf8')
 print(json.dumps({k:{'bytes':v['bytes'],'sha256':v['sha256']} for k,v in report['files'].items()},ensure_ascii=False))

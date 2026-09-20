@@ -21,7 +21,7 @@ import numpy as np
 from scipy.ndimage import maximum_filter1d, gaussian_filter1d
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MEDIA = Path('C:/Users/InGing/.codex/visualizations/2026/09/12/01a0955e-ff46-76d0-be3b-61dab9a71caa')
+DEFAULT_MEDIA = ROOT / 'artifacts'
 SR = 48000
 DURATION = 246.0
 

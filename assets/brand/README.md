@@ -1,24 +1,24 @@
 # EditHere wordmark
 
-Original vector lettering designed to complement the existing blue editing icon. All glyphs are paths; no font file, embedding permission or runtime font dependency is needed.
+The selected identity is **A1: a blue pen-shaped i with an amber cap**. Keep the spelling `EditHere` intact. The independent blue application icon is unchanged.
 
 | Asset | Background | ViewBox | Aspect ratio |
 | --- | --- | --- | --- |
-| `edithere-wordmark.svg` | Light | `0 0 384 100` | 3.84 |
-| `edithere-wordmark-light.svg` | Dark | `0 0 384 100` | 3.84 |
-| `edithere-lockup.svg` | Light | `0 0 484 100` | 4.84 |
-| `edithere-lockup-light.svg` | Dark | `0 0 484 100` | 4.84 |
+| `edithere-wordmark.svg` | Light | `0 0 572 128` | 4.46875 |
+| `edithere-wordmark-light.svg` | Dark | `0 0 572 128` | 4.46875 |
+| `edithere-lockup.svg` | Light | `0 0 722 128` | 5.640625 |
+| `edithere-lockup-light.svg` | Dark | `0 0 722 128` | 5.640625 |
 
-The SVG canvas is transparent. SVG width/height are four times the viewBox dimensions so Canvas renderers load a crisp source for large video titles. Scale proportionally. For video corner branding, use a 28–36 px rendered height; for a title, use a 90–150 px rendered height. A 24 px sample was visually checked for legibility.
+All assets have transparent backgrounds and vector outlines. Intrinsic width/height are four times the viewBox dimensions. Preserve the aspect ratio; do not stretch the lettering. At very small sizes, use the standalone application icon.
 
-`Edit` uses deep navy `#162944` on light backgrounds and white `#F6F9FF` on dark backgrounds. `Here` has one continuous subtle blue gradient (`#4A83EE` → `#3155D9`, or `#8BC4FF` → `#66A0FF`). The cut corners on E, the i dot and t echo the editing nib; rounded bowls and optical spacing preserve a quiet, readable silhouette.
+The body uses one blue gradient (`#246BD9` → `#3E74EF` → `#4147C9`), with a lighter version for dark backgrounds. The pen cap uses the same amber gradient (`#FFB352` → `#F38A35`) in both themes. The pen has one continuous short tip; do not reintroduce a dark nib or change the cap to red.
 
-Keep the spelling `EditHere` intact. Do not stretch, apply outlines or add glows. The lockup reuses `assets/icons/helpdesign.svg` without changing its source geometry. At very small sizes use the standalone application icon.
+The letter outlines are based on **Manrope**, weight 610, with optical spacing and a redesigned i. They are not a newly designed font. The original font is available from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/manrope); its SIL Open Font License is preserved in [Manrope-OFL.txt](Manrope-OFL.txt). No font installation is needed to display these SVGs. The lockup reuses `assets/icons/helpdesign.svg` without changing that icon's geometry.
 
-To regenerate assets and previews using the existing local video dependency installation:
+The four checked-in SVG files are the source of truth. To create transparent PNG exports and a light/dark preview using the local video dependency installation:
 
 ```powershell
 node assets/brand/render-preview.mjs <preview-output-directory>
 ```
 
-The renderer uses the repository's existing `@napi-rs/canvas` installation and Segoe UI for preview captions only. Distributed SVGs have no font dependency. Existing project licensing applies.
+The renderer reads the SVGs without rewriting them. It uses the repository's existing `@napi-rs/canvas` installation and Segoe UI only for preview captions.

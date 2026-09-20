@@ -6,13 +6,15 @@
 
 ## 运行
 
-首次更名升级请从[发行页](https://github.com/Inginnng/EditHere/releases/tag/v0.8.20)直接下载新包，先从托盘退出旧版。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新，无需先关再开。在新程序中保存一次项目会更新原 `.helpdesign` 文件关联。旧版的自动更新检查可能不识别改名后的地址。
+首次更名升级请从[发行页](https://github.com/Inginnng/EditHere/releases/tag/v0.8.21)直接下载新包，先从托盘退出旧版。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新，无需先关再开。在新程序中保存一次项目会更新原 `.helpdesign` 文件关联。旧版的自动更新检查可能不识别改名后的地址。
 
-Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-win-x64-setup.exe)（构建产物：`dist/EditHere-0.8.20-win-x64-setup.exe`）。默认安装到 `%LOCALAPPDATA%\Programs\EditHere`，仅安装给当前用户，无需管理员权限。安装器创建开始菜单和卸载入口，登记 `.helpdesign` 项目关联；组件页可选择登录启动、加入 PATH 与桌面快捷方式。新安装默认勾选登录启动和 PATH；升级时根据已有当前用户启动登记保留启动选项。安装完成后重新打开终端与 AI 工具，才能读取新 PATH。
+Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe)（构建产物：`dist/EditHere-0.8.21-win-x64-setup.exe`）。默认安装到 `%LOCALAPPDATA%\Programs\EditHere`，仅安装给当前用户，无需管理员权限。安装器创建开始菜单和卸载入口，登记 `.helpdesign` 项目关联；组件页可选择登录启动、加入 PATH 与桌面快捷方式。新安装默认勾选登录启动和 PATH；升级时根据已有当前用户启动登记保留启动选项。安装完成后重新打开终端与 AI 工具，才能读取新 PATH。
 
-Windows [便携包](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-win-x64.zip)：`dist/EditHere-0.8.20-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。便携版不自动添加 PATH，可用完整路径运行 CLI。
+Windows [便携包](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip)：`dist/EditHere-0.8.21-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。便携版不自动添加 PATH，可用完整路径运行 CLI。
 
-macOS 下载[通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-macos-universal.dmg)，打开后将 `EditHere.app` 拖到其中的 **Applications** 入口。CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`。首次截图需屏幕录制权限，系统元素识别需辅助功能权限；尚未实机验收和 Apple 公证。
+Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt)。 在下载目录打开 PowerShell，可用 `Get-FileHash .\EditHere-0.8.21-win-x64-setup.exe -Algorithm SHA256` 计算安装包的哈希，与文件内同名条目比较。
+
+macOS 下载[通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg)，打开后将 `EditHere.app` 拖到其中的 **Applications** 入口。CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`。首次截图需屏幕录制权限，系统元素识别需辅助功能权限；尚未实机验收和 Apple 公证。
 
 Windows 可通过系统“已安装的应用”或开始菜单中的卸载入口移除安装版。卸载仅移除随包安装的文件及其登记，保留用户设置与项目；无需为更新版本删除这些数据。
 

@@ -7,10 +7,16 @@ obj/
 *.user
 *.log
 .env
-.env.local
+.env.*
+!.env.example
+!.env.template
 
 .tools/
 build/
 out/
 .cache/
 build-*/
+
+# Private capture sources and a separately managed promotion-site checkout.
+/PixPin_*.mp4
+/promotion-site/

@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/icons/helpdesign-256.png" width="104" alt="EditHere 图标">
 </p>
-<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="308" alt="EditHere"></picture></h1>
+<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
 <p align="center">改这里</p>
 <p align="center"><strong>让 AI 看懂，你想怎么改。</strong></p>
 <p align="center">截图、写下意见、直接调整布局，把修改意图一次交给 AI。</p>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-refined-1080p.mp4">
+  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4">
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
   </a>
 </p>
@@ -91,9 +91,9 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 
 **4 分 6 秒，查看截图、批注、布局调整，以及 Agent 发起标注并接收反馈的完整流程。**
 
-[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-refined-1080p.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
+[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4) · [较小的网页版视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-web.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
 
-视频配有原创器乐与普通话解说，统一使用 EditHere 矢量字标。视频包含游戏界面和数据图表两个案例，03:03 起新增 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。新增章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
+视频配有原创器乐与普通话解说，使用蓝色渐变与琥珀橙笔帽的 EditHere 矢量字标。视频包含游戏界面和数据图表两个案例，03:03 起为 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。该章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
 
 ## 下载与安装
 
@@ -104,6 +104,8 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 | **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | 打开 DMG，将 `EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
 
 Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
+
+Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt)。
 
 Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；便携包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 
