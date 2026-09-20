@@ -9,19 +9,38 @@ description: 使用 EditHere（改这里）让用户在截图或设计图上批�
 
 ## 定位命令行
 
-Windows 优先使用 PATH 中的 `edithere-cli.exe`，否则检查用户安装目录：
+**安装版和完整解压的便携版都能使用此 skill，不要求运行安装器或加入 PATH。** skill 只提供操作指南，仍需本机存在带依赖的 EditHere 程序；将整个 `skills/edithere` 放入当前 AI 工具实际加载的技能目录后，才能按技能名发现它。
+
+优先使用用户本轮提供的程序路径。否则，若此 skill 目录中存在 `references/local-installation.md`，先读取其中记录的 CLI 绝对路径；这是配置时在本机生成的可选记录，不存在就跳过。再检查 `EDITHERE_CLI`、PATH 和默认安装目录。`EDITHERE_CLI` 只是本 skill 的路径约定，不是程序参数，也不必修改全局环境。
+
+已有明确的 CLI 路径时，直接将其赋给 `$EditHereCli` 并验证；路径失效时先检查原目录，不悄悄改用另一份程序。Windows 便携版示例（替换为实际解压位置）：
 
 ```powershell
-$EditHereCli = (Get-Command edithere-cli.exe -ErrorAction SilentlyContinue).Source
-if (-not $EditHereCli) {
-    $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
-}
-if (-not (Test-Path -LiteralPath $EditHereCli)) { throw '未找到 EditHere CLI；请先安装包含 CLI 的 EditHere。' }
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
 & $EditHereCli --version
 & $EditHereCli --help
 ```
 
-macOS 使用 PATH 中的 `edithere-cli`，或 `/Applications/EditHere.app/Contents/MacOS/edithere-cli`；安装在其他目录时调整路径。Windows 安装器默认提供加入 PATH 的选项，安装后需重新打开终端和 Agent 才能读取新环境，当前会话可直接使用安装目录。便携版使用实际解压目录中的可执行文件。先确认当前版本的 `--help`；找不到时报告缺失位置，不将其他同名程序或旧版 GUI 可执行文件当作 CLI。
+没有已知路径时，Windows 可这样查找：
+
+```powershell
+$EditHereCli = $env:EDITHERE_CLI
+if (-not $EditHereCli) {
+    $EditHereCli = (Get-Command edithere-cli.exe -ErrorAction SilentlyContinue).Source
+}
+if (-not $EditHereCli) {
+    $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
+}
+if (-not (Test-Path -LiteralPath $EditHereCli -PathType Leaf)) {
+    throw '未找到 EditHere CLI；请检查安装位置，或指定便携版中 edithere-cli.exe 的完整路径。'
+}
+& $EditHereCli --version
+& $EditHereCli --help
+```
+
+macOS 使用已记录的完整路径、`EDITHERE_CLI`、PATH 中的 `edithere-cli`，或 `/Applications/EditHere.app/Contents/MacOS/edithere-cli`、`~/Applications/EditHere.app/Contents/MacOS/edithere-cli`。其他位置也可使用，但须保留完整 `.app`，不要长期依赖临时挂载的 DMG。
+
+Windows 安装器默认提供加入 PATH 的选项，安装后新终端和 Agent 才能读取更新的环境；当前会话和便携版可一直使用完整路径。保留同目录的 GUI、DLL 与插件。先确认当前版本的 `--help`；找不到时报告检查过的位置，不将旧版 GUI 可执行文件当作 CLI。用户请求安装或配置时，按[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)补齐程序与 skill；普通标注任务不默认重新安装程序。
 
 ## 选择桌面执行环境
 

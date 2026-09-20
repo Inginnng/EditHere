@@ -1,19 +1,47 @@
 # EditHere · 改这里：AI 与命令行
 
-[返回产品介绍](../README.md) · [使用指南](USER-GUIDE.md) · [配套 AI skill](../skills/edithere/SKILL.md)
+[返回产品介绍](../README.md) · [让 AI 帮你安装](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md) · [使用指南](USER-GUIDE.md) · [配套 AI skill](../skills/edithere/SKILL.md)
 
 EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可以写修改意见、移动或缩放组件，点击“完成并返回 AI”后，命令行才将本轮反馈交给 AI。图片、批注和导出均在本机处理；后续是否发送给某个 AI 服务，由使用该文件的工具决定。
 
+## 免安装也能接入 AI
+
+**可以使用便携版，不必运行安装器，也不必加入 PATH。** 完整解压 Windows ZIP，保留 `EditHere.exe`、`edithere-cli.exe`、DLL 和插件目录；让 AI 通过 CLI 完整路径调用即可。macOS 则保留完整的 `.app` 应用包。
+
+程序和 skill 分别解决两件事：程序负责打开图像，skill 指导 AI 如何等待并读取反馈。便携包内的 `skills/edithere` 不会自动变成 AI 已加载的技能，仍需配置到当前 AI 工具的技能目录，并记录便携程序路径。
+
+复制下面这段话给能在本机执行命令的 AI，即可让它按指南完成配置：
+
+```text
+请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。
+使用便携模式，不运行 Windows 安装器，不修改 PATH 或开机启动；优先复用我已经解压的程序，否则下载并完整解压官方便携包。
+记录实际 CLI 路径，验证 CLI 可运行以及当前 AI 工具能否发现 skill，并告诉我如何开始标注。
+```
+
+当前仓库仍为私有，下载需使用有访问权限的 GitHub 账号；网页聊天或无本机执行权限的 AI 无法仅凭这段话完成本机配置。需要常规安装时，见[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)。
+
 ## 找到 CLI
+
+已知便携目录时，直接使用完整路径：
+
+```powershell
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
+& $EditHereCli --help
+```
+
+将示例路径改成实际位置。后面的示例沿用 `$EditHereCli`。若没有已知路径，再按下面的方式查找。
 
 Windows 安装版的默认位置为 `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`；也可以通过 PATH 或便携包中的完整路径运行。安装器的“加入 PATH”默认选中，安装完成后需重新打开终端和 AI 工具，现有进程不会自动读取新环境。CLI 与 `EditHere.exe` 是不同入口，运行时应保留包内依赖文件。
 
 ```powershell
-$EditHereCli = (Get-Command edithere-cli.exe -ErrorAction SilentlyContinue).Source
+$EditHereCli = $env:EDITHERE_CLI
+if (-not $EditHereCli) {
+    $EditHereCli = (Get-Command edithere-cli.exe -ErrorAction SilentlyContinue).Source
+}
 if (-not $EditHereCli) {
     $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
 }
-if (-not (Test-Path -LiteralPath $EditHereCli)) { throw '未找到 EditHere CLI，请检查安装或解压目录。' }
+if (-not (Test-Path -LiteralPath $EditHereCli -PathType Leaf)) { throw '未找到 EditHere CLI，请检查安装或解压目录。' }
 & $EditHereCli --version
 & $EditHereCli --help
 ```
@@ -24,7 +52,7 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 /Applications/EditHere.app/Contents/MacOS/edithere-cli --help
 ```
 
-若安装在其他位置，请相应调整路径；也可自行将 CLI 加入 PATH。Mac 的屏幕录制、辅助功能授权与实机验收状态见[平台边界](USER-GUIDE.md#识别与平台边界)。
+若应用放在 `~/Applications` 或其他稳定位置，请相应调整路径；也可自行将 CLI 加入 PATH。Mac 的屏幕录制、辅助功能授权与实机验收状态见[平台边界](USER-GUIDE.md#识别与平台边界)。
 
 ## Windows Agent 的桌面访问
 
@@ -134,21 +162,25 @@ AI 应结合实际页面与源码，将反馈落实为布局、样式或内容�
 
 ## 安装配套 skill
 
-仓库的 [`skills/edithere`](../skills/edithere/SKILL.md) 是可复制的技能目录，不等于已安装到当前 AI 工具。将整个目录复制到对应工具的用户技能目录：
+仓库及程序包中的 [`skills/edithere`](../skills/edithere/SKILL.md) 是可复制的技能目录，不等于当前 AI 工具已加载它。首次配置优先获取仓库当前版本的完整技能目录，旧发布包可能附带较早的路径定位说明。将整个目录复制到当前工具实际使用的技能位置：
 
 | 工具 | 目标目录 |
 | --- | --- |
-| Codex | `~/.codex/skills/edithere`；自定义 `CODEX_HOME` 时使用其下的 `skills/edithere` |
+| Codex | 新配置使用 `~/.agents/skills/edithere`；已有工具确实加载的 `~/.codex/skills/edithere` 或 `$CODEX_HOME/skills/edithere` 可在原位置更新，避免同名副本 |
 | Claude Code | `~/.claude/skills/edithere` |
 
-Windows PowerShell 示例，命令在仓库根目录执行：
+目录依据 [Codex 官方说明](https://learn.chatgpt.com/docs/build-skills)和 [Claude Code 官方说明](https://code.claude.com/docs/en/skills)。已有本机修改先比较并保留，沿用当前工具已加载的位置；不要同时向多个目录重复安装同名 skill。Claude Code 自定义配置根目录时使用其对应的 `skills` 子目录。
+
+以下是全新 Codex 配置的 Windows PowerShell 示例，在仓库根目录或 Windows 完整解压目录执行；已存在 skill 时先比较内容再更新：
 
 ```powershell
-$SkillBase = if ($env:CODEX_HOME) { Join-Path $env:CODEX_HOME 'skills' } else { Join-Path $env:USERPROFILE '.codex\skills' }
+$SkillBase = Join-Path $env:USERPROFILE '.agents\skills'
 $SkillDestination = Join-Path $SkillBase 'edithere'
 if (Test-Path -LiteralPath $SkillDestination) { throw '目标技能已存在，请先比较内容，再决定如何更新。' }
 New-Item -ItemType Directory -Force -Path $SkillBase | Out-Null
 Copy-Item -LiteralPath '.\skills\edithere' -Destination $SkillDestination -Recurse
 ```
 
-Claude Code 使用同样方式，将目标父目录改为 `~/.claude/skills`。macOS 可把 `skills/edithere` 目录复制到对应用户目录。安装后按所用工具的技能发现机制重新加载或开启新会话，再请求“用 EditHere 让我标注这张界面，完成后按反馈修改”。CLI 程序仍需单独安装；skill 不包含可执行文件，也不会自动替用户完成界面交互。
+Claude Code 使用同样方式，将目标父目录改为 `~/.claude/skills`。macOS 可把 `skills/edithere` 目录复制到对应用户目录。安装后按所用工具的技能发现机制重新加载或开启新会话，再请求“用 EditHere 让我标注这张界面，完成后按反馈修改”。程序只需已安装或完整解压；skill 不包含可执行文件，也不会自动替用户完成界面交互。
+
+对于便携版，在**已配置的 skill 目录**中保存 `references/local-installation.md`，记录 CLI 绝对路径、程序目录、版本及便携模式。AI 每次使用 skill 时先读取该记录，因此无需依赖 PATH；程序移动后更新记录。这是本机配置，不要提交到源码仓库。`EDITHERE_CLI` 也可供 skill 定位，但不要求设置全局环境变量。

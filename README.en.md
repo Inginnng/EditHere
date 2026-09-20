@@ -8,6 +8,7 @@
 <p align="center">Windows · macOS Preview &nbsp; / &nbsp; Local screen capture and image analysis</p>
 <p align="center">
   <a href="#download-and-install">Download</a> ·
+  <a href="#set-up-with-ai">Set up with AI</a> ·
   <a href="#features">Features</a> ·
   <a href="#demo-video">Demo video</a> ·
   <a href="docs/AGENT-CLI.md">AI integration (Chinese)</a> ·
@@ -21,6 +22,25 @@
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere demo: annotate a screenshot, rearrange its layout, and send the feedback to AI">
   </a>
 </p>
+
+## Set up with AI
+
+Copy the entire prompt below into an AI tool with access to your local terminal and files, such as Codex or Claude Code. GitHub provides a copy button in the top-right corner of the code block.
+
+```text
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted portable package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
+```
+
+<details>
+<summary>Prefer the portable version? Copy this prompt</summary>
+
+```text
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up the portable Windows version of EditHere and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
+```
+
+</details>
+
+Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The repository and release packages are currently private, so the AI tool needs access through an authorized GitHub account. See the [AI setup guide (Chinese)](docs/AI-SETUP.md) for the full procedure.
 
 ## Why EditHere?
 
@@ -82,7 +102,7 @@ See the [user guide (Chinese)](docs/USER-GUIDE.md) for more instructions, shortc
 
 ### Use it in an AI workflow
 
-After installing EditHere, copy [`skills/edithere`](skills/edithere/SKILL.md) from this repository into the skills directory used by Codex or Claude Code. The skill instructions are currently in Chinese. You can then start a session with a request like this:
+After installing EditHere or fully extracting the portable package, copy [`skills/edithere`](skills/edithere/SKILL.md) from this repository into the skills directory used by Codex or Claude Code, and tell the AI where to find the CLI. You can also use the [AI setup prompt](#set-up-with-ai) above to configure it. The skill instructions are currently in Chinese. You can then start a session with a request like this:
 
 > Use EditHere to let me annotate this interface. Wait until I finish, then update the current project based on my feedback.
 
@@ -128,6 +148,8 @@ Quit the old version, then run the installer or fully extract the new portable p
 **Are screenshots uploaded automatically?** Screen capture, image analysis, and editing happen locally. Update checks do not upload your screenshots. If you send feedback yourself or let an integrated AI tool read it, any upload depends on how that tool operates. EditHere connects to GitHub when you check for updates manually or enable update checks at startup.
 
 **Can I use a different AI tool?** Feedback is delivered as JSON and images, without being tied to a model provider. Codex and Claude Code can use the companion skill; other tools can receive feedback through the CLI or manual import. EditHere does not include model calls or model credits.
+
+**Can the portable version use the skill without running an installer?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
 
 **Can I save my work and continue later?** Yes. A `.helpdesign` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
 

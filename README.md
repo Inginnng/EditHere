@@ -8,6 +8,7 @@
 <p align="center">Windows · macOS 预览版 &nbsp; / &nbsp; 本地截图与图像识别</p>
 <p align="center">
   <a href="#下载与安装">下载</a> ·
+  <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
   <a href="#功能介绍">功能介绍</a> ·
   <a href="#演示视频">演示视频</a> ·
   <a href="docs/AGENT-CLI.md">接入 AI</a> ·
@@ -21,6 +22,25 @@
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
   </a>
 </p>
+
+## 让 AI 帮你安装
+
+在支持本机终端与文件操作的 AI 工具中（如 Codex、Claude Code），复制下面整段提示词即可开始配置。GitHub 代码块右上角提供复制按钮。
+
+```text
+请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。优先复用已安装或已完整解压的程序；如果没有，再按我的操作系统安装。完成后验证 CLI 可以调用、skill 已放到当前 AI 工具能识别的位置，并告诉我如何发起第一次标注。需要我完成的系统授权请明确提示。
+```
+
+<details>
+<summary>想免安装使用？复制这个便携版提示词</summary>
+
+```text
+请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我在 Windows 上配置 EditHere 便携版和 edithere skill。先检查是否已有完整解压的程序，需要时我可以提供所在路径；否则下载官方 Windows ZIP 并完整解压到合适的用户目录。不要运行安装器，不要修改开机启动或 PATH。让 skill 使用 edithere-cli.exe 的绝对路径，并验证 CLI 和当前 AI 工具的技能配置。需要我完成的系统授权请明确提示。
+```
+
+</details>
+
+这需要 AI 工具拥有本机终端和文件操作权限；仅有网页聊天窗口无法直接安装本机程序。系统权限提示由你确认。当前仓库与发布包仍为私有，AI 访问下载时需要已获授权的 GitHub 账号。详细步骤见 [AI 安装指南](docs/AI-SETUP.md)。
 
 ## 为什么用 EditHere？
 
@@ -80,7 +100,7 @@ EditHere 负责整理反馈，你可以手动发送给 AI，也可以通过配�
 
 ### 在 AI 工作流中使用
 
-安装 EditHere 后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，就可以这样发起协作：
+安装或完整解压便携版后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，并让 AI 知道 CLI 的位置，就可以这样发起协作。也可以用上面的 [AI 安装提示词](#让-ai-帮你安装) 完成配置：
 
 > 用 EditHere 让我标注这张界面，等我完成后，再按反馈修改当前项目。
 
@@ -126,6 +146,8 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 **截图会自动上传吗？** 截图、图像识别和编辑在本机完成，不会由更新检查上传。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具的工作方式；手动或开启启动检查更新时，EditHere 会访问 GitHub。
 
 **换一个 AI 工具还能用吗？** 反馈以 JSON 和图片交付，不绑定模型服务。Codex、Claude Code 可使用配套 skill，其他工具也可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
+
+**不用安装器，便携版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
 
 **能保存下次继续改吗？** 可以。保存 `.helpdesign` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
 
