@@ -191,13 +191,15 @@ class AgentCliTests : public QObject {
     }
     void realTransportKeepsMissingErrorAndDesktopProbeSendsNothing() {
         QLocalSocket socket;
-        const auto missing = connectAgentSocket(socket, "EditHere-missing-test-" + uniqueId(), 100);
+        // macOS prepends its long per-user temp path to Unix socket names.
+        // Keep these names short enough for sockaddr_un::sun_path.
+        const auto missing = connectAgentSocket(socket, "eh-missing-" + uniqueId(), 100);
         QVERIFY(!missing.connected);
         QCOMPARE(missing.error, QLocalSocket::ServerNotFoundError);
         QVERIFY(!missing.message.isEmpty());
         QLocalServer desktop;
-        const auto name = "EditHere-desktop-probe-test-" + uniqueId();
-        QVERIFY(desktop.listen(name));
+        const auto name = "eh-probe-" + uniqueId();
+        QVERIFY2(desktop.listen(name), qPrintable(desktop.errorString()));
         const auto connected = connectAgentSocket(socket, name, 1000);
         QVERIFY(connected.connected);
         QTRY_VERIFY(desktop.hasPendingConnections());
