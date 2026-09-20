@@ -1,0 +1,15 @@
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';import path from 'node:path';
+const root=path.resolve(process.argv[2]||'.'),out=path.resolve(process.argv[3]);mkdirSync(out,{recursive:true});
+const build=path.resolve(process.argv[4]||path.join(root,'build'));
+const cache=readFileSync(path.join(build,'CMakeCache.txt'),'utf8');
+const qt=process.env.QT_ROOT||path.join(root,'.tools/qt/6.8.3/mingw_64');
+const compiler=process.env.CXX||cache.match(/^CMAKE_CXX_COMPILER:[^=]*=(.+)$/m)?.[1].trim();
+if(!compiler)throw new Error('Set CXX or configure the application build first');
+const version=readFileSync(path.join(build,'version.txt'),'utf8').trim();
+const args=['-std=c++20','-O2','-DHELPDESIGN_VERSION="'+version+'"','-DQT_NO_DEBUG','-DQT_WIDGETS_LIB','-DQT_GUI_LIB','-DQT_CORE_LIB','-DQT_TESTLIB_LIB','-DQT_NETWORK_LIB','-I'+path.join(root,'app'),...['','QtCore','QtGui','QtWidgets','QtNetwork','QtConcurrent','QtTest'].map(x=>'-I'+path.join(qt,'include',x)),'-I'+path.join(qt,'mkspecs/win32-g++'),path.join(root,'tools/demo-agent-session.cpp'),'-o',path.join(out,'demo-agent-session.exe'),...['h2d_ui','h2d_agent','h2d_core'].map(x=>path.join(build,'lib'+x+'.a')),...['Widgets','Gui','Concurrent','Network','Test','Core'].map(x=>path.join(qt,'lib','libQt6'+x+'.a')),...['d3d11','dxgi','dxguid','d3d12','ws2_32','user32','gdi32','dwmapi','ole32','oleaut32','uuid','advapi32','mpr','userenv','kernel32','winspool','shell32','comdlg32'].map(x=>'-l'+x)];
+writeFileSync(path.join(out,'compile-arguments.json'),JSON.stringify({compiler,args},null,2));
+const env={...process.env,PATH:path.dirname(compiler)+';'+path.join(qt,'bin')+';'+process.env.PATH,QT_QPA_PLATFORM:'offscreen',QT_PLUGIN_PATH:path.join(qt,'plugins')};
+let r=spawnSync(compiler,args,{stdio:'inherit',env});if(r.status!==0)process.exit(r.status||1);
+r=spawnSync(path.join(out,'demo-agent-session.exe'),[root,out],{stdio:'inherit',env});if(r.status!==0)process.exit(r.status||1);
+console.log('Native capture complete: '+out);

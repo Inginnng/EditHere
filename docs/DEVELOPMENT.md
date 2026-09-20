@@ -12,7 +12,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.20` 的精简反馈继续由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.21` 的精简反馈继续由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
 
 ## 构建与验证
 
@@ -33,7 +33,7 @@ Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 
 ./scripts/package-installer.ps1 -NsisCompiler C:/Tools/nsis-3.x/makensis.exe
 ```
 
-请将示例中的 NSIS 路径换为实际位置。0.8.20 的安装器输出为 `dist/EditHere-0.8.20-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
+请将示例中的 NSIS 路径换为实际位置。0.8.21 的安装器输出为 `dist/EditHere-0.8.21-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
 
 Mac 构建（尚未实机验收）：
 

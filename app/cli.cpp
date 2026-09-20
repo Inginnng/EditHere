@@ -1,4 +1,5 @@
 #include "agentprotocol.h"
+#include "agentconnection.h"
 #include "model.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -7,7 +8,6 @@
 #include <QJsonDocument>
 #include <QLocalSocket>
 #include <QProcess>
-#include <QThread>
 #include <cstdio>
 using namespace h2d;
 namespace {
@@ -16,11 +16,6 @@ int printResult(const QJsonObject &result) {
     std::fwrite(json.constData(), 1, size_t(json.size()), stdout);
     std::fflush(stdout);
     return agentExitCode(result);
-}
-bool connectToApp(QLocalSocket &socket, int timeout) {
-    socket.abort();
-    socket.connectToServer(agentServerName());
-    return socket.waitForConnected(timeout);
 }
 QString guiExecutable() {
 #ifdef Q_OS_WIN
@@ -49,7 +44,7 @@ int main(int argc, char **argv) {
                   "Feedback embeds the image by default. Output must not exist; its parent must exist.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
-                  "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout.");
+                  "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
         return 0;
     }
     if (args == QStringList{"--version"}) { std::puts("EditHere " HELPDESIGN_VERSION); return 0; }
@@ -97,23 +92,30 @@ int main(int argc, char **argv) {
     }
     QLocalSocket socket;
     socket.setReadBufferSize(MaxAgentMessageBytes + 4);
-    if (!connectToApp(socket, 400)) {
-        if (command == "status") return printResult({{"ok", true}, {"running", false}, {"version", HELPDESIGN_VERSION}});
-        const auto executable = guiExecutable();
-        if (!QFileInfo(executable).isFile() || !QProcess::startDetached(executable, {"--agent-start"}))
-            return printResult(agentError("unavailable", "Cannot start EditHere next to this CLI. Install or unpack the complete application."));
-        QElapsedTimer starting;
-        starting.start();
-        while (!connectToApp(socket, 150) && starting.elapsed() < 8000) QThread::msleep(100);
-        if (socket.state() != QLocalSocket::ConnectedState)
-            return printResult(agentError("unavailable", "EditHere did not become available. If an older version is running, exit it and retry."));
-    }
+    const auto connection = ensureAgentConnection(command != "status", HELPDESIGN_VERSION,
+        [&](AgentEndpoint endpoint, int timeout) {
+            if (endpoint == AgentEndpoint::Agent) return connectAgentSocket(socket, agentServerName(), timeout);
+            QLocalSocket desktop;
+            return connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+        }, [] {
+            const auto executable = guiExecutable();
+            if (!QFileInfo(executable).isFile())
+                return QString("Cannot find EditHere next to this CLI. Install or unpack the complete application.");
+            QProcess process;
+            process.setProgram(executable);
+            process.setArguments({"--agent-start"});
+            if (!process.startDetached())
+                return QString("The OS could not start EditHere: ") + process.errorString();
+            return QString();
+        });
+    if (!connection.isEmpty()) return printResult(connection);
     QJsonObject request{{"protocol", 1}, {"command", command}};
     if (withPath) request["input"] = input;
     if (outputSeen) { request["output"] = output; request["embed"] = embed; }
     if (command == "annotate") request["timeout"] = timeoutSeconds;
     const auto message = encodeAgentMessage(request);
-    if (socket.write(message) != message.size()) return printResult(agentError("unavailable", "Unable to send request."));
+    if (socket.write(message) != message.size())
+        return printResult(agentConnectionError({false, socket.error(), socket.errorString()}, AgentEndpoint::Agent, "send", "Unable to send the request."));
     socket.flush();
     const qint64 deadlineMs = command == "annotate" ? qint64(timeoutSeconds) * 1000 + 10000 : 30000;
     QElapsedTimer waiting; waiting.start();
@@ -125,7 +127,7 @@ int main(int argc, char **argv) {
         if (state == AgentFrameState::Complete) return printResult(response);
         if (state == AgentFrameState::Invalid) return printResult(agentError("protocol_error", error));
         if (socket.state() == QLocalSocket::UnconnectedState)
-            return printResult(agentError("unavailable", "EditHere disconnected before returning a result."));
+            return printResult(agentConnectionError({false, socket.error(), socket.errorString()}, AgentEndpoint::Agent, "response", "EditHere disconnected before returning a result. No completion was confirmed."));
         socket.waitForReadyRead(int(qBound<qint64>(qint64(0), deadlineMs - waiting.elapsed(), qint64(500))));
     }
     socket.abort();

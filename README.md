@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.19/EditHere-introduction-1080p.mp4">
+  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-agent-1080p.mp4">
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
   </a>
 </p>
@@ -88,19 +88,19 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 
 ## 演示视频
 
-**3 分 10 秒，查看从截图、批注、布局调整到 AI 修改示例的完整流程。**
+**4 分 6 秒，查看截图、批注、布局调整，以及 Agent 发起标注并接收反馈的完整流程。**
 
-[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.19/EditHere-introduction-1080p.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
+[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-agent-1080p.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
 
-视频包含游戏界面和数据图表两个案例。AI 对话与修改结果为案例演示，交给 AI 的步骤由用户完成。
+视频包含游戏界面和数据图表两个案例，03:03 起新增 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。新增章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
 
 ## 下载与安装
 
 | 平台 | 下载 | 使用方式 |
 | --- | --- | --- |
-| **Windows x64 · 推荐** | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-win-x64-setup.exe) | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。 |
-| **Windows x64 · 便携版** | [下载便携版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
-| **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.20/EditHere-0.8.20-macos-universal.dmg) | 打开 DMG，将 `EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
+| **Windows x64 · 推荐** | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe) | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。 |
+| **Windows x64 · 便携版** | [下载便携版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
+| **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | 打开 DMG，将 `EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
 
 Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
 

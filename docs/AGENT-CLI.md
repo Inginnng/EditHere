@@ -26,6 +26,12 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 
 若安装在其他位置，请相应调整路径；也可自行将 CLI 加入 PATH。Mac 的屏幕录制、辅助功能授权与实机验收状态见[平台边界](USER-GUIDE.md#识别与平台边界)。
 
+## Windows Agent 的桌面访问
+
+在受限的 Agent 沙箱里，命令可能无法连接当前登录用户的 EditHere，或启动到用户看不到的桌面。因此 `status`、`open`、`capture`、`annotate` 应由 Agent 工具提供的、获准访问当前用户桌面的入口执行。已知存在该隔离时，应在第一次调用选择合适入口；无需先制造一次失败。Codex 工具若提供 `sandbox_permissions`，可对具体桌面命令使用 `require_escalated`，遵守其审批结果。无需更改全局沙箱或应用的权限设置。`--help`、`--version` 和离线 `export` 不依赖桌面连接。
+
+0.8.20 曾把连接受限误报为“未运行”，再尝试启动并等待。0.8.21 会保留连接错误并区分“未运行”和“无法判断”。工具在创建命令进程前就失败时，也不能用该结果判断 EditHere 是否运行；没有反馈文件只表示尚未拿到本轮结果。
+
 ## 命令一览
 
 | 命令 | 作用 | 是否等待用户提交反馈 |
@@ -64,7 +70,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 
 使用能返回后台会话 ID 的 Agent 工具时，应持续等待同一 CLI 进程；不要因为单次工具等待结束而重复启动 `annotate`。超时、取消或失败后，不读取任何上次结果，也不自动发起新一轮标注。连接中断可能发生在文件已写入但成功回执尚未返回时；应先核查本次唯一输出是否存在且为有效 JSON，并确认用户是否已明确提交，不能将结果不明直接当作失败后盲目重试。
 
-已有未保存文档、进行中的截图或标注会话可能让请求返回 `busy`。旧版 GUI 运行时可能返回 `unavailable`，请先保存工作，再从托盘正常退出旧版后重试。不要强制关闭进程或覆盖文件来绕过这些状态。
+已有未保存文档、进行中的截图或标注会话可能让请求返回 `busy`。检测到桌面实例但 Agent 接口不可用时返回 `agent_endpoint_unavailable`，可能是初始化中或版本不匹配；检查版本，需要重启时先保存工作，再从托盘正常退出。不要强制关闭进程或覆盖文件来绕过这些状态。
 
 ## 导出已保存项目
 
@@ -98,9 +104,14 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 | `4` | 当前状态忙 |
 | `5` | 文件或 I/O 错误 |
 | `6` | 用户取消 |
-| `7` | 等待超时 |
+| `7` | 等待用户提交反馈超时 |
+| `8` | 当前执行环境无权访问桌面接口 |
 
-应用未运行时，`status` 返回 `ok: true`、`running: false` 和 CLI 版本 `version`。运行时还返回文档、截图和会话状态 `hasDocument`、`dirty`、`capturing`、`agentSession`，以及 `executable`、`startupRegistered`、`startupNotice`。这些信息不代表某次反馈已经提交；正常流程仍须等待对应 `annotate` 的成功回执。
+只有 Agent 接口与兼容桌面接口都明确不存在时，`status` 才返回 `ok: true`、`running: false` 和 CLI 版本 `version`。访问被拒绝时返回 `desktop_access_required`（退出码 8），其他连接异常返回 `connection_error`（退出码 3）；此时 `running: null` 表示未知，不能按 false 处理。失败响应的 `connection` 保留 `endpoint`、`phase`、Qt 错误编号 `socketError`、名称 `socketErrorName` 与原始消息 `message`。这两类连接错误不会触发重复启动。
+
+`agent_endpoint_unavailable`（退出码 3）表示发现桌面实例，但 Agent 接口尚不可用；`startup_failed` / `startup_timeout`（退出码 3）分别表示启动动作失败、启动后接口未及时就绪。遇到访问限制时，应通过工具支持的获准桌面入口执行；没有入口或未获准则说明限制，不自动放宽权限或循环启动。
+
+运行时还返回文档、截图和会话状态 `hasDocument`、`dirty`、`capturing`、`agentSession`，以及 `executable`、`startupRegistered`、`startupNotice`。这些信息不代表某次反馈已经提交；正常流程仍须等待对应 `annotate` 的成功回执。
 
 缺少输入文件、输出已存在或写入失败返回 `io_error`（退出码 5）；无效参数返回 `invalid_arguments`（退出码 2）。先解决具体错误，再使用新的输出路径重试；对结果不明的连接中断先核查本轮状态。
 

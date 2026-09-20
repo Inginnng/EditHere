@@ -63,6 +63,7 @@ int agentExitCode(const QJsonObject &response) {
     if (code == "io_error") return 5;
     if (code == "cancelled") return 6;
     if (code == "timeout") return 7;
+    if (code == "desktop_access_required") return 8;
     return 3;
 }
 QString validateNewFeedbackPath(const QString &path) {

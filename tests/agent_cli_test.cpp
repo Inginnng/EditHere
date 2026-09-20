@@ -1,4 +1,5 @@
 #include "agentprotocol.h"
+#include "agentconnection.h"
 #include "agentserver.h"
 #include "controller.h"
 #include "ui.h"
@@ -53,6 +54,161 @@ class AgentCliTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void uncertainConnectionsNeverReportStoppedOrLaunch_data() {
+        QTest::addColumn<int>("socketError");
+        QTest::newRow("access-denied") << int(QLocalSocket::SocketAccessError);
+        QTest::newRow("timeout") << int(QLocalSocket::SocketTimeoutError);
+        QTest::newRow("refused") << int(QLocalSocket::ConnectionRefusedError);
+        QTest::newRow("closed") << int(QLocalSocket::PeerClosedError);
+        QTest::newRow("resource") << int(QLocalSocket::SocketResourceError);
+        QTest::newRow("connection") << int(QLocalSocket::ConnectionError);
+        QTest::newRow("unsupported") << int(QLocalSocket::UnsupportedSocketOperationError);
+        QTest::newRow("unknown") << int(QLocalSocket::UnknownSocketError);
+    }
+    void uncertainConnectionsNeverReportStoppedOrLaunch() {
+        QFETCH(int, socketError);
+        for (const bool mayStart : {false, true}) {
+            int attempts = 0, launches = 0;
+            const auto response = ensureAgentConnection(mayStart, "test", [&](AgentEndpoint, int) {
+                ++attempts;
+                return AgentSocketResult{false, QLocalSocket::LocalSocketError(socketError), "original OS/Qt diagnostic"};
+            }, [&] { ++launches; return QString(); });
+            QCOMPARE(attempts, 1);
+            QCOMPARE(launches, 0);
+            QVERIFY(!response["ok"].toBool());
+            QVERIFY(response["running"].isNull());
+            QCOMPARE(agentExitCode(response), socketError == QLocalSocket::SocketAccessError ? 8 : 3);
+            QCOMPARE(response["error"].toObject()["code"].toString(),
+                     socketError == QLocalSocket::SocketAccessError ? QString("desktop_access_required") : QString("connection_error"));
+            const auto detail = response["connection"].toObject();
+            QCOMPARE(detail["socketError"].toInt(), socketError);
+            QCOMPARE(detail["message"].toString(), QString("original OS/Qt diagnostic"));
+            QCOMPARE(detail["endpoint"].toString(), QString("agent"));
+            QVERIFY(!detail["socketErrorName"].toString().isEmpty());
+        }
+    }
+    void missingAgentButInaccessibleDesktopDoesNotLaunch() {
+        int attempts = 0, launches = 0;
+        const auto response = ensureAgentConnection(true, "test", [&](AgentEndpoint endpoint, int) {
+            ++attempts;
+            return AgentSocketResult{false, endpoint == AgentEndpoint::Agent ? QLocalSocket::ServerNotFoundError : QLocalSocket::SocketAccessError,
+                                     "desktop denied"};
+        }, [&] { ++launches; return QString(); });
+        QCOMPARE(attempts, 2);
+        QCOMPARE(launches, 0);
+        QCOMPARE(agentExitCode(response), 8);
+        QVERIFY(response["running"].isNull());
+        QCOMPARE(response["connection"].toObject()["endpoint"].toString(), QString("desktop"));
+    }
+    void existingDesktopWithoutAgentIsNotRestarted() {
+        int attempts = 0, launches = 0;
+        const auto response = ensureAgentConnection(true, "test", [&](AgentEndpoint endpoint, int) {
+            ++attempts;
+            return AgentSocketResult{endpoint == AgentEndpoint::Desktop, QLocalSocket::ServerNotFoundError, "missing Agent listener"};
+        }, [&] { ++launches; return QString(); }, 0);
+        QCOMPARE(attempts, 3);
+        QCOMPARE(launches, 0);
+        QCOMPARE(agentExitCode(response), 3);
+        QVERIFY(response["running"].toBool());
+        QCOMPARE(response["error"].toObject()["code"].toString(), QString("agent_endpoint_unavailable"));
+    }
+    void existingDesktopCanFinishStartingWithoutDuplicateLaunch() {
+        for (const bool mayStart : {false, true}) {
+            int agentAttempts = 0, desktopAttempts = 0, launches = 0;
+            const auto response = ensureAgentConnection(mayStart, "test", [&](AgentEndpoint endpoint, int) {
+                if (endpoint == AgentEndpoint::Desktop) {
+                    ++desktopAttempts;
+                    return AgentSocketResult{true, QLocalSocket::UnknownSocketError, {}};
+                }
+                ++agentAttempts;
+                return AgentSocketResult{agentAttempts >= 4, QLocalSocket::ServerNotFoundError, "Agent still initializing"};
+            }, [&] { ++launches; return QString(); }, 2000);
+            QVERIFY(response.isEmpty());
+            QCOMPARE(agentAttempts, 4);
+            QCOMPARE(desktopAttempts, 1);
+            QCOMPARE(launches, 0);
+        }
+    }
+    void existingDesktopWaitStopsImmediatelyOnAccessDenied() {
+        int agentAttempts = 0, launches = 0;
+        const auto response = ensureAgentConnection(true, "test", [&](AgentEndpoint endpoint, int) {
+            if (endpoint == AgentEndpoint::Desktop)
+                return AgentSocketResult{true, QLocalSocket::UnknownSocketError, {}};
+            ++agentAttempts;
+            return AgentSocketResult{false, agentAttempts == 1 ? QLocalSocket::ServerNotFoundError : QLocalSocket::SocketAccessError,
+                                     "Agent access denied"};
+        }, [&] { ++launches; return QString(); });
+        QCOMPARE(agentAttempts, 2);
+        QCOMPARE(launches, 0);
+        QCOMPARE(agentExitCode(response), 8);
+        QVERIFY(response["running"].isNull());
+    }
+    void statusOnlyReportsStoppedWhenBothEndpointsAreMissing() {
+        int attempts = 0, launches = 0;
+        const auto response = ensureAgentConnection(false, "test-version", [&](AgentEndpoint, int) {
+            ++attempts;
+            return AgentSocketResult{false, QLocalSocket::ServerNotFoundError, "not found"};
+        }, [&] { ++launches; return QString(); });
+        QCOMPARE(attempts, 2);
+        QCOMPARE(launches, 0);
+        QVERIFY(response["ok"].toBool());
+        QVERIFY(response["running"].isBool());
+        QVERIFY(!response["running"].toBool());
+        QCOMPARE(response["version"].toString(), QString("test-version"));
+    }
+    void startupDistinguishesLaunchFailureTimeoutAndPermissionFailure() {
+        for (int scenario = 0; scenario < 3; ++scenario) {
+            int attempts = 0, launches = 0;
+            const auto response = ensureAgentConnection(true, "test", [&](AgentEndpoint, int) {
+                ++attempts;
+                return AgentSocketResult{false, scenario == 2 && attempts > 2 ? QLocalSocket::SocketAccessError : QLocalSocket::ServerNotFoundError,
+                                         "last connection diagnostic"};
+            }, [&] { ++launches; return scenario == 0 ? QString("OS refused to create process") : QString(); }, 0);
+            QCOMPARE(launches, 1);
+            QCOMPARE(attempts, scenario == 0 ? 2 : 3);
+            QVERIFY(response["running"].isNull());
+            QCOMPARE(agentExitCode(response), scenario == 2 ? 8 : 3);
+            QCOMPARE(response["error"].toObject()["code"].toString(),
+                     scenario == 0 ? QString("startup_failed") : scenario == 1 ? QString("startup_timeout") : QString("desktop_access_required"));
+            QCOMPARE(response["connection"].toObject()["phase"].toString(), QString("startup"));
+            QCOMPARE(response["connection"].toObject()["message"].toString(), QString("last connection diagnostic"));
+        }
+    }
+    void connectedAndColdStartingAppContinueWithoutSpuriousErrors() {
+        for (int scenario = 0; scenario < 3; ++scenario) {
+            int attempts = 0, launches = 0;
+            const auto response = ensureAgentConnection(true, "test", [&](AgentEndpoint endpoint, int) {
+                ++attempts;
+                const bool ready = scenario == 0 || (scenario == 1 && attempts >= 3) || (scenario == 2 && attempts >= 4);
+                return AgentSocketResult{ready || (scenario == 1 && endpoint == AgentEndpoint::Desktop),
+                                         QLocalSocket::ServerNotFoundError, "not found"};
+            }, [&] { ++launches; return QString(); });
+            QVERIFY(response.isEmpty());
+            QCOMPARE(attempts, scenario == 0 ? 1 : scenario == 1 ? 3 : 4);
+            QCOMPARE(launches, scenario == 2 ? 1 : 0);
+        }
+    }
+    void realTransportKeepsMissingErrorAndDesktopProbeSendsNothing() {
+        QLocalSocket socket;
+        const auto missing = connectAgentSocket(socket, "EditHere-missing-test-" + uniqueId(), 100);
+        QVERIFY(!missing.connected);
+        QCOMPARE(missing.error, QLocalSocket::ServerNotFoundError);
+        QVERIFY(!missing.message.isEmpty());
+        QLocalServer desktop;
+        const auto name = "EditHere-desktop-probe-test-" + uniqueId();
+        QVERIFY(desktop.listen(name));
+        const auto connected = connectAgentSocket(socket, name, 1000);
+        QVERIFY(connected.connected);
+        QTRY_VERIFY(desktop.hasPendingConnections());
+        auto accepted = desktop.nextPendingConnection();
+        QVERIFY(accepted);
+        QSignalSpy reads(accepted, &QLocalSocket::readyRead);
+        socket.abort();
+        QTRY_COMPARE(accepted->state(), QLocalSocket::UnconnectedState);
+        QVERIFY(accepted->readAll().isEmpty());
+        QCOMPARE(reads.size(), 0);
+        delete accepted;
     }
     void fragmentedMessagesRequireCompleteFrame() {
         const QJsonObject expected{{"command", "open"}, {"input", "C:/中文 目录/file.png"}};
