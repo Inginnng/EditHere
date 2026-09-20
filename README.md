@@ -14,6 +14,7 @@
   <a href="docs/USER-GUIDE.md">使用指南</a> ·
   <a href="CHANGELOG.md">更新日志</a>
 </p>
+<p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
 <p align="center">
   <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4">
