@@ -18,9 +18,15 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#ifdef Q_OS_MACOS
+#include <sys/un.h>
+#endif
 using namespace h2d;
 class AgentCliTests : public QObject {
     Q_OBJECT
+    // Keep test names shorter than the production endpoints. Qt prefixes these
+    // with the per-user temporary directory on Unix.
+    static QString isolatedSocketName() { return "eh-" + uniqueId(); }
     static AppSettings quietSettings() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
@@ -189,16 +195,30 @@ class AgentCliTests : public QObject {
             QCOMPARE(launches, scenario == 2 ? 1 : 0);
         }
     }
+#ifdef Q_OS_MACOS
+    void socketNamesFitMacTemporaryDirectory() {
+        // sockaddr_un counts bytes including the terminator, not QString characters.
+        // This checks the actual runner TMPDIR without binding the user's endpoints.
+        const auto limit = qsizetype(sizeof(sockaddr_un{}.sun_path));
+        for (const auto &name : {agentServerName(), legacyDesktopServerName(), isolatedSocketName()}) {
+            const auto path = QDir::temp().filePath(name);
+            const auto bytes = QFile::encodeName(path).size() + 1;
+            const auto detail = QString("Unix socket requires %1 bytes, limit %2: %3")
+                                    .arg(bytes).arg(limit).arg(path);
+            QVERIFY2(bytes <= limit, qPrintable(detail));
+        }
+    }
+#endif
     void realTransportKeepsMissingErrorAndDesktopProbeSendsNothing() {
         QLocalSocket socket;
         // macOS prepends its long per-user temp path to Unix socket names.
         // Keep these names short enough for sockaddr_un::sun_path.
-        const auto missing = connectAgentSocket(socket, "eh-missing-" + uniqueId(), 100);
+        const auto missing = connectAgentSocket(socket, isolatedSocketName(), 100);
         QVERIFY(!missing.connected);
         QCOMPARE(missing.error, QLocalSocket::ServerNotFoundError);
         QVERIFY(!missing.message.isEmpty());
         QLocalServer desktop;
-        const auto name = "eh-probe-" + uniqueId();
+        const auto name = isolatedSocketName();
         QVERIFY2(desktop.listen(name), qPrintable(desktop.errorString()));
         const auto connected = connectAgentSocket(socket, name, 1000);
         QVERIFY(connected.connected);
@@ -344,8 +364,8 @@ class AgentCliTests : public QObject {
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         AgentServer server(controller);
-        const auto name = "EditHere-test-" + uniqueId();
-        QVERIFY(server.listen(name));
+        const auto name = isolatedSocketName();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
         QLocalSocket socket;
         socket.connectToServer(name);
         QVERIFY(socket.waitForConnected(1000));

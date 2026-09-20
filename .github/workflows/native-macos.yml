@@ -15,6 +15,15 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Verify pinned Xcode and SDK
+        run: |
+          xcodebuild -version
+          sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+          printf 'SDK: %s\n' "$sdk_path"
+          if [[ ! -d "$sdk_path/System/Library/Frameworks/AGL.framework" ]]; then
+            echo "::error::The selected SDK lacks AGL.framework required by Qt 6.8.3. Keep this build on Xcode 16.4."
+            exit 1
+          fi
       - name: Install Qt and build tools
         run: |
           python3 -m venv .tools/python
@@ -34,4 +43,7 @@ jobs:
             dist/*.dmg
             artifacts/native-ui/
             build-macos/Testing/Temporary/LastTest.log
+            build-macos/Testing/Temporary/LastTestsFailed.log
+            build-macos/test-results.xml
+            build-macos/build-environment.txt
           if-no-files-found: warn

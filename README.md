@@ -1,7 +1,8 @@
 <p align="center">
   <img src="assets/icons/helpdesign-256.png" width="104" alt="EditHere 图标">
 </p>
-<h1 align="center">EditHere · 改这里</h1>
+<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="308" alt="EditHere"></picture></h1>
+<p align="center">改这里</p>
 <p align="center"><strong>让 AI 看懂，你想怎么改。</strong></p>
 <p align="center">截图、写下意见、直接调整布局，把修改意图一次交给 AI。</p>
 <p align="center">Windows · macOS 预览版 &nbsp; / &nbsp; 本地截图与图像识别</p>
@@ -15,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-agent-1080p.mp4">
+  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-refined-1080p.mp4">
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
   </a>
 </p>
@@ -90,9 +91,9 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 
 **4 分 6 秒，查看截图、批注、布局调整，以及 Agent 发起标注并接收反馈的完整流程。**
 
-[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-agent-1080p.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
+[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-refined-1080p.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
 
-视频包含游戏界面和数据图表两个案例，03:03 起新增 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。新增章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
+视频配有原创器乐与普通话解说，统一使用 EditHere 矢量字标。视频包含游戏界面和数据图表两个案例，03:03 起新增 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。新增章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
 
 ## 下载与安装
 
