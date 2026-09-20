@@ -15,8 +15,13 @@ class Controller final : public QObject {
     void activate();
     void quit();
     void openSettings(bool updates = false, bool toolbar = false);
+    QJsonObject handleAgentRequest(const QJsonObject &request);
+    void cancelAgentSession(const QString &id, const QString &code, const QString &message);
+  signals:
+    void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
+    void finishAgentSession();
     void clearOverlays();
     void cancelCapture();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
@@ -29,6 +34,8 @@ class Controller final : public QObject {
     QSystemTrayIcon tray_;
     GlobalShortcut shortcut_;
     QVector<Overlay *> overlays_;
+    QString agentSessionId_, agentOutput_;
+    bool agentEmbed_ = true;
     bool startupUpdateChecked_ = false;
     bool capturing_ = false, wasVisible_ = false;
 };

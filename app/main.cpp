@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "agentserver.h"
 #include "autostart.h"
 #include "ui.h"
 #include <QApplication>
@@ -81,7 +82,8 @@ int main(int argc, char **argv) {
     lock.setStaleLockTime(0);
     const QString serverName = "Help2Design-native-" + QString::number(qHash(state));
     const QStringList args = app.arguments();
-    const bool background = args.contains("--autostart");
+    const bool agentStart = args.contains("--agent-start");
+    const bool background = args.contains("--autostart") || agentStart;
     QString path;
     for (int i = 1; i < args.size(); i++)
         if (!args[i].startsWith("--")) {
@@ -105,20 +107,22 @@ int main(int argc, char **argv) {
     server.setSocketOptions(QLocalServer::UserAccessOption);
     server.listen(serverName);
     Controller controller;
+    AgentServer agentServer(controller, &app);
+    agentServer.start();
     app.openProject=[&controller](const QString &path) {controller.start(false,path);};
     QObject::connect(&server, &QLocalServer::newConnection, &app, [&] {
         while (auto socket = server.nextPendingConnection()) {
-            QObject::connect(socket, &QLocalSocket::readyRead, &app, [&, socket] {
-                auto text = QString::fromUtf8(socket->readAll());
-                if (text == "capture")
-                    controller.capture();
-                else
-                    controller.start(false, text);
-                socket->disconnectFromServer();
+            // Legacy launchers delimit requests by closing the connection. Buffer
+            // until EOF so split local-socket writes never become partial paths.
+            socket->setReadBufferSize(65536);
+            QObject::connect(socket, &QLocalSocket::disconnected, &app, [&, socket] {
+                const auto text = QString::fromUtf8(socket->readAll());
+                if (text == "capture") controller.capture();
+                else if (!text.isEmpty()) controller.start(false, text);
             });
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
-    QTimer::singleShot(0, &app, [&] { controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !hasSeenGuide()); });
+    QTimer::singleShot(0, &app, [&] { controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide()); });
     return app.exec();
 }

@@ -124,6 +124,66 @@ class AutostartTests : public QObject {
         QCOMPARE(reloaded.value("OtherApplication").toString(), QString("other.exe --startup"));
         QCOMPARE(reloaded.value("HelpDesignOther").toString(), QString("keep.exe"));
     }
+    void repairExistingRegistrationWithoutToggle() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        IniRunValueStore store(directory.filePath("run.ini"));
+        QString error;
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "E:/old/HelpDesign.exe", true, &error));
+        QVERIFY(windowsLaunchAtLoginEnabled(store, "C:/Users/Test/Programs/EditHere/EditHere.exe", &error));
+        // Saving an already-checked option repairs a portable/renamed registration in place.
+        const QString installed = "C:/Users/Test/Programs/EditHere/EditHere.exe";
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, installed, true, &error));
+        QCOMPARE(store.writes, 2);
+        QString command;
+        QVERIFY(store.read(&command, &error));
+        QCOMPARE(command, windowsLaunchCommand(installed));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, installed, true, &error));
+        QCOMPARE(store.writes, 2);
+        QVERIFY(windowsLaunchAtLoginNotice(command, installed, true, StartupApproval::NotRecorded).isEmpty());
+    }
+    void startupApprovalRecords() {
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("020000000000000000000000")),
+                 StartupApproval::Enabled);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("060000000000000000000000")),
+                 StartupApproval::Enabled);
+        // A disabled record can contain a timestamp; it does not change the disabled state.
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("0300000023456789abcdef01")),
+                 StartupApproval::Disabled);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("070000000000000000000000")),
+                 StartupApproval::Disabled);
+        QCOMPARE(windowsStartupApproval({}), StartupApproval::Unknown);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("02")), StartupApproval::Unknown);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("02000000000000000000000000")),
+                 StartupApproval::Unknown);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("020100000000000000000000")),
+                 StartupApproval::Unknown);
+        QCOMPARE(windowsStartupApproval(QByteArray::fromHex("ff0000000000000000000000")),
+                 StartupApproval::Unknown);
+    }
+    void startupNoticesExplainRepairAndSystemDisableSeparately() {
+        const QString current = "C:/Users/Test/Programs/EditHere/EditHere.exe";
+        const auto command = windowsLaunchCommand(current);
+        QVERIFY(windowsLaunchAtLoginNotice({}, current, false, StartupApproval::Disabled).isEmpty());
+        QVERIFY(windowsLaunchAtLoginNotice(command, current, true, StartupApproval::Enabled).isEmpty());
+        QVERIFY(windowsLaunchAtLoginNotice(command.toLower(), current, true,
+                                          StartupApproval::NotRecorded).isEmpty());
+        const auto disabled = windowsLaunchAtLoginNotice(command, current, true, StartupApproval::Disabled);
+        QVERIFY(disabled.contains("Windows 已禁用"));
+        QVERIFY(disabled.contains("仅在此处保存不会解除系统禁用"));
+        QVERIFY(!disabled.contains("程序已不存在"));
+        const auto moved = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/HelpDesign.exe"),
+                                                    current, true, StartupApproval::NotRecorded);
+        QVERIFY(moved.contains("保持勾选并保存"));
+        const auto missing = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/HelpDesign.exe"),
+                                                      current, false, StartupApproval::Disabled);
+        QVERIFY(missing.contains("程序已不存在"));
+        QVERIFY(missing.contains("Windows 已禁用"));
+        QVERIFY(missing.contains("修复为当前程序位置"));
+        const auto unknown = windowsLaunchAtLoginNotice(command, current, true, StartupApproval::Unknown);
+        QVERIFY(unknown.contains("无法确认"));
+        QVERIFY(!unknown.contains("已禁用"));
+    }
     void failuresPreserveExistingRegistration() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

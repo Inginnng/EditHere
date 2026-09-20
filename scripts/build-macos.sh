@@ -17,7 +17,11 @@ if [[ -e "$output" || -e "$output.dmg" ]]; then printf '%s\n' "Output folder or 
 mkdir -p "$output"
 cp -R "$build_path/EditHere.app" "$output/"
 cp "$build_path/version.txt" "$output/"
-"$QT_ROOT/bin/macdeployqt" "$output/EditHere.app" -always-overwrite
+cp "$build_path/edithere-cli" "$output/EditHere.app/Contents/MacOS/edithere-cli"
+"$QT_ROOT/bin/macdeployqt" "$output/EditHere.app" -always-overwrite -executable="$output/EditHere.app/Contents/MacOS/edithere-cli"
+ln -s /Applications "$output/Applications"
+cp -R "$project_root/skills" "$output/"
+sed -e 's|../skills/|skills/|g' -e 's|../schema/|schema/|g' -e 's|../README.md|https://github.com/Inginnng/EditHere|g' -e 's|USER-GUIDE.md|https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md|g' "$project_root/docs/AGENT-CLI.md" > "$output/AGENT-CLI.md"
 cp -R "$project_root/packaging/licenses" "$output/"
 cp -R "$project_root/schema" "$output/"
 cp "$project_root/packaging/使用说明.txt" "$project_root/packaging/THIRD-PARTY-NOTICES.md" "$output/"

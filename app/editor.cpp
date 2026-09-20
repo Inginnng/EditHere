@@ -174,6 +174,23 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
     connect(close, &QPushButton::clicked, this, &QWidget::close);
     layout->addWidget(bar);
+    agentBanner_ = new QWidget(shell);
+    agentBanner_->setObjectName("agentSessionBanner");
+    auto agentRow = new QHBoxLayout(agentBanner_);
+    agentRow->setContentsMargins(14, 8, 14, 8);
+    auto agentHint = mutedLabel("AI 正在等待你的修改意见", agentBanner_);
+    agentRow->addWidget(agentHint);
+    agentRow->addStretch();
+    auto agentCancel = textButton("取消", false, agentBanner_);
+    agentCancel->setObjectName("agentCancel");
+    auto agentFinish = textButton("完成并返回 AI", true, agentBanner_);
+    agentFinish->setObjectName("agentFinish");
+    agentRow->addWidget(agentCancel);
+    agentRow->addWidget(agentFinish);
+    connect(agentCancel, &QPushButton::clicked, this, &Editor::agentCancelRequested);
+    connect(agentFinish, &QPushButton::clicked, this, &Editor::agentFinishRequested);
+    agentBanner_->hide();
+    layout->addWidget(agentBanner_);
     auto content = new QHBoxLayout;
     content->setSpacing(0);
     content->setContentsMargins(0, 0, 0, 0);
@@ -414,7 +431,7 @@ void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
     explosion_->setToolTip(label("explode", "大爆炸"));
 
 }
-void Editor::setDocument(Document document) {
+void Editor::setDocument(Document document, const QString &projectPath) {
     dismissGuide();
     finishNoteEdit();
     annotationsVisible_ = true;
@@ -422,7 +439,7 @@ void Editor::setDocument(Document document) {
     canvas_->setAnnotationsVisible(true);
     resetLayoutTools();
     doc_ = std::move(document);
-    projectPath_.clear();
+    projectPath_ = projectPath;
     undoHistory_.clear();
     redoHistory_.clear();
     canvas_->setDocument(&doc_);
@@ -1184,7 +1201,25 @@ bool Editor::saveProject() {
         return false;
     }
 }
+void Editor::setAgentSession(bool active) {
+    agentSession_ = active;
+    agentBanner_->setVisible(active);
+}
+bool Editor::hasUnsavedChanges() {
+    finishNoteEdit();
+    // Agent requests also protect images that exist only in this editor.
+    return doc_.dirty || (hasDocument() && projectPath_.isEmpty() &&
+                          (doc_.source == "screen" || doc_.source == "clipboard"));
+}
+QByteArray Editor::agentFeedback(bool embed) {
+    finishNoteEdit();
+    return serializeFeedback(doc_, embed);
+}
 bool Editor::allowReplace() {
+    if (agentSession_) {
+        toast("请先完成或取消当前 AI 批注任务");
+        return false;
+    }
     finishNoteEdit();
     if (!doc_.dirty)
         return true;
@@ -1429,6 +1464,13 @@ void Editor::showContext(QPoint p) {
 }
 void Editor::closeEvent(QCloseEvent *e) {
     e->ignore();
+    if (agentSession_) {
+        finishNoteEdit();
+        emit agentCancelRequested();
+        hide();
+        emit hiddenToTray();
+        return;
+    }
     if (guideActive()) { dismissGuide(); return; }
     if (!allowReplace())
         return;

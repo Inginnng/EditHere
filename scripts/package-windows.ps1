@@ -26,6 +26,10 @@ foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTIC
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "EditHere.exe") -Destination $outputPath
 Copy-Item -LiteralPath $versionPath -Destination $outputPath
+Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $outputPath
+Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/integrate.ps1") -Destination $outputPath
+Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs/AGENT-CLI.md") -Destination $outputPath
 $previousPath = $env:PATH
 try {
     $env:PATH = (Join-Path $QtRoot "bin") + ";" + $env:PATH
@@ -40,6 +44,9 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/THIRD-PARTY-NOTICES.md
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $notice) -Destination $outputPath
 }
+$packagedGuide = Join-Path $outputPath "AGENT-CLI.md"
+$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md")
+[IO.File]::WriteAllText($packagedGuide, $guideText, [Text.UTF8Encoding]::new($false))
 $packagedLicensing = Join-Path $outputPath "LICENSING.md"
 [IO.File]::WriteAllText($packagedLicensing, [IO.File]::ReadAllText($packagedLicensing).Replace("packaging/THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md"), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $outputPath "qt.conf"), "[Paths]`nPrefix=.`nPlugins=.`n", [Text.UTF8Encoding]::new($false))

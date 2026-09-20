@@ -1,4 +1,6 @@
 #include "controller.h"
+#include "agentprotocol.h"
+#include <QFileInfo>
 #include "autostart.h"
 #include "settingsdialog.h"
 #include "ui.h"
@@ -14,6 +16,10 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
       tray_(QApplication::windowIcon().isNull() ? glyph("capture", accent()) : QApplication::windowIcon(), this),
       shortcut_(this) {
+    connect(&editor_, &Editor::agentFinishRequested, this, &Controller::finishAgentSession);
+    connect(&editor_, &Editor::agentCancelRequested, this, [this] {
+        cancelAgentSession(agentSessionId_, "cancelled", "User cancelled. Edits remain in EditHere.");
+    });
     editor_.setPreferences(settings_);
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("helpDesignTray");
@@ -102,7 +108,7 @@ void Controller::openSettings(bool updates, bool toolbar) {
                                                    : shortcut_.lastError();
         QString error;
         const bool startupChanged = wasRegistered != next.launchAtLogin;
-        if (startupChanged && !setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
+        if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
             if (!shortcut_.start(oldShortcut))
                 error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
             return error;
@@ -142,6 +148,10 @@ void Controller::showGuide() {
 }
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
     guidePending_ = guidePending_ || firstUse;
+    if (!agentSessionId_.isEmpty()) {
+        activate();
+        return;
+    }
     if (!path.isEmpty())
         editor_.openFile(path);
     else if (demo)
@@ -183,6 +193,7 @@ void Controller::activate() {
         capture();
 }
 void Controller::capture() {
+    if (!agentSessionId_.isEmpty()) { activate(); return; }
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (guidePending_) {
@@ -281,11 +292,87 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     }
 }
 void Controller::quit() {
+    if (!agentSessionId_.isEmpty())
+        cancelAgentSession(agentSessionId_, "cancelled", "EditHere is exiting. No feedback was returned.");
     if (capturing_)
         cancelCapture();
     if (!editor_.allowReplace())
         return;
     tray_.hide();
     qApp->quit();
+}
+QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
+    const auto command = request["command"].toString();
+    if (command == "status") {
+        QString startupError;
+        const bool startupRegistered = launchAtLoginEnabled(&startupError);
+        return {{"ok", true}, {"running", true}, {"version", HELPDESIGN_VERSION},
+                {"executable", QCoreApplication::applicationFilePath()},
+                {"startupRegistered", startupRegistered}, {"startupNotice", startupError.isEmpty() ? launchAtLoginNotice() : startupError},
+                {"hasDocument", editor_.hasDocument()}, {"dirty", editor_.document().dirty},
+                {"capturing", capturing_}, {"agentSession", !agentSessionId_.isEmpty()}};
+    }
+    if (command != "open" && command != "capture" && command != "annotate")
+        return agentError("invalid_arguments", "Unsupported command.");
+    if (!agentSessionId_.isEmpty() || capturing_ || QApplication::activeModalWidget())
+        return agentError("busy", "EditHere is busy with another request, capture or dialog.");
+    if (editor_.hasUnsavedChanges())
+        return agentError("busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
+    if (command == "capture") {
+        guidePending_ = false;
+        capture();
+        return {{"ok", true}, {"command", command}, {"accepted", true}};
+    }
+    const auto input = request["input"].toString();
+    if (!QFileInfo(input).isAbsolute()) return agentError("invalid_arguments", "Input path must be absolute.");
+    QString output;
+    int timeout = 1800;
+    if (command == "annotate") {
+        output = request["output"].toString();
+        const auto error = validateNewFeedbackPath(output);
+        if (!error.isEmpty()) return agentError("io_error", error);
+        timeout = request["timeout"].toInt(1800);
+        if (timeout < 1 || timeout > 86400) return agentError("invalid_arguments", "Timeout must be between 1 and 86400 seconds.");
+    }
+    try {
+        auto doc = loadDocument(input);
+        guidePending_ = false;
+        editor_.setDocument(std::move(doc), input.endsWith(".helpdesign", Qt::CaseInsensitive) ? input : QString());
+    } catch (const std::exception &error) { return agentError("io_error", QString::fromUtf8(error.what())); }
+    if (command == "open") return {{"ok", true}, {"command", command}, {"accepted", true}, {"input", input}};
+    agentSessionId_ = uniqueId();
+    agentOutput_ = output;
+    agentEmbed_ = request["embed"].toBool(true);
+    editor_.setAgentSession(true);
+    const auto id = agentSessionId_;
+    QTimer::singleShot(timeout * 1000, this, [this, id] {
+        cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
+    });
+    return {{"ok", true}, {"pending", true}, {"session", id}};
+}
+void Controller::cancelAgentSession(const QString &id, const QString &code, const QString &message) {
+    if (id.isEmpty() || id != agentSessionId_) return;
+    const auto finishedId = agentSessionId_;
+    agentSessionId_.clear();
+    agentOutput_.clear();
+    editor_.setAgentSession(false);
+    emit agentSessionFinished(finishedId, agentError(code, message));
+}
+void Controller::finishAgentSession() {
+    if (agentSessionId_.isEmpty()) return;
+    const auto id = agentSessionId_;
+    const auto output = agentOutput_;
+    try {
+        writeNewFeedback(output, editor_.agentFeedback(agentEmbed_));
+    } catch (const std::exception &error) {
+        cancelAgentSession(id, "io_error", QString::fromUtf8(error.what()));
+        return;
+    }
+    const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
+                            {"annotations", editor_.document().notes.size()}, {"imageIncluded", agentEmbed_}};
+    agentSessionId_.clear();
+    agentOutput_.clear();
+    editor_.setAgentSession(false);
+    emit agentSessionFinished(id, result);
 }
 } // namespace h2d

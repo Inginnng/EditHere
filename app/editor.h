@@ -23,7 +23,10 @@ class Editor final : public QWidget {
     Q_OBJECT
   public:
     explicit Editor(QWidget *parent = nullptr);
-    void setDocument(Document document);
+    void setDocument(Document document, const QString &projectPath = {});
+    void setAgentSession(bool active);
+    bool hasUnsavedChanges();
+    QByteArray agentFeedback(bool embed);
     void setPreferences(const AppSettings &settings);
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
@@ -53,6 +56,8 @@ class Editor final : public QWidget {
     }
   signals:
     void captureRequested();
+    void agentFinishRequested();
+    void agentCancelRequested();
     void guideDismissed();
     void hiddenToTray();
     void toolbarSettingsRequested();
@@ -100,6 +105,8 @@ class Editor final : public QWidget {
     void showError(const QString &text);
     QString coords(const Note &note) const;
     GuideOverlay *guide_ = nullptr;
+    QWidget *agentBanner_ = nullptr;
+    bool agentSession_ = false;
     Document doc_;
     AppSettings preferences_;
     struct Snapshot {
