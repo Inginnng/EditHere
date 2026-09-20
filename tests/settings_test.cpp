@@ -273,7 +273,7 @@ class SettingsTests : public QObject {
         auto notice = dialog.findChild<QLabel *>("launchAtLoginNotice");
         QVERIFY(notice);
         QVERIFY(notice->isHidden());
-        const auto message = QString("请前往系统设置批准 HelpDesign 登录项。");
+        const auto message = QString("请前往系统设置批准 EditHere 登录项。");
         dialog.setLaunchAtLoginNotice(message);
         QCOMPARE(notice->text(), message);
         QVERIFY(!notice->isHidden());

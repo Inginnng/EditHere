@@ -60,8 +60,8 @@ struct Document {
 QByteArray encodePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title);
 Document loadDocument(const QString &path);
-QJsonObject exportFeedback(const Document &doc, bool embed = false);
-QByteArray serializeFeedback(const Document &doc, bool embed = false);
+QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false);
+QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false);
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);

@@ -15,13 +15,13 @@ bool registerProjectFileAssociation(QString *error) {
     const QString executable = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
     if (!QFileInfo(executable).isFile()) {
         if (error)
-            *error = QStringLiteral("找不到当前 HelpDesign 程序");
+            *error = QStringLiteral("找不到当前 EditHere 程序");
         return false;
     }
     const QString classes = QStringLiteral("HKEY_CURRENT_USER\\Software\\Classes\\");
     const QString progId = QStringLiteral("HelpDesign.Project");
     QSettings handler(classes + progId, QSettings::NativeFormat);
-    handler.setValue(QStringLiteral("."), QStringLiteral("HelpDesign 项目"));
+    handler.setValue(QStringLiteral("."), QStringLiteral("EditHere 项目"));
     handler.setValue(QStringLiteral("DefaultIcon/."), QStringLiteral("\"%1\",0").arg(executable));
     handler.setValue(QStringLiteral("shell/open/command/."),
                      QStringLiteral("\"%1\" \"%2\"").arg(executable, QStringLiteral("%1")));

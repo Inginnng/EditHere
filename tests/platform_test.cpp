@@ -23,7 +23,7 @@ class PlatformTests : public QObject {
 
     void globalShortcutRebindingKeepsWorkingRegistration() {
 #ifdef Q_OS_WIN
-        // These unusual keys avoid the default shortcut of an already running HelpDesign.
+        // These unusual keys avoid the default shortcut of an already running EditHere.
         const QKeySequence original("Ctrl+Alt+Shift+F21", QKeySequence::PortableText);
         const QKeySequence occupied("Ctrl+Alt+Shift+F22", QKeySequence::PortableText);
         const QKeySequence replacement("Ctrl+Alt+Shift+F23", QKeySequence::PortableText);
@@ -162,8 +162,8 @@ class PlatformTests : public QObject {
         window.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         window.resize(420, 220);
         window.setStyleSheet("QWidget { background: #326ca8; }");
-        QPushButton button("HelpDesign platform test button", &window);
-        button.setAccessibleName("HelpDesign platform test button");
+        QPushButton button("EditHere platform test button", &window);
+        button.setAccessibleName("EditHere platform test button");
         button.setGeometry(30, 90, 350, 70);
         auto screen = QGuiApplication::primaryScreen();
         window.move(screen->availableGeometry().topLeft() + QPoint(80, 80));
@@ -195,7 +195,7 @@ class PlatformTests : public QObject {
         QPoint native = frame.nativeGeometry.topLeft() + pixel(global);
         QProcess probe;
         probe.setProgram(qEnvironmentVariable("H2D_PLATFORM_PROBE",
-                                              QCoreApplication::applicationDirPath() + "/HelpDesign.exe"));
+                                              QCoreApplication::applicationDirPath() + "/EditHere.exe"));
         probe.setArguments({"--inspect", QString::number(native.x()), QString::number(native.y()), "0"});
 #ifdef Q_OS_WIN
         probe.setCreateProcessArgumentsModifier(

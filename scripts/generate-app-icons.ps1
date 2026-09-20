@@ -30,6 +30,23 @@ using System.Xml;
 public static class HelpDesignIconGenerator {
     static float Number(string s) { return float.Parse(s, CultureInfo.InvariantCulture); }
     static float Attr(XmlNode n, string name) { return Number(n.Attributes[name].Value); }
+    static Brush PathFill(XmlDocument svg, string paint) {
+        if(!paint.StartsWith("url(#", StringComparison.Ordinal))
+            return new SolidBrush(ColorTranslator.FromHtml(paint));
+        string id=paint.Substring(5,paint.Length-6);
+        foreach(XmlNode gradient in svg.GetElementsByTagName("linearGradient")) {
+            if(gradient.Attributes["id"].Value!=id) continue;
+            var stops=((XmlElement)gradient).GetElementsByTagName("stop");
+            if(gradient.Attributes["gradientUnits"].Value!="userSpaceOnUse" || stops.Count!=2)
+                throw new InvalidDataException("Icon path gradients require two stops in user space");
+            return new LinearGradientBrush(
+                new PointF(Attr(gradient,"x1"),Attr(gradient,"y1")),
+                new PointF(Attr(gradient,"x2"),Attr(gradient,"y2")),
+                ColorTranslator.FromHtml(stops[0].Attributes["stop-color"].Value),
+                ColorTranslator.FromHtml(stops[1].Attributes["stop-color"].Value));
+        }
+        throw new InvalidDataException("Missing icon gradient: "+id);
+    }
     static GraphicsPath RoundRect(float x, float y, float w, float h, float r) {
         var p = new GraphicsPath();
         p.AddArc(x, y, 2*r, 2*r, 180, 90);
@@ -97,7 +114,7 @@ public static class HelpDesignIconGenerator {
                     } else if(n.LocalName=="path") {
                         using(var path=SvgPath(n.Attributes["d"].Value)) {
                             if(n.Attributes["fill"].Value!="none") {
-                                using(var fill=new SolidBrush(ColorTranslator.FromHtml(n.Attributes["fill"].Value)))
+                                using(var fill=PathFill(svg,n.Attributes["fill"].Value))
                                     g.FillPath(fill,path);
                             }
                             if(n.Attributes["stroke"]!=null) {

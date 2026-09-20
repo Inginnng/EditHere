@@ -1,8 +1,10 @@
 #include "controller.h"
+#include "overlay.h"
 #include "guide.h"
 #include "settingsdialog.h"
 #include "ui.h"
 #include <QApplication>
+#include <QDir>
 #include <QCheckBox>
 #include <QFontDatabase>
 #include <QMenu>
@@ -36,6 +38,74 @@ class StartupFlowTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void magnifierRemainsVisibleWithoutDelay() {
+        ScreenFrame frame;
+        frame.image=QImage(800,600,QImage::Format_RGB32);
+        frame.image.fill(QColor(220,180,140));
+        frame.logicalGeometry=QRect(0,0,800,600);
+        Overlay overlay(frame);
+        overlay.show();
+        QMouseEvent move(QEvent::MouseMove,QPointF(200,200),QPointF(200,200),Qt::NoButton,Qt::NoButton,Qt::NoModifier);
+        QApplication::sendEvent(&overlay,&move);
+        const auto before=overlay.grab().toImage();
+        QTest::qWait(320);
+        const auto after=overlay.grab().toImage();
+        QVERIFY(after.pixelColor(227,250).lightness()<100);
+        QVERIFY(before.pixelColor(227,250).lightness()<100);
+        QTest::mousePress(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(200,200));
+        QMouseEvent drag(QEvent::MouseMove,QPointF(300,300),QPointF(300,300),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
+        QApplication::sendEvent(&overlay,&drag);
+        const auto rendered=overlay.grab().toImage();
+        QDir().mkpath("../artifacts/capture-preview");
+        rendered.save("../artifacts/capture-preview/magnifier.png");
+    }
+    void overlappingWindowsNeverSelectBehindFront() {
+        ScreenFrame frame;
+        frame.image=QImage(800,600,QImage::Format_RGB32); frame.image.fill(Qt::white);
+        frame.logicalGeometry=QRect(0,0,800,600); frame.windowScopeAvailable=true;
+        frame.frontWindows={{QRect(100,100,200,200),manualTarget()}, {QRect(0,0,500,500),manualTarget()}};
+        Overlay overlay(frame); overlay.show();
+        QSignalSpy accepted(&overlay,&Overlay::accepted);
+        QTest::mouseMove(&overlay,QPoint(400,400));
+        QTest::mouseMove(&overlay,QPoint(150,150));
+        QTest::mouseClick(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(150,150));
+        QCOMPARE(accepted.count(),1);
+        QCOMPARE(accepted.first().first().toRect(),QRect(100,100,200,200));
+    }
+    void magnifierToggleDefaultsOn() {
+        Editor editor;
+        auto button=editor.findChild<QPushButton *>("toggleMagnifier");
+        auto canvas=editor.findChild<Canvas *>();
+        QVERIFY(button && canvas); QVERIFY(button->isChecked()); QVERIFY(canvas->magnifierEnabled());
+        button->click(); QVERIFY(!canvas->magnifierEnabled());
+        button->click(); QVERIFY(canvas->magnifierEnabled());
+        auto doc=fromImage(QImage(800,600,QImage::Format_RGB32),"file","预览");
+        doc.image.fill(Qt::white); doc.png=encodePng(doc.image);
+        canvas->setDocument(&doc); canvas->setMode(Canvas::Rectangle); canvas->setZoom(1);
+        canvas->show(); editor.resize(1100,800); editor.show();
+        QTest::mousePress(canvas,Qt::LeftButton,Qt::NoModifier,QPoint(100,100));
+        QMouseEvent move(QEvent::MouseMove,QPointF(300,250),QPointF(300,250),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
+        QApplication::sendEvent(canvas,&move);
+        QDir().mkpath("../artifacts/capture-preview");
+        canvas->grab().save("../artifacts/capture-preview/editor-magnifier.png");
+    }
+    void captureArrowAdjustmentSurvivesRelease() {
+        ScreenFrame frame;
+        frame.image=QImage(600,400,QImage::Format_RGB32);
+        frame.image.fill(Qt::white);
+        frame.logicalGeometry=QRect(0,0,300,200);
+        Overlay overlay(frame);
+        overlay.show();
+        QSignalSpy accepted(&overlay,&Overlay::accepted);
+        QTest::mousePress(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(20,20));
+        QMouseEvent move(QEvent::MouseMove,QPointF(80,60),QPointF(80,60),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
+        QApplication::sendEvent(&overlay,&move);
+        QTest::keyClick(&overlay,Qt::Key_Right);
+        QTest::keyClick(&overlay,Qt::Key_Down);
+        QTest::mouseRelease(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(80,60));
+        QCOMPARE(accepted.count(),1);
+        QCOMPARE(accepted.first().first().toRect(),dragRect(QPoint(40,40),QPoint(161,121),frame.image.size()));
     }
     void firstManualStartShowsGuideInsteadOfCapture() {
         QTemporaryDir directory;

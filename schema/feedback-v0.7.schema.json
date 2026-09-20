@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "HelpDesign 0.7 design feedback",
-  "description": "The optional image is the original PNG encoded as a data URL. All coordinates are image pixels with a top-left origin; rectangle x2/y2 are exclusive. Annotations use the result canvas after applying changes. Changes contain only net position or size changes: cut all from rectangles from the original, then draw them at to rectangles in array order over unchanged content. Empty source holes stay transparent.",
+  "description": "The optional image is the original-size PNG or compressed JPEG encoded as a data URL. All coordinates are image pixels with a top-left origin; rectangle x2/y2 are exclusive. Annotations use the result canvas after applying changes. Changes contain only net position or size changes: cut all from rectangles from the original, then draw them at to rectangles in array order over unchanged content. Empty source holes stay transparent.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -123,7 +123,7 @@
       "const": "result"
     },
     "image": {
-      "pattern": "^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$",
+      "pattern": "^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$",
       "maxLength": 67108885,
       "description": "Original PNG, maximum 48 MiB decoded and 32 million pixels. Omit only when supplying a same-name PNG alongside the JSON.",
       "type": "string"

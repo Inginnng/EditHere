@@ -17,7 +17,7 @@ UpdateChecker::Result failure(const QString &message) {
 }
 } // namespace
 QUrl UpdateChecker::releasesUrl() {
-    return QUrl("https://github.com/Inginnng/HelpDesign/releases");
+    return QUrl("https://github.com/Inginnng/EditHere/releases");
 }
 UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const QString &currentVersion) {
     if (bytes.size() > maximumResponse)
@@ -36,8 +36,8 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
         !object.value("prerelease").isBool() || object.value("draft").toBool() ||
         object.value("prerelease").toBool() || url.scheme() != "https" || url.host() != "github.com" ||
         !url.userInfo().isEmpty() || url.port(-1) != -1 || url.hasQuery() || url.hasFragment() ||
-        url.path() != "/Inginnng/HelpDesign/releases/tag/" + tag)
-        return failure("发行信息不是有效的 HelpDesign 正式版本，请到发布页查看。");
+        url.path() != "/Inginnng/EditHere/releases/tag/" + tag)
+        return failure("发行信息不是有效的 EditHere 正式版本，请到发布页查看。");
     const auto remote = QVersionNumber::fromString(match.captured(1));
     const auto local = QVersionNumber::fromString(localMatch.captured(1));
     if (remote.segmentCount() != 3 || local.segmentCount() != 3)
@@ -122,14 +122,14 @@ void UpdateChecker::check() {
         requestPublic();
         return;
     }
-    process_.start(gh, {"api", "repos/Inginnng/HelpDesign/releases/latest", "--hostname", "github.com"});
+    process_.start(gh, {"api", "repos/Inginnng/EditHere/releases/latest", "--hostname", "github.com"});
 }
 void UpdateChecker::requestPublic() {
     if (!busy_ || reply_)
         return;
-    QNetworkRequest request(QUrl("https://api.github.com/repos/Inginnng/HelpDesign/releases/latest"));
+    QNetworkRequest request(QUrl("https://api.github.com/repos/Inginnng/EditHere/releases/latest"));
     request.setRawHeader("Accept", "application/vnd.github+json");
-    request.setRawHeader("User-Agent", "HelpDesign/" HELPDESIGN_VERSION);
+    request.setRawHeader("User-Agent", "EditHere/" HELPDESIGN_VERSION);
     request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     request.setTransferTimeout(12000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);

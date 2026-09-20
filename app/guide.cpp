@@ -34,7 +34,7 @@ class GuideCard final : public QWidget {
 
 GuideOverlay::GuideOverlay(QWidget *parent) : QWidget(parent) {
     setObjectName("guideOverlay");
-    setAccessibleName("HelpDesign 使用引导");
+    setAccessibleName("EditHere 使用引导");
     setAttribute(Qt::WA_StyledBackground, false);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);

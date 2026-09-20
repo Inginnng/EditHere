@@ -24,7 +24,7 @@ bool fail(QString *error, const QString &message) {
     return false;
 }
 QString approvalMessage() {
-    return "已申请开机自启，但 macOS 尚未允许。请在“系统设置 → 通用 → 登录项与扩展”中允许 HelpDesign，然后重新打开设置确认。";
+    return "已申请开机自启，但 macOS 尚未允许。请在“系统设置 → 通用 → 登录项与扩展”中允许 EditHere，然后重新打开设置确认。";
 }
 } // namespace
 
@@ -63,7 +63,7 @@ bool setLaunchAtLoginEnabled(bool enabled, QString *error) {
     if (error)
         error->clear();
     if (!isAppBundle())
-        return !enabled || fail(error, "无法设置开机自启：请从已安装的 HelpDesign.app 中运行应用。");
+        return !enabled || fail(error, "无法设置开机自启：请从已安装的 EditHere.app 中运行应用。");
     SMAppService *service = SMAppService.mainAppService;
     const auto previous = service.status;
     if ((enabled && (previous == SMAppServiceStatusEnabled || previous == SMAppServiceStatusRequiresApproval)) ||

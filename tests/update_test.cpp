@@ -12,7 +12,7 @@ class UpdateTests : public QObject {
                                          {"draft", false},
                                          {"prerelease", false},
                                          {"html_url",
-                                          "https://github.com/Inginnng/HelpDesign/releases/tag/" + version}})
+                                          "https://github.com/Inginnng/EditHere/releases/tag/" + version}})
             .toJson();
     }
   private slots:
@@ -39,11 +39,11 @@ class UpdateTests : public QObject {
     }
     void rejectsUntrustedAndNonStableReleases() {
         auto base = QJsonDocument::fromJson(release("v0.8.3")).object();
-        for (const auto &url : {"http://github.com/Inginnng/HelpDesign/releases/tag/v0.8.3",
-                                "https://example.com/Inginnng/HelpDesign/releases/tag/v0.8.3",
+        for (const auto &url : {"http://github.com/Inginnng/EditHere/releases/tag/v0.8.3",
+                                "https://example.com/Inginnng/EditHere/releases/tag/v0.8.3",
                                 "https://github.com/elsewhere/other/releases/tag/v0.8.3",
-                                "https://github.com/Inginnng/HelpDesign/releases/tag/v0.8.3?x=1",
-                                "https://user@github.com/Inginnng/HelpDesign/releases/tag/v0.8.3"}) {
+                                "https://github.com/Inginnng/EditHere/releases/tag/v0.8.3?x=1",
+                                "https://user@github.com/Inginnng/EditHere/releases/tag/v0.8.3"}) {
             auto changed = base;
             changed["html_url"] = url;
             QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.8.2").status,

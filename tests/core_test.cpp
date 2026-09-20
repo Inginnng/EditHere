@@ -11,6 +11,25 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void compressedFeedbackKeepsCoordinatesAndProjectPixels() {
+        QImage image(640,480,QImage::Format_RGB32);
+        quint32 seed=42;
+        for(int y=0;y<image.height();++y) for(int x=0;x<image.width();++x) {
+            seed=seed*1664525u+1013904223u;
+            image.setPixelColor(x,y,QColor((seed>>24)&255,(seed>>16)&255,(seed>>8)&255));
+        }
+        auto doc=fromImage(image,"file","compression");
+        const auto original=doc.png;
+        Note note; note.isPoint=true; note.point={230,170}; note.comment="测试"; doc.notes.append(note);
+        const auto uncompressed=serializeFeedback(doc,true);
+        const auto compressed=serializeFeedback(doc,true,true);
+        QVERIFY(compressed.size()<uncompressed.size());
+        const auto restored=loadFeedback(QJsonDocument::fromJson(compressed).object(),{});
+        QCOMPARE(restored.image.size(),image.size()); QCOMPARE(restored.notes[0].point,note.point);
+        QCOMPARE(doc.png,original);
+        QVERIFY(!serializeDocument(restored,true).isEmpty());
+        qInfo("Compression sample: %lld -> %lld bytes",qint64(uncompressed.size()),qint64(compressed.size()));
+    }
     void globalFeedbackAndPortableProject() {
         auto doc = fromImage(exampleImage(), "demo", "风格意见");
         Note global;

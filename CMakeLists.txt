@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(HelpDesign VERSION 0.8.12 LANGUAGES CXX)
+project(EditHere VERSION 0.8.19 LANGUAGES CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -33,35 +33,35 @@ elseif(APPLE)
   target_compile_options(h2d_ui PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
   target_link_libraries(h2d_ui PRIVATE "-framework Cocoa" "-framework ScreenCaptureKit" "-framework ApplicationServices" "-framework Carbon" "-framework ServiceManagement")
 endif()
-qt_add_executable(HelpDesign WIN32 MACOSX_BUNDLE app/main.cpp)
-target_link_libraries(HelpDesign PRIVATE h2d_ui)
+qt_add_executable(EditHere WIN32 MACOSX_BUNDLE app/main.cpp)
+target_link_libraries(EditHere PRIVATE h2d_ui)
 set(HELPDESIGN_ICON_PNGS)
 foreach(size IN ITEMS 16 20 24 32 48 64 128 256 512)
   list(APPEND HELPDESIGN_ICON_PNGS "assets/icons/helpdesign-${size}.png")
 endforeach()
-qt_add_resources(HelpDesign app_icons
+qt_add_resources(EditHere app_icons
   PREFIX "/icons"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
   FILES ${HELPDESIGN_ICON_PNGS})
 if(WIN32)
   enable_language(RC)
   configure_file(packaging/helpdesign.rc.in "${CMAKE_CURRENT_BINARY_DIR}/helpdesign.rc" @ONLY)
-  target_sources(HelpDesign PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/helpdesign.rc")
+  target_sources(EditHere PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/helpdesign.rc")
 elseif(APPLE)
-  target_sources(HelpDesign PRIVATE assets/icons/helpdesign.icns)
+  target_sources(EditHere PRIVATE assets/icons/helpdesign.icns)
   set_source_files_properties(assets/icons/helpdesign.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-  set_target_properties(HelpDesign PROPERTIES MACOSX_BUNDLE_ICON_FILE helpdesign.icns)
+  set_target_properties(EditHere PROPERTIES MACOSX_BUNDLE_ICON_FILE helpdesign.icns)
 endif()
 target_compile_definitions(h2d_ui PUBLIC HELPDESIGN_VERSION="${PROJECT_VERSION}")
-set_target_properties(HelpDesign PROPERTIES
+set_target_properties(EditHere PROPERTIES
   MACOSX_BUNDLE_GUI_IDENTIFIER "com.help2design.capture"
-  MACOSX_BUNDLE_BUNDLE_NAME "HelpDesign"
+  MACOSX_BUNDLE_BUNDLE_NAME "EditHere"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
   MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist")
 # Package the version of the successfully linked executable, not just the latest configuration.
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" CONTENT "${PROJECT_VERSION}\n")
-add_custom_command(TARGET HelpDesign POST_BUILD
+add_custom_command(TARGET EditHere POST_BUILD
   BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
@@ -105,7 +105,7 @@ if(WIN32)
   qt_add_executable(platform_tests tests/platform_test.cpp)
   target_link_libraries(platform_tests PRIVATE h2d_ui Qt6::Test)
   set_target_properties(core_tests ui_tests layout_tests platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
-  add_dependencies(platform_tests HelpDesign)
+  add_dependencies(platform_tests EditHere)
   add_test(NAME windows-platform COMMAND platform_tests)
 endif()
-install(TARGETS HelpDesign BUNDLE DESTINATION . RUNTIME DESTINATION .)
+install(TARGETS EditHere BUNDLE DESTINATION . RUNTIME DESTINATION .)

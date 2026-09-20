@@ -2,6 +2,7 @@
 #include "model.h"
 #include <QWidget>
 class QTimer;
+class QPainter;
 namespace h2d {
 class Canvas final : public QWidget {
     Q_OBJECT
@@ -24,6 +25,8 @@ class Canvas final : public QWidget {
     void refresh();
     void setLayoutPreview(bool enabled);
     void setAnnotationsVisible(bool visible);
+    void setMagnifierEnabled(bool enabled) { magnifierEnabled_=enabled; update(); }
+    bool magnifierEnabled() const { return magnifierEnabled_; }
     bool annotationsVisible() const { return annotationsVisible_; }
     bool layoutPreview() const {
         return layoutPreview_;
@@ -54,6 +57,9 @@ class Canvas final : public QWidget {
     void focusOutEvent(QFocusEvent *) override;
 
   private:
+    void paintScene(QPainter &p, QRect exposed);
+    bool magnifierEnabled_=true, pointerInside_=false;
+    QPointF pointer_;
     int hit(QPointF screen, bool rectangles) const;
     QPointF noteAnchor(const Note &note) const;
     int hitMovement(QPointF screen) const;

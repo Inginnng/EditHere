@@ -483,7 +483,7 @@ QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, 
     }
     return result;
 }
-QJsonObject exportFeedback(const Document &doc, bool embed) {
+QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
     validateDocument(doc);
     const auto changes = doc.layout ? exportLayoutChanges(*doc.layout) : QJsonArray{};
     QJsonArray annotations;
@@ -505,12 +505,26 @@ QJsonObject exportFeedback(const Document &doc, bool embed) {
                        {"changes", changes}};
     if (embed) {
         validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4, doc.png.size());
-        result.insert("image", "data:image/png;base64," + QString::fromLatin1(doc.png.toBase64()));
+        QByteArray encoded=doc.png;
+        QString mime="png";
+        if(compress) {
+            const QImage rgba=doc.image.convertToFormat(QImage::Format_ARGB32);
+            bool opaque=true;
+            for(int y=0;opaque && y<rgba.height();++y) {
+                const auto row=reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
+                for(int x=0;x<rgba.width();++x) if(qAlpha(row[x])!=255) { opaque=false; break; }
+            }
+            if(opaque) {
+                QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
+                if(doc.image.save(&buffer,"JPEG",80) && jpeg.size()<encoded.size()) { encoded=jpeg; mime="jpeg"; }
+            }
+        }
+        result.insert("image", "data:image/"+mime+";base64," + QString::fromLatin1(encoded.toBase64()));
     }
     return result;
 }
-QByteArray serializeFeedback(const Document &doc, bool embed) {
-    auto bytes = QJsonDocument(exportFeedback(doc, embed)).toJson(QJsonDocument::Compact);
+QByteArray serializeFeedback(const Document &doc, bool embed, bool compress) {
+    auto bytes = QJsonDocument(exportFeedback(doc, embed, compress)).toJson(QJsonDocument::Compact);
     validateProjectStorageSize(bytes.size() + 1);
     return bytes + '\n';
 }
@@ -520,7 +534,7 @@ static QJsonObject documentObject(const Document &d, bool embed, bool current) {
     if (!current && std::any_of(d.notes.begin(), d.notes.end(), [](const Note &note) {
             return note.isGlobal || note.movementSource.has_value();
         }))
-        fail("这些批注需要当前 HelpDesign 项目格式");
+        fail("这些批注需要当前 EditHere 项目格式");
     if (d.layout && !current) {
         const auto original = createLayout(d.image.size(), {});
         legacyNotes = remapNotes(d.notes, *d.layout, original);
@@ -621,12 +635,12 @@ static void feedbackFields(const QJsonObject &feedback) {
     exactKeys(feedback, fields);
 }
 static QByteArray feedbackPng(const QJsonValue &value) {
-    const QString prefix = "data:image/png;base64,";
+    const QString prefix = value.toString().startsWith("data:image/jpeg;base64,") ? "data:image/jpeg;base64," : "data:image/png;base64,";
     if (!value.isString())
-        fail("内嵌原图必须是 PNG data URL");
+        fail("内嵌图片必须是 PNG 或 JPEG data URL");
     const QString data = value.toString();
     if (!data.startsWith(prefix))
-        fail("内嵌原图必须是 PNG data URL");
+        fail("内嵌图片必须是 PNG 或 JPEG data URL");
     const qint64 encodedSize = data.size() - prefix.size();
     if (encodedSize <= 0 || encodedSize > ((MaxImageFileBytes + 2) / 3) * 4)
         fail("内嵌原图不能超过 48 MiB");
@@ -635,9 +649,24 @@ static QByteArray feedbackPng(const QJsonValue &value) {
     if (!decoded || decoded.decoded.toBase64() != encoded)
         fail("原图 Base64 不正确");
     validateProjectStorageSize(0, decoded.decoded.size());
+    if(prefix.contains("jpeg") != decoded.decoded.startsWith(QByteArray::fromHex("ffd8ff")))
+        fail("内嵌图片类型与编码不一致");
     return decoded.decoded;
 }
 static QImage readFeedbackPng(QByteArray &png) {
+    if(png.startsWith(QByteArray::fromHex("ffd8ff"))) {
+        QBuffer buffer(&png); buffer.open(QIODevice::ReadOnly);
+        QImageReader reader(&buffer,"JPEG");
+        const QSize size=reader.size();
+        if(!size.isValid() || size.width()>32767 || size.height()>32767 || qint64(size.width())*size.height()>MaxPixels)
+            fail("内嵌图片尺寸超出限制");
+        auto image=reader.read();
+        if(image.isNull() || image.size()!=size) fail("内嵌图片无法读取");
+        QByteArray lossless; QBuffer output(&lossless); output.open(QIODevice::WriteOnly);
+        if(!image.save(&output,"PNG")) fail("图片转换失败");
+        png=lossless;
+        return image;
+    }
     if (png.size() < 33 || !png.startsWith(QByteArray::fromHex("89504e470d0a1a0a0000000d49484452")))
         fail("内嵌原图不是有效的 PNG");
     const auto *header = reinterpret_cast<const uchar *>(png.constData());

@@ -28,4 +28,4 @@ try {
         if ($LASTEXITCODE) { throw "Tests failed." }
     }
 } finally { $env:PATH = $previousPath }
-Write-Host "Built: $buildPath/HelpDesign.exe"
+Write-Host "Built: $buildPath/EditHere.exe"

@@ -20,7 +20,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
-class HelpDesignApplication final : public QApplication {
+class EditHereApplication final : public QApplication {
   public:
     using QApplication::QApplication;
     std::function<void(const QString &)> openProject;
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
     }
 
     initializeLaunchAtLoginDetection();
-    HelpDesignApplication app(argc, argv);
+    EditHereApplication app(argc, argv);
     // Keep the previous local lock and IPC address so an already running version
     // remains the sole owner of screenshots and unsaved feedback.
     app.setApplicationName("Help2Design");
@@ -67,6 +67,8 @@ int main(int argc, char **argv) {
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     app.setApplicationName("HelpDesign");
     app.setOrganizationName("HelpDesign");
+    // Keep the previous settings directory; only the public display name changes.
+    app.setApplicationDisplayName("EditHere · 改这里");
     app.setApplicationVersion(HELPDESIGN_VERSION);
     app.setQuitOnLastWindowClosed(false);
     QIcon appIcon;

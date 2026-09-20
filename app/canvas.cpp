@@ -242,16 +242,48 @@ void Canvas::paintEvent(QPaintEvent *event) {
     if (!doc_)
         return;
     QPainter p(this);
+    paintScene(p,event->rect());
+    if(magnifierEnabled_ && pointerInside_ && !middlePanning_ && !panning_ && mode_!=Point) {
+        const QRect visible=visibleRegion().boundingRect();
+        if(visible.width()<220 || visible.height()<170) return;
+        QPointF at=pointer_+QPointF(24,24);
+        if(at.x()+210>visible.right()) at.setX(pointer_.x()-234);
+        if(at.y()+162>visible.bottom()) at.setY(pointer_.y()-186);
+        at.setX(std::clamp(at.x(),double(visible.left()),double(visible.right()-210)));
+        at.setY(std::clamp(at.y(),double(visible.top()),double(visible.bottom()-162)));
+        QRectF panel(at,QSizeF(210,162)), area(at+QPointF(6,6),QSizeF(198,126));
+        p.setPen(Qt::NoPen); p.setBrush(QColor(25,28,34)); p.drawRoundedRect(panel,9,9);
+        p.save(); p.setClipRect(area); p.fillRect(area,QColor(45,48,55));
+        const QPoint pixel=toImage(pointer_);
+        const QPointF sample=(QPointF(pixel)+QPointF(.5,.5))*zoom_;
+        p.translate(area.center()); p.scale(10/zoom_,10/zoom_); p.translate(-sample);
+        paintScene(p,rect());
+        p.restore();
+        p.save(); p.setClipRect(area); p.setRenderHint(QPainter::Antialiasing,false);
+        p.setPen(QPen(QColor(255,255,255,70),0));
+        for(int offset=-100;offset<=100;offset+=10) {
+            double x=area.center().x()+offset-5,y=area.center().y()+offset-5;
+            p.drawLine(QPointF(x,area.top()),QPointF(x,area.bottom()));
+            p.drawLine(QPointF(area.left(),y),QPointF(area.right(),y));
+        }
+        p.setPen(QPen(Qt::white,0)); p.setBrush(Qt::NoBrush);
+        p.drawRect(QRectF(area.center()-QPointF(5,5),QSizeF(10,10))); p.restore();
+        p.setPen(Qt::white); p.setFont(QFont("Microsoft YaHei",9));
+        p.drawText(QRectF(at+QPointF(6,134),QSizeF(198,22)),Qt::AlignCenter,
+                   QString("像素 %1, %2 · 1格=1px").arg(pixel.x()).arg(pixel.y()));
+    }
+}
+void Canvas::paintScene(QPainter &p, QRect exposed) {
     p.setRenderHint(QPainter::Antialiasing);
-    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setRenderHint(QPainter::SmoothPixmapTransform,false);
     if (layoutPreview_) {
-        paintTransparency(p, event->rect());
+        paintTransparency(p, exposed);
         p.drawImage(rect(), layoutImage_);
     } else
         p.drawImage(rect(), doc_->image);
     auto outline = [&](QRect r, QColor color, bool fill, bool dashed) {
         QRectF scaled(r.x() * zoom_, r.y() * zoom_, r.width() * zoom_, r.height() * zoom_);
-        p.setPen(QPen(color, 1.5, dashed ? Qt::DashLine : Qt::SolidLine));
+        p.setPen(QPen(color, 2, dashed ? Qt::DashLine : Qt::SolidLine));
         QColor wash = color;
         wash.setAlpha(18);
         p.setBrush(fill ? QBrush(wash) : Qt::NoBrush);
@@ -308,6 +340,7 @@ void Canvas::stopMiddlePan(bool suppressMouse) {
     setCursor(space_ ? Qt::OpenHandCursor : mode_ == Adjust ? Qt::ArrowCursor : Qt::CrossCursor);
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
+    pointer_=e->position(); pointerInside_=true;
     if (!doc_)
         return;
     if ((suppressMouse_ && e->buttons() == e->button()) ||
@@ -414,6 +447,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
+    pointer_=e->position(); pointerInside_=true; update();
     if (!doc_)
         return;
     if (middlePanning_ || suppressMouse_) {
@@ -590,6 +624,7 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
         QWidget::keyReleaseEvent(e);
 }
 void Canvas::leaveEvent(QEvent *) {
+    pointerInside_=false; update();
     hoveredNote_.clear();
     hoveredMovement_ = -1;
     hoverTimer_->stop();

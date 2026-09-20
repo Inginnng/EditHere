@@ -242,6 +242,9 @@ QIcon glyph(const QString &name, QColor color) {
         QPainterPath path; path.moveTo(2,12); path.cubicTo(7,4,17,4,22,12); path.cubicTo(17,20,7,20,2,12); p.drawPath(path);
         p.drawEllipse(QPointF(12,12),3,3);
         if (name=="eye-off") {p.setPen(QPen(color,2.0));p.drawLine(3,3,21,21);}
+    } else if (name == "zoom-in") {
+        p.drawEllipse(QRectF(3,3,13,13)); p.drawLine(15,15,21,21);
+        p.drawLine(6,9,13,9); p.drawLine(9,6,9,13);
     } else if (name == "explode") {
         p.drawRoundedRect(QRectF(3,3,7,7),1,1);p.drawRoundedRect(QRectF(14,3,7,7),1,1);
         p.drawRoundedRect(QRectF(3,14,7,7),1,1);p.drawRoundedRect(QRectF(14,14,7,7),1,1);

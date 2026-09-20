@@ -1,2 +1,31 @@
+#pragma code_page(65001)
+#include <windows.h>
 // The first icon group supplies the Windows executable and shell icon.
 1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/icons/helpdesign.ico"
+
+1 VERSIONINFO
+FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE 0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "EditHere · 改这里"
+            VALUE "FileVersion", "@PROJECT_VERSION@"
+            VALUE "InternalName", "EditHere"
+            VALUE "OriginalFilename", "EditHere.exe"
+            VALUE "ProductName", "EditHere"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

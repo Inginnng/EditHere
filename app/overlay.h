@@ -20,6 +20,8 @@ class Overlay final : public QWidget {
 
   protected:
     void paintEvent(QPaintEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void leaveEvent(QEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
@@ -37,9 +39,11 @@ class Overlay final : public QWidget {
     QVector<Candidate> visual_, native_;
     CandidatePicker picker_;
     QRect selected_;
-    QPoint start_, cursor_;
+    QPoint start_, cursor_, keyboardOffset_;
+    bool nudged_ = false;
     bool drawing_ = false, finished_ = false;
-    QTimer debounce_;
+    QTimer debounce_, hoverTimer_;
+    bool magnifierVisible_ = false;
     QProcess *probe_ = nullptr;
 };
 } // namespace h2d

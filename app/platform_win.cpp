@@ -121,7 +121,33 @@ void captureScreens(CaptureCallback callback) {
                     QRect(info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
                           info.rcMonitor.bottom - info.rcMonitor.top);
         }
-        frames.append({screen->name(), screen->geometry(), native, image, !native.isEmpty()});
+        ScreenFrame frame{screen->name(), screen->geometry(), native, image, !native.isEmpty()};
+        frame.windowScopeAvailable = true;
+        struct Windows { ScreenFrame *frame; DWORD excluded; } data{&frame, GetCurrentProcessId()};
+        EnumWindows([](HWND hwnd, LPARAM param)->BOOL {
+            auto &data=*reinterpret_cast<Windows *>(param);
+            DWORD pid=0; GetWindowThreadProcessId(hwnd,&pid);
+            if(pid==data.excluded || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return TRUE;
+            DWORD cloaked=0; DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED,&cloaked,sizeof(cloaked));
+            if(cloaked) return TRUE;
+            wchar_t name[128]{}; GetClassNameW(hwnd,name,128);
+            if(wcscmp(name,L"Progman")==0 || wcscmp(name,L"WorkerW")==0) return TRUE;
+            RECT r{};
+            if(FAILED(DwmGetWindowAttribute(hwnd,DWMWA_EXTENDED_FRAME_BOUNDS,&r,sizeof(r)))) GetWindowRect(hwnd,&r);
+            auto &f=*data.frame;
+            if(f.nativeGeometry.isEmpty()) return TRUE;
+            double sx=double(f.image.width())/f.nativeGeometry.width(), sy=double(f.image.height())/f.nativeGeometry.height();
+            QRect bounds(qRound((r.left-f.nativeGeometry.x())*sx),qRound((r.top-f.nativeGeometry.y())*sy),
+                         qRound((r.right-r.left)*sx),qRound((r.bottom-r.top)*sy));
+            bounds=bounds.intersected(f.image.rect());
+            if(!bounds.isEmpty()) {
+                auto target=manualTarget(); target["label"]="窗口"; target["source"]="window";
+                target["windowId"]=QString::number(quintptr(hwnd));
+                f.frontWindows.append({bounds,target});
+            }
+            return TRUE;
+        },reinterpret_cast<LPARAM>(&data));
+        frames.append(frame);
     }
     callback(frames, frames.isEmpty() ? "无法读取屏幕画面" : QString());
 }

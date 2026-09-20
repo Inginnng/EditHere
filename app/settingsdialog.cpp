@@ -18,7 +18,7 @@
 namespace h2d {
 SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : QDialog(parent) {
     setObjectName("settingsDialog");
-    setWindowTitle("HelpDesign 设置");
+    setWindowTitle("EditHere 设置");
     setMinimumSize(500, 420);
     resize(620, 640);
     auto root = new QVBoxLayout(this);
@@ -37,9 +37,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto shortcutLayout = new QVBoxLayout(shortcuts);
     shortcutLayout->setContentsMargins(16, 16, 16, 8);
     shortcutLayout->setSpacing(12);
-    auto explanation = mutedLabel("点击组合键后按下新的快捷键。清空即停用。", shortcuts);
-    explanation->setWordWrap(true);
-    shortcutLayout->addWidget(explanation);
     auto scroll = new QScrollArea(shortcuts);
     scroll->setWidgetResizable(true);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -74,7 +71,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         input->setMinimumWidth(200);
         input->setAccessibleName(definition.label + "快捷键");
         input->setToolTip(definition.global ? "在其他应用中也可使用；清空则停用。"
-                                            : "在 HelpDesign 编辑窗口中使用；清空则停用。");
+                                            : "在 EditHere 编辑窗口中使用；清空则停用。");
         keys_.insert(definition.id, input);
         form->addRow(definition.label, input);
         connect(input, &QKeySequenceEdit::keySequenceChanged, this, [this] { error_->hide(); });
@@ -106,15 +103,12 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto defaultsLayout = new QVBoxLayout(defaults);
     defaultsLayout->setContentsMargins(20, 22, 20, 20);
     defaultsLayout->setSpacing(18);
-    auto defaultsDescription = mutedLabel("为下一次截图和导出设置习惯。不会改变正在编辑的内容。", defaults);
-    defaultsDescription->setWordWrap(true);
-    defaultsLayout->addWidget(defaultsDescription);
     captureOnStartup_ = new QCheckBox("启动后立即截图", defaults);
     captureOnStartup_->setObjectName("captureOnStartup");
     captureOnStartup_->setToolTip("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。");
-    launchAtLogin_ = new QCheckBox("开机时启动 HelpDesign", defaults);
+    launchAtLogin_ = new QCheckBox("开机时启动 EditHere", defaults);
     launchAtLogin_->setObjectName("launchAtLogin");
-    launchAtLogin_->setToolTip("登录系统后驻留托盘，不会自动截图。请保留程序所在文件夹；移动后需重新设置。");
+    launchAtLogin_->setToolTip("请保留程序所在文件夹；移动后需重新设置。");
     fitImageOnOpen_ = new QCheckBox("打开图片时自动适应窗口", defaults);
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
     fitImageOnOpen_->setToolTip("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。");
@@ -124,9 +118,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto loginLayout = new QVBoxLayout;
     loginLayout->setSpacing(6);
     loginLayout->addWidget(launchAtLogin_);
-    auto loginHint = mutedLabel("登录系统后驻留托盘，不会自动截图。", defaults);
-    loginHint->setWordWrap(true);
-    loginLayout->addWidget(loginHint);
     launchAtLoginNotice_ = mutedLabel({}, defaults);
     launchAtLoginNotice_->setObjectName("launchAtLoginNotice");
     launchAtLoginNotice_->setWordWrap(true);
@@ -156,9 +147,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto toolbarTitle = new QLabel("显示在底部工具栏", toolbar);
     toolbarTitle->setObjectName("settingsSection");
     toolbarLayout->addWidget(toolbarTitle);
-    auto toolbarDescription = mutedLabel("标注、调整和缩放工具始终保留。勾选常用操作，保存后立即显示在工具栏。", toolbar);
-    toolbarDescription->setWordWrap(true);
-    toolbarLayout->addWidget(toolbarDescription);
     for (const auto &definition : toolbarActionDefinitions()) {
         auto checkbox = new QCheckBox(definition.label, toolbar);
         checkbox->setObjectName("toolbar_" + definition.id);
@@ -173,9 +161,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         toolbarLayout->addWidget(checkbox);
         connect(checkbox, &QCheckBox::toggled, this, [this] { error_->hide(); });
     }
-    auto toolbarHint = mutedLabel("未勾选的操作会收进“更多”菜单，仍可使用快捷键。", toolbar);
-    toolbarHint->setWordWrap(true);
-    toolbarLayout->addWidget(toolbarHint);
     toolbarLayout->addStretch();
     tabs->addTab(toolbar, "工具栏");
 
@@ -184,19 +169,21 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto aboutLayout = new QVBoxLayout(about);
     aboutLayout->setContentsMargins(20, 22, 20, 20);
     aboutLayout->setSpacing(18);
-    auto version = new QLabel("HelpDesign  " HELPDESIGN_VERSION, about);
+    auto version = new QLabel("EditHere · 改这里  " HELPDESIGN_VERSION, about);
     version->setObjectName("settingsSection");
     aboutLayout->addWidget(version);
     auto description = mutedLabel("截图、批注与布局调整，让设计修改意见更清楚。", about);
     description->setWordWrap(true);
     aboutLayout->addWidget(description);
+    auto license = mutedLabel("非商业用途按 PolyForm Noncommercial 1.0.0 免费使用；其他商业用途需另行授权。"
+                              R"(<br><a href="https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md">查看许可说明</a>)", about);
+    license->setWordWrap(true);
+    license->setTextFormat(Qt::RichText);
+    license->setOpenExternalLinks(true);
+    aboutLayout->addWidget(license);
     checkUpdatesOnStartup_ = new QCheckBox("启动时检查更新", about);
     checkUpdatesOnStartup_->setObjectName("checkUpdatesOnStartup");
     aboutLayout->addWidget(checkUpdatesOnStartup_);
-    auto updateHint = mutedLabel(
-        "仅检查正式版，有更新时提醒。不会自动下载或安装。检查只访问 GitHub，不上传截图或批注。", about);
-    updateHint->setWordWrap(true);
-    aboutLayout->addWidget(updateHint);
     auto status = new QLabel("尚未检查更新。", about);
     status->setObjectName("updateStatus");
     status->setWordWrap(true);
@@ -211,11 +198,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     updateActions->addWidget(releases);
     updateActions->addStretch();
     aboutLayout->addLayout(updateActions);
-    auto privateHint = mutedLabel("私有仓库需要访问权限。若已安装 GitHub CLI "
-                                  "并登录，会使用其现有登录状态；否则可在浏览器登录后查看发布页。",
-                                  about);
-    privateHint->setWordWrap(true);
-    aboutLayout->addWidget(privateHint);
     aboutLayout->addStretch();
     tabs->addTab(about, "关于与更新");
     updater_ = new UpdateChecker(this);
@@ -234,7 +216,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     connect(releases, &QPushButton::clicked, this, [releases, status] {
         const auto url = releases->property("releaseUrl").toUrl();
         if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
-            status->setText("无法打开浏览器，请访问 github.com/Inginnng/HelpDesign/releases。");
+            status->setText("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。");
     });
     error_ = new QLabel(this);
     error_->setObjectName("errorLabel");

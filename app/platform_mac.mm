@@ -127,7 +127,7 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
 }
 void captureScreens(CaptureCallback callback) {
     if (!CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess()) {
-        callback({}, "请在系统设置 → 隐私与安全性 → 屏幕录制中允许 HelpDesign，然后重试。");
+        callback({}, "请在系统设置 → 隐私与安全性 → 屏幕录制中允许 EditHere，然后重试。");
         return;
     }
     struct State {

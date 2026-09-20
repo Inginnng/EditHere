@@ -12,6 +12,8 @@ struct ScreenFrame {
     QRect nativeGeometry;
     QImage image;
     bool nativePixels = false;
+    bool windowScopeAvailable = false;
+    QVector<Candidate> frontWindows; // Front-to-back snapshot, in image pixels.
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 // Let transient tray UI close before reading any screen pixels.

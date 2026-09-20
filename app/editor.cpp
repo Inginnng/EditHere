@@ -96,7 +96,7 @@ class JsonPreview final : public QPlainTextEdit {
 };
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
-    setWindowTitle("HelpDesign");
+    setWindowTitle("EditHere · 改这里");
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
     setAcceptDrops(true);
@@ -113,7 +113,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     bar->setFixedHeight(42);
     auto header = new QHBoxLayout(bar);
     header->setContentsMargins(14, 0, 6, 0);
-    auto brand = new QLabel("HelpDesign", bar);
+    auto brand = new QLabel("EditHere · 改这里", bar);
     brand->setObjectName("brand");
     header->addWidget(brand);
     meta_ = mutedLabel({}, bar);
@@ -125,6 +125,14 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     hideAnnotations_->setCheckable(true);
     header->addWidget(hideAnnotations_);
     connect(hideAnnotations_, &QPushButton::clicked, this, &Editor::toggleAnnotations);
+    auto magnifier=iconButton("zoom-in", "关闭放大镜", bar);
+    magnifier->setObjectName("toggleMagnifier");
+    magnifier->setCheckable(true); magnifier->setChecked(true);
+    header->addWidget(magnifier);
+    connect(magnifier,&QPushButton::toggled,this,[this,magnifier](bool enabled) {
+        canvas_->setMagnifierEnabled(enabled);
+        magnifier->setToolTip(enabled ? "关闭放大镜" : "开启放大镜");
+    });
     explosion_ = textButton("大爆炸", false, bar);
     explosion_->setProperty("glyphName", "explode");
     explosion_->setIcon(glyph("explode"));
@@ -909,7 +917,7 @@ void Editor::copyJson() {
     finishNoteEdit();
     if (!hasDocument()) return;
     try {
-        const QString text=QString::fromUtf8(serializeFeedback(doc_,preferences_.embedOriginal));
+        const QString text=QString::fromUtf8(serializeFeedback(doc_,preferences_.embedOriginal,true));
         for (auto retry : findChildren<QTimer *>("copyJsonRetry")) { retry->stop(); retry->deleteLater(); }
         auto retry=new QTimer(this);
         retry->setObjectName("copyJsonRetry");
@@ -1148,15 +1156,15 @@ void Editor::copyImage() {
     }
 }
 void Editor::showError(const QString &text) {
-    QMessageBox::warning(this, "HelpDesign", text);
+    QMessageBox::warning(this, "EditHere", text);
 }
 bool Editor::saveProject() {
     finishNoteEdit();
     if (!hasDocument())
         return true;
-    QString path = QFileDialog::getSaveFileName(this, "保存 HelpDesign 项目",
+    QString path = QFileDialog::getSaveFileName(this, "保存 EditHere 项目",
                                                 projectPath_.isEmpty() ? "设计反馈.helpdesign" : projectPath_,
-                                                "HelpDesign 项目 (*.helpdesign)");
+                                                "EditHere 项目 (*.helpdesign)");
     if (path.isEmpty())
         return false;
     if (!path.endsWith(".helpdesign", Qt::CaseInsensitive))
@@ -1169,7 +1177,7 @@ bool Editor::saveProject() {
         QString associationError;
         if (!QStandardPaths::isTestModeEnabled())
             registerProjectFileAssociation(&associationError);
-        toast(associationError.isEmpty() ? "项目已保存，可双击继续编辑" : "项目已保存，可从 HelpDesign 导入继续编辑");
+        toast(associationError.isEmpty() ? "项目已保存，可双击继续编辑" : "项目已保存，可从 EditHere 导入继续编辑");
         return true;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -1262,6 +1270,9 @@ void Editor::exportJson() {
     embed->setObjectName("embedOriginal");
     embed->setChecked(preferences_.embedOriginal);
     layout->addWidget(embed);
+    auto compress = new QCheckBox("压缩示意图（保持尺寸，可能轻微损失细节）", &dialog);
+    compress->setObjectName("compressFeedbackImage"); compress->setChecked(true);
+    layout->addWidget(compress);
     auto json = new JsonPreview(&dialog);
     json->setAccessibleName("标准化 JSON");
     json->setReadOnly(true);
@@ -1287,12 +1298,12 @@ void Editor::exportJson() {
     QByteArray exportBytes;
     auto refresh = [&] {
         try {
-            exportBytes = serializeFeedback(doc_, embed->isChecked());
+            exportBytes = serializeFeedback(doc_, embed->isChecked(),compress->isChecked());
             const auto feedback = QJsonDocument::fromJson(exportBytes).object();
             QStringList lines{"{"};
             if (embed->isChecked())
                 lines.append(
-                    "  \"image\": \"data:image/png;base64,[图片编码已折叠，复制或保存包含完整原图]\",");
+                    "  \"image\": \"" + feedback["image"].toString().section(',',0,0) + ",[图片编码已折叠]\",");
             lines.append("  \"annotationSpace\": \"result\",");
             for (const auto &name : {QString("annotations"), QString("changes")}) {
                 lines.append("  \"" + name + "\": [");
@@ -1309,7 +1320,7 @@ void Editor::exportJson() {
             copy->setEnabled(true);
             save->setEnabled(true);
             status->setText(QString("%1 · %2 字符 · 批注坐标对应调整后的画面")
-                                .arg(embed->isChecked() ? "图片编码仅在预览中折叠，复制/保存包含完整原图"
+                                .arg(embed->isChecked() ? "图片编码仅在预览中折叠，复制/保存包含图片"
                                                         : "未包含原图，重新打开需同名 PNG")
                                 .arg(QString::fromUtf8(exportBytes).size()));
         } catch (const std::exception &error) {
@@ -1322,6 +1333,7 @@ void Editor::exportJson() {
     };
     refresh();
     connect(embed, &QCheckBox::toggled, &dialog, refresh);
+    connect(compress, &QCheckBox::toggled, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
     QTimer clipboardRetry(&dialog);
     clipboardRetry.setInterval(100);
@@ -1365,7 +1377,7 @@ void Editor::exportJson() {
         try {
             validateProjectStorageSize(exportBytes.size(), embed->isChecked() ? 0 : doc_.png.size());
             QString folder =
-                QDir(base).filePath("HelpDesign-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
+                QDir(base).filePath("EditHere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
                                     "-" + uniqueId().left(4));
             if (!QDir().mkpath(folder))
                 throw std::runtime_error("无法创建导出目录");

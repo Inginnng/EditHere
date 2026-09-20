@@ -32,9 +32,9 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
 #ifdef Q_OS_MAC
     menu->addAction("启用系统元素识别", this, [this] {
         if (requestAccessibility())
-            tray_.showMessage("HelpDesign", "已启用系统元素识别");
+            tray_.showMessage("EditHere", "已启用系统元素识别");
         else
-            tray_.showMessage("HelpDesign", "请在系统设置中授予辅助功能权限，图片识别仍可直接使用。");
+            tray_.showMessage("EditHere", "请在系统设置中授予辅助功能权限，图片识别仍可直接使用。");
     });
 #endif
     menu->addSeparator();
@@ -57,17 +57,17 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         guidePending_ = false;
         QString error;
         if (!hasSeenGuide(settingsFile_) && !markGuideSeen(&error, settingsFile_))
-            tray_.showMessage("HelpDesign", "无法记录引导状态，下次启动时可能再次显示。\n" + error);
+            tray_.showMessage("EditHere", "无法记录引导状态，下次启动时可能再次显示。\n" + error);
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
-        tray_.showMessage("HelpDesign", "截图快捷键未能注册，请右键托盘打开设置修改。");
+        tray_.showMessage("EditHere", "截图快捷键未能注册，请右键托盘打开设置修改。");
 }
 void Controller::updateTrayShortcut() {
     const auto label = settings_.shortcuts.value("capture").toString(QKeySequence::NativeText);
     captureAction_->setText(label.isEmpty() ? "截图" : "截图    " + label);
-    tray_.setToolTip(label.isEmpty() ? "HelpDesign" : "HelpDesign · " + label);
+    tray_.setToolTip(label.isEmpty() ? "EditHere · 改这里" : "EditHere · 改这里 · " + label);
 }
 void Controller::openSettings(bool updates, bool toolbar) {
     if (capturing_ || QApplication::activeModalWidget())
@@ -124,10 +124,10 @@ void Controller::openSettings(bool updates, bool toolbar) {
     });
     const bool accepted = dialog.exec() == QDialog::Accepted;
     if (!accepted && !shortcut_.start(activeShortcut))
-        tray_.showMessage("HelpDesign", "截图快捷键未能恢复，请在设置中更换组合键。");
+        tray_.showMessage("EditHere", "截图快捷键未能恢复，请在设置中更换组合键。");
     if (accepted) {
         const auto notice = launchAtLoginNotice();
-        if (!notice.isEmpty()) tray_.showMessage("HelpDesign 开机自启", notice);
+        if (!notice.isEmpty()) tray_.showMessage("EditHere 开机自启", notice);
     }
     if (guideRequested)
         showGuide();
@@ -160,7 +160,7 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
             connect(checker, &UpdateChecker::finished, this,
                     [this, checker](UpdateChecker::Status status, const QString &message, const QUrl &) {
                         if (status == UpdateChecker::Available)
-                            tray_.showMessage("HelpDesign 更新", message + "\n右键托盘选择检查更新。",
+                            tray_.showMessage("EditHere 更新", message + "\n右键托盘选择检查更新。",
                                               QSystemTrayIcon::Information);
                         checker->deleteLater();
                     });
