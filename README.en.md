@@ -28,14 +28,14 @@
 Copy the entire prompt below into an AI tool with access to your local terminal and files, such as Codex or Claude Code. GitHub provides a copy button in the top-right corner of the code block.
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted portable package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
 ```
 
 <details>
-<summary>Prefer the portable version? Copy this prompt</summary>
+<summary>Prefer to use EditHere without installing it? Copy this prompt</summary>
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up the portable Windows version of EditHere and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere for Windows without running an installer and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
 ```
 
 </details>
@@ -102,7 +102,7 @@ See the [user guide (Chinese)](docs/USER-GUIDE.md) for more instructions, shortc
 
 ### Use it in an AI workflow
 
-After installing EditHere or fully extracting the portable package, copy [`skills/edithere`](skills/edithere/SKILL.md) from this repository into the skills directory used by Codex or Claude Code, and tell the AI where to find the CLI. You can also use the [AI setup prompt](#set-up-with-ai) above to configure it. The skill instructions are currently in Chinese. You can then start a session with a request like this:
+After installing EditHere or fully extracting the ZIP package, copy [`skills/edithere`](skills/edithere/SKILL.md) from this repository into the skills directory used by Codex or Claude Code, and tell the AI where to find the CLI. You can also use the [AI setup prompt](#set-up-with-ai) above to configure it. The skill instructions are currently in Chinese. You can then start a session with a request like this:
 
 > Use EditHere to let me annotate this interface. Wait until I finish, then update the current project based on my feedback.
 
@@ -123,21 +123,21 @@ The video features original instrumental music and **Mandarin narration**, with 
 | Platform | Download | How to use |
 | --- | --- | --- |
 | **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
-| **Windows x64 · Portable** | [Download the portable ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
+| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
 | **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
 
 The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the components page, you can choose whether to launch at login, add the CLI to PATH, and create a desktop shortcut. Launch at login and PATH are selected by default on a new installation; upgrades preserve the existing startup registration state. Reopen your terminal and AI tools after installation so they can pick up the updated PATH. Uninstalling preserves your settings and projects.
 
 The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt).
 
-The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The portable package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and has passed builds and automated tests, but **remains a preview without acceptance testing on a physical Mac or Apple notarization**.
+The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and has passed builds and automated tests, but **remains a preview without acceptance testing on a physical Mac or Apple notarization**.
 
 The repository and release packages are currently private. To download them, sign in to a GitHub account that has been granted access. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
 
 <details>
 <summary>Upgrading from an older HelpDesign version</summary>
 
-Quit the old version, then run the installer or fully extract the new portable package. Existing settings and `.helpdesign` projects remain compatible. If launch at login reports an old path, keep the startup option selected and save the settings to refresh the path. If Windows has disabled the startup entry, re-enable it in the system's Startup Apps settings. Saving a project once in the new app can update the file association. Older versions' automatic update checks may not recognize the new repository URL; use the download links above for your first upgrade after the rename.
+Quit the old version, then run the installer or fully extract the new ZIP package. Existing settings and `.helpdesign` projects remain compatible. If launch at login reports an old path, keep the startup option selected and save the settings to refresh the path. If Windows has disabled the startup entry, re-enable it in the system's Startup Apps settings. Saving a project once in the new app can update the file association. Older versions' automatic update checks may not recognize the new repository URL; use the download links above for your first upgrade after the rename.
 
 </details>
 
@@ -149,7 +149,7 @@ Quit the old version, then run the installer or fully extract the new portable p
 
 **Can I use a different AI tool?** Feedback is delivered as JSON and images, without being tied to a model provider. Codex and Claude Code can use the companion skill; other tools can receive feedback through the CLI or manual import. EditHere does not include model calls or model credits.
 
-**Can the portable version use the skill without running an installer?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
+**Can I use the skill without installing EditHere?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
 
 **Can I save my work and continue later?** Yes. A `.helpdesign` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
 

@@ -10,7 +10,7 @@
 
 Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe)（构建产物：`dist/EditHere-0.8.21-win-x64-setup.exe`）。默认安装到 `%LOCALAPPDATA%\Programs\EditHere`，仅安装给当前用户，无需管理员权限。安装器创建开始菜单和卸载入口，登记 `.helpdesign` 项目关联；组件页可选择登录启动、加入 PATH 与桌面快捷方式。新安装默认勾选登录启动和 PATH；升级时根据已有当前用户启动登记保留启动选项。安装完成后重新打开终端与 AI 工具，才能读取新 PATH。
 
-Windows [便携包](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip)：`dist/EditHere-0.8.21-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。便携版不自动添加 PATH，可用完整路径运行 CLI。
+Windows [免安装版压缩包](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip)：`dist/EditHere-0.8.21-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。免安装版不自动添加 PATH，可用完整路径运行 CLI。
 
 Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt)。 在下载目录打开 PowerShell，可用 `Get-FileHash .\EditHere-0.8.21-win-x64-setup.exe -Algorithm SHA256` 计算安装包的哈希，与文件内同名条目比较。
 
@@ -34,8 +34,8 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 
 - 首次手动启动在真实编辑窗口展示六步引导，可随时跳过；没有截图时使用示例，有截图时保留原内容。右上角 **?** 和设置底部的 **使用引导** 均可从头开始。引导可前后翻页，Esc 只退出引导。
 - 引导状态与设置偏好分开保存，恢复默认设置不会让引导反复出现。从设置重看引导会关闭设置窗口，不保存尚未应用的修改。
-- 在 **设置 → 默认行为 → 开机时启动 EditHere（改这里）** 勾选并保存后开启，取消勾选再保存即可关闭。Windows 新安装器默认勾选登录启动，可在安装时取消；便携版未登记自启时默认关闭。登录系统后仅驻留托盘，不自动截图；“启动后立即截图”只用于普通手动启动。
-- Windows 使用当前用户的启动项，无需管理员权限。便携版启用后请保留程序所在文件夹；移动程序或从旧版升级后，保持勾选并保存即可更新启动路径。如果 Windows 已禁用该启动项，程序会提示到系统启动应用设置中手动恢复，不会强行修改系统禁用状态。Mac 使用系统登录项，若系统要求批准会明确提示；Mac 仍未实机验收。
+- 在 **设置 → 默认行为 → 开机时启动 EditHere（改这里）** 勾选并保存后开启，取消勾选再保存即可关闭。Windows 新安装器默认勾选登录启动，可在安装时取消；免安装版未登记自启时默认关闭。登录系统后仅驻留托盘，不自动截图；“启动后立即截图”只用于普通手动启动。
+- Windows 使用当前用户的启动项，无需管理员权限。免安装版启用后请保留程序所在文件夹；移动程序或从旧版升级后，保持勾选并保存即可更新启动路径。如果 Windows 已禁用该启动项，程序会提示到系统启动应用设置中手动恢复，不会强行修改系统禁用状态。Mac 使用系统登录项，若系统要求批准会明确提示；Mac 仍未实机验收。
 
 ## 与 AI 配合使用
 

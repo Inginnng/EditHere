@@ -6,15 +6,15 @@ EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可�
 
 ## 免安装也能接入 AI
 
-**可以使用便携版，不必运行安装器，也不必加入 PATH。** 完整解压 Windows ZIP，保留 `EditHere.exe`、`edithere-cli.exe`、DLL 和插件目录；让 AI 通过 CLI 完整路径调用即可。macOS 则保留完整的 `.app` 应用包。
+**可以使用免安装版，不必运行安装器，也不必加入 PATH。** 完整解压 Windows ZIP，保留 `EditHere.exe`、`edithere-cli.exe`、DLL 和插件目录；让 AI 通过 CLI 完整路径调用即可。macOS 则保留完整的 `.app` 应用包。
 
-程序和 skill 分别解决两件事：程序负责打开图像，skill 指导 AI 如何等待并读取反馈。便携包内的 `skills/edithere` 不会自动变成 AI 已加载的技能，仍需配置到当前 AI 工具的技能目录，并记录便携程序路径。
+程序和 skill 分别解决两件事：程序负责打开图像，skill 指导 AI 如何等待并读取反馈。免安装版压缩包内的 `skills/edithere` 不会自动变成 AI 已加载的技能，仍需配置到当前 AI 工具的技能目录，并记录免安装程序路径。
 
 复制下面这段话给能在本机执行命令的 AI，即可让它按指南完成配置：
 
 ```text
 请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。
-使用便携模式，不运行 Windows 安装器，不修改 PATH 或开机启动；优先复用我已经解压的程序，否则下载并完整解压官方便携包。
+使用免安装模式，不运行 Windows 安装器，不修改 PATH 或开机启动；优先复用我已经解压的程序，否则下载并完整解压官方免安装版压缩包。
 记录实际 CLI 路径，验证 CLI 可运行以及当前 AI 工具能否发现 skill，并告诉我如何开始标注。
 ```
 
@@ -22,7 +22,7 @@ EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可�
 
 ## 找到 CLI
 
-已知便携目录时，直接使用完整路径：
+已知免安装版目录时，直接使用完整路径：
 
 ```powershell
 $EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
@@ -31,7 +31,7 @@ $EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
 
 将示例路径改成实际位置。后面的示例沿用 `$EditHereCli`。若没有已知路径，再按下面的方式查找。
 
-Windows 安装版的默认位置为 `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`；也可以通过 PATH 或便携包中的完整路径运行。安装器的“加入 PATH”默认选中，安装完成后需重新打开终端和 AI 工具，现有进程不会自动读取新环境。CLI 与 `EditHere.exe` 是不同入口，运行时应保留包内依赖文件。
+Windows 安装版的默认位置为 `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`；也可以通过 PATH 或免安装版压缩包中的完整路径运行。安装器的“加入 PATH”默认选中，安装完成后需重新打开终端和 AI 工具，现有进程不会自动读取新环境。CLI 与 `EditHere.exe` 是不同入口，运行时应保留包内依赖文件。
 
 ```powershell
 $EditHereCli = $env:EDITHERE_CLI
@@ -183,4 +183,4 @@ Copy-Item -LiteralPath '.\skills\edithere' -Destination $SkillDestination -Recur
 
 Claude Code 使用同样方式，将目标父目录改为 `~/.claude/skills`。macOS 可把 `skills/edithere` 目录复制到对应用户目录。安装后按所用工具的技能发现机制重新加载或开启新会话，再请求“用 EditHere 让我标注这张界面，完成后按反馈修改”。程序只需已安装或完整解压；skill 不包含可执行文件，也不会自动替用户完成界面交互。
 
-对于便携版，在**已配置的 skill 目录**中保存 `references/local-installation.md`，记录 CLI 绝对路径、程序目录、版本及便携模式。AI 每次使用 skill 时先读取该记录，因此无需依赖 PATH；程序移动后更新记录。这是本机配置，不要提交到源码仓库。`EDITHERE_CLI` 也可供 skill 定位，但不要求设置全局环境变量。
+对于免安装版，在**已配置的 skill 目录**中保存 `references/local-installation.md`，记录 CLI 绝对路径、程序目录、版本及免安装模式。AI 每次使用 skill 时先读取该记录，因此无需依赖 PATH；程序移动后更新记录。这是本机配置，不要提交到源码仓库。`EDITHERE_CLI` 也可供 skill 定位，但不要求设置全局环境变量。

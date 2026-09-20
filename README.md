@@ -32,10 +32,10 @@
 ```
 
 <details>
-<summary>想免安装使用？复制这个便携版提示词</summary>
+<summary>想免安装使用？复制这个免安装版提示词</summary>
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我在 Windows 上配置 EditHere 便携版和 edithere skill。先检查是否已有完整解压的程序，需要时我可以提供所在路径；否则下载官方 Windows ZIP 并完整解压到合适的用户目录。不要运行安装器，不要修改开机启动或 PATH。让 skill 使用 edithere-cli.exe 的绝对路径，并验证 CLI 和当前 AI 工具的技能配置。需要我完成的系统授权请明确提示。
+请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我在 Windows 上配置 EditHere 免安装版和 edithere skill。先检查是否已有完整解压的程序，需要时我可以提供所在路径；否则下载官方 Windows ZIP 并完整解压到合适的用户目录。不要运行安装器，不要修改开机启动或 PATH。让 skill 使用 edithere-cli.exe 的绝对路径，并验证 CLI 和当前 AI 工具的技能配置。需要我完成的系统授权请明确提示。
 ```
 
 </details>
@@ -100,7 +100,7 @@ EditHere 负责整理反馈，你可以手动发送给 AI，也可以通过配�
 
 ### 在 AI 工作流中使用
 
-安装或完整解压便携版后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，并让 AI 知道 CLI 的位置，就可以这样发起协作。也可以用上面的 [AI 安装提示词](#让-ai-帮你安装) 完成配置：
+安装或完整解压免安装版后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，并让 AI 知道 CLI 的位置，就可以这样发起协作。也可以用上面的 [AI 安装提示词](#让-ai-帮你安装) 完成配置：
 
 > 用 EditHere 让我标注这张界面，等我完成后，再按反馈修改当前项目。
 
@@ -121,21 +121,21 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 | 平台 | 下载 | 使用方式 |
 | --- | --- | --- |
 | **Windows x64 · 推荐** | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe) | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。 |
-| **Windows x64 · 便携版** | [下载便携版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
+| **Windows x64 · 免安装版** | [下载免安装版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
 | **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | 打开 DMG，将 `EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
 
 Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
 
 Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt)。
 
-Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；便携包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
+Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 
 当前仓库与发布包保持私有，下载需要登录已获访问权限的 GitHub 账号。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
 
 <details>
 <summary>从 HelpDesign 旧版本升级</summary>
 
-退出旧版后，运行安装器或完整解压新便携包。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可更新文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
+退出旧版后，运行安装器或完整解压新免安装版压缩包。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可更新文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
 
 </details>
 
@@ -147,7 +147,7 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 
 **换一个 AI 工具还能用吗？** 反馈以 JSON 和图片交付，不绑定模型服务。Codex、Claude Code 可使用配套 skill，其他工具也可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
 
-**不用安装器，便携版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
+**不用安装器，免安装版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
 
 **能保存下次继续改吗？** 可以。保存 `.helpdesign` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
 

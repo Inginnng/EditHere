@@ -27,7 +27,7 @@ Windows PowerShell 7，CMake 在 PATH 中：
 
 构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、引导、自启、启动流程、更新和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
-Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 `makensis.exe`，无需全局安装。在便携包生成后运行：
+Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 `makensis.exe`，无需全局安装。在免安装版压缩包生成后运行：
 
 ```powershell
 ./scripts/package-installer.ps1 -NsisCompiler C:/Tools/nsis-3.x/makensis.exe

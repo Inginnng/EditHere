@@ -2,7 +2,7 @@
 
 [返回产品介绍](../README.md) · [命令行说明](AGENT-CLI.md) · [配套 skill](../skills/edithere/SKILL.md)
 
-**便携版也可以配合 skill 使用，不必运行安装器或加入 PATH。** 程序负责截图和标注，skill 负责指导 AI 找到程序、等待你提交，再读取反馈；两者需要分别准备。
+**免安装版也可以配合 skill 使用，不必运行安装器或加入 PATH。** 程序负责截图和标注，skill 负责指导 AI 找到程序、等待你提交，再读取反馈；两者需要分别准备。
 
 把下面这段话交给能在你电脑上执行命令、读写文件的 AI Agent：
 
@@ -13,7 +13,7 @@
 希望免安装时，用这一段：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 为我配置 EditHere 便携版和当前 AI 工具的 edithere skill。先找已有的解压目录；没有时下载官方完整便携包。不要运行安装器、修改 PATH 或设置开机启动。保存 CLI 的完整路径，验证后告诉我怎么使用。
+请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 为我配置 EditHere 免安装版和当前 AI 工具的 edithere skill。先找已有的解压目录；没有时下载官方完整免安装版压缩包。不要运行安装器、修改 PATH 或设置开机启动。保存 CLI 的完整路径，验证后告诉我怎么使用。
 ```
 
 网页聊天或远程云端 Agent 如果不能访问你的电脑，就只能提供指导，不能仅凭这段话完成本机安装。**仓库当前保持私有**：配置所需的仓库文件与 Releases 需要账号已获访问权限；公开后，匿名访问才可用。
@@ -24,11 +24,11 @@
 
 - 确认执行环境是用户的 Windows 或 macOS 本机，且具有本次操作所需的工具权限。Windows 发布包与 macOS 14+ 预览版可用；目前没有 Linux 发布包。
 - 先检查用户本轮提供的程序目录，再检查已有 skill 中的 `references/local-installation.md`、当前会话 `EDITHERE_CLI`（若有）、PATH 与常见安装目录；不默认全盘扫描。
-- Windows 默认安装目录为 `%LOCALAPPDATA%\Programs\EditHere`，CLI 为 `edithere-cli.exe`。便携版的 CLI 位于完整解压目录内，与 `EditHere.exe` 及依赖文件共同保留。
+- Windows 默认安装目录为 `%LOCALAPPDATA%\Programs\EditHere`，CLI 为 `edithere-cli.exe`。免安装版的 CLI 位于完整解压目录内，与 `EditHere.exe` 及依赖文件共同保留。
 - macOS 的 CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`，常见应用目录为 `/Applications` 或 `~/Applications`。
 - 找到现有程序后先用完整路径执行 `--version` 和 `--help`，确认存在本任务所需命令。能使用时直接复用；旧版本确需升级时，先说明版本差异并安排在用户保存、正常退出后进行。不要结束 GUI 进程、覆盖正在运行的文件或清空未保存文档。
 
-`EDITHERE_CLI` 是 skill 约定的可选定位方式，不是应用命令行开关，也不要求修改全局环境变量。便携使用通过下文的本机路径记录即可跨会话定位。
+`EDITHERE_CLI` 是 skill 约定的可选定位方式，不是应用命令行开关，也不要求修改全局环境变量。免安装使用通过下文的本机路径记录即可跨会话定位。
 
 ## 2. 确定官方版本、下载并校验
 
@@ -62,9 +62,9 @@ $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
 
 `/S` 必须大写。沿用已有安装时不重新执行该示例、不改变用户的启动或 PATH 偏好；需要自定义目录时遵循该版本安装器实际支持的参数。
 
-### Windows：便携使用
+### Windows：免安装使用
 
-下载完整 Windows 便携 ZIP，解压到用户有写入权限、准备长期保留的目录，例如用户选定的 `Tools\EditHere`。保留全部依赖，不只复制 `edithere-cli.exe`。记录解压后的实际路径，不运行安装器，不修改 PATH 或开机启动设置。
+下载完整 Windows 免安装版 ZIP，解压到用户有写入权限、准备长期保留的目录，例如用户选定的 `Tools\EditHere`。保留全部依赖，不只复制 `edithere-cli.exe`。记录解压后的实际路径，不运行安装器，不修改 PATH 或开机启动设置。
 
 ### macOS：应用包
 
@@ -86,7 +86,7 @@ $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
 
 如果目标目录已有文件，先比较并保留用户的本机修改；不盲目递归覆盖，不建立第二个同名 skill。完整技能目录是可读取的操作说明，安装前应检查其内容，执行仍须遵守当前工具与用户的权限边界。
 
-在**已安装的 skill 目录**中生成或更新 `references/local-installation.md`，使下次会话能找到便携或自定义目录中的程序。以下值必须换成实际检查结果：
+在**已安装的 skill 目录**中生成或更新 `references/local-installation.md`，使下次会话能找到免安装版或自定义目录中的程序。以下值必须换成实际检查结果：
 
 ```markdown
 # 本机 EditHere 配置
@@ -94,7 +94,7 @@ $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
 - CLI 完整路径：C:\Users\example\Tools\EditHere\edithere-cli.exe
 - 程序目录：C:\Users\example\Tools\EditHere
 - CLI 版本：实际 --version 输出
-- 使用方式：便携 / 当前用户安装 / macOS 应用包
+- 使用方式：免安装版 / 当前用户安装 / macOS 应用包
 - skill 来源：Inginnng/EditHere，实际 commit
 ```
 
@@ -115,7 +115,7 @@ if ($LASTEXITCODE -ne 0) { throw 'EditHere CLI 帮助检查失败。' }
 
 核查当前工具是否已发现 `edithere`。如果它必须重载或开启新会话才会发现，明确说“文件已配置，尚需重新加载”，不要仅因复制成功就声称技能已加载。CLI 可执行、技能文件已配置、当前会话可触发，是三个需分别确认的状态。
 
-完成后向用户说明：程序完整路径、版本、安装或便携方式、skill 路径及其加载状态，以及仍存在的真实阻塞。提示用户在后续需要标注时输入：
+完成后向用户说明：程序完整路径、版本、安装或免安装方式、skill 路径及其加载状态，以及仍存在的真实阻塞。提示用户在后续需要标注时输入：
 
 > 用 EditHere 让我标注这张界面，完成后按反馈修改。
 
