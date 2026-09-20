@@ -42,7 +42,7 @@ export QT_ROOT="$HOME/Qt/6.8.3/macos"
 bash scripts/build-macos.sh
 ```
 
-脚本生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。CLI 一同部署到 `EditHere.app/Contents/MacOS/edithere-cli`；DMG 提供 Applications 拖拽入口。构建前会检查所选 SDK 是否包含 Qt 6.8.3 需要的 AGL，并将同一 SDK 显式传给 CMake。CI 附件中的 `build-environment.txt` 记录实际 Xcode、SDK、Qt 和临时目录；`test-results.xml` 与 `LastTest.log` 提供具体失败测试。macOS 的 Unix socket 按完整路径的字节数计限长，隔离测试统一使用短名称，并校验当前临时目录下的端点长度。私有仓库的 [macOS 构建记录](https://github.com/Inginnng/EditHere/actions/workflows/native-macos.yml) 保留对应构建的测试结果和 DMG；屏幕录制授权、辅助功能授权及多屏截图仍需实机验收。
+脚本生成通用 `.app` 和本地测试用 `.dmg`，使用临时签名。CLI 一同部署到 `EditHere.app/Contents/MacOS/edithere-cli`；DMG 提供 Applications 拖拽入口。构建前会检查所选 SDK 是否包含 Qt 6.8.3 需要的 AGL，并将同一 SDK 显式传给 CMake。CI 附件中的 `build-environment.txt` 记录实际 Xcode、SDK、Qt 和临时目录；`test-results.xml` 与 `LastTest.log` 提供具体失败测试。macOS 的 Unix socket 按完整路径的字节数计限长，隔离测试统一使用短名称，并校验当前临时目录下的端点长度。公开仓库的 [macOS 构建记录](https://github.com/Inginnng/EditHere/actions/workflows/native-macos.yml) 保留对应构建的测试结果和 DMG；屏幕录制授权、辅助功能授权及多屏截图仍需实机验收。
 
 CLI 的参数、JSON 响应和用户完成协议见 [AI 与命令行](AGENT-CLI.md)。配套 skill 位于 `skills/edithere`，可通过 `skill-creator` 的 `quick_validate.py` 校验；该校验不替代 CLI 行为测试或用户交互验收。
 

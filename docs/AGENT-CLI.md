@@ -18,7 +18,7 @@ EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可�
 记录实际 CLI 路径，验证 CLI 可运行以及当前 AI 工具能否发现 skill，并告诉我如何开始标注。
 ```
 
-当前仓库仍为私有，下载需使用有访问权限的 GitHub 账号；网页聊天或无本机执行权限的 AI 无法仅凭这段话完成本机配置。需要常规安装时，见[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)。
+源码与发布包已公开，可直接下载；网页聊天或无本机执行权限的 AI 无法仅凭这段话完成本机配置。需要常规安装时，见[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)。
 
 ## 找到 CLI
 

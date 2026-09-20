@@ -40,7 +40,7 @@ Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md t
 
 </details>
 
-Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The repository and release packages are currently private, so the AI tool needs access through an authorized GitHub account. See the [AI setup guide (Chinese)](docs/AI-SETUP.md) for the full procedure.
+Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The source repository and release packages are public, so the AI tool can read the official guide and download the app. See the [AI setup guide (Chinese)](docs/AI-SETUP.md) for the full procedure.
 
 ## Why EditHere?
 
@@ -132,7 +132,7 @@ The Windows installer is **not yet code-signed**. Download it from this reposito
 
 The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and has passed builds and automated tests, but **remains a preview without acceptance testing on a physical Mac or Apple notarization**.
 
-The repository and release packages are currently private. To download them, sign in to a GitHub account that has been granted access. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
+The source repository and release packages are public and available to browse and download. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
 
 <details>
 <summary>Upgrading from an older HelpDesign version</summary>

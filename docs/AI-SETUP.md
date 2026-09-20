@@ -16,7 +16,7 @@
 请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 为我配置 EditHere 免安装版和当前 AI 工具的 edithere skill。先找已有的解压目录；没有时下载官方完整免安装版压缩包。不要运行安装器、修改 PATH 或设置开机启动。保存 CLI 的完整路径，验证后告诉我怎么使用。
 ```
 
-网页聊天或远程云端 Agent 如果不能访问你的电脑，就只能提供指导，不能仅凭这段话完成本机安装。**仓库当前保持私有**：配置所需的仓库文件与 Releases 需要账号已获访问权限；公开后，匿名访问才可用。
+网页聊天或远程云端 Agent 如果不能访问你的电脑，就只能提供指导，不能仅凭这段话完成本机安装。**源码与发布包已公开**：配置所需的仓库文件与 Releases 可公开访问，无需专门申请项目权限。
 
 以下步骤供执行配置的 Agent 使用。按用户当前语言沟通，只为当前工具配置，不默认给其他 AI 工具也安装一份。
 
@@ -35,8 +35,8 @@
 仅在本机没有可用程序或确需升级时下载。
 
 1. 从官方仓库 `Inginnng/EditHere` 的 [Releases](https://github.com/Inginnng/EditHere/releases) 元数据选择适合当前平台的发布版本，读取该版本说明、实际资产名称及 `SHA256SUMS.txt`，不要根据旧文档猜文件名或下载地址。
-2. 优先使用本机已有的 GitHub CLI 登录状态访问私有仓库。例如 `gh release view --repo Inginnng/EditHere --json tagName,assets,body` 可读取最新发布信息，再按得到的标签和准确资产名下载。已有仓库权限也可由当前工具支持的 GitHub 连接提供。
-3. 如果返回 401/404 或无权下载，核实仓库权限与登录状态；私有仓库的 404 不等于项目不存在。报告具体阻塞，不索要访问令牌、不猜镜像，也不把网页错误内容保存成安装包后执行。没有权限时，可继续复用本机已有完整程序；缺失的仓库文件需由已有访问权限的方式取得。
+2. 可通过官方公开页面或 GitHub API 读取发布信息。若本机已配置 GitHub CLI，可用 `gh release view --repo Inginnng/EditHere --json tagName,assets,body` 读取最新发布信息，再按得到的标签和准确资产名下载；不必为下载公开程序额外配置凭据。
+3. 如果返回 401/403/404 或下载失败，检查实际 URL、资产是否存在、API 限流与网络状态；已登录工具还应检查其认证状态。报告具体阻塞，不索要访问令牌、不猜镜像，也不把网页错误内容保存成安装包后执行。可继续复用本机已有完整程序。
 4. 下载程序和同一版本的 `SHA256SUMS.txt`，用 SHA-256 比对对应条目。Windows 可用 `Get-FileHash -Algorithm SHA256 -LiteralPath <文件路径>`；macOS 可用 `shasum -a 256 <文件路径>`。缺失条目或不一致时停止使用该文件并检查原因。
 
 应用包使用 `SHA256SUMS.txt` 校验；`SHA256SUMS-A1.txt` 对应宣传视频和品牌素材，不能代替应用包校验。校验和用于核对文件完整性，不等于发布者数字签名。

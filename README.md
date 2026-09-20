@@ -40,7 +40,7 @@
 
 </details>
 
-这需要 AI 工具拥有本机终端和文件操作权限；仅有网页聊天窗口无法直接安装本机程序。系统权限提示由你确认。当前仓库与发布包仍为私有，AI 访问下载时需要已获授权的 GitHub 账号。详细步骤见 [AI 安装指南](docs/AI-SETUP.md)。
+这需要 AI 工具拥有本机终端和文件操作权限；仅有网页聊天窗口无法直接安装本机程序。系统权限提示由你确认。源码与发布包已公开，AI 可从官方仓库读取指南并下载。详细步骤见 [AI 安装指南](docs/AI-SETUP.md)。
 
 ## 为什么用 EditHere？
 
@@ -130,7 +130,7 @@ Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，�
 
 Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 
-当前仓库与发布包保持私有，下载需要登录已获访问权限的 GitHub 账号。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
+源码与发布包已公开，可直接查看代码和下载。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
 
 <details>
 <summary>从 HelpDesign 旧版本升级</summary>
