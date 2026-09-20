@@ -22,6 +22,7 @@
 #include <QJsonDocument>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -2163,7 +2164,11 @@ class UiTests : public QObject {
             auto active = QApplication::activeModalWidget();
             if (auto dialog = qobject_cast<QFileDialog *>(active); dialog && !selectedFile) {
                 selectedFile = true;
-                dialog->selectFile(path);
+                // selectFile() preserves focused text in a visible dialog; fill the field explicitly.
+                auto filename = dialog->findChild<QLineEdit *>("fileNameEdit");
+                QVERIFY(filename);
+                filename->setText(path);
+                QCOMPARE(dialog->selectedFiles(), QStringList({path}));
                 QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
             } else if (auto error = qobject_cast<QMessageBox *>(active)) {
                 saveError = true;
@@ -2323,7 +2328,11 @@ class UiTests : public QObject {
             auto active = QApplication::activeModalWidget();
             if (auto dialog = qobject_cast<QFileDialog *>(active); dialog && !selectedFile) {
                 selectedFile = true;
-                dialog->selectFile(path);
+                // selectFile() preserves focused text in a visible dialog; fill the field explicitly.
+                auto filename = dialog->findChild<QLineEdit *>("fileNameEdit");
+                QVERIFY(filename);
+                filename->setText(path);
+                QCOMPARE(dialog->selectedFiles(), QStringList({path}));
                 QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
             } else if (auto error = qobject_cast<QMessageBox *>(active)) {
                 errorShown = true;
