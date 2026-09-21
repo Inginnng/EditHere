@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
-<key>CFBundleIdentifier</key><string>com.help2design.capture</string>
+<key>CFBundleIdentifier</key><string>com.edithere.capture</string>
 <key>CFBundleName</key><string>EditHere</string>
 <key>CFBundleDisplayName</key><string>EditHere · 改这里</string>
 <key>CFBundleIconFile</key><string>${MACOSX_BUNDLE_ICON_FILE}</string>
@@ -16,14 +16,14 @@
 <key>CFBundleTypeName</key><string>EditHere 项目</string>
 <key>CFBundleTypeRole</key><string>Editor</string>
 <key>LSHandlerRank</key><string>Owner</string>
-<key>LSItemContentTypes</key><array><string>com.helpdesign.project</string></array>
+<key>LSItemContentTypes</key><array><string>com.edithere.project</string></array>
 </dict></array>
 <key>UTExportedTypeDeclarations</key><array><dict>
-<key>UTTypeIdentifier</key><string>com.helpdesign.project</string>
+<key>UTTypeIdentifier</key><string>com.edithere.project</string>
 <key>UTTypeDescription</key><string>EditHere 项目</string>
 <key>UTTypeConformsTo</key><array><string>public.json</string></array>
 <key>UTTypeTagSpecification</key><dict>
-<key>public.filename-extension</key><array><string>helpdesign</string></array>
-<key>public.mime-type</key><string>application/x-helpdesign-project</string>
+<key>public.filename-extension</key><array><string>edithere</string></array>
+<key>public.mime-type</key><string>application/x-edithere-project</string>
 </dict></dict></array>
 </dict></plist>

@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet('Check','Install','Uninstall')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$InstallDirectory,
     [ValidateSet('0','1')][string]$Startup='0',
@@ -9,8 +9,8 @@ try {
     $root=[IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
     if ($root -eq [IO.Path]::GetPathRoot($root).TrimEnd('\') -or $root.Contains(';')) { throw '安装路径无效。' }
     if ($Mode -eq 'Check') {
-        $running=@(Get-Process -Name EditHere,HelpDesign -ErrorAction SilentlyContinue)
-        if ($running.Count) { throw '请先从系统托盘退出 EditHere / HelpDesign，再继续安装或卸载。未保存的批注应先保存。' }
+        $running=@(Get-Process -Name EditHere -ErrorAction SilentlyContinue)
+        if ($running.Count) { throw '请先从系统托盘退出 EditHere，再继续安装或卸载。未保存的批注应先保存。' }
         exit 0
     }
     $user=[Microsoft.Win32.Registry]::CurrentUser
@@ -42,36 +42,36 @@ try {
             $pathKey.SetValue('Path',(($rawPath -split ';' | Where-Object {!(SamePath $_ $root)}) -join ';'),$kind); $added=0
         }
         $run=$user.CreateSubKey($runKey)
-        if($Startup -eq '1') { $run.SetValue('HelpDesign',$command,[Microsoft.Win32.RegistryValueKind]::String) }
-        else { $run.DeleteValue('HelpDesign',$false) }
+        if($Startup -eq '1') { $run.SetValue('EditHere',$command,[Microsoft.Win32.RegistryValueKind]::String) }
+        else { $run.DeleteValue('EditHere',$false) }
         $run.Dispose()
         # Reuse the legacy handler; do not replace a different application's default association.
-        $handler=$user.CreateSubKey($classes+'\HelpDesign.Project')
+        $handler=$user.CreateSubKey($classes+'\EditHere.Project')
         $handler.SetValue('','EditHere 项目'); $handler.Dispose()
-        $icon=$user.CreateSubKey($classes+'\HelpDesign.Project\DefaultIcon'); $icon.SetValue('','"'+$exe+'",0'); $icon.Dispose()
-        $open=$user.CreateSubKey($classes+'\HelpDesign.Project\shell\open\command'); $open.SetValue('','"'+$exe+'" "%1"'); $open.Dispose()
-        $merged=[Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey('.helpdesign')
+        $icon=$user.CreateSubKey($classes+'\EditHere.Project\DefaultIcon'); $icon.SetValue('','"'+$exe+'",0'); $icon.Dispose()
+        $open=$user.CreateSubKey($classes+'\EditHere.Project\shell\open\command'); $open.SetValue('','"'+$exe+'" "%1"'); $open.Dispose()
+        $merged=[Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey('.edithere')
         $oldDefault=if($merged){[string]$merged.GetValue('','')}else{''}
         if($merged){$merged.Dispose()}
-        $ext=$user.CreateSubKey($classes+'\.helpdesign')
-        if(!$oldDefault){$ext.SetValue('','HelpDesign.Project')}; $ext.Dispose()
-        $with=$user.CreateSubKey($classes+'\.helpdesign\OpenWithProgids'); $with.SetValue('HelpDesign.Project',''); $with.Dispose()
+        $ext=$user.CreateSubKey($classes+'\.edithere')
+        if(!$oldDefault){$ext.SetValue('','EditHere.Project')}; $ext.Dispose()
+        $with=$user.CreateSubKey($classes+'\.edithere\OpenWithProgids'); $with.SetValue('EditHere.Project',''); $with.Dispose()
         $meta=$user.CreateSubKey($appKey)
         $meta.SetValue('InstallDir',$root); $meta.SetValue('AddedToPath',$added,[Microsoft.Win32.RegistryValueKind]::DWord); $meta.Dispose()
     } else {
         if(!(SamePath $previousRoot $root)){throw '卸载目录与登记目录不一致，未修改系统设置。'}
         if($addedBefore){$pathKey.SetValue('Path',(($rawPath -split ';' | Where-Object {!(SamePath $_ $root)}) -join ';'),$kind)}
         $run=$user.OpenSubKey($runKey,$true)
-        if($run){if([string]$run.GetValue('HelpDesign','') -eq $command){$run.DeleteValue('HelpDesign',$false)}; $run.Dispose()}
-        $open=$user.OpenSubKey($classes+'\HelpDesign.Project\shell\open\command')
+        if($run){if([string]$run.GetValue('EditHere','') -eq $command){$run.DeleteValue('EditHere',$false)}; $run.Dispose()}
+        $open=$user.OpenSubKey($classes+'\EditHere.Project\shell\open\command')
         $ownHandler=$open -and [string]$open.GetValue('','') -eq ('"'+$exe+'" "%1"')
         if($open){$open.Dispose()}
         if($ownHandler){
-            $user.DeleteSubKeyTree($classes+'\HelpDesign.Project',$false)
-            $ext=$user.OpenSubKey($classes+'\.helpdesign',$true)
-            if($ext){if([string]$ext.GetValue('','') -eq 'HelpDesign.Project'){$ext.DeleteValue('',$false)}; $ext.Dispose()}
-            $with=$user.OpenSubKey($classes+'\.helpdesign\OpenWithProgids',$true)
-            if($with){$with.DeleteValue('HelpDesign.Project',$false);$with.Dispose()}
+            $user.DeleteSubKeyTree($classes+'\EditHere.Project',$false)
+            $ext=$user.OpenSubKey($classes+'\.edithere',$true)
+            if($ext){if([string]$ext.GetValue('','') -eq 'EditHere.Project'){$ext.DeleteValue('',$false)}; $ext.Dispose()}
+            $with=$user.OpenSubKey($classes+'\.edithere\OpenWithProgids',$true)
+            if($with){$with.DeleteValue('EditHere.Project',$false);$with.Dispose()}
         }
         $user.DeleteSubKeyTree($appKey,$false)
         $user.DeleteSubKeyTree($uninstallKey,$false)

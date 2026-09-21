@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icons/helpdesign-256.png" width="104" alt="EditHere icon">
+  <img src="assets/icons/edithere-256.png" width="104" alt="EditHere icon">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
 <p align="center">改这里</p>
@@ -135,9 +135,9 @@ The minimum Windows build target is Windows 10 1809+; development and testing ta
 The source repository and release packages are public and available to browse and download. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
 
 <details>
-<summary>Upgrading from an older HelpDesign version</summary>
+<summary>Upgrading from an older version</summary>
 
-Quit the old version, then run the installer or fully extract the new ZIP package. Existing settings and `.helpdesign` projects remain compatible. If launch at login reports an old path, keep the startup option selected and save the settings to refresh the path. If Windows has disabled the startup entry, re-enable it in the system's Startup Apps settings. Saving a project once in the new app can update the file association. Older versions' automatic update checks may not recognize the new repository URL; use the download links above for your first upgrade after the rename.
+Quit the old version, then run the installer or fully extract the new ZIP package. Projects now use the `.edithere` extension and no longer support legacy `.helpdesign` projects; export old projects as JSON feedback in the previous version before upgrading if needed. If launch at login reports an old path, keep the startup option selected and save the settings to refresh the path. If Windows has disabled the startup entry, re-enable it in the system's Startup Apps settings. Saving a project once in the new app registers the `.edithere` file association. Older versions' automatic update checks may not recognize the new repository URL; use the download links above for your first upgrade after the rename.
 
 </details>
 
@@ -151,7 +151,7 @@ Quit the old version, then run the installer or fully extract the new ZIP packag
 
 **Can I use the skill without installing EditHere?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
 
-**Can I save my work and continue later?** Yes. A `.helpdesign` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
+**Can I save my work and continue later?** Yes. A `.edithere` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
 
 ## License and commercial collaboration
 

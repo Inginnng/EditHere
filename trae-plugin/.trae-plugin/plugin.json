@@ -1,0 +1,54 @@
+{
+  "name": "edithere",
+  "version": "0.8.21",
+  "description": "EditHere（改这里）：让 AI 看懂你想怎么改。通过截图批注、布局调整，把修改意图结构化地交给 AI。",
+  "i18n": {
+    "display_name": {
+      "en": "EditHere",
+      "zh-cn": "EditHere 改这里"
+    },
+    "description": {
+      "en": "Annotate screenshots and adjust layouts visually, then hand structured feedback to AI. Local image annotation tool for precise UI change requests.",
+      "zh-cn": "在截图上批注、调整布局，把修改意图结构化地交给 AI。本地图像标注工具，精准传达界面修改需求。"
+    }
+  },
+  "author": {
+    "name": "EditHere",
+    "url": "https://github.com/Inginnng/EditHere"
+  },
+  "homepage": "https://github.com/Inginnng/EditHere",
+  "repository": "https://github.com/Inginnng/EditHere",
+  "license": "PolyForm Noncommercial License 1.0.0",
+  "keywords": [
+    "edithere",
+    "annotation",
+    "screenshot",
+    "ui",
+    "design",
+    "feedback",
+    "layout",
+    "image"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "EditHere 改这里",
+    "shortDescription": "截图批注 + 布局调整，把修改意图交给 AI",
+    "longDescription": "EditHere 让你在截图或设计图上直接批注、移动和缩放组件。写下意见、摆出目标布局，然后把原图、批注和位置变化一起交给 AI，让它结合你的项目继续修改。适用于网页、应用界面、游戏 HUD、数据图表等需要具体指出改哪里、怎么改的场景。",
+    "developerName": "EditHere",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Inginnng/EditHere",
+    "defaultPrompt": [
+      "用 EditHere 让我标注这张界面，完成后按反馈修改",
+      "帮我打开 EditHere 标注这个设计图"
+    ],
+    "brandColor": "#3155D9",
+    "composerIcon": "./assets/edithere-icon.svg",
+    "logo": "./assets/edithere-icon.svg",
+    "screenshots": []
+  }
+}

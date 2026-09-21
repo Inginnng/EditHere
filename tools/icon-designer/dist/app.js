@@ -1,4 +1,4 @@
-const G=HelpDesignGeometry,key='helpdesign-icon-designer-v5';
+const G=EditHereGeometry,key='edithere-icon-designer-v5';
 let state={...G.defaults};try{const saved=JSON.parse(localStorage.getItem(key));if(saved)for(const k in state)if(typeof saved[k]===typeof state[k])state[k]=saved[k];}catch{}
 const specs=[['radius','外圆角',4.5,10,.05,'frame'],['width','边框粗细',1,6,.05,'frame'],['x','水平位置',10,42,.05,'pen'],['y','垂直位置',20,58,.05,'pen'],['scale','大小',.4,1.4,.01,'pen'],['angle','角度',-85,-5,.5,'pen'],['tip','笔尖圆弧',0,2,.05,'pen'],['shoulder','笔身过渡',0,6,.05,'pen']];
 const $=id=>document.getElementById(id);

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:helpdesign:project:3.0.0",
-  "title": "HelpDesign editable project v3.0.0",
+  "$id": "urn:edithere:project:3.0.0",
+  "title": "EditHere editable project v3.0.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
       "const": "3.0.0"
     },
     "tool": {
-      "const": "HelpDesign"
+      "const": "EditHere"
     },
     "exportedAt": {
       "type": "string",
@@ -612,5 +612,5 @@
       }
     }
   },
-  "description": "Lossless .helpdesign project. Coordinates in annotations refer to the result canvas. Layout preserves all cached cuts. Embedded original PNG makes the file portable."
+  "description": "Lossless .edithere project. Coordinates in annotations refer to the result canvas. Layout preserves all cached cuts. Embedded original PNG makes the file portable."
 }

@@ -748,7 +748,7 @@ class LayoutTests : public QObject {
         QVERIFY(imported.notes[1].isGlobal);
         QCOMPARE(imported.notes[2].point, inHole.point);
         QTemporaryDir directory;
-        const auto path = directory.filePath("设计.helpdesign");
+        const auto path = directory.filePath("设计.edithere");
         saveBytes(path, serializeDocument(doc, true));
         const auto restored = loadDocument(path);
         QCOMPARE(restored.notes, doc.notes);

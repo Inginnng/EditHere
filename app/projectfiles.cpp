@@ -19,7 +19,7 @@ bool registerProjectFileAssociation(QString *error) {
         return false;
     }
     const QString classes = QStringLiteral("HKEY_CURRENT_USER\\Software\\Classes\\");
-    const QString progId = QStringLiteral("HelpDesign.Project");
+    const QString progId = QStringLiteral("EditHere.Project");
     QSettings handler(classes + progId, QSettings::NativeFormat);
     handler.setValue(QStringLiteral("."), QStringLiteral("EditHere 项目"));
     handler.setValue(QStringLiteral("DefaultIcon/."), QStringLiteral("\"%1\",0").arg(executable));
@@ -31,8 +31,8 @@ bool registerProjectFileAssociation(QString *error) {
             *error = QStringLiteral("无法为当前用户注册项目打开方式");
         return false;
     }
-    QSettings extension(classes + QStringLiteral(".helpdesign"), QSettings::NativeFormat);
-    QSettings merged(QStringLiteral("HKEY_CLASSES_ROOT\\.helpdesign"), QSettings::NativeFormat);
+    QSettings extension(classes + QStringLiteral(".edithere"), QSettings::NativeFormat);
+    QSettings merged(QStringLiteral("HKEY_CLASSES_ROOT\\.edithere"), QSettings::NativeFormat);
     const QString existingDefault = merged.value(QStringLiteral(".")).toString();
     extension.setValue(QStringLiteral("OpenWithProgids/") + progId, QString{});
     if (existingDefault.isEmpty())

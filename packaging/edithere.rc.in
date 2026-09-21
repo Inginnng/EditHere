@@ -1,7 +1,7 @@
 #pragma code_page(65001)
 #include <windows.h>
 // The first icon group supplies the Windows executable and shell icon.
-1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/icons/helpdesign.ico"
+1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/icons/edithere.ico"
 
 1 VERSIONINFO
 FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0

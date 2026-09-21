@@ -22,7 +22,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
     editor_.setPreferences(settings_);
     editor_.setShortcuts(settings_.shortcuts);
-    tray_.setObjectName("helpDesignTray");
+    tray_.setObjectName("edithereTray");
     auto menu = new QMenu(&editor_);
     captureAction_ = menu->addAction("截图", this, &Controller::capture);
     captureAction_->setObjectName("trayCapture");
@@ -306,7 +306,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     if (command == "status") {
         QString startupError;
         const bool startupRegistered = launchAtLoginEnabled(&startupError);
-        return {{"ok", true}, {"running", true}, {"version", HELPDESIGN_VERSION},
+        return {{"ok", true}, {"running", true}, {"version", EDITHERE_VERSION},
                 {"executable", QCoreApplication::applicationFilePath()},
                 {"startupRegistered", startupRegistered}, {"startupNotice", startupError.isEmpty() ? launchAtLoginNotice() : startupError},
                 {"hasDocument", editor_.hasDocument()}, {"dirty", editor_.document().dirty},
@@ -337,7 +337,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     try {
         auto doc = loadDocument(input);
         guidePending_ = false;
-        editor_.setDocument(std::move(doc), input.endsWith(".helpdesign", Qt::CaseInsensitive) ? input : QString());
+        editor_.setDocument(std::move(doc), input.endsWith(".edithere", Qt::CaseInsensitive) ? input : QString());
     } catch (const std::exception &error) { return agentError("io_error", QString::fromUtf8(error.what())); }
     if (command == "open") return {{"ok", true}, {"command", command}, {"accepted", true}, {"input", input}};
     agentSessionId_ = uniqueId();

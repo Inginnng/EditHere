@@ -16,7 +16,7 @@ bool currentEventIsLoginLaunch() {
 bool isAppBundle() {
     NSBundle *bundle = NSBundle.mainBundle;
     return [bundle.bundlePath.pathExtension caseInsensitiveCompare:@"app"] == NSOrderedSame &&
-           [bundle.bundleIdentifier isEqualToString:@"com.help2design.capture"];
+           [bundle.bundleIdentifier isEqualToString:@"com.edithere.capture"];
 }
 bool fail(QString *error, const QString &message) {
     if (error)

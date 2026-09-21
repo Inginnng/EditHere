@@ -18,13 +18,7 @@
 #endif
 namespace h2d {
 QString agentServerName() {
-    const auto oldName = QCoreApplication::applicationName();
-    const auto oldOrganization = QCoreApplication::organizationName();
-    QCoreApplication::setApplicationName("Help2Design");
-    QCoreApplication::setOrganizationName("Help2Design");
     const auto state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    QCoreApplication::setApplicationName(oldName);
-    QCoreApplication::setOrganizationName(oldOrganization);
     return "EditHere-agent-v1-" + QString::fromLatin1(QCryptographicHash::hash(state.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
 }
 QByteArray encodeAgentMessage(const QJsonObject &message) {

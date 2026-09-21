@@ -69,7 +69,7 @@ UINT virtualKey(Qt::Key key) {
 ATOM allocateShortcutId() {
     static std::atomic<quint64> nextId{1};
     const QString name =
-        QString("HelpDesign.HotKey.%1.%2").arg(GetCurrentProcessId()).arg(nextId.fetch_add(1));
+        QString("EditHere.HotKey.%1.%2").arg(GetCurrentProcessId()).arg(nextId.fetch_add(1));
     return GlobalAddAtomW(reinterpret_cast<LPCWSTR>(name.utf16()));
 }
 } // namespace
@@ -87,7 +87,7 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
         // A visible (fully transparent) window can become foreground. Merely hiding
         // the editor or waiting leaves Explorer's overflow panel active on a tray click.
         activation->handle = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_LAYERED, L"STATIC", L"HelpDesign capture preparation", WS_POPUP,
+            WS_EX_TOOLWINDOW | WS_EX_LAYERED, L"STATIC", L"EditHere capture preparation", WS_POPUP,
             GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), 1, 1, nullptr, nullptr,
             GetModuleHandleW(nullptr), nullptr);
         if (activation->handle) {

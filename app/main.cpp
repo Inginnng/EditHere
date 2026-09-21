@@ -61,26 +61,21 @@ int main(int argc, char **argv) {
 
     initializeLaunchAtLoginDetection();
     EditHereApplication app(argc, argv);
-    // Keep the previous local lock and IPC address so an already running version
-    // remains the sole owner of screenshots and unsaved feedback.
-    app.setApplicationName("Help2Design");
-    app.setOrganizationName("Help2Design");
+    app.setApplicationName("EditHere");
+    app.setOrganizationName("EditHere");
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    app.setApplicationName("HelpDesign");
-    app.setOrganizationName("HelpDesign");
-    // Keep the previous settings directory; only the public display name changes.
     app.setApplicationDisplayName("EditHere · 改这里");
-    app.setApplicationVersion(HELPDESIGN_VERSION);
+    app.setApplicationVersion(EDITHERE_VERSION);
     app.setQuitOnLastWindowClosed(false);
     QIcon appIcon;
     for (const int size : {16, 20, 24, 32, 48, 64, 128, 256, 512})
-        appIcon.addFile(QString(":/icons/helpdesign-%1.png").arg(size), QSize(size, size));
+        appIcon.addFile(QString(":/icons/edithere-%1.png").arg(size), QSize(size, size));
     app.setWindowIcon(appIcon);
     applyTheme(loadSettings().theme);
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);
-    const QString serverName = "Help2Design-native-" + QString::number(qHash(state));
+    const QString serverName = "EditHere-native-" + QString::number(qHash(state));
     const QStringList args = app.arguments();
     const bool agentStart = args.contains("--agent-start");
     const bool background = args.contains("--autostart") || agentStart;

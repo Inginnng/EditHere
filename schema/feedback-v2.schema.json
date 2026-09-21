@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:help2design:feedback:2.0.0",
-  "title": "Help2Design Capture feedback v2.0.0 with editable layout",
+  "$id": "urn:edithere:feedback:2.0.0",
+  "title": "EditHere feedback v2.0.0 with editable layout",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,7 @@
       "const": "2.0.0"
     },
     "tool": {
-      "const": "Help2Design Capture"
+      "const": "EditHere"
     },
     "exportedAt": {
       "type": "string",

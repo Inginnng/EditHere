@@ -17,7 +17,7 @@ class IniRunValueStore final : public RunValueStore {
         if (denyRead)
             return failure(error, "读取被拒绝");
         QSettings settings(path, QSettings::IniFormat);
-        *command = settings.value("HelpDesign").toString();
+        *command = settings.value("EditHere").toString();
         return settings.status() == QSettings::NoError || failure(error, "读取失败");
     }
     bool write(const QString &command, QString *error) override {
@@ -25,7 +25,7 @@ class IniRunValueStore final : public RunValueStore {
             return failure(error, "写入被拒绝");
         ++writes;
         QSettings settings(path, QSettings::IniFormat);
-        settings.setValue("HelpDesign", command);
+        settings.setValue("EditHere", command);
         settings.sync();
         return settings.status() == QSettings::NoError || failure(error, "写入失败");
     }
@@ -33,7 +33,7 @@ class IniRunValueStore final : public RunValueStore {
         if (denyRemove)
             return failure(error, "移除被拒绝");
         QSettings settings(path, QSettings::IniFormat);
-        settings.remove("HelpDesign");
+        settings.remove("EditHere");
         settings.sync();
         return settings.status() == QSettings::NoError || failure(error, "移除失败");
     }
@@ -51,24 +51,24 @@ class AutostartTests : public QObject {
   private slots:
     void quotedAbsoluteCommand() {
         QString error = "previous";
-        QCOMPARE(windowsLaunchCommand("C:/用户/Help Design/HelpDesign.exe", &error),
-                 QString("\"C:\\用户\\Help Design\\HelpDesign.exe\" --autostart"));
+        QCOMPARE(windowsLaunchCommand("C:/用户/Help Design/EditHere.exe", &error),
+                 QString("\"C:\\用户\\Help Design\\EditHere.exe\" --autostart"));
         QVERIFY(error.isEmpty());
-        QCOMPARE(windowsLaunchCommand("\\\\server\\shared folder\\HelpDesign.exe", &error),
-                 QString("\"\\\\server\\shared folder\\HelpDesign.exe\" --autostart"));
+        QCOMPARE(windowsLaunchCommand("\\\\server\\shared folder\\EditHere.exe", &error),
+                 QString("\"\\\\server\\shared folder\\EditHere.exe\" --autostart"));
         QVERIFY(error.isEmpty());
     }
     void invalidCommands_data() {
         QTest::addColumn<QString>("path");
         QTest::newRow("empty") << QString();
-        QTest::newRow("relative") << QString("HelpDesign.exe");
-        QTest::newRow("drive-relative") << QString("C:HelpDesign.exe");
-        QTest::newRow("embedded-quote") << QString("C:/bad\"path/HelpDesign.exe");
-        QTest::newRow("newline") << QString("C:/bad\npath/HelpDesign.exe");
-        QTest::newRow("nul") << (QString("C:/bad") + QChar::Null + "/HelpDesign.exe");
+        QTest::newRow("relative") << QString("EditHere.exe");
+        QTest::newRow("drive-relative") << QString("C:EditHere.exe");
+        QTest::newRow("embedded-quote") << QString("C:/bad\"path/EditHere.exe");
+        QTest::newRow("newline") << QString("C:/bad\npath/EditHere.exe");
+        QTest::newRow("nul") << (QString("C:/bad") + QChar::Null + "/EditHere.exe");
         QTest::newRow("directory") << QString("C:/app/");
-        QTest::newRow("device-path") << QString("\\\\.\\C:\\HelpDesign.exe");
-        QTest::newRow("long-prefix") << QString("\\\\?\\C:\\HelpDesign.exe");
+        QTest::newRow("device-path") << QString("\\\\.\\C:\\EditHere.exe");
+        QTest::newRow("long-prefix") << QString("\\\\?\\C:\\EditHere.exe");
         QTest::newRow("unc-directory") << QString("\\\\server\\share");
     }
     void invalidCommands() {
@@ -93,11 +93,11 @@ class AutostartTests : public QObject {
         {
             QSettings settings(path, QSettings::IniFormat);
             settings.setValue("OtherApplication", "other.exe --startup");
-            settings.setValue("HelpDesignOther", "keep.exe");
+            settings.setValue("EditHereOther", "keep.exe");
             settings.sync();
         }
         IniRunValueStore store(path);
-        const QString executable = "C:/用户/Help Design/HelpDesign.exe";
+        const QString executable = "C:/用户/Help Design/EditHere.exe";
         QString error = "previous";
         QVERIFY(!windowsLaunchAtLoginEnabled(store, executable, &error));
         QVERIFY(error.isEmpty());
@@ -109,27 +109,27 @@ class AutostartTests : public QObject {
         QCOMPARE(store.writes, 1);
         {
             QSettings reloaded(path, QSettings::IniFormat);
-            QCOMPARE(reloaded.value("HelpDesign").toString(), windowsLaunchCommand(executable));
+            QCOMPARE(reloaded.value("EditHere").toString(), windowsLaunchCommand(executable));
         }
         // Moving the app must keep the old registration visible, so it can still be turned off.
-        QVERIFY(windowsLaunchAtLoginEnabled(store, "D:/new/HelpDesign.exe", &error));
-        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/HelpDesign.exe", false, &error));
+        QVERIFY(windowsLaunchAtLoginEnabled(store, "D:/new/EditHere.exe", &error));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/EditHere.exe", false, &error));
         QVERIFY(!windowsLaunchAtLoginEnabled(store, executable, &error));
-        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/HelpDesign.exe", true, &error));
-        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/HelpDesign.exe", false, &error));
-        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/HelpDesign.exe", false, &error));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/EditHere.exe", true, &error));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/EditHere.exe", false, &error));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "D:/new/EditHere.exe", false, &error));
         QVERIFY(!windowsLaunchAtLoginEnabled(store, executable, &error));
         QSettings reloaded(path, QSettings::IniFormat);
-        QVERIFY(!reloaded.contains("HelpDesign"));
+        QVERIFY(!reloaded.contains("EditHere"));
         QCOMPARE(reloaded.value("OtherApplication").toString(), QString("other.exe --startup"));
-        QCOMPARE(reloaded.value("HelpDesignOther").toString(), QString("keep.exe"));
+        QCOMPARE(reloaded.value("EditHereOther").toString(), QString("keep.exe"));
     }
     void repairExistingRegistrationWithoutToggle() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         IniRunValueStore store(directory.filePath("run.ini"));
         QString error;
-        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "E:/old/HelpDesign.exe", true, &error));
+        QVERIFY(setWindowsLaunchAtLoginEnabled(store, "E:/old/EditHere.exe", true, &error));
         QVERIFY(windowsLaunchAtLoginEnabled(store, "C:/Users/Test/Programs/EditHere/EditHere.exe", &error));
         // Saving an already-checked option repairs a portable/renamed registration in place.
         const QString installed = "C:/Users/Test/Programs/EditHere/EditHere.exe";
@@ -172,10 +172,10 @@ class AutostartTests : public QObject {
         QVERIFY(disabled.contains("Windows 已禁用"));
         QVERIFY(disabled.contains("仅在此处保存不会解除系统禁用"));
         QVERIFY(!disabled.contains("程序已不存在"));
-        const auto moved = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/HelpDesign.exe"),
+        const auto moved = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/EditHere.exe"),
                                                     current, true, StartupApproval::NotRecorded);
         QVERIFY(moved.contains("保持勾选并保存"));
-        const auto missing = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/HelpDesign.exe"),
+        const auto missing = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/EditHere.exe"),
                                                       current, false, StartupApproval::Disabled);
         QVERIFY(missing.contains("程序已不存在"));
         QVERIFY(missing.contains("Windows 已禁用"));
@@ -188,7 +188,7 @@ class AutostartTests : public QObject {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         IniRunValueStore store(directory.filePath("run.ini"));
-        const QString original = "C:/original/HelpDesign.exe", changed = "C:/changed/HelpDesign.exe";
+        const QString original = "C:/original/EditHere.exe", changed = "C:/changed/EditHere.exe";
         QString error;
         QVERIFY(setWindowsLaunchAtLoginEnabled(store, original, true, &error));
         store.denyWrite = true;
@@ -219,7 +219,7 @@ class AutostartTests : public QObject {
         // A directory cannot be replaced by a settings file, on either supported OS.
         IniRunValueStore store(directory.path());
         QString error;
-        QVERIFY(!setWindowsLaunchAtLoginEnabled(store, "C:/app/HelpDesign.exe", true, &error));
+        QVERIFY(!setWindowsLaunchAtLoginEnabled(store, "C:/app/EditHere.exe", true, &error));
         QVERIFY(!error.isEmpty());
     }
 };

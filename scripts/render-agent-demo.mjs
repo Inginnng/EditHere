@@ -5,10 +5,10 @@ const option=name=>{const i=process.argv.indexOf(name);if(i<0)return null;if(!pr
 const root=path.resolve(process.argv[2]||'.'),out=path.resolve(process.argv[3]),take=path.resolve(option('--take')||path.join(out,'take-2'));
 const baseFilm=path.resolve(option('--base-film')||path.join(root,'artifacts/edithere-release/EditHere-introduction-1080p.mp4'));
 const silent=process.argv.includes('--silent');
-const require=createRequire(path.join(root,'artifacts/helpdesign-continuous-film/render.mjs'));
+const require=createRequire(path.join(root,'artifacts/edithere-continuous-film/render.mjs'));
 const {createCanvas,loadImage,GlobalFonts}=require('@napi-rs/canvas');
 for(const f of ['msyh.ttc','msyhbd.ttc'])GlobalFonts.registerFromPath('C:/Windows/Fonts/'+f,'Microsoft YaHei');GlobalFonts.registerFromPath('C:/Windows/Fonts/consola.ttf','Consolas');
-const W=1920,H=1080,FPS=30,DURATION=56,CUT=183.1,logo=await loadImage(path.join(root,'assets/icons/helpdesign.svg'));
+const W=1920,H=1080,FPS=30,DURATION=56,CUT=183.1,logo=await loadImage(path.join(root,'assets/icons/edithere.svg'));
 const ff=path.join(root,'.cache/promo-video-deps/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
 const wordmark=await loadImage(path.join(root,'assets/brand/edithere-wordmark.svg'));
 const wordmarkLight=await loadImage(path.join(root,'assets/brand/edithere-wordmark-light.svg'));

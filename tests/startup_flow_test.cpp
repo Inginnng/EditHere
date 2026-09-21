@@ -25,7 +25,7 @@ class StartupFlowTests : public QObject {
         return settings;
     }
     static Editor *editorOf(Controller &controller) {
-        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         return tray && tray->contextMenu() ? qobject_cast<Editor *>(tray->contextMenu()->parentWidget()) : nullptr;
     }
   private slots:

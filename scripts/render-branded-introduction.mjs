@@ -5,14 +5,14 @@ import {once} from 'node:events';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(process.argv[2]||'.');
-const require=createRequire(path.join(root,'artifacts/helpdesign-continuous-film/render.mjs'));
+const require=createRequire(path.join(root,'artifacts/edithere-continuous-film/render.mjs'));
 const {createCanvas,loadImage,GlobalFonts}=require('@napi-rs/canvas');
 const here=path.join(root,'artifacts/promo-narrated');
 for(const f of ['msyh.ttc','msyhbd.ttc'])GlobalFonts.registerFromPath('C:/Windows/Fonts/'+f,'Microsoft YaHei');
 GlobalFonts.registerFromPath('C:/Windows/Fonts/consola.ttf','Consolas');
 if(!process.argv[3])throw new Error('Usage: node scripts/render-branded-introduction.mjs ROOT OUTPUT [--stills]');
 const outputDir=path.resolve(process.argv[3]);mkdirSync(outputDir,{recursive:true});
-const brandLogo=await loadImage(readFileSync(path.join(root,'assets/icons/helpdesign.svg')));
+const brandLogo=await loadImage(readFileSync(path.join(root,'assets/icons/edithere.svg')));
 const wordmark=await loadImage(path.join(root,'assets/brand/edithere-wordmark.svg'));
 const wordmarkLight=await loadImage(path.join(root,'assets/brand/edithere-wordmark-light.svg'));
 function brand(c,x,y,w,light=false){const im=light?wordmarkLight:wordmark;c.drawImage(im,x,y,w,w*im.height/im.width);}

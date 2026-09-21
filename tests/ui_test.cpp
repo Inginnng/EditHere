@@ -146,7 +146,7 @@ class UiTests : public QObject {
         QTest::qWait(100);
         for (auto widget : QApplication::topLevelWidgets())
             QVERIFY(!qobject_cast<Overlay *>(widget));
-        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         QVERIFY(tray && tray->contextMenu());
         auto action = tray->contextMenu()->findChild<QAction *>("traySettings");
         QVERIFY(action);
@@ -500,7 +500,7 @@ class UiTests : public QObject {
         settings.checkUpdatesOnStartup = false;
         Controller controller(nullptr, settings, settingsFile);
         controller.start(false);
-        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         QVERIFY(tray && tray->contextMenu());
         auto editor = qobject_cast<Editor *>(tray->contextMenu()->parentWidget());
         QVERIFY(editor);
@@ -911,7 +911,7 @@ class UiTests : public QObject {
         settings.checkUpdatesOnStartup = false;
         Controller controller(nullptr, settings);
         controller.start(false);
-        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         QVERIFY(tray && tray->contextMenu());
         auto editor = qobject_cast<Editor *>(tray->contextMenu()->parentWidget());
         QVERIFY(editor);
@@ -2157,7 +2157,7 @@ class UiTests : public QObject {
         QVERIFY(exportChecked);
         QVERIFY(editor.document().dirty);
 
-        const QString path = dir.filePath("review.helpdesign");
+        const QString path = dir.filePath("review.edithere");
         bool selectedFile = false, saveError = false;
         QTimer chooseFile;
         connect(&chooseFile, &QTimer::timeout, &editor, [&] {
@@ -2191,7 +2191,7 @@ class UiTests : public QObject {
         const auto parsed = QJsonDocument::fromJson(savedJson.readAll(), &error);
         QCOMPARE(error.error, QJsonParseError::NoError);
         QCOMPARE(parsed.object()["schemaVersion"].toString(), QString("3.0.0"));
-        QCOMPARE(parsed.object()["tool"].toString(), QString("HelpDesign"));
+        QCOMPARE(parsed.object()["tool"].toString(), QString("EditHere"));
         QVERIFY(parsed.object()["capture"].isObject());
         QVERIFY(parsed.object()["layout"].isObject());
         QCOMPARE(parsed.object()["annotations"].toArray().size(), 2);
@@ -2321,7 +2321,7 @@ class UiTests : public QObject {
         QVERIFY(editor.document().dirty);
         QVERIFY(editor.document().layout == document.layout);
 
-        const QString path = dir.filePath("invalid-project.helpdesign");
+        const QString path = dir.filePath("invalid-project.edithere");
         bool selectedFile = false, errorShown = false;
         QTimer driver;
         connect(&driver, &QTimer::timeout, &editor, [&] {

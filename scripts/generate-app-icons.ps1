@@ -1,18 +1,18 @@
-﻿param(
+param(
     [string]$OutputDirectory = "",
     [string]$ContactSheetPath = ""
 )
-# Rebuild the committed PNG, ICO and ICNS files from helpdesign.svg.
+# Rebuild the committed PNG, ICO and ICNS files from edithere.svg.
 # Requires Windows PowerShell 5.1 (built-in System.Drawing); no downloaded tools.
 # Run: powershell.exe -NoProfile -File scripts/generate-app-icons.ps1
 # The small SVG renderer supports the absolute M/L/H/V/Q/A/Z (circular arcs) commands used here.
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot "assets/icons" }
-if (-not $ContactSheetPath) { $ContactSheetPath = Join-Path $projectRoot "artifacts/icons/helpdesign-contact-sheet.png" }
+if (-not $ContactSheetPath) { $ContactSheetPath = Join-Path $projectRoot "artifacts/icons/edithere-contact-sheet.png" }
 $ContactSheetPath = [IO.Path]::GetFullPath($ContactSheetPath)
 [IO.Directory]::CreateDirectory((Split-Path $ContactSheetPath -Parent)) | Out-Null
-$source = Join-Path $projectRoot "assets/icons/helpdesign.svg"
+$source = Join-Path $projectRoot "assets/icons/edithere.svg"
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing,System.Xml -TypeDefinition @'
@@ -27,7 +27,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 
-public static class HelpDesignIconGenerator {
+public static class EditHereIconGenerator {
     static float Number(string s) { return float.Parse(s, CultureInfo.InvariantCulture); }
     static float Attr(XmlNode n, string name) { return Number(n.Attributes[name].Value); }
     static Brush PathFill(XmlDocument svg, string paint) {
@@ -146,13 +146,13 @@ public static class HelpDesignIconGenerator {
         int[] sizes={16,20,24,32,48,64,128,256,512,1024};
         foreach(int size in sizes) {
             using(var bitmap=Render(svg,size)) {
-                string file=Path.Combine(output,"helpdesign-"+size+".png");
+                string file=Path.Combine(output,"edithere-"+size+".png");
                 bitmap.Save(file,ImageFormat.Png); pngs[size]=File.ReadAllBytes(file);
             }
         }
         // Windows 10+ accepts PNG-compressed, 32-bit RGBA entries at every size.
         int[] icoSizes={16,20,24,32,48,64,128,256};
-        using(var writer=new BinaryWriter(File.Create(Path.Combine(output,"helpdesign.ico")))) {
+        using(var writer=new BinaryWriter(File.Create(Path.Combine(output,"edithere.ico")))) {
             writer.Write((ushort)0); writer.Write((ushort)1); writer.Write((ushort)icoSizes.Length);
             int offset=6+16*icoSizes.Length;
             foreach(int size in icoSizes) {
@@ -166,7 +166,7 @@ public static class HelpDesignIconGenerator {
         string[] types={"icp4","icp5","icp6","ic07","ic08","ic09","ic10","ic11","ic12","ic13","ic14"};
         int[] icnsSizes={16,32,64,128,256,512,1024,32,64,256,512};
         int length=8; foreach(int size in icnsSizes) length+=8+pngs[size].Length;
-        using(var writer=new BinaryWriter(File.Create(Path.Combine(output,"helpdesign.icns")))) {
+        using(var writer=new BinaryWriter(File.Create(Path.Combine(output,"edithere.icns")))) {
             writer.Write(Encoding.ASCII.GetBytes("icns")); BigEndian(writer,length);
             for(int i=0;i<types.Length;i++) {
                 writer.Write(Encoding.ASCII.GetBytes(types[i])); BigEndian(writer,8+pngs[icnsSizes[i]].Length);
@@ -182,7 +182,7 @@ public static class HelpDesignIconGenerator {
         using(var title=new Font("Segoe UI",20,FontStyle.Bold)) {
             g.Clear(Color.FromArgb(244,246,249));
             using(var large=Render(svg,384)) g.DrawImageUnscaled(large,30,58);
-            g.DrawString("HelpDesign",title,text,56,22);
+            g.DrawString("EditHere",title,text,56,22);
             g.DrawString("Native sizes",font,text,476,54);
             int[] review={16,20,24,32,48,64}; int x=476;
             foreach(int size in review) {
@@ -202,5 +202,5 @@ public static class HelpDesignIconGenerator {
     }
 }
 '@
-[HelpDesignIconGenerator]::Generate($source, [IO.Path]::GetFullPath($OutputDirectory), $ContactSheetPath)
-Write-Host "Generated HelpDesign icons in $OutputDirectory"
+[EditHereIconGenerator]::Generate($source, [IO.Path]::GetFullPath($OutputDirectory), $ContactSheetPath)
+Write-Host "Generated EditHere icons in $OutputDirectory"

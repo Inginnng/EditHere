@@ -31,7 +31,7 @@ QString formattedCommand(const QString &path) {
 
 #ifdef Q_OS_WIN
 constexpr wchar_t RunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t RunValue[] = L"HelpDesign";
+constexpr wchar_t RunValue[] = L"EditHere";
 constexpr wchar_t StartupApprovedKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
 bool registryFailure(QString *error, const QString &action, LSTATUS status) {
@@ -154,9 +154,9 @@ QString windowsLaunchAtLoginNotice(const QString &command, const QString &execut
     else if (command.compare(formattedCommand(executablePath), Qt::CaseInsensitive) != 0)
         notices << "开机自启项指向其他位置或使用旧的启动参数。保持勾选并保存，即可更新为当前程序。";
     if (approval == StartupApproval::Disabled)
-        notices << "Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere（旧版可能显示 HelpDesign）；仅在此处保存不会解除系统禁用。";
+        notices << "Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere；仅在此处保存不会解除系统禁用。";
     else if (approval == StartupApproval::Unknown)
-        notices << "无法确认 Windows 启动项的许可状态，请在 Windows 设置 → 应用 → 启动中检查 EditHere（旧版可能显示 HelpDesign）。";
+        notices << "无法确认 Windows 启动项的许可状态，请在 Windows 设置 → 应用 → 启动中检查 EditHere。";
     return notices.join('\n');
 }
 

@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const out=path.resolve(process.argv[2]||path.join(root,'artifacts/brand'));
 fs.mkdirSync(out,{recursive:true});
-const require=createRequire(path.join(root,'artifacts/helpdesign-continuous-film/render.mjs'));
+const require=createRequire(path.join(root,'artifacts/edithere-continuous-film/render.mjs'));
 const {createCanvas,loadImage,GlobalFonts}=require('@napi-rs/canvas');
 GlobalFonts.registerFromPath('C:/Windows/Fonts/segoeui.ttf','Segoe UI');
 // The approved SVG outlines are the source of truth. Rendering previews must

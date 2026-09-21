@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "HelpDesign minimal design feedback",
+  "title": "EditHere minimal design feedback",
   "description": "Coordinates use original-image pixels with a top-left origin. Rectangle x2/y2 are exclusive. Changes contain only net position or size changes; apply all source cuts first, then draw changes in array order over the unchanged background.",
   "type": "object",
   "additionalProperties": false,

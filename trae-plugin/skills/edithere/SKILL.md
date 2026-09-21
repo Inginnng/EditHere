@@ -1,6 +1,10 @@
 ---
 name: edithere
 description: 使用 EditHere（改这里）让用户在截图或设计图上批注、移动和缩放组件，等待用户完成后读取结构化反馈并继续实现。适用于用户要求用 EditHere 标注修改、通过图像明确界面调整，或处理 EditHere 的反馈 JSON；普通代码修改无需启动。
+metadata:
+  requires:
+    bins: ["edithere-cli"]
+  cliHelp: "edithere-cli --help"
 ---
 
 # EditHere · 改这里

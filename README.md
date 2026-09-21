@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icons/helpdesign-256.png" width="104" alt="EditHere 图标">
+  <img src="assets/icons/edithere-256.png" width="104" alt="EditHere 图标">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
 <p align="center">改这里</p>
@@ -133,9 +133,9 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 源码与发布包已公开，可直接查看代码和下载。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
 
 <details>
-<summary>从 HelpDesign 旧版本升级</summary>
+<summary>从旧版本升级</summary>
 
-退出旧版后，运行安装器或完整解压新免安装版压缩包。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可更新文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
+退出旧版后，运行安装器或完整解压新免安装版压缩包。项目使用 `.edithere` 扩展名，不再兼容旧版 `.helpdesign` 项目；如需保留旧项目，请在升级前用旧版导出为 JSON 反馈。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可登记 `.edithere` 文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
 
 </details>
 
@@ -149,7 +149,7 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 
 **不用安装器，免安装版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
 
-**能保存下次继续改吗？** 可以。保存 `.helpdesign` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
+**能保存下次继续改吗？** 可以。保存 `.edithere` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
 
 ## 使用许可与商业合作
 

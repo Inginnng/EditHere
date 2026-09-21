@@ -45,7 +45,7 @@ class CoreTests : public QObject {
         QCOMPARE(imported.notes[0].comment, global.comment);
         QVERIFY(!imported.notes[0].movementSource);
         QTemporaryDir directory;
-        const auto path = directory.filePath("风格设计.HELPDESIGN");
+        const auto path = directory.filePath("风格设计.EDITHERE");
         saveBytes(path, serializeDocument(doc, true));
         const auto restored = loadDocument(path);
         QCOMPARE(restored.image, doc.image);
@@ -249,7 +249,7 @@ class CoreTests : public QObject {
         const auto feedbackDoc = loadFeedback(feedback, {});
         QCOMPARE(renderLayout(feedbackDoc.image, *feedbackDoc.layout), renderLayout(doc.image, *doc.layout));
         QTemporaryDir directory;
-        const auto path = directory.filePath("nested.helpdesign");
+        const auto path = directory.filePath("nested.edithere");
         saveBytes(path, serializeDocument(doc, true));
         const auto restored = loadDocument(path);
         QCOMPARE(*restored.layout, *doc.layout);

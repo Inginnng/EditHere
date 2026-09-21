@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "HelpDesign 0.7 design feedback",
+  "title": "EditHere 0.7 design feedback",
   "description": "The optional image is the original-size PNG or compressed JPEG encoded as a data URL. All coordinates are image pixels with a top-left origin; rectangle x2/y2 are exclusive. Annotations use the result canvas after applying changes. Changes contain only net position or size changes: cut all from rectangles from the original, then draw them at to rectangles in array order over unchanged content. Empty source holes stay transparent.",
   "type": "object",
   "additionalProperties": false,

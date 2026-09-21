@@ -13,7 +13,7 @@ All assets have transparent backgrounds and vector outlines. Intrinsic width/hei
 
 The body uses one blue gradient (`#246BD9` → `#3E74EF` → `#4147C9`), with a lighter version for dark backgrounds. The pen cap uses the same amber gradient (`#FFB352` → `#F38A35`) in both themes. The pen has one continuous short tip; do not reintroduce a dark nib or change the cap to red.
 
-The letter outlines are based on **Manrope**, weight 610, with optical spacing and a redesigned i. They are not a newly designed font. The original font is available from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/manrope); its SIL Open Font License is preserved in [Manrope-OFL.txt](Manrope-OFL.txt). No font installation is needed to display these SVGs. The lockup reuses `assets/icons/helpdesign.svg` without changing that icon's geometry.
+The letter outlines are based on **Manrope**, weight 610, with optical spacing and a redesigned i. They are not a newly designed font. The original font is available from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/manrope); its SIL Open Font License is preserved in [Manrope-OFL.txt](Manrope-OFL.txt). No font installation is needed to display these SVGs. The lockup reuses `assets/icons/edithere.svg` without changing that icon's geometry.
 
 The four checked-in SVG files are the source of truth. To create transparent PNG exports and a light/dark preview using the local video dependency installation:
 

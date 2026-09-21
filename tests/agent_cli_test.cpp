@@ -35,14 +35,14 @@ class AgentCliTests : public QObject {
         return settings;
     }
     static Editor *editorOf(Controller &controller) {
-        auto tray = controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         return qobject_cast<Editor *>(tray->contextMenu()->parentWidget());
     }
     static QString inputProject(const QTemporaryDir &directory) {
         QImage image(80, 60, QImage::Format_RGB32); image.fill(Qt::white);
         auto doc = fromImage(image, "file", "Agent test");
         Note note; note.isGlobal = true; note.comment = "Move the button"; doc.notes.append(note);
-        auto path = directory.filePath("input.helpdesign");
+        auto path = directory.filePath("input.edithere");
         saveBytes(path, serializeDocument(doc, true));
         return path;
     }
@@ -295,7 +295,7 @@ class AgentCliTests : public QObject {
             const auto response = controller.handleAgentRequest({{"command", "open"}, {"input", input}});
             QCOMPARE(agentExitCode(response), 4);
             QCOMPARE(editor->document().id, current.id);
-            const auto saved = directory.filePath(source + ".helpdesign");
+            const auto saved = directory.filePath(source + ".edithere");
             saveBytes(saved, serializeDocument(current, true));
             editor->setDocument(current, saved);
             QVERIFY(controller.handleAgentRequest({{"command", "open"}, {"input", input}})["ok"].toBool());

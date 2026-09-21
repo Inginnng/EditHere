@@ -6,9 +6,9 @@
 
 ## 运行
 
-首次更名升级请从[发行页](https://github.com/Inginnng/EditHere/releases/tag/v0.8.21)直接下载新包，先从托盘退出旧版。原设置和 `.helpdesign` 项目继续兼容。如果开机启动提示旧路径，保持自启勾选并保存即可刷新，无需先关再开。在新程序中保存一次项目会更新原 `.helpdesign` 文件关联。旧版的自动更新检查可能不识别改名后的地址。
+首次更名升级请从[发行页](https://github.com/Inginnng/EditHere/releases/tag/v0.8.21)直接下载新包，先从托盘退出旧版。不再兼容旧版项目格式，请使用 `.edithere` 项目。如果开机启动提示旧路径，保持自启勾选并保存即可刷新，无需先关再开。在新程序中保存一次项目会登记 `.edithere` 文件关联。旧版的自动更新检查可能不识别改名后的地址。
 
-Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe)（构建产物：`dist/EditHere-0.8.21-win-x64-setup.exe`）。默认安装到 `%LOCALAPPDATA%\Programs\EditHere`，仅安装给当前用户，无需管理员权限。安装器创建开始菜单和卸载入口，登记 `.helpdesign` 项目关联；组件页可选择登录启动、加入 PATH 与桌面快捷方式。新安装默认勾选登录启动和 PATH；升级时根据已有当前用户启动登记保留启动选项。安装完成后重新打开终端与 AI 工具，才能读取新 PATH。
+Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe)（构建产物：`dist/EditHere-0.8.21-win-x64-setup.exe`）。默认安装到 `%LOCALAPPDATA%\Programs\EditHere`，仅安装给当前用户，无需管理员权限。安装器创建开始菜单和卸载入口，登记 `.edithere` 项目关联；组件页可选择登录启动、加入 PATH 与桌面快捷方式。新安装默认勾选登录启动和 PATH；升级时根据已有当前用户启动登记保留启动选项。安装完成后重新打开终端与 AI 工具，才能读取新 PATH。
 
 Windows [免安装版压缩包](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip)：`dist/EditHere-0.8.21-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。免安装版不自动添加 PATH，可用完整路径运行 CLI。
 
@@ -25,7 +25,7 @@ Windows 可通过系统“已安装的应用”或开始菜单中的卸载入口
 - 批注栏从一开始就固定预留。点编号或移动箭头，在右侧直接编辑，离开输入框自动保存；右上角加号可添加全局意见。框选松开立即在侧栏输入批注，并保留手动区域供组件调整。
 - 调整工具可移动或缩放批注框；单击编号编辑文字。顶部眼睛按钮隐藏画面标记，保留右侧批注。Ctrl+Z 撤销，Ctrl+Y 重做，Delete 删除。
 - 空白处滚轮或 Ctrl+滚轮以鼠标指向的位置缩放整张图片；按住鼠标中键可自由平移，图片比窗口小时也能拖动，并可越过图片四边，普通批注与大爆炸模式一致。Ctrl+0 适应窗口。普通窗口下拖动顶栏，或按住空格/Alt 拖动画面，可移动窗口。
-- 支持打开、拖入或粘贴 PNG/JPEG/WebP/BMP，以及重新打开 `.helpdesign` 项目或反馈 JSON。
+- 支持打开、拖入或粘贴 PNG/JPEG/WebP/BMP，以及重新打开 `.edithere` 项目或反馈 JSON。
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Command + Shift + 2。Mac 尚未实机验证。
@@ -69,7 +69,7 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 
 外观支持**跟随系统、亮色、暗色**，默认为跟随系统。切换后，编辑器、批注栏、组件侧栏、菜单和设置窗口统一更新；原图与导出图片的原始像素不受主题影响。
 
-设置保存在当前用户的 Qt `AppConfigLocation/settings.ini`，关闭程序后仍保留。Windows 默认位置为 `%LOCALAPPDATA%/HelpDesign/HelpDesign/settings.ini`；Mac 由系统配置目录决定。
+设置保存在当前用户的 Qt `AppConfigLocation/settings.ini`，关闭程序后仍保留。Windows 默认位置为 `%LOCALAPPDATA%/EditHere/EditHere/settings.ini`；Mac 由系统配置目录决定。
 
 ## 大爆炸
 
@@ -97,7 +97,7 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 
 ## 精简 JSON
 
-复制 JSON 与导出 JSON 采用同一种精简结构。导出窗口默认勾选包含原图；需要单独发送图片时，可取消勾选以缩短 JSON。Ctrl+S 保存 `.helpdesign` 完整项目，始终内嵌原图及切块缓存，供以后继续编辑；不会把完整项目结构塞进给 AI 的反馈 JSON。
+复制 JSON 与导出 JSON 采用同一种精简结构。导出窗口默认勾选包含原图；需要单独发送图片时，可取消勾选以缩短 JSON。Ctrl+S 保存 `.edithere` 完整项目，始终内嵌原图及切块缓存，供以后继续编辑；不会把完整项目结构塞进给 AI 的反馈 JSON。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -135,9 +135,9 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z，截图为 Co
 | 0.5 及以前的 v1/v1.1/v2 项目 | `capture.pngBase64` 可内嵌，或引用外部 PNG | 原图 | v2 保存全部切片、分组及原始/目标坐标 |
 | 0.6 精简反馈 | 外部同名 PNG | 原图 | 仅变化的 `from/to` |
 | 0.7 / 0.8 当前反馈 | `image` 可内嵌，界面默认包含 | 调整后的画面 | 仅变化的 `from/to` |
-| 3.0.0 `.helpdesign` 项目 | 始终内嵌原图 | 调整后的画面 | 完整切块缓存和当前编辑状态 |
+| 3.0.0 `.edithere` 项目 | 始终内嵌原图 | 调整后的画面 | 完整切块缓存和当前编辑状态 |
 
-应用仍可打开旧版项目及 0.6 精简反馈，并将旧批注转换到调整结果的位置。取消包含原图时，重新打开需要配套的同名原图 PNG。`.helpdesign` 项目保存完整切块及编辑状态（`schemaVersion: "3.0.0"`），重新打开直接恢复。关闭截图会释放内存缓存。重新打开精简反馈时，从原图和变化重建布局。
+应用不再打开旧版项目及 0.6 精简反馈，旧批注不再转换到调整结果的位置。取消包含原图时，重新打开需要配套的同名原图 PNG。`.edithere` 项目保存完整切块及编辑状态（`schemaVersion: "3.0.0"`），重新打开直接恢复。关闭截图会释放内存缓存。重新打开精简反馈时，从原图和变化重建布局。
 
 ## 识别与平台边界
 

@@ -28,11 +28,11 @@ QString guiExecutable() {
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("edithere-cli");
-    app.setApplicationVersion(HELPDESIGN_VERSION);
+    app.setApplicationVersion(EDITHERE_VERSION);
     auto args = app.arguments();
     args.removeFirst();
     if (args == QStringList{"--help"} || args == QStringList{"help"} || args.isEmpty()) {
-        std::puts("EditHere Agent CLI " HELPDESIGN_VERSION "\n"
+        std::puts("EditHere Agent CLI " EDITHERE_VERSION "\n"
                   "Usage:\n"
                   "  edithere-cli --help | --version\n"
                   "  edithere-cli status\n"
@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
                   "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
         return 0;
     }
-    if (args == QStringList{"--version"}) { std::puts("EditHere " HELPDESIGN_VERSION); return 0; }
+    if (args == QStringList{"--version"}) { std::puts("EditHere " EDITHERE_VERSION); return 0; }
     const auto command = args.takeFirst();
     const bool withPath = command == "open" || command == "export" || command == "annotate";
     if (!withPath && command != "status" && command != "capture")
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     }
     QLocalSocket socket;
     socket.setReadBufferSize(MaxAgentMessageBytes + 4);
-    const auto connection = ensureAgentConnection(command != "status", HELPDESIGN_VERSION,
+    const auto connection = ensureAgentConnection(command != "status", EDITHERE_VERSION,
         [&](AgentEndpoint endpoint, int timeout) {
             if (endpoint == AgentEndpoint::Agent) return connectAgentSocket(socket, agentServerName(), timeout);
             QLocalSocket desktop;

@@ -1,7 +1,7 @@
 EditHere · 改这里（版本见同目录 version.txt）
 
 Windows 安装版：先从托盘退出旧版，再运行安装器。默认安装到 %LOCALAPPDATA%\Programs\EditHere，仅为当前用户安装，无需管理员权限。
-安装器提供开始菜单、卸载入口和 .helpdesign 项目关联。组件页可选择登录启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级根据已有启动登记保留启动选项。
+安装器提供开始菜单、卸载入口和 .edithere 项目关联。组件页可选择登录启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级根据已有启动登记保留启动选项。
 安装完成后重新打开终端与 AI 工具，才能读取新的 PATH。卸载仅移除随包安装的文件与登记，保留用户设置及项目。
 Windows 免安装版：先从托盘退出旧版，完整解压后运行 EditHere.exe。
 保留同目录 DLL、platforms、imageformats、licenses 等文件；无需额外安装开发环境。
@@ -27,7 +27,7 @@ Mac：打开 DMG，将 EditHere.app 拖到其中的 Applications 入口。首次
 • 启用自启后请保留程序所在文件夹；移动程序或升级后，保持勾选并保存即可刷新路径，无需先关再开。
 • 如果 Windows 系统禁用了该启动项，程序会提示到系统启动应用设置中手动恢复，不会强行改写禁用状态。
 • 设置保存在当前用户 AppConfigLocation/settings.ini，程序退出后仍保留。
-• Windows 默认为 %LOCALAPPDATA%/HelpDesign/HelpDesign/settings.ini（沿用旧目录以保留设置）；Mac 由系统配置目录决定。
+• Windows 默认为 %LOCALAPPDATA%/EditHere/EditHere/settings.ini；Mac 由系统配置目录决定。
 • 下文列出的键位均为默认值，修改后以设置窗口和界面提示为准。
 
 截图
@@ -82,11 +82,11 @@ AI 与命令行
 保存与导出
 • 导出窗口默认包含原图：image 字段为 PNG 或 JPEG 的 data URL，保存调整前的完整截图；可选择关闭图片压缩。
 • 可取消包含原图，以缩短 JSON；此时需配套发送同名原图 PNG。
-• Ctrl+S 保存 .helpdesign 完整项目，内嵌原图、批注与切块缓存，重新打开继续编辑。
+• Ctrl+S 保存 .edithere 完整项目，内嵌原图、批注与切块缓存，重新打开继续编辑。
 • 蓝色大按钮直接复制 JSON，小图标打开“查看 JSON”。复制默认包含原图，可在默认设置修改。
 • 保存项目、保存图片、查看 JSON、复制 JSON、复制带批注图片、重新截图、适应图片，可在“设置 → 工具栏”配置。
 • 未勾选或窗口内放不下的操作会收进“…”更多菜单；常驻工具保留在分隔线左侧。
-• 首次保存时登记当前用户的 .helpdesign 文件关联；如已有其他默认程序，则不覆盖。
+• 首次保存时登记当前用户的 .edithere 文件关联；如已有其他默认程序，则不覆盖。
 • annotationSpace 固定为 result：annotations 的点或框坐标，对应当前调整后的画面。
 • annotations 包含 text，区域意见带 point 或 rectangle；全局意见只含 text，移动箭头意见带对应 changes 的零基序号 change。
 • changes 只导出移动或缩放过的区域；from 是原始框，to 是最终框。
@@ -98,13 +98,13 @@ AI 与命令行
 • 0.8 沿用 0.7 JSON 格式，见 schema/feedback-v0.7.schema.json；旧版 v1/v1.1/v2 和 0.6 精简反馈仍可打开。
 • 旧版原图坐标批注会转换到结果位置，界面不再生成包含全部切块的长 JSON。
 • 关闭当前截图会提示保存未存修改，然后释放原图及切块缓存；程序仍驻留托盘。
-• 重新打开精简反馈时，从原图与变化重建布局；.helpdesign 项目则恢复保存的完整切块。
+• 重新打开精简反馈时，从原图与变化重建布局；.edithere 项目则恢复保存的完整切块。
 
 识别完全在本机运行，不使用网络 AI。算法识别色块和轮廓，不能保证每个组件都被正确划分，可手动分块补充。
 系统元素识别取决于目标应用公开的辅助功能信息；托盘展开面板、多屏及不同浏览器仍需更多环境验证。
 
 应用许可见 LICENSE 和 LICENSING.md：非商业用途按 PolyForm Noncommercial 1.0.0 免费使用，其他商业用途需另行授权（见 COMMERCIAL-LICENSE.md）。第三方组件许可独立适用，见 THIRD-PARTY-NOTICES.md。
-为兼容旧项目，继续使用 .helpdesign 扩展名和旧版数据格式标识。
+项目使用 .edithere 扩展名和数据格式标识。
 
 表格识别
 • 有线表格增加原始分辨率检测，支持浅灰细线、暗色背景、短断线与合并单元格。

@@ -33,6 +33,7 @@
 #include <QTextDocument>
 #include <QToolTip>
 #include <QWheelEvent>
+#include <QUrl>
 #include <cmath>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -66,6 +67,33 @@ QString toolbarGlyph(const QString &id) {
     if (id == "capture") return "capture";
     if (id == "fit") return "fit";
     return "image-copy";
+}
+// 反馈 JSON 临时文件目录：位于应用缓存目录下的 feedback 子目录。
+QString feedbackTempDir() {
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    const QString dir = QDir(base).filePath("feedback");
+    QDir().mkpath(dir);
+    return dir;
+}
+// 将反馈 JSON 写入临时文件，返回文件路径。每次复制生成唯一文件名，避免覆盖上一次的引用。
+QString writeFeedbackTempFile(const QByteArray &bytes) {
+    const QString dir = feedbackTempDir();
+    const QString name = "edithere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
+                          + "-" + uniqueId().left(4) + ".json";
+    const QString path = QDir(dir).filePath(name);
+    saveBytes(path, bytes);
+    return path;
+}
+// 清理 7 天前的旧临时文件，保留当前路径对应的文件。
+void cleanupOldFeedbackTempFiles(const QString &keepPath) {
+    QDir d(feedbackTempDir());
+    const auto cutoff = QDateTime::currentDateTime().addDays(-7);
+    for (const auto &name : d.entryList({"edithere-*.json"}, QDir::Files)) {
+        const QString path = d.filePath(name);
+        if (path == keepPath) continue;
+        if (QFileInfo(path).lastModified() < cutoff)
+            QFile::remove(path);
+    }
 }
 class JsonPreview final : public QPlainTextEdit {
   public:
@@ -934,30 +962,13 @@ void Editor::copyJson() {
     finishNoteEdit();
     if (!hasDocument()) return;
     try {
-        const QString text=QString::fromUtf8(serializeFeedback(doc_,preferences_.embedOriginal,true));
-        for (auto retry : findChildren<QTimer *>("copyJsonRetry")) { retry->stop(); retry->deleteLater(); }
-        auto retry=new QTimer(this);
-        retry->setObjectName("copyJsonRetry");
-        retry->setInterval(100);
-        retry->setProperty("attempts",0);
-        const bool includesImage=preferences_.embedOriginal;
-        auto write=[this,retry,text,includesImage] {
-            auto clipboard=QApplication::clipboard();
-            clipboard->setText(text);
-            if (clipboard->ownsClipboard() || clipboard->text()==text) {
-                retry->stop(); retry->deleteLater();
-                toast(includesImage ? "JSON 已复制，包含完整原图" : "JSON 已复制，未包含原图");
-            } else {
-                const int attempts=retry->property("attempts").toInt()+1;
-                retry->setProperty("attempts",attempts);
-                if (attempts>=5) {
-                    retry->stop(); retry->deleteLater();
-                    toast("剪贴板暂时被占用，请重试复制或打开查看 JSON 保存。");
-                } else retry->start();
-            }
-        };
-        connect(retry,&QTimer::timeout,this,write);
-        write();
+        const QByteArray bytes = serializeFeedback(doc_, preferences_.embedOriginal, true);
+        const QString path = writeFeedbackTempFile(bytes);
+        cleanupOldFeedbackTempFiles(path);
+        auto mime = new QMimeData;
+        mime->setUrls({QUrl::fromLocalFile(path)});
+        QApplication::clipboard()->setMimeData(mime);
+        toast(preferences_.embedOriginal ? "JSON 文件已复制，包含完整原图" : "JSON 文件已复制，未包含原图");
     } catch(const std::exception &error) { showError(QString::fromUtf8(error.what())); }
 }
 void Editor::changed(bool contentChanged) {
@@ -1180,12 +1191,12 @@ bool Editor::saveProject() {
     if (!hasDocument())
         return true;
     QString path = QFileDialog::getSaveFileName(this, "保存 EditHere 项目",
-                                                projectPath_.isEmpty() ? "设计反馈.helpdesign" : projectPath_,
-                                                "EditHere 项目 (*.helpdesign)");
+                                                projectPath_.isEmpty() ? "设计反馈.edithere" : projectPath_,
+                                                "EditHere 项目 (*.edithere)");
     if (path.isEmpty())
         return false;
-    if (!path.endsWith(".helpdesign", Qt::CaseInsensitive))
-        path += ".helpdesign";
+    if (!path.endsWith(".edithere", Qt::CaseInsensitive))
+        path += ".edithere";
     try {
         const auto bytes = serializeDocument(doc_, true);
         saveBytes(path, bytes);
@@ -1234,7 +1245,7 @@ void Editor::openFile(const QString &provided) {
     QString path = provided;
     if (path.isEmpty())
         path = QFileDialog::getOpenFileName(this, "打开图片或项目", {},
-                                            "图片或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.helpdesign)");
+                                            "图片或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.edithere)");
     if (path.isEmpty())
         return;
     try {
@@ -1242,7 +1253,7 @@ void Editor::openFile(const QString &provided) {
         if (!allowReplace())
             return;
         setDocument(std::move(next));
-        if (path.endsWith(".helpdesign", Qt::CaseInsensitive))
+        if (path.endsWith(".edithere", Qt::CaseInsensitive))
             projectPath_ = path;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
@@ -1370,36 +1381,19 @@ void Editor::exportJson() {
     connect(embed, &QCheckBox::toggled, &dialog, refresh);
     connect(compress, &QCheckBox::toggled, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
-    QTimer clipboardRetry(&dialog);
-    clipboardRetry.setInterval(100);
-    QString pendingClipboard;
-    bool pendingIncludesImage = false;
-    int clipboardAttempts = 0;
-    auto writeClipboard = [&] {
-        auto clipboard = QApplication::clipboard();
-        clipboard->setText(pendingClipboard);
-        if (clipboard->ownsClipboard() || clipboard->text() == pendingClipboard) {
-            clipboardRetry.stop();
-            pendingClipboard.clear();
-            status->setText(pendingIncludesImage ? "JSON 已复制，包含完整原图" : "JSON 已复制，未包含原图");
-        } else if (++clipboardAttempts >= 5) {
-            clipboardRetry.stop();
-            pendingClipboard.clear();
-            status->setText("剪贴板暂时被其他应用占用，未能复制。请重试或保存 JSON。");
-        } else {
-            status->setText("正在等待剪贴板…");
-            clipboardRetry.start();
-        }
-    };
-    connect(&clipboardRetry, &QTimer::timeout, &dialog, writeClipboard);
     auto copyJson = [&] {
         if (exportBytes.isEmpty())
             return;
-        clipboardRetry.stop();
-        pendingClipboard = QString::fromUtf8(exportBytes);
-        pendingIncludesImage = embed->isChecked();
-        clipboardAttempts = 0;
-        writeClipboard();
+        try {
+            const QString path = writeFeedbackTempFile(exportBytes);
+            cleanupOldFeedbackTempFiles(path);
+            auto mime = new QMimeData;
+            mime->setUrls({QUrl::fromLocalFile(path)});
+            QApplication::clipboard()->setMimeData(mime);
+            status->setText(embed->isChecked() ? "JSON 文件已复制，包含完整原图" : "JSON 文件已复制，未包含原图");
+        } catch (const std::exception &error) {
+            status->setText(QString::fromUtf8(error.what()));
+        }
     };
     json->copyJson = copyJson;
     connect(copy, &QPushButton::clicked, &dialog, copyJson);

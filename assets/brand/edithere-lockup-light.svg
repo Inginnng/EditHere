@@ -3,13 +3,13 @@
   <desc>EditHere blue editing icon with the amber-cap pen wordmark.</desc>
   <svg width="150" height="150" viewBox="8 6 52 52" x="-12" y="-12">
     <defs>
-      <linearGradient id="helpdesign-blue" gradientUnits="userSpaceOnUse" x1="48" y1="10" x2="16" y2="48">
+      <linearGradient id="edithere-blue" gradientUnits="userSpaceOnUse" x1="48" y1="10" x2="16" y2="48">
         <stop offset="0" stop-color="#61ADFF" />
         <stop offset="1" stop-color="#3155D9" />
       </linearGradient>
     </defs>
-    <path fill="url(#helpdesign-blue)" d="M 48 34 V 40.2 A 7.8 7.8 0 0 1 40.2 48 H 23.8 A 7.8 7.8 0 0 1 16 40.2 V 23.8 A 7.8 7.8 0 0 1 23.8 16 H 30 A 2.5 2.5 0 0 1 30 21 H 23.8 A 2.8 2.8 0 0 0 21 23.8 V 40.2 A 2.8 2.8 0 0 0 23.8 43 H 40.2 A 2.8 2.8 0 0 0 43 40.2 V 34 A 2.5 2.5 0 0 1 48 34 Z" />
-    <path fill="url(#helpdesign-blue)" d="M 33.52406 31.8923 A 0.75 0.75 0 0 1 32.61326 30.98149 L 33.90457 25.86793 A 2.5 2.5 0 0 1 34.56071 24.71226 L 45.66988 13.60309 A 1.4 1.4 0 0 1 47.64978 13.60309 L 50.90247 16.85578 A 1.4 1.4 0 0 1 50.90247 18.83568 L 39.7933 29.94485 A 2.5 2.5 0 0 1 38.63763 30.60099 Z" />
+    <path fill="url(#edithere-blue)" d="M 48 34 V 40.2 A 7.8 7.8 0 0 1 40.2 48 H 23.8 A 7.8 7.8 0 0 1 16 40.2 V 23.8 A 7.8 7.8 0 0 1 23.8 16 H 30 A 2.5 2.5 0 0 1 30 21 H 23.8 A 2.8 2.8 0 0 0 21 23.8 V 40.2 A 2.8 2.8 0 0 0 23.8 43 H 40.2 A 2.8 2.8 0 0 0 43 40.2 V 34 A 2.5 2.5 0 0 1 48 34 Z" />
+    <path fill="url(#edithere-blue)" d="M 33.52406 31.8923 A 0.75 0.75 0 0 1 32.61326 30.98149 L 33.90457 25.86793 A 2.5 2.5 0 0 1 34.56071 24.71226 L 45.66988 13.60309 A 1.4 1.4 0 0 1 47.64978 13.60309 L 50.90247 16.85578 A 1.4 1.4 0 0 1 50.90247 18.83568 L 39.7933 29.94485 A 2.5 2.5 0 0 1 38.63763 30.60099 Z" />
   </svg>
   <g transform="translate(150 0)">
     <defs>

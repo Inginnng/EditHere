@@ -27,7 +27,7 @@ int main(int argc,char **argv) {
     applyTheme(ThemeMode::Light);
     auto settings=defaultSettings(); settings.shortcuts["capture"]={}; settings.captureOnStartup=false; settings.checkUpdatesOnStartup=false;
     Controller controller(nullptr,settings,out+"/isolated-settings.ini");
-    auto tray=controller.findChild<QSystemTrayIcon *>("helpDesignTray");
+    auto tray=controller.findChild<QSystemTrayIcon *>("edithereTray");
     auto editor=qobject_cast<Editor *>(tray->contextMenu()->parentWidget()); require(editor,"no editor");
     AgentServer server(controller); const auto name="EditHere-demo-"+uniqueId(); require(server.listen(name),"listen failed");
     const auto input=root+"/artifacts/promo-narrated/charts/original.png", output=out+"/feedback.json";

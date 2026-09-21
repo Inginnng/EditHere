@@ -75,7 +75,7 @@ UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
                     return;
                 output_ += process_.readAllStandardOutput();
                 if (code == 0 && status == QProcess::NormalExit)
-                    finish(parseRelease(output_, QStringLiteral(HELPDESIGN_VERSION)));
+                    finish(parseRelease(output_, QStringLiteral(EDITHERE_VERSION)));
                 else
                     requestPublic();
             });
@@ -129,7 +129,7 @@ void UpdateChecker::requestPublic() {
         return;
     QNetworkRequest request(QUrl("https://api.github.com/repos/Inginnng/EditHere/releases/latest"));
     request.setRawHeader("Accept", "application/vnd.github+json");
-    request.setRawHeader("User-Agent", "EditHere/" HELPDESIGN_VERSION);
+    request.setRawHeader("User-Agent", "EditHere/" EDITHERE_VERSION);
     request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     request.setTransferTimeout(12000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
@@ -154,7 +154,7 @@ void UpdateChecker::requestPublic() {
             finish(failure("网络连接失败，暂时无法判断是否有更新。请稍后重试。"));
         else {
             output_ += reply_->readAll();
-            finish(parseRelease(output_, QStringLiteral(HELPDESIGN_VERSION)));
+            finish(parseRelease(output_, QStringLiteral(EDITHERE_VERSION)));
         }
     });
 }

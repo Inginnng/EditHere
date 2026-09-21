@@ -17,8 +17,8 @@ VIAddVersionKey /LANG=2052 "ProductName" "EditHere"
 VIAddVersionKey /LANG=2052 "FileDescription" "EditHere · 改这里 安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "Inginnng"
-!define MUI_ICON "${PROJECT_ROOT}\assets\icons\helpdesign.ico"
-!define MUI_UNICON "${PROJECT_ROOT}\assets\icons\helpdesign.ico"
+!define MUI_ICON "${PROJECT_ROOT}\assets\icons\edithere.ico"
+!define MUI_UNICON "${PROJECT_ROOT}\assets\icons\edithere.ico"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\EditHere.exe"
 !define MUI_FINISHPAGE_RUN_PARAMETERS "--autostart"
@@ -105,7 +105,7 @@ Function .onInit
     SetRegView 64
     ReadRegStr $PreviousDirectory HKCU "Software\EditHere\Installer" "InstallDir"
     ${If} $PreviousDirectory != ""
-        ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "HelpDesign"
+        ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EditHere"
         ${If} $0 == ""
             !insertmacro UnselectSection ${Startup}
         ${EndIf}

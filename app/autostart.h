@@ -18,7 +18,7 @@ bool wasLaunchedAtLogin();
 
 namespace autostart_detail {
 // Small storage boundary keeps tests away from the user's actual Run registry key.
-// A missing value is represented by an empty command. Implementations own only HelpDesign.
+// A missing value is represented by an empty command. Implementations own only EditHere.
 class RunValueStore {
   public:
     virtual ~RunValueStore() = default;

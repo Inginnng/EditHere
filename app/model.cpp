@@ -580,7 +580,7 @@ static QJsonObject documentObject(const Document &d, bool embed, bool current) {
     QJsonObject result{{"schemaVersion", current ? "3.0.0" : d.layout ? "2.0.0"
                                          : ax     ? "1.1.0"
                                                   : "1.0.0"},
-                       {"tool", current ? "HelpDesign" : "Help2Design Capture"},
+                       {"tool", "EditHere"},
                        {"exportedAt", timestamp()},
                        {"capture", capture},
                        {"annotations", notes}};
@@ -754,7 +754,7 @@ Document loadDocument(const QString &path) {
     if (!file.open(QIODevice::ReadOnly))
         fail("无法打开文件");
     if (!path.endsWith(".json", Qt::CaseInsensitive) &&
-        !path.endsWith(".helpdesign", Qt::CaseInsensitive)) {
+        !path.endsWith(".edithere", Qt::CaseInsensitive)) {
         if (file.size() > MaxImageFileBytes)
             fail("图片文件不能超过 48 MB");
         QImageReader reader(&file);
@@ -794,7 +794,7 @@ Document loadDocument(const QString &path) {
     const QString version = root["schemaVersion"].toString();
     const bool current = version == "3.0.0";
     if (!QStringList{"1.0.0", "1.1.0", "2.0.0", "3.0.0"}.contains(version) ||
-        root["tool"] != (current ? "HelpDesign" : "Help2Design Capture"))
+        root["tool"] != "EditHere")
         fail("不支持这个项目版本");
     QStringList fields{"schemaVersion", "tool", "exportedAt", "capture", "annotations"};
     if (version == "2.0.0" || current)

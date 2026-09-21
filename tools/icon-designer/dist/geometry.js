@@ -23,7 +23,7 @@
     const pen=rounded(points,[s.tip,s.shoulder,1.4,1.4,s.shoulder].map(r=>r*s.scale));
     return {frame,pen:pen.path,corners:pen.corners,points};
   }
-  function svg(s){const g=geometry(s);return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="8 6 52 52"><title>EditHere</title><metadata>${JSON.stringify(s)}</metadata><defs><linearGradient id="helpdesign-blue" gradientUnits="userSpaceOnUse" x1="48" y1="10" x2="16" y2="48"><stop offset="0" stop-color="#61ADFF"/><stop offset="1" stop-color="#3155D9"/></linearGradient></defs><path fill="url(#helpdesign-blue)" d="${g.frame}"/><path fill="url(#helpdesign-blue)" d="${g.pen}"/></svg>`;}
-  root.HelpDesignGeometry={defaults,geometry,svg};
-  if(typeof module!=='undefined')module.exports=root.HelpDesignGeometry;
+  function svg(s){const g=geometry(s);return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="8 6 52 52"><title>EditHere</title><metadata>${JSON.stringify(s)}</metadata><defs><linearGradient id="edithere-blue" gradientUnits="userSpaceOnUse" x1="48" y1="10" x2="16" y2="48"><stop offset="0" stop-color="#61ADFF"/><stop offset="1" stop-color="#3155D9"/></linearGradient></defs><path fill="url(#edithere-blue)" d="${g.frame}"/><path fill="url(#edithere-blue)" d="${g.pen}"/></svg>`;}
+  root.EditHereGeometry={defaults,geometry,svg};
+  if(typeof module!=='undefined')module.exports=root.EditHereGeometry;
 })(globalThis);

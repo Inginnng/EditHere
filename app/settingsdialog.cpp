@@ -169,7 +169,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto aboutLayout = new QVBoxLayout(about);
     aboutLayout->setContentsMargins(20, 22, 20, 20);
     aboutLayout->setSpacing(18);
-    auto version = new QLabel("EditHere · 改这里  " HELPDESIGN_VERSION, about);
+    auto version = new QLabel("EditHere · 改这里  " EDITHERE_VERSION, about);
     version->setObjectName("settingsSection");
     aboutLayout->addWidget(version);
     auto description = mutedLabel("截图、批注与布局调整，让设计修改意见更清楚。", about);

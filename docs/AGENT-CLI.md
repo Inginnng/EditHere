@@ -103,10 +103,10 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 ## 导出已保存项目
 
 ```powershell
-& $EditHereCli export 'C:\absolute\review.helpdesign' --output 'C:\absolute\review-feedback.json'
+& $EditHereCli export 'C:\absolute\review.edithere' --output 'C:\absolute\review-feedback.json'
 ```
 
-这一步读取已保存的项目，不会等待新的用户输入。`export` 也能读取 PNG、JPEG、WebP、BMP 图片或有效反馈 JSON；外部图像反馈需要配套同名 PNG。`--no-image` 适用于接收方已经拿到相应原图的场景；把不含图片的反馈作为独立文件重新导入时，需要配套同名原图 PNG。完整 `.helpdesign` 项目与精简反馈 JSON 是两种格式，不能仅改扩展名代替导出。
+这一步读取已保存的项目，不会等待新的用户输入。`export` 也能读取 PNG、JPEG、WebP、BMP 图片或有效反馈 JSON；外部图像反馈需要配套同名 PNG。`--no-image` 适用于接收方已经拿到相应原图的场景；把不含图片的反馈作为独立文件重新导入时，需要配套同名原图 PNG。完整 `.edithere` 项目与精简反馈 JSON 是两种格式，不能仅改扩展名代替导出。
 
 ## 响应与错误
 

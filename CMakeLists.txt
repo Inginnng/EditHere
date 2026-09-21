@@ -41,33 +41,33 @@ target_link_libraries(EditHere PRIVATE h2d_ui)
 qt_add_executable(edithere-cli app/cli.cpp)
 set_target_properties(edithere-cli PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 target_link_libraries(edithere-cli PRIVATE h2d_core h2d_agent)
-target_compile_definitions(edithere-cli PRIVATE HELPDESIGN_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(edithere-cli PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 if(APPLE)
   add_dependencies(EditHere edithere-cli)
   add_custom_command(TARGET EditHere POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:edithere-cli>" "$<TARGET_BUNDLE_DIR:EditHere>/Contents/MacOS/edithere-cli"
     VERBATIM)
 endif()
-set(HELPDESIGN_ICON_PNGS)
+set(EDITHERE_ICON_PNGS)
 foreach(size IN ITEMS 16 20 24 32 48 64 128 256 512)
-  list(APPEND HELPDESIGN_ICON_PNGS "assets/icons/helpdesign-${size}.png")
+  list(APPEND EDITHERE_ICON_PNGS "assets/icons/edithere-${size}.png")
 endforeach()
 qt_add_resources(EditHere app_icons
   PREFIX "/icons"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
-  FILES ${HELPDESIGN_ICON_PNGS})
+  FILES ${EDITHERE_ICON_PNGS})
 if(WIN32)
   enable_language(RC)
-  configure_file(packaging/helpdesign.rc.in "${CMAKE_CURRENT_BINARY_DIR}/helpdesign.rc" @ONLY)
-  target_sources(EditHere PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/helpdesign.rc")
+  configure_file(packaging/edithere.rc.in "${CMAKE_CURRENT_BINARY_DIR}/edithere.rc" @ONLY)
+  target_sources(EditHere PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/edithere.rc")
 elseif(APPLE)
-  target_sources(EditHere PRIVATE assets/icons/helpdesign.icns)
-  set_source_files_properties(assets/icons/helpdesign.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-  set_target_properties(EditHere PROPERTIES MACOSX_BUNDLE_ICON_FILE helpdesign.icns)
+  target_sources(EditHere PRIVATE assets/icons/edithere.icns)
+  set_source_files_properties(assets/icons/edithere.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_target_properties(EditHere PROPERTIES MACOSX_BUNDLE_ICON_FILE edithere.icns)
 endif()
-target_compile_definitions(h2d_ui PUBLIC HELPDESIGN_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(h2d_ui PUBLIC EDITHERE_VERSION="${PROJECT_VERSION}")
 set_target_properties(EditHere PROPERTIES
-  MACOSX_BUNDLE_GUI_IDENTIFIER "com.help2design.capture"
+  MACOSX_BUNDLE_GUI_IDENTIFIER "com.edithere.capture"
   MACOSX_BUNDLE_BUNDLE_NAME "EditHere"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
   MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"

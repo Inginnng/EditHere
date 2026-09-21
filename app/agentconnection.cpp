@@ -38,14 +38,8 @@ QJsonObject endpointUnavailable(const AgentSocketResult &result) {
 }
 }
 QString legacyDesktopServerName() {
-    const auto oldName = QCoreApplication::applicationName();
-    const auto oldOrganization = QCoreApplication::organizationName();
-    QCoreApplication::setApplicationName("Help2Design");
-    QCoreApplication::setOrganizationName("Help2Design");
     const auto state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    QCoreApplication::setApplicationName(oldName);
-    QCoreApplication::setOrganizationName(oldOrganization);
-    return "Help2Design-native-" + QString::number(qHash(state));
+    return "EditHere-native-" + QString::number(qHash(state));
 }
 AgentSocketResult connectAgentSocket(QLocalSocket &socket, const QString &name, int timeout) {
     socket.abort();
