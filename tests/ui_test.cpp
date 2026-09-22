@@ -9,6 +9,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDir>
+#include <QMimeData>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
