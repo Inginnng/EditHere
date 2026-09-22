@@ -44,6 +44,19 @@
 #include <QVariantAnimation>
 #include <QWheelEvent>
 using namespace h2d;
+
+// Read JSON from clipboard — supports both file-URL (new copy behavior) and text (legacy).
+static QJsonDocument clipboardJson(QJsonParseError *error = nullptr) {
+    const auto *mime = QApplication::clipboard()->mimeData();
+    if (!mime) return QJsonDocument();
+    const auto urls = mime->urls();
+    if (!urls.isEmpty()) {
+        QFile file(urls.first().toLocalFile());
+        if (file.open(QIODevice::ReadOnly)) return QJsonDocument::fromJson(file.readAll(), error);
+    }
+    return QJsonDocument::fromJson(mime->text().toUtf8(), error);
+}
+
 class UiTests : public QObject {
     Q_OBJECT
   private:
@@ -1380,7 +1393,7 @@ class UiTests : public QObject {
         };
         QApplication::clipboard()->clear();
         triggerMore("copyJson");
-        QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+        QTRY_COMPARE(clipboardJson().object(),
                      exportFeedback(editor.document(), true));
         QVERIFY(QApplication::activeModalWidget() == nullptr);
         triggerMore("capture");
@@ -1437,7 +1450,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().notes.size(), 1);
         QCOMPARE(editor.document().notes[0].comment, QString("复制按钮应当提交正在编辑的意见，并包含完整原图。"));
         const auto expected = exportFeedback(editor.document(), true);
-        QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(), expected);
+        QTRY_COMPARE(clipboardJson().object(), expected);
         const QString image = expected["image"].toString();
         QVERIFY(image.startsWith("data:image/png;base64,"));
         QCOMPARE(QByteArray::fromBase64(image.mid(QString("data:image/png;base64,").size()).toLatin1()),
@@ -2113,9 +2126,9 @@ class UiTests : public QObject {
                     copy = button;
             QVERIFY(copy && copy->isEnabled());
             copy->click();
-            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+            QTRY_COMPARE(clipboardJson().object(),
                          expectedEmbedded);
-            const auto copied = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
+            const auto copied = clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(copied.object(), expectedEmbedded);
             QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 已复制"));
@@ -2129,10 +2142,10 @@ class UiTests : public QObject {
             QTRY_VERIFY(dialog->isActiveWindow() && text->hasFocus());
             text->selectAll();
             QTest::keyClick(text, Qt::Key_C, Qt::ControlModifier);
-            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+            QTRY_COMPARE(clipboardJson().object(),
                          expectedEmbedded);
             const auto keyboardCopy =
-                QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8(), &error);
+                clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(keyboardCopy.object(), expectedEmbedded);
             const auto keyboardImage =
@@ -2147,7 +2160,7 @@ class UiTests : public QObject {
             QCOMPARE(compact.object(), expectedFeedback);
             QVERIFY(!compact.object().contains("image"));
             copy->click();
-            QTRY_COMPARE(QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object(),
+            QTRY_COMPARE(clipboardJson().object(),
                          expectedFeedback);
             artifact(*dialog, "compact-export.png");
             exportChecked = true;
