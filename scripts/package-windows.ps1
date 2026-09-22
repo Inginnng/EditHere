@@ -54,6 +54,10 @@ $manifest = Get-ChildItem -LiteralPath $outputPath -Recurse -File | ForEach-Obje
     [PSCustomObject]@{ path = [IO.Path]::GetRelativePath($outputPath, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputPath "manifest.json") -Encoding utf8
-Compress-Archive -LiteralPath $outputPath -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
+# Zip the CONTENTS of the package folder (no top-level directory): the in-app
+# updater extracts this archive straight onto the app directory with
+# "tar -xf <zip> -C <appdir>", and a wrapped folder would land the new files in
+# a nested subdirectory instead of replacing the app.
+Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
 Write-Host "Portable folder: $outputPath"
 Write-Host "ZIP: $outputPath.zip"

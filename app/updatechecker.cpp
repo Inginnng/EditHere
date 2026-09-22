@@ -224,6 +224,10 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     downloadFileName_ = package.name;
     const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     downloadPath_ = QDir(tempDir).filePath("EditHere-update-" + package.name);
+    // Remove any leftover download (e.g. a previous attempt that failed or was
+    // interrupted): the writer below appends, and a stale file would corrupt
+    // the package and fail the SHA256 check.
+    QFile::remove(downloadPath_);
     // Download the package.
     QNetworkRequest request(package.url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
