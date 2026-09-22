@@ -109,6 +109,8 @@ jobs:
             sha256sum "$f"
           done > SHA256SUMS.txt
           cat SHA256SUMS.txt
+          # Per-file hash for the portable ZIP so the in-app updater can verify it.
+          for z in *.zip; do sha256sum "$z" > "$z.sha256"; done
 
       - name: Extract version from tag
         id: version
@@ -132,5 +134,6 @@ jobs:
             artifacts/*.zip
             artifacts/*.exe
             artifacts/*.exe.sha256
+            artifacts/*.zip.sha256
             artifacts/*.dmg
             artifacts/SHA256SUMS.txt
