@@ -1,5 +1,8 @@
-#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include <windows.h>
+#include <unknwn.h>
+#include <dwmapi.h>
+#include <uiautomation.h>
 #include "platform.h"
 #include <QApplication>
 #include <QScreen>
@@ -7,10 +10,7 @@
 #include <QWidget>
 #include <QtGui/qscreen_platform.h>
 #include <atomic>
-#include <dwmapi.h>
 #include <memory>
-#include <uiautomation.h>
-#include <windows.h>
 namespace h2d {
 namespace {
 QString bstrText(BSTR value) {

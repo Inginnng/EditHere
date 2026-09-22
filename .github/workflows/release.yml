@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.8.22)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6.8.3 MinGW and compiler
+        run: |
+          python -m pip install aqtinstall==3.3.0 ninja
+          python -m aqt install-qt windows desktop 6.8.3 win64_mingw --modules qtimageformats --archives qtbase qtimageformats --outputdir .tools/qt
+          python -m aqt tool windows tools_mingw 13.0.0-1 qt.tools.mingw1310_64 --outputdir .tools/qt
+
+      - name: Build
+        run: |
+          $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
+          $env:PATH = "$mingwBin;$env:PATH"
+          scripts\build-windows.ps1 -QtRoot ".tools/qt/6.8.3/mingw_64" -Compiler "$mingwBin\g++.exe" -Ninja "ninja.exe" -SkipTests
+
+      - name: Package portable ZIP
+        run: |
+          $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
+          $env:PATH = "$mingwBin;$env:PATH"
+          scripts\package-windows.ps1 -QtRoot ".tools/qt/6.8.3/mingw_64" -CompilerBin "$mingwBin"
+
+      - name: Package NSIS installer
+        run: scripts\package-installer.ps1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/*.zip
+            dist/*.exe
+            dist/*.exe.sha256
+
+  build-macos:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify pinned Xcode and SDK
+        run: |
+          xcodebuild -version
+          sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+          printf 'SDK: %s\n' "$sdk_path"
+          if [[ ! -d "$sdk_path/System/Library/Frameworks/AGL.framework" ]]; then
+            echo "::error::The selected SDK lacks AGL.framework required by Qt 6.8.3."
+            exit 1
+          fi
+
+      - name: Install Qt 6.8.3
+        run: |
+          python3 -m venv .tools/python
+          .tools/python/bin/pip install aqtinstall==3.3.0 ninja
+          .tools/python/bin/python -m aqt install-qt mac desktop 6.8.3 clang_64 --modules qtimageformats --archives qtbase qtimageformats --outputdir .tools/qt
+
+      - name: Build and package
+        env:
+          QT_ROOT: ${{ github.workspace }}/.tools/qt/6.8.3/macos
+          PATH_ADDITION: ${{ github.workspace }}/.tools/python/bin
+        run: |
+          export PATH="$PATH_ADDITION:$PATH"
+          bash scripts/build-macos.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist/*.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.zip" -o -name "*.exe" -o -name "*.dmg" \) | sort | while read f; do
+            sha256sum "$f"
+          done > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: EditHere ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/*.exe.sha256
+            artifacts/*.dmg
+            artifacts/SHA256SUMS.txt
