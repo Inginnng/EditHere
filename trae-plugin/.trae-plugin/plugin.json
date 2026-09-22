@@ -1,6 +1,6 @@
 {
   "name": "edithere",
-  "version": "0.8.21",
+  "version": "0.8.22",
   "description": "EditHere（改这里）：让 AI 看懂你想怎么改。通过截图批注、布局调整，把修改意图结构化地交给 AI。",
   "i18n": {
     "display_name": {
