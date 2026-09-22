@@ -47,6 +47,10 @@ QVector<LayoutChoice> layoutChoices(const LayoutState &state, QPointF point);
 QRectF constrainLayoutRect(QRectF rect, QSize canvas);
 QRectF resizeLayoutRect(QRectF rect, QPointF delta, int handle, QSize canvas);
 QRectF scaleLayoutRect(QRectF rect, double factor, QSize canvas);
+// Map a rectangle from its old frame (before) into a new frame (after),
+// preserving relative position and size. Used to transform child groups when
+// a multi-selection union is dragged or resized as a block.
+QRectF transformedRectangle(QRectF r, QRectF before, QRectF after);
 void transformLayoutGroup(LayoutState &state, const QString &id, QRectF destination);
 QVector<LayoutMovement> layoutMovements(const LayoutState &state);
 void paintLayout(QPainter &painter, const QImage &original, const LayoutState &state);

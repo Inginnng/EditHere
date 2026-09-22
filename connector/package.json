@@ -1,0 +1,18 @@
+{
+  "name": "edithere-mcp",
+  "version": "0.1.1",
+  "description": "EditHere（改这里）MCP 连接器：把本地 edithere-cli 的 Agent 接口封装为 MCP 工具",
+  "type": "module",
+  "main": "mcp-server.mjs",
+  "bin": {
+    "edithere-mcp": "mcp-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "PolyForm Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Inginnng/EditHere"
+  }
+}

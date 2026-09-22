@@ -206,15 +206,39 @@ void LayoutCanvas::setGuides(bool visible) {
     guides_ = visible;
     update();
 }
-void LayoutCanvas::select(QString id) {
-    selected_ = std::move(id);
+QRectF LayoutCanvas::selectionBounds() const {
+    QRectF result;
+    for (const auto &id : selected_) {
+        const auto b = layoutBounds(state_, id);
+        if (result.isEmpty())
+            result = b;
+        else
+            result = result.united(b);
+    }
+    return result;
+}
+void LayoutCanvas::select(QStringList ids) {
+    selected_ = std::move(ids);
     hover_.clear();
     dragging_ = drawing_ = false;
     emit selectionChanged();
     update();
     emit hintChanged(selected_.isEmpty()
-                         ? "悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块"
-                         : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Esc 返回选块");
+                         ? "悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选"
+                         : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块");
+}
+void LayoutCanvas::toggleSelect(QString id) {
+    if (selected_.contains(id))
+        selected_.removeAll(id);
+    else
+        selected_.append(id);
+    hover_.clear();
+    dragging_ = drawing_ = false;
+    emit selectionChanged();
+    update();
+    emit hintChanged(selected_.isEmpty()
+                         ? "悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选"
+                         : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块");
 }
 void LayoutCanvas::clearSelection() {
     if (dragging_) {
@@ -268,19 +292,34 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
     auto screenRect = [&](QRectF r) {
         return QRectF(r.x() * zoom_, r.y() * zoom_, r.width() * zoom_, r.height() * zoom_);
     };
-    if (guides_ && selected_.isEmpty()) {
+    if (guides_) {
         p.setPen(QPen(QColor(0, 122, 255, 65), .7));
         p.setBrush(Qt::NoBrush);
         for (const auto &group : state_.groups)
-            p.drawRect(screenRect(layoutBounds(state_, group.id)));
+            if (!selected_.contains(group.id))
+                p.drawRect(screenRect(layoutBounds(state_, group.id)));
     }
-    QString active = selected_.isEmpty() ? hover_ : selected_;
-    if (!active.isEmpty()) {
-        auto r = screenRect(layoutBounds(state_, active));
-        p.setPen(QPen(accent(), 1.5, selected_.isEmpty() ? Qt::DashLine : Qt::SolidLine));
+    // Draw selection outline for each selected group.
+    if (!selected_.isEmpty()) {
+        for (const auto &id : selected_) {
+            auto r = screenRect(layoutBounds(state_, id));
+            p.setPen(QPen(accent(), 1.5, Qt::SolidLine));
+            p.setBrush(QColor(0, 122, 255, 12));
+            p.drawRect(r);
+            p.setBrush(Qt::white);
+            for (auto point : controlPoints(r))
+                p.drawEllipse(point, 4, 4);
+        }
+    } else if (!hover_.isEmpty()) {
+        auto r = screenRect(layoutBounds(state_, hover_));
+        p.setPen(QPen(accent(), 1.5, Qt::DashLine));
         p.setBrush(QColor(0, 122, 255, 12));
         p.drawRect(r);
-        if (!selected_.isEmpty()) {
+    }
+    if (!selected_.isEmpty()) {
+        auto r = screenRect(selectionBounds());
+        // Draw union control points for multi-select resize
+        if (selected_.size() > 1) {
             p.setBrush(Qt::white);
             for (auto point : controlPoints(r))
                 p.drawRect(QRectF(point - QPointF(4, 4), QSizeF(8, 8)));
@@ -406,7 +445,10 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
     updateHover(press_);
     if (!hover_.isEmpty()) {
         QString chosen = hover_;
-        select(chosen);
+        if (event->modifiers() & Qt::ControlModifier)
+            toggleSelect(chosen);
+        else
+            select({chosen});
         before_ = state_;
         initial_ = selectionBounds();
         dragging_ = true;
@@ -436,7 +478,20 @@ void LayoutCanvas::mouseMoveEvent(QMouseEvent *event) {
         auto destination = handle_ < 0
                                ? constrainLayoutRect(initial_.translated(end_ - press_), state_.canvas)
                                : resizeLayoutRect(initial_, end_ - press_, handle_, state_.canvas);
-        transformLayoutGroup(state_, selected_, destination);
+        // Transform each selected group. For move (handle_ < 0), compute per-group
+        // destination by applying the same delta. For resize, transform the union
+        // and apply proportionally to each group.
+        if (handle_ < 0 && selected_.size() > 1) {
+            const auto delta = end_ - press_;
+            for (const auto &id : selected_) {
+                auto groupBounds = layoutBounds(before_, id);
+                auto groupDest = constrainLayoutRect(groupBounds.translated(delta), state_.canvas);
+                transformLayoutGroup(state_, id, groupDest);
+            }
+        } else {
+            for (const auto &id : selected_)
+                transformLayoutGroup(state_, id, destination);
+        }
         emit selectionChanged();
     } else if (!drawing_) {
         updateAnnotationHover(event->position());
@@ -499,7 +554,7 @@ void LayoutCanvas::mouseReleaseEvent(QMouseEvent *event) {
                 auto id = addLayoutRegion(state_, region(press_, end_));
                 if (!id.isEmpty()) {
                     drawingMode_ = false;
-                    select(id);
+                    select(QStringList{id});
                     commit(before);
                     annotateSelection();
                 } else
@@ -515,7 +570,16 @@ void LayoutCanvas::transformSelection(QRectF destination) {
     if (selected_.isEmpty())
         return;
     auto before = state_;
-    transformLayoutGroup(state_, selected_, destination);
+    if (selected_.size() > 1) {
+        const auto oldBounds = layoutBounds(before_, selected_.first());
+        for (const auto &id : selected_) {
+            auto groupBounds = layoutBounds(before, id);
+            auto groupDest = transformedRectangle(groupBounds, oldBounds, destination);
+            transformLayoutGroup(state_, id, constrainLayoutRect(groupDest, state_.canvas));
+        }
+    } else {
+        transformLayoutGroup(state_, selected_.first(), destination);
+    }
     commit(before);
 }
 void LayoutCanvas::wheelEvent(QWheelEvent *event) {
@@ -711,7 +775,8 @@ void LayoutInspector::keyPressEvent(QKeyEvent *event) {
 }
 void LayoutInspector::refresh() {
     updating_ = true;
-    const auto id = canvas_->selected();
+    const auto ids = canvas_->selected();
+    const auto id = ids.isEmpty() ? QString() : ids.first();
     const auto r = canvas_->selectionBounds();
     if (id != fieldSelection_) {
         fieldSelection_ = id;

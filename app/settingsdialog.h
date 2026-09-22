@@ -7,6 +7,7 @@ class QCheckBox;
 class QTabWidget;
 class QKeySequenceEdit;
 class QLabel;
+class QLineEdit;
 namespace h2d {
 class SettingsDialog final : public QDialog {
     Q_OBJECT
@@ -26,6 +27,7 @@ class SettingsDialog final : public QDialog {
     void save();
     QComboBox *theme_, *defaultTool_;
     QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
+    QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
     QLabel *error_, *launchAtLoginNotice_;

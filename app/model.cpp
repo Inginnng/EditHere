@@ -378,12 +378,14 @@ QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector
             firstNotes[movement] = i;
     }
     QVector<MovementMarker> markers;
+    int nextOrphan = notes.size() + 1;
     for (int i = 0; i < movements.size(); ++i) {
         const auto &movement = movements[i];
         if (QLineF(movement.source.center(), movement.destination.center()).length() <= 0.01)
             continue;
         const int noteIndex = firstNotes[i];
-        markers.append({movement.source, movement.destination, noteIndex >= 0 ? noteIndex + 1 : 0, noteIndex});
+        const int number = noteIndex >= 0 ? noteIndex + 1 : nextOrphan++;
+        markers.append({movement.source, movement.destination, number, noteIndex});
     }
     return markers;
 }
@@ -485,24 +487,66 @@ QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, 
 }
 QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
     validateDocument(doc);
-    const auto changes = doc.layout ? exportLayoutChanges(*doc.layout) : QJsonArray{};
-    QJsonArray annotations;
-    for (const auto &note : doc.notes) {
-        QJsonObject annotation{{"text", note.comment}};
-        const int changeIndex = movementIndex(note, changes);
-        if (note.isGlobal) {
-            // A text-only annotation applies to the whole design.
-        } else if (changeIndex >= 0)
-            annotation.insert("change", changeIndex);
-        else if (note.isPoint)
-            annotation.insert("point", QJsonObject{{"x", note.point.x()}, {"y", note.point.y()}});
-        else
-            annotation.insert("rectangle", rectJson(note.rect));
-        annotations.append(annotation);
+    const auto movements = doc.layout ? layoutMovements(*doc.layout) : QVector<LayoutMovement>{};
+    // Build object-oriented structure: each object has source + movements + annotations.
+    struct ObjectEntry { QRectF source; bool isGlobal = false; QVector<QRectF> dests; QStringList texts; };
+    QVector<ObjectEntry> entries;
+    QHash<QString, int> bySource;
+    auto keyFor = [](QRectF r) {
+        return QString("%1,%2,%3,%4").arg(r.left()).arg(r.top()).arg(r.right()).arg(r.bottom());
+    };
+    auto ensureEntry = [&](QRectF source) -> int {
+        const QString key = keyFor(source);
+        if (bySource.contains(key)) return bySource.value(key);
+        entries.append({source, false, {}, {}});
+        bySource.insert(key, entries.size() - 1);
+        return entries.size() - 1;
+    };
+    for (const auto &m : movements) {
+        if (QLineF(m.source.center(), m.destination.center()).length() <= 0.01)
+            continue;
+        const int idx = ensureEntry(m.source);
+        entries[idx].dests.append(m.destination);
     }
-    QJsonObject result{{"annotationSpace", "result"},
-                       {"annotations", annotations},
-                       {"changes", changes}};
+    for (const auto &note : doc.notes) {
+        if (note.isGlobal) {
+            ObjectEntry e;
+            e.isGlobal = true;
+            e.texts.append(note.comment);
+            entries.append(e);
+            continue;
+        }
+        if (note.movementSource) {
+            const int idx = ensureEntry(*note.movementSource);
+            entries[idx].texts.append(note.comment);
+            continue;
+        }
+        // Standalone point or rect annotation.
+        ObjectEntry e;
+        e.source = note.isPoint
+            ? QRectF(note.point.x(), note.point.y(), 0, 0)
+            : QRectF(note.rect);
+        e.texts.append(note.comment);
+        entries.append(e);
+    }
+    QJsonArray objects;
+    for (const auto &e : entries) {
+        QJsonObject obj;
+        if (e.isGlobal)
+            obj.insert("source", QJsonValue(QJsonValue::Null));
+        else
+            obj.insert("source", floatingRectJson(e.source));
+        QJsonArray movementArray;
+        for (const auto &dest : e.dests)
+            movementArray.append(QJsonObject{{"to", floatingRectJson(dest)}});
+        obj.insert("movements", movementArray);
+        QJsonArray textArray;
+        for (const auto &t : e.texts)
+            textArray.append(t);
+        obj.insert("annotations", textArray);
+        objects.append(obj);
+    }
+    QJsonObject result{{"annotationSpace", "result"}, {"objects", objects}};
     if (embed) {
         validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4, doc.png.size());
         QByteArray encoded=doc.png;
@@ -624,7 +668,14 @@ static void exactKeys(const QJsonObject &o, const QStringList &keys) {
             fail("项目缺少字段：" + k);
 }
 static void feedbackFields(const QJsonObject &feedback) {
-    QStringList fields{"annotations", "changes"};
+    // Two accepted shapes: the object-oriented format ("objects") and the legacy
+    // action-oriented format ("annotations" + "changes"). Both optionally carry
+    // an "annotationSpace": "result" tag and an embedded "image" data URL.
+    QStringList fields;
+    if (feedback.contains("objects"))
+        fields.append("objects");
+    else
+        fields.append("annotations"), fields.append("changes");
     if (feedback.contains("annotationSpace")) {
         if (feedback["annotationSpace"] != "result")
             fail("批注坐标空间不正确");
@@ -687,9 +738,6 @@ static QImage readFeedbackPng(QByteArray &png) {
 }
 Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
     feedbackFields(feedback);
-    if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||
-        feedback["annotations"].toArray().size() > MaxNotes)
-        fail("批注或变化列表格式不正确");
     QImage image = original;
     QByteArray embedded;
     if (feedback.contains("image")) {
@@ -702,46 +750,166 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
     auto doc = fromImage(image, "file", "设计反馈");
     if (!embedded.isEmpty())
         doc.png = embedded;
-    const auto changes = feedback["changes"].toArray();
-    if (!changes.isEmpty())
-        doc.layout = importLayoutChanges(changes, image.size());
-    for (const auto &value : feedback["annotations"].toArray()) {
-        if (!value.isObject())
-            fail("批注格式不正确");
-        auto annotation = value.toObject();
-        const bool point = annotation.contains("point");
-        const bool movement = annotation.contains("change");
-        const bool global = !point && !movement && !annotation.contains("rectangle");
-        exactKeys(annotation, global ? QStringList{"text"} : movement ? QStringList{"change", "text"}
-                              : point ? QStringList{"point", "text"} : QStringList{"rectangle", "text"});
-        if (!annotation["text"].isString())
-            fail("批注文字格式不正确");
-        Note note;
-        note.isPoint = point;
-        note.isGlobal = global;
-        note.comment = annotation["text"].toString();
-        if (global) {
-            note.isPoint = true;
-        } else if (movement) {
-            const int index = integer(annotation["change"]);
-            if (index < 0 || index >= changes.size())
-                fail("批注关联的移动不存在");
-            const auto change = changes[index].toObject();
-            note.movementSource = floatingJsonRect(change["from"].toObject());
-            note.rect = floatingJsonRect(change["to"].toObject()).toAlignedRect()
-                            .intersected(QRect(QPoint(0, 0), image.size()));
-        } else if (point) {
-            if (!annotation["point"].isObject())
-                fail("点标注格式不正确");
-            const auto position = annotation["point"].toObject();
-            exactKeys(position, {"x", "y"});
-            note.point = {integer(position["x"]), integer(position["y"])};
-        } else {
-            if (!annotation["rectangle"].isObject())
-                fail("框标注格式不正确");
-            note.rect = jsonRect(annotation["rectangle"].toObject());
+    if (feedback.contains("objects")) {
+        // Object-oriented format. Each entry describes a source region (or a null
+        // source for global feedback) together with its movements and text notes.
+        if (!feedback["objects"].isArray() || feedback["objects"].toArray().size() > MaxNotes)
+            fail("对象列表格式或数量不正确");
+        const auto objects = feedback["objects"].toArray();
+        // Source rects may be zero-area (point annotations). Parse them with a
+        // lenient reader so a point source does not trip the positive-size check
+        // that movement destinations must satisfy.
+        auto sourceRect = [](const QJsonValue &value) {
+            if (!value.isObject())
+                fail("对象源区域格式不正确");
+            const auto o = value.toObject();
+            if (o.size() != 4 || !o.contains("x1") || !o.contains("y1") ||
+                !o.contains("x2") || !o.contains("y2"))
+                fail("对象源区域字段不正确");
+            for (const auto &key : {"x1", "y1", "x2", "y2"})
+                if (!o[key].isDouble() || !std::isfinite(o[key].toDouble()) ||
+                    std::abs(o[key].toDouble()) > 10000000)
+                    fail("对象源区域坐标不正确");
+            return QRectF(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
+                          QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
+        };
+        // Build the layout by adding regions and applying movements, mirroring
+        // the interactive flow. This supports nested objects (parent + child
+        // with overlapping sources) that the flat change-list cannot represent.
+        struct LayoutObject { QRectF source; QVector<QRectF> destinations; };
+        QVector<LayoutObject> layoutObjects;
+        for (const auto &value : objects) {
+            if (!value.isObject())
+                fail("对象格式不正确");
+            const auto obj = value.toObject();
+            exactKeys(obj, {"source", "movements", "annotations"});
+            if (!obj["movements"].isArray() || !obj["annotations"].isArray())
+                fail("对象移动或批注格式不正确");
+            if (obj["source"].isNull())
+                continue;
+            const auto source = sourceRect(obj["source"]);
+            if (source.width() < 1e-7 || source.height() < 1e-7)
+                continue;
+            LayoutObject info;
+            info.source = source;
+            for (const auto &movement : obj["movements"].toArray()) {
+                if (!movement.isObject())
+                    fail("移动格式不正确");
+                const auto moveObj = movement.toObject();
+                exactKeys(moveObj, {"to"});
+                const auto dest = floatingJsonRect(moveObj["to"].toObject());
+                if (!sameMovementRect(source, dest))
+                    info.destinations.append(dest);
+            }
+            if (!info.destinations.isEmpty())
+                layoutObjects.append(info);
         }
-        doc.notes.append(note);
+        if (!layoutObjects.isEmpty()) {
+            auto layout = createLayout(image.size(), {});
+            QStringList groupIds;
+            for (const auto &info : layoutObjects)
+                groupIds.append(addLayoutRegion(layout, info.source));
+            for (int i = 0; i < layoutObjects.size(); ++i)
+                for (const auto &dest : layoutObjects[i].destinations)
+                    transformLayoutGroup(layout, groupIds[i], dest);
+            doc.layout = std::move(layout);
+        }
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            const auto texts = obj["annotations"].toArray();
+            if (obj["source"].isNull()) {
+                if (!obj["movements"].toArray().isEmpty())
+                    fail("全局批注不能关联移动");
+                for (const auto &text : texts) {
+                    if (!text.isString())
+                        fail("批注文字格式不正确");
+                    Note note;
+                    note.isGlobal = true;
+                    note.isPoint = true;
+                    note.comment = text.toString();
+                    doc.notes.append(note);
+                }
+                continue;
+            }
+            const auto source = sourceRect(obj["source"]);
+            const bool isPoint = source.width() < 1e-7 || source.height() < 1e-7;
+            const auto movements = obj["movements"].toArray();
+            const bool hasMovements = !movements.isEmpty();
+            for (const auto &text : texts) {
+                if (!text.isString())
+                    fail("批注文字格式不正确");
+                Note note;
+                note.comment = text.toString();
+                if (isPoint) {
+                    note.isPoint = true;
+                    note.point = QPoint(qRound(source.left()), qRound(source.top()));
+                    if (!containsPixel(QRect(QPoint(0, 0), image.size()), note.point))
+                        fail("点标注超出画布");
+                } else if (hasMovements) {
+                    note.isPoint = false;
+                    note.movementSource = source;
+                    const auto firstDest =
+                        floatingJsonRect(movements[0].toObject()["to"].toObject());
+                    note.rect = firstDest.toAlignedRect()
+                                    .intersected(QRect(QPoint(0, 0), image.size()));
+                    if (note.rect.isEmpty())
+                        fail("框选超出画布");
+                } else {
+                    note.isPoint = false;
+                    note.rect =
+                        source.toAlignedRect().intersected(QRect(QPoint(0, 0), image.size()));
+                    if (note.rect.isEmpty())
+                        fail("框选超出画布");
+                }
+                doc.notes.append(note);
+            }
+        }
+    } else {
+        // Legacy action-oriented format: annotations reference changes by index.
+        if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||
+            feedback["annotations"].toArray().size() > MaxNotes)
+            fail("批注或变化列表格式不正确");
+        const auto changes = feedback["changes"].toArray();
+        if (!changes.isEmpty())
+            doc.layout = importLayoutChanges(changes, image.size());
+        for (const auto &value : feedback["annotations"].toArray()) {
+            if (!value.isObject())
+                fail("批注格式不正确");
+            auto annotation = value.toObject();
+            const bool point = annotation.contains("point");
+            const bool movement = annotation.contains("change");
+            const bool global = !point && !movement && !annotation.contains("rectangle");
+            exactKeys(annotation, global ? QStringList{"text"} : movement ? QStringList{"change", "text"}
+                                  : point ? QStringList{"point", "text"} : QStringList{"rectangle", "text"});
+            if (!annotation["text"].isString())
+                fail("批注文字格式不正确");
+            Note note;
+            note.isPoint = point;
+            note.isGlobal = global;
+            note.comment = annotation["text"].toString();
+            if (global) {
+                note.isPoint = true;
+            } else if (movement) {
+                const int index = integer(annotation["change"]);
+                if (index < 0 || index >= changes.size())
+                    fail("批注关联的移动不存在");
+                const auto change = changes[index].toObject();
+                note.movementSource = floatingJsonRect(change["from"].toObject());
+                note.rect = floatingJsonRect(change["to"].toObject()).toAlignedRect()
+                                .intersected(QRect(QPoint(0, 0), image.size()));
+            } else if (point) {
+                if (!annotation["point"].isObject())
+                    fail("点标注格式不正确");
+                const auto position = annotation["point"].toObject();
+                exactKeys(position, {"x", "y"});
+                note.point = {integer(position["x"]), integer(position["y"])};
+            } else {
+                if (!annotation["rectangle"].isObject())
+                    fail("框标注格式不正确");
+                note.rect = jsonRect(annotation["rectangle"].toObject());
+            }
+            doc.notes.append(note);
+        }
     }
     validateDocument(doc);
     if (doc.layout && !feedback.contains("annotationSpace"))
@@ -920,7 +1088,8 @@ Document loadDocument(const QString &path) {
 void saveBytes(const QString &path, const QByteArray &bytes) {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail("文件保存失败，请检查目录权限和剩余空间");
+        fail(QStringLiteral("文件保存失败（%1：%2），请检查目录权限和剩余空间")
+                 .arg(path, file.errorString().isEmpty() ? QStringLiteral("未知原因") : file.errorString()));
 }
 void CandidatePicker::reset() {
     levels_.clear();

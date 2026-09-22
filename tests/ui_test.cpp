@@ -341,7 +341,7 @@ class UiTests : public QObject {
         QVERIFY(QApplication::activeModalWidget() == nullptr);
         QVERIFY(exportLayoutChanges(*editor.document().layout).isEmpty());
         finishInlineNote(editor, "这一块整体更轻盈，留白更从容。");
-        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
+        QVERIFY(exportLayoutChanges(*editor.document().layout).isEmpty());
         QVERIFY(!editor.document().notes.last().isPoint);
         QVERIFY(editor.document().notes.last().rect.width() > 290);
         editor.findChild<QPushButton *>("mode_select")->click();
@@ -468,7 +468,7 @@ class UiTests : public QObject {
         const auto feedback = exportFeedback(before);
         const QRect geometry = editor.geometry();
         const QSize viewport = imageScroll->viewport()->size();
-        const QString selection = canvas->selected();
+        const QStringList selection = canvas->selected();
         QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
 
         minimize->click();
@@ -622,7 +622,7 @@ class UiTests : public QObject {
         const auto feedback = exportFeedback(before, true);
         const double zoom = editor.canvas()->zoom();
         QPointer<LayoutCanvas> layoutCanvas = editor.layoutCanvas();
-        const QString selection = layoutCanvas ? layoutCanvas->selected() : QString();
+        const QStringList selection = layoutCanvas ? layoutCanvas->selected() : QStringList();
         QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
         QCOMPARE(fullscreen->toolTip(), QString("全屏"));
 
@@ -762,7 +762,7 @@ class UiTests : public QObject {
         const auto before = editor.document();
         const auto feedback = exportFeedback(before, true);
         const double zoom = editor.canvas()->zoom();
-        const QString selection = explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected();
+        const QStringList selection = explosion ? editor.layoutCanvas()->selected() : QStringList(editor.canvas()->selected());
         QWidget *surface = blankViewport ? scroll->viewport() : canvas;
         const QPoint viewportPosition = blankViewport ? QPoint(140, scroll->viewport()->height() - 20)
                                                       : QPoint(160, 160);
@@ -794,7 +794,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.geometry(), geometry);
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QCOMPARE(editor.explosionActive(), explosion);
-        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected(), selection);
+        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : QStringList(editor.canvas()->selected()), selection);
         QCOMPARE(editor.document().dirty, before.dirty);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
@@ -882,7 +882,7 @@ class UiTests : public QObject {
         const QPointF anchoredPixel = (cursor - QPointF(canvas->pos())) / initialZoom;
         const auto before = editor.document();
         const auto feedback = exportFeedback(before, true);
-        const QString selection = explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected();
+        const QStringList selection = explosion ? editor.layoutCanvas()->selected() : QStringList(editor.canvas()->selected());
         const QRect geometry = editor.geometry();
         bool largerThanViewport = false;
         for (int cycle = 0; cycle < 2; ++cycle) {
@@ -910,7 +910,7 @@ class UiTests : public QObject {
         }
         QVERIFY(largerThanViewport);
         QCOMPARE(editor.explosionActive(), explosion);
-        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : editor.canvas()->selected(), selection);
+        QCOMPARE(explosion ? editor.layoutCanvas()->selected() : QStringList(editor.canvas()->selected()), selection);
         QCOMPARE(editor.document().dirty, before.dirty);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
@@ -1033,10 +1033,16 @@ class UiTests : public QObject {
         }
         QVERIFY2(fullyVisible >= 6, "The reserved sidebar should show more than five short notes at once");
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback["annotations"].toArray().size(), 8);
-        for (const auto &value : feedback["annotations"].toArray())
-            QCOMPARE(value.toObject().keys(), QStringList{"text"});
-        QVERIFY(feedback["changes"].toArray().isEmpty());
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 8);
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            QVERIFY(obj["source"].isNull()); // 全局意见没有坐标源
+            QVERIFY(obj["movements"].toArray().isEmpty());
+            QCOMPARE(obj["annotations"].toArray().size(), 1);
+        }
+        QVERIFY(!editor.document().layout.has_value() ||
+                exportLayoutChanges(*editor.document().layout).isEmpty());
         artifact(editor, "compact-global-notes.png");
         editor.hide();
     }
@@ -1161,7 +1167,8 @@ class UiTests : public QObject {
         QCOMPARE(input->verticalScrollBar()->value(), 0);
         QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
         QCOMPARE(input->toPlainText(), fullText);
-        QCOMPARE(exportFeedback(editor.document())["annotations"].toArray().last().toObject()["text"].toString(), fullText);
+        const auto objs = exportFeedback(editor.document())["objects"].toArray();
+        QCOMPARE(objs.last().toObject()["annotations"].toArray().last().toString(), fullText);
         artifact(editor, "long-note-collapsed.png");
         fold->click();
         QTRY_COMPARE(fold->text(), QString("收起"));
@@ -1688,7 +1695,8 @@ class UiTests : public QObject {
         clear->click();
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
-        const QString firstId = canvas->selected();
+        const QStringList selection = canvas->selected();
+        const QString firstId = selection.isEmpty() ? QString() : selection.first();
 
         auto before = canvas->selectionBounds();
         const QPointF east(before.right(), before.center().y());
@@ -1696,7 +1704,7 @@ class UiTests : public QObject {
         auto afterEdge = canvas->selectionBounds();
         QVERIFY(afterEdge.width() > before.width() + 35);
         QVERIFY(qAbs(afterEdge.height() - before.height()) < 0.01);
-        QCOMPARE(canvas->selected(), firstId);
+        QCOMPARE(canvas->selected(), QStringList(firstId));
 
         const QPointF corner = afterEdge.bottomRight();
         drag(canvas, corner, corner + QPointF(48, 27));
@@ -1746,7 +1754,7 @@ class UiTests : public QObject {
 
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier,
                           canvasPoint(canvas, layoutBounds(canvas->state(), firstId).bottomLeft() + QPointF(16, -16)));
-        QCOMPARE(canvas->selected(), firstId);
+        QCOMPARE(canvas->selected(), QStringList(firstId));
         animation->stop();
         wave->hide();
         artifact(editor, "inline-explosion.png");
@@ -1799,12 +1807,23 @@ class UiTests : public QObject {
         const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes"}));
-        QCOMPARE(feedback["changes"].toArray().size(), 1);
-        QCOMPARE(feedback["changes"].toArray().first().toObject()["from"].toObject(),
-                 rectJson(QRect(60, 60, 120, 90)));
-        QCOMPARE(feedback["changes"].toArray().first().toObject()["to"].toObject(),
-                 rectJson(QRect(440, 60, 120, 90)));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "objects"}));
+        const auto objects = feedback["objects"].toArray();
+        bool foundMovement = false;
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            const auto movements = obj["movements"].toArray();
+            if (!movements.isEmpty()) {
+                foundMovement = true;
+                QCOMPARE(movements.size(), 1);
+                // 源坐标 = from，movements[0].to = to
+                QCOMPARE(obj["source"].toObject(),
+                         (QJsonObject{{"x1", 60.}, {"y1", 60.}, {"x2", 180.}, {"y2", 150.}}));
+                QCOMPARE(movements[0].toObject()["to"].toObject(),
+                         (QJsonObject{{"x1", 440.}, {"y1", 60.}, {"x2", 560.}, {"y2", 150.}}));
+            }
+        }
+        QVERIFY(foundMovement);
 
         auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
         QVERIFY(undo && redo && undo->isEnabled());
@@ -1825,7 +1844,7 @@ class UiTests : public QObject {
         QVERIFY(wave && animation);
         canvas->setFocus();
         QTRY_VERIFY(canvas->hasFocus());
-        const QString selected = canvas->selected();
+        const QStringList selected = canvas->selected();
         const bool dirty = editor.document().dirty;
         const auto feedbackBeforeWave = serializeFeedback(editor.document(), true);
         QSignalSpy layoutChanges(canvas, &LayoutCanvas::changed);
@@ -1940,7 +1959,7 @@ class UiTests : public QObject {
         // The shared frame tool also starts its annotation immediately in explosion mode.
         editor.findChild<QPushButton *>("mode_rect")->click();
         QVERIFY(layout->isVisible() && layout->drawingMode());
-        const auto beforeManualFeedback = exportFeedback(editor.document())["changes"].toArray();
+        const auto beforeManualFeedback = exportLayoutChanges(*editor.document().layout);
         drag(layout, {450, 70}, {540, 125});
         QCOMPARE(editor.document().notes.size(), 2);
         auto frameInput = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
@@ -1971,7 +1990,11 @@ class UiTests : public QObject {
         for (auto card : notesPanel->findChildren<QWidget *>("noteCard"))
             if (card->isVisible())
                 ++visibleNoteCards;
-        QCOMPARE(visibleNoteCards, editor.document().notes.size());
+        // Orphan movements (movements without a linked note) also get sidebar cards.
+        const auto markers = movementMarkers(*editor.document().layout, editor.document().notes);
+        const int orphanCards = std::count_if(markers.begin(), markers.end(),
+                                               [](const MovementMarker &m) { return m.noteIndex < 0; });
+        QCOMPARE(visibleNoteCards, editor.document().notes.size() + orphanCards);
         artifact(editor, "result-annotations.png");
 
         // A selected annotation in the hidden result canvas must not be deleted in component mode.
@@ -2039,12 +2062,19 @@ class UiTests : public QObject {
         artifact(editor, "explosion-with-annotations.png");
         const auto feedback = exportFeedback(editor.document());
         QCOMPARE(feedback["annotationSpace"].toString(), QString("result"));
-        QCOMPARE(feedback["annotations"].toArray().size(), 3);
-        QCOMPARE(feedback["changes"].toArray().size(), 1);
-        QCOMPARE(feedback["changes"].toArray()[0].toObject()["from"].toObject(),
-                 rectJson(QRect(60, 60, 120, 90)));
-        QCOMPARE(feedback["changes"].toArray()[0].toObject()["to"].toObject(),
-                 rectJson(QRect(600, 240, 120, 90)));
+        const auto objects = feedback["objects"].toArray();
+        bool foundMovement = false;
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            if (!obj["movements"].toArray().isEmpty()) {
+                foundMovement = true;
+                QCOMPARE(obj["source"].toObject(),
+                         (QJsonObject{{"x1", 60.}, {"y1", 60.}, {"x2", 180.}, {"y2", 150.}}));
+                QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
+                         (QJsonObject{{"x1", 600.}, {"y1", 240.}, {"x2", 720.}, {"y2", 330.}}));
+            }
+        }
+        QVERIFY(foundMovement);
         QCOMPARE(editor.geometry(), geometry);
         QCOMPARE(imageScroll->viewport()->size(), viewport);
         editor.hide();
@@ -2085,7 +2115,7 @@ class UiTests : public QObject {
         canvas->setFocus();
         QTRY_COMPARE(editor.document().notes.size(), 2);
         QVERIFY(!editor.document().dirty);
-        QVERIFY(exportFeedback(editor.document())["changes"].toArray().isEmpty());
+        QVERIFY(exportLayoutChanges(*editor.document().layout).isEmpty());
         canvas->clearSelection();
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint(canvas, {100, 110}));
         QCOMPARE(canvas->selectionBounds(), QRectF(60, 60, 120, 90));
@@ -2096,8 +2126,8 @@ class UiTests : public QObject {
         const auto expectedFeedback = exportFeedback(editor.document());
         const auto expectedEmbedded = exportFeedback(editor.document(), true);
         const auto expectedImage = renderLayout(editor.document().image, *editor.document().layout);
-        QCOMPARE(expectedFeedback["annotations"].toArray().size(), 2);
-        QCOMPARE(expectedFeedback["changes"].toArray().size(), 1);
+        const auto expectedObjects = expectedFeedback["objects"].toArray();
+        QVERIFY(expectedObjects.size() >= 3); // 移动 + 点 + 矩形
 
         auto exportButton = editor.findChild<QPushButton *>("exportJson");
         QVERIFY(exportButton);
@@ -2116,7 +2146,7 @@ class UiTests : public QObject {
             auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
             QVERIFY(embed && embed->isChecked());
             auto preview = parsed.object();
-            QCOMPARE(preview.keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
+            QCOMPARE(preview.keys(), QStringList({"annotationSpace", "image", "objects"}));
             QVERIFY(preview["image"].toString().startsWith("data:image/png;base64,"));
             QVERIFY(preview["image"] != expectedEmbedded["image"]);
             preview.remove("image");

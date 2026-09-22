@@ -237,8 +237,16 @@ QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label)
     auto members = cut(next, bounds);
     if (members.isEmpty())
         return {};
+    // Store original pixel-space bounds from the member pieces' sources so
+    // originalGroupBounds stays stable even if pieces are later removed from
+    // this group by the B1 parent-detachment logic.
+    const QSet<QString> memberSet(members.begin(), members.end());
+    QRectF sourceBounds;
+    for (const auto &piece : next.pieces)
+        if (memberSet.contains(piece.id))
+            sourceBounds = sourceBounds.isEmpty() ? piece.source : sourceBounds.united(piece.source);
     QString id = uniqueId();
-    next.groups.append({id, label.left(1000), "manual", {}, members});
+    next.groups.append({id, label.left(1000), "manual", sourceBounds, members});
     state = std::move(next);
     return id;
 }
@@ -338,12 +346,12 @@ QRectF originalGroupBounds(const LayoutState &state, const LayoutGroup &group) {
             result = result.isEmpty() ? piece.source : result.united(piece.source);
     return result;
 }
+} // namespace
 QRectF transformedRectangle(QRectF r, QRectF before, QRectF after) {
     return {after.x() + (r.x() - before.x()) * after.width() / before.width(),
             after.y() + (r.y() - before.y()) * after.height() / before.height(),
             r.width() * after.width() / before.width(), r.height() * after.height() / before.height()};
 }
-} // namespace
 QVector<LayoutMovement> layoutMovements(const LayoutState &state) {
     if (state.movements)
         return *state.movements;
@@ -420,6 +428,24 @@ void transformLayoutGroup(LayoutState &state, const QString &id, QRectF destinat
     }
     background += foreground;
     state.pieces = std::move(background);
+    // Once a group is moved, its pieces are no longer part of any parent group
+    // (a group that fully contains the moved group's pieces and is strictly
+    // larger). This prevents moved child blocks from following parent
+    // transforms. Groups that merely share pieces with the moved group —
+    // e.g., a child nested inside the moved parent — keep their pieces so
+    // they can still be selected and moved independently afterward.
+    for (auto &group : state.groups) {
+        if (group.id == id || group.pieces.size() <= selected.size())
+            continue;
+        const QSet<QString> groupSet(group.pieces.begin(), group.pieces.end());
+        const bool isParent = std::all_of(selected.begin(), selected.end(),
+                                          [&](const QString &p) { return groupSet.contains(p); });
+        if (isParent)
+            group.pieces.erase(
+                std::remove_if(group.pieces.begin(), group.pieces.end(),
+                               [&](const QString &pieceId) { return selected.contains(pieceId); }),
+                group.pieces.end());
+    }
 }
 void paintLayout(QPainter &painter, const QImage &original, const LayoutState &state) {
     painter.save();
@@ -469,8 +495,9 @@ void validateLayout(const LayoutState &state, QSize original) {
                     !group.pieces.isEmpty() && group.pieces.size() <= MaxLayoutPieces,
                 "布局区域格式不正确");
         groupIds.insert(group.id);
-        require(group.origin == "manual" ? group.originalBounds.isNull()
-                                         : fits(group.originalBounds, original),
+        require(group.origin == "manual"
+                        ? group.originalBounds.isNull() || fits(group.originalBounds, original)
+                        : fits(group.originalBounds, original),
                 "布局原始区域不正确");
         QSet<QString> members;
         for (const auto &id : group.pieces) {

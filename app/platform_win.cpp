@@ -84,6 +84,16 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
             }
         };
         auto activation = std::make_shared<ActivationWindow>();
+        // Send Escape to dismiss any active shell popup (tray overflow flyout,
+        // jump list, etc.). SetForegroundWindow alone does not reliably close
+        // Windows 11's tray overflow panel.
+        INPUT escape[2]{};
+        escape[0].type = INPUT_KEYBOARD;
+        escape[0].ki.wVk = VK_ESCAPE;
+        escape[1].type = INPUT_KEYBOARD;
+        escape[1].ki.wVk = VK_ESCAPE;
+        escape[1].ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(2, escape, sizeof(INPUT));
         // A visible (fully transparent) window can become foreground. Merely hiding
         // the editor or waiting leaves Explorer's overflow panel active on a tray click.
         activation->handle = CreateWindowExW(
@@ -95,9 +105,8 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
             ShowWindow(activation->handle, SW_SHOW);
             SetForegroundWindow(activation->handle);
         }
-        // Focus loss lets the shell dismiss its own panel. Allow its closing animation
-        // to finish, then wait for the compositor before obtaining the frozen image.
-        QTimer::singleShot(300, context, [activation, ready = std::move(ready)] {
+        // Escape closes the flyout quickly; 200ms is enough for the compositor flush.
+        QTimer::singleShot(200, context, [activation, ready = std::move(ready)] {
             if (activation->handle)
                 ShowWindow(activation->handle, SW_HIDE);
             DwmFlush();

@@ -147,7 +147,7 @@ class PlatformTests : public QObject {
         QVERIFY(!completed);
         QTRY_VERIFY_WITH_TIMEOUT(completed, 2500);
         QVERIFY(dismissedAtCapture);
-        QVERIFY(elapsed.elapsed() >= 250);
+        QVERIFY(elapsed.elapsed() >= 500);
     }
     void preparationIsCancelledWithOwner() {
         bool completed = false;

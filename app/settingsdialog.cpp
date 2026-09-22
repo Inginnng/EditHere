@@ -9,8 +9,14 @@
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QTabWidget>
 #include <QTimer>
 #include <QToolButton>
@@ -126,6 +132,27 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
     defaultsLayout->addWidget(embedOriginal_);
+    auto feedbackRow = new QHBoxLayout;
+    feedbackDir_ = new QLineEdit(defaults);
+    feedbackDir_->setObjectName("feedbackDir");
+    feedbackDir_->setPlaceholderText("默认：缓存目录下的 feedback");
+    feedbackDir_->setMinimumWidth(280);
+    feedbackDir_->setToolTip("自定义反馈 JSON 临时文件的保存位置。留空使用默认缓存目录。");
+    auto browse = new QToolButton(defaults);
+    browse->setText("…");
+    browse->setObjectName("feedbackDirBrowse");
+    connect(browse, &QToolButton::clicked, this, [this] {
+        const auto dir = QFileDialog::getExistingDirectory(
+            this, "选择反馈临时目录",
+            feedbackDir_->text().isEmpty() ? QString() : feedbackDir_->text());
+        if (!dir.isEmpty())
+            feedbackDir_->setText(QDir::toNativeSeparators(dir));
+    });
+    feedbackRow->addWidget(feedbackDir_, 1);
+    feedbackRow->addWidget(browse);
+    auto feedbackForm = new QFormLayout;
+    feedbackForm->addRow("反馈临时目录", feedbackRow);
+    defaultsLayout->addLayout(feedbackForm);
     auto exportHint = mutedLabel("包含原图的 JSON 可独立还原。保存项目始终包含原图。", defaults);
     exportHint->setWordWrap(true);
     defaultsLayout->addWidget(exportHint);
@@ -198,6 +225,10 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     updateActions->addWidget(releases);
     updateActions->addStretch();
     aboutLayout->addLayout(updateActions);
+    auto progressBar = new QProgressBar(about);
+    progressBar->setObjectName("updateProgress");
+    progressBar->setVisible(false);
+    aboutLayout->addWidget(progressBar);
     aboutLayout->addStretch();
     tabs->addTab(about, "关于与更新");
     updater_ = new UpdateChecker(this);
@@ -207,17 +238,68 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         updater_->check();
     });
     connect(updater_, &UpdateChecker::finished, this,
-            [status, check, releases](UpdateChecker::Status state, const QString &message, const QUrl &url) {
+            [this, status, check, releases](UpdateChecker::Status state, const QString &message, const QUrl &url) {
                 status->setText(message);
                 check->setEnabled(true);
-                releases->setText(state == UpdateChecker::Available ? "前往下载" : "打开发布页");
+                if (state == UpdateChecker::Available) {
+                    releases->setText("立即更新");
+                    releases->setProperty("updateAvailable", true);
+                } else {
+                    releases->setText("打开发布页");
+                    releases->setProperty("updateAvailable", false);
+                }
                 releases->setProperty("releaseUrl", url);
             });
-    connect(releases, &QPushButton::clicked, this, [releases, status] {
-        const auto url = releases->property("releaseUrl").toUrl();
-        if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
-            status->setText("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。");
+    connect(releases, &QPushButton::clicked, this, [this, releases, status, progressBar] {
+        if (releases->property("updateAvailable").toBool()) {
+            const auto &result = updater_->lastResult();
+            bool isInstaller = false;
+#ifdef Q_OS_WIN
+            {
+                QSettings reg("HKEY_CURRENT_USER\\Software\\EditHere\\Installer", QSettings::NativeFormat);
+                const QString installDir = reg.value("InstallDir").toString();
+                if (!installDir.isEmpty()) {
+                    const QString appDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
+                    isInstaller = QDir::fromNativeSeparators(installDir).compare(
+                        QDir::fromNativeSeparators(appDir), Qt::CaseInsensitive) == 0;
+                }
+            }
+#endif
+            if (isInstaller && result.installer.url.isValid()) {
+                status->setText("正在下载安装器…");
+                updater_->downloadAndInstall(result.installer, result.installerHash, true);
+            } else if (result.portable.url.isValid()) {
+                status->setText("正在下载免安装包…");
+                updater_->downloadAndInstall(result.portable, result.portableHash, false);
+            } else {
+                status->setText("未找到适合当前系统的更新包，请前往发布页手动下载。");
+                return;
+            }
+            releases->setEnabled(false);
+            progressBar->setVisible(true);
+            progressBar->setRange(0, 100);
+            progressBar->setValue(0);
+        } else {
+            const auto url = releases->property("releaseUrl").toUrl();
+            if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
+                status->setText("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。");
+        }
     });
+    connect(updater_, &UpdateChecker::downloadProgress, this,
+            [progressBar](qint64 received, qint64 total) {
+                if (total > 0)
+                    progressBar->setValue(static_cast<int>(received * 100 / total));
+            });
+    connect(updater_, &UpdateChecker::installStarted, this, [this] {
+        QDialog::accept();
+        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    });
+    connect(updater_, &UpdateChecker::installFailed, this,
+            [this, status, releases, progressBar](const QString &message) {
+                status->setText(message);
+                releases->setEnabled(true);
+                progressBar->setVisible(false);
+            });
     error_ = new QLabel(this);
     error_->setObjectName("errorLabel");
     error_->setProperty("error", true);
@@ -278,6 +360,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     embedOriginal_->setChecked(settings.embedOriginal);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
+    feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
     defaultTool_->setCurrentIndex(settings.defaultTool);
 }
 AppSettings SettingsDialog::settings() const {
@@ -287,6 +370,7 @@ AppSettings SettingsDialog::settings() const {
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.embedOriginal = embedOriginal_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
+    result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());
     result.defaultTool = defaultTool_->currentIndex();
     result.theme = static_cast<ThemeMode>(theme_->currentData().toInt());
     result.toolbarActions.clear();

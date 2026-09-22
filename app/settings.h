@@ -15,6 +15,7 @@ struct AppSettings {
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
     bool checkUpdatesOnStartup = false;
+    QString feedbackDir; // Empty = default CacheLocation/feedback.
     int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.
     bool operator==(const AppSettings &) const = default;
 };

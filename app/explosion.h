@@ -20,12 +20,10 @@ class LayoutCanvas final : public QWidget {
     bool annotationsVisible() const { return annotationsVisible_; }
     void annotateSelection();
     void cancelInteraction();
-    QString selected() const {
+    QStringList selected() const {
         return selected_;
     }
-    QRectF selectionBounds() const {
-        return layoutBounds(state_, selected_);
-    }
+    QRectF selectionBounds() const;
     double zoom() const {
         return zoom_;
     }
@@ -75,12 +73,14 @@ class LayoutCanvas final : public QWidget {
     int hitMovement(QPointF screen) const;
     void updateAnnotationHover(QPointF screen);
     void commit(const LayoutState &before);
-    void select(QString id);
+    void select(QStringList ids);
+    void toggleSelect(QString id);
     QImage original_;
     LayoutState state_, before_, annotationState_;
     QVector<Note> annotations_;
     QVector<LayoutState> undo_, redo_;
-    QString selected_, hover_;
+    QStringList selected_;
+    QString hover_;
     QVector<LayoutChoice> choices_;
     int level_ = 0, handle_ = -1;
     double zoom_ = 1;

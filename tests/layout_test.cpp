@@ -187,32 +187,35 @@ class LayoutTests : public QObject {
         state = untouched;
         QVERIFY(layoutMovements(state).isEmpty());
     }
-    void laterParentTransformsUpdateIndependentChildTrajectoriesOnce() {
+    void movedChildStaysIndependentOfLaterParentTransforms() {
         auto state = createLayout({160, 120}, tableRegions());
         const auto parent = groupId(state, "1234"), child = groupId(state, "1");
         transformLayoutGroup(state, parent, {50, 50, 90, 60});
         transformLayoutGroup(state, child, {10, 70, 45, 30});
-        QCOMPARE(layoutBounds(state, parent), QRectF(10, 50, 130, 60));
+        // B1 修复：子组件移动后，其切片从父组件中移除，父组件的边界
+        // 不再包含子组件的移动区域，仅保留父组件自身的 L 形剩余部分。
+        QCOMPARE(layoutBounds(state, parent), QRectF(50, 50, 90, 60));
         auto scaled = state;
         transformLayoutGroup(scaled, parent, {20, 20, 65, 30});
         QCOMPARE(layoutMovements(scaled).size(), 2);
-        QCOMPARE(layoutMovements(scaled)[0].destination, QRectF(40, 20, 45, 30));
-        QCOMPARE(layoutMovements(scaled)[1].destination, QRectF(20, 30, 22.5, 15));
+        // 父组件按自身边界变换，目标从 (50,50,90x60) 映射到 (20,20,65x30)。
+        QCOMPARE(layoutMovements(scaled)[0].destination, QRectF(20, 20, 65, 30));
+        // 子组件已脱离父组件，后续父组件变换不再更新子组件的轨迹。
+        QCOMPARE(layoutMovements(scaled)[1].destination, QRectF(10, 70, 45, 30));
         QCOMPARE(layoutMovements(scaled)[1].destination, layoutBounds(scaled, child));
         QVERIFY(importLayout(exportLayout(scaled), scaled.canvas) == scaled);
         transformLayoutGroup(state, parent, {20, 30, 130, 60});
         auto movements = layoutMovements(state);
         QCOMPARE(movements.size(), 2);
-        // The parent retains its own frame instead of adopting the displaced
-        // child's expanded union as the parent's final location.
+        // 父组件保留自身框架，子组件轨迹不被后续父组件变换更新。
         QCOMPARE(movements[0].source, QRectF(10, 10, 60, 40));
-        QCOMPARE(movements[0].destination, QRectF(60, 30, 90, 60));
+        QCOMPARE(movements[0].destination, QRectF(20, 30, 130, 60));
         QCOMPARE(movements[1].source, QRectF(10, 10, 30, 20));
-        QCOMPARE(movements[1].destination, QRectF(20, 50, 45, 30));
+        QCOMPARE(movements[1].destination, QRectF(10, 70, 45, 30));
         transformLayoutGroup(state, child, {20, 70, 45, 30});
         movements = layoutMovements(state);
         QCOMPARE(movements.size(), 2);
-        QCOMPARE(movements[0].destination, QRectF(60, 30, 90, 60));
+        QCOMPARE(movements[0].destination, QRectF(20, 30, 130, 60));
         QCOMPARE(movements[1].destination, QRectF(20, 70, 45, 30));
         const auto beforeNoOp = state;
         transformLayoutGroup(state, child, layoutBounds(state, child));
@@ -450,7 +453,9 @@ class LayoutTests : public QObject {
         const auto parentMembers = members(state, parentId), manualMembers = members(state, manualId);
         bool foundMappedPart = false;
         for (const auto &id : members(state, cellId)) {
-            QVERIFY(parentMembers.contains(id));
+            // B1 修复：子组件移动后，其切片从父组件中移除，
+            // 父组件不再包含子组件的切片。
+            QVERIFY(!parentMembers.contains(id));
             const auto *piece = pieceById(state, id);
             QVERIFY(piece);
             if (manualMembers.contains(id)) {
@@ -602,11 +607,24 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes"}));
-        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
-                 (QJsonObject{{"point", QJsonObject{{"x", 20}, {"y", 20}}}, {"text", "加大标题"}}));
-        QCOMPARE(feedback["annotations"].toArray()[1].toObject(),
-                 (QJsonObject{{"rectangle", rectJson({10, 10, 60, 40})}, {"text", "表格右移"}}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "objects"}));
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 3);
+        // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
+        QCOMPARE(objects[0].toObject(),
+                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                              {"movements", QJsonArray{QJsonObject{{"to", rectJson({50, 50, 90, 60})}}}},
+                              {"annotations", QJsonArray{}}}));
+        // 点批注：(20,20) 处的 "加大标题"，源区域为零尺寸。
+        QCOMPARE(objects[1].toObject(),
+                 (QJsonObject{{"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
+                              {"movements", QJsonArray{}},
+                              {"annotations", QJsonArray{"加大标题"}}}));
+        // 矩形批注：(10,10,60x40) 处的 "表格右移"。
+        QCOMPARE(objects[2].toObject(),
+                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                              {"movements", QJsonArray{}},
+                              {"annotations", QJsonArray{"表格右移"}}}));
         const auto compact = serializeFeedback(document);
         QVERIFY(compact.size() < 350);
         const auto path = directory.filePath("feedback-minimal.json");
@@ -632,28 +650,45 @@ class LayoutTests : public QObject {
         invalid["tool"] = "unexpected";
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
         invalid = feedback;
-        auto changes = feedback["changes"].toArray();
-        changes.append(changes.first());
-        invalid["changes"] = changes;
+        // 对象包含未知字段时被拒绝。
+        auto badObjects = feedback["objects"].toArray();
+        auto badObject = badObjects[0].toObject();
+        badObject["extra"] = true;
+        badObjects[0] = badObject;
+        invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
         invalid = feedback;
-        auto annotations = feedback["annotations"].toArray();
-        auto badPoint = annotations[0].toObject();
-        badPoint["rectangle"] = rectJson({10, 10, 60, 40});
-        annotations[0] = badPoint;
-        invalid["annotations"] = annotations;
+        // 移动目标坐标超出限制时被拒绝。
+        badObjects = feedback["objects"].toArray();
+        auto badMovement = badObjects[0].toObject()["movements"].toArray()[0].toObject();
+        badMovement["to"] = rectJson({0, 0, 10000001, 10000001});
+        auto movements = badObjects[0].toObject()["movements"].toArray();
+        movements[0] = badMovement;
+        badObject = badObjects[0].toObject();
+        badObject["movements"] = movements;
+        badObjects[0] = badObject;
+        invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
         invalid = feedback;
-        changes = feedback["changes"].toArray();
-        auto change = changes[0].toObject();
-        change["to"] = rectJson({159, 119, 100, 100});
-        changes[0] = change;
-        invalid["changes"] = changes;
+        // 移动目标尺寸为负或零时被拒绝。
+        badObjects = feedback["objects"].toArray();
+        badMovement = badObjects[0].toObject()["movements"].toArray()[0].toObject();
+        badMovement["to"] = QJsonObject{{"x1", 100}, {"y1", 100}, {"x2", 50}, {"y2", 50}};
+        movements = badObjects[0].toObject()["movements"].toArray();
+        movements[0] = badMovement;
+        badObject = badObjects[0].toObject();
+        badObject["movements"] = movements;
+        badObjects[0] = badObject;
+        invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
         invalid = feedback;
-        change["to"] = change["from"];
-        changes[0] = change;
-        invalid["changes"] = changes;
+        // 移动目标与源区域相同时被跳过，导致布局为空但批注仍存在，不算损坏。
+        // 此处改用移动 "to" 不是对象来触发拒绝。
+        badObjects = feedback["objects"].toArray();
+        badObject = badObjects[0].toObject();
+        badObject["movements"] = QJsonArray{QJsonObject{{"to", "not-an-object"}}};
+        badObjects[0] = badObject;
+        invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
     }
     void embeddedFeedbackNeedsNoSidecarAndPreservesOriginal() {
@@ -671,9 +706,9 @@ class LayoutTests : public QObject {
         rectangle.comment = "这里加大文字";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document, true);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "annotations", "changes", "image"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "image", "objects"}));
         QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
-        QCOMPARE(feedback["changes"].toArray().size(), 1);
+        QCOMPARE(feedback["objects"].toArray().size(), 3);
         QCOMPARE(feedback["image"],
                  QJsonValue("data:image/png;base64," + QString::fromLatin1(document.png.toBase64())));
         const auto path = directory.filePath("embedded.json");
@@ -740,8 +775,15 @@ class LayoutTests : public QObject {
         QCOMPARE(movementAnnotationIndex(movement, *doc.layout), 0);
         QCOMPARE(*movementAnnotationDestination(movement, *doc.layout), QRectF(90, 70, 30, 20));
         const auto feedback = exportFeedback(doc, true);
-        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
-                 (QJsonObject{{"change", 0}, {"text", movement.comment}}));
+        // 移动批注通过 movementSource 合并到对应移动条目的对象中。
+        const auto feedbackObjects = feedback["objects"].toArray();
+        QCOMPARE(feedbackObjects.size(), 3);
+        QCOMPARE(feedbackObjects[0].toObject(),
+                 (QJsonObject{{"source", rectJson({10, 10, 30, 20})},
+                              {"movements", QJsonArray{QJsonObject{{"to", rectJson({90, 70, 30, 20})}}}},
+                              {"annotations", QJsonArray{movement.comment}}}));
+        QCOMPARE(feedbackObjects[1].toObject()["source"], QJsonValue(QJsonValue::Null));
+        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
         QCOMPARE(imported.notes[0].rect, movement.rect);
@@ -766,13 +808,23 @@ class LayoutTests : public QObject {
         doc.notes = remapNotes(doc.notes, *doc.layout, original);
         doc.layout = original;
         const auto reverted = exportFeedback(doc);
-        QVERIFY(reverted["changes"].toArray().isEmpty());
-        QVERIFY(!reverted["annotations"].toArray()[0].toObject().contains("change"));
+        // 布局回到原图后没有移动条目，对象列表中无移动记录。
+        const auto revertedObjects = reverted["objects"].toArray();
+        bool hasMovements = false;
+        for (const auto &obj : revertedObjects)
+            hasMovements = hasMovements || !obj.toObject()["movements"].toArray().isEmpty();
+        QVERIFY(!hasMovements);
         QCOMPARE(doc.notes[0].rect, QRect(10, 10, 30, 20));
-        QVERIFY(reverted["annotations"].toArray()[0].toObject().contains("rectangle"));
-        for (const auto badReference : {-1.0, 1.0, 0.5}) {
+        // 移动批注回到源位置后仍作为矩形批注保留在对象中。
+        QCOMPARE(revertedObjects[0].toObject()["source"], QJsonValue(rectJson({10, 10, 30, 20})));
+        QVERIFY(revertedObjects[0].toObject()["movements"].toArray().isEmpty());
+        for (const auto badValue : {QJsonValue(true), QJsonValue(1), QJsonValue("invalid")}) {
             auto invalid = feedback;
-            invalid["annotations"] = QJsonArray{QJsonObject{{"change", badReference}, {"text", "移动"}}};
+            auto badObjects = feedback["objects"].toArray();
+            auto badObject = badObjects[0].toObject();
+            badObject["source"] = badValue;
+            badObjects[0] = badObject;
+            invalid["objects"] = badObjects;
             QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, {}), std::runtime_error);
         }
     }

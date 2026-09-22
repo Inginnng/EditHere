@@ -321,7 +321,14 @@ class AgentCliTests : public QObject {
         QVERIFY(reply["ok"].toBool());
         QCOMPARE(reply["output"].toString(), output);
         const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
-        QCOMPARE(feedback["annotations"].toArray().size(), 1);
+        // 0.9.0 object-oriented format: the global note becomes a sourceless object.
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 1);
+        const auto object = objects[0].toObject();
+        QVERIFY(object["source"].isNull());
+        QCOMPARE(object["movements"].toArray().size(), 0);
+        QCOMPARE(object["annotations"].toArray().size(), 1);
+        QCOMPARE(object["annotations"].toArray()[0].toString(), QString("Move the button"));
         QVERIFY(!feedback["image"].toString().isEmpty());
         QVERIFY(!editor->findChild<QWidget *>("agentSessionBanner")->isVisible());
         QVERIFY(editor->hasDocument());

@@ -1,187 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "EditHere minimal design feedback",
-  "description": "Coordinates use original-image pixels with a top-left origin. Rectangle x2/y2 are exclusive. Changes contain only net position or size changes; apply all source cuts first, then draw changes in array order over the unchanged background.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "annotations",
-    "changes"
-  ],
-  "properties": {
-    "annotations": {
-      "type": "array",
-      "maxItems": 1000,
-      "items": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "point",
-              "text"
-            ],
-            "properties": {
-              "point": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "x",
-                  "y"
-                ],
-                "properties": {
-                  "x": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 32766
-                  },
-                  "y": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 32766
-                  }
-                }
-              },
-              "text": {
-                "$ref": "#/$defs/text"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "rectangle",
-              "text"
-            ],
-            "properties": {
-              "rectangle": {
-                "$ref": "#/$defs/annotationRectangle"
-              },
-              "text": {
-                "$ref": "#/$defs/text"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "text"
-            ],
-            "properties": {
-              "text": {
-                "$ref": "#/$defs/text"
-              }
-            },
-            "description": "Whole-design feedback with no pointed location."
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "change",
-              "text"
-            ],
-            "properties": {
-              "change": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 8191,
-                "description": "Zero-based index of an existing entry in changes."
-              },
-              "text": {
-                "$ref": "#/$defs/text"
-              }
-            }
-          }
-        ]
-      }
+  "description": "Coordinates use original-image pixels with a top-left origin. Rectangle x2/y2 are exclusive. The object-oriented format groups each source region with its movements and text annotations; the legacy format stores parallel annotations and changes arrays. Both shapes may carry annotationSpace='result' and an embedded image data URL.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/objectFormat"
     },
-    "changes": {
-      "type": "array",
-      "maxItems": 8192,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "from",
-          "to"
-        ],
-        "properties": {
-          "from": {
-            "$ref": "#/$defs/rectangle"
-          },
-          "to": {
-            "$ref": "#/$defs/rectangle"
-          }
-        }
-      }
+    {
+      "$ref": "#/$defs/legacyFormat"
     }
-  },
+  ],
   "$defs": {
     "rectangle": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "x1",
-        "y1",
-        "x2",
-        "y2"
-      ],
+      "required": ["x1", "y1", "x2", "y2"],
       "properties": {
-        "x1": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "y1": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "x2": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "y2": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 32767
-        }
+        "x1": {"type": "number", "minimum": 0, "maximum": 32767},
+        "y1": {"type": "number", "minimum": 0, "maximum": 32767},
+        "x2": {"type": "number", "minimum": 0, "maximum": 32767},
+        "y2": {"type": "number", "minimum": 0, "maximum": 32767}
       }
     },
     "annotationRectangle": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "x1",
-        "y1",
-        "x2",
-        "y2"
-      ],
+      "required": ["x1", "y1", "x2", "y2"],
       "properties": {
-        "x1": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "y1": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "x2": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 32767
-        },
-        "y2": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 32767
-        }
+        "x1": {"type": "integer", "minimum": 0, "maximum": 32767},
+        "y1": {"type": "integer", "minimum": 0, "maximum": 32767},
+        "x2": {"type": "integer", "minimum": 0, "maximum": 32767},
+        "y2": {"type": "integer", "minimum": 0, "maximum": 32767}
       }
     },
     "text": {
@@ -189,6 +38,127 @@
       "minLength": 1,
       "maxLength": 10000,
       "pattern": "\\S"
+    },
+    "objectFormat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotationSpace", "objects"],
+      "properties": {
+        "annotationSpace": {"const": "result"},
+        "objects": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "movements", "annotations"],
+            "properties": {
+              "source": {
+                "description": "Original region for this object. Null for whole-design feedback with no located target.",
+                "oneOf": [
+                  {"type": "null"},
+                  {"$ref": "#/$defs/rectangle"}
+                ]
+              },
+              "movements": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["to"],
+                  "properties": {
+                    "to": {"$ref": "#/$defs/rectangle"}
+                  }
+                }
+              },
+              "annotations": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/text"}
+              }
+            }
+          }
+        },
+        "image": {"type": "string"}
+      }
+    },
+    "legacyFormat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotations", "changes"],
+      "properties": {
+        "annotationSpace": {"const": "result"},
+        "annotations": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["point", "text"],
+                "properties": {
+                  "point": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["x", "y"],
+                    "properties": {
+                      "x": {"type": "integer", "minimum": 0, "maximum": 32766},
+                      "y": {"type": "integer", "minimum": 0, "maximum": 32766}
+                    }
+                  },
+                  "text": {"$ref": "#/$defs/text"}
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["rectangle", "text"],
+                "properties": {
+                  "rectangle": {"$ref": "#/$defs/annotationRectangle"},
+                  "text": {"$ref": "#/$defs/text"}
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["text"],
+                "properties": {
+                  "text": {"$ref": "#/$defs/text"}
+                },
+                "description": "Whole-design feedback with no pointed location."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["change", "text"],
+                "properties": {
+                  "change": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8191,
+                    "description": "Zero-based index of an existing entry in changes."
+                  },
+                  "text": {"$ref": "#/$defs/text"}
+                }
+              }
+            ]
+          }
+        },
+        "changes": {
+          "type": "array",
+          "maxItems": 8192,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": {"$ref": "#/$defs/rectangle"},
+              "to": {"$ref": "#/$defs/rectangle"}
+            }
+          }
+        },
+        "image": {"type": "string"}
+      }
     }
   }
 }

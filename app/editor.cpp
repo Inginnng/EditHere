@@ -68,16 +68,17 @@ QString toolbarGlyph(const QString &id) {
     if (id == "fit") return "fit";
     return "image-copy";
 }
-// 反馈 JSON 临时文件目录：位于应用缓存目录下的 feedback 子目录。
-QString feedbackTempDir() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    const QString dir = QDir(base).filePath("feedback");
+// 反馈 JSON 临时文件目录：可配置，默认位于应用缓存目录下的 feedback 子目录。
+QString feedbackTempDir(const QString &configured = {}) {
+    const QString dir = configured.isEmpty()
+        ? QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)).filePath("feedback")
+        : configured;
     QDir().mkpath(dir);
     return dir;
 }
 // 将反馈 JSON 写入临时文件，返回文件路径。每次复制生成唯一文件名，避免覆盖上一次的引用。
-QString writeFeedbackTempFile(const QByteArray &bytes) {
-    const QString dir = feedbackTempDir();
+QString writeFeedbackTempFile(const QByteArray &bytes, const QString &configuredDir = {}) {
+    const QString dir = feedbackTempDir(configuredDir);
     const QString name = "edithere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
                           + "-" + uniqueId().left(4) + ".json";
     const QString path = QDir(dir).filePath(name);
@@ -85,8 +86,8 @@ QString writeFeedbackTempFile(const QByteArray &bytes) {
     return path;
 }
 // 清理 7 天前的旧临时文件，保留当前路径对应的文件。
-void cleanupOldFeedbackTempFiles(const QString &keepPath) {
-    QDir d(feedbackTempDir());
+void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configuredDir = {}) {
+    QDir d(feedbackTempDir(configuredDir));
     const auto cutoff = QDateTime::currentDateTime().addDays(-7);
     for (const auto &name : d.entryList({"edithere-*.json"}, QDir::Files)) {
         const QString path = d.filePath(name);
@@ -527,7 +528,13 @@ void Editor::toggleFullscreen() {
         beforeFullscreenState_ = windowState() & ~Qt::WindowMinimized;
         beforeFullscreenGeometry_ = isMaximized() ? normalGeometry() : geometry();
         beforeFullscreenOrigin_ = imageScroll_->imageOrigin();
-        showFullScreen();
+        if (isMaximized()) {
+            // Windows 上窗口处于最大化状态时直接 showFullScreen() 不生效，
+            // 需要先退出最大化，再在下一次事件循环中进入全屏。
+            showNormal();
+            QTimer::singleShot(0, this, &QWidget::showFullScreen);
+        } else
+            showFullScreen();
     } else {
         if (beforeFullscreenState_.testFlag(Qt::WindowMaximized))
             showMaximized();
@@ -776,7 +783,7 @@ void Editor::renderNotes() {
                 canvas_->select({}); changed();
             });
         }
-        card->setProperty("selected", n.id == canvas_->selected());
+        card->setProperty("selected", canvas_->selected().contains(n.id));
         card->style()->unpolish(card); card->style()->polish(card);
         card->findChild<QLabel *>("noteBadge")->setText(QString::number(++number));
         auto position = card->findChild<QLabel *>("noteCoordinates");
@@ -787,6 +794,72 @@ void Editor::renderNotes() {
         text->fitContent();
         noteLayout_->insertWidget(number-1,card,0,Qt::AlignTop);
     }
+    // Display movements without text annotations as orphan cards.
+    if (doc_.layout) {
+        const auto markers = movementMarkers(*doc_.layout, doc_.notes);
+        for (const auto &marker : markers) {
+            if (marker.noteIndex >= 0)
+                continue; // already shown as a note card
+            const QString key = "__mv_" + QString::number(qint64(marker.source.left())) + "_"
+                                + QString::number(qint64(marker.source.top()));
+            QWidget *card = noteCards_.value(key);
+            if (!card) {
+                auto frame = new QFrame(noteContainer_);
+                card = frame;
+                card->setObjectName("noteCard");
+                card->setProperty("noteId", key);
+                card->setProperty("orphanMovement", true);
+                card->setFocusPolicy(Qt::ClickFocus);
+                card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+                auto l = new QVBoxLayout(card);
+                l->setContentsMargins(7, 5, 7, 5);
+                l->setSpacing(3);
+                auto row = new QHBoxLayout;
+                row->setSpacing(4);
+                auto badge = new QLabel(card);
+                badge->setObjectName("noteBadge");
+                badge->setAlignment(Qt::AlignCenter);
+                badge->setFixedSize(22, 22);
+                row->addWidget(badge);
+                auto position = mutedLabel({}, card);
+                position->setObjectName("noteCoordinates");
+                position->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+                row->addWidget(position, 1);
+                l->addLayout(row);
+                auto text = new InlineNoteEdit(card);
+                text->setObjectName("noteText_" + key);
+                text->setProperty("noteId", key);
+                text->setAccessibleName("批注内容");
+                text->setPlaceholderText("点击此处为这次移动添加文字…");
+                text->setTabChangesFocus(true);
+                text->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+                text->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+                l->addWidget(text);
+                text->started = [this, src = marker.source, dst = marker.destination] {
+                    editMovement(src, dst);
+                };
+                text->finished = [this, key] { QTimer::singleShot(0, this, [this,key] { finishNoteEdit(); }); };
+                text->cancelled = [this] { cancelNoteEdit(); };
+                connect(text, &QPlainTextEdit::textChanged, this, [this,text,key] {
+                    text->fitContent();
+                    if (renderingNotes_) return;
+                    QString value = text->toPlainText();
+                    if (value.size() > 10000) { value.truncate(10000); QSignalBlocker blocker(text); text->setPlainText(value); }
+                });
+                noteCards_.insert(key, card);
+                noteEditors_.insert(key, text);
+            }
+            card->setProperty("selected", false);
+            card->style()->unpolish(card); card->style()->polish(card);
+            card->findChild<QLabel *>("noteBadge")->setText(QString::number(marker.number));
+            auto position = card->findChild<QLabel *>("noteCoordinates");
+            const QString coords = QString("移动 (%1,%2) → (%3,%4)")
+                                       .arg(int(marker.source.x())).arg(int(marker.source.y()))
+                                       .arg(int(marker.destination.x())).arg(int(marker.destination.y()));
+            position->setText(coords); position->setToolTip(coords);
+            noteLayout_->insertWidget(marker.number - 1, card, 0, Qt::AlignTop);
+        }
+    }
     renderingNotes_ = false;
 }
 void Editor::beginNoteEdit(const QString &id) {
@@ -794,7 +867,7 @@ void Editor::beginNoteEdit(const QString &id) {
     finishNoteEdit();
     collapseOtherNotes(id);
     editingBaseline_={doc_.notes,doc_.layout}; editingWasDirty_=doc_.dirty; editingId_=id;
-    canvas_->select(id);
+    canvas_->select({id});
 }
 void Editor::finishNoteEdit() {
     if (editingId_.isEmpty() || finishingEdit_) return;
@@ -963,8 +1036,8 @@ void Editor::copyJson() {
     if (!hasDocument()) return;
     try {
         const QByteArray bytes = serializeFeedback(doc_, preferences_.embedOriginal, true);
-        const QString path = writeFeedbackTempFile(bytes);
-        cleanupOldFeedbackTempFiles(path);
+        const QString path = writeFeedbackTempFile(bytes, preferences_.feedbackDir);
+        cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
         auto mime = new QMimeData;
         mime->setUrls({QUrl::fromLocalFile(path)});
         QApplication::clipboard()->setMimeData(mime);
@@ -1168,7 +1241,7 @@ void Editor::removeSelected() {
     finishNoteEdit();
     if (componentEditing_)
         return;
-    QString id = canvas_->selected();
+    const auto id = canvas_->selected();
     if (id.isEmpty())
         return;
     remember();
@@ -1184,6 +1257,7 @@ void Editor::copyImage() {
     }
 }
 void Editor::showError(const QString &text) {
+    qWarning() << "EditHere showError:" << text; // 临时诊断：捕获保存失败的真实原因
     QMessageBox::warning(this, "EditHere", text);
 }
 bool Editor::saveProject() {
@@ -1351,16 +1425,14 @@ void Editor::exportJson() {
                 lines.append(
                     "  \"image\": \"" + feedback["image"].toString().section(',',0,0) + ",[图片编码已折叠]\",");
             lines.append("  \"annotationSpace\": \"result\",");
-            for (const auto &name : {QString("annotations"), QString("changes")}) {
-                lines.append("  \"" + name + "\": [");
-                const auto entries = feedback[name].toArray();
-                for (qsizetype i = 0; i < entries.size(); ++i)
-                    lines.append("    " +
-                                 QString::fromUtf8(
-                                     QJsonDocument(entries[i].toObject()).toJson(QJsonDocument::Compact)) +
-                                 (i + 1 < entries.size() ? "," : ""));
-                lines.append(name == "annotations" ? "  ]," : "  ]");
-            }
+            lines.append("  \"objects\": [");
+            const auto objects = feedback["objects"].toArray();
+            for (qsizetype i = 0; i < objects.size(); ++i)
+                lines.append("    " +
+                             QString::fromUtf8(
+                                 QJsonDocument(objects[i].toObject()).toJson(QJsonDocument::Compact)) +
+                             (i + 1 < objects.size() ? "," : ""));
+            lines.append("  ]");
             lines.append("}");
             json->setPlainText(lines.join('\n'));
             copy->setEnabled(true);
@@ -1385,8 +1457,8 @@ void Editor::exportJson() {
         if (exportBytes.isEmpty())
             return;
         try {
-            const QString path = writeFeedbackTempFile(exportBytes);
-            cleanupOldFeedbackTempFiles(path);
+            const QString path = writeFeedbackTempFile(exportBytes, preferences_.feedbackDir);
+            cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
             auto mime = new QMimeData;
             mime->setUrls({QUrl::fromLocalFile(path)});
             QApplication::clipboard()->setMimeData(mime);
@@ -1420,7 +1492,7 @@ void Editor::exportJson() {
             } catch (const std::exception &e) {
                 unavailable.append("批注预览未保存：" + QString::fromUtf8(e.what()));
             }
-            if (doc_.layout && !exportFeedback(doc_)["changes"].toArray().isEmpty()) {
+            if (doc_.layout && !exportFeedback(doc_)["objects"].toArray().isEmpty()) {
                 try {
                     saveBytes(dir.filePath("result.png"), encodePng(renderLayout(doc_.image, *doc_.layout)));
                 } catch (const std::exception &e) {

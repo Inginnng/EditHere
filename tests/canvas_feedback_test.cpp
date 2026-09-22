@@ -147,7 +147,7 @@ class CanvasFeedbackTests : public QObject {
         widget.show();
         const auto initialState = layout.state();
         const auto initialNotes = doc.notes;
-        const auto initialSelection = exploded ? layout.selected() : canvas.selected();
+        const auto initialSelection = exploded ? layout.selected() : QStringList(canvas.selected());
         QVERIFY(!initialSelection.isEmpty());
         QSignalSpy pans(&widget, SIGNAL(panRequested(QPoint)));
         QSignalSpy zooms(&widget, SIGNAL(zoomRequested(double,QPointF)));
@@ -181,7 +181,7 @@ class CanvasFeedbackTests : public QObject {
         QCOMPARE(layout.zoom(), 1.0);
         QCOMPARE(layout.state(), initialState);
         QCOMPARE(doc.notes, initialNotes);
-        QCOMPARE(exploded ? layout.selected() : canvas.selected(), initialSelection);
+        QCOMPARE(exploded ? layout.selected() : QStringList(canvas.selected()), initialSelection);
         QVERIFY(edits.isEmpty());
         QVERIFY(geometry.isEmpty());
         QVERIFY(regions.isEmpty());
@@ -606,7 +606,7 @@ class CanvasFeedbackTests : public QObject {
         QCOMPARE(markers.size(), 1);
         QCOMPARE(markers[0].source, parentSource);
         QCOMPARE(markers[0].destination, parentDestination);
-        QCOMPARE(markers[0].number, 0);
+        QCOMPARE(markers[0].number, 1);
         QCOMPARE(markers[0].noteIndex, -1);
         Canvas canvas;
         canvas.setDocument(&doc);
@@ -657,7 +657,7 @@ class CanvasFeedbackTests : public QObject {
             } else if (marker.source == childSource) {
                 childFound = true;
                 QCOMPARE(marker.destination, childDestination);
-                QCOMPARE(marker.number, 0);
+                QCOMPARE(marker.number, 2);
                 QCOMPARE(marker.noteIndex, -1);
             } else {
                 QFAIL("A child inherited from the parent move must not gain an independent trajectory.");

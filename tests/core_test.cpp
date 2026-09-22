@@ -38,8 +38,10 @@ class CoreTests : public QObject {
         global.point = {-100, -100}; // A global note intentionally has no valid image position.
         doc.notes = {global};
         const auto feedback = exportFeedback(doc, true);
-        QCOMPARE(feedback["annotations"].toArray()[0].toObject(),
-                 (QJsonObject{{"text", global.comment}}));
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 1);
+        QCOMPARE(objects[0].toObject()["source"], QJsonValue(QJsonValue::Null));
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QVERIFY(imported.notes[0].isGlobal);
         QCOMPARE(imported.notes[0].comment, global.comment);
@@ -81,10 +83,11 @@ class CoreTests : public QObject {
         const auto plain = movementMarkers(*doc.layout, {});
         QCOMPARE(plain.size(), 3);
         for (int i = 0; i < plain.size(); ++i) {
-            QCOMPARE(plain[i].number, 0);
+            QCOMPARE(plain[i].number, i + 1);
             QCOMPARE(plain[i].noteIndex, -1);
         }
-        // A movement without a note adds neither a badge nor an empty sidebar card.
+        // A movement without a note still gets a sequential orphan number so the
+        // sidebar can display it; the canvas preview omits orphan badges.
         QCOMPARE(previewImage(doc).size(), QSize(768, 268));
         Note global;
         global.isGlobal = true;
@@ -106,11 +109,11 @@ class CoreTests : public QObject {
         const auto feedback = exportFeedback(doc);
         const auto markers = movementMarkers(*doc.layout, doc.notes);
         QCOMPARE(markers.size(), 3);
-        QCOMPARE(markers[0].number, 0);
+        QCOMPARE(markers[0].number, 5);
         QCOMPARE(markers[0].noteIndex, -1);
         QCOMPARE(markers[1].number, 3);
         QCOMPARE(markers[1].noteIndex, 2);
-        QCOMPARE(markers[2].number, 0);
+        QCOMPARE(markers[2].number, 6);
         QCOMPARE(markers[2].noteIndex, -1);
         const auto preview = previewImage(doc);
         const auto annotatedAnchor = movementMarkerAnchor(markers[1], 1, image.size()).toPoint() + QPoint(24, 24);
@@ -128,12 +131,25 @@ class CoreTests : public QObject {
         QCOMPARE(bluePixels, 0);
         QCOMPARE(doc.notes, originalNotes);
         QCOMPARE(exportFeedback(doc), feedback);
-        QCOMPARE(feedback.keys(), (QStringList{"annotationSpace", "annotations", "changes"}));
-        QCOMPARE(feedback["annotations"].toArray().size(), 4);
-        QCOMPARE(feedback["annotations"].toArray()[2].toObject(),
-                 (QJsonObject{{"change", 1}, {"text", movement.comment}}));
-        for (const auto &change : feedback["changes"].toArray())
-            QCOMPARE(change.toObject().keys(), (QStringList{"from", "to"}));
+        QCOMPARE(feedback.keys(), (QStringList{"annotationSpace", "objects"}));
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 6);
+        // The movement-linked object keeps the source rect, the destination,
+        // and the linked note's text together in one entry.
+        bool foundMovementObject = false;
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            if (obj["source"].toObject() ==
+                (QJsonObject{{"x1", 20.}, {"y1", 100.}, {"x2", 60.}, {"y2", 130.}})) {
+                foundMovementObject = true;
+                QCOMPARE(obj["movements"].toArray().size(), 1);
+                QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
+                         (QJsonObject{{"x1", 200.}, {"y1", 100.}, {"x2", 240.}, {"y2", 130.}}));
+                QCOMPARE(obj["annotations"].toArray().size(), 1);
+                QCOMPARE(obj["annotations"].toArray()[0].toString(), movement.comment);
+            }
+        }
+        QVERIFY(foundMovementObject);
         const auto project = QJsonDocument::fromJson(serializeDocument(doc, true)).object();
         QCOMPARE(project.keys(), (QStringList{"annotationSpace", "annotations", "capture", "exportedAt",
                                               "layout", "schemaVersion", "tool"}));
@@ -143,7 +159,7 @@ class CoreTests : public QObject {
         const auto afterDelete = movementMarkers(*doc.layout, doc.notes);
         QCOMPARE(afterDelete.size(), 3);
         for (int i = 0; i < afterDelete.size(); ++i) {
-            QCOMPARE(afterDelete[i].number, 0);
+            QCOMPARE(afterDelete[i].number, i + 4);
             QCOMPARE(afterDelete[i].noteIndex, -1);
         }
     }
@@ -181,7 +197,7 @@ class CoreTests : public QObject {
         const auto remaining = movementMarkers(layout, {rightNote});
         QCOMPARE(remaining.size(), 2);
         QCOMPARE(remaining[0].noteIndex, -1);
-        QCOMPARE(remaining[0].number, 0);
+        QCOMPARE(remaining[0].number, 2);
         QCOMPARE(remaining[1].noteIndex, 0);
         QCOMPARE(remaining[1].number, 1);
         QVERIFY(movementMarkers(original, {leftNote, rightNote}).isEmpty());
@@ -208,7 +224,7 @@ class CoreTests : public QObject {
         QCOMPARE(markers.size(), 1);
         QCOMPARE(markers[0].source, parentSource);
         QCOMPARE(markers[0].destination, parentDestination);
-        QCOMPARE(markers[0].number, 0);
+        QCOMPARE(markers[0].number, 1);
         Note parentNote;
         parentNote.isPoint = false;
         parentNote.movementSource = parentSource;
@@ -226,7 +242,7 @@ class CoreTests : public QObject {
         QCOMPARE(markers[1].source, childSource);
         QCOMPARE(markers[1].destination, childDestination);
         QCOMPARE(markers[1].noteIndex, -1);
-        QCOMPARE(markers[1].number, 0);
+        QCOMPARE(markers[1].number, 2);
         Note childNote;
         childNote.isPoint = false;
         childNote.movementSource = childSource;
@@ -241,11 +257,23 @@ class CoreTests : public QObject {
         QCOMPARE(markers[1].number, 1);
         // Compact reconstruction still describes disjoint pixels, and keeps both texts.
         const auto feedback = exportFeedback(doc, true);
-        QCOMPARE(feedback["changes"].toArray().size(), 3);
-        QCOMPARE(feedback["annotations"].toArray().size(), 2);
-        QCOMPARE(feedback["annotations"].toArray()[1].toObject(),
-                 (QJsonObject{{"rectangle", QJsonObject{{"x1", 350}, {"y1", 280}, {"x2", 650}, {"y2", 520}}},
-                              {"text", parentNote.comment}}));
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 2);
+        // The parent object carries its own movement and annotation together,
+        // preserving the link the legacy format lost when it split them.
+        bool foundParentObject = false;
+        for (const auto &value : objects) {
+            const auto obj = value.toObject();
+            if (obj["source"].toObject() ==
+                (QJsonObject{{"x1", 40.}, {"y1", 40.}, {"x2", 240.}, {"y2", 200.}})) {
+                foundParentObject = true;
+                QCOMPARE(obj["movements"].toArray().size(), 1);
+                QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
+                         (QJsonObject{{"x1", 350.}, {"y1", 280.}, {"x2", 650.}, {"y2", 520.}}));
+                QCOMPARE(obj["annotations"].toArray()[0].toString(), parentNote.comment);
+            }
+        }
+        QVERIFY(foundParentObject);
         const auto feedbackDoc = loadFeedback(feedback, {});
         QCOMPARE(renderLayout(feedbackDoc.image, *feedbackDoc.layout), renderLayout(doc.image, *doc.layout));
         QTemporaryDir directory;

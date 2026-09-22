@@ -88,6 +88,13 @@ QString validateSettings(const AppSettings &settings) {
     const auto toolbarError = validateToolbarActions(settings.toolbarActions);
     if (!toolbarError.isEmpty())
         return toolbarError;
+    if (!settings.feedbackDir.isEmpty()) {
+        const QFileInfo info(settings.feedbackDir);
+        if (!info.isAbsolute())
+            return "反馈临时目录必须是绝对路径。";
+        if (info.isFile())
+            return "反馈临时目录不能指向一个已有文件。";
+    }
     QMap<int, QString> assigned;
     const auto definitions = shortcutDefinitions();
     for (const auto &definition : definitions) {
@@ -144,6 +151,8 @@ AppSettings loadSettings(const QString &filePath) {
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
+    if (source.contains("defaults/feedbackDir"))
+        result.feedbackDir = source.value("defaults/feedbackDir").toString();
     if (source.contains("toolbar/actions")) {
         const auto actions = source.value("toolbar/actions").toStringList();
         if (validateToolbarActions(actions).isEmpty())
@@ -189,6 +198,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
+    target.setValue("defaults/feedbackDir", settings.feedbackDir);
     target.setValue("appearance/theme", themeName(settings.theme));
     target.setValue("toolbar/actions", settings.toolbarActions);
     for (const auto &definition : shortcutDefinitions())

@@ -36,6 +36,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Inginnng"
 Var StartupChoice
 Var PathChoice
 Var PreviousDirectory
+Var UpdateMode
 Section "EditHere 程序和 Agent skill（必需）" Core
     SectionIn RO
     SetShellVarContext current
@@ -96,6 +97,11 @@ Section -Integrate
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\EditHere" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\EditHere" "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\EditHere" "NoRepair" 1
+    ${If} $UpdateMode == 1
+        Exec "$INSTDIR\EditHere.exe"
+        SetErrorLevel 0
+        Quit
+    ${EndIf}
 SectionEnd
 Function .onInit
     ${IfNot} ${RunningX64}
@@ -104,13 +110,22 @@ Function .onInit
     ${EndIf}
     SetRegView 64
     ReadRegStr $PreviousDirectory HKCU "Software\EditHere\Installer" "InstallDir"
+    ${GetParameters} $0
+    StrCpy $UpdateMode 0
+    ${GetOptions} $0 "/UPDATE" $1
+    ${IfNotErrors}
+        StrCpy $UpdateMode 1
+    ${EndIf}
+    ${If} $UpdateMode == 1
+    ${AndIf} $PreviousDirectory != ""
+        StrCpy $INSTDIR $PreviousDirectory
+    ${EndIf}
     ${If} $PreviousDirectory != ""
         ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EditHere"
         ${If} $0 == ""
             !insertmacro UnselectSection ${Startup}
         ${EndIf}
     ${EndIf}
-    ${GetParameters} $0
     ${GetOptions} $0 "/STARTUP=" $1
     ${If} $1 == "0"
         !insertmacro UnselectSection ${Startup}
