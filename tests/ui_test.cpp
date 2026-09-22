@@ -2132,7 +2132,7 @@ class UiTests : public QObject {
             const auto copied = clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(copied.object(), expectedEmbedded);
-            QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 已复制"));
+            QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 文件已复制"));
             const auto encoded =
                 copied.object()["image"].toString().mid(QString("data:image/png;base64,").size());
             QCOMPARE(QByteArray::fromBase64(encoded.toLatin1()), document.png);
