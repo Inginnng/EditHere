@@ -36,8 +36,13 @@ jobs:
           $env:PATH = "$mingwBin;$env:PATH"
           scripts\package-windows.ps1 -QtRoot ".tools/qt/6.8.3/mingw_64" -CompilerBin "$mingwBin"
 
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
       - name: Package NSIS installer
-        run: scripts\package-installer.ps1
+        run: |
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          scripts\package-installer.ps1 -NsisCompiler $nsis
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
