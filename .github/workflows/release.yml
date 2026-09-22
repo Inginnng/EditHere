@@ -22,7 +22,7 @@ jobs:
         run: |
           python -m pip install aqtinstall==3.3.0 ninja
           python -m aqt install-qt windows desktop 6.8.3 win64_mingw --modules qtimageformats --archives qtbase qtimageformats --outputdir .tools/qt
-          python -m aqt install-tool windows desktop tools_mingw qt.tools.mingw1310_64 --outputdir .tools/qt
+          python -m aqt install-tool windows desktop tools_mingw1310 qt.tools.win64_mingw1310 --outputdir .tools/qt
 
       - name: Build
         run: |
