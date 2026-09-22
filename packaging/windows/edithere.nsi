@@ -113,7 +113,7 @@ Function .onInit
     ${GetParameters} $0
     StrCpy $UpdateMode 0
     ${GetOptions} $0 "/UPDATE" $1
-    ${IfNotErrors}
+    ${IfNot} ${Errors}
         StrCpy $UpdateMode 1
     ${EndIf}
     ${If} $UpdateMode == 1
