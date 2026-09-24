@@ -124,11 +124,42 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Extract changelog for this version
+        id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+
+          version = os.environ["VERSION"]
+          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          section, capturing = [], False
+          for line in lines:
+              if line.startswith("## "):
+                  if capturing:
+                      break
+                  capturing = re.match(r"^v?%s(?:\s|$)" % re.escape(version), line[3:].strip()) is not None
+                  if capturing:
+                      section.append(line)
+              elif capturing:
+                  section.append(line)
+          while section and not section[-1].strip():
+              section.pop()
+          if not section:
+              print("::warning::No CHANGELOG section found for %s; falling back to generated notes." % version)
+          pathlib.Path("release-notes.md").write_text("\n".join(section) + "\n", encoding="utf-8")
+          PY
+          cat release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: EditHere ${{ steps.version.outputs.version }}
+          # The changelog section is prepended to the generated notes, which keep
+          # the "Full Changelog" compare link.
+          body_path: release-notes.md
           generate_release_notes: true
           files: |
             artifacts/*.zip

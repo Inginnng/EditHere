@@ -121,4 +121,4 @@ node connector/mcp-server.mjs
 - 0.1.1：`EDITHERE_CLI` 失效时明确报错而非静默回退；必填参数前置校验；`edithere_status` 与失败信息回显实际使用的 CLI 路径与来源；`edithere_annotate` 说明并发限制。
 - 0.1.0：首次提供 `status` / `open` / `capture` / `annotate` / `export` 五个工具。
 
-连接器版本独立于 EditHere 程序版本（当前程序 0.9.3）；两者的版本号会同时出现在 `edithere_status` 响应中。
+连接器版本独立于 EditHere 程序版本（当前程序 0.9.4）；两者的版本号会同时出现在 `edithere_status` 响应中。
