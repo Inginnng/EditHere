@@ -102,6 +102,18 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Publish assets under version-less names
+        # Documentation links use /releases/latest/download/<stable name>, so the
+        # version must not appear in the asset names.
+        run: |
+          cd artifacts
+          shopt -s nullglob
+          for f in EditHere-*-win-x64-setup.exe; do mv -f "$f" EditHere-win-x64-setup.exe; done
+          for f in EditHere-*-win-x64.zip; do mv -f "$f" EditHere-win-x64.zip; done
+          for f in EditHere-*-macos-universal.dmg; do mv -f "$f" EditHere-macos-universal.dmg; done
+          rm -f *.sha256 SHA256SUMS.txt
+          ls -l
+
       - name: Generate SHA256SUMS
         run: |
           cd artifacts
@@ -109,8 +121,8 @@ jobs:
             sha256sum "$f"
           done > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          # Per-file hash for the portable ZIP so the in-app updater can verify it.
-          for z in *.zip; do sha256sum "$z" > "$z.sha256"; done
+          # Per-file hashes so the in-app updater can verify what it downloads.
+          for f in *.zip *.exe; do sha256sum "$f" > "$f.sha256"; done
 
       - name: Extract version from tag
         id: version

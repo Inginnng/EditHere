@@ -9,6 +9,7 @@
 #include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTemporaryFile>
 #include <QVersionNumber>
 #ifdef Q_OS_WIN
@@ -53,26 +54,34 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
     if (remote.segmentCount() != 3 || local.segmentCount() != 3)
         return failure("版本号无法比较，请到发布页查看。");
     const QString ver = match.captured(1);
-    const QString installerName = QString("EditHere-%1-win-x64-setup.exe").arg(ver);
-    const QString portableName = QString("EditHere-%1-win-x64.zip").arg(ver);
-    Asset installer, installerHash, portable, portableHash;
     const auto assets = object.value("assets").toArray();
-    for (const auto &item : assets) {
-        const auto obj = item.toObject();
-        const QString name = obj.value("name").toString();
-        const QUrl assetUrl(obj.value("browser_download_url").toString());
-        if (!isValidAssetUrl(assetUrl))
-            continue;
-        const qint64 size = obj.value("size").toVariant().toLongLong();
-        if (name == installerName)
-            installer = {name, assetUrl, size};
-        else if (name == installerName + ".sha256")
-            installerHash = {name, assetUrl, size};
-        else if (name == portableName)
-            portable = {name, assetUrl, size};
-        else if (name == portableName + ".sha256")
-            portableHash = {name, assetUrl, size};
-    }
+    // Releases publish version-less asset names so documentation links stay valid.
+    // The historical versioned names are still accepted: pick whichever exists,
+    // preferring the versioned name when a release carries both.
+    const auto pickAsset = [&assets](const QStringList &candidates) {
+        Asset found;
+        for (const QString &candidate : candidates) {
+            for (const auto &item : assets) {
+                const auto obj = item.toObject();
+                if (obj.value("name").toString() != candidate)
+                    continue;
+                const QUrl assetUrl(obj.value("browser_download_url").toString());
+                if (!isValidAssetUrl(assetUrl))
+                    continue;
+                found = {candidate, assetUrl, obj.value("size").toVariant().toLongLong()};
+                return found;
+            }
+        }
+        return found;
+    };
+    const QStringList installerNames{QString("EditHere-%1-win-x64-setup.exe").arg(ver),
+                                     QStringLiteral("EditHere-win-x64-setup.exe")};
+    const QStringList portableNames{QString("EditHere-%1-win-x64.zip").arg(ver),
+                                    QStringLiteral("EditHere-win-x64.zip")};
+    const Asset installer = pickAsset(installerNames);
+    const Asset installerHash = pickAsset({installerNames.first() + ".sha256", installerNames.last() + ".sha256"});
+    const Asset portable = pickAsset(portableNames);
+    const Asset portableHash = pickAsset({portableNames.first() + ".sha256", portableNames.last() + ".sha256"});
     const int order = QVersionNumber::compare(remote, local);
     if (order > 0)
         return {Available, QString("发现新版本 %1，点击立即更新自动下载安装。").arg(tag), url,

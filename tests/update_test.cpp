@@ -1,4 +1,5 @@
 #include "updatechecker.h"
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -14,6 +15,24 @@ class UpdateTests : public QObject {
                                          {"html_url",
                                           "https://github.com/Inginnng/EditHere/releases/tag/" + version}})
             .toJson();
+    }
+    static QJsonObject asset(const QString &name) {
+        return QJsonObject{{"name", name},
+                           {"size", 1024},
+                           {"browser_download_url",
+                            "https://github.com/Inginnng/EditHere/releases/latest/download/" + name}};
+    }
+    // Attach the Windows packages, either with the version in the file name
+    // (historical layout) or without it (current layout).
+    QByteArray releaseWithAssets(const QString &version, bool versioned) {
+        const QString ver = version.startsWith("v") ? version.mid(1) : version;
+        const QString suffix = versioned ? "-" + ver : QString();
+        const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
+        const QString portable = "EditHere" + suffix + "-win-x64.zip";
+        auto object = QJsonDocument::fromJson(release(version)).object();
+        object["assets"] = QJsonArray{asset(installer), asset(installer + ".sha256"), asset(portable),
+                                      asset(portable + ".sha256")};
+        return QJsonDocument(object).toJson();
     }
   private slots:
     void httpsBackendAvailable() {
@@ -61,6 +80,27 @@ class UpdateTests : public QObject {
         for (const auto &version : {"v0.8.3-beta.1", "0.8", "unknown", "999999999999999999999.8.3"})
             QCOMPARE(UpdateChecker::parseRelease(release(version), "0.8.2").status, UpdateChecker::Failed);
         QCOMPARE(UpdateChecker::parseRelease(release("v0.8.3"), "invalid").status, UpdateChecker::Failed);
+    }
+    void resolvesPackagesWithAndWithoutVersionInName() {
+        for (const bool versioned : {true, false}) {
+            const auto result = UpdateChecker::parseRelease(releaseWithAssets("v0.9.5", versioned), "0.9.4");
+            QCOMPARE(result.status, UpdateChecker::Available);
+            const QString expected =
+                versioned ? "EditHere-0.9.5-win-x64-setup.exe" : "EditHere-win-x64-setup.exe";
+            QCOMPARE(result.installer.name, expected);
+            QCOMPARE(result.installerHash.name, expected + ".sha256");
+            QVERIFY(!result.installer.url.isEmpty());
+            QVERIFY(!result.installerHash.url.isEmpty());
+            QCOMPARE(result.portable.name,
+                     versioned ? "EditHere-0.9.5-win-x64.zip" : "EditHere-win-x64.zip");
+            QVERIFY(!result.portable.url.isEmpty());
+            QVERIFY(!result.portableHash.url.isEmpty());
+        }
+        // A release without the Windows packages must not claim an installable update.
+        const auto bare = UpdateChecker::parseRelease(release("v0.9.5"), "0.9.4");
+        QCOMPARE(bare.status, UpdateChecker::Available);
+        QVERIFY(bare.installer.name.isEmpty());
+        QVERIFY(bare.portable.url.isEmpty());
     }
     void malformedOrInaccessibleNeverMeansCurrent() {
         for (const auto &bytes : {QByteArray("{\"message\":\"Not Found\"}"), QByteArray("<html>error</html>"),

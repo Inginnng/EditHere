@@ -34,7 +34,7 @@
 
 仅在本机没有可用程序或确需升级时下载。
 
-1. 从官方仓库 `Inginnng/EditHere` 的 [Releases](https://github.com/Inginnng/EditHere/releases) 元数据选择适合当前平台的发布版本，读取该版本说明、实际资产名称及 `SHA256SUMS.txt`，不要根据旧文档猜文件名或下载地址。
+1. 从官方仓库 `Inginnng/EditHere` 的 [Releases](https://github.com/Inginnng/EditHere/releases) 元数据选择适合当前平台的发布版本，读取该版本说明、实际资产名称及 `SHA256SUMS.txt`，不要根据旧文档猜文件名或下载地址。发布资产名不含版本号，可直接用固定地址取最新版：`https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe`（安装器）、`EditHere-win-x64.zip`（免安装版）、`EditHere-macos-universal.dmg`、`SHA256SUMS.txt`。
 2. 可通过官方公开页面或 GitHub API 读取发布信息。若本机已配置 GitHub CLI，可用 `gh release view --repo Inginnng/EditHere --json tagName,assets,body` 读取最新发布信息，再按得到的标签和准确资产名下载；不必为下载公开程序额外配置凭据。
 3. 如果返回 401/403/404 或下载失败，检查实际 URL、资产是否存在、API 限流与网络状态；已登录工具还应检查其认证状态。报告具体阻塞，不索要访问令牌、不猜镜像，也不把网页错误内容保存成安装包后执行。可继续复用本机已有完整程序。
 4. 下载程序和同一版本的 `SHA256SUMS.txt`，用 SHA-256 比对对应条目。Windows 可用 `Get-FileHash -Algorithm SHA256 -LiteralPath <文件路径>`；macOS 可用 `shasum -a 256 <文件路径>`。缺失条目或不一致时停止使用该文件并检查原因。

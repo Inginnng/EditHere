@@ -139,19 +139,19 @@ See [AI integration and the command line (Chinese)](docs/AGENT-CLI.md) for full 
 
 <p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere demo: capture, annotate, rearrange the layout, and hand the feedback to AI"></p>
 
-The animation above is a compressed preview; download the [full promo video (MP4)](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-promo.mp4) from Releases, or see [all downloads](https://github.com/Inginnng/EditHere/releases/latest).
+The animation above is a compressed preview; download the [full promo video (MP4)](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-promo.mp4) from Releases, or see [all downloads](https://github.com/Inginnng/EditHere/releases/latest).
 
 ## Download and install
 
 | Platform | Download | How to use |
 | --- | --- | --- |
-| **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
-| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
-| **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
+| **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
+| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
+| **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
 
 The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the components page, you can choose whether to launch at login, add the CLI to PATH, and create a desktop shortcut. Launch at login and PATH are selected by default on a new installation; upgrades preserve the existing startup registration state. Reopen your terminal and AI tools after installation so they can pick up the updated PATH. Uninstalling preserves your settings and projects.
 
-The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/SHA256SUMS.txt).
+The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
 
 The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and has passed builds and automated tests, but **remains a preview without acceptance testing on a physical Mac or Apple notarization**.
 
