@@ -19,8 +19,8 @@ the project at dist/native-sources/qtbase-everywhere-src-6.8.3.zip and
 dist/native-sources/qtimageformats-everywhere-src-6.8.3.zip. They include third-party
 sources and Qt build configuration. Qt binaries were obtained from the official Qt
 online repository through aqtinstall; the application dynamically links them.
-The matching source archives are supplied alongside binary releases so recipients
-have equivalent access. The application license does not cover these libraries.
+Recipients can obtain the same unmodified sources at no charge from the upstream
+references below. The application license does not cover these libraries.
 
 Upstream source references:
 - https://download.qt.io/archive/qt/6.8/6.8.3/submodules/

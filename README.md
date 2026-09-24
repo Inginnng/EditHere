@@ -107,7 +107,7 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 
 <p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere 演示：截图、批注、调整布局，再把反馈交给 AI"></p>
 
-上面是压缩后的动图预览。完整宣传视频（MP4，约 250 MB）可在 [Releases](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-promo.mp4) 下载，历史视频与其他文件见 [全部版本](https://github.com/Inginnng/EditHere/releases)。
+上面是压缩后的动图预览。完整宣传视频（MP4，约 250 MB）可在 [Releases](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-promo.mp4) 下载，其他版本见 [全部发布](https://github.com/Inginnng/EditHere/releases)。
 
 ## 下载与安装
 
