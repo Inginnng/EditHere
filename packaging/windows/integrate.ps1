@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('Check','Install','Uninstall')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$InstallDirectory,
     [ValidateSet('0','1')][string]$Startup='0',

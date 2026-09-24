@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$QtRoot = $env:QT_ROOT,
     [string]$CompilerBin = "",
     [string]$BuildDirectory = "build",
