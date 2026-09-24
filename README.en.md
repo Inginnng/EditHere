@@ -19,7 +19,7 @@
 <p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
 
 <p align="center">
-  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4">
+  <a href="#demo-video">
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere demo: annotate a screenshot, rearrange its layout, and send the feedback to AI">
   </a>
 </p>
@@ -90,16 +90,38 @@ EditHere prepares the feedback. You can send it to AI manually or use the compan
 
 The screenshots and demo show the Chinese UI. Chinese button and feature names are included below to help you follow along.
 
-1. **Capture an image:** launch EditHere and press **Ctrl + Shift + 2** on Windows or **Command + Shift + 2** on macOS. You can also open, drag in, or paste an image.
-2. **Write your feedback:** mark a detail or select a region, then add a comment on the right. Use a global annotation for overall requirements.
-3. **Arrange the target layout:** if you want to move or resize something, enable “Explode” (大爆炸) and adjust the corresponding region.
-4. **Send the feedback to AI:** for manual use, click “Copy JSON” (复制 JSON) and send it along with your project context. In an annotation session started by AI, click “Finish and return to AI” (完成并返回 AI). You can also save an annotated image or the complete project.
+1. **Install EditHere:** let your AI agent install EditHere for you, using the prompt in [Set up with AI](#set-up-with-ai).
+
+2. **Capture the screen:** say “Use EditHere to annotate the main page for me” in your project, or capture the screen with EditHere's global shortcut.
+
+<p align="center"><img src="assets/readme/game-before.png" width="720" alt="Game interface: the screen before any change"></p>
+
+3. **Annotate** in EditHere:
+
+- **Point annotation:** annotate a single point.
+- **Rectangle annotation:** detected rectangles are highlighted; click one to annotate it, or draw a region manually.
+- **Global comment:** requirements that apply to the whole project.
+- **Explode (大爆炸):** split every detected element, then move or resize them. EditHere records the position before and after each move so AI can see both; the original position is left empty, and your AI fills in what belongs there.
+
+<p align="center"><img src="assets/readme/game-annotating.png" width="720" alt="Game interface: annotating in EditHere"></p>
+
+See the [user guide (Chinese)](docs/USER-GUIDE.md) for more actions, shortcuts, and examples.
+
+4. **Send the feedback to AI**
+
+A single JSON contains:
+
+- **The original image:** shows the interface before editing and can optionally be embedded in the JSON.
+- **Annotations:** locations, regions, and written comments.
+- **Layout changes:** the actual moves and resizes, with the regions recorded before and after each adjustment.
+
+EditHere prepares the feedback. You can send it to AI manually or use the companion skill and command line: AI opens the image, you annotate it in EditHere, and you click **“Finish and return to AI” (完成并返回 AI)**. AI then uses the feedback and your project context to make the changes. EditHere itself does not call a model or modify code.
 
 For example, attach your exported feedback to this prompt:
 
 > Update the current project using this EditHere feedback. Use the original image to understand the interface, address each item in annotations, and adjust the layout using the positions and dimensions in changes. Only modify what is explicitly requested. Explain any ambiguity before proceeding.
 
-See the [user guide (Chinese)](docs/USER-GUIDE.md) for more instructions, shortcuts, and examples.
+<p align="center"><img src="assets/readme/game-after.png" width="720" alt="Game interface: the screen after the annotated changes"></p>
 
 ### Use it in an AI workflow
 
@@ -113,23 +135,23 @@ See [AI integration and the command line (Chinese)](docs/AGENT-CLI.md) for full 
 
 ## Demo video
 
-**Watch the complete 4-minute, 6-second workflow: screen capture, annotations, layout adjustments, and an agent starting an annotation session and receiving feedback.**
+**The clip below walks through the whole flow: screen capture, annotations, layout adjustments, and an agent starting an annotation session and receiving feedback.** It features original instrumental music and **Mandarin narration**, with the Chinese UI shown on screen.
 
-[Play or download the 1080p introduction](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4) · [Smaller web video](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-web.mp4) · [All downloads](https://github.com/Inginnng/EditHere/releases/latest)
+<p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere demo: capture, annotate, rearrange the layout, and hand the feedback to AI"></p>
 
-The video features original instrumental music and **Mandarin narration**, with the Chinese UI shown on screen. Its branding uses the EditHere vector wordmark with a blue gradient and an amber-orange pen cap. It covers a game interface and a data chart. The agent workflow starts at **03:03**: opening an image, adding comments, clicking “Finish and return to AI,” and receiving structured feedback. The EditHere window and feedback in this chapter come from real interactions with an isolated instance; the subsequent AI editing is an illustration of the workflow.
+The animation above is a compressed preview; download the [full promo video (MP4)](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-promo.mp4) from Releases, or see [all downloads](https://github.com/Inginnng/EditHere/releases/latest).
 
 ## Download and install
 
 | Platform | Download | How to use |
 | --- | --- | --- |
-| **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
-| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
-| **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
+| **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
+| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
+| **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
 
 The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the components page, you can choose whether to launch at login, add the CLI to PATH, and create a desktop shortcut. Launch at login and PATH are selected by default on a new installation; upgrades preserve the existing startup registration state. Reopen your terminal and AI tools after installation so they can pick up the updated PATH. Uninstalling preserves your settings and projects.
 
-The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt).
+The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/SHA256SUMS.txt).
 
 The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and has passed builds and automated tests, but **remains a preview without acceptance testing on a physical Mac or Apple notarization**.
 
@@ -156,7 +178,9 @@ Quit the old version, then run the installer or fully extract the new ZIP packag
 
 ## Acknowledgements
 
-EditHere stands on the shoulders of these projects and people:
+Thanks to everyone on the [linux.do](https://linux.do/) forum for their suggestions and feedback.
+
+The project also stands on the shoulders of these projects and people:
 
 - **[Qt 6](https://www.qt.io/)** (The Qt Company and the Qt Project contributors) — the UI, networking and image handling are built on Qt, dynamically linked under the LGPL. Without it, a cross-platform native app would not have come together this quickly.
 - **[MinGW-w64](https://www.mingw-w64.org/) and the GCC runtime** — the toolchain behind the Windows build and the runtime components shipped with it.

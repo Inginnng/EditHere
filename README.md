@@ -5,7 +5,7 @@
 <p align="center">改这里</p>
 <p align="center"><strong>让 AI 看懂，你想怎么改。</strong></p>
 <p align="center">截图、写下意见、直接调整布局，把修改意图一次交给 AI。</p>
-<p align="center">Windows · macOS 预览版 &nbsp; / &nbsp; 本地截图与图像识别</p>
+<p align="center">Windows · macOS 预览版   /   本地截图与图像识别</p>
 <p align="center">
   <a href="#下载与安装">下载</a> ·
   <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
@@ -19,7 +19,7 @@
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
 <p align="center">
-  <a href="https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4">
+  <a href="#演示视频">
     <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
   </a>
 </p>
@@ -53,57 +53,49 @@
 
 ## 功能介绍
 
-| 功能 | 你可以怎么用 |
-| --- | --- |
-| **截图即批注** | 全局快捷键呼出截图；悬停选块、滚轮切换范围，也可手动画框。松开鼠标，直接开始编辑。 |
-| **位置与意见一一对应** | 点选、框选和全局批注配合使用；在侧栏直接写意见，通过编号定位到画面中的具体位置。 |
-| **直接调整布局** | 开启“大爆炸”，拖动或缩放图像区域，精确输入坐标与尺寸；调整后的区域仍可添加批注。 |
-| **一键交给 AI** | 复制或导出 JSON；也可通过配套 skill 和 CLI，让 AI 打开图片，等你明确完成批注后接收反馈并继续修改。 |
-| **保存下来，继续修改** | 导出或复制带批注图片；保存完整项目，之后重新打开接着编辑。支持打开、拖入和粘贴常用图片。 |
-| **按自己的习惯操作** | 自由缩放与平移、撤销重做、亮暗主题、自定义快捷键和工具栏；图像区域识别在本机完成。 |
+| 功能                   | 你可以怎么用                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| **截图即批注**         | 全局快捷键呼出截图；悬停选块、滚轮切换范围，也可手动画框。松开鼠标，直接开始编辑。                 |
+| **位置与意见一一对应** | 点选、框选和全局批注配合使用；在侧栏直接写意见，通过编号定位到画面中的具体位置。                   |
+| **直接调整布局**       | 开启“大爆炸”，拖动或缩放图像区域，精确输入坐标与尺寸；调整后的区域仍可添加批注。                   |
+| **一键交给 AI**        | 复制或导出 JSON；也可通过配套 skill 和 CLI，让 AI 打开图片，等你明确完成批注后接收反馈并继续修改。 |
+| **保存下来，继续修改** | 导出或复制带批注图片；保存完整项目，之后重新打开接着编辑。支持打开、拖入和粘贴常用图片。           |
 
-### 把“这里”，指到具体位置
+## 快速开始
 
-一个点说明细节，一个框明确范围，全局批注补充整体风格。批注与画面同时显示，修改意见不必在聊天记录和截图之间来回找。
+1. **安装 EditHere**：让你的 AI Agent 帮你安装 EditHere，提示词见[让 AI 帮你安装](#让-ai-帮你安装)。
 
-<img src="assets/readme/annotations.jpg" width="960" alt="游戏界面示例：在同一个编辑窗口中标记位置并记录修改意见">
+2. **截取画面**：在你的项目中说“用 EditHere 帮我标注主页面”，或者用 EditHere 的全局快捷键截取画面。
 
-### 布局怎么改，直接摆出来
+<p align="center"><img src="assets/readme/game-before.png" width="720" alt="游戏界面：修改前的画面"></p>
 
-用“大爆炸”选择并调整图像区域：把图例移开、把卡片放大，或精确设置位置和尺寸。移动轨迹和批注一起保留，反馈可以同时表达“原来在哪里”和“希望放到哪里”。
+3. **进行批注**在 EditHere 中进行批注：
 
-<img src="assets/readme/layout.jpg" width="960" alt="图表示例：移动图例并保留对应的批注与位置变化">
+- **点批注**：为一个小点进行批注
+- **框批注**：自动识别矩形元素，直接点击识别的矩形批注，也可以手动画框
+- **全局意见**：针对项目全局的需求批注
+- **大爆炸**：直接将识别的元素全部切分，可以移动元素，移动将会记录移动前后的位置，提供给 AI 参考，移动后原位置会留空，但你的 AI 会补上此处原本该有的内容。
 
-这里调整的是截图中的图像区域。移动后原位置会留空，EditHere 不直接修改网页源码，也不会自动补齐背景。
+<p align="center"><img src="assets/readme/game-annotating.png" width="720" alt="游戏界面：在 EditHere 中批注"></p>
 
-### 带着上下文，交给你的 AI
+更多操作、快捷键和示例见 [使用指南](docs/USER-GUIDE.md)。
 
-一份反馈同时包含：
+4. **反馈 AI**
 
+一份 JSON 同时包含：
 - **原图**：提供修改前的画面，可选择内嵌到 JSON。
 - **批注**：具体位置、范围和文字意见。
 - **布局变化**：实际发生的移动与缩放，记录调整前后的区域。
 
 EditHere 负责整理反馈，你可以手动发送给 AI，也可以通过配套 skill 和命令行接入：AI 打开待修改的图片，你在 EditHere 中标注，点击 **“完成并返回 AI”**，AI 再结合项目执行修改。EditHere 本身不调用模型或修改代码。
 
-## 快速开始
-
-1. **截取画面**：启动后按 Windows 的 **Ctrl + Shift + 2**，或 macOS 的 **Command + Shift + 2**；也可以打开、拖入或粘贴图片。
-2. **写下修改意见**：点选细节、框选范围，在右侧写批注；整体要求可用全局批注补充。
-3. **摆出目标布局**：需要移动或缩放时，开启“大爆炸”并调整对应区域。
-4. **把反馈交给 AI**：手动使用时点击“复制 JSON”，连同项目上下文发送；由 AI 发起的标注会话则点击“完成并返回 AI”。也可保存带批注图片或完整项目。
-
-给 AI 的提示词可以这样写，再附上导出的反馈：
-
-> 请根据这份 EditHere 反馈修改当前项目。结合原图理解界面，逐条落实 annotations，并按 changes 中的位置和尺寸调整布局。只修改明确指出的内容；无法判断的部分先说明。
-
-更多操作、快捷键和示例见 [使用指南](docs/USER-GUIDE.md)。
+<p align="center"><img src="assets/readme/game-after.png" width="720" alt="游戏界面：按批注修改后的画面"></p>
 
 ### 在 AI 工作流中使用
 
 安装或完整解压免安装版后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，并让 AI 知道 CLI 的位置，就可以这样发起协作。也可以用上面的 [AI 安装提示词](#让-ai-帮你安装) 完成配置：
 
-> 用 EditHere 让我标注这张界面，等我完成后，再按反馈修改当前项目。
+> 用 EditHere 让我标注这张界面。
 
 AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成。取消或超时不会把未提交的编辑当成修改要求。已有项目也能通过 CLI 导出反馈，供自己的脚本或 Agent 使用。
 
@@ -111,23 +103,23 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 
 ## 演示视频
 
-**4 分 6 秒，查看截图、批注、布局调整，以及 Agent 发起标注并接收反馈的完整流程。**
+下面这段演示完整走了一遍流程：截取画面、添加批注、调整布局，以及让 AI 发起标注并接收反馈。视频配有中文旁白与字幕，界面为中文。
 
-[播放或下载 1080p 介绍视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-1080p.mp4) · [较小的网页版视频](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-introduction-A1-web.mp4) · [查看所有下载](https://github.com/Inginnng/EditHere/releases/latest)
+<p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere 演示：截图、批注、调整布局，再把反馈交给 AI"></p>
 
-视频配有原创器乐与普通话解说，使用蓝色渐变与琥珀橙笔帽的 EditHere 矢量字标。视频包含游戏界面和数据图表两个案例，03:03 起为 Agent 协作章节：打开待修改的图、写下意见、点击“完成并返回 AI”、接收结构化反馈。该章节中的 EditHere 窗口和反馈来自隔离实例的真实操作；AI 后续修改为流程示意。
+上面是压缩后的动图预览。完整宣传视频（MP4，约 250 MB）可在 [Releases](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-promo.mp4) 下载，历史视频与其他文件见 [全部版本](https://github.com/Inginnng/EditHere/releases)。
 
 ## 下载与安装
 
-| 平台 | 下载 | 使用方式 |
-| --- | --- | --- |
-| **Windows x64 · 推荐** | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64-setup.exe) | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。 |
-| **Windows x64 · 免安装版** | [下载免安装版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
-| **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/EditHere-0.8.21-macos-universal.dmg) | 打开 DMG，将 `EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
+| 平台                              | 下载                                                                                                                 | 使用方式                                                                              |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Windows x64 · 推荐**            | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64-setup.exe)   | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。                  |
+| **Windows x64 · 免安装版**        | [下载免安装版 ZIP](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-win-x64.zip)       | 完整解压后运行`EditHere.exe`，保留同目录的 DLL 和插件文件夹。                         |
+| **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/EditHere-0.9.4-macos-universal.dmg) | 打开 DMG，将`EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
 
 Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
 
-Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.8.21/SHA256SUMS.txt)。
+Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/download/v0.9.4/SHA256SUMS.txt)。
 
 Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 
@@ -136,7 +128,7 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 <details>
 <summary>从旧版本升级</summary>
 
-退出旧版后，运行安装器或完整解压新免安装版压缩包。项目使用 `.edithere` 扩展名，不再兼容旧版 `.helpdesign` 项目；如需保留旧项目，请在升级前用旧版导出为 JSON 反馈。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可登记 `.edithere` 文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
+退出旧版后，运行安装器或完整解压新免安装版压缩包。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可登记 `.edithere` 文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
 
 </details>
 
@@ -154,18 +146,11 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 
 ## 致谢
 
-EditHere 站在下面这些项目与人的肩膀上：
-
-- **[Qt 6](https://www.qt.io/)**（The Qt Company 与 Qt Project 的贡献者）——界面、网络、图像处理都建立在 Qt 之上，以 LGPL 动态链接使用。没有它，跨平台本地应用不会这么快成型。
-- **[MinGW-w64](https://www.mingw-w64.org/) 与 GCC 运行时**——Windows 版本的构建工具链，以及随安装包分发的运行时组件。
-- **[NSIS](https://nsis.sourceforge.io/) 与 [aqtinstall](https://github.com/miurahr/aqtinstall)**——Windows 安装包、以及 CI 里获取部署 Qt 的那一步；这两件事本来都要自己啃很久。
-- **每一位提交问题与建议的用户**——安装器报错、批注交互、更新流程里的大多数改动，都来自你们的描述。欢迎继续通过 [Issues](https://github.com/Inginnng/EditHere/issues) 或邮件告诉我。
-
-第三方组件的许可与版权声明见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)：那是许可要求，这一节则是感谢。
+感谢 [linux.do](https://linux.do/) 论坛各位的建议与反馈。
 
 ## 使用许可与商业合作
 
-原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）：在保留版权声明与许可文本的前提下，可以免费使用、修改、分发、再许可和出售，包括用于商业目的、集成进闭源产品，或在你的 AI 工具与智能体中调用。详情见 [使用许可](LICENSING.md)。
+原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）
 
 许可之外的优先支持、定制开发、联合开发与品牌合作，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业合作与支持](COMMERCIAL-LICENSE.md)。这些合作**不是**使用本软件的前提。
 
