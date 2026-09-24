@@ -193,9 +193,9 @@ License and copyright notices for third-party components live in the [third-part
 
 The original software is licensed under the [MIT License](LICENSE) (SPDX: `MIT`). Provided that the copyright notice and license text are retained, you are free to use, copy, modify, merge, publish, distribute, sublicense, and sell the software — including for commercial purposes, inside closed-source products, and when invoking it from your AI tools and agents. See [licensing details (Chinese)](LICENSING.md).
 
-Beyond the license, priority support, custom development, joint development, and branding cooperation are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial collaboration (Chinese)](COMMERCIAL-LICENSE.md). These services are **not** a prerequisite for using the software.
+Beyond the license, commercial licensing (branding, white-label, priority support, enterprise deployment, indemnification) and custom development are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md). These are **not** a prerequisite for using the software.
 
-The EditHere name and marks are not licensed under the MIT License. Third-party components such as Qt and MinGW remain subject to their own licenses; see [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
+The EditHere name and marks are not licensed under the MIT License; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Third-party components such as Qt and MinGW remain subject to their own licenses; see [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md). To contribute, see the [contributing guide (Chinese)](CONTRIBUTING.md).
 
 ## Documentation and feedback
 

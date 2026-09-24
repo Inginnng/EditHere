@@ -6,6 +6,7 @@
 
 ## 未发布
 
+- 补齐许可与协作文档：新增[商标与品牌使用政策](TRADEMARK-POLICY.md)（fork 与再分发需改名、品牌使用需授权）、[贡献指南](CONTRIBUTING.md) 与[贡献者许可协议](CLA.md)（当前不强制启用，仅在需要统一行使权利时启用）。[商业授权与合作](COMMERCIAL-LICENSE.md) 改写为"宽松许可 + 商业附加"模式：明确 MIT 已免费授予的权利不再收费，商业协议卖的是商标、白标去署名、优先支持、企业部署与赔偿承诺，并给出协议条款骨架、流程与边界。
 - 发布资产名不再包含版本号：安装包、免安装压缩包、DMG 与 `SHA256SUMS.txt` 统一为 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`，宣传视频为 `EditHere-promo.mp4`（本地构建产物仍带版本号）。
 - 文档与 README 的下载链接改用 `https://github.com/Inginnng/EditHere/releases/latest/download/<文件名>`，指向最新版本，不会再因为发版或删除旧版本而变成死链。
 - 应用内自动更新同时认新旧两种资产名：优先匹配带版本号的名字，找不到时回退到不带版本号的名字，因此 0.9.4 及更早版本的客户端在后续版本发布后需要手动下载一次。

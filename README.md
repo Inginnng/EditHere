@@ -152,9 +152,9 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 
 原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）
 
-许可之外的优先支持、定制开发、联合开发与品牌合作，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业合作与支持](COMMERCIAL-LICENSE.md)。这些合作**不是**使用本软件的前提。
+许可之外的商业授权（品牌、白标、优先支持、企业部署、赔偿承诺）与定制开发，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业授权与合作](COMMERCIAL-LICENSE.md)。这些**不是**使用本软件的前提。
 
-EditHere 的名称与标识不随 MIT 许可授予。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
+EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。参与开发见 [贡献指南](CONTRIBUTING.md)。
 
 ## 文档与反馈
 
