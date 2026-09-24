@@ -5,6 +5,52 @@ Unicode true
 !include "FileFunc.nsh"
 !include "Sections.nsh"
 !include "x64.nsh"
+
+# Make sure no EditHere instance is holding the executable or its Qt DLLs.
+# integrate.ps1 uses exit codes to separate the cases: 0 ready, 1 fatal,
+# 2 still running. Running instances are asked to exit through their own
+# save/discard prompt, then we wait instead of pushing the work onto the user.
+!macro EnsureEditHereClosed UNIQUE SCRIPTDIR
+    nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${SCRIPTDIR}\integrate.ps1" -Mode Check -InstallDirectory "$INSTDIR"'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+        Goto ${UNIQUE}_done
+    ${ElseIf} $0 != 2
+        MessageBox MB_ICONSTOP "$1" /SD IDOK
+        SetErrorLevel 1
+        Abort
+    ${EndIf}
+    ${If} ${Silent}
+        StrCpy $2 90
+    ${Else}
+        StrCpy $2 10
+    ${EndIf}
+    ${UNIQUE}_wait:
+        nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${SCRIPTDIR}\integrate.ps1" -Mode Close -InstallDirectory "$INSTDIR" -TimeoutSeconds $2'
+        Pop $0
+        Pop $1
+        ${If} $0 == 0
+            Goto ${UNIQUE}_done
+        ${EndIf}
+        ${If} ${Silent}
+            SetErrorLevel 1
+            ; Skip in-app updates start the installer and quit; do not leave the
+            ; user with a closed app when the update cannot be applied.
+            ${If} $UpdateMode == 1
+            ${AndIf} ${FileExists} "$INSTDIR\EditHere.exe"
+                Exec '"$INSTDIR\EditHere.exe" --autostart'
+            ${EndIf}
+            Abort
+        ${EndIf}
+        StrCpy $2 60
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "EditHere 正在运行，安装程序无法替换正在使用的文件。$\r$\n$\r$\n请右键系统托盘中的 EditHere 图标选择「退出」。窗口可能已经被关闭，只在托盘里驻留。$\r$\n$\r$\n点「重试」继续等待最多 60 秒，点「取消」退出安装。" /SD IDCANCEL IDRETRY ${UNIQUE}_wait IDCANCEL ${UNIQUE}_cancel
+    ${UNIQUE}_cancel:
+        SetErrorLevel 1
+        Abort
+    ${UNIQUE}_done:
+!macroend
+
 Name "EditHere · 改这里"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\EditHere"
@@ -49,14 +95,7 @@ Section "EditHere 程序和 Agent skill（必需）" Core
     InitPluginsDir
     SetOutPath "$PLUGINSDIR"
     File /oname=integrate.ps1 "${PROJECT_ROOT}\packaging\windows\integrate.ps1"
-    nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\integrate.ps1" -Mode Check -InstallDirectory "$INSTDIR"'
-    Pop $0
-    Pop $1
-    ${If} $0 != 0
-        MessageBox MB_ICONSTOP "$1" /SD IDOK
-        SetErrorLevel 1
-        Abort
-    ${EndIf}
+    !insertmacro EnsureEditHereClosed Core "$PLUGINSDIR"
     SetOutPath "$INSTDIR"
     File /r "${PACKAGE_DIR}\*"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -143,14 +182,7 @@ Function un.onInit
     SetShellVarContext current
 FunctionEnd
 Section "Uninstall"
-    nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\integrate.ps1" -Mode Check -InstallDirectory "$INSTDIR"'
-    Pop $0
-    Pop $1
-    ${If} $0 != 0
-        MessageBox MB_ICONSTOP "$1" /SD IDOK
-        SetErrorLevel 1
-        Abort
-    ${EndIf}
+    !insertmacro EnsureEditHereClosed Uninst "$INSTDIR"
     nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\integrate.ps1" -Mode Uninstall -InstallDirectory "$INSTDIR"'
     Pop $0
     Pop $1

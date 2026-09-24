@@ -24,6 +24,7 @@ class Controller final : public QObject {
     void finishAgentSession();
     void clearOverlays();
     void cancelCapture();
+    void raiseEditor();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
     void updateTrayShortcut();
     AppSettings settings_;

@@ -15,6 +15,7 @@
 #include <QLocalSocket>
 #include <QLockFile>
 #include <QStandardPaths>
+#include <QThread>
 #include <QTimer>
 #include <cstdio>
 #ifdef Q_OS_WIN
@@ -85,6 +86,32 @@ int main(int argc, char **argv) {
             path = QFileInfo(args[i]).absoluteFilePath();
             break;
         }
+    const bool quitRequest = args.contains("--quit");
+    if (quitRequest) {
+        // Ask the running instance to go through its normal exit path, which
+        // still prompts for unsaved annotations. Exit 0 once it is gone, 2 when
+        // it is still holding the lock (the caller keeps waiting).
+        if (lock.tryLock(0)) {
+            lock.unlock();
+            return 0;
+        }
+        QLocalSocket socket;
+        socket.connectToServer(serverName);
+        if (socket.waitForConnected(800)) {
+            socket.write("quit");
+            socket.flush();
+            socket.waitForBytesWritten(500);
+            socket.disconnectFromServer();
+        }
+        for (int i = 0; i < 150; ++i) {
+            if (lock.tryLock(0)) {
+                lock.unlock();
+                return 0;
+            }
+            QThread::msleep(100);
+        }
+        return 2;
+    }
     if (!lock.tryLock(0)) {
         if ((background || wasLaunchedAtLogin()) && path.isEmpty())
             return 0;
@@ -113,6 +140,7 @@ int main(int argc, char **argv) {
             QObject::connect(socket, &QLocalSocket::disconnected, &app, [&, socket] {
                 const auto text = QString::fromUtf8(socket->readAll());
                 if (text == "capture") controller.capture();
+                else if (text == "quit") controller.quit();
                 else if (!text.isEmpty()) controller.start(false, text);
             });
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);

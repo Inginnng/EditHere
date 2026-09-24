@@ -1,18 +1,61 @@
 ﻿param(
-    [ValidateSet('Check','Install','Uninstall')][string]$Mode,
+    [ValidateSet('Check','Close','Install','Uninstall')][string]$Mode,
     [Parameter(Mandatory=$true)][string]$InstallDirectory,
     [ValidateSet('0','1')][string]$Startup='0',
-    [ValidateSet('0','1')][string]$AddToPath='1'
+    [ValidateSet('0','1')][string]$AddToPath='1',
+    [int]$TimeoutSeconds=0
 )
+# Exit codes shared with edithere.nsi:
+#   0 = ready, or the requested waiting finished
+#   1 = fatal (invalid install path or unhandled error)
+#   2 = EditHere is still running
 $ErrorActionPreference='Stop'
+# --quit was added to the application in 0.9.4. Older builds treat unknown flags
+# as a plain launch, which would trigger a capture instead of an exit, so the
+# request is only sent to installations that understand it.
+$quitRequestSince=[version]'0.9.4'
+function Get-EditHereProcesses { @(Get-Process -Name EditHere -ErrorAction SilentlyContinue) }
+function Test-QuitRequestSupported([string]$root) {
+    $versionFile=Join-Path $root 'version.txt'
+    if (!(Test-Path -LiteralPath $versionFile -PathType Leaf)) { return $false }
+    $parsed=$null
+    if (![version]::TryParse([IO.File]::ReadAllText($versionFile).Trim(),[ref]$parsed)) { return $false }
+    return $parsed -ge $quitRequestSince
+}
+function Wait-EditHereExit([int]$seconds) {
+    $deadline=(Get-Date).AddSeconds([Math]::Max(0,$seconds))
+    while ((Get-EditHereProcesses).Count) {
+        if ((Get-Date) -ge $deadline) { return $false }
+        Start-Sleep -Milliseconds 400
+    }
+    return $true
+}
 try {
-    $root=[IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
-    if ($root -eq [IO.Path]::GetPathRoot($root).TrimEnd('\') -or $root.Contains(';')) { throw '安装路径无效。' }
     if ($Mode -eq 'Check') {
-        $running=@(Get-Process -Name EditHere -ErrorAction SilentlyContinue)
-        if ($running.Count) { throw '请先从系统托盘退出 EditHere，再继续安装或卸载。未保存的批注应先保存。' }
+        $root=[IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
+        if ($root -eq [IO.Path]::GetPathRoot($root).TrimEnd('\') -or $root.Contains(';')) { throw '安装路径无效。' }
+        if ((Get-EditHereProcesses).Count) { [Console]::Error.WriteLine('EditHere 正在运行。'); exit 2 }
         exit 0
     }
+    if ($Mode -eq 'Close') {
+        if (!(Get-EditHereProcesses).Count) { exit 0 }
+        $root=[IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
+        $exe=Join-Path $root 'EditHere.exe'
+        if ((Test-Path -LiteralPath $exe -PathType Leaf) -and (Test-QuitRequestSupported $root)) {
+            # Ask the running instance to exit through its own save/discard prompt.
+            $asked=Start-Process -FilePath $exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
+            [void]$asked.WaitForExit(20000)
+        }
+        if ((Wait-EditHereExit $TimeoutSeconds)) {
+            # Give the shell a moment to release the executable before copying.
+            Start-Sleep -Milliseconds 400
+            if (!(Get-EditHereProcesses).Count) { exit 0 }
+        }
+        [Console]::Error.WriteLine('EditHere 仍在运行，请右键系统托盘中的 EditHere 图标选择「退出」。')
+        exit 2
+    }
+    $root=[IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
+    if ($root -eq [IO.Path]::GetPathRoot($root).TrimEnd('\') -or $root.Contains(';')) { throw '安装路径无效。' }
     $user=[Microsoft.Win32.Registry]::CurrentUser
     $appKey='Software\EditHere\Installer'
     $runKey='Software\Microsoft\Windows\CurrentVersion\Run'

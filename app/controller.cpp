@@ -178,18 +178,23 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
         }
     }
 }
+void Controller::raiseEditor() {
+    if (!editor_.hasDocument())
+        return;
+    if (editor_.isMinimized())
+        editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
+    editor_.show();
+    editor_.raise();
+    editor_.activateWindow();
+}
 void Controller::activate() {
     if (guidePending_) {
         showGuide();
         return;
     }
-    if (editor_.hasDocument()) {
-        if (editor_.isMinimized())
-            editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
-        editor_.show();
-        editor_.raise();
-        editor_.activateWindow();
-    } else
+    if (editor_.hasDocument())
+        raiseEditor();
+    else
         capture();
 }
 void Controller::capture() {
@@ -292,10 +297,15 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     }
 }
 void Controller::quit() {
-    if (!agentSessionId_.isEmpty())
+    const bool pendingSession = !agentSessionId_.isEmpty();
+    if (pendingSession)
         cancelAgentSession(agentSessionId_, "cancelled", "EditHere is exiting. No feedback was returned.");
     if (capturing_)
         cancelCapture();
+    // The update flow and installers ask a tray-resident instance to exit, so the
+    // save/discard/cancel prompt has to come to the front instead of hiding there.
+    if ((pendingSession || editor_.hasUnsavedChanges()) && !editor_.isVisible())
+        raiseEditor();
     if (!editor_.allowReplace())
         return;
     tray_.hide();
