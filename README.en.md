@@ -155,11 +155,11 @@ Quit the old version, then run the installer or fully extract the new ZIP packag
 
 ## License and commercial collaboration
 
-The original software is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial uses permitted by the license are free to use, modify, and share. Except where expressly permitted by the license, commercial use requires separate, paid written authorization in advance. See [licensing details (Chinese)](LICENSING.md).
+The original software is licensed under the [MIT License](LICENSE) (SPDX: `MIT`). Provided that the copyright notice and license text are retained, you are free to use, copy, modify, merge, publish, distribute, sublicense, and sell the software — including for commercial purposes, inside closed-source products, and when invoking it from your AI tools and agents. See [licensing details (Chinese)](LICENSING.md).
 
-For product integration, custom development, or joint development, contact **[inginnng@163.com](mailto:inginnng@163.com)** with your use case, the entity seeking authorization, and the expected scale. See [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md) for the full application details.
+Beyond the license, priority support, custom development, joint development, and branding cooperation are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial collaboration (Chinese)](COMMERCIAL-LICENSE.md). These services are **not** a prerequisite for using the software.
 
-This project uses a **source-available license**. It is not MIT-licensed or open source under an OSI-approved license. Third-party components such as Qt and MinGW remain subject to their own licenses; see [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
+The EditHere name and marks are not licensed under the MIT License. Third-party components such as Qt and MinGW remain subject to their own licenses; see [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
 
 ## Documentation and feedback
 

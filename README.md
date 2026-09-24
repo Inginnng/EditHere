@@ -153,11 +153,11 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 
 ## 使用许可与商业合作
 
-原创软件采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。许可证允许的非商业用途免费使用、修改和分享；除许可明确允许的情形外，商业使用须先取得单独的付费书面授权。详情见 [使用许可](LICENSING.md)。
+原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）：在保留版权声明与许可文本的前提下，可以免费使用、修改、分发、再许可和出售，包括用于商业目的、集成进闭源产品，或在你的 AI 工具与智能体中调用。详情见 [使用许可](LICENSING.md)。
 
-产品集成、定制开发和联合开发等合作，请联系 **[inginnng@163.com](mailto:inginnng@163.com)**，并说明使用场景、授权主体和预计规模。完整申请说明见 [商业授权](COMMERCIAL-LICENSE.md)。
+许可之外的优先支持、定制开发、联合开发与品牌合作，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业合作与支持](COMMERCIAL-LICENSE.md)。这些合作**不是**使用本软件的前提。
 
-本项目采用源码可用许可，不是 MIT 或 OSI 批准的开源软件。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
+EditHere 的名称与标识不随 MIT 许可授予。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
 
 ## 文档与反馈
 

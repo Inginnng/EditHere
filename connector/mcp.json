@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "edithere": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "edithere-mcp@0.2.0"],
+      "runtime": {
+        "type": "node",
+        "version": "20"
+      },
+      "npmRegistries": [
+        "https://registry.npmmirror.com",
+        "https://registry.npmjs.org"
+      ]
+    }
+  }
+}

@@ -2,5 +2,6 @@
   "name": "@trae-plugins/edithere",
   "version": "0.8.22",
   "private": true,
+  "license": "MIT",
   "description": "EditHere plugin for TRAE - annotate screenshots and adjust layouts visually, then hand structured feedback to AI."
 }

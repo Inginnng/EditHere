@@ -3,15 +3,21 @@
 //
 // 把本地 edithere-cli 的 Agent 接口封装为 MCP 工具，供 WorkBuddy 等
 // MCP 客户端调用：
-//   edithere_status    查询 EditHere 运行与文档状态
-//   edithere_open      打开图片或 .edithere 项目（仅请求受理）
-//   edithere_capture   唤起截图（仅请求受理）
-//   edithere_annotate  发起标注会话并等待用户点击"完成并返回 AI"
-//   edithere_export    离线导出已保存项目/图片为反馈 JSON
+//   edithere_status           查询 EditHere 运行与文档状态
+//   edithere_open             打开图片或 .edithere 项目（仅请求受理）
+//   edithere_capture          唤起截图（仅请求受理）
+//   edithere_annotate_start   发起标注会话后立即返回会话 ID（推荐）
+//   edithere_annotate_poll    查询会话是否完成，完成时返回反馈摘要
+//   edithere_annotate         发起标注会话并阻塞等待用户点击"完成并返回 AI"
+//   edithere_export           离线导出已保存项目/图片为反馈 JSON
+//
+// annotate_start / annotate_poll 是推荐路径：两者都在毫秒级返回，满足
+// WorkBuddy 连接器规范"单次请求建议 30 秒内响应"；annotate 保留给支持
+// 长任务的客户端，会阻塞直到用户提交、取消或超时。
 //
 // CLI 定位顺序：EDITHERE_CLI 环境变量 → PATH → 默认安装目录；
 // EDITHERE_CLI 指向的路径不可用时直接报错，不静默改用其他来源的 CLI。
-// 反馈 JSON 遵循 schema/feedback-v0.7.schema.json。
+// 反馈 JSON 遵循 schema/feedback-v0.7.schema.json（并兼容新版 objects 结构）。
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -21,7 +27,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const SERVER_NAME = 'edithere';
-const SERVER_VERSION = '0.1.1';
+const SERVER_VERSION = '0.2.0';
 const PROTOCOL_VERSION = '2025-06-18';
 
 // ---------------------------------------------------------------- CLI 定位
@@ -246,6 +252,113 @@ function summarizeFeedback(feedback, feedbackPath) {
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------- 非阻塞标注会话
+
+// annotate_start 在后台保留 CLI 子进程，annotate_poll 按会话 ID 查询结果。
+// 会话只存在于连接器进程内；连接器重启后旧会话 ID 失效（会明确报错，不静默重来）。
+const SESSIONS = new Map();
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+let sessionSeq = 0;
+let activeSessionId = null;
+
+function newSessionId() {
+  sessionSeq += 1;
+  return `s${sessionSeq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// 清理已结束且超过 TTL 的会话，避免长期运行累积。
+function reapSessions() {
+  const now = Date.now();
+  for (const [id, s] of SESSIONS) {
+    if (s.state === 'finished' && now - s.finishedAt > SESSION_TTL_MS) SESSIONS.delete(id);
+  }
+}
+
+function runningSession() {
+  for (const s of SESSIONS.values()) {
+    if (s.state === 'running') return s;
+  }
+  return null;
+}
+
+function startAnnotateSession(p) {
+  const timeoutSeconds = clampTimeout(p.timeoutSeconds);
+  const outputPath = makeOutputPath(p.outputDir, 'annotate');
+  const cliArgs = ['annotate', p.imagePath, '--output', outputPath, '--timeout', String(timeoutSeconds)];
+  if (p.noImage) cliArgs.push('--no-image');
+  let child;
+  try {
+    child = spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  } catch (err) {
+    return { error: `无法启动 edithere-cli：${String(err?.message || err)}` };
+  }
+  const id = newSessionId();
+  const session = {
+    id,
+    child,
+    outputPath,
+    includeImage: Boolean(p.includeImage),
+    timeoutSeconds,
+    state: 'running',
+    exitCode: null,
+    stdout: '',
+    stderr: '',
+    timedOut: false,
+    startedAt: Date.now(),
+    finishedAt: 0,
+    resultContent: null,
+  };
+  child.stdout.on('data', (d) => { session.stdout += d; });
+  child.stderr.on('data', (d) => { session.stderr += d; });
+  child.on('error', (err) => {
+    session.state = 'finished';
+    session.exitCode = -1;
+    session.stderr += String(err?.message || err);
+    session.finishedAt = Date.now();
+  });
+  child.on('close', (code) => {
+    session.state = 'finished';
+    session.exitCode = code ?? -1;
+    session.finishedAt = Date.now();
+    clearTimeout(session.timer);
+  });
+  session.timer = setTimeout(() => {
+    session.timedOut = true;
+    child.kill('SIGKILL');
+  }, (timeoutSeconds + 60) * 1000);
+  session.timer.unref?.();
+  SESSIONS.set(id, session);
+  activeSessionId = id;
+  return { session };
+}
+
+function pendingSessionContent(session) {
+  const waited = Math.round((Date.now() - session.startedAt) / 1000);
+  return {
+    content: [{
+      type: 'text',
+      text: `标注会话仍在等待用户提交。\n会话 ID: ${session.id}\n已等待: ${waited} 秒（上限 ${session.timeoutSeconds} 秒）\n反馈文件: ${session.outputPath}\n请确认用户已在 EditHere 中点击顶部的"完成并返回 AI"，然后带上同一 sessionId 再次调用 edithere_annotate_poll。等待期间可以处理其他独立任务，不要重复发起 annotate。`,
+    }],
+    isError: false,
+  };
+}
+
+function finishSessionContent(session) {
+  if (!session.resultContent) {
+    const r = {
+      exitCode: session.exitCode,
+      json: parseCliJson(session.stdout),
+      stdout: session.stdout,
+      stderr: session.stderr,
+      timedOut: session.timedOut,
+    };
+    const body = annotateResultToContent(r, session.outputPath, { includeImage: session.includeImage });
+    const prefix = { type: 'text', text: `会话 ${session.id} 已结束。` };
+    session.resultContent = { content: [prefix, ...body.content], isError: body.isError };
+  }
+  return session.resultContent;
+}
+
 // ---------------------------------------------------------------- MCP 工具定义
 
 const FEEDBACK_NOTE = '返回结构化反馈摘要；反馈 JSON 原文保存在输出的反馈文件路径，需要原图 data URL 时可用文件工具读取该文件。';
@@ -290,6 +403,33 @@ const TOOLS = [
     },
   },
   {
+    name: 'edithere_annotate_start',
+    description: `发起一次 EditHere 标注会话并立即返回会话 ID，不阻塞等待。推荐用它替代 edithere_annotate：调用立刻返回，你随后告知用户在 EditHere 中批注或调整布局，再点击顶部"完成并返回 AI"，然后用 edithere_annotate_poll 带同一 sessionId 查询结果（等待期间可以处理其他独立任务）。同一时刻只支持一个标注会话，已有会话进行中时不会重复发起，会提示先处理该会话。取消或超时不算收到反馈，不要重试覆盖。${FEEDBACK_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      required: ['imagePath'],
+      properties: {
+        imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）或 .edithere 项目的绝对路径' },
+        timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图（默认内嵌）' },
+        includeImage: { type: 'boolean', description: '为 true 时在完成后的工具结果中附上原图（图片内容块）' },
+        outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'edithere_annotate_poll',
+    description: `查询 edithere_annotate_start 发起的标注会话。会话仍在等待用户提交时返回已等待秒数；用户已点击"完成并返回 AI"时返回结构化反馈摘要（批注文字、坐标、布局变化），与 edithere_annotate 的返回格式一致。省略 sessionId 时查询当前进行中的会话。连接器进程重启后旧会话 ID 失效，此时需重新发起。${FEEDBACK_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'edithere_annotate_start 返回的会话 ID；省略时查询当前进行中的会话' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'edithere_export',
     description: `离线把已保存的 .edithere 项目、图片或有效反馈 JSON 转为反馈 JSON，不等待用户输入。${FEEDBACK_NOTE}`,
     inputSchema: {
@@ -323,12 +463,21 @@ function requirePathArg(p, name = 'imagePath') {
   return null;
 }
 
+// EditHere 程序缺失是市场用户最常遇到的失败，给出可执行的安装/指定路径指引。
+const INSTALL_HINT = [
+  'EditHere 是需要单独安装的本机桌面程序，仅安装本连接器不会带上程序本体。',
+  '安装：从 https://github.com/Inginnng/EditHere/releases/latest 下载安装包（Windows 用 setup.exe，macOS 用 DMG）。',
+  '已安装但不在默认位置时，把环境变量 EDITHERE_CLI 设为 edithere-cli 的绝对路径：',
+  '  Windows 默认 %LOCALAPPDATA%\\Programs\\EditHere\\edithere-cli.exe',
+  '  macOS 默认 /Applications/EditHere.app/Contents/MacOS/edithere-cli',
+].join('\n');
+
 // CLI 定位失败时统一报错，避免 spawn 失败被误读成文件或桌面问题。
 function cliUnavailableContent() {
   return {
     content: [{
       type: 'text',
-      text: `edithere-cli 不可用，无法执行本次调用。\nCLI 定位来源: ${CLI.source}\n${CLI.error}`,
+      text: `edithere-cli 不可用，无法执行本次调用。\nCLI 定位来源: ${CLI.source}\n${CLI.error}\n\n${INSTALL_HINT}`,
     }],
     isError: true,
   };
@@ -367,6 +516,55 @@ async function toolCall(name, args, notifyProgress) {
         onWaiting: () => notifyProgress?.('仍在等待用户在 EditHere 中点击"完成并返回 AI"…'),
       });
       return annotateResultToContent(r, output, p);
+    }
+    case 'edithere_annotate_start': {
+      const invalid = requirePathArg(p);
+      if (invalid) return invalid;
+      const existing = runningSession();
+      if (existing) {
+        return {
+          content: [{
+            type: 'text',
+            text: `已有一个标注会话在进行中，未重复发起。\n会话 ID: ${existing.id}\n请先用 edithere_annotate_poll（sessionId 传 ${existing.id}）查询结果；若用户已放弃这一轮，请让其先处理完 EditHere 中的窗口再重新发起。`,
+          }],
+          isError: false,
+        };
+      }
+      reapSessions();
+      const started = startAnnotateSession(p);
+      if (started.error) {
+        return { content: [{ type: 'text', text: started.error }], isError: true };
+      }
+      const s = started.session;
+      return {
+        content: [{
+          type: 'text',
+          text: `标注会话已发起。\n会话 ID: ${s.id}\n请让用户在 EditHere 中批注或调整组件，完成后点击顶部的"完成并返回 AI"，然后用 edithere_annotate_poll 带上 sessionId="${s.id}" 查询结果。等待期间可以处理其他独立任务，不要重复发起标注。\n反馈文件: ${s.outputPath}\n等待上限: ${s.timeoutSeconds} 秒`,
+        }],
+        isError: false,
+      };
+    }
+    case 'edithere_annotate_poll': {
+      let id = typeof p.sessionId === 'string' ? p.sessionId.trim() : '';
+      if (!id) id = activeSessionId || '';
+      if (!id) {
+        return {
+          content: [{ type: 'text', text: '当前没有进行中的标注会话。请先用 edithere_annotate_start 发起一次标注。' }],
+          isError: false,
+        };
+      }
+      const session = SESSIONS.get(id);
+      if (!session) {
+        return {
+          content: [{
+            type: 'text',
+            text: `找不到会话 ${id}：连接器进程可能已重启，会话状态不再保留。请用 edithere_status 确认程序可用后重新发起 edithere_annotate_start。`,
+          }],
+          isError: true,
+        };
+      }
+      if (session.state === 'running') return pendingSessionContent(session);
+      return finishSessionContent(session);
     }
     case 'edithere_export': {
       const invalid = requirePathArg(p);

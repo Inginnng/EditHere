@@ -1,18 +1,41 @@
 {
   "name": "edithere-mcp",
-  "version": "0.1.1",
-  "description": "EditHere（改这里）MCP 连接器：把本地 edithere-cli 的 Agent 接口封装为 MCP 工具",
+  "version": "0.2.0",
+  "description": "EditHere（改这里）MCP 连接器：把本地 edithere-cli 的 Agent 接口封装为 MCP 工具，让 AI 读取用户在截图上的批注与布局调整",
   "type": "module",
   "main": "mcp-server.mjs",
   "bin": {
     "edithere-mcp": "mcp-server.mjs"
   },
+  "files": [
+    "mcp-server.mjs",
+    "icon.svg",
+    "skills",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
   "engines": {
     "node": ">=18"
   },
-  "license": "PolyForm Noncommercial-1.0.0",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "edithere",
+    "annotation",
+    "screenshot",
+    "ui",
+    "design",
+    "feedback"
+  ],
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Inginnng/EditHere"
+    "url": "git+https://github.com/Inginnng/EditHere.git",
+    "directory": "connector"
+  },
+  "homepage": "https://github.com/Inginnng/EditHere/tree/main/connector",
+  "bugs": {
+    "url": "https://github.com/Inginnng/EditHere/issues"
   }
 }

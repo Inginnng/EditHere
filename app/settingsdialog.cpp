@@ -202,7 +202,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto description = mutedLabel("截图、批注与布局调整，让设计修改意见更清楚。", about);
     description->setWordWrap(true);
     aboutLayout->addWidget(description);
-    auto license = mutedLabel("非商业用途按 PolyForm Noncommercial 1.0.0 免费使用；其他商业用途需另行授权。"
+    auto license = mutedLabel("以 MIT License 发布：可免费商用、修改与分发，保留版权声明即可。"
                               R"(<br><a href="https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md">查看许可说明</a>)", about);
     license->setWordWrap(true);
     license->setTextFormat(Qt::RichText);

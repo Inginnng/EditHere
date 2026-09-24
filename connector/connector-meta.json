@@ -1,0 +1,22 @@
+{
+  "name": "EditHere 改这里",
+  "name_zh": "EditHere 改这里",
+  "name_en": "EditHere",
+  "description": "Annotate screenshots and mockups visually, then hand structured feedback to the AI.",
+  "description_zh": "在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI。适用于需要明确指出界面上改哪里、怎么改的场景。",
+  "description_en": "Annotate screenshots and design mockups, move and resize components, then hand structured feedback to the AI. Use it when the user needs to point out exactly what to change on a UI.",
+  "source": "edithere",
+  "type": "mcp",
+  "version": "0.2.0",
+  "examples_zh": [
+    "用 EditHere 打开这张界面截图，我标注完你按反馈改",
+    "把刚才的设计图交给 EditHere，等我批注完再动手",
+    "这个页面布局我想调整，用 EditHere 让我先摆一下位置"
+  ],
+  "examples_en": [
+    "Open this screenshot in EditHere and apply my annotations when I'm done",
+    "Send the mockup to EditHere and wait for my feedback",
+    "I want to rearrange this layout, let me do it visually with EditHere"
+  ],
+  "minWorkbuddyVersion": "5.0.0"
+}
