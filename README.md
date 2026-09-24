@@ -13,7 +13,8 @@
   <a href="#演示视频">演示视频</a> ·
   <a href="docs/AGENT-CLI.md">接入 AI</a> ·
   <a href="docs/USER-GUIDE.md">使用指南</a> ·
-  <a href="CHANGELOG.md">更新日志</a>
+  <a href="CHANGELOG.md">更新日志</a> ·
+  <a href="#致谢">致谢</a>
 </p>
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
@@ -150,6 +151,17 @@ Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测�
 **不用安装器，免安装版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
 
 **能保存下次继续改吗？** 可以。保存 `.edithere` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
+
+## 致谢
+
+EditHere 站在下面这些项目与人的肩膀上：
+
+- **[Qt 6](https://www.qt.io/)**（The Qt Company 与 Qt Project 的贡献者）——界面、网络、图像处理都建立在 Qt 之上，以 LGPL 动态链接使用。没有它，跨平台本地应用不会这么快成型。
+- **[MinGW-w64](https://www.mingw-w64.org/) 与 GCC 运行时**——Windows 版本的构建工具链，以及随安装包分发的运行时组件。
+- **[NSIS](https://nsis.sourceforge.io/) 与 [aqtinstall](https://github.com/miurahr/aqtinstall)**——Windows 安装包、以及 CI 里获取部署 Qt 的那一步；这两件事本来都要自己啃很久。
+- **每一位提交问题与建议的用户**——安装器报错、批注交互、更新流程里的大多数改动，都来自你们的描述。欢迎继续通过 [Issues](https://github.com/Inginnng/EditHere/issues) 或邮件告诉我。
+
+第三方组件的许可与版权声明见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)：那是许可要求，这一节则是感谢。
 
 ## 使用许可与商业合作
 

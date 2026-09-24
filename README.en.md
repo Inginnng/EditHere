@@ -13,7 +13,8 @@
   <a href="#demo-video">Demo video</a> ·
   <a href="docs/AGENT-CLI.md">AI integration (Chinese)</a> ·
   <a href="docs/USER-GUIDE.md">User guide (Chinese)</a> ·
-  <a href="CHANGELOG.md">Changelog (Chinese)</a>
+  <a href="CHANGELOG.md">Changelog (Chinese)</a> ·
+  <a href="#acknowledgements">Acknowledgements</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
 
@@ -152,6 +153,17 @@ Quit the old version, then run the installer or fully extract the new ZIP packag
 **Can I use the skill without installing EditHere?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
 
 **Can I save my work and continue later?** Yes. A `.edithere` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
+
+## Acknowledgements
+
+EditHere stands on the shoulders of these projects and people:
+
+- **[Qt 6](https://www.qt.io/)** (The Qt Company and the Qt Project contributors) — the UI, networking and image handling are built on Qt, dynamically linked under the LGPL. Without it, a cross-platform native app would not have come together this quickly.
+- **[MinGW-w64](https://www.mingw-w64.org/) and the GCC runtime** — the toolchain behind the Windows build and the runtime components shipped with it.
+- **[NSIS](https://nsis.sourceforge.io/) and [aqtinstall](https://github.com/miurahr/aqtinstall)** — the Windows installer and the Qt deployment step in CI; both would have cost far more time to build from scratch.
+- **Everyone who reports a problem or suggests an improvement** — most of the fixes in the installer, the annotation flow and the update flow came from your descriptions. Keep them coming via [Issues](https://github.com/Inginnng/EditHere/issues) or email.
+
+License and copyright notices for third-party components live in the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md): that page is what the licences require, this section is simply thanks.
 
 ## License and commercial collaboration
 
