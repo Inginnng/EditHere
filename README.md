@@ -161,3 +161,15 @@ EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与�
 [使用指南](docs/USER-GUIDE.md) · [AI 与命令行](docs/AGENT-CLI.md) · [构建与开发](docs/DEVELOPMENT.md) · [更新日志](CHANGELOG.md) · [报告问题或建议](https://github.com/Inginnng/EditHere/issues)
 
 反馈问题时，请附上系统版本、程序版本、复现步骤，以及方便分享的截图或示例项目。
+
+## Star History
+
+<p align="center">
+  <a href="https://star-history.com/#Inginnng/EditHere&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date" />
+    </picture>
+  </a>
+</p>

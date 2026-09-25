@@ -204,3 +204,15 @@ The following documents are currently in Chinese:
 [User guide](docs/USER-GUIDE.md) · [AI integration and CLI](docs/AGENT-CLI.md) · [Build and development](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md)
 
 [Report a problem or suggest an improvement](https://github.com/Inginnng/EditHere/issues). Please include your operating system and app versions, steps to reproduce the issue, and a screenshot or sample project you are comfortable sharing.
+
+## Star History
+
+<p align="center">
+  <a href="https://star-history.com/#Inginnng/EditHere&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Inginnng/EditHere&type=Date" />
+    </picture>
+  </a>
+</p>
