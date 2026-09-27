@@ -154,11 +154,14 @@ class OcrTests : public QObject {
         const QString prepared = prepareOcrBridge(
             script, QStringLiteral("C:/Users/小王's/AppData/Local/Temp/band-0.png"),
             QStringLiteral("C:/Temp/result.json"), QStringLiteral("zh-Hans-CN"));
+#ifdef Q_OS_WIN
         // Qt hands out forward slashes everywhere; the Windows Runtime rejects them
         // with "the given path's format is not supported", so the script must never
-        // see one.
+        // see one. Only Windows turns them around, so this is asserted where it is
+        // true rather than everywhere.
         QVERIFY2(!prepared.contains(QStringLiteral("C:/")), qPrintable(prepared));
         QVERIFY(prepared.contains(QStringLiteral("C:\\Users\\")));
+#endif
         // A single quote in a path would end the PowerShell string literal early.
         QVERIFY2(!prepared.contains(QStringLiteral("小王's")), qPrintable(prepared));
         QVERIFY(prepared.contains(QStringLiteral("小王''s")));

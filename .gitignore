@@ -23,3 +23,6 @@ build-*/
 
 # WorkBuddy agent data (project memory, skills) - not part of the product.
 .workbuddy/
+
+# Trae IDE workspace data.
+.trae/

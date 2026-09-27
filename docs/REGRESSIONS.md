@@ -143,6 +143,8 @@
 | REG-080 | **放大镜里看不到识别出来的蓝色框**，放大后反而不知道自己在选哪一块 | 开发中（用户反馈） | 放大镜里画的是**选区**（`localRect(selected_)`），而且用的是**未放大**的屏幕坐标——面板里是 10 倍放大的内容，这两套坐标根本不是一回事，画出来是错的；而放大镜真正对准的"当前识别块"（`picker_.current()`）压根没画 | `tests/ui_test.cpp::theMagnifierCarriesTheFrameItIsAimingAt`（真实渲染 Overlay：指针压在被识别块的边缘上，放大区域矩形内必须出现强调色像素。先把新绘制关掉跑一遍确认 **0** 像素、用例失败，再打开得到 113 像素） |
 | REG-081 | **长截图基本不可用**：稍微正常一点的页面（有固定顶栏/播放条/底栏）跑完只回一帧原图 | 开发中（用户反馈） | 三层原因：① 匹配时用的是整幅帧，帧首的固定顶栏永远对不上上一帧结尾的行，第一次匹配就失败；② 失败即 `succeed()`，拿第一帧交差，没有重试也没有"退一步用粗糙匹配"的兜底；③ 滚动后死等 180 ms 就抓，而平滑滚动的页面要 300 ms 以上才停稳，抓到的是滚动中途的糊图 | `tests/capture_test.cpp::aFixedHeaderAndFooterDoNotStopTheStitch`（12 行固定顶栏 + 8 行固定底栏的页面，逐帧拼接后总高度必须等于 `顶栏 + 全部内容 + 底栏`，且顶/底栏各只出现一次；同一组帧交给旧的 `appendScrolledFrame()` 必须返回 -1，即旧路径确实会失败）、`theBandsOfAFrameSayWhatDidNotMove`、`aFrameWithSomethingMovingInItIsStillPlaced`（容差阶梯：精确匹配失败 → 放宽后放行，且 `partial()` 必须为真）、`aStitcherThatPlacedNothingStillHasItsFirstFrame`、`twoLooksAtTheSamePlaceSayWhetherThePageMoved` |
 
+| REG-082 | 文字识别的两个用例**只在 macOS 上失败**——本机只编 Windows，跑了十几轮都绿，是 CI 的 macOS 任务第一次跑 OCR 才暴露的 | 0.9.5（CI 拦下，未发到用户手上） | ① `bridgeIsGivenNativePathsAndSafeQuoting` 断言 `C:/` 必须被换成 `C:\`，而这是 Windows 特有的路径转换，macOS 保留斜杠，断言必然不成立；② macOS 侧（Vision）把识别语言写进了 `OcrResult::engineLanguage`，却没回写 `OcrEngine::language_`，于是 `engine.engineLanguage()` 一直是空 | `tests/ocr_test.cpp` 把反斜杠那两条收进 `#ifdef Q_OS_WIN`（单引号转义那部分跨平台依然有效，仍会断言）；`OcrEngine::finish()` 统一从 `result.engineLanguage` 回写 `language_`，两条路径不再各写一半。教训：**新增平台相关代码时本机跑绿不等于 CI 绿**，`app/*_mac.mm` 与 macOS 分支只有 CI 能验证 |
+
 关于文字识别的实现选择：发布包用 MinGW 构建，没有 C++/WinRT，所以 Windows 侧走"内置 PowerShell 桥接系统 `Windows.Media.Ocr`"这条路（`app/ocrbridge.ps1` + `app/ocr.cpp`）；macOS 侧直接用 Vision（`app/ocr_mac.mm`）。两边都不联网、不上传、不新增依赖。
 
 ## 十、无法用测试固化的遗留项

@@ -530,6 +530,11 @@ void OcrEngine::finish(OcrResult result) {
     scratch_ = nullptr;
     bands_.clear();
     bandPaths_.clear();
+    // Whichever path produced it, the language the recogniser answered in is what the
+    // next call reports. Vision hands it back in the outcome and the Windows bridge in
+    // every band, so it is taken from the finished result rather than from either one.
+    if (result.ok && !result.engineLanguage.isEmpty())
+        language_ = result.engineLanguage;
     if (callback)
         callback(std::move(result));
 }
