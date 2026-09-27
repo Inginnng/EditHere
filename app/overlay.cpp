@@ -296,15 +296,15 @@ void Overlay::paintEvent(QPaintEvent *) {
 
 void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     const QSizeF panelSize(magnifierPanelWidth, magnifierPanelHeight);
-    const double gap = 24, margin = 8;
-    double x = at.x() + gap, y = at.y() + gap;
-    if (x + panelSize.width() > width() - margin)
-        x = at.x() - gap - panelSize.width();
-    if (y + panelSize.height() > height() - margin)
-        y = at.y() - gap - panelSize.height();
-    x = std::clamp(x, margin, std::max(margin, width() - panelSize.width() - margin));
-    y = std::clamp(y, margin, std::max(margin, height() - panelSize.height() - margin));
-    const QRectF panel(QPointF(x, y), panelSize);
+    // The bar and the column of tools are children of this window, so they are painted
+    // over the panel; the panel is placed to keep clear of them.
+    QVector<QRectF> tools;
+    if (bar_ != nullptr && bar_->isVisible())
+        tools.append(bar_->geometry());
+    if (sidebar_ != nullptr && sidebar_->isVisible())
+        tools.append(sidebar_->geometry());
+    const QRectF panel = magnifierPlacement(at, QSizeF(width(), height()), tools);
+    const double x = panel.left(), y = panel.top();
     const double inner = panelSize.width() - magnifierPanelPadding * 2;
     const QRectF area(QPointF(x + magnifierPanelPadding, y + magnifierPanelPadding),
                       QSizeF(inner, magnifierZoomHeight));

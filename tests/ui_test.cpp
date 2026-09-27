@@ -46,20 +46,29 @@
 #include <QWheelEvent>
 using namespace h2d;
 
-// Where the magnifier panel lands for a pointer at `at`, following the same rule the
-// window uses: beside the pointer, flipped when it would fall off an edge, and then
-// kept inside the window.
-static QRect magnifierPanel(QPoint at, QSize window) {
-    const QSize panel(magnifierPanelWidth, magnifierPanelHeight);
-    const int gap = 24, margin = 8;
-    int x = at.x() + gap, y = at.y() + gap;
-    if (x + panel.width() > window.width() - margin)
-        x = at.x() - gap - panel.width();
-    if (y + panel.height() > window.height() - margin)
-        y = at.y() - gap - panel.height();
-    x = std::clamp(x, margin, std::max(margin, window.width() - panel.width() - margin));
-    y = std::clamp(y, margin, std::max(margin, window.height() - panel.height() - margin));
-    return {QPoint(x, y), panel};
+// Puts the pointer on a point and makes sure the window is told about it. A move to
+// where the pointer already is is not delivered at all, and a test that runs after
+// another one that left the pointer on the same spot would otherwise be testing a
+// window that never saw the pointer arrive.
+static void movePointerTo(QWidget &overlay, QPoint at) {
+    QTest::mouseMove(&overlay, at + QPoint(3, 3));
+    QTest::mouseMove(&overlay, at);
+}
+// The rectangles the window's own tools occupy. They are children, so they are painted
+// over the magnifier, and the panel has to be placed clear of them.
+static QVector<QRectF> magnifierTools(QWidget &overlay) {
+    QVector<QRectF> tools;
+    for (const auto &name : {QStringLiteral("captureToolbar"), QStringLiteral("captureSidebar")}) {
+        const auto *tool = overlay.findChild<QWidget *>(name);
+        if (tool != nullptr && tool->isVisible())
+            tools.append(tool->geometry());
+    }
+    return tools;
+}
+// Where the magnifier panel lands for a pointer at `at`, asked of the one function the
+// window itself uses, so the test cannot end up looking somewhere else.
+static QRect magnifierPanel(QWidget &overlay, QPoint at, QSize window) {
+    return magnifierPlacement(at, window, magnifierTools(overlay)).toRect();
 }
 // The colour a recognised block is marked with, and the only reason a pixel that
 // colour can appear inside a screen that has none of it.
@@ -2563,11 +2572,11 @@ class UiTests : public QObject {
         QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
         QVERIFY(!overlay.selection().isEmpty());
         // Away from the region there is nothing of the user's to read, so it stays down.
-        QTest::mouseMove(&overlay, {520, 40});
+        movePointerTo(overlay, {520, 40});
         QTest::qWait(30);
         const QImage away = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         // Back over the picture that was just taken it is up again, without a keystroke.
-        QTest::mouseMove(&overlay, {200, 180});
+        movePointerTo(overlay, {200, 180});
         QTest::qWait(30);
         const QImage over = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-settled.png");
@@ -2597,11 +2606,11 @@ class UiTests : public QObject {
         // about twenty pixels around the pointer, so an edge is the one place a frame
         // can be seen to be magnified rather than merely present.
         const QPoint at(0, 225);
-        QTest::mouseMove(&overlay, at);
+        movePointerTo(overlay, at);
         QTest::qWait(80);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-frame.png");
-        const QRect panel = magnifierPanel(at, QSize(560, 360));
+        const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
                          QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
         QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
@@ -2634,11 +2643,11 @@ class UiTests : public QObject {
         QVERIFY(!overlay.selection().isEmpty());
         // The pointer goes on the left edge of the region, which is where the frame is.
         const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
-        QTest::mouseMove(&overlay, at);
+        movePointerTo(overlay, at);
         QTest::qWait(50);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-thick-frame.png");
-        const QRect panel = magnifierPanel(at, QSize(560, 360));
+        const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
                          QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
         QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
@@ -2653,6 +2662,58 @@ class UiTests : public QObject {
         QVERIFY2(marked > 2000,
                  qPrintable(QString("the frame has to be enlarged with the pixels it marks (%1)")
                                 .arg(marked)));
+        overlay.hide();
+    }
+    // REG-088: the panel is painted by the window, but the bar and the column of tools
+    // are its children and are painted over it, so a panel placed without looking at
+    // them ends up half behind the toolbar — exactly the moment a colour is being read.
+    void theMagnifierPanelKeepsClearOfTheTools() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTest::qWait(50);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        QVERIFY(!overlay.selection().isEmpty());
+        const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
+        movePointerTo(overlay, at);
+        QTest::qWait(50);
+        const auto *bar = overlay.findChild<QWidget *>(QStringLiteral("captureToolbar"));
+        QVERIFY2(bar != nullptr && bar->isVisible(), "the bar has to be up for this to mean anything");
+        // Without looking at the tools this is where the panel would go, and it is on
+        // the bar: that is the situation being guarded against, not an assumption.
+        QVERIFY2(magnifierPlacement(at, QSize(560, 360), {}).toRect().intersects(bar->geometry()),
+                 "the panel has to want the bar's place before stepping aside means anything");
+        const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
+        QVERIFY2(!panel.intersects(bar->geometry()),
+                 "the panel is drawn by the window and the bar is drawn over it, so the "
+                 "panel has to be placed somewhere the bar is not");
+        // And in the pixels: the pointer sits on the left edge of the region, so the
+        // enlarged frame is a band that runs the whole way down the enlargement. The
+        // only thing allowed to break it is the grid, which is one line every cell;
+        // anything painted across the panel takes out a whole stretch of rows.
+        const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-clear-of-the-bar.png");
+        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
+                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
+        int rows = 0;
+        for (int row = zoom.top(); row < zoom.bottom(); ++row) {
+            for (int column = zoom.left(); column < zoom.right(); ++column)
+                if (isAccentColour(shot.pixelColor(column, row))) {
+                    ++rows;
+                    break;
+                }
+        }
+        QVERIFY2(rows >= zoom.height() * 4 / 5,
+                 qPrintable(QString("the enlargement has to be readable from top to bottom "
+                                    "(%1 of %2 rows show the frame)")
+                                .arg(rows)
+                                .arg(zoom.height())));
         overlay.hide();
     }
     // REG-087: an arrow key used to slide the whole region one pixel, which meant a
@@ -2677,9 +2738,9 @@ class UiTests : public QObject {
         const QRect settled = overlay.selection();
         QVERIFY(!settled.isEmpty());
         // Inside the region, which is what brings the enlargement up.
-        QTest::mouseMove(&overlay, {200, 180});
+        movePointerTo(overlay, {200, 180});
         QTest::qWait(50);
-        const QRect panel = magnifierPanel(QPoint(200, 180), QSize(560, 360));
+        const QRect panel = magnifierPanel(overlay, QPoint(200, 180), QSize(560, 360));
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
                          QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
         const QImage before = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);

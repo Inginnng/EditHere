@@ -16,6 +16,14 @@ constexpr double magnifierPanelPadding = 8;
 constexpr double magnifierZoomHeight = 94;
 // One pixel of the screen is this many pixels wide inside the enlargement.
 constexpr double magnifierZoomCell = 15;
+// Where the magnifier panel goes for a pointer at `at` in a window of `window`: beside
+// the pointer, flipped to the other side of it when it would fall off an edge, and
+// then stepped clear of `tools`, the rectangles the window's own tool widgets occupy.
+// Those widgets are children, so they are painted over the panel, and a readout that
+// has disappeared behind the toolbar is worse than one a little further from the
+// pointer. The window and the tests ask for the same rectangle from here, so the two
+// cannot drift apart.
+QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools = {});
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin
