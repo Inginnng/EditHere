@@ -16,7 +16,7 @@
 
 ## 构建与验证
 
-依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。
+依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。
 
 Windows PowerShell 7，CMake 在 PATH 中：
 
@@ -25,7 +25,33 @@ Windows PowerShell 7，CMake 在 PATH 中：
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
 ```
 
-构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、引导、自启、启动流程、更新和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`，详见 [多语言与翻译](i18n.md)。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+
+除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符，以及 `.ts` 与预编译 `.qm` 的逐条对应；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
+
+## 截图流程与文字识别
+
+截图不再"松手即批注"。`Overlay`（每屏一个无边框置顶窗口）负责选区与交互，选区定下来后由它内部的 `CaptureToolbar` 提供动作，再由 `Controller` 分别处理；只有「批注」会走 `completeCapture` 进入 `Editor`。
+
+| 文件 | 职责 |
+| --- | --- |
+| `app/overlay.{h,cpp}` | 选区绘制与调整、候选块、取色、工具条的宿主；只发信号，不做动作 |
+| `app/capturetoolbar.{h,cpp}` | 工具条控件与「更多」菜单（固定比例、圆角/边框/阴影、识别语言、历史与选区） |
+| `app/capturesession.{h,cpp}` | 比例与尺寸换算、样式合成 `composeCapture()`、跨会话的 `CaptureHistory` |
+| `app/scrollcapture.{h,cpp}` | 长截图的驱动：滚动、抓帧、拼接、到底判定 |
+| `app/scrollstitch.{h,cpp}` | 相邻两帧的重叠匹配与竖向拼接（纯图片运算，可离线测试） |
+| `app/pinwindow.{h,cpp}` | 置顶看图窗口：拖动、缩放、透明度、右键菜单 |
+| `app/ocr.{h,cpp}` + `app/ocr_mac.mm` | 识别引擎封装：分条带、坐标还原、结果解析；macOS 走 Vision |
+| `app/ocrdialog.{h,cpp}` | 识别结果窗口：逐行列表与原图高亮联动 |
+| `app/ocrbridge.ps1` | Windows 侧的系统 OCR 桥接脚本，作为 Qt 资源嵌入 |
+
+Windows 的识别选择由工具链决定：**发布包用 MinGW 构建，没有 C++/WinRT**，因此不直接调用 `Windows.Media.Ocr`，而是把系统 OCR 交给一段以 `-EncodedCommand`（Base64 UTF-16LE）传入的 PowerShell 脚本。这条链上有三条硬约束，改动时务必注意：
+
+1. **脚本必须纯 ASCII 且不带 BOM**。带 BOM 时它会被解码成脚本顶部的杂散字符；非 ASCII 文案在编解码链上不可靠。`scripts/check-packaging.py::ocr_bridge` 会拦住这两种情况。
+2. **路径必须是反斜杠形式**。Windows Runtime 的文件 API 拒绝 `C:/...`，报 `UNABLE_TO_MASK_PATH`；`prepareOcrBridge()` 用 `QDir::toNativeSeparators` 转换。
+3. **不要用管道读子进程输出**。QProcess 在某些受限环境里建不了管道，桥接的结果因此写进临时 JSON 文件，进程输出重定向到文件而不是 `readAllStandardOutput()`。
+
+macOS 侧直接用 Vision（`app/ocr_mac.mm`，链 `-framework Vision`），两边都**不联网、不上传、不新增第三方依赖**。
 
 Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 `makensis.exe`，无需全局安装。在免安装版压缩包生成后运行：
 

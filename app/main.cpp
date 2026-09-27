@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "agentserver.h"
 #include "autostart.h"
+#include "i18n.h"
 #include "ui.h"
 #include <QApplication>
 #include <QCoreApplication>
@@ -65,14 +66,18 @@ int main(int argc, char **argv) {
     app.setApplicationName("EditHere");
     app.setOrganizationName("EditHere");
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    app.setApplicationDisplayName("EditHere · 改这里");
+    app.setApplicationDisplayName(QCoreApplication::translate("h2d", "EditHere · 改这里"));
     app.setApplicationVersion(EDITHERE_VERSION);
     app.setQuitOnLastWindowClosed(false);
     QIcon appIcon;
     for (const int size : {16, 20, 24, 32, 48, 64, 128, 256, 512})
         appIcon.addFile(QString(":/icons/edithere-%1.png").arg(size), QSize(size, size));
     app.setWindowIcon(appIcon);
-    applyTheme(loadSettings().theme);
+    const auto startupSettings = loadSettings();
+    applyTheme(startupSettings.theme);
+    // The translators have to be installed before any widget exists, because every
+    // label is created in a C++ constructor. Later changes are applied live.
+    installLanguage(startupSettings.language);
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);

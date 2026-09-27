@@ -32,11 +32,11 @@ QUrl UpdateChecker::releasesUrl() {
 }
 UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const QString &currentVersion) {
     if (bytes.size() > maximumResponse)
-        return failure("更新信息过大，请稍后重试。");
+        return failure(tr("更新信息过大，请稍后重试。"));
     QJsonParseError error;
     const auto document = QJsonDocument::fromJson(bytes, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
-        return failure("无法读取更新信息，请稍后重试。");
+        return failure(tr("无法读取更新信息，请稍后重试。"));
     const auto object = document.object();
     const auto tag = object.value("tag_name").toString();
     static const QRegularExpression versionPattern("^v?([0-9]+\\.[0-9]+\\.[0-9]+)$");
@@ -48,11 +48,11 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
         object.value("prerelease").toBool() || url.scheme() != "https" || url.host() != "github.com" ||
         !url.userInfo().isEmpty() || url.port(-1) != -1 || url.hasQuery() || url.hasFragment() ||
         url.path() != "/Inginnng/EditHere/releases/tag/" + tag)
-        return failure("发行信息不是有效的 EditHere 正式版本，请到发布页查看。");
+        return failure(tr("发行信息不是有效的 EditHere 正式版本，请到发布页查看。"));
     const auto remote = QVersionNumber::fromString(match.captured(1));
     const auto local = QVersionNumber::fromString(localMatch.captured(1));
     if (remote.segmentCount() != 3 || local.segmentCount() != 3)
-        return failure("版本号无法比较，请到发布页查看。");
+        return failure(tr("版本号无法比较，请到发布页查看。"));
     const QString ver = match.captured(1);
     const auto assets = object.value("assets").toArray();
     // Releases publish version-less asset names so documentation links stay valid.
@@ -84,12 +84,12 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
     const Asset portableHash = pickAsset({portableNames.first() + ".sha256", portableNames.last() + ".sha256"});
     const int order = QVersionNumber::compare(remote, local);
     if (order > 0)
-        return {Available, QString("发现新版本 %1，点击立即更新自动下载安装。").arg(tag), url,
+        return {Available, tr("发现新版本 %1，点击立即更新自动下载安装。").arg(tag), url,
                 tag, installer, installerHash, portable, portableHash};
     if (order < 0)
-        return {NewerLocal, QString("当前版本高于已发布的正式版 %1。").arg(tag), url,
+        return {NewerLocal, tr("当前版本高于已发布的正式版 %1。").arg(tag), url,
                 tag, {}, {}, {}, {}};
-    return {Current, QString("已是最新正式版 %1。").arg(tag), url,
+    return {Current, tr("已是最新正式版 %1。").arg(tag), url,
             tag, {}, {}, {}, {}};
 }
 UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
@@ -99,13 +99,13 @@ UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
     process_.setCreateProcessArgumentsModifier(
         [](QProcess::CreateProcessArguments *args) { args->flags |= CREATE_NO_WINDOW; });
 #endif
-    connect(&timeout_, &QTimer::timeout, this, [this] { finish(failure("检查超时，请检查网络后重试。")); });
+    connect(&timeout_, &QTimer::timeout, this, [this] { finish(failure(tr("检查超时，请检查网络后重试。"))); });
     connect(&process_, &QProcess::readyReadStandardOutput, this, [this] {
         if (!busy_)
             return;
         output_ += process_.readAllStandardOutput();
         if (output_.size() > maximumResponse)
-            finish(failure("更新信息过大，请稍后重试。"));
+            finish(failure(tr("更新信息过大，请稍后重试。")));
     });
     connect(&process_, &QProcess::readyReadStandardError, this, [this] { process_.readAllStandardError(); });
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
@@ -192,17 +192,16 @@ void UpdateChecker::requestPublic() {
             return;
         output_ += reply_->readAll();
         if (output_.size() > maximumResponse)
-            finish(failure("更新信息过大，请稍后重试。"));
+            finish(failure(tr("更新信息过大，请稍后重试。")));
     });
     connect(reply_, &QNetworkReply::finished, this, [this] {
         if (!busy_ || !reply_)
             return;
         const auto status = reply_->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status == 404 || status == 401 || status == 403)
-            finish(failure("无法访问发行版：仓库可能为私有、尚未发布或达到访问限制。请登录有权限的 GitHub "
-                           "账号查看发布页。"));
+            finish(failure(tr("无法访问发行版：仓库可能为私有、尚未发布或达到访问限制。请登录有权限的 GitHub 账号查看发布页。")));
         else if (status != 200 || reply_->error() != QNetworkReply::NoError)
-            finish(failure("网络连接失败，暂时无法判断是否有更新。请稍后重试。"));
+            finish(failure(tr("网络连接失败，暂时无法判断是否有更新。请稍后重试。")));
         else {
             output_ += reply_->readAll();
             finish(parseRelease(output_, QStringLiteral(EDITHERE_VERSION)));
@@ -226,17 +225,21 @@ void UpdateChecker::finish(Result result) {
     lastResult_ = result;
     emit finished(result.status, result.message, result.url);
 }
+QString UpdateChecker::prepareDownloadTarget(const QString &directory, const QString &packageName) {
+    const QString path = QDir(directory).filePath("EditHere-update-" + packageName);
+    QFile::remove(path);
+    return path;
+}
 void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller) {
     if (downloadReply_ || hashReply_)
         return;
     isInstallerUpdate_ = isInstaller;
     downloadFileName_ = package.name;
-    const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    downloadPath_ = QDir(tempDir).filePath("EditHere-update-" + package.name);
     // Remove any leftover download (e.g. a previous attempt that failed or was
     // interrupted): the writer below appends, and a stale file would corrupt
     // the package and fail the SHA256 check.
-    QFile::remove(downloadPath_);
+    downloadPath_ = prepareDownloadTarget(
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation), package.name);
     // Download the package.
     QNetworkRequest request(package.url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -261,13 +264,13 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
             reply->abort();
             reply->deleteLater();
             QFile::remove(downloadPath_);
-            emit installFailed("下载失败，请检查网络后重试。");
+            emit installFailed(tr("下载失败，请检查网络后重试。"));
             return;
         }
         reply->deleteLater();
         // Download the hash file.
         if (!hashAsset.url.isValid()) {
-            emit installFailed("未找到校验文件，无法验证安装包完整性。");
+            emit installFailed(tr("未找到校验文件，无法验证安装包完整性。"));
             QFile::remove(downloadPath_);
             return;
         }
@@ -283,7 +286,7 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
                 reply->abort();
                 reply->deleteLater();
                 QFile::remove(downloadPath_);
-                emit installFailed("无法下载校验文件，请检查网络后重试。");
+                emit installFailed(tr("无法下载校验文件，请检查网络后重试。"));
                 return;
             }
             const QByteArray hashData = reply->readAll();
@@ -298,20 +301,20 @@ void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &exp
     // Compute SHA256 of the downloaded file.
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly)) {
-        emit installFailed("无法读取已下载的文件。");
+        emit installFailed(tr("无法读取已下载的文件。"));
         QFile::remove(filePath);
         return;
     }
     QCryptographicHash hash(QCryptographicHash::Sha256);
     if (!hash.addData(&f)) {
-        emit installFailed("校验文件失败。");
+        emit installFailed(tr("校验文件失败。"));
         QFile::remove(filePath);
         return;
     }
     f.close();
     const QString actualHash = QString::fromLatin1(hash.result().toHex());
     if (!expectedHash.isEmpty() && actualHash.compare(expectedHash, Qt::CaseInsensitive) != 0) {
-        emit installFailed("校验失败：安装包已损坏或不完整。");
+        emit installFailed(tr("校验失败：安装包已损坏或不完整。"));
         QFile::remove(filePath);
         return;
     }
@@ -326,7 +329,7 @@ void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &exp
                                     .filePath("_edithere_update.bat");
         QFile bat(batPath);
         if (!bat.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            emit installFailed("无法创建更新脚本。");
+            emit installFailed(tr("无法创建更新脚本。"));
             QFile::remove(filePath);
             return;
         }

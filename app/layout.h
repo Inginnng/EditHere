@@ -41,7 +41,8 @@ struct LayoutChoice {
     QRectF bounds;
 };
 LayoutState createLayout(QSize size, const QVector<Candidate> &candidates);
-QString addLayoutRegion(LayoutState &state, QRectF currentBounds, const QString &label = "手动区域");
+QString addLayoutRegion(LayoutState &state, QRectF currentBounds,
+                        const QString &label = QT_TRANSLATE_NOOP("EditHere", "手动区域"));
 QRectF layoutBounds(const LayoutState &state, const QString &groupId);
 QVector<LayoutChoice> layoutChoices(const LayoutState &state, QPointF point);
 QRectF constrainLayoutRect(QRectF rect, QSize canvas);

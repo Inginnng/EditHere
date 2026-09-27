@@ -842,6 +842,45 @@ class CanvasFeedbackTests : public QObject {
         QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, {14, 14});
         QCOMPARE(edits.size(), 1);
     }
+    void layoutGuidesStayVisibleForUnselectedComponents() {
+        // Selecting a block used to suppress the guide boxes of every other block,
+        // so the layout could no longer be read while one component was selected.
+        QImage image(480, 360, QImage::Format_ARGB32);
+        image.fill(QColor("#edf1f5"));
+        auto state = createLayout(image.size(), {});
+        const auto first = addLayoutRegion(state, {40, 40, 80, 60});
+        const auto second = addLayoutRegion(state, {320, 240, 80, 60});
+        QVERIFY(!first.isEmpty() && !second.isEmpty());
+        QCOMPARE(layoutBounds(state, second), QRectF(320, 240, 80, 60));
+
+        LayoutCanvas canvas(image, state);
+        canvas.resize(image.size());
+        canvas.show();
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, QPoint(80, 70));
+        QCOMPARE(canvas.selected(), QStringList{first});
+
+        const auto selectedView = rendered(canvas);
+        canvas.setGuides(false);
+        const auto noGuides = rendered(canvas);
+        canvas.setGuides(true);
+        QVERIFY(selectedView.size() == noGuides.size());
+
+        // The outline of the unselected block still gains guide pixels while the
+        // other block is selected.
+        const QRect secondEdge(330, 238, 20, 5);
+        QVERIFY2(selectedView.copy(secondEdge) != noGuides.copy(secondEdge),
+                 "the guide of an unselected component disappeared while another one is selected");
+
+        // Without a selection the same block is still guided, and moving the
+        // selection over to it brings the first block's guide back.
+        canvas.clearSelection();
+        QVERIFY(rendered(canvas).copy(secondEdge) != noGuides.copy(secondEdge));
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, QPoint(360, 270));
+        QCOMPARE(canvas.selected(), QStringList{second});
+        const QRect firstEdge(52, 38, 20, 5);
+        QVERIFY2(rendered(canvas).copy(firstEdge) != noGuides.copy(firstEdge),
+                 "the guide of the previously selected component did not come back");
+    }
     void layoutBlankWheelDoesNotResizeSelectionAndInspectorStaysCompact() {
         auto doc = document();
         LayoutCanvas canvas(doc.image, createLayout(doc.image.size(), doc.candidates));

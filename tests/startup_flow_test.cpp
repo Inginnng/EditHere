@@ -70,6 +70,11 @@ class StartupFlowTests : public QObject {
         QTest::mouseMove(&overlay,QPoint(400,400));
         QTest::mouseMove(&overlay,QPoint(150,150));
         QTest::mouseClick(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(150,150));
+        // A click no longer ends the capture: it settles the region and the bar beside
+        // it offers what to do next, so the picture only reaches the editor once 批注
+        // is chosen.
+        QCOMPARE(accepted.count(),0);
+        QTest::keyClick(&overlay,Qt::Key_Return);
         QCOMPARE(accepted.count(),1);
         QCOMPARE(accepted.first().first().toRect(),QRect(100,100,200,200));
     }
@@ -104,6 +109,10 @@ class StartupFlowTests : public QObject {
         QTest::keyClick(&overlay,Qt::Key_Right);
         QTest::keyClick(&overlay,Qt::Key_Down);
         QTest::mouseRelease(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(80,60));
+        // Releasing keeps the region and the arrows that were pressed while it was
+        // being drawn are still part of it; 批注 is what hands it on.
+        QCOMPARE(accepted.count(),0);
+        QTest::keyClick(&overlay,Qt::Key_Return);
         QCOMPARE(accepted.count(),1);
         QCOMPARE(accepted.first().first().toRect(),dragRect(QPoint(40,40),QPoint(161,121),frame.image.size()));
     }

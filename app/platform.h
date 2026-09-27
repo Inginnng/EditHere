@@ -21,6 +21,12 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready);
 void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
+// Sends wheel steps to whatever window sits under a native point. This is what
+// drives a page while a long picture is being captured: the caller takes one grab,
+// scrolls, takes the next one and stitches them together. Positive steps scroll the
+// way a wheel pushed away from the user does. Returns false when there is nothing
+// under the point that can be scrolled.
+bool scrollAt(QPoint nativePoint, int steps);
 void configureNativeWindow(QWidget *window, bool overlay);
 QString globalShortcutLabel();
 class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {

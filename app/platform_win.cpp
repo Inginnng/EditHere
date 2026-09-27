@@ -5,6 +5,7 @@
 #include <uiautomation.h>
 #include "platform.h"
 #include <QApplication>
+#include <QCoreApplication>
 #include <QScreen>
 #include <QTimer>
 #include <QWidget>
@@ -13,6 +14,11 @@
 #include <memory>
 namespace h2d {
 namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
 QString bstrText(BSTR value) {
     QString text = value ? QString::fromWCharArray(value) : QString();
     SysFreeString(value);
@@ -150,7 +156,8 @@ void captureScreens(CaptureCallback callback) {
                          qRound((r.right-r.left)*sx),qRound((r.bottom-r.top)*sy));
             bounds=bounds.intersected(f.image.rect());
             if(!bounds.isEmpty()) {
-                auto target=manualTarget(); target["label"]="窗口"; target["source"]="window";
+                auto target=manualTarget(); target["label"]=QT_TRANSLATE_NOOP("EditHere", "窗口");
+                target["source"]="window";
                 target["windowId"]=QString::number(quintptr(hwnd));
                 f.frontWindows.append({bounds,target});
             }
@@ -158,7 +165,7 @@ void captureScreens(CaptureCallback callback) {
         },reinterpret_cast<LPARAM>(&data));
         frames.append(frame);
     }
-    callback(frames, frames.isEmpty() ? "无法读取屏幕画面" : QString());
+    callback(frames, frames.isEmpty() ? tr("无法读取屏幕画面") : QString());
 }
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
     struct Search {
@@ -249,6 +256,33 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
 bool requestAccessibility() {
     return true;
 }
+bool scrollAt(QPoint nativePoint, int steps) {
+    if (steps == 0)
+        return false;
+    const POINT point{nativePoint.x(), nativePoint.y()};
+    HWND target = WindowFromPoint(point);
+    if (target == nullptr)
+        return false;
+    // A wheel message goes to the window under the pointer, and a child of another
+    // process cannot act on it, so the top level window is what has to be addressed.
+    if (HWND root = GetAncestor(target, GA_ROOT))
+        target = root;
+    DWORD process = 0;
+    GetWindowThreadProcessId(target, &process);
+    // Our own overlay is on screen while a long picture is taken, so it must not be
+    // the window that gets scrolled.
+    if (process == GetCurrentProcessId())
+        return false;
+    // The cursor is really moved: the wheel is delivered to whatever is under it, and
+    // posting the message instead would need every coordinate to line up exactly.
+    if (!SetCursorPos(point.x, point.y))
+        return false;
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+    input.mi.mouseData = DWORD(steps * WHEEL_DELTA);
+    return SendInput(1, &input, sizeof(INPUT)) == 1;
+}
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
@@ -287,7 +321,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     if (handle_ && sequence == sequence_)
         return true;
     if (sequence.count() != 1) {
-        lastError_ = "全局截图快捷键只支持一组按键，不能使用连续组合。";
+        lastError_ = tr("全局截图快捷键只支持一组按键，不能使用连续组合。");
         return false;
     }
     const auto combination = sequence[0];
@@ -295,7 +329,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     const auto supported = Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier | Qt::MetaModifier;
     const UINT key = virtualKey(combination.key());
     if (!key || (modifiers & ~supported)) {
-        lastError_ = "不支持此按键，请使用字母、数字、F1–F24、PrintScreen 或方向与导航键。";
+        lastError_ = tr("不支持此按键，请使用字母、数字、F1–F24、PrintScreen 或方向与导航键。");
         return false;
     }
     UINT nativeModifiers = MOD_NOREPEAT;
@@ -309,15 +343,15 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
         nativeModifiers |= MOD_WIN;
     const ATOM newId = allocateShortcutId();
     if (!newId) {
-        lastError_ = "无法创建快捷键注册，请稍后重试。";
+        lastError_ = tr("无法创建快捷键注册，请稍后重试。");
         return false;
     }
     if (!RegisterHotKey(nullptr, int(newId), nativeModifiers, key)) {
         const DWORD error = GetLastError();
         GlobalDeleteAtom(newId);
         lastError_ = error == ERROR_HOTKEY_ALREADY_REGISTERED
-                         ? "这个快捷键已被其他应用或系统占用，请更换一组按键。"
-                         : QString("系统无法注册此快捷键（错误 %1），请更换一组按键。").arg(error);
+                         ? tr("这个快捷键已被其他应用或系统占用，请更换一组按键。")
+                         : tr("系统无法注册此快捷键（错误 %1），请更换一组按键。").arg(error);
         return false;
     }
     // Register the replacement first, so a conflict never disables the working shortcut.

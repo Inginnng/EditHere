@@ -11,6 +11,7 @@ class LayoutCanvas final : public QWidget {
     Q_OBJECT
   public:
     LayoutCanvas(QImage original, LayoutState state, QWidget *parent = nullptr);
+    void retranslate();
     const LayoutState &state() const {
         return state_;
     }
@@ -68,6 +69,7 @@ class LayoutCanvas final : public QWidget {
     QPointF noteAnchor(const Note &note) const;
     QVector<Note> displayedAnnotations() const;
     void updateHover(QPointF point);
+    void updateHint();
     void rebuildMovements();
     void stopMiddlePan(bool suppressMouse = false);
     int hitMovement(QPointF screen) const;
@@ -100,6 +102,7 @@ class LayoutInspector final : public QWidget {
     Q_OBJECT
   public:
     explicit LayoutInspector(LayoutCanvas *canvas, QWidget *parent = nullptr);
+    void retranslate();
 
   protected:
     void keyPressEvent(QKeyEvent *) override;
@@ -109,6 +112,7 @@ class LayoutInspector final : public QWidget {
     void applyField(int field);
     LayoutCanvas *canvas_;
     QLabel *selection_;
+    QVector<QLabel *> fieldLabels_;
     QPushButton *clear_, *annotate_;
     QWidget *fieldsPanel_;
     QVector<QDoubleSpinBox *> fields_;

@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "i18n.h"
 #include <QApplication>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -203,17 +204,20 @@ void applyTheme(ThemeMode mode) {
     if (!themeInitialized) {
         themeInitialized = true;
         qApp->setStyle("Fusion");
-#ifdef Q_OS_MAC
-        qApp->setFont(QFont(".AppleSystemUIFont", 12));
-#else
-        qApp->setFont(QFont("Microsoft YaHei UI", 9));
-#endif
+        applyInterfaceFont();
         QObject::connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, qApp, [](Qt::ColorScheme) {
             if (currentTheme == ThemeMode::System)
                 refreshTheme();
         });
     }
     refreshTheme();
+}
+void applyInterfaceFont() {
+#ifdef Q_OS_MAC
+    qApp->setFont(QFont(".AppleSystemUIFont", 12));
+#else
+    qApp->setFont(QFont(isChineseInterface() ? "Microsoft YaHei UI" : "Segoe UI", 9));
+#endif
 }
 QIcon glyph(const QString &name, QColor color) {
     const bool themed = !color.isValid();
@@ -263,6 +267,30 @@ QIcon glyph(const QString &name, QColor color) {
             p.drawPath(eye);
             p.drawEllipse(QPointF(12,12),1.2,1.2);
         }
+    } else if (name == "ocr") {
+        // A frame made of four corners with text lines inside it.
+        for (int corner = 0; corner < 4; ++corner) {
+            p.save();
+            p.translate(12, 12);
+            p.rotate(corner * 90);
+            p.drawLine(-9, -9, -4, -9);
+            p.drawLine(-9, -9, -9, -4);
+            p.restore();
+        }
+        p.drawLine(7, 10, 17, 10);
+        p.drawLine(7, 14, 14, 14);
+    } else if (name == "scroll") {
+        // A page with an arrow running down beside it.
+        p.drawRoundedRect(QRectF(5, 3, 9, 18), 1.5, 1.5);
+        p.drawLine(16, 5, 16, 16);
+        p.drawLine(13, 13, 16, 16);
+        p.drawLine(19, 13, 16, 16);
+    } else if (name == "picker") {
+        // A dropper leaning towards the bottom left corner.
+        p.drawLine(3, 21, 12, 12);
+        p.drawLine(3, 21, 3, 18);
+        p.drawLine(12, 12, 15, 9);
+        p.drawRoundedRect(QRectF(13, 3, 8, 8), 2.5, 2.5);
     } else if (name == "image-copy" || name == "image-save") {
         p.drawRoundedRect(QRectF(3,4,17,15),2,2);p.drawEllipse(QPointF(8,9),1.5,1.5);
         p.drawPolyline(QPolygonF{{4,17},{10,12},{14,16},{17,13},{20,16}});
@@ -360,6 +388,22 @@ QIcon glyph(const QString &name, QColor color) {
     } else if (name == "check") {
         p.drawLine(4, 12, 10, 18);
         p.drawLine(10, 18, 20, 6);
+    } else if (name == "corner") {
+        // One rounded corner with square ones beside it, so the number it stands for
+        // is obvious without a label.
+        p.drawLine(4, 12, 4, 20);
+        p.drawLine(4, 20, 20, 20);
+        QPainterPath arc;
+        arc.moveTo(4, 14);
+        arc.cubicTo(4, 8, 8, 4, 14, 4);
+        p.drawPath(arc);
+        p.drawLine(14, 4, 20, 4);
+        p.drawLine(4, 8, 4, 12);
+    } else if (name == "shadow") {
+        // A plate with a soft band running out from under it.
+        p.drawRoundedRect(QRectF(5, 4, 14, 10), 2, 2);
+        p.drawLine(7, 17, 17, 17);
+        p.drawLine(9, 20, 15, 20);
     } else if (name == "crop") {
         p.drawLine(7, 2, 7, 17);
         p.drawLine(7, 17, 22, 17);

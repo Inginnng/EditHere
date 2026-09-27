@@ -3,6 +3,7 @@
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QScreen>
 #include <QTimer>
 #include <QWidget>
@@ -11,6 +12,11 @@
 #include <memory>
 namespace h2d {
 namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
 QImage fromCGImage(CGImageRef image) {
     if (!image)
         return {};
@@ -127,7 +133,7 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
 }
 void captureScreens(CaptureCallback callback) {
     if (!CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess()) {
-        callback({}, "请在系统设置 → 隐私与安全性 → 屏幕录制中允许 EditHere，然后重试。");
+        callback({}, tr("请在系统设置 → 隐私与安全性 → 屏幕录制中允许 EditHere，然后重试。"));
         return;
     }
     struct State {
@@ -146,7 +152,7 @@ void captureScreens(CaptureCallback callback) {
                                        qApp,
                                        [state, content, error] {
                                            if (error || !content.displays.count) {
-                                               state->callback({}, "无法获取屏幕，请检查屏幕录制权限");
+                                               state->callback({}, tr("无法获取屏幕，请检查屏幕录制权限"));
                                                return;
                                            }
                                            state->pending = int(content.displays.count);
@@ -184,11 +190,11 @@ void captureScreens(CaptureCallback callback) {
                                                                                             logical, pixels,
                                                                                             false});
                                                                   else
-                                                                      state->error = "部分屏幕无法采集";
+                                                                      state->error = tr("部分屏幕无法采集");
                                                                   if (--state->pending == 0)
                                                                       state->callback(state->frames,
                                                                                       state->frames.isEmpty()
-                                                                                          ? "无法读取屏幕画面"
+                                                                                          ? tr("无法读取屏幕画面")
                                                                                           : state->error);
                                                               },
                                                               Qt::QueuedConnection);
@@ -267,6 +273,27 @@ bool requestAccessibility() {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
+bool scrollAt(QPoint nativePoint, int steps) {
+    if (steps == 0)
+        return false;
+    // The wheel event goes to whatever is under the pointer, so the cursor is moved
+    // there first. CGWarpMouseCursorPosition does not generate a move event, which
+    // keeps a window that follows the pointer from reacting to it.
+    CGPoint point = CGPointMake(nativePoint.x(), nativePoint.y());
+    CGWarpMouseCursorPosition(point);
+    CGAssociateMouseAndMouseCursorPosition(true);
+    if (CGEventRef event = CGEventCreateScrollWheelEvent(kCFAllocatorDefault, kCGScrollEventUnitLine,
+                                                       1, int32_t(-steps))) {
+        // A long capture scrolls a page, and a page is read line by line, so the
+        // steps are counted in lines rather than in pixels.
+        CGEventSetLocation(event, point);
+        CGEventPost(kCGHIDEventTap, event);
+        CFRelease(event);
+    } else {
+        return false;
+    }
+    return true;
+}
 void configureNativeWindow(QWidget *widget, bool overlay) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
@@ -312,7 +339,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     if (handle_ && sequence == sequence_)
         return true;
     if (sequence.count() != 1) {
-        lastError_ = "全局截图快捷键只支持一组按键，不能使用连续组合。";
+        lastError_ = tr("全局截图快捷键只支持一组按键，不能使用连续组合。");
         return false;
     }
     const auto combination = sequence[0];
@@ -320,7 +347,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     const auto supported = Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier | Qt::MetaModifier;
     UInt32 key = 0;
     if (!carbonKey(combination.key(), key) || (modifiers & ~supported)) {
-        lastError_ = "不支持此按键，请使用字母、数字、F1–F20 或方向与导航键。";
+        lastError_ = tr("不支持此按键，请使用字母、数字、F1–F20 或方向与导航键。");
         return false;
     }
     UInt32 nativeModifiers = 0;
@@ -356,7 +383,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
             },
             1, &event, this, &newHandler);
         if (installed != noErr) {
-            lastError_ = QString("无法监听系统快捷键（错误 %1）。").arg(installed);
+            lastError_ = tr("无法监听系统快捷键（错误 %1）。").arg(installed);
             return false;
         }
     }
@@ -368,7 +395,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     if (registered != noErr) {
         if (newHandler)
             RemoveEventHandler(newHandler);
-        lastError_ = QString("此快捷键已被占用或系统无法注册（错误 %1），请更换一组按键。").arg(registered);
+        lastError_ = tr("此快捷键已被占用或系统无法注册（错误 %1），请更换一组按键。").arg(registered);
         return false;
     }
     // Keep the existing shortcut and handler alive until the replacement is registered.

@@ -20,3 +20,6 @@ build-*/
 # Private capture sources and a separately managed promotion-site checkout.
 /PixPin_*.mp4
 /promotion-site/
+
+# WorkBuddy agent data (project memory, skills) - not part of the product.
+.workbuddy/

@@ -13,6 +13,11 @@
 
 namespace h2d {
 namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
 bool fail(QString *error, const QString &message) {
     if (error)
         *error = message;
@@ -34,8 +39,24 @@ constexpr wchar_t RunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run
 constexpr wchar_t RunValue[] = L"EditHere";
 constexpr wchar_t StartupApprovedKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
+// lupdate resolves a bare tr() inside the class below to "h2d::WindowsRunValueStore", but the
+// runtime context is the file-local forwarding ("h2d"). Keep these strings at h2d scope so the
+// extraction context and the runtime context agree.
+QString verbRead() {
+    return tr("读取");
+}
+QString verbWrite() {
+    return tr("写入");
+}
+QString verbRemove() {
+    return tr("移除");
+}
+bool approvalFailure(QString *error, LSTATUS status) {
+    return fail(error, tr("无法读取当前用户的开机自启许可状态（Windows 错误 %1）。请检查用户权限或系统策略。")
+                           .arg(status));
+}
 bool registryFailure(QString *error, const QString &action, LSTATUS status) {
-    return fail(error, QString("无法%1当前用户的开机自启项（Windows 错误 %2）。请检查用户权限或系统策略。")
+    return fail(error, tr("无法%1当前用户的开机自启项（Windows 错误 %2）。请检查用户权限或系统策略。")
                            .arg(action).arg(status));
 }
 class WindowsRunValueStore final : public autostart_detail::RunValueStore {
@@ -47,7 +68,7 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         if (opened == ERROR_FILE_NOT_FOUND)
             return StartupApproval::NotRecorded;
         if (opened != ERROR_SUCCESS) {
-            registryFailure(error, "读取启动许可状态", opened);
+            approvalFailure(error, opened);
             return StartupApproval::Unknown;
         }
         BYTE data[12] = {};
@@ -60,7 +81,7 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         if (status == ERROR_UNSUPPORTED_TYPE || status == ERROR_MORE_DATA)
             return StartupApproval::Unknown;
         if (status != ERROR_SUCCESS) {
-            registryFailure(error, "读取启动许可状态", status);
+            approvalFailure(error, status);
             return StartupApproval::Unknown;
         }
         return autostart_detail::windowsStartupApproval(
@@ -73,7 +94,7 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         if (opened == ERROR_FILE_NOT_FOUND)
             return true;
         if (opened != ERROR_SUCCESS)
-            return registryFailure(error, "读取", opened);
+            return registryFailure(error, verbRead(), opened);
         DWORD bytes = 0;
         auto status = RegGetValueW(key, nullptr, RunValue, RRF_RT_REG_SZ, nullptr, nullptr, &bytes);
         if (status == ERROR_FILE_NOT_FOUND) {
@@ -87,13 +108,13 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         }
         if (status != ERROR_SUCCESS) {
             RegCloseKey(key);
-            return registryFailure(error, "读取", status);
+            return registryFailure(error, verbRead(), status);
         }
         std::vector<wchar_t> buffer(bytes / sizeof(wchar_t) + 1, L'\0');
         status = RegGetValueW(key, nullptr, RunValue, RRF_RT_REG_SZ, nullptr, buffer.data(), &bytes);
         RegCloseKey(key);
         if (status != ERROR_SUCCESS)
-            return registryFailure(error, "读取", status);
+            return registryFailure(error, verbRead(), status);
         *command = QString::fromWCharArray(buffer.data());
         return true;
     }
@@ -102,12 +123,12 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         const auto opened = RegCreateKeyExW(HKEY_CURRENT_USER, RunKey, 0, nullptr, 0, KEY_SET_VALUE,
                                            nullptr, &key, nullptr);
         if (opened != ERROR_SUCCESS)
-            return registryFailure(error, "写入", opened);
+            return registryFailure(error, verbWrite(), opened);
         const auto status = RegSetValueExW(key, RunValue, 0, REG_SZ,
                                           reinterpret_cast<const BYTE *>(command.utf16()),
                                           DWORD((command.size() + 1) * sizeof(wchar_t)));
         RegCloseKey(key);
-        return status == ERROR_SUCCESS || registryFailure(error, "写入", status);
+        return status == ERROR_SUCCESS || registryFailure(error, verbWrite(), status);
     }
     bool remove(QString *error) override {
         HKEY key = nullptr;
@@ -115,18 +136,20 @@ class WindowsRunValueStore final : public autostart_detail::RunValueStore {
         if (opened == ERROR_FILE_NOT_FOUND)
             return true;
         if (opened != ERROR_SUCCESS)
-            return registryFailure(error, "移除", opened);
+            return registryFailure(error, verbRemove(), opened);
         // Delete only our named value, never the Run key or a similarly named subkey.
         const auto status = RegDeleteValueW(key, RunValue);
         RegCloseKey(key);
         return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND ||
-               registryFailure(error, "移除", status);
+               registryFailure(error, verbRemove(), status);
     }
 };
 #endif
 } // namespace
 
 namespace autostart_detail {
+// Spell the context out here: lupdate would otherwise extract these as "h2d::autostart_detail",
+// which never matches the runtime context ("h2d").
 StartupApproval windowsStartupApproval(const QByteArray &value) {
     // StartupApproved is not a public Windows API. Recognize only known 12-byte records
     // and report other layouts/states as unknown instead of assuming launch is allowed.
@@ -150,13 +173,13 @@ QString windowsLaunchAtLoginNotice(const QString &command, const QString &execut
         return {};
     QStringList notices;
     if (!registeredExecutableExists)
-        notices << "开机自启记录中的程序已不存在或路径无效。保持勾选并保存，即可修复为当前程序位置。";
+        notices << QCoreApplication::translate("h2d", "开机自启记录中的程序已不存在或路径无效。保持勾选并保存，即可修复为当前程序位置。");
     else if (command.compare(formattedCommand(executablePath), Qt::CaseInsensitive) != 0)
-        notices << "开机自启项指向其他位置或使用旧的启动参数。保持勾选并保存，即可更新为当前程序。";
+        notices << QCoreApplication::translate("h2d", "开机自启项指向其他位置或使用旧的启动参数。保持勾选并保存，即可更新为当前程序。");
     if (approval == StartupApproval::Disabled)
-        notices << "Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere；仅在此处保存不会解除系统禁用。";
+        notices << QCoreApplication::translate("h2d", "Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere；仅在此处保存不会解除系统禁用。");
     else if (approval == StartupApproval::Unknown)
-        notices << "无法确认 Windows 启动项的许可状态，请在 Windows 设置 → 应用 → 启动中检查 EditHere。";
+        notices << QCoreApplication::translate("h2d", "无法确认 Windows 启动项的许可状态，请在 Windows 设置 → 应用 → 启动中检查 EditHere。");
     return notices.join('\n');
 }
 
@@ -172,13 +195,13 @@ QString windowsLaunchCommand(const QString &executablePath, QString *error) {
                          path.contains(u'\n') || path.endsWith(u'\\') || path.startsWith("\\\\?\\") ||
                          path.startsWith("\\\\.\\");
     if ((!drive && !unc) || invalid) {
-        fail(error, "无法设置开机自启：应用路径必须是有效的完整 Windows 可执行文件路径。");
+        fail(error, QCoreApplication::translate("h2d", "无法设置开机自启：应用路径必须是有效的完整 Windows 可执行文件路径。"));
         return {};
     }
     const auto command = formattedCommand(path);
     // Microsoft documents a 260-character limit for each Run command, including arguments.
     if (command.size() > 260) {
-        fail(error, "无法设置开机自启：应用路径过长，包含启动参数的命令不能超过 260 个字符。请将应用移到较短的路径。");
+        fail(error, QCoreApplication::translate("h2d", "无法设置开机自启：应用路径过长，包含启动参数的命令不能超过 260 个字符。请将应用移到较短的路径。"));
         return {};
     }
     return command;

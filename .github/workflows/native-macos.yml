@@ -4,7 +4,18 @@ on:
   push:
     branches: [native, codex/native]
   pull_request:
-    paths: ["app/**", "tests/**", "CMakeLists.txt", "packaging/**", "scripts/build-macos.sh", ".github/workflows/native-macos.yml"]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "scripts/**"
+      - "docs/**"
+      - "packaging/**"
+      - "connector/**"
+      - "CMakeLists.txt"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "README.en.md"
+      - ".github/workflows/**"
 permissions:
   contents: read
 jobs:
@@ -15,6 +26,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Verify packaging and release invariants
+        # Pure Python, no Qt or NSIS needed. The guards and the incidents they
+        # prevent are recorded in docs/REGRESSIONS.md.
+        run: python3 scripts/check-packaging.py
       - name: Verify pinned Xcode and SDK
         run: |
           xcodebuild -version
@@ -28,7 +43,7 @@ jobs:
         run: |
           python3 -m venv .tools/python
           .tools/python/bin/pip install aqtinstall==3.3.0 ninja
-          .tools/python/bin/python -m aqt install-qt mac desktop 6.8.3 clang_64 --modules qtimageformats --archives qtbase qtimageformats --outputdir .tools/qt
+          .tools/python/bin/python -m aqt install-qt mac desktop 6.8.3 clang_64 --modules qtimageformats --archives qtbase qtimageformats qttranslations --outputdir .tools/qt
       - name: Build and test universal app
         env:
           QT_ROOT: ${{ github.workspace }}/.tools/qt/6.8.3/macos

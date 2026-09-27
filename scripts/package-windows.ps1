@@ -37,6 +37,16 @@ try {
     & (Join-Path $QtRoot "bin/windeployqt.exe") --release --compiler-runtime --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation --include-plugins qwebp (Join-Path $outputPath "EditHere.exe")
     if ($LASTEXITCODE) { throw "Qt deployment failed." }
 } finally { $env:PATH = $previousPath }
+# Qt's own strings (file dialogs, standard message box buttons) follow the interface
+# language through qtbase_<locale>.qm. windeployqt runs with --no-translations above to
+# keep the package small, so only the one language the interface offers besides its own
+# source language is copied in. Skipping this leaves Qt's chrome in English while the
+# rest of the interface is Chinese.
+$qtTranslationSource = Join-Path (Join-Path $QtRoot "translations") "qtbase_zh_CN.qm"
+if (-not (Test-Path -LiteralPath $qtTranslationSource)) { throw "Qt translation for Simplified Chinese is missing: $qtTranslationSource" }
+$translationPath = Join-Path $outputPath "translations"
+[IO.Directory]::CreateDirectory($translationPath) | Out-Null
+Copy-Item -LiteralPath $qtTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_CN.qm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "schema") -Destination $outputPath -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/使用说明.txt") -Destination $outputPath

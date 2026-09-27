@@ -30,6 +30,11 @@ class UpdateChecker final : public QObject {
     ~UpdateChecker() override;
     static QUrl releasesUrl();
     static Result parseRelease(const QByteArray &bytes, const QString &currentVersion);
+    // Resolves the temporary path a package is downloaded to and drops whatever
+    // is already there. The writer appends, so a leftover file from a previous
+    // attempt would be concatenated with the new package and fail the SHA256
+    // check with "安装包已损坏或不完整".
+    static QString prepareDownloadTarget(const QString &directory, const QString &packageName);
     void check();
     bool busy() const {
         return busy_;

@@ -18,19 +18,43 @@ class SettingsDialog final : public QDialog {
     void showToolbar();
     void setLaunchAtLoginNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
+    // Cancelling also rolls the live language preview back. QDialog::reject() is a
+    // public slot, so the override keeps the same access.
+    void reject() override;
 
   signals:
     void guideRequested();
+    // Emitted whenever a language is installed, so chrome outside this dialog
+    // (the tray menu and tooltip) can rebuild its own labels.
+    void languageApplied();
+
+  protected:
+    void changeEvent(QEvent *) override;
 
   private:
     void setDraft(const AppSettings &settings);
+    // Rebuilds every label of the dialog; called from the constructor and again
+    // whenever the interface language changes while the dialog is open.
+    void retranslate();
+    void applyLanguage(LanguageMode mode);
     void save();
-    QComboBox *theme_, *defaultTool_;
+    QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_;
+    // Language the dialog opened with, restored when the user cancels.
+    LanguageMode languageOnEntry_ = LanguageMode::System;
+    // Language currently installed by this dialog, so repeated selections are no-ops.
+    LanguageMode appliedLanguage_ = LanguageMode::System;
     QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
     QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
     QLabel *error_, *launchAtLoginNotice_;
+    // Labels styled through the "settingsSection" object name cannot carry a unique
+    // object name of their own, so they are kept as members to stay retranslatable.
+    QLabel *shortcutGlobalLabel_ = nullptr, *shortcutLocalLabel_ = nullptr;
+    QLabel *appearanceTitle_ = nullptr, *languageTitle_ = nullptr, *toolbarTitle_ = nullptr;
+    QLabel *ocrTitle_ = nullptr;
+    QLabel *versionLabel_ = nullptr;
+    QVector<QLabel *> shortcutLabels_;
     QMap<QString, QKeySequenceEdit *> keys_;
     QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;

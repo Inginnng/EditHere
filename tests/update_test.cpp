@@ -1,9 +1,13 @@
 #include "updatechecker.h"
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QSslSocket>
+#include <QTemporaryDir>
 #include <QTest>
 using namespace h2d;
 class UpdateTests : public QObject {
@@ -101,6 +105,44 @@ class UpdateTests : public QObject {
         QCOMPARE(bare.status, UpdateChecker::Available);
         QVERIFY(bare.installer.name.isEmpty());
         QVERIFY(bare.portable.url.isEmpty());
+    }
+    void staleDownloadIsDroppedBeforeAppending() {
+        // Two attempts at the same version used to share one append-only temporary
+        // file: the second download landed behind the first package and the check
+        // reported "校验失败：安装包已损坏或不完整" for a package that was intact.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString name = "EditHere-win-x64.zip";
+        const QString path = UpdateChecker::prepareDownloadTarget(directory.path(), name);
+        QCOMPARE(path, QDir(directory.path()).filePath("EditHere-update-" + name));
+        QVERIFY(path.startsWith(directory.path()));
+        QVERIFY(!QFile::exists(path));
+
+        QFile leftover(path);
+        QVERIFY(leftover.open(QIODevice::WriteOnly));
+        QCOMPARE(leftover.write(QByteArray(4096, 'x')), qint64(4096));
+        leftover.close();
+
+        // Handing out the same target again must leave nothing behind, so the
+        // append writer starts from an empty file.
+        QCOMPARE(UpdateChecker::prepareDownloadTarget(directory.path(), name), path);
+        QVERIFY(!QFile::exists(path));
+        QFile fresh(path);
+        QVERIFY(fresh.open(QIODevice::WriteOnly | QIODevice::Append));
+        QCOMPARE(fresh.size(), qint64(0));
+        QCOMPARE(fresh.write(QByteArray(8, 'y')), qint64(8));
+        fresh.close();
+        QCOMPARE(QFileInfo(path).size(), qint64(8));
+
+        // An unrelated file next to the target is left alone, and the target for a
+        // different package name is derived from that name.
+        QFile unrelated(directory.filePath("EditHere-update-other.zip"));
+        QVERIFY(unrelated.open(QIODevice::WriteOnly));
+        QCOMPARE(unrelated.write("keep"), qint64(4));
+        unrelated.close();
+        QCOMPARE(UpdateChecker::prepareDownloadTarget(directory.path(), "EditHere-0.9.9-win-x64.zip"),
+                 directory.filePath("EditHere-update-EditHere-0.9.9-win-x64.zip"));
+        QCOMPARE(QFileInfo(unrelated.fileName()).size(), qint64(4));
     }
     void malformedOrInaccessibleNeverMeansCurrent() {
         for (const auto &bytes : {QByteArray("{\"message\":\"Not Found\"}"), QByteArray("<html>error</html>"),

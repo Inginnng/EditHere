@@ -1,5 +1,6 @@
 #include "layout.h"
 #include "model.h"
+#include <QCoreApplication>
 #include <QHash>
 #include <QJsonArray>
 #include <QPainter>
@@ -10,9 +11,14 @@
 #include <tuple>
 namespace h2d {
 namespace {
-void require(bool condition, const char *message) {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
+void require(bool condition, const QString &message) {
     if (!condition)
-        throw std::runtime_error(message);
+        throw std::runtime_error(message.toStdString());
 }
 constexpr double epsilon = 1e-7;
 bool positive(QRectF r) {
@@ -61,9 +67,9 @@ QStringList cut(LayoutState &state, QRectF region) {
                 selected.append(id);
         }
         replacements.insert(piece.id, ids);
-        require(next.size() <= MaxLayoutPieces, "区域过于复杂，请减少手动切分");
+        require(next.size() <= MaxLayoutPieces, tr("区域过于复杂，请减少手动切分"));
     }
-    require(next.size() <= MaxLayoutPieces, "区域过于复杂，请减少手动切分");
+    require(next.size() <= MaxLayoutPieces, tr("区域过于复杂，请减少手动切分"));
     for (auto &group : state.groups) {
         QStringList ids;
         for (const auto &id : group.pieces) {
@@ -165,20 +171,20 @@ QJsonObject geometry(QRectF r) {
     return {{"x1", r.left()}, {"y1", r.top()}, {"x2", r.right()}, {"y2", r.bottom()}};
 }
 void keys(const QJsonObject &object, const QStringList &expected) {
-    require(object.size() == expected.size(), "布局字段缺失或包含未知字段");
+    require(object.size() == expected.size(), tr("布局字段缺失或包含未知字段"));
     for (const auto &key : expected)
-        require(object.contains(key), "布局字段不完整");
+        require(object.contains(key), tr("布局字段不完整"));
 }
 QRectF rectangle(const QJsonValue &value) {
-    require(value.isObject(), "布局坐标格式不正确");
+    require(value.isObject(), tr("布局坐标格式不正确"));
     auto o = value.toObject();
     keys(o, {"x1", "y1", "x2", "y2"});
     for (const auto &v : o)
         require(v.isDouble() && std::isfinite(v.toDouble()) && std::abs(v.toDouble()) <= 1000000,
-                "布局坐标必须是有限数值");
+                tr("布局坐标必须是有限数值"));
     QRectF r(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
              QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
-    require(positive(r), "布局区域尺寸必须为正");
+    require(positive(r), tr("布局区域尺寸必须为正"));
     return r;
 }
 bool fits(QRectF r, QSize size) {
@@ -189,7 +195,7 @@ bool fits(QRectF r, QSize size) {
 } // namespace
 LayoutState createLayout(QSize size, const QVector<Candidate> &input) {
     require(size.width() > 0 && size.height() > 0 && qint64(size.width()) * size.height() <= MaxPixels,
-            "图片尺寸不正确");
+            tr("图片尺寸不正确"));
     LayoutState state;
     state.canvas = size;
     state.movements.emplace();
@@ -225,11 +231,11 @@ LayoutState createLayout(QSize size, const QVector<Candidate> &input) {
     QStringList all;
     for (const auto &piece : state.pieces)
         all.append(piece.id);
-    state.groups.append({uniqueId(), "整个图片", "canvas", full, all});
+    state.groups.append({uniqueId(), QT_TRANSLATE_NOOP("EditHere", "整个图片"), "canvas", full, all});
     return state;
 }
 QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label) {
-    require(state.groups.size() < MaxLayoutGroups, "最多支持 512 个可选区域");
+    require(state.groups.size() < MaxLayoutGroups, tr("最多支持 512 个可选区域"));
     bounds = bounds.intersected(QRectF(QPointF(0, 0), state.canvas));
     if (!positive(bounds))
         return {};
@@ -293,7 +299,7 @@ QRectF constrainLayoutRect(QRectF r, QSize size) {
     return {std::clamp(r.x(), 0.0, size.width() - w), std::clamp(r.y(), 0.0, size.height() - h), w, h};
 }
 QRectF resizeLayoutRect(QRectF r, QPointF delta, int handle, QSize canvas) {
-    require(handle >= 0 && handle < 8, "未知缩放手柄");
+    require(handle >= 0 && handle < 8, tr("未知缩放手柄"));
     r = constrainLayoutRect(r, canvas);
     // Corners preserve aspect ratio around the opposite corner; edges affect one dimension.
     if (handle % 2 == 0) {
@@ -468,14 +474,14 @@ QImage renderLayout(const QImage &original, const LayoutState &state) {
 void validateLayout(const LayoutState &state, QSize original) {
     require(state.canvas == original && !state.pieces.isEmpty() && state.pieces.size() <= MaxLayoutPieces &&
                 !state.groups.isEmpty() && state.groups.size() <= MaxLayoutGroups,
-            "布局大小或数量不正确");
+            tr("布局大小或数量不正确"));
     QSet<QString> ids;
     double total = 0;
     QVector<QRectF> sources;
     for (const auto &piece : state.pieces) {
         require(!piece.id.isEmpty() && !ids.contains(piece.id) && fits(piece.source, original) &&
                     fits(piece.destination, state.canvas),
-                "布局切片坐标或编号不正确");
+                tr("布局切片坐标或编号不正确"));
         ids.insert(piece.id);
         total += piece.source.width() * piece.source.height();
         sources.append(piece.source);
@@ -484,41 +490,41 @@ void validateLayout(const LayoutState &state, QSize original) {
     for (int i = 0; i < sources.size(); ++i)
         for (int j = i + 1; j < sources.size() && sources[j].left() < sources[i].right() - epsilon; ++j) {
             auto overlap = sources[i].intersected(sources[j]);
-            require(overlap.width() <= epsilon || overlap.height() <= epsilon, "布局切片重复使用原图像素");
+            require(overlap.width() <= epsilon || overlap.height() <= epsilon, tr("布局切片重复使用原图像素"));
         }
     require(std::abs(total - double(original.width()) * original.height()) < std::max(0.001, total * 1e-8),
-            "布局切片未完整覆盖原图");
+            tr("布局切片未完整覆盖原图"));
     QSet<QString> groupIds;
     for (const auto &group : state.groups) {
         require(!group.id.isEmpty() && !groupIds.contains(group.id) && group.label.size() <= 1000 &&
                     QStringList{"detected", "manual", "canvas"}.contains(group.origin) &&
                     !group.pieces.isEmpty() && group.pieces.size() <= MaxLayoutPieces,
-                "布局区域格式不正确");
+                tr("布局区域格式不正确"));
         groupIds.insert(group.id);
         require(group.origin == "manual"
                         ? group.originalBounds.isNull() || fits(group.originalBounds, original)
                         : fits(group.originalBounds, original),
-                "布局原始区域不正确");
+                tr("布局原始区域不正确"));
         QSet<QString> members;
         for (const auto &id : group.pieces) {
-            require(ids.contains(id) && !members.contains(id), "布局区域引用无效");
+            require(ids.contains(id) && !members.contains(id), tr("布局区域引用无效"));
             members.insert(id);
         }
     }
     if (state.movements) {
-        require(state.movements->size() <= MaxLayoutMovements, "布局轨迹数量超出限制");
+        require(state.movements->size() <= MaxLayoutMovements, tr("布局轨迹数量超出限制"));
         QSet<QString> trackedGroups;
         for (const auto &movement : *state.movements) {
             require(fits(movement.source, original) && fits(movement.destination, state.canvas),
-                    "布局轨迹坐标不正确");
+                    tr("布局轨迹坐标不正确"));
             if (!movement.groupId.isEmpty()) {
                 require(groupIds.contains(movement.groupId) && !trackedGroups.contains(movement.groupId),
-                        "布局轨迹区域引用无效或重复");
+                        tr("布局轨迹区域引用无效或重复"));
                 trackedGroups.insert(movement.groupId);
                 for (const auto &group : state.groups)
                     if (group.id == movement.groupId)
                         require(sameRectangle(movement.source, originalGroupBounds(state, group)),
-                                "布局轨迹原始区域不正确");
+                                tr("布局轨迹原始区域不正确"));
             }
         }
     }
@@ -531,15 +537,15 @@ QJsonArray exportLayoutChanges(const LayoutState &state) {
     return changes;
 }
 LayoutState importLayoutChanges(const QJsonArray &changes, QSize original) {
-    require(changes.size() <= MaxLayoutPieces, "变化数量超出限制");
+    require(changes.size() <= MaxLayoutPieces, tr("变化数量超出限制"));
     QVector<ChangeRegion> regions;
     for (const auto &value : changes) {
-        require(value.isObject(), "变化格式不正确");
+        require(value.isObject(), tr("变化格式不正确"));
         const auto object = value.toObject();
         keys(object, {"from", "to"});
         const auto from = rectangle(object["from"]), to = rectangle(object["to"]);
-        require(fits(from, original) && fits(to, original), "变化坐标超出原图");
-        require(!sameRectangle(from, to), "变化列表不能包含未变化的区域");
+        require(fits(from, original) && fits(to, original), tr("变化坐标超出原图"));
+        require(!sameRectangle(from, to), tr("变化列表不能包含未变化的区域"));
         regions.append({from, to, int(regions.size())});
     }
     QVector<QRectF> sources;
@@ -548,7 +554,7 @@ LayoutState importLayoutChanges(const QJsonArray &changes, QSize original) {
     std::sort(sources.begin(), sources.end(), [](auto a, auto b) { return a.left() < b.left(); });
     for (int i = 0; i < sources.size(); ++i)
         for (int j = i + 1; j < sources.size() && sources[j].left() < sources[i].right() - epsilon; ++j)
-            require(!positive(sources[i].intersected(sources[j])), "变化重复引用原图区域");
+            require(!positive(sources[i].intersected(sources[j])), tr("变化重复引用原图区域"));
 
     auto state = createLayout(original, {});
     state.movements.reset();
@@ -573,7 +579,7 @@ LayoutState importLayoutChanges(const QJsonArray &changes, QSize original) {
         }
         if (state.groups.size() < MaxLayoutGroups)
             state.groups.append(
-                {uniqueId(), QString("调整 %1").arg(moved.size() + 1), "detected", region.from, {id}});
+                {uniqueId(), tr("调整 %1").arg(moved.size() + 1), "detected", region.from, {id}});
         moved.append(id);
     }
     QSet<QString> movedSet(moved.begin(), moved.end());
@@ -633,16 +639,16 @@ LayoutState importLayout(const QJsonObject &json, QSize original) {
                 json["width"].isDouble() && json["width"].toDouble() == original.width() &&
                 json["height"].isDouble() && json["height"].toDouble() == original.height() &&
                 json["pieces"].isArray() && json["groups"].isArray(),
-            "布局坐标约定不正确");
+            tr("布局坐标约定不正确"));
     require(json["pieces"].toArray().size() <= MaxLayoutPieces &&
                 json["groups"].toArray().size() <= MaxLayoutGroups,
-            "布局数量超出限制");
+            tr("布局数量超出限制"));
     LayoutState state;
     state.canvas = original;
     for (const auto &value : json["pieces"].toArray()) {
         auto o = value.toObject();
         keys(o, {"id", "source", "destination"});
-        require(o["id"].isString(), "布局编号不正确");
+        require(o["id"].isString(), tr("布局编号不正确"));
         state.pieces.append({o["id"].toString(), rectangle(o["source"]), rectangle(o["destination"])});
     }
     for (const auto &value : json["groups"].toArray()) {
@@ -650,24 +656,24 @@ LayoutState importLayout(const QJsonObject &json, QSize original) {
         keys(o, {"id", "label", "origin", "originalRectangle", "pieceIds"});
         require(o["id"].isString() && o["label"].isString() && o["origin"].isString() &&
                     o["pieceIds"].isArray() && o["pieceIds"].toArray().size() <= MaxLayoutPieces,
-                "布局区域字段不正确");
+                tr("布局区域字段不正确"));
         LayoutGroup group{o["id"].toString(), o["label"].toString(), o["origin"].toString(), {}, {}};
         if (!o["originalRectangle"].isNull())
             group.originalBounds = rectangle(o["originalRectangle"]);
         for (const auto &id : o["pieceIds"].toArray()) {
-            require(id.isString(), "布局引用格式不正确");
+            require(id.isString(), tr("布局引用格式不正确"));
             group.pieces.append(id.toString());
         }
         state.groups.append(group);
     }
     if (json.contains("movements")) {
         require(json["movements"].isArray() && json["movements"].toArray().size() <= MaxLayoutMovements,
-                "布局轨迹数量或格式不正确");
+                tr("布局轨迹数量或格式不正确"));
         state.movements.emplace();
         for (const auto &value : json["movements"].toArray()) {
             const auto object = value.toObject();
             keys(object, {"groupId", "source", "destination"});
-            require(object["groupId"].isString(), "布局轨迹区域编号不正确");
+            require(object["groupId"].isString(), tr("布局轨迹区域编号不正确"));
             state.movements->append({object["groupId"].toString(), rectangle(object["source"]),
                                      rectangle(object["destination"])});
         }

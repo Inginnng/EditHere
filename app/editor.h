@@ -75,6 +75,10 @@ class Editor final : public QWidget {
     void editNote(Note note, bool fresh, QPoint global);
     void changed(bool contentChanged = true);
     void renderNotes();
+    // Rebuilds every label of the permanent chrome. Called from the constructor
+    // and again whenever the interface language changes.
+    void retranslate();
+    void updateToolLabels();
     void beginNoteEdit(const QString &id);
     void finishNoteEdit();
     void cancelNoteEdit();

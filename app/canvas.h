@@ -27,6 +27,8 @@ class Canvas final : public QWidget {
     void setAnnotationsVisible(bool visible);
     void setMagnifierEnabled(bool enabled) { magnifierEnabled_=enabled; update(); }
     bool magnifierEnabled() const { return magnifierEnabled_; }
+    // Rebuilds the accessible name and the current hint after a language change.
+    void retranslate();
     bool annotationsVisible() const { return annotationsVisible_; }
     bool layoutPreview() const {
         return layoutPreview_;

@@ -46,6 +46,28 @@
 #include <QWheelEvent>
 using namespace h2d;
 
+// Where the magnifier panel lands for a pointer at `at`, following the same rule the
+// window uses: beside the pointer, flipped when it would fall off an edge, and then
+// kept inside the window.
+static QRect magnifierPanel(QPoint at, QSize window) {
+    const QSize panel(216, 268);
+    const int gap = 24, margin = 8;
+    int x = at.x() + gap, y = at.y() + gap;
+    if (x + panel.width() > window.width() - margin)
+        x = at.x() - gap - panel.width();
+    if (y + panel.height() > window.height() - margin)
+        y = at.y() - gap - panel.height();
+    x = std::clamp(x, margin, std::max(margin, window.width() - panel.width() - margin));
+    y = std::clamp(y, margin, std::max(margin, window.height() - panel.height() - margin));
+    return {QPoint(x, y), panel};
+}
+// The colour a recognised block is marked with, and the only reason a pixel that
+// colour can appear inside a screen that has none of it.
+static bool isAccentColour(const QColor &colour) {
+    return std::abs(colour.red() - 0) < 40 && std::abs(colour.green() - 122) < 40 &&
+           std::abs(colour.blue() - 255) < 40;
+}
+
 // Read JSON from clipboard — supports both file-URL (new copy behavior) and text (legacy).
 static QJsonDocument clipboardJson(QJsonParseError *error = nullptr) {
     const auto *mime = QApplication::clipboard()->mimeData();
@@ -2411,12 +2433,169 @@ class UiTests : public QObject {
         artifact(overlay, "crop-overlay.png");
         QCOMPARE(accepted.count(), 0);
         QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        // Releasing the button settles the region instead of finishing the capture: the
+        // bar beside it is where copying, pinning, saving, reading and 批注 live, so
+        // nothing reaches the editor until 批注 is chosen.
+        QCOMPARE(accepted.count(), 0);
+        QVERIFY(!overlay.findChildren<QPushButton *>().isEmpty());
+        QTest::keyClick(&overlay, Qt::Key_Return);
         QCOMPARE(accepted.count(), 1);
         QCOMPARE(accepted.first().first().toRect(), QRect(60, 140, 540, 380));
-        QVERIFY(overlay.findChildren<QPushButton *>().isEmpty());
-        QTest::keyClick(&overlay, Qt::Key_Return);
         QTest::mouseClick(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
         QCOMPARE(accepted.count(), 1);
+        overlay.hide();
+    }
+    // REG-068: the region a capture came from was forgotten the moment the picture was
+    // made, so pinning it dropped it in the middle of the screen. The window has to be
+    // able to say where its region is on screen, in the units the window manager uses
+    // rather than the pixels the screen was read at.
+    void aCapturedRegionKnowsWhereItCameFrom() {
+        QImage image = exampleImage();
+        // The screen is measured at half the pixels it was read at, which is what a
+        // display scaled by two looks like.
+        ScreenFrame frame{"placement", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTest::qWait(50);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {30, 70});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        const QRect selection = overlay.selection();
+        QCOMPARE(selection, QRect(60, 140, 540, 380));
+        const QRect placement = overlay.placementFor(selection.size());
+        QCOMPARE(placement.size(), QSize(270, 190));
+        QCOMPARE(placement.topLeft(), QPoint(30, 70));
+        // A shadow makes the picture bigger than the region, and then the pin is
+        // centred on the region instead of starting at its corner, so the picture it
+        // holds still covers the thing it is a picture of.
+        CaptureStyle shaded;
+        shaded.shadow = true;
+        shaded.shadowStrength = 60;
+        const int reach = captureShadowRadius(shaded.shadow, shaded.shadowStrength);
+        const QRect padded = overlay.placementFor(composeCapture(image.copy(selection), shaded).size());
+        QCOMPARE(padded.size(), QSize(270 + reach, 190 + reach));
+        // The halo reaches past the region on every side, so the body inside the
+        // picture is what has to land on the region. It does, to within the pixel the
+        // two halves of the rounding disagree by.
+        const QRect body = padded.adjusted(reach / 2, reach / 2, -reach / 2, -reach / 2);
+        QVERIFY2(std::abs(body.x() - placement.x()) <= 1 && std::abs(body.y() - placement.y()) <= 1 &&
+                     std::abs(body.width() - placement.width()) <= 1 &&
+                     std::abs(body.height() - placement.height()) <= 1,
+                 "the shadowed picture has to sit on the region it was taken from");
+        // A picture with no size has no place either.
+        QVERIFY(overlay.placementFor(QSize(0, 0)).isEmpty());
+        overlay.hide();
+
+        // With nothing chosen there is nowhere to put anything.
+        Overlay empty(frame);
+        QVERIFY(empty.placementFor(QSize(10, 10)).isEmpty());
+        empty.hide();
+    }
+    // REG-070: the shadow was applied to the copied file and nowhere else, so it was
+    // invisible at the only moment it can be judged — while the region is still on
+    // screen and the strength slider is being dragged. The window has to paint it.
+    void theShadowIsVisibleOnTheRegionBeforeAnythingIsCopied() {
+        // A flat light screen, so the only thing that can darken a pixel is the halo.
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"shadow", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTest::qWait(50);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        QVERIFY(!overlay.selection().isEmpty());
+        // A capture starts with a shadow on, so "without one" has to be asked for.
+        CaptureStyle bare;
+        bare.shadow = false;
+        overlay.setStyle(bare);
+        QTest::qWait(30);
+        const QImage plain = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        // A point just outside the region, on its left, where the halo has to reach
+        // and where nothing else is drawn: the bar sits above the region and the
+        // column of style tools to its right.
+        const QPoint probe(overlay.selection().x() / 2 - 5, overlay.selection().center().y() / 2);
+        CaptureStyle shaded = bare;
+        shaded.shadow = true;
+        shaded.shadowStrength = 60;
+        overlay.setStyle(shaded);
+        QTest::qWait(50);
+        const QImage withShadow = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "shadow-preview.png");
+        QVERIFY2(plain.rect().contains(probe) && withShadow.rect().contains(probe),
+                 "the probe has to be inside what was rendered");
+        QVERIFY2(withShadow.pixelColor(probe).red() + 8 < plain.pixelColor(probe).red(),
+                 "a shadow that only lands in the copied file is a shadow nobody sees");
+        // Turning it off again takes it off the screen as well.
+        overlay.setStyle(bare);
+        QTest::qWait(50);
+        const QImage offAgain = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QCOMPARE(offAgain.pixelColor(probe).red(), plain.pixelColor(probe).red());
+        overlay.hide();
+    }
+    // The enlargement is where the aim is judged, so the blue frame of the recognised
+    // block has to be inside it, magnified with the pixels it belongs to rather than
+    // left at the size it has on the screen.
+    void theMagnifierCarriesTheFrameItIsAimingAt() {
+        QImage image = exampleImage();
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        // The block finder runs off the main thread, so the frames have to be waited
+        // for before the pointer is put on one of them.
+        QTest::qWait(400);
+        // The panel is placed the way the window places it: beside the pointer, and
+        // flipped when it would fall off an edge.
+        // The pointer goes on the left edge of the screen. The enlargement only covers
+        // about twenty pixels around the pointer, so an edge is the one place a frame
+        // can be seen to be magnified rather than merely present.
+        const QPoint at(0, 225);
+        QTest::mouseMove(&overlay, at);
+        QTest::qWait(80);
+        const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-frame.png");
+        const QRect panel = magnifierPanel(at, QSize(560, 360));
+        const QRect zoom(panel.topLeft() + QPoint(8, 8), QSize(200, 126));
+        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
+        int marked = 0;
+        for (int row = zoom.top(); row < zoom.bottom(); ++row)
+            for (int column = zoom.left(); column < zoom.right(); ++column)
+                if (isAccentColour(shot.pixelColor(column, row)))
+                    ++marked;
+        // The frame is on the screen at its own size as well, so the count has to come
+        // from inside the enlargement: that is the part of the picture the pointer is
+        // reading, and a frame missing from it is a frame the pointer cannot use.
+        QVERIFY2(marked > 0, "the enlargement shows the pixels without the frame that names them");
+        overlay.hide();
+    }
+    // REG-076: a shadow is drawn for the eye. Reading text used to be handed the
+    // decorated picture, so every line box was measured from an origin that had been
+    // pushed out by the halo and the recogniser was asked to look at a dark border.
+    void textIsReadFromTheRegionRatherThanFromItsDecoration() {
+        QImage image = exampleImage();
+        ScreenFrame frame{"ocr-source", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTest::qWait(50);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {30, 70});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        const QImage bare = overlay.selectionPixels();
+        QCOMPARE(bare, image.copy(overlay.selection()));
+        // The decorated picture is the one the picture-making actions get, and it is
+        // bigger by the halo; the bare one has to stay bare either way.
+        CaptureStyle shaded;
+        shaded.cornerRadius = 12;
+        overlay.setStyle(shaded);
+        const int reach = captureShadowRadius(shaded.shadow, shaded.shadowStrength);
+        QVERIFY(reach > 0);
+        QCOMPARE(overlay.selectionImage().size(), bare.size() + QSize(reach * 2, reach * 2));
+        QCOMPARE(overlay.selectionPixels(), bare);
         overlay.hide();
     }
     void detectedBlockClickImmediatelyStartsAnnotation() {
@@ -2431,9 +2610,12 @@ class UiTests : public QObject {
         QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
         QCOMPARE(accepted.count(), 0);
         QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
+        // The block becomes the region, and 批注 is what takes it into the editor.
+        QCOMPARE(accepted.count(), 0);
+        QVERIFY(!overlay.findChildren<QPushButton *>().isEmpty());
+        QTest::keyClick(&overlay, Qt::Key_Return);
         QCOMPARE(accepted.count(), 1);
         QCOMPARE(accepted.first().first().toRect(), QRect(0, 0, 160, 120));
-        QVERIFY(overlay.findChildren<QPushButton *>().isEmpty());
         QTest::mouseClick(&overlay, Qt::LeftButton, Qt::NoModifier, {80, 60});
         QCOMPARE(accepted.count(), 1);
         overlay.hide();
