@@ -7,6 +7,15 @@ class QPushButton;
 class QLabel;
 class QPainter;
 namespace h2d {
+// The magnifier panel. It is laid out from these rather than from a layout class,
+// because it is painted rather than assembled and the two have to agree exactly, and
+// they live here because the tests locate the panel by the same numbers.
+constexpr double magnifierPanelWidth = 162;
+constexpr double magnifierPanelHeight = 236;
+constexpr double magnifierPanelPadding = 8;
+constexpr double magnifierZoomHeight = 94;
+// One pixel of the screen is this many pixels wide inside the enlargement.
+constexpr double magnifierZoomCell = 15;
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin

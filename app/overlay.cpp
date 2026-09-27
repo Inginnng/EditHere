@@ -23,12 +23,6 @@ namespace {
 // is what handle_ holds while that is what is going on, so the two kinds of drag can
 // be told apart in one member.
 constexpr int kMoving = -2;
-// The magnifier panel. It is laid out from these rather than from a layout class,
-// because it is painted rather than assembled and the two have to agree exactly.
-constexpr double kPanelWidth = 216;
-constexpr double kPanelHeight = 268;
-constexpr double kPanelPad = 8;
-constexpr double kZoomHeight = 126;
 constexpr double kRowHeight = 18;
 // The four colour rows, the pixel the pointer is on, and the two lines that say what
 // the keyboard can do. Each one is a slot the panel paints into.
@@ -182,10 +176,17 @@ const QImage &Overlay::scaledFrame() {
     return frameScaled_;
 }
 
-void Overlay::paintEvent(QPaintEvent *) {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.drawImage(rect(), scaledFrame());
+void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
+    // The screen, the film that dims it and the frame around the region are one
+    // picture, and the enlargement has to be taken of that picture rather than of the
+    // grab underneath it. So the picture is painted here, and whoever wants a piece of
+    // it names the piece: the window asks for all of it, the magnifier for the few
+    // pixels under the pointer.
+    const double sx = double(frame_.image.width()) / width();
+    const double sy = double(frame_.image.height()) / height();
+    const QRectF source(viewport.left() * sx, viewport.top() * sy, viewport.width() * sx,
+                        viewport.height() * sy);
+    p.drawImage(viewport, scaledFrame(), source);
     QRect active = selected_;
     if (!drawing_ && active.isEmpty() && picker_.current())
         active = picker_.current()->bounds;
@@ -199,34 +200,40 @@ void Overlay::paintEvent(QPaintEvent *) {
         mask.setFillRule(Qt::OddEvenFill);
         p.fillPath(mask, QColor(16, 18, 24, 105));
     }
-    if (!active.isEmpty() && !picking_) {
-        QRectF outline = localRect(active);
-        const double scale = double(width()) / frame_.image.width();
-        const double radius = style_.cornerRadius * scale;
-        p.setBrush(Qt::NoBrush);
-        // The border the region will carry is drawn where it will land, so the choice
-        // in the panel can be judged before anything is copied.
-        if (style_.border) {
-            p.setPen(QPen(style_.borderColor, std::max(1.0, style_.borderWidth * scale)));
-            p.drawRoundedRect(outline.adjusted(1, 1, -1, -1), std::max(0.0, radius - 1),
-                              std::max(0.0, radius - 1));
-        }
-        p.setPen(QPen(accent(), 2));
-        p.drawRoundedRect(outline, radius, radius);
-        if (ready_) {
-            // The corners are where the region can be resized, so they are shown, and
-            // they are round because a round handle reads as a handle rather than as a
-            // speck of dirt on the picture.
-            p.setPen(QPen(Qt::white, 1));
-            p.setBrush(accent());
-            for (const auto &corner : {active.topLeft(), active.topRight(), active.bottomLeft(),
-                                       active.bottomRight()}) {
-                const QPointF centre = QPointF(double(corner.x()) * width() / frame_.image.width(),
-                                               double(corner.y()) * height() / frame_.image.height());
-                p.drawEllipse(centre, 4.0, 4.0);
-            }
+    if (active.isEmpty() || picking_)
+        return;
+    QRectF outline = localRect(active);
+    const double scale = double(width()) / frame_.image.width();
+    const double radius = style_.cornerRadius * scale;
+    p.setBrush(Qt::NoBrush);
+    // The border the region will carry is drawn where it will land, so the choice
+    // in the panel can be judged before anything is copied.
+    if (style_.border) {
+        p.setPen(QPen(style_.borderColor, std::max(1.0, style_.borderWidth * scale)));
+        p.drawRoundedRect(outline.adjusted(1, 1, -1, -1), std::max(0.0, radius - 1),
+                          std::max(0.0, radius - 1));
+    }
+    p.setPen(QPen(accent(), 2));
+    p.drawRoundedRect(outline, radius, radius);
+    if (ready_) {
+        // The corners are where the region can be resized, so they are shown, and
+        // they are round because a round handle reads as a handle rather than as a
+        // speck of dirt on the picture.
+        p.setPen(QPen(Qt::white, 1));
+        p.setBrush(accent());
+        for (const auto &corner : {active.topLeft(), active.topRight(), active.bottomLeft(),
+                                   active.bottomRight()}) {
+            const QPointF centre = QPointF(double(corner.x()) * width() / frame_.image.width(),
+                                           double(corner.y()) * height() / frame_.image.height());
+            p.drawEllipse(centre, 4.0, 4.0);
         }
     }
+}
+
+void Overlay::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    drawScene(p, rect());
     // The magnifier and the colour readout are up while a region is being found, and
     // again once it has settled whenever the pointer is inside it: pointing at the
     // picture that was just taken is exactly when a colour is wanted, so reading one
@@ -288,7 +295,7 @@ void Overlay::paintEvent(QPaintEvent *) {
 }
 
 void Overlay::drawMagnifier(QPainter &p, QPointF at) {
-    const QSizeF panelSize(kPanelWidth, kPanelHeight);
+    const QSizeF panelSize(magnifierPanelWidth, magnifierPanelHeight);
     const double gap = 24, margin = 8;
     double x = at.x() + gap, y = at.y() + gap;
     if (x + panelSize.width() > width() - margin)
@@ -298,8 +305,9 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     x = std::clamp(x, margin, std::max(margin, width() - panelSize.width() - margin));
     y = std::clamp(y, margin, std::max(margin, height() - panelSize.height() - margin));
     const QRectF panel(QPointF(x, y), panelSize);
-    const double inner = panelSize.width() - kPanelPad * 2;
-    const QRectF area(QPointF(x + kPanelPad, y + kPanelPad), QSizeF(inner, kZoomHeight));
+    const double inner = panelSize.width() - magnifierPanelPadding * 2;
+    const QRectF area(QPointF(x + magnifierPanelPadding, y + magnifierPanelPadding),
+                      QSizeF(inner, magnifierZoomHeight));
     p.setPen(QPen(QColor(255,255,255,90),1));
     p.setBrush(QColor(25,28,34,245));
     p.drawRoundedRect(panel,10,10);
@@ -312,7 +320,7 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     p.setClipRect(area);
     p.fillRect(area,QColor(45,48,55));
     p.setRenderHint(QPainter::SmoothPixmapTransform,false);
-    const double cell=10;
+    const double cell=magnifierZoomCell;
     const QPointF center=area.center();
     const double sx = double(frame_.image.width()) / width();
     const double sy = double(frame_.image.height()) / height();
@@ -323,27 +331,30 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     const QRectF source(sample.x() + 0.5 - (center.x() - area.left()) * sx / factor,
                         sample.y() + 0.5 - (center.y() - area.top()) * sy / factor,
                         area.width() * sx / factor, area.height() * sy / factor);
-    p.drawImage(area, frame_.image, source);
-    // The blue frame of the recognised block is part of what the reader is aiming at,
-    // so it is drawn into the enlargement as well: the box has to be magnified with
-    // the pixels it belongs to, not left at the size it has on the screen.
-    const auto toPanel = [&](const QRectF &box) {
-        return QRectF(area.left() + (box.left() - source.left()) * (factor / sx),
-                      area.top() + (box.top() - source.top()) * (factor / sy),
-                      box.width() * (factor / sx), box.height() * (factor / sy));
-    };
-    p.setBrush(Qt::NoBrush);
-    if (!picking_ && selected_.isEmpty()) {
-        const auto found = picker_.current();
-        if (found) {
-            p.setPen(QPen(accent(), 2));
-            p.drawRect(toPanel(QRectF(found->bounds)));
-        }
-    }
-    if (!selected_.isEmpty()) {
-        p.setPen(QPen(accent(), 2));
-        p.drawRect(toPanel(QRectF(selected_)));
-    }
+    // The same strip, as a piece of the window. The enlargement is a glass held over
+    // the window, not a second look at the grab: the dimming and the blue frame are
+    // already on the glass, so they come out enlarged with the pixels they belong to
+    // instead of being redrawn afterwards at the size they have on the screen.
+    const QRectF window(source.left() / sx, source.top() / sy, source.width() / sx,
+                        source.height() / sy);
+    const double zoomX = area.width() / window.width();
+    const double zoomY = area.height() / window.height();
+    const double ratio = std::max(1.0, devicePixelRatioF());
+    QImage tile(QSize(int(std::ceil(area.width() * ratio)), int(std::ceil(area.height() * ratio))),
+                QImage::Format_ARGB32_Premultiplied);
+    tile.setDevicePixelRatio(ratio);
+    tile.fill(Qt::transparent);
+    QPainter enlarged(&tile);
+    enlarged.setRenderHint(QPainter::Antialiasing);
+    // A magnified pixel has to stay a square block of one colour; smoothing would
+    // invent colours that are not on the screen.
+    enlarged.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    enlarged.scale(ratio, ratio);
+    enlarged.translate(-window.left() * zoomX, -window.top() * zoomY);
+    enlarged.scale(zoomX, zoomY);
+    drawScene(enlarged, window);
+    enlarged.end();
+    p.drawImage(area, tile);
     p.restore();
     p.save();
     p.setClipRect(area);
@@ -353,13 +364,14 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     for(double gx=center.x()+cell/2; gx<=area.right(); gx+=cell) p.drawLine(QPointF(gx,area.top()),QPointF(gx,area.bottom()));
     for(double gy=center.y()-cell/2; gy>=area.top(); gy-=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
     for(double gy=center.y()+cell/2; gy<=area.bottom(); gy+=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
-    // The one pixel the readout is about is boxed, not left to the grid to imply.
+    // The one pixel the readout is about is boxed, not left to the grid to imply. The
+    // box is one enlarged pixel wide, which is what the grid counts in.
     p.setBrush(Qt::NoBrush); p.setPen(QPen(Qt::white,0));
-    p.drawRect(QRectF(center-QPointF(5,5),QSizeF(10,10)));
+    p.drawRect(QRectF(center-QPointF(cell/2,cell/2),QSizeF(cell,cell)));
     p.restore();
-    const double firstRow = y + kPanelPad + kZoomHeight + 4;
+    const double firstRow = y + magnifierPanelPadding + magnifierZoomHeight + 4;
     const auto slotRect = [&](int slot) {
-        return QRectF(x + kPanelPad, firstRow + slot * kRowHeight, inner, kRowHeight);
+        return QRectF(x + magnifierPanelPadding, firstRow + slot * kRowHeight, inner, kRowHeight);
     };
     p.setFont(QFont("Microsoft YaHei", 9));
     // The pixel the colour came from, written the way a colour tool writes it.
@@ -386,7 +398,7 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
                    captureColourText(colour, format));
     }
     p.setPen(QColor(0x8d, 0x90, 0x9c));
-    const QRectF note(x + kPanelPad, firstRow + kSlotCount * kRowHeight + 2, inner, 16);
+    const QRectF note(x + magnifierPanelPadding, firstRow + kSlotCount * kRowHeight + 2, inner, 16);
     p.drawText(note, Qt::AlignVCenter, tr("C 复制颜色值 · Shift 切换格式"));
 }
 
@@ -590,15 +602,18 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         }
         if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right || e->key() == Qt::Key_Up ||
             e->key() == Qt::Key_Down) {
-            // One pixel at a time either way, with Shift pulling the side in and Ctrl
-            // pushing it out; the plain arrow moves the whole region.
+            // The region is where the user put it, so a plain arrow moves the pointer
+            // instead: the enlargement is what the arrows are for once there is a
+            // picture to aim at, and a region that slides under them cannot be placed
+            // to the pixel. Shift and Ctrl keep pulling and pushing the edge they point
+            // at, which is the one thing worth doing to the region itself.
             if (shift)
                 stretchSelection(Qt::Key(e->key()), -1);
             else if (ctrl)
                 stretchSelection(Qt::Key(e->key()), 1);
             else
-                nudgeSelection(e->key() == Qt::Key_Left ? -1 : e->key() == Qt::Key_Right ? 1 : 0,
-                               e->key() == Qt::Key_Up ? -1 : e->key() == Qt::Key_Down ? 1 : 0);
+                movePointer(e->key() == Qt::Key_Left ? -1 : e->key() == Qt::Key_Right ? 1 : 0,
+                            e->key() == Qt::Key_Up ? -1 : e->key() == Qt::Key_Down ? 1 : 0);
             e->accept();
             return;
         }
@@ -845,15 +860,25 @@ void Overlay::hideTools() {
         sidebar_->hide();
 }
 
-void Overlay::nudgeSelection(int dx, int dy) {
-    if (selected_.isEmpty() || (dx == 0 && dy == 0))
+void Overlay::movePointer(int dx, int dy) {
+    if ((dx == 0 && dy == 0) || frame_.image.isNull() || width() <= 0 || height() <= 0)
         return;
-    const QRect moved = selected_.translated(dx, dy);
-    // Nudging against an edge of the screen stops there rather than sliding the region
-    // half off it.
-    if (!QRect(QPoint(0, 0), frame_.image.size()).contains(moved))
-        return;
-    applySelection(moved, true);
+    // One step is one pixel as the window manager counts them, which on a scaled
+    // display is more than one pixel of the grab; the step is taken in the grab's own
+    // units because that is what the enlargement and the readout are counted in.
+    const double sx = double(frame_.image.width()) / width();
+    const double sy = double(frame_.image.height()) / height();
+    QPoint target = cursor_ + QPoint(qRound(dx * std::max(1.0, sx)), qRound(dy * std::max(1.0, sy)));
+    target.setX(std::clamp(target.x(), 0, frame_.image.width() - 1));
+    target.setY(std::clamp(target.y(), 0, frame_.image.height() - 1));
+    // A pointer can only be put on a whole logical pixel, so the step is settled on one
+    // before it is handed back to the window manager; anything else would be rounded
+    // away and the key would look dead on a scaled display.
+    const QPoint local(qRound(double(target.x()) / sx), qRound(double(target.y()) / sy));
+    QCursor::setPos(mapToGlobal(local));
+    cursor_ = pixelPoint(local);
+    magnifierVisible_ = !selected_.isEmpty() && selected_.contains(cursor_);
+    update();
 }
 
 void Overlay::stretchSelection(Qt::Key key, int amount) {

@@ -9,6 +9,7 @@
 #include <QRect>
 #include <QTimer>
 #include <QWidget>
+class QPainter;
 namespace h2d {
 class CaptureToolbar;
 class CaptureSidebar;
@@ -108,10 +109,19 @@ class Overlay final : public QWidget {
     void applySelection(QRect area, bool move);
     void showBar();
     void hideTools();
-    void nudgeSelection(int dx, int dy);
     // Grows or shrinks the region by one pixel on the side the arrow points at, which
-    // is what Shift and Ctrl turn a nudge into.
+    // is what Shift and Ctrl turn an arrow into now that the plain arrow moves the
+    // pointer.
     void stretchSelection(Qt::Key key, int amount);
+    // Moves the pointer itself by one screen pixel. Once the region has settled that is
+    // what a plain arrow does: the region stays where the user put it, and the aim is
+    // what moves.
+    void movePointer(int dx, int dy);
+    // The screen with the dimming and the frame around the region painted on it.
+    // `viewport` is the piece of the window to paint, in the window's own coordinates:
+    // the window asks for all of it, the enlargement for the few pixels under the
+    // pointer, and both have to get the same picture.
+    void drawScene(QPainter &painter, const QRectF &viewport);
     void drawMagnifier(QPainter &painter, QPointF at);
     // The next click reads a colour instead of touching the region.
     void startPicking();

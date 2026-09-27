@@ -30,8 +30,8 @@
         <translation>Manual annotation</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="66"/>
-        <location filename="../overlay.cpp" line="146"/>
+        <location filename="../overlay.cpp" line="60"/>
+        <location filename="../overlay.cpp" line="140"/>
         <source>整个屏幕</source>
         <translation>Whole screen</translation>
     </message>
@@ -800,8 +800,8 @@
         <translation>Overall note</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="168"/>
         <location filename="../platform_mac.mm" line="197"/>
+        <location filename="../platform_win.cpp" line="168"/>
         <source>无法读取屏幕画面</source>
         <translation>Could not capture the screen image</translation>
     </message>
@@ -1457,7 +1457,7 @@ Right-click the tray icon to check for updates.</translation>
     </message>
     <message>
         <location filename="../controller.cpp" line="268"/>
-        <location filename="../controller.cpp" line="650"/>
+        <location filename="../controller.cpp" line="658"/>
         <source>截图未完成</source>
         <translation>Screenshot not completed</translation>
     </message>
@@ -1538,23 +1538,33 @@ Right-click the tray icon to check for updates.</translation>
         <translation>Long capture · %1 frames · %2 pixels tall</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="613"/>
-        <location filename="../controller.cpp" line="627"/>
+        <location filename="../controller.cpp" line="614"/>
+        <source>长截图已完成</source>
+        <translation>Long capture finished</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="614"/>
+        <source>拼接有偏差：有一处是按放宽的匹配接上的，接缝可能有一两像素错位。</source>
+        <translation>The stitch is imperfect: one seam had to be matched loosely, so it may be off by a pixel or two.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="621"/>
+        <location filename="../controller.cpp" line="635"/>
         <source>长截图未完成</source>
         <translation>Long capture unfinished</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="614"/>
+        <location filename="../controller.cpp" line="622"/>
         <source>未能完成长截图，请重试。</source>
         <translation>The long capture could not be finished. Please try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="620"/>
+        <location filename="../controller.cpp" line="628"/>
         <source>长截图</source>
         <translation>Long capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="633"/>
+        <location filename="../controller.cpp" line="641"/>
         <source>屏幕截图</source>
         <translation>Screen capture</translation>
     </message>
@@ -2027,8 +2037,8 @@ Right-click the tray icon to check for updates.</translation>
 <context>
     <name>h2d::GlobalShortcut</name>
     <message>
+        <location filename="../platform_mac.mm" line="344"/>
         <location filename="../platform_win.cpp" line="324"/>
-        <location filename="../platform_mac.mm" line="342"/>
         <source>全局截图快捷键只支持一组按键，不能使用连续组合。</source>
         <translation>The global screenshot shortcut supports only one key combination; key sequences are not allowed.</translation>
     </message>
@@ -2053,17 +2063,17 @@ Right-click the tray icon to check for updates.</translation>
         <translation>The system could not register this shortcut (error %1). Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="350"/>
+        <location filename="../platform_mac.mm" line="352"/>
         <source>不支持此按键，请使用字母、数字、F1–F20 或方向与导航键。</source>
         <translation>This key is not supported. Use a letter, a digit, F1–F20, or a navigation or arrow key.</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="386"/>
+        <location filename="../platform_mac.mm" line="388"/>
         <source>无法监听系统快捷键（错误 %1）。</source>
         <translation>Could not listen for the system shortcut (error %1).</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="398"/>
+        <location filename="../platform_mac.mm" line="400"/>
         <source>此快捷键已被占用或系统无法注册（错误 %1），请更换一组按键。</source>
         <translation>This shortcut is already taken or the system could not register it (error %1). Choose a different combination.</translation>
     </message>
@@ -2392,42 +2402,42 @@ Right-click the tray icon to check for updates.</translation>
 <context>
     <name>h2d::Overlay</name>
     <message>
-        <location filename="../overlay.cpp" line="42"/>
+        <location filename="../overlay.cpp" line="36"/>
         <source>EditHere · 选择截图区域</source>
         <translation>EditHere · Select a screenshot area</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="250"/>
+        <location filename="../overlay.cpp" line="256"/>
         <source>已复制颜色值 %1</source>
         <translation>Copied the colour %1</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="252"/>
+        <location filename="../overlay.cpp" line="258"/>
         <source>移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色</source>
         <translation>Move to the colour you want · C copies it · Shift changes the format · Esc ends picking</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="262"/>
+        <location filename="../overlay.cpp" line="268"/>
         <source>拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消</source>
         <translation>Drag to move · corners to resize · double click or Ctrl+C copies · Enter annotates · C picks a colour · Esc cancels</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="279"/>
+        <location filename="../overlay.cpp" line="285"/>
         <source>拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消</source>
         <translation>Drag to capture · click a block · release to annotate, pin or pick · Esc to cancel</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="369"/>
+        <location filename="../overlay.cpp" line="380"/>
         <source>像素 ( %1 , %2 )</source>
         <translation>Pixel ( %1 , %2 )</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="391"/>
+        <location filename="../overlay.cpp" line="402"/>
         <source>C 复制颜色值 · Shift 切换格式</source>
         <translation>C copies the colour · Shift changes the format</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="275"/>
+        <location filename="../overlay.cpp" line="281"/>
         <source>%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小</source>
         <translation>%1  ·  %2 / %3  ·  Scroll ↑ bigger ↓ smaller</translation>
     </message>

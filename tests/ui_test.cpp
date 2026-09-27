@@ -50,7 +50,7 @@ using namespace h2d;
 // window uses: beside the pointer, flipped when it would fall off an edge, and then
 // kept inside the window.
 static QRect magnifierPanel(QPoint at, QSize window) {
-    const QSize panel(216, 268);
+    const QSize panel(magnifierPanelWidth, magnifierPanelHeight);
     const int gap = 24, margin = 8;
     int x = at.x() + gap, y = at.y() + gap;
     if (x + panel.width() > window.width() - margin)
@@ -2602,7 +2602,8 @@ class UiTests : public QObject {
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-frame.png");
         const QRect panel = magnifierPanel(at, QSize(560, 360));
-        const QRect zoom(panel.topLeft() + QPoint(8, 8), QSize(200, 126));
+        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
+                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
         QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
         int marked = 0;
         for (int row = zoom.top(); row < zoom.bottom(); ++row)
@@ -2613,6 +2614,83 @@ class UiTests : public QObject {
         // from inside the enlargement: that is the part of the picture the pointer is
         // reading, and a frame missing from it is a frame the pointer cannot use.
         QVERIFY2(marked > 0, "the enlargement shows the pixels without the frame that names them");
+        overlay.hide();
+    }
+    // REG-086: the enlargement used to be a second look at the grab with a hairline
+    // drawn back on top of it, so the blue frame came out thin however far the pixels
+    // under it had been stretched. It is a glass held over the window instead: what is
+    // on the window, frame included, has to come out enlarged with those pixels.
+    void theEnlargementMagnifiesTheFrameRatherThanRedrawingIt() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTest::qWait(50);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        QVERIFY(!overlay.selection().isEmpty());
+        // The pointer goes on the left edge of the region, which is where the frame is.
+        const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
+        QTest::mouseMove(&overlay, at);
+        QTest::qWait(50);
+        const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-thick-frame.png");
+        const QRect panel = magnifierPanel(at, QSize(560, 360));
+        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
+                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
+        int marked = 0;
+        for (int row = zoom.top(); row < zoom.bottom(); ++row)
+            for (int column = zoom.left(); column < zoom.right(); ++column)
+                if (isAccentColour(shot.pixelColor(column, row)))
+                    ++marked;
+        // The frame is two pixels wide on the screen and the enlargement is fifteen
+        // times, so it fills a band of the panel. A hairline redrawn at its own width
+        // is about two hundred pixels of it; the band is several thousand.
+        QVERIFY2(marked > 2000,
+                 qPrintable(QString("the frame has to be enlarged with the pixels it marks (%1)")
+                                .arg(marked)));
+        overlay.hide();
+    }
+    // REG-087: an arrow key used to slide the whole region one pixel, which meant a
+    // region that had been placed to the pixel slid away from where it was put and
+    // there was no way to aim at one pixel of it. The arrows move the pointer now:
+    // the region stays where the user left it and the aim is what travels.
+    void arrowsMoveThePointerRatherThanTheRegion() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        // A screen that changes from column to column, so a pointer that has moved
+        // shows a different enlargement even when nothing else about it has.
+        for (int column = 0; column < image.width(); ++column)
+            for (int row = 0; row < image.height(); ++row)
+                image.setPixelColor(column, row, QColor(column % 256, 200, 200));
+        ScreenFrame frame{"arrows", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        const QRect settled = overlay.selection();
+        QVERIFY(!settled.isEmpty());
+        // Inside the region, which is what brings the enlargement up.
+        QTest::mouseMove(&overlay, {200, 180});
+        QTest::qWait(50);
+        const QRect panel = magnifierPanel(QPoint(200, 180), QSize(560, 360));
+        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
+                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        const QImage before = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QTest::keyClick(&overlay, Qt::Key_Right);
+        QTest::qWait(50);
+        const QImage after = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-arrow.png");
+        QVERIFY2(overlay.selection() == settled,
+                 "an arrow key must not move the region that has just been taken");
+        QVERIFY2(before.copy(zoom) != after.copy(zoom),
+                 "the arrow key has to move the pointer the enlargement is aimed with");
         overlay.hide();
     }
     // REG-076: a shadow is drawn for the eye. Reading text used to be handed the
