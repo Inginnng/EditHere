@@ -169,12 +169,15 @@ void Overlay::resetSelection() {
     update();
 }
 const QImage &Overlay::scaledFrame() {
-    if (frameScaled_.size() != rect().size()) {
-        if (frame_.image.size() == rect().size())
-            frameScaled_ = frame_.image; // Nothing to do, and no copy of the pixels.
-        else
-            frameScaled_ = frame_.image.scaled(rect().size(), Qt::IgnoreAspectRatio,
-                                               Qt::SmoothTransformation);
+    if (frameScaled_.size() != frame_.image.size()) {
+        // The grab is in device pixels while the window is laid out in logical ones.
+        // Shrinking it to the window size throws away exactly the pixels the user is
+        // trying to tell apart and then has them interpolated back, which reads as a
+        // blurry screen (REG-072, and the same trap a second time here). Declaring the
+        // ratio instead maps one image pixel to one screen pixel.
+        frameScaled_ = frame_.image;
+        if (!frame_.image.isNull() && width() > 0 && frame_.image.width() != width())
+            frameScaled_.setDevicePixelRatio(double(frame_.image.width()) / width());
     }
     return frameScaled_;
 }
@@ -200,16 +203,6 @@ void Overlay::paintEvent(QPaintEvent *) {
         QRectF outline = localRect(active);
         const double scale = double(width()) / frame_.image.width();
         const double radius = style_.cornerRadius * scale;
-        // The shadow is painted around the region before the picture is: an effect that
-        // only shows up in the copied file is an effect the user cannot tell is on, which
-        // is exactly how the first shadow went unnoticed.
-        if (style_.shadowRadius() > 0) {
-            const QImage halo = composeShadowPreview(active.size(), style_);
-            if (!halo.isNull()) {
-                const double reach = style_.shadowRadius() * scale;
-                p.drawImage(outline.adjusted(-reach, -reach, reach, reach), halo);
-            }
-        }
         p.setBrush(Qt::NoBrush);
         // The border the region will carry is drawn where it will land, so the choice
         // in the panel can be judged before anything is copied.
@@ -234,7 +227,13 @@ void Overlay::paintEvent(QPaintEvent *) {
             }
         }
     }
-    if (!finished_ && (!ready_ || picking_)) {
+    // The magnifier and the colour readout are up while a region is being found, and
+    // again once it has settled whenever the pointer is inside it: pointing at the
+    // picture that was just taken is exactly when a colour is wanted, so reading one
+    // should not cost a keystroke. C still turns it into a mode that copies on click.
+    const bool overSettledRegion =
+        ready_ && !selected_.isEmpty() && selected_.contains(cursor_);
+    if (!finished_ && (!ready_ || picking_ || overSettledRegion)) {
         QPointF at(double(cursor_.x()) * width() / frame_.image.width(),
                    double(cursor_.y()) * height() / frame_.image.height());
         for (const auto &pen : {QPen(Qt::white, 0)}) {
@@ -476,13 +475,11 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
         return;
     }
     if (!drawing_) { native_.clear(); picker_.reset(); }
-    if (drawing_ || picking_ || !ready_)
-        magnifierVisible_ = true;
-    else
-        magnifierVisible_ = false;
     cursor_ = pixel + (drawing_ ? keyboardOffset_ : QPoint());
     cursor_.setX(std::clamp(cursor_.x(), 0, frame_.image.width()));
     cursor_.setY(std::clamp(cursor_.y(), 0, frame_.image.height()));
+    magnifierVisible_ = drawing_ || picking_ || !ready_ ||
+                        (ready_ && !selected_.isEmpty() && selected_.contains(cursor_));
     if (drawing_)
         selected_ = captureRectFromDrag(start_, cursor_, ratio_, bar_->customWidth(), bar_->customHeight());
     else if (!ready_ && selected_.isEmpty()) {

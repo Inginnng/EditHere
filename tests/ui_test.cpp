@@ -67,6 +67,19 @@ static bool isAccentColour(const QColor &colour) {
     return std::abs(colour.red() - 0) < 40 && std::abs(colour.green() - 122) < 40 &&
            std::abs(colour.blue() - 255) < 40;
 }
+// How much of a rendering is painted darker than a limit on every channel. The panel
+// draws its own background over whatever is behind it, so no single exact colour can
+// name it; "a lot more dark pixels" can, and it survives the panel moving.
+static int countDark(const QImage &image, int limit) {
+    int found = 0;
+    for (int row = 0; row < image.height(); ++row)
+        for (int column = 0; column < image.width(); ++column) {
+            const QColor pixel = image.pixelColor(column, row);
+            if (pixel.red() < limit && pixel.green() < limit && pixel.blue() < limit)
+                ++found;
+        }
+    return found;
+}
 
 // Read JSON from clipboard — supports both file-URL (new copy behavior) and text (legacy).
 static QJsonDocument clipboardJson(QJsonParseError *error = nullptr) {
@@ -2492,10 +2505,11 @@ class UiTests : public QObject {
         QVERIFY(empty.placementFor(QSize(10, 10)).isEmpty());
         empty.hide();
     }
-    // REG-070: the shadow was applied to the copied file and nowhere else, so it was
-    // invisible at the only moment it can be judged — while the region is still on
-    // screen and the strength slider is being dragged. The window has to paint it.
-    void theShadowIsVisibleOnTheRegionBeforeAnythingIsCopied() {
+    // REG-083: the halo was drawn on the capture window, which meant that while the
+    // reader was still looking for a block a blue glow followed the pointer over the
+    // whole screen. A shadow belongs to a pinned picture and nowhere else, so the
+    // window has to leave it out — even with the strength slider turned up.
+    void theCaptureWindowCastsNoShadowAroundTheRegion() {
         // A flat light screen, so the only thing that can darken a pixel is the halo.
         QImage image(1120, 720, QImage::Format_ARGB32);
         image.fill(QColor(240, 240, 240));
@@ -2527,13 +2541,42 @@ class UiTests : public QObject {
         artifact(overlay, "shadow-preview.png");
         QVERIFY2(plain.rect().contains(probe) && withShadow.rect().contains(probe),
                  "the probe has to be inside what was rendered");
-        QVERIFY2(withShadow.pixelColor(probe).red() + 8 < plain.pixelColor(probe).red(),
-                 "a shadow that only lands in the copied file is a shadow nobody sees");
-        // Turning it off again takes it off the screen as well.
-        overlay.setStyle(bare);
+        QVERIFY2(withShadow.pixelColor(probe) == plain.pixelColor(probe),
+                 "a shadow on the capture window follows the pointer over the whole "
+                 "screen while a region is still being looked for; it belongs to a pin");
+        overlay.hide();
+    }
+    // REG-083: the magnifier and the colour readout used to disappear the moment the
+    // region settled, so pointing at the picture that had just been taken showed
+    // nothing until C was pressed. Reading a colour off your own capture is the common
+    // case, not a mode.
+    void theMagnifierStaysUpOverTheRegionThatWasJustTaken() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
         QTest::qWait(50);
-        const QImage offAgain = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        QCOMPARE(offAgain.pixelColor(probe).red(), plain.pixelColor(probe).red());
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {300, 260});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        QVERIFY(!overlay.selection().isEmpty());
+        // Away from the region there is nothing of the user's to read, so it stays down.
+        QTest::mouseMove(&overlay, {520, 40});
+        QTest::qWait(30);
+        const QImage away = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        // Back over the picture that was just taken it is up again, without a keystroke.
+        QTest::mouseMove(&overlay, {200, 180});
+        QTest::qWait(30);
+        const QImage over = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-settled.png");
+        const int before = countDark(away, 60);
+        const int after = countDark(over, 60);
+        QVERIFY2(after > before + 5000,
+                 qPrintable(QString("the panel has to appear over the region (away %1, over %2)")
+                                .arg(before)
+                                .arg(after)));
         overlay.hide();
     }
     // The enlargement is where the aim is judged, so the blue frame of the recognised

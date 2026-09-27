@@ -143,6 +143,10 @@
 | REG-080 | **放大镜里看不到识别出来的蓝色框**，放大后反而不知道自己在选哪一块 | 开发中（用户反馈） | 放大镜里画的是**选区**（`localRect(selected_)`），而且用的是**未放大**的屏幕坐标——面板里是 10 倍放大的内容，这两套坐标根本不是一回事，画出来是错的；而放大镜真正对准的"当前识别块"（`picker_.current()`）压根没画 | `tests/ui_test.cpp::theMagnifierCarriesTheFrameItIsAimingAt`（真实渲染 Overlay：指针压在被识别块的边缘上，放大区域矩形内必须出现强调色像素。先把新绘制关掉跑一遍确认 **0** 像素、用例失败，再打开得到 113 像素） |
 | REG-081 | **长截图基本不可用**：稍微正常一点的页面（有固定顶栏/播放条/底栏）跑完只回一帧原图 | 开发中（用户反馈） | 三层原因：① 匹配时用的是整幅帧，帧首的固定顶栏永远对不上上一帧结尾的行，第一次匹配就失败；② 失败即 `succeed()`，拿第一帧交差，没有重试也没有"退一步用粗糙匹配"的兜底；③ 滚动后死等 180 ms 就抓，而平滑滚动的页面要 300 ms 以上才停稳，抓到的是滚动中途的糊图 | `tests/capture_test.cpp::aFixedHeaderAndFooterDoNotStopTheStitch`（12 行固定顶栏 + 8 行固定底栏的页面，逐帧拼接后总高度必须等于 `顶栏 + 全部内容 + 底栏`，且顶/底栏各只出现一次；同一组帧交给旧的 `appendScrolledFrame()` 必须返回 -1，即旧路径确实会失败）、`theBandsOfAFrameSayWhatDidNotMove`、`aFrameWithSomethingMovingInItIsStillPlaced`（容差阶梯：精确匹配失败 → 放宽后放行，且 `partial()` 必须为真）、`aStitcherThatPlacedNothingStillHasItsFirstFrame`、`twoLooksAtTheSamePlaceSayWhetherThePageMoved` |
 
+| REG-083 | **悬停找块时整屏跟着指针泛蓝光**：阴影画在截图窗口上，`active` 在还没选定时取的是"指针下的那个候选框"，于是指针移到哪儿哪儿就长出一圈蓝色光晕 | 0.9.6（用户反馈） | 阴影预览（`composeShadowPreview()`）画在 `Overlay::paintEvent` 里，不区分"还在找块"与"选区已定下来"两种状态。用户要的是**阴影只属于置顶图**，所以截图窗口上一律不画（`composeCapture()` 成品与 `PinWindow` 仍然带） | `tests/ui_test.cpp::theCaptureWindowCastsNoShadowAroundTheRegion`（真实渲染：把阴影强度开到 60 与关掉相比，选区左侧那个只有光晕会够到的像素必须**完全不变**。反向验证：把绘制加回去，这条失败） |
+| REG-084 | **截图模式下整屏画质明显下降**，不只是置顶图糊（REG-072 的同一个坑，第二次踩） | 0.9.6（用户反馈） | `Overlay::scaledFrame()` 把设备像素的抓图 `scaled()` 到窗口的**逻辑**尺寸再画。缩放屏上抓图是 2880×1620、窗口只有 1920×1080，于是整屏先被砍掉一半像素再由系统插值补回来 | `frameScaled_` 不再重采样，改为保留原像素数并 `setDevicePixelRatio(抓图宽 / 窗口宽)`，让 Qt 一比一地贴。**这与 REG-072 是同一个教训**：`QImage` 是设备像素、`QWidget` 是逻辑像素，两者不能互相 `scaled()` |
+| REG-085 | **取色要按 `C` 才有**，选区刚定下来、鼠标就在自己截的那张图上时，放大镜和颜色读数反而不见了 | 0.9.6（用户反馈） | `Overlay::paintEvent` 里放大镜的条件是 `!ready_ \|\| picking_`，也就是**只在选区定下来之前**显示；`ready_` 一为真就撤掉，与用户的用法正好相反 | `tests/ui_test.cpp::theMagnifierStaysUpOverTheRegionThatWasJustTaken`（真实渲染：指针在选区外时记一次暗像素数，移进选区后再记一次，差值必须超过 5000。反向验证：把条件改回原样，差值为 **0**、这条失败） |
+
 | REG-082 | 文字识别的两个用例**只在 macOS 上失败**——本机只编 Windows，跑了十几轮都绿，是 CI 的 macOS 任务第一次跑 OCR 才暴露的 | 0.9.5（CI 拦下，未发到用户手上） | ① `bridgeIsGivenNativePathsAndSafeQuoting` 断言 `C:/` 必须被换成 `C:\`，而这是 Windows 特有的路径转换，macOS 保留斜杠，断言必然不成立；② macOS 侧（Vision）把识别语言写进了 `OcrResult::engineLanguage`，却没回写 `OcrEngine::language_`，于是 `engine.engineLanguage()` 一直是空 | `tests/ocr_test.cpp` 把反斜杠那两条收进 `#ifdef Q_OS_WIN`（单引号转义那部分跨平台依然有效，仍会断言）；`OcrEngine::finish()` 统一从 `result.engineLanguage` 回写 `language_`，两条路径不再各写一半。教训：**新增平台相关代码时本机跑绿不等于 CI 绿**，`app/*_mac.mm` 与 macOS 分支只有 CI 能验证 |
 
 关于文字识别的实现选择：发布包用 MinGW 构建，没有 C++/WinRT，所以 Windows 侧走"内置 PowerShell 桥接系统 `Windows.Media.Ocr`"这条路（`app/ocrbridge.ps1` + `app/ocr.cpp`）；macOS 侧直接用 Vision（`app/ocr_mac.mm`）。两边都不联网、不上传、不新增依赖。
@@ -176,7 +180,7 @@
 | `canvas_feedback_tests::layoutGuidesStayVisibleForUnselectedComponents` | `tests/canvas_feedback_test.cpp` | REG-037 |
 | `ocr_tests`（14 例） | `tests/ocr_test.cpp`，CTest 名 `ocr` | REG-061/062 |
 | `capture_tests`（36 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079/081 |
-| `ui_tests`（60 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/070/076/080 |
+| `ui_tests`（61 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085 |
 
 长截图的做法对照过两个开源实现，取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 
