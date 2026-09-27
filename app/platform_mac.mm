@@ -282,8 +282,10 @@ bool scrollAt(QPoint nativePoint, int steps) {
     CGPoint point = CGPointMake(nativePoint.x(), nativePoint.y());
     CGWarpMouseCursorPosition(point);
     CGAssociateMouseAndMouseCursorPosition(true);
-    if (CGEventRef event = CGEventCreateScrollWheelEvent(kCFAllocatorDefault, kCGScrollEventUnitLine,
-                                                       1, int32_t(-steps))) {
+    // The first argument is an event source, not an allocator: passing
+    // kCFAllocatorDefault there does not match the declaration at all.
+    if (CGEventRef event = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 1,
+                                                        int32_t(-steps))) {
         // A long capture scrolls a page, and a page is read line by line, so the
         // steps are counted in lines rather than in pixels.
         CGEventSetLocation(event, point);
