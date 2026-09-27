@@ -22,6 +22,8 @@ class Controller final : public QObject {
 
   private:
     void finishAgentSession();
+    // Rebuilds the tray menu and tooltip; called on startup and on a language change.
+    void retranslate();
     void clearOverlays();
     void cancelCapture();
     void raiseEditor();
@@ -31,6 +33,9 @@ class Controller final : public QObject {
     QString settingsFile_;
     bool guidePending_ = false;
     QAction *captureAction_ = nullptr;
+    QAction *openAction_ = nullptr, *pasteAction_ = nullptr, *restoreAction_ = nullptr;
+    QAction *accessibilityAction_ = nullptr;
+    QAction *settingsAction_ = nullptr, *updatesAction_ = nullptr, *quitAction_ = nullptr;
     Editor editor_;
     QSystemTrayIcon tray_;
     GlobalShortcut shortcut_;

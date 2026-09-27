@@ -34,7 +34,7 @@ class GuideCard final : public QWidget {
 
 GuideOverlay::GuideOverlay(QWidget *parent) : QWidget(parent) {
     setObjectName("guideOverlay");
-    setAccessibleName("EditHere 使用引导");
+    setAccessibleName(tr("EditHere 使用引导"));
     setAttribute(Qt::WA_StyledBackground, false);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
@@ -43,7 +43,7 @@ GuideOverlay::GuideOverlay(QWidget *parent) : QWidget(parent) {
     layout->setContentsMargins(20, 18, 20, 18);
     layout->setSpacing(12);
     auto top = new QHBoxLayout;
-    top->addWidget(mutedLabel("快速上手", card_));
+    top->addWidget(mutedLabel(tr("快速上手"), card_));
     top->addStretch();
     progress_ = mutedLabel({}, card_);
     progress_->setObjectName("guideProgress");
@@ -66,12 +66,12 @@ GuideOverlay::GuideOverlay(QWidget *parent) : QWidget(parent) {
     layout->addWidget(body_);
     auto footer = new QHBoxLayout;
     footer->setSpacing(7);
-    skip_ = textButton("跳过", false, card_);
+    skip_ = textButton(tr("跳过"), false, card_);
     skip_->setObjectName("guideSkip");
-    skip_->setAccessibleName("跳过使用引导");
-    back_ = textButton("上一步", false, card_);
+    skip_->setAccessibleName(tr("跳过使用引导"));
+    back_ = textButton(tr("上一步"), false, card_);
     back_->setObjectName("guideBack");
-    next_ = textButton("下一步", true, card_);
+    next_ = textButton(tr("下一步"), true, card_);
     next_->setObjectName("guideNext");
     footer->addWidget(skip_);
     footer->addStretch();
@@ -135,12 +135,12 @@ QWidget *GuideOverlay::visibleControl(const QString &name) const {
 void GuideOverlay::setStep(int step) {
     step_ = std::clamp(step, 0, stepCount() - 1);
     const QStringList titles{
-        "先放进一张界面图", "找到你想改的那一块", "写下风格与意图",
-        "用大爆炸调整布局", "把反馈交给 AI", "随时回来看看"};
+        tr("先放进一张界面图"), tr("找到你想改的那一块"), tr("写下风格与意图"),
+        tr("用大爆炸调整布局"), tr("把反馈交给 AI"), tr("随时回来看看")};
     title_->setText(titles[step_]);
     progress_->setText(QString("%1 / %2").arg(step_ + 1).arg(stepCount()));
     back_->setEnabled(step_ > 0);
-    next_->setText(step_ + 1 == stepCount() ? "完成" : "下一步");
+    next_->setText(step_ + 1 == stepCount() ? tr("完成") : tr("下一步"));
     next_->setAccessibleName(next_->text());
     placeCard();
     animation_->stop();
@@ -154,30 +154,31 @@ void GuideOverlay::placeCard() {
     switch (step_) {
     case 0:
         controls = {"importDocument", "captureImage"};
-        body = "点导入打开图片或项目，也可以直接截图。图片还能拖进窗口，或从剪贴板粘贴。";
+        body = tr("点导入打开图片或项目，也可以直接截图。图片还能拖进窗口，或从剪贴板粘贴。");
         break;
     case 1:
         controls = {"mode_smart"};
-        body = "选中智能选块，把鼠标放在目标上。滚轮可切换所有包含鼠标的框：向上更大，向下更小；单击添加批注。";
+        body = tr("选中智能选块，把鼠标放在目标上。滚轮可切换所有包含鼠标的框：向上更大，向下更小；单击添加批注。");
         break;
     case 2:
         controls = {visibleControl("addGlobalNote") ? "addGlobalNote" : "collapseNotes"};
-        body = "圈出位置后，写清想要的风格和改变，例如「更轻盈、安静，减少装饰」。整页方向可用全局批注表达。";
+        body = tr("圈出位置后，写清想要的风格和改变，例如「更轻盈、安静，减少装饰」。整页方向可用全局批注表达。");
         break;
     case 3:
         controls = {"explodeButton"};
-        body = "打开大爆炸后，选块并拖动来移动布局。拖边缘可自由拉伸，拖角点会等比缩放。调整结果会随反馈保存。";
+        body = tr("打开大爆炸后，选块并拖动来移动布局。拖边缘可自由拉伸，拖角点会等比缩放。调整结果会随反馈保存。");
         break;
     case 4: {
         const bool direct = visibleControl("exportJson");
         controls = {direct ? "exportJson" : "moreActions"};
-        body = direct ? "点「查看 JSON」，检查批注与布局变化，再复制 JSON 给 AI。JSON 默认包含原图，让 AI 能结合画面理解你的意图。"
-                      : "点更多操作，选择「查看 JSON」，检查批注与布局变化，再复制 JSON 给 AI。JSON 默认包含原图。";
+        body = direct
+                   ? tr("点「查看 JSON」，检查批注与布局变化，再复制 JSON 给 AI。JSON 默认包含原图，让 AI 能结合画面理解你的意图。")
+                   : tr("点更多操作，选择「查看 JSON」，检查批注与布局变化，再复制 JSON 给 AI。JSON 默认包含原图。");
         break;
     }
     default:
         controls = {"showGuide"};
-        body = "右上角的问号随时能从头打开引导。现在开始试试；按 Esc 或点跳过，也能直接回到编辑。";
+        body = tr("右上角的问号随时能从头打开引导。现在开始试试；按 Esc 或点跳过，也能直接回到编辑。");
         break;
     }
     body_->setText(body);

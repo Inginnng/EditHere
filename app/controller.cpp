@@ -1,5 +1,6 @@
 #include "controller.h"
 #include "agentprotocol.h"
+#include "i18n.h"
 #include <QFileInfo>
 #include "autostart.h"
 #include "settingsdialog.h"
@@ -24,33 +25,34 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("edithereTray");
     auto menu = new QMenu(&editor_);
-    captureAction_ = menu->addAction("截图", this, &Controller::capture);
+    captureAction_ = menu->addAction(QString(), this, &Controller::capture);
     captureAction_->setObjectName("trayCapture");
-    menu->addAction("打开图片或项目", &editor_, [this] {
+    openAction_ = menu->addAction(QString(), &editor_, [this] {
         editor_.openFile();
         if (guidePending_ && editor_.hasDocument()) showGuide();
     });
-    menu->addAction("粘贴图片", &editor_, [this] {
+    pasteAction_ = menu->addAction(QString(), &editor_, [this] {
         editor_.pasteImage();
         if (guidePending_ && editor_.hasDocument()) showGuide();
     });
-    menu->addAction("恢复批注窗口", this, &Controller::activate);
+    restoreAction_ = menu->addAction(QString(), this, &Controller::activate);
 #ifdef Q_OS_MAC
-    menu->addAction("启用系统元素识别", this, [this] {
+    accessibilityAction_ = menu->addAction(QString(), this, [this] {
         if (requestAccessibility())
-            tray_.showMessage("EditHere", "已启用系统元素识别");
+            tray_.showMessage("EditHere", tr("已启用系统元素识别"));
         else
-            tray_.showMessage("EditHere", "请在系统设置中授予辅助功能权限，图片识别仍可直接使用。");
+            tray_.showMessage("EditHere", tr("请在系统设置中授予辅助功能权限，图片识别仍可直接使用。"));
     });
 #endif
     menu->addSeparator();
-    auto settingsAction = menu->addAction("设置…", this, [this] { openSettings(); });
-    settingsAction->setObjectName("traySettings");
-    auto updatesAction = menu->addAction("检查更新…", this, [this] { openSettings(true); });
-    updatesAction->setObjectName("trayUpdates");
+    settingsAction_ = menu->addAction(QString(), this, [this] { openSettings(); });
+    settingsAction_->setObjectName("traySettings");
+    updatesAction_ = menu->addAction(QString(), this, [this] { openSettings(true); });
+    updatesAction_->setObjectName("trayUpdates");
     menu->addSeparator();
-    menu->addAction("退出", this, &Controller::quit);
+    quitAction_ = menu->addAction(QString(), this, &Controller::quit);
     tray_.setContextMenu(menu);
+    retranslate();
     updateTrayShortcut();
     tray_.show();
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
@@ -63,17 +65,29 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         guidePending_ = false;
         QString error;
         if (!hasSeenGuide(settingsFile_) && !markGuideSeen(&error, settingsFile_))
-            tray_.showMessage("EditHere", "无法记录引导状态，下次启动时可能再次显示。\n" + error);
+            tray_.showMessage("EditHere", tr("无法记录引导状态，下次启动时可能再次显示。\n") + error);
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
-        tray_.showMessage("EditHere", "截图快捷键未能注册，请右键托盘打开设置修改。");
+        tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));
+}
+// Rebuilds the tray menu and tooltip; called on startup and on a language change.
+void Controller::retranslate() {
+    if (openAction_) openAction_->setText(tr("打开图片或项目"));
+    if (pasteAction_) pasteAction_->setText(tr("粘贴图片"));
+    if (restoreAction_) restoreAction_->setText(tr("恢复批注窗口"));
+    if (accessibilityAction_) accessibilityAction_->setText(tr("启用系统元素识别"));
+    if (settingsAction_) settingsAction_->setText(tr("设置…"));
+    if (updatesAction_) updatesAction_->setText(tr("检查更新…"));
+    if (quitAction_) quitAction_->setText(tr("退出"));
+    updateTrayShortcut();
 }
 void Controller::updateTrayShortcut() {
     const auto label = settings_.shortcuts.value("capture").toString(QKeySequence::NativeText);
-    captureAction_->setText(label.isEmpty() ? "截图" : "截图    " + label);
-    tray_.setToolTip(label.isEmpty() ? "EditHere · 改这里" : "EditHere · 改这里 · " + label);
+    captureAction_->setText(label.isEmpty() ? tr("截图") : tr("截图") + "    " + label);
+    const auto brand = tr("EditHere · 改这里");
+    tray_.setToolTip(label.isEmpty() ? brand : brand + " · " + label);
 }
 void Controller::openSettings(bool updates, bool toolbar) {
     if (capturing_ || QApplication::activeModalWidget())
@@ -89,6 +103,9 @@ void Controller::openSettings(bool updates, bool toolbar) {
         draft.launchAtLogin = registered;
     SettingsDialog dialog(draft, &editor_);
     dialog.setLaunchAtLoginNotice(startupReadError.isEmpty() ? launchAtLoginNotice() : startupReadError);
+    // A language switch inside the dialog is applied live; the tray menu is not a
+    // top-level widget, so it has to rebuild its own labels here.
+    connect(&dialog, &SettingsDialog::languageApplied, this, &Controller::retranslate);
     bool guideRequested = false;
     connect(&dialog, &SettingsDialog::guideRequested, &dialog, [&] { guideRequested = true; });
     if (updates)
@@ -98,27 +115,33 @@ void Controller::openSettings(bool updates, bool toolbar) {
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;
+        const auto previousLanguage = settings_.language;
+        if (!installLanguage(next.language))
+            return tr("界面语言加载失败，请重新安装 EditHere。");
         QString startupError;
         const bool wasRegistered = launchAtLoginEnabled(&startupError);
         if (!startupError.isEmpty())
             return startupError;
         const auto oldShortcut = shortcut_.sequence();
         if (!shortcut_.start(next.shortcuts.value("capture")))
-            return shortcut_.lastError().isEmpty() ? "截图快捷键无法注册，请更换组合键。"
+            return shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
                                                    : shortcut_.lastError();
         QString error;
         const bool startupChanged = wasRegistered != next.launchAtLogin;
         if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
             if (!shortcut_.start(oldShortcut))
-                error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
+                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
             return error;
         }
         if (!saveSettings(next, &error, settingsFile_)) {
+            // Nothing was written, so the live language preview has to go back too.
+            if (next.language != previousLanguage)
+                installLanguage(previousLanguage);
             QString rollbackError;
             if (startupChanged && !setLaunchAtLoginEnabled(wasRegistered, &rollbackError))
-                error += "\n开机自启未能恢复：" + rollbackError;
+                error += tr("\n开机自启未能恢复：") + rollbackError;
             if (!shortcut_.start(oldShortcut))
-                error += "\n原快捷键未能恢复，请重新设置截图快捷键。";
+                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
             return error;
         }
         settings_ = next;
@@ -130,10 +153,10 @@ void Controller::openSettings(bool updates, bool toolbar) {
     });
     const bool accepted = dialog.exec() == QDialog::Accepted;
     if (!accepted && !shortcut_.start(activeShortcut))
-        tray_.showMessage("EditHere", "截图快捷键未能恢复，请在设置中更换组合键。");
+        tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
     if (accepted) {
         const auto notice = launchAtLoginNotice();
-        if (!notice.isEmpty()) tray_.showMessage("EditHere 开机自启", notice);
+        if (!notice.isEmpty()) tray_.showMessage(tr("EditHere 开机自启"), notice);
     }
     if (guideRequested)
         showGuide();
@@ -155,7 +178,7 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
     if (!path.isEmpty())
         editor_.openFile(path);
     else if (demo)
-        editor_.setDocument(fromImage(exampleImage(), "demo", "示例产品页面"));
+        editor_.setDocument(fromImage(exampleImage(), "demo", tr("示例产品页面")));
     // A login launch stays in the tray, including before the first manual use.
     if (!background) {
         if (guidePending_)
@@ -170,7 +193,7 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
             connect(checker, &UpdateChecker::finished, this,
                     [this, checker](UpdateChecker::Status status, const QString &message, const QUrl &) {
                         if (status == UpdateChecker::Available)
-                            tray_.showMessage("EditHere 更新", message + "\n右键托盘选择检查更新。",
+                            tray_.showMessage(tr("EditHere 更新"), message + tr("\n右键托盘选择检查更新。"),
                                               QSystemTrayIcon::Information);
                         checker->deleteLater();
                     });
@@ -225,7 +248,7 @@ void Controller::capture() {
                 owner->capturing_ = false;
                 if (owner->wasVisible_)
                     owner->activate();
-                QMessageBox::warning(&owner->editor_, "截图未完成", error);
+                QMessageBox::warning(&owner->editor_, tr("截图未完成"), error);
                 return;
             }
             for (auto &frame : frames) {
@@ -293,7 +316,7 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
         clearOverlays();
         if (wasVisible_)
             activate();
-        QMessageBox::warning(&editor_, "截图未完成", QString::fromUtf8(e.what()));
+        QMessageBox::warning(&editor_, tr("截图未完成"), QString::fromUtf8(e.what()));
     }
 }
 void Controller::quit() {

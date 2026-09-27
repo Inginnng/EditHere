@@ -8,6 +8,13 @@
 #endif
 
 namespace h2d {
+namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
+} // namespace
 bool registerProjectFileAssociation(QString *error) {
     if (error)
         error->clear();
@@ -15,7 +22,7 @@ bool registerProjectFileAssociation(QString *error) {
     const QString executable = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
     if (!QFileInfo(executable).isFile()) {
         if (error)
-            *error = QStringLiteral("找不到当前 EditHere 程序");
+            *error = tr("找不到当前 EditHere 程序");
         return false;
     }
     const QString classes = QStringLiteral("HKEY_CURRENT_USER\\Software\\Classes\\");
@@ -28,7 +35,7 @@ bool registerProjectFileAssociation(QString *error) {
     handler.sync();
     if (handler.status() != QSettings::NoError) {
         if (error)
-            *error = QStringLiteral("无法为当前用户注册项目打开方式");
+            *error = tr("无法为当前用户注册项目打开方式");
         return false;
     }
     QSettings extension(classes + QStringLiteral(".edithere"), QSettings::NativeFormat);
@@ -40,7 +47,7 @@ bool registerProjectFileAssociation(QString *error) {
     extension.sync();
     if (extension.status() != QSettings::NoError) {
         if (error)
-            *error = QStringLiteral("项目已保存，但无法注册文件打开方式");
+            *error = tr("项目已保存，但无法注册文件打开方式");
         return false;
     }
     // Notify Explorer without adding a new link dependency to the portable build.

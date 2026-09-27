@@ -209,16 +209,17 @@ QVector<Candidate> detectTableBlocks(const QImage &original) {
             continue;
         const bool table = valid.size() > 1;
         if (closed(0, 0, columns, rows))
-            add(rect(0, 0, columns, rows), table ? "outer" : "frame", table ? "整个表格" : "边框区域");
+            add(rect(0, 0, columns, rows), table ? "outer" : "frame",
+                table ? QT_TRANSLATE_NOOP("EditHere", "整个表格") : QT_TRANSLATE_NOOP("EditHere", "边框区域"));
         if (table) {
             for (int y = 0; y < rows; ++y)
                 if (closed(0, y, columns, y + 1))
-                    add(rect(0, y, columns, y + 1), "row", "表格行");
+                    add(rect(0, y, columns, y + 1), "row", QT_TRANSLATE_NOOP("EditHere", "表格行"));
             for (int x = 0; x < columns; ++x)
                 if (closed(x, 0, x + 1, rows))
-                    add(rect(x, 0, x + 1, rows), "column", "表格列");
+                    add(rect(x, 0, x + 1, rows), "column", QT_TRANSLATE_NOOP("EditHere", "表格列"));
             for (auto b : valid)
-                add(b, "cell", "单元格", true);
+                add(b, "cell", QT_TRANSLATE_NOOP("EditHere", "单元格"), true);
         }
     }
     // Retain complete table/row/column ranges before sampling very dense cell sets.

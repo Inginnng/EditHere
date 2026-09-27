@@ -9,6 +9,9 @@ class QPainter;
 namespace h2d {
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
+// The interface face follows the language: the Chinese face has wider Latin
+// metrics, so English uses the system face instead.
+void applyInterfaceFont();
 bool isDarkTheme();
 void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());

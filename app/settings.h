@@ -6,8 +6,13 @@
 #include <QVector>
 namespace h2d {
 enum class ThemeMode { System, Light, Dark };
+// Interface language. "System" follows the operating system and falls back to
+// English on non-Chinese systems; the built-in source language is Simplified
+// Chinese, so zh_CN needs no translation file.
+enum class LanguageMode { System, SimplifiedChinese, English };
 struct AppSettings {
     ThemeMode theme = ThemeMode::System;
+    LanguageMode language = LanguageMode::System;
     QMap<QString, QKeySequence> shortcuts;
     QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"};
     bool captureOnStartup = true;

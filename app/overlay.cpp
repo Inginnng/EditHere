@@ -1,4 +1,5 @@
 #include "overlay.h"
+#include "i18n.h"
 #include "detector.h"
 #include "ui.h"
 #include <QApplication>
@@ -17,7 +18,7 @@
 namespace h2d {
 Overlay::Overlay(ScreenFrame frame, QWidget *parent) : QWidget(parent), frame_(std::move(frame)) {
     setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-    setWindowTitle("EditHere · 选择截图区域");
+    setWindowTitle(tr("EditHere · 选择截图区域"));
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setCursor(Qt::CrossCursor);
@@ -35,7 +36,9 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent) : QWidget(parent), frame_(s
     connect(worker, &QFutureWatcher<QVector<Candidate>>::finished, this, [this, worker] {
         visual_ = worker->result();
         auto full = manualTarget();
-        full["label"] = "整个屏幕";
+        // A stable label written into the feedback JSON; marked for display-time
+        // translation through localizedLabel().
+        full["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
         visual_.append({QRect(QPoint(0, 0), frame_.image.size()), full});
         if (selected_.isEmpty()) {
             picker_.update(candidates(), cursor_);
@@ -71,7 +74,11 @@ QVector<Candidate> Overlay::candidates() const {
     for(const auto &window:frame_.frontWindows)
         if(window.bounds.contains(cursor_)) { front=&window; break; }
     if(frame_.windowScopeAvailable) {
-        if(!front) { auto target=manualTarget(); target["label"]="整个屏幕"; return {{frame_.image.rect(),target}}; }
+        if(!front) {
+            auto target=manualTarget();
+            target["label"]=QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
+            return {{frame_.image.rect(),target}};
+        }
         QVector<Candidate> result;
         for(const auto &candidate:native_)
             if(front->bounds.contains(candidate.bounds)) result.append(candidate);
@@ -159,14 +166,14 @@ void Overlay::paintEvent(QPaintEvent *) {
         p.setFont(QFont("Microsoft YaHei",9));
         p.setPen(Qt::white);
         p.drawText(QRectF(panel.topLeft() + QPointF(6,134), QSizeF(198,32)),Qt::AlignCenter,
-                   QString("像素 %1, %2 · 1000% · 1格=1px").arg(sample.x()).arg(sample.y()));
+                   tr("像素 %1, %2 · 1000% · 1格=1px").arg(sample.x()).arg(sample.y()));
     }
     if (selected_.isEmpty() && !drawing_) {
-        QString text = picker_.current() ? QString("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
-                                               .arg(picker_.current()->target["label"].toString().left(30))
+        QString text = picker_.current() ? tr("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
+                                               .arg(localizedLabel(picker_.current()->target["label"].toString()).left(30))
                                                .arg(picker_.level())
                                                .arg(picker_.count())
-                                         : "拖动截图 · 单击选块 · 松手进入批注 · Esc 取消";
+                                         : tr("拖动截图 · 单击选块 · 松手进入批注 · Esc 取消");
         p.setFont(QFont("Microsoft YaHei", 10));
         int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         QRectF hint((width() - w) / 2, 24, w, 36);

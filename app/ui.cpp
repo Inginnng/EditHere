@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "i18n.h"
 #include <QApplication>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -203,17 +204,20 @@ void applyTheme(ThemeMode mode) {
     if (!themeInitialized) {
         themeInitialized = true;
         qApp->setStyle("Fusion");
-#ifdef Q_OS_MAC
-        qApp->setFont(QFont(".AppleSystemUIFont", 12));
-#else
-        qApp->setFont(QFont("Microsoft YaHei UI", 9));
-#endif
+        applyInterfaceFont();
         QObject::connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, qApp, [](Qt::ColorScheme) {
             if (currentTheme == ThemeMode::System)
                 refreshTheme();
         });
     }
     refreshTheme();
+}
+void applyInterfaceFont() {
+#ifdef Q_OS_MAC
+    qApp->setFont(QFont(".AppleSystemUIFont", 12));
+#else
+    qApp->setFont(QFont(isChineseInterface() ? "Microsoft YaHei UI" : "Segoe UI", 9));
+#endif
 }
 QIcon glyph(const QString &name, QColor color) {
     const bool themed = !color.isValid();

@@ -93,7 +93,7 @@ QVector<Candidate> detectBlocks(const QImage &original) {
             border += 2;
         }
         if (fill > .7 || (fill > .2 && double(matches) / border > .86))
-            add(r, "color-region", "色块区域");
+            add(r, "color-region", QT_TRANSLATE_NOOP("EditHere", "色块区域"));
     });
     auto difference = [](QRgb a, QRgb b) {
         return std::max(
@@ -125,7 +125,7 @@ QVector<Candidate> detectBlocks(const QImage &original) {
     components(dilated, w, h, true, [&](QRect r, int count) {
         if (r.width() >= 24 && r.height() >= 14 && count >= 80) {
             r.adjust(2, 0, -2, 0);
-            add(r, "edge-region", "内容区域");
+            add(r, "edge-region", QT_TRANSLATE_NOOP("EditHere", "内容区域"));
         }
     });
     std::stable_sort(proposals.begin(), proposals.end(),

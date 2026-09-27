@@ -1,5 +1,6 @@
 #include "model.h"
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -22,6 +23,13 @@
 #include <stdexcept>
 
 namespace h2d {
+namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
+} // namespace
 static void fail(const QString &text) {
     throw std::runtime_error(text.toStdString());
 }
@@ -37,15 +45,15 @@ QJsonObject rectJson(const QRect &r) {
 static int integer(const QJsonValue &v) {
     if (!v.isDouble() || !std::isfinite(v.toDouble()) || std::floor(v.toDouble()) != v.toDouble() ||
         std::abs(v.toDouble()) > 10000000)
-        fail("坐标格式不正确");
+        fail(tr("坐标格式不正确"));
     return v.toInt();
 }
 QRect jsonRect(const QJsonObject &o) {
     if (o.size() != 4 || !o.contains("x1") || !o.contains("y1") || !o.contains("x2") || !o.contains("y2"))
-        fail("矩形字段不正确");
+        fail(tr("矩形字段不正确"));
     const int x = integer(o["x1"]), y = integer(o["y1"]), r = integer(o["x2"]), b = integer(o["y2"]);
     if (r <= x || b <= y)
-        fail("矩形尺寸必须为正数");
+        fail(tr("矩形尺寸必须为正数"));
     return {x, y, r - x, b - y};
 }
 bool containsPixel(const QRect &r, QPoint p) {
@@ -79,7 +87,10 @@ QRect moveRect(QRect r, QPoint d, QSize s, int h) {
 }
 QJsonObject manualTarget() {
     return {{"source", "manual"},
-            {"label", "手动标注"},
+            // Not translated: "手动标注" is a stable target label written into the
+            // feedback JSON and asserted by tests/fixtures/desktop-review.json. It is
+            // marked for display-time translation through localizedLabel().
+            {"label", QT_TRANSLATE_NOOP("EditHere", "手动标注")},
             {"controlType", QJsonValue::Null},
             {"automationId", QJsonValue::Null},
             {"method", "user-selection"},
@@ -91,13 +102,13 @@ QByteArray encodePng(const QImage &image) {
     QBuffer buffer(&png);
     buffer.open(QIODevice::WriteOnly);
     if (!image.save(&buffer, "PNG"))
-        fail("无法编码图片");
+        fail(tr("无法编码图片"));
     return png;
 }
 Document fromImage(const QImage &image, const QString &source, const QString &title) {
     if (image.isNull() || qint64(image.width()) * image.height() > MaxPixels || image.width() > 32767 ||
         image.height() > 32767)
-        fail("图片过大或无法读取，最多支持 3200 万像素");
+        fail(tr("图片过大或无法读取，最多支持 3200 万像素"));
     Document doc;
     doc.image = image.convertToFormat(QImage::Format_ARGB32);
     doc.image.setDevicePixelRatio(1);
@@ -110,56 +121,56 @@ Document fromImage(const QImage &image, const QString &source, const QString &ti
 void validateDocument(const Document &d) {
     if (d.image.isNull() || qint64(d.image.width()) * d.image.height() > MaxPixels ||
         d.image.width() > 32767 || d.image.height() > 32767 || d.notes.size() > MaxNotes)
-        fail("图片或批注数量超出限制");
+        fail(tr("图片或批注数量超出限制"));
     if (d.id.isEmpty() || !QDateTime::fromString(d.createdAt, Qt::ISODateWithMs).isValid())
-        fail("项目标识或日期不正确");
+        fail(tr("项目标识或日期不正确"));
     if (!QStringList{"screen", "file", "clipboard", "demo"}.contains(d.source))
-        fail("图片来源不正确");
+        fail(tr("图片来源不正确"));
     if (!QRegularExpression("^[^\\\\/:*?\"<>|\\x00-\\x1f]+\\.png$", QRegularExpression::CaseInsensitiveOption)
              .match(d.imageFile)
              .hasMatch())
-        fail("原图文件名不正确");
+        fail(tr("原图文件名不正确"));
     if (d.screenBounds && d.screenBounds->isEmpty())
-        fail("屏幕范围不正确");
+        fail(tr("屏幕范围不正确"));
     if (d.layout)
         validateLayout(*d.layout, d.image.size());
     QSet<QString> ids;
     for (const auto &n : d.notes) {
         if (n.id.isEmpty() || ids.contains(n.id) || n.comment.trimmed().isEmpty() || n.comment.size() > 10000)
-            fail("批注编号或文字不正确");
+            fail(tr("批注编号或文字不正确"));
         ids.insert(n.id);
         if (n.isGlobal && n.movementSource)
-            fail("全局批注不能关联移动区域");
+            fail(tr("全局批注不能关联移动区域"));
         if (n.movementSource) {
             const auto r = *n.movementSource;
             if (n.isPoint || !std::isfinite(r.x()) || !std::isfinite(r.y()) ||
                 !std::isfinite(r.width()) || !std::isfinite(r.height()) || r.isEmpty() ||
                 r.x() < 0 || r.y() < 0 || r.right() > d.image.width() + 1e-7 ||
                 r.bottom() > d.image.height() + 1e-7)
-                fail("关联移动区域不正确");
+                fail(tr("关联移动区域不正确"));
         }
         if (n.isGlobal) {
             // Global design feedback intentionally has no canvas position.
         } else if (n.isPoint) {
             if (!containsPixel(QRect(QPoint(0, 0), d.image.size()), n.point))
-                fail("点标注超出画布");
+                fail(tr("点标注超出画布"));
         } else if (n.rect.isEmpty() || n.rect.x() < 0 || n.rect.y() < 0 ||
                    n.rect.x() + n.rect.width() > d.image.width() ||
                    n.rect.y() + n.rect.height() > d.image.height())
-            fail("框选超出画布");
+            fail(tr("框选超出画布"));
         if (!QStringList{"manual", "vision", "uia", "accessibility"}.contains(
                 n.target["source"].toString()) ||
             !n.target["label"].isString() || !n.target["method"].isString() || !n.target["clipped"].isBool())
-            fail("批注来源格式不正确");
+            fail(tr("批注来源格式不正确"));
         if (n.target.size() != 7 ||
             (!n.target["controlType"].isNull() && !n.target["controlType"].isString()) ||
             (!n.target["automationId"].isNull() && !n.target["automationId"].isString()))
-            fail("批注来源字段不正确");
+            fail(tr("批注来源字段不正确"));
         if (!n.target["originalScreenBounds"].isNull())
             jsonRect(n.target["originalScreenBounds"].toObject());
         if (!QDateTime::fromString(n.createdAt, Qt::ISODateWithMs).isValid() ||
             !QDateTime::fromString(n.updatedAt, Qt::ISODateWithMs).isValid())
-            fail("批注日期不正确");
+            fail(tr("批注日期不正确"));
     }
 }
 namespace {
@@ -168,15 +179,15 @@ QJsonObject floatingRectJson(QRectF r) {
 }
 QRectF floatingJsonRect(const QJsonObject &o) {
     if (o.size() != 4)
-        fail("移动区域字段不正确");
+        fail(tr("移动区域字段不正确"));
     for (const auto &key : {"x1", "y1", "x2", "y2"})
         if (!o[key].isDouble() || !std::isfinite(o[key].toDouble()) ||
             std::abs(o[key].toDouble()) > 10000000)
-            fail("移动区域坐标不正确");
+            fail(tr("移动区域坐标不正确"));
     const QRectF r(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
                    QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
     if (r.isEmpty())
-        fail("移动区域尺寸必须为正数");
+        fail(tr("移动区域尺寸必须为正数"));
     return r;
 }
 bool sameMovementRect(QRectF a, QRectF b) {
@@ -578,12 +589,12 @@ static QJsonObject documentObject(const Document &d, bool embed, bool current) {
     if (!current && std::any_of(d.notes.begin(), d.notes.end(), [](const Note &note) {
             return note.isGlobal || note.movementSource.has_value();
         }))
-        fail("这些批注需要当前 EditHere 项目格式");
+        fail(tr("这些批注需要当前 EditHere 项目格式"));
     if (d.layout && !current) {
         const auto original = createLayout(d.image.size(), {});
         legacyNotes = remapNotes(d.notes, *d.layout, original);
         if (remapNotes(legacyNotes, original, *d.layout) != d.notes)
-            fail("这些批注无法用旧版原图坐标保存，请使用当前反馈格式");
+            fail(tr("这些批注无法用旧版原图坐标保存，请使用当前反馈格式"));
     }
     QJsonObject capture{
         {"id", d.id},
@@ -646,9 +657,9 @@ QJsonObject exportDocument(const Document &doc, bool embed) {
 }
 void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes) {
     if (jsonBytes < 0 || jsonBytes > MaxProjectFileBytes)
-        fail("项目不能超过 96 MiB，未保存当前修改。请缩小图片或减少批注和分块后重试");
+        fail(tr("项目不能超过 96 MiB，未保存当前修改。请缩小图片或减少批注和分块后重试"));
     if (externalImageBytes < 0 || externalImageBytes > MaxImageFileBytes)
-        fail("配套原图不能超过 48 MiB，请缩小图片后重试");
+        fail(tr("配套原图不能超过 48 MiB，请缩小图片后重试"));
 }
 QByteArray serializeDocument(const Document &doc, bool embed) {
     // Reject an oversized embedded image before allocating its Base64 representation.
@@ -662,10 +673,10 @@ QByteArray serializeDocument(const Document &doc, bool embed) {
 }
 static void exactKeys(const QJsonObject &o, const QStringList &keys) {
     if (o.size() != keys.size())
-        fail("项目字段缺失或包含未知字段");
+        fail(tr("项目字段缺失或包含未知字段"));
     for (const auto &k : keys)
         if (!o.contains(k))
-            fail("项目缺少字段：" + k);
+            fail(tr("项目缺少字段：%1").arg(k));
 }
 static void feedbackFields(const QJsonObject &feedback) {
     // Two accepted shapes: the object-oriented format ("objects") and the legacy
@@ -678,7 +689,7 @@ static void feedbackFields(const QJsonObject &feedback) {
         fields.append("annotations"), fields.append("changes");
     if (feedback.contains("annotationSpace")) {
         if (feedback["annotationSpace"] != "result")
-            fail("批注坐标空间不正确");
+            fail(tr("批注坐标空间不正确"));
         fields.append("annotationSpace");
         if (feedback.contains("image"))
             fields.append("image");
@@ -688,20 +699,20 @@ static void feedbackFields(const QJsonObject &feedback) {
 static QByteArray feedbackPng(const QJsonValue &value) {
     const QString prefix = value.toString().startsWith("data:image/jpeg;base64,") ? "data:image/jpeg;base64," : "data:image/png;base64,";
     if (!value.isString())
-        fail("内嵌图片必须是 PNG 或 JPEG data URL");
+        fail(tr("内嵌图片必须是 PNG 或 JPEG data URL"));
     const QString data = value.toString();
     if (!data.startsWith(prefix))
-        fail("内嵌图片必须是 PNG 或 JPEG data URL");
+        fail(tr("内嵌图片必须是 PNG 或 JPEG data URL"));
     const qint64 encodedSize = data.size() - prefix.size();
     if (encodedSize <= 0 || encodedSize > ((MaxImageFileBytes + 2) / 3) * 4)
-        fail("内嵌原图不能超过 48 MiB");
+        fail(tr("内嵌原图不能超过 48 MiB"));
     const QByteArray encoded = data.mid(prefix.size()).toLatin1();
     auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
     if (!decoded || decoded.decoded.toBase64() != encoded)
-        fail("原图 Base64 不正确");
+        fail(tr("原图 Base64 不正确"));
     validateProjectStorageSize(0, decoded.decoded.size());
     if(prefix.contains("jpeg") != decoded.decoded.startsWith(QByteArray::fromHex("ffd8ff")))
-        fail("内嵌图片类型与编码不一致");
+        fail(tr("内嵌图片类型与编码不一致"));
     return decoded.decoded;
 }
 static QImage readFeedbackPng(QByteArray &png) {
@@ -710,30 +721,30 @@ static QImage readFeedbackPng(QByteArray &png) {
         QImageReader reader(&buffer,"JPEG");
         const QSize size=reader.size();
         if(!size.isValid() || size.width()>32767 || size.height()>32767 || qint64(size.width())*size.height()>MaxPixels)
-            fail("内嵌图片尺寸超出限制");
+            fail(tr("内嵌图片尺寸超出限制"));
         auto image=reader.read();
-        if(image.isNull() || image.size()!=size) fail("内嵌图片无法读取");
+        if(image.isNull() || image.size()!=size) fail(tr("内嵌图片无法读取"));
         QByteArray lossless; QBuffer output(&lossless); output.open(QIODevice::WriteOnly);
-        if(!image.save(&output,"PNG")) fail("图片转换失败");
+        if(!image.save(&output,"PNG")) fail(tr("图片转换失败"));
         png=lossless;
         return image;
     }
     if (png.size() < 33 || !png.startsWith(QByteArray::fromHex("89504e470d0a1a0a0000000d49484452")))
-        fail("内嵌原图不是有效的 PNG");
+        fail(tr("内嵌原图不是有效的 PNG"));
     const auto *header = reinterpret_cast<const uchar *>(png.constData());
     const quint32 width = qFromBigEndian<quint32>(header + 16);
     const quint32 height = qFromBigEndian<quint32>(header + 20);
     if (!width || !height || width > 32767 || height > 32767 || quint64(width) * height > MaxPixels)
-        fail("内嵌原图尺寸超出限制");
+        fail(tr("内嵌原图尺寸超出限制"));
     QBuffer buffer(&png);
     buffer.open(QIODevice::ReadOnly);
     QImageReader reader(&buffer, "PNG");
     const QSize size{int(width), int(height)};
     if (reader.size() != size)
-        fail("内嵌原图尺寸不正确");
+        fail(tr("内嵌原图尺寸不正确"));
     auto image = reader.read();
     if (image.isNull() || image.size() != size)
-        fail("内嵌原图无法读取");
+        fail(tr("内嵌原图无法读取"));
     return image;
 }
 Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
@@ -745,31 +756,31 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         image = readFeedbackPng(embedded);
         if (!original.isNull() &&
             image.convertToFormat(QImage::Format_ARGB32) != original.convertToFormat(QImage::Format_ARGB32))
-            fail("内嵌原图与提供的图片不一致");
+            fail(tr("内嵌原图与提供的图片不一致"));
     }
-    auto doc = fromImage(image, "file", "设计反馈");
+    auto doc = fromImage(image, "file", tr("设计反馈"));
     if (!embedded.isEmpty())
         doc.png = embedded;
     if (feedback.contains("objects")) {
         // Object-oriented format. Each entry describes a source region (or a null
         // source for global feedback) together with its movements and text notes.
         if (!feedback["objects"].isArray() || feedback["objects"].toArray().size() > MaxNotes)
-            fail("对象列表格式或数量不正确");
+            fail(tr("对象列表格式或数量不正确"));
         const auto objects = feedback["objects"].toArray();
         // Source rects may be zero-area (point annotations). Parse them with a
         // lenient reader so a point source does not trip the positive-size check
         // that movement destinations must satisfy.
         auto sourceRect = [](const QJsonValue &value) {
             if (!value.isObject())
-                fail("对象源区域格式不正确");
+                fail(tr("对象源区域格式不正确"));
             const auto o = value.toObject();
             if (o.size() != 4 || !o.contains("x1") || !o.contains("y1") ||
                 !o.contains("x2") || !o.contains("y2"))
-                fail("对象源区域字段不正确");
+                fail(tr("对象源区域字段不正确"));
             for (const auto &key : {"x1", "y1", "x2", "y2"})
                 if (!o[key].isDouble() || !std::isfinite(o[key].toDouble()) ||
                     std::abs(o[key].toDouble()) > 10000000)
-                    fail("对象源区域坐标不正确");
+                    fail(tr("对象源区域坐标不正确"));
             return QRectF(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
                           QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
         };
@@ -780,11 +791,11 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         QVector<LayoutObject> layoutObjects;
         for (const auto &value : objects) {
             if (!value.isObject())
-                fail("对象格式不正确");
+                fail(tr("对象格式不正确"));
             const auto obj = value.toObject();
             exactKeys(obj, {"source", "movements", "annotations"});
             if (!obj["movements"].isArray() || !obj["annotations"].isArray())
-                fail("对象移动或批注格式不正确");
+                fail(tr("对象移动或批注格式不正确"));
             if (obj["source"].isNull())
                 continue;
             const auto source = sourceRect(obj["source"]);
@@ -794,7 +805,7 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             info.source = source;
             for (const auto &movement : obj["movements"].toArray()) {
                 if (!movement.isObject())
-                    fail("移动格式不正确");
+                    fail(tr("移动格式不正确"));
                 const auto moveObj = movement.toObject();
                 exactKeys(moveObj, {"to"});
                 const auto dest = floatingJsonRect(moveObj["to"].toObject());
@@ -819,10 +830,10 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             const auto texts = obj["annotations"].toArray();
             if (obj["source"].isNull()) {
                 if (!obj["movements"].toArray().isEmpty())
-                    fail("全局批注不能关联移动");
+                    fail(tr("全局批注不能关联移动"));
                 for (const auto &text : texts) {
                     if (!text.isString())
-                        fail("批注文字格式不正确");
+                        fail(tr("批注文字格式不正确"));
                     Note note;
                     note.isGlobal = true;
                     note.isPoint = true;
@@ -837,14 +848,14 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             const bool hasMovements = !movements.isEmpty();
             for (const auto &text : texts) {
                 if (!text.isString())
-                    fail("批注文字格式不正确");
+                    fail(tr("批注文字格式不正确"));
                 Note note;
                 note.comment = text.toString();
                 if (isPoint) {
                     note.isPoint = true;
                     note.point = QPoint(qRound(source.left()), qRound(source.top()));
                     if (!containsPixel(QRect(QPoint(0, 0), image.size()), note.point))
-                        fail("点标注超出画布");
+                        fail(tr("点标注超出画布"));
                 } else if (hasMovements) {
                     note.isPoint = false;
                     note.movementSource = source;
@@ -853,13 +864,13 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                     note.rect = firstDest.toAlignedRect()
                                     .intersected(QRect(QPoint(0, 0), image.size()));
                     if (note.rect.isEmpty())
-                        fail("框选超出画布");
+                        fail(tr("框选超出画布"));
                 } else {
                     note.isPoint = false;
                     note.rect =
                         source.toAlignedRect().intersected(QRect(QPoint(0, 0), image.size()));
                     if (note.rect.isEmpty())
-                        fail("框选超出画布");
+                        fail(tr("框选超出画布"));
                 }
                 doc.notes.append(note);
             }
@@ -868,13 +879,13 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         // Legacy action-oriented format: annotations reference changes by index.
         if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||
             feedback["annotations"].toArray().size() > MaxNotes)
-            fail("批注或变化列表格式不正确");
+            fail(tr("批注或变化列表格式不正确"));
         const auto changes = feedback["changes"].toArray();
         if (!changes.isEmpty())
             doc.layout = importLayoutChanges(changes, image.size());
         for (const auto &value : feedback["annotations"].toArray()) {
             if (!value.isObject())
-                fail("批注格式不正确");
+                fail(tr("批注格式不正确"));
             auto annotation = value.toObject();
             const bool point = annotation.contains("point");
             const bool movement = annotation.contains("change");
@@ -882,7 +893,7 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             exactKeys(annotation, global ? QStringList{"text"} : movement ? QStringList{"change", "text"}
                                   : point ? QStringList{"point", "text"} : QStringList{"rectangle", "text"});
             if (!annotation["text"].isString())
-                fail("批注文字格式不正确");
+                fail(tr("批注文字格式不正确"));
             Note note;
             note.isPoint = point;
             note.isGlobal = global;
@@ -892,20 +903,20 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             } else if (movement) {
                 const int index = integer(annotation["change"]);
                 if (index < 0 || index >= changes.size())
-                    fail("批注关联的移动不存在");
+                    fail(tr("批注关联的移动不存在"));
                 const auto change = changes[index].toObject();
                 note.movementSource = floatingJsonRect(change["from"].toObject());
                 note.rect = floatingJsonRect(change["to"].toObject()).toAlignedRect()
                                 .intersected(QRect(QPoint(0, 0), image.size()));
             } else if (point) {
                 if (!annotation["point"].isObject())
-                    fail("点标注格式不正确");
+                    fail(tr("点标注格式不正确"));
                 const auto position = annotation["point"].toObject();
                 exactKeys(position, {"x", "y"});
                 note.point = {integer(position["x"]), integer(position["y"])};
             } else {
                 if (!annotation["rectangle"].isObject())
-                    fail("框标注格式不正确");
+                    fail(tr("框标注格式不正确"));
                 note.rect = jsonRect(annotation["rectangle"].toObject());
             }
             doc.notes.append(note);
@@ -920,24 +931,24 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
 Document loadDocument(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        fail("无法打开文件");
+        fail(tr("无法打开文件"));
     if (!path.endsWith(".json", Qt::CaseInsensitive) &&
         !path.endsWith(".edithere", Qt::CaseInsensitive)) {
         if (file.size() > MaxImageFileBytes)
-            fail("图片文件不能超过 48 MB");
+            fail(tr("图片文件不能超过 48 MB"));
         QImageReader reader(&file);
         reader.setAutoTransform(true);
         QSize size = reader.size();
         if (!size.isValid() || qint64(size.width()) * size.height() > MaxPixels)
-            fail("图片尺寸超出限制");
+            fail(tr("图片尺寸超出限制"));
         return fromImage(reader.read(), "file", QFileInfo(path).fileName());
     }
     if (file.size() > MaxProjectFileBytes)
-        fail("项目文件不能超过 96 MB");
+        fail(tr("项目文件不能超过 96 MB"));
     QJsonParseError error;
     const auto parsed = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !parsed.isObject())
-        fail("JSON 格式不正确");
+        fail(tr("JSON 格式不正确"));
     auto root = parsed.object();
     if (!root.contains("schemaVersion")) {
         feedbackFields(root);
@@ -951,7 +962,7 @@ Document loadDocument(const QString &path) {
         }
         const QString imagePath = jsonFile.dir().filePath(jsonFile.completeBaseName() + ".png");
         if (!QFileInfo::exists(imagePath))
-            fail("请将 JSON 与同名原图 " + QFileInfo(imagePath).fileName() + " 放在同一目录");
+            fail(tr("请将 JSON 与同名原图 %1 放在同一目录").arg(QFileInfo(imagePath).fileName()));
         const auto imageDocument = loadDocument(imagePath);
         auto document = loadFeedback(root, imageDocument.image);
         document.png = imageDocument.png;
@@ -963,7 +974,7 @@ Document loadDocument(const QString &path) {
     const bool current = version == "3.0.0";
     if (!QStringList{"1.0.0", "1.1.0", "2.0.0", "3.0.0"}.contains(version) ||
         root["tool"] != "EditHere")
-        fail("不支持这个项目版本");
+        fail(tr("不支持这个项目版本"));
     QStringList fields{"schemaVersion", "tool", "exportedAt", "capture", "annotations"};
     if (version == "2.0.0" || current)
         fields.append("layout");
@@ -971,56 +982,56 @@ Document loadDocument(const QString &path) {
         fields.append("annotationSpace");
         if (root["annotationSpace"] != "result" ||
             (!root["layout"].isNull() && !root["layout"].isObject()))
-            fail("项目坐标或布局格式不正确");
+            fail(tr("项目坐标或布局格式不正确"));
     }
     exactKeys(root, fields);
     if (version == "2.0.0" && !root["layout"].isObject())
-        fail("大爆炸项目必须包含布局对象");
+        fail(tr("大爆炸项目必须包含布局对象"));
     if (!QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
-        fail("导出日期不正确");
+        fail(tr("导出日期不正确"));
     if (!root["annotations"].isArray() || root["annotations"].toArray().size() > MaxNotes)
-        fail("批注列表格式或数量不正确");
+        fail(tr("批注列表格式或数量不正确"));
     const auto c = root["capture"].toObject();
     exactKeys(c, {"id", "createdAt", "source", "title", "imageFile", "width", "height", "coordinateSpace",
                   "origin", "rectangleConvention", "screenBounds", "sha256", "pngBase64"});
     if (c["coordinateSpace"] != "image-pixels" || c["origin"] != "top-left" ||
         c["rectangleConvention"] != "top-left-inclusive-bottom-right-exclusive")
-        fail("项目坐标约定不兼容");
+        fail(tr("项目坐标约定不兼容"));
     if (!c["title"].isString())
-        fail("项目标题格式不正确");
+        fail(tr("项目标题格式不正确"));
     const int w = integer(c["width"]), h = integer(c["height"]);
     if (w <= 0 || h <= 0 || qint64(w) * h > MaxPixels)
-        fail("项目图片尺寸不正确");
+        fail(tr("项目图片尺寸不正确"));
     const QString name = c["imageFile"].toString();
     if (QFileInfo(name).fileName() != name || name.contains('\\') || name.contains('/') ||
         !name.endsWith(".png", Qt::CaseInsensitive))
-        fail("原图文件名不正确");
+        fail(tr("原图文件名不正确"));
     QByteArray png;
     if (c["pngBase64"].isString()) {
         auto result = QByteArray::fromBase64Encoding(c["pngBase64"].toString().toLatin1(),
                                                      QByteArray::AbortOnBase64DecodingErrors);
         if (!result)
-            fail("原图 Base64 不正确");
+            fail(tr("原图 Base64 不正确"));
         png = result.decoded;
     } else if (c["pngBase64"].isNull()) {
         QFile original(QFileInfo(path).dir().filePath(name));
         if (!original.open(QIODevice::ReadOnly) || original.size() > MaxImageFileBytes)
-            fail("请将 JSON 与原图 " + name + " 放在同一目录");
+            fail(tr("请将 JSON 与原图 %1 放在同一目录").arg(name));
         png = original.readAll();
     } else
-        fail("原图数据字段不正确");
+        fail(tr("原图数据字段不正确"));
     if (!png.startsWith(QByteArray::fromHex("89504e470d0a1a0a")) ||
         QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex()) !=
             c["sha256"].toString())
-        fail("原图校验不一致，无法保证标注位置");
+        fail(tr("原图校验不一致，无法保证标注位置"));
     QBuffer pngBuffer(&png);
     pngBuffer.open(QIODevice::ReadOnly);
     QImageReader pngReader(&pngBuffer, "PNG");
     if (pngReader.size() != QSize(w, h))
-        fail("原图尺寸与项目不一致");
+        fail(tr("原图尺寸与项目不一致"));
     QImage image = pngReader.read();
     if (image.size() != QSize(w, h))
-        fail("原图尺寸与项目不一致");
+        fail(tr("原图尺寸与项目不一致"));
     Document d = fromImage(image, c["source"].toString(), c["title"].toString());
     d.png = png;
     d.id = c["id"].toString();
@@ -1029,7 +1040,7 @@ Document loadDocument(const QString &path) {
     if (!c["screenBounds"].isNull())
         d.screenBounds = jsonRect(c["screenBounds"].toObject());
     if (!root["annotations"].isArray())
-        fail("批注列表格式不正确");
+        fail(tr("批注列表格式不正确"));
     int number = 0;
     for (const auto &value : root["annotations"].toArray()) {
         auto o = value.toObject();
@@ -1039,16 +1050,16 @@ Document loadDocument(const QString &path) {
             noteFields.append("movementSource");
         exactKeys(o, noteFields);
         if (integer(o["number"]) != ++number)
-            fail("批注编号必须连续");
+            fail(tr("批注编号必须连续"));
         if (o["kind"] != "point" && o["kind"] != "rectangle" && !(current && o["kind"] == "global"))
-            fail("批注类型不正确");
+            fail(tr("批注类型不正确"));
         Note n;
         n.id = o["id"].toString();
         n.isGlobal = o["kind"] == "global";
         n.isPoint = n.isGlobal || o["kind"] == "point";
         if (o.contains("movementSource")) {
             if (!o["movementSource"].isObject())
-                fail("关联移动区域格式不正确");
+                fail(tr("关联移动区域格式不正确"));
             n.movementSource = floatingJsonRect(o["movementSource"].toObject());
         }
         n.comment = o["comment"].toString();
@@ -1056,21 +1067,21 @@ Document loadDocument(const QString &path) {
         n.updatedAt = o["updatedAt"].toString();
         n.target = o["target"].toObject();
         if (root["schemaVersion"] == "1.0.0" && n.target["source"] == "accessibility")
-            fail("辅助功能元素需要 1.1.0 格式");
+            fail(tr("辅助功能元素需要 1.1.0 格式"));
         exactKeys(n.target, {"source", "label", "controlType", "automationId", "method",
                              "originalScreenBounds", "clipped"});
         if (n.isGlobal) {
             if (!o["rectangle"].isNull() || !o["point"].isNull())
-                fail("全局批注不能包含坐标");
+                fail(tr("全局批注不能包含坐标"));
         } else if (n.isPoint) {
             if (!o["rectangle"].isNull())
-                fail("点标注不能带框坐标");
+                fail(tr("点标注不能带框坐标"));
             auto p = o["point"].toObject();
             exactKeys(p, {"x", "y"});
             n.point = {integer(p["x"]), integer(p["y"])};
         } else {
             if (!o["point"].isNull())
-                fail("框标注不能带点坐标");
+                fail(tr("框标注不能带点坐标"));
             auto r = o["rectangle"].toObject();
             exactKeys(r, {"x1", "y1", "x2", "y2"});
             n.rect = jsonRect(r);
@@ -1088,8 +1099,8 @@ Document loadDocument(const QString &path) {
 void saveBytes(const QString &path, const QByteArray &bytes) {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail(QStringLiteral("文件保存失败（%1：%2），请检查目录权限和剩余空间")
-                 .arg(path, file.errorString().isEmpty() ? QStringLiteral("未知原因") : file.errorString()));
+        fail(tr("文件保存失败（%1：%2），请检查目录权限和剩余空间")
+                 .arg(path, file.errorString().isEmpty() ? tr("未知原因") : file.errorString()));
 }
 void CandidatePicker::reset() {
     levels_.clear();
@@ -1165,18 +1176,18 @@ QImage exampleImage() {
     p.setFont(QFont("Segoe UI", 14));
     p.drawText(44, 48, "FIELDNOTES");
     p.setFont(QFont("Segoe UI", 11));
-    p.drawText(878, 48, "探索     收藏     关于");
+    p.drawText(878, 48, tr("探索     收藏     关于"));
     p.setFont(QFont("Microsoft YaHei", 28, QFont::DemiBold));
-    p.drawText(48, 164, "为日常，留一点空白。");
+    p.drawText(48, 164, tr("为日常，留一点空白。"));
     p.setFont(QFont("Microsoft YaHei", 11));
     p.setPen(QColor("#788278"));
-    p.drawText(48, 203, "点选这里，写下你希望改变的细节。");
+    p.drawText(48, 203, tr("点选这里，写下你希望改变的细节。"));
     p.setBrush(QColor("#456b51"));
     p.setPen(Qt::NoPen);
     p.drawRoundedRect(QRectF(870, 124, 200, 48), 9, 9);
     p.setPen(Qt::white);
-    p.drawText(QRect(870, 124, 200, 48), Qt::AlignCenter, "发现灵感  →");
-    QStringList titles{"林间的光", "山的轮廓", "慢一点的午后"};
+    p.drawText(QRect(870, 124, 200, 48), Qt::AlignCenter, tr("发现灵感  →"));
+    QStringList titles{tr("林间的光"), tr("山的轮廓"), tr("慢一点的午后")};
     for (int i = 0; i < 3; i++) {
         int x = 48 + i * 348;
         p.setPen(Qt::NoPen);
@@ -1199,10 +1210,10 @@ QImage exampleImage() {
         p.drawText(x + 22, 551, titles[i]);
         p.setPen(QColor("#929c91"));
         p.setFont(QFont("Segoe UI", 10));
-        p.drawText(x + 22, 594, QString("生活观察   /   VOL. 0%1").arg(i + 1));
+        p.drawText(x + 22, 594, QString(tr("生活观察   /   VOL. 0%1")).arg(i + 1));
     }
     p.setPen(QColor("#8b948a"));
-    p.drawText(48, 680, "© FIELDNOTES · 示例图片，仅用于体验批注");
+    p.drawText(48, 680, tr("© FIELDNOTES · 示例图片，仅用于体验批注"));
     return image;
 }
 QImage previewImage(const Document &doc) {
@@ -1218,7 +1229,7 @@ QImage previewImage(const Document &doc) {
     }
     int width = doc.image.width() + 408, height = std::max(doc.image.height() + 48, total + 24);
     if (qint64(width) * height > MaxPixels || height > 32767)
-        fail("预览图片过大，请保存项目");
+        fail(tr("预览图片过大，请保存项目"));
     QImage image(width, height, QImage::Format_ARGB32);
     image.fill(QColor("#f5f5f7"));
     QPainter p(&image);
@@ -1256,7 +1267,7 @@ QImage previewImage(const Document &doc) {
     int y = 72, i = 0, x = doc.image.width() + 60;
     p.setFont(QFont("Microsoft YaHei", 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
-    p.drawText(x, 44, QString("批注 %1 条").arg(doc.notes.size()));
+    p.drawText(x, 44, QString(tr("批注 %1 条")).arg(doc.notes.size()));
     for (const auto &n : doc.notes) {
         if (!n.isGlobal && !n.isPoint) {
             p.setPen(QPen(QColor("#007aff"), 2));
@@ -1272,7 +1283,7 @@ QImage previewImage(const Document &doc) {
         badge(QPointF(x + 28, y + 26), i + 1);
         p.setPen(QColor("#85858b"));
         p.setFont(QFont("Segoe UI", 9));
-        QString coords = n.isGlobal ? QString("整体意见") : n.isPoint ? QString("(%1, %2)").arg(n.point.x()).arg(n.point.y())
+        QString coords = n.isGlobal ? QString(tr("整体意见")) : n.isPoint ? QString("(%1, %2)").arg(n.point.x()).arg(n.point.y())
                                    : QString("(%1, %2) → (%3, %4)")
                                          .arg(n.rect.x())
                                          .arg(n.rect.y())

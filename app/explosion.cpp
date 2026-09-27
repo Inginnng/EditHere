@@ -1,4 +1,5 @@
 #include "explosion.h"
+#include "i18n.h"
 #include "ui.h"
 #include <QCheckBox>
 #include <QDoubleSpinBox>
@@ -83,7 +84,7 @@ QRectF region(QPointF a, QPointF b) {
 LayoutCanvas::LayoutCanvas(QImage original, LayoutState state, QWidget *parent)
     : QWidget(parent), original_(std::move(original)), state_(std::move(state)) {
     setObjectName("layoutCanvas");
-    setAccessibleName("大爆炸组件画布");
+    retranslate();
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     hoverTimer_ = new QTimer(this);
@@ -224,8 +225,8 @@ void LayoutCanvas::select(QStringList ids) {
     emit selectionChanged();
     update();
     emit hintChanged(selected_.isEmpty()
-                         ? "悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选"
-                         : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块");
+                         ? tr("悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选")
+                         : tr("拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块"));
 }
 void LayoutCanvas::toggleSelect(QString id) {
     if (selected_.contains(id))
@@ -237,8 +238,8 @@ void LayoutCanvas::toggleSelect(QString id) {
     emit selectionChanged();
     update();
     emit hintChanged(selected_.isEmpty()
-                         ? "悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选"
-                         : "拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块");
+                         ? tr("悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选")
+                         : tr("拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块"));
 }
 void LayoutCanvas::clearSelection() {
     if (dragging_) {
@@ -256,7 +257,7 @@ void LayoutCanvas::setDrawing(bool enabled) {
     stopMiddlePan();
     clearSelection();
     setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
-    emit hintChanged(enabled ? "拖动画框创建一个可调整的区域" : "悬停滚轮切换所有区域 · 单击确认");
+    emit hintChanged(enabled ? tr("拖动画框创建一个可调整的区域") : tr("悬停滚轮切换所有区域 · 单击确认"));
 }
 void LayoutCanvas::updateHover(QPointF point) {
     auto previous = hover_;
@@ -274,12 +275,31 @@ void LayoutCanvas::updateHover(QPointF point) {
         hoverAnchor_ = point;
     hover_ = choices_.isEmpty() ? QString() : choices_[level_].id;
     if (selected_.isEmpty()) {
-        emit hintChanged(choices_.isEmpty() ? "拖动可手动划分区域"
-                                            : QString("%1 · %2 / %3 · 滚轮切换范围，单击确认")
-                                                  .arg(choices_[level_].label)
+        emit hintChanged(choices_.isEmpty() ? tr("拖动可手动划分区域")
+                                            : tr("%1 · %2 / %3 · 滚轮切换范围，单击确认")
+                                                  .arg(localizedLabel(choices_[level_].label))
                                                   .arg(level_ + 1)
                                                   .arg(choices_.size()));
     }
+}
+void LayoutCanvas::updateHint() {
+    // The hint text lives in the editor, so a language change cannot re-translate it
+    // in place; rebuild it from the current state instead.
+    if (!selected_.isEmpty())
+        emit hintChanged(tr("拖动移动 · 边缘调整宽高 · 角点等比缩放 · 滚轮缩放 · Ctrl 多选 · Esc 返回选块"));
+    else if (drawingMode_)
+        emit hintChanged(tr("拖动画框创建一个可调整的区域"));
+    else if (!choices_.isEmpty())
+        emit hintChanged(tr("%1 · %2 / %3 · 滚轮切换范围，单击确认")
+                             .arg(localizedLabel(choices_[level_].label))
+                             .arg(level_ + 1)
+                             .arg(choices_.size()));
+    else
+        emit hintChanged(tr("悬停滚轮切换所有区域 · 单击确认 · 拖动可手动分块 · Ctrl 多选"));
+}
+void LayoutCanvas::retranslate() {
+    setAccessibleName(tr("大爆炸组件画布"));
+    updateHint();
 }
 void LayoutCanvas::paintEvent(QPaintEvent *event) {
     QPainter p(this);
@@ -558,7 +578,7 @@ void LayoutCanvas::mouseReleaseEvent(QMouseEvent *event) {
                     commit(before);
                     annotateSelection();
                 } else
-                    emit hintChanged("这个区域没有图像内容，请框选已有组件");
+                    emit hintChanged(tr("这个区域没有图像内容，请框选已有组件"));
             } catch (const std::exception &e) {
                 emit hintChanged(QString::fromUtf8(e.what()));
             }
@@ -607,8 +627,8 @@ void LayoutCanvas::wheelEvent(QWheelEvent *event) {
         if (specific) {
             level_ = std::clamp(level_ + (delta > 0 ? 1 : -1), 0, int(choices_.size()) - 1);
             hover_ = choices_[level_].id;
-            emit hintChanged(QString("%1 · %2 / %3 · 滚轮切换范围，单击确认")
-                                 .arg(choices_[level_].label)
+            emit hintChanged(tr("%1 · %2 / %3 · 滚轮切换范围，单击确认")
+                                 .arg(localizedLabel(choices_[level_].label))
                                  .arg(level_ + 1)
                                  .arg(choices_.size()));
         } else
@@ -697,25 +717,25 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     side->setSpacing(7);
     auto headingRow = new QHBoxLayout;
     headingRow->setSpacing(5);
-    auto heading = new QLabel("组件调整", this);
+    auto heading = new QLabel(this);
+    heading->setObjectName("layoutInspectorHeading");
     heading->setProperty("sectionTitle", true);
     headingRow->addWidget(heading);
     headingRow->addStretch();
-    auto guides = new QCheckBox("显示分解框", this);
+    auto guides = new QCheckBox(this);
     guides->setObjectName("layoutGuides");
-    guides->setToolTip("显示分解框");
     guides->setChecked(true);
     headingRow->addWidget(guides);
-    annotate_ = iconButton("plus", "为当前组件添加批注", this);
+    annotate_ = iconButton("plus", {}, this);
     annotate_->setObjectName("annotateComponent");
     annotate_->setFixedSize(26, 26);
     headingRow->addWidget(annotate_);
-    clear_ = iconButton("close", "取消选择", this);
+    clear_ = iconButton("close", {}, this);
     clear_->setObjectName("clearLayoutSelection");
     clear_->setFixedSize(26, 26);
     headingRow->addWidget(clear_);
     side->addLayout(headingRow);
-    selection_ = mutedLabel("单击选择一个区域", this);
+    selection_ = mutedLabel({}, this);
     selection_->setStyleSheet("font-size:11px;");
     side->addWidget(selection_);
     fieldsPanel_ = new QWidget(this);
@@ -723,14 +743,14 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setHorizontalSpacing(10);
     grid->setVerticalSpacing(5);
-    QStringList labels{"X", "Y", "宽", "高", "缩放"},
-        names{"layoutX", "layoutY", "layoutWidth", "layoutHeight", "layoutScale"};
+    QStringList names{"layoutX", "layoutY", "layoutWidth", "layoutHeight", "layoutScale"};
     for (int i = 0; i < 5; ++i) {
         auto cell = new QWidget(fieldsPanel_);
         auto row = new QHBoxLayout(cell);
         row->setContentsMargins(0, 0, 0, 0);
         row->setSpacing(5);
-        auto label = new QLabel(labels[i], cell);
+        auto label = new QLabel(cell);
+        fieldLabels_.append(label);
         label->setFixedWidth(i == 4 ? 30 : 14);
         label->setStyleSheet("font-size:11px;");
         row->addWidget(label);
@@ -762,6 +782,26 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     connect(annotate_, &QPushButton::clicked, canvas_, &LayoutCanvas::annotateSelection);
     connect(canvas_, &LayoutCanvas::changed, this, &LayoutInspector::refresh);
     connect(canvas_, &LayoutCanvas::selectionChanged, this, &LayoutInspector::refresh);
+    // Every label is set here so a live language change only has to call this again.
+    retranslate();
+}
+void LayoutInspector::retranslate() {
+    if (auto heading = findChild<QLabel *>("layoutInspectorHeading"))
+        heading->setText(tr("组件调整"));
+    if (auto guides = findChild<QCheckBox *>("layoutGuides")) {
+        guides->setText(tr("显示分解框"));
+        guides->setToolTip(tr("显示分解框"));
+    }
+    const QStringList labels{"X", "Y", tr("宽"), tr("高"), tr("缩放")};
+    for (int i = 0; i < fieldLabels_.size() && i < labels.size(); ++i)
+        fieldLabels_[i]->setText(labels[i]);
+    for (auto button : {annotate_, clear_}) {
+        if (!button)
+            continue;
+        const QString text = button == annotate_ ? tr("为当前组件添加批注") : tr("取消选择");
+        button->setToolTip(text);
+        button->setAccessibleName(text);
+    }
     refresh();
 }
 void LayoutInspector::keyPressEvent(QKeyEvent *event) {
@@ -790,10 +830,10 @@ void LayoutInspector::refresh() {
     selection_->setVisible(!id.isEmpty());
     clear_->setVisible(!id.isEmpty());
     annotate_->setVisible(!id.isEmpty());
-    selection_->setText("单击选择一个区域");
+    selection_->setText(tr("单击选择一个区域"));
     for (const auto &group : canvas_->state().groups)
         if (group.id == id) {
-            selection_->setText(group.label);
+            selection_->setText(localizedLabel(group.label));
             break;
         }
     if (!id.isEmpty()) {

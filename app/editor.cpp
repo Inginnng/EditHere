@@ -423,6 +423,9 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     setShortcuts(defaults.shortcuts);
     updateToolbar();
     resize(1260, 850);
+    // Every label of the permanent chrome is set here, so a live language change
+    // only has to call this again.
+    retranslate();
 }
 void Editor::showGuide() {
     finishNoteEdit();
@@ -553,6 +556,90 @@ void Editor::toggleFullscreen() {
     }
     updateFullscreenButton();
 }
+void Editor::retranslate() {
+    const auto brandLabel = tr("EditHere · 改这里");
+    setWindowTitle(brandLabel);
+    if (auto brand = findChild<QLabel *>("brand"))
+        brand->setText(brandLabel);
+    // Header and dock buttons carry an icon, so their tooltip is the only label
+    // they have; it doubles as the accessible name.
+    auto tooltip = [this](const char *name, const QString &text) {
+        if (auto button = findChild<QPushButton *>(name)) {
+            button->setToolTip(text);
+            button->setAccessibleName(text);
+        }
+    };
+    tooltip("captureImage", tr("重新截图"));
+    tooltip("showGuide", tr("使用引导"));
+    tooltip("importDocument", tr("导入图片或项目"));
+    tooltip("openSettings", tr("设置"));
+    tooltip("minimizeWindow", tr("最小化"));
+    tooltip("fullscreenWindow", tr("全屏"));
+    tooltip("closeWindow", tr("关闭当前截图"));
+    tooltip("addGlobalNote", tr("添加全局批注"));
+    tooltip("zoomOut", tr("缩小"));
+    tooltip("zoomIn", tr("放大"));
+    tooltip("moreActions", tr("更多操作"));
+    tooltip("hideAnnotations", annotationsVisible_ ? tr("隐藏画面批注") : tr("显示画面批注"));
+    if (auto magnifier = findChild<QPushButton *>("toggleMagnifier"))
+        tooltip("toggleMagnifier", magnifier->isChecked() ? tr("关闭放大镜") : tr("开启放大镜"));
+    if (auto agentHint = findChild<QLabel *>("agentSessionHint"))
+        agentHint->setText(tr("AI 正在等待你的修改意见"));
+    if (auto cancel = findChild<QPushButton *>("agentCancel"))
+        cancel->setText(tr("取消"));
+    if (auto finish = findChild<QPushButton *>("agentFinish"))
+        finish->setText(tr("完成并返回 AI"));
+    emptyNotes_->setText(tr("圈出位置，或添加一条全局意见。"));
+    zoom_->setToolTip(tr("适应图片"));
+    auto primary = [](QPushButton *button, const QString &text) {
+        button->setToolTip(text);
+        button->setAccessibleName(text);
+    };
+    primary(undo_, tr("撤销"));
+    primary(redo_, tr("重做"));
+    if (explosion_)
+        explosion_->setText(tr("大爆炸"));
+    updateToolLabels();
+    updateFullscreenButton();
+    updateToolbar();
+    if (canvas_)
+        canvas_->retranslate();
+    if (layoutCanvas_)
+        layoutCanvas_->retranslate();
+    if (layoutInspector_)
+        layoutInspector_->retranslate();
+    // Note cards cache translated placeholders, fold labels and accessibility
+    // names, so drop them and let renderNotes() build them again.
+    for (auto it = noteCards_.begin(); it != noteCards_.end(); ++it)
+        if (it.value()) {
+            noteLayout_->removeWidget(it.value());
+            it.value()->hide();
+            it.value()->deleteLater();
+        }
+    noteCards_.clear();
+    noteEditors_.clear();
+    if (hasDocument())
+        renderNotes();
+    else {
+        noteCount_->setText(tr("批注 %1 条").arg(0));
+        emptyNotes_->hide();
+    }
+    updateLayoutControls();
+}
+
+void Editor::updateToolLabels() {
+    const QStringList ids{"smart", "point", "rectangle", "adjust"};
+    const QStringList labels{tr("智能选块"), tr("点标注"), tr("框选"), tr("调整批注")};
+    auto label = [this](const QString &id, const QString &name) {
+        const auto shortcut = shortcuts_.value(id);
+        const auto key = shortcut ? shortcut->key().toString(QKeySequence::NativeText) : QString();
+        return key.isEmpty() ? name : name + " (" + key + ")";
+    };
+    for (int i = 0; i < modes_.size(); ++i)
+        modes_[i]->setToolTip(label(ids[i], labels[i]));
+    explosion_->setToolTip(label("explode", tr("大爆炸")));
+}
+
 void Editor::updateFullscreenButton() {
     if (!fullscreen_) return;
     const bool full = isFullScreen();
@@ -568,6 +655,12 @@ void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
     if (event->type() == QEvent::WindowStateChange)
         updateFullscreenButton();
+    if (event->type() == QEvent::LanguageChange) {
+        // Cards cache their own placeholder and fold labels, so commit the pending
+        // edit and let renderNotes() build them again in the new language.
+        finishNoteEdit();
+        retranslate();
+    }
     if (event->type() == QEvent::ActivationChange && !isActiveWindow())
         stopViewportPan();
 }

@@ -1,4 +1,5 @@
 #include "canvas.h"
+#include "i18n.h"
 #include "ui.h"
 #include <QFocusEvent>
 #include <QHash>
@@ -63,7 +64,7 @@ void paintMovement(QPainter &p, const MovementMarker &movement,
 Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
-    setAccessibleName("图片批注画布");
+    retranslate();
     hoverTimer_ = new QTimer(this);
     hoverTimer_->setInterval(32);
     connect(hoverTimer_, &QTimer::timeout, this, [this] {
@@ -268,9 +269,9 @@ void Canvas::paintEvent(QPaintEvent *event) {
         }
         p.setPen(QPen(Qt::white,0)); p.setBrush(Qt::NoBrush);
         p.drawRect(QRectF(area.center()-QPointF(5,5),QSizeF(10,10))); p.restore();
-        p.setPen(Qt::white); p.setFont(QFont("Microsoft YaHei",9));
+        p.setPen(Qt::white); p.setFont(font());
         p.drawText(QRectF(at+QPointF(6,134),QSizeF(198,22)),Qt::AlignCenter,
-                   QString("像素 %1, %2 · 1格=1px").arg(pixel.x()).arg(pixel.y()));
+                   tr("像素 %1, %2 · 1格=1px").arg(pixel.x()).arg(pixel.y()));
     }
 }
 void Canvas::paintScene(QPainter &p, QRect exposed) {
@@ -593,13 +594,17 @@ void Canvas::wheelEvent(QWheelEvent *e) {
         emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), e->position());
     e->accept();
 }
+void Canvas::retranslate() {
+    setAccessibleName(tr("图片批注画布"));
+    updateHint();
+}
 void Canvas::updateHint() {
     auto c = picker_.current();
-    emit hintChanged(c ? QString("%1 · %2 / %3 · 滚轮切换大小")
-                             .arg(c->target["label"].toString())
+    emit hintChanged(c ? tr("%1 · %2 / %3 · 滚轮切换大小")
+                             .arg(localizedLabel(c->target["label"].toString()))
                              .arg(picker_.level())
                              .arg(picker_.count())
-                       : "单击批注 · 拖动框选");
+                       : tr("单击批注 · 拖动框选"));
 }
 void Canvas::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) {
