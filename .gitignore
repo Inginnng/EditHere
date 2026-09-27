@@ -26,3 +26,6 @@ build-*/
 
 # Trae IDE workspace data.
 .trae/
+
+# Release-note drafts kept around until they are folded back into CHANGELOG.md.
+/RELEASE-NOTES-*.md
