@@ -80,6 +80,10 @@ class CandidatePicker {
     void update(const QVector<Candidate> &candidates, QPoint point);
     void step(int direction);
     void reset();
+    // Forgets the level the wheel picked, so the next look starts from the smallest
+    // block again. Only a fresh start should do this: moving the pointer over the
+    // screen is not a fresh start, and a level that was asked for has to survive it.
+    void forget();
     std::optional<Candidate> current() const;
     int level() const {
         return index_ + 1;
@@ -92,6 +96,11 @@ class CandidatePicker {
     QVector<Candidate> levels_;
     int index_ = 0;
     std::optional<QPoint> anchor_;
+    // How far out in the pile of blocks the wheel left the choice. Kept across looks
+    // so that a level asked for once is the level offered everywhere until it is
+    // asked for again; without it every step of the pointer handed back the smallest
+    // block under it, which is how a whole row turned back into a single cell.
+    std::optional<int> chosen_;
 };
 class History {
   public:

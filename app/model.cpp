@@ -1107,6 +1107,9 @@ void CandidatePicker::reset() {
     index_ = 0;
     anchor_.reset();
 }
+void CandidatePicker::forget() {
+    chosen_.reset();
+}
 std::optional<Candidate> CandidatePicker::current() const {
     return levels_.isEmpty() ? std::nullopt : std::optional<Candidate>(levels_[index_]);
 }
@@ -1129,7 +1132,11 @@ void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
     std::stable_sort(candidates.begin(), candidates.end(),
                      [&](const Candidate &a, const Candidate &b) { return area(a.bounds) < area(b.bounds); });
     levels_ = std::move(candidates);
-    index_ = 0;
+    // The level the wheel left it at, when it left it at one; otherwise the smallest
+    // block under the pointer, which is what a block found by hovering has always been.
+    index_ = chosen_ && !levels_.isEmpty()
+                 ? std::clamp(*chosen_, 0, int(levels_.size()) - 1)
+                 : 0;
     if (nearby && previous)
         for (int i = 0; i < levels_.size(); i++)
             if (levels_[i].bounds == previous->bounds) {
@@ -1140,9 +1147,12 @@ void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
         anchor_ = p;
 }
 void CandidatePicker::step(int d) {
-    if (d == 0)
+    if (d == 0 || levels_.isEmpty())
         return;
-    index_ = std::clamp(index_ + (d > 0 ? 1 : -1), 0, std::max(0, int(levels_.size()) - 1));
+    index_ = std::clamp(index_ + (d > 0 ? 1 : -1), 0, int(levels_.size()) - 1);
+    // Asked for once is asked for everywhere after: the pointer moving to another part
+    // of the screen is not a request for a different level.
+    chosen_ = index_;
 }
 void History::push(const QVector<Note> &n) {
     undo_.append(n);

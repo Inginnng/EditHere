@@ -110,6 +110,30 @@ static QVector<QRectF> magnifierTools(QWidget &overlay) {
 static QRect magnifierPanel(QWidget &overlay, QPoint at, QSize window) {
     return magnifierPlacement(at, window, magnifierTools(overlay)).toRect();
 }
+// A table drawn on a plain screen: three columns and four rows of one-pixel lines.
+// It is the ordinary shape that offers several blocks at one spot — a cell inside a
+// row inside the whole table — which is what gives the wheel something to choose
+// between. The lines are what the detector finds, so the blocks it reports are a
+// pixel or two off these numbers.
+static QImage tableShot() {
+    QImage image(800, 600, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter p(&image);
+    const QRect table(70, 60, 600, 400);
+    for (int x = 0; x <= 3; ++x)
+        p.fillRect(table.x() + x * table.width() / 3, table.y(), 1, table.height() + 1,
+                   QColor("#404040"));
+    for (int y = 0; y <= 4; ++y)
+        p.fillRect(table.x(), table.y() + y * table.height() / 4, table.width() + 1, 1,
+                   QColor("#404040"));
+    return image;
+}
+// Two rectangles that name the same block: what the detector finds sits a pixel or two
+// off the lines it was given, so "the same" has to mean "within a couple of pixels".
+static bool sameBlock(const QRect &a, const QRect &b) {
+    return std::abs(a.x() - b.x()) <= 4 && std::abs(a.y() - b.y()) <= 4 &&
+           std::abs(a.width() - b.width()) <= 6 && std::abs(a.height() - b.height()) <= 6;
+}
 // The colour a recognised block is marked with, and the only reason a pixel that
 // colour can appear inside a screen that has none of it.
 static bool isAccentColour(const QColor &colour) {
@@ -2803,6 +2827,48 @@ class UiTests : public QObject {
         artifact(overlay, "magnifier-arrow-steps.png");
         overlay.hide();
     }
+    // REG-092: the level the wheel asked for was dropped again as soon as the pointer
+    // really moved. Every move threw the blocks away and looked afresh, and a fresh
+    // look offers the smallest block under the pointer, which is how a whole row
+    // turned back into a single cell the moment the pointer travelled into one.
+    void theLevelPickedWithTheWheelIsKeptWhileMoving() {
+        ScreenFrame frame{"kept", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        const QPoint first(330, 210);
+        movePointerTo(overlay, first);
+        QTest::qWait(200);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect cell = overlay.hovered()->bounds;
+        QWheelEvent turn(QPointF(first), QPointF(overlay.mapToGlobal(first)), QPoint(),
+                         QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&overlay, &turn);
+        QTest::qWait(50);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect row = overlay.hovered()->bounds;
+        QVERIFY2(row != cell && sameBlock(row, QRect(70, 160, 600, 100)),
+                 qPrintable(QString("the wheel picks the row rather than the cell (%1,%2 %3x%4)")
+                                .arg(row.x())
+                                .arg(row.y())
+                                .arg(row.width())
+                                .arg(row.height())));
+        // Now to another cell of the same table, far away from the first one: the row
+        // is still the level on offer there, not the cell that was arrived in.
+        const QPoint second(530, 410);
+        movePointerTo(overlay, second);
+        QTest::qWait(100);
+        QVERIFY2(overlay.hovered() && sameBlock(overlay.hovered()->bounds, QRect(70, 360, 600, 100)),
+                 qPrintable(QString("the level picked with the wheel is still the one offered "
+                                    "there (%1,%2 %3x%4, wanted 70,360 600x100)")
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.x() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.y() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.width() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.height() : -1)));
+        artifact(overlay, "wheel-level-is-kept.png");
+        overlay.hide();
+    }
     // REG-091: the block the wheel had picked out did not survive an arrow key. Being
     // asked to move the pointer is answered with a move event of the pointer's own,
     // and that event started the search for a block all over again, which put the
@@ -2813,19 +2879,7 @@ class UiTests : public QObject {
         // A table, because it is the ordinary shape that offers several blocks at one
         // spot — a cell inside a row inside the whole table — which is what gives the
         // wheel something to choose between.
-        QImage image(800, 600, QImage::Format_RGB32);
-        image.fill(Qt::white);
-        {
-            QPainter p(&image);
-            const QRect table(70, 60, 600, 400);
-            for (int x = 0; x <= 3; ++x)
-                p.fillRect(table.x() + x * table.width() / 3, table.y(), 1, table.height() + 1,
-                           QColor("#404040"));
-            for (int y = 0; y <= 4; ++y)
-                p.fillRect(table.x(), table.y() + y * table.height() / 4, table.width() + 1, 1,
-                           QColor("#404040"));
-        }
-        ScreenFrame frame{"layer", {0, 0, 800, 600}, {0, 0, 800, 600}, image, true};
+        ScreenFrame frame{"layer", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(800, 600);

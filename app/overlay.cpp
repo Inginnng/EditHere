@@ -164,6 +164,9 @@ void Overlay::resetSelection() {
     keyboardOffset_ = {};
     setCursor(Qt::CrossCursor);
     picker_.reset();
+    // A fresh start also forgets the level the wheel had asked for: wanting the row
+    // rather than the cell is a wish about this look, not a setting for the next one.
+    picker_.forget();
     hideTools();
     update();
 }

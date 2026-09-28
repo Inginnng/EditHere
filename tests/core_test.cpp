@@ -354,6 +354,10 @@ class CoreTests : public QObject {
         QCOMPARE(picker.current()->bounds, row12);
         picker.step(1);
         QCOMPARE(picker.current()->bounds, entire123456);
+        // Without the level being remembered, moving to another cell takes that cell:
+        // the smallest block under the pointer, which is what a hovering look has
+        // always offered.
+        picker.forget();
         picker.update(candidates, {15, 35});
         QCOMPARE(picker.count(), 4);
         QCOMPARE(picker.current()->bounds, cell3);
@@ -367,6 +371,36 @@ class CoreTests : public QObject {
             picker.step(-1);
             QCOMPARE(picker.current()->bounds, expected);
         }
+    }
+    void theLevelPickedWithTheWheelIsKept() {
+        const auto target = manualTarget();
+        const QRect cell1(10, 10, 20, 20), row12(10, 10, 40, 20), cell3(10, 30, 20, 20),
+            row34(10, 30, 40, 20), lower3456(10, 30, 40, 40), entire123456(10, 10, 40, 60);
+        QVector<Candidate> candidates{{lower3456, target},    {row12, target}, {cell1, target},
+                                      {entire123456, target}, {cell3, target}, {row34, target}};
+        CandidatePicker picker;
+        picker.update(candidates, {15, 15});
+        QCOMPARE(picker.current()->bounds, cell1);
+        // The wheel asks for the row rather than the cell, and that is a wish about
+        // how coarse a block is wanted rather than about one block: it has to be the
+        // level still on offer after the pointer has moved somewhere else.
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, row12);
+        picker.update(candidates, {15, 35});
+        QCOMPARE(picker.current()->bounds, row34);
+        // Where there is no such level any more the outermost one is offered rather
+        // than nothing at all.
+        picker.update(candidates, {15, 15});
+        QCOMPARE(picker.current()->bounds, row12);
+        // Forgetting is what a fresh start does, and a fresh look offers the smallest
+        // block under the pointer again.
+        picker.forget();
+        picker.update(candidates, {15, 35});
+        QCOMPARE(picker.current()->bounds, cell3);
+        picker.step(1);
+        QCOMPARE(picker.current()->bounds, row34);
+        picker.update(candidates, {15, 15});
+        QCOMPARE(picker.current()->bounds, row12);
     }
     void equalAreaAndDuplicateRegions() {
         auto native = manualTarget(), visual = manualTarget();
@@ -390,6 +424,7 @@ class CoreTests : public QObject {
         picker.step(1);
         QCOMPARE(picker.current()->bounds, larger);
         picker.reset();
+        picker.forget();
         picker.update(candidates, {16, 15});
         QCOMPARE(picker.current()->bounds, QRect(12, 12, 10, 10));
     }
