@@ -12,6 +12,9 @@
 #include <functional>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QWidget>
+#include <QWheelEvent>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLockFile>
@@ -59,6 +62,44 @@ int main(int argc, char **argv) {
         QByteArray output = QJsonDocument(result).toJson(QJsonDocument::Compact);
         std::fwrite(output.constData(), 1, size_t(output.size()), stdout);
         return 0;
+    }
+    // A stand-in for the page a long capture scrolls: a window that reports every wheel
+    // it is given. The capture window covers the screen for a whole run, so a test needs
+    // a window of another process underneath one to tell whether the wheel got through to
+    // what the user sees. `--wheel-probe <x> <y>` puts its window over the point and
+    // prints the steps it collects, one JSON object per wheel, until it is closed.
+    if (argc >= 4 && QByteArray(argv[1]) == "--wheel-probe") {
+        QApplication app(argc, argv);
+        bool xOk = false, yOk = false;
+        const int x = QString::fromLocal8Bit(argv[2]).toInt(&xOk);
+        const int y = QString::fromLocal8Bit(argv[3]).toInt(&yOk);
+        if (!xOk || !yOk)
+            return 2;
+        class WheelProbe final : public QWidget {
+          public:
+            bool event(QEvent *event) override {
+                if (event->type() == QEvent::Wheel) {
+                    const auto *wheel = static_cast<QWheelEvent *>(event);
+                    const int steps = wheel->angleDelta().y() != 0 ? wheel->angleDelta().y()
+                                                                  : wheel->angleDelta().x();
+                    const QJsonObject line{{"axis", wheel->angleDelta().y() != 0 ? "vertical" : "horizontal"},
+                                           {"steps", steps}};
+                    const auto output = QJsonDocument(line).toJson(QJsonDocument::Compact) + '\n';
+                    std::fwrite(output.constData(), 1, size_t(output.size()), stdout);
+                    std::fflush(stdout);
+                    return true;
+                }
+                return QWidget::event(event);
+            }
+        } probe;
+        probe.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        probe.setStyleSheet("QWidget { background: #204060; }");
+        probe.setGeometry(x - 100, y - 100, 200, 200);
+        probe.show();
+        probe.raise();
+        QTimer::singleShot(0, &app, [&] { std::puts("ready"); std::fflush(stdout); });
+        // The probe is ended by its window being closed or by the test killing it.
+        return app.exec();
     }
 
     initializeLaunchAtLoginDetection();

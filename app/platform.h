@@ -25,13 +25,21 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready);
 void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
-// Sends wheel steps to whatever window sits under a native point. This is what
-// drives a page while a long picture is being captured: the caller takes one grab,
-// scrolls, takes the next one and stitches them together. Positive steps scroll the
-// way a wheel pushed away from the user does, or towards the right when the axis is
-// horizontal. Returns false only when there is nothing to send the wheel to — whether
-// the window moves is left to the frame that comes back, because no cheap question
-// about it is reliable (most pages carry no scroll-bar style at all).
+// The top level window the user is actually looking at, in native screen coordinates.
+// How a point is turned into a window differs by platform and is not simply what the OS
+// answers with: the capture window covers every screen it was taken over and stays on
+// top for a whole long capture, so the window at a point is the first one below the
+// capture window rather than the first one overall. Returns nullptr when nothing of
+// another process is there.
+void *windowUnderPoint(QPoint nativePoint);
+// Sends wheel steps to the window that sits under a native point, as the user would
+// see it. This is what drives a page while a long picture is being captured: the
+// caller takes one grab, scrolls, takes the next one and stitches them together.
+// Positive steps move the content on, which is what a long capture asks for: down the
+// page when the axis is vertical, to the right when it is horizontal. Returns false only
+// when there is no window to send the wheel to — whether that window moves is left to
+// the frame that comes back, because no cheap question about it is reliable (most pages
+// carry no scroll-bar style at all).
 bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis = Qt::Vertical);
 void configureNativeWindow(QWidget *window, bool overlay);
 QString globalShortcutLabel();

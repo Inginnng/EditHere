@@ -35,8 +35,7 @@ QImage fromCGImage(CGImageRef image) {
     CGContextRelease(context);
     return result;
 }
-QString attributeText(AXUIElementRef element, CFStringRef attribute) {
-    CFTypeRef value = nullptr;
+QString attributeText(AXUIElementRef element, CFStringRef attribute) {    CFTypeRef value = nullptr;
     if (AXUIElementCopyAttributeValue(element, attribute, &value) != kAXErrorSuccess || !value)
         return {};
     QString text;
@@ -273,20 +272,67 @@ bool requestAccessibility() {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
-bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
-    if (steps == 0)
+namespace {
+// The process the user is looking at. The overlay covers the screen for a whole long
+// capture and sits above everything, so the topmost window at a point belongs to us and
+// the page to scroll belongs to the first window below it that does not. The window list
+// is in front-to-back order, which is the same order the answer has to be taken in.
+pid_t processUnderPoint(CGPoint point) {
+    CFArrayRef windows = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (windows == nullptr)
+        return 0;
+    const pid_t mine = getpid();
+    pid_t found = 0;
+    const CFIndex count = CFArrayGetCount(windows);
+    for (CFIndex index = 0; index < count && found == 0; ++index) {
+        auto info = (CFDictionaryRef)CFArrayGetValueAtIndex(windows, index);
+        if (info == nullptr)
+            continue;
+        CFNumberRef owner = (CFNumberRef)CFDictionaryGetValue(info, kCGWindowOwnerPID);
+        pid_t pid = 0;
+        if (owner == nullptr || !CFNumberGetValue(owner, kCFNumberIntType, &pid) || pid == mine)
+            continue;
+        auto boundsValue = (CFDictionaryRef)CFDictionaryGetValue(info, kCGWindowBounds);
+        CGRect bounds{};
+        if (boundsValue == nullptr || !CGRectMakeWithDictionaryRepresentation(boundsValue, &bounds))
+            continue;
+        if (CGRectContainsPoint(bounds, point))
+            found = pid;
+    }
+    CFRelease(windows);
+    return found;
+}
+} // namespace
+void *windowUnderPoint(QPoint nativePoint) {
+    // The answer is a process rather than a window: a window of another application
+    // cannot be addressed by pointer, and a scroll event is addressed to the application
+    // anyway. The pointer in the returned value is the pid.
+    const pid_t owner = processUnderPoint(CGPointMake(nativePoint.x(), nativePoint.y()));
+    return reinterpret_cast<void *>(static_cast<qintptr>(owner));
+}
+bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {    if (steps == 0)
         return false;
     // The wheel event goes to whatever is under the pointer, so the cursor is moved
     // there first. CGWarpMouseCursorPosition does not generate a move event, which
     // keeps a window that follows the pointer from reacting to it.
-    CGPoint point = CGPointMake(nativePoint.x(), nativePoint.y());
+    const CGPoint point = CGPointMake(nativePoint.x(), nativePoint.y());
     CGWarpMouseCursorPosition(point);
     CGAssociateMouseAndMouseCursorPosition(true);
+    // The event is addressed to the application under the point instead of being let
+    // through the hid tap. The overlay covers the screen for the whole run, so through
+    // the tap it would be the thing that receives the wheel — the same thing the capture
+    // window does on Windows. An owner of zero means no other application was found
+    // there, and posting through the tap is all that is left.
+    const pid_t owner = static_cast<pid_t>(reinterpret_cast<qintptr>(windowUnderPoint(nativePoint)));
     // The first argument is an event source, not an allocator: passing
     // kCFAllocatorDefault there does not match the declaration at all. A horizontal
     // wheel is a second axis on the same event rather than an event of its own, and an
     // event created with one axis cannot be given the other afterwards, so the two are
     // built separately.
+    // A positive value is a wheel pushed away from the user, which is the page moving
+    // back; the caller counts its steps in the direction the content should travel, so
+    // the sign is turned round here.
     CGEventRef event = nullptr;
     if (axis == Qt::Horizontal) {
         event = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 2, 0, int32_t(-steps));
@@ -298,7 +344,10 @@ bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
     if (event == nullptr)
         return false;
     CGEventSetLocation(event, point);
-    CGEventPost(kCGHIDEventTap, event);
+    if (owner > 0)
+        CGEventPostToPid(owner, event);
+    else
+        CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
     return true;
 }
