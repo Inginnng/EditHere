@@ -1108,13 +1108,18 @@ void CandidatePicker::reset() {
     anchor_.reset();
 }
 void CandidatePicker::forget() {
+    reset();
+    held_.reset();
     chosen_.reset();
 }
 std::optional<Candidate> CandidatePicker::current() const {
     return levels_.isEmpty() ? std::nullopt : std::optional<Candidate>(levels_[index_]);
 }
 void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
-    const auto previous = current();
+    // What was on offer before, which is what stays on offer while the pointer has not
+    // left it. `held_` rather than `current()` because the blocks are thrown away and
+    // found again on every step of the pointer, and the choice has to outlive that.
+    const auto previous = keepInside_ && held_ ? held_ : current();
     const bool nearby = anchor_ && (p - *anchor_).manhattanLength() <= 8;
     QVector<Candidate> candidates;
     for (const auto &candidate : all) {
@@ -1137,6 +1142,16 @@ void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
     index_ = chosen_ && !levels_.isEmpty()
                  ? std::clamp(*chosen_, 0, int(levels_.size()) - 1)
                  : 0;
+    // Staying with the block: the pointer is still inside the one on offer, so a
+    // smaller one turning up underneath it is not a request to have that instead —
+    // arriving in a cell must not quietly turn a row back into a cell. Without this
+    // only a pointer that had hardly moved kept its block.
+    if (keepInside_ && previous && previous->bounds.contains(p))
+        for (int i = 0; i < levels_.size(); i++)
+            if (levels_[i].bounds == previous->bounds) {
+                index_ = i;
+                break;
+            }
     if (nearby && previous)
         for (int i = 0; i < levels_.size(); i++)
             if (levels_[i].bounds == previous->bounds) {
@@ -1145,6 +1160,7 @@ void CandidatePicker::update(const QVector<Candidate> &all, QPoint p) {
             }
     if (!nearby)
         anchor_ = p;
+    held_ = current();
 }
 void CandidatePicker::step(int d) {
     if (d == 0 || levels_.isEmpty())
@@ -1153,6 +1169,7 @@ void CandidatePicker::step(int d) {
     // Asked for once is asked for everywhere after: the pointer moving to another part
     // of the screen is not a request for a different level.
     chosen_ = index_;
+    held_ = current();
 }
 void History::push(const QVector<Note> &n) {
     undo_.append(n);

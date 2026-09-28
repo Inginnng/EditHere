@@ -2869,6 +2869,47 @@ class UiTests : public QObject {
         artifact(overlay, "wheel-level-is-kept.png");
         overlay.hide();
     }
+    // REG-092: arriving in a smaller block took it over. The block on offer was chosen
+    // again from scratch on every step of the pointer, and a fresh choice is the
+    // smallest block under the pointer, so crossing into a cell turned the block that
+    // was on offer into that cell.
+    void theBlockOnOfferIsKeptWhenThePointerMovesIntoWhatIsInsideIt() {
+        ScreenFrame frame{"inside", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        // Off the table, where the screen itself is the only block there is.
+        const QPoint outside(30, 550);
+        movePointerTo(overlay, outside);
+        QTest::qWait(200);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect whole = overlay.hovered()->bounds;
+        QVERIFY2(sameBlock(whole, QRect(0, 0, 800, 600)),
+                 qPrintable(QString("off the table the screen itself is offered (%1,%2 %3x%4)")
+                                .arg(whole.x())
+                                .arg(whole.y())
+                                .arg(whole.width())
+                                .arg(whole.height())));
+        // Now into a cell of the table, which sits inside the screen: the block on
+        // offer has to be the same one, not the cell that was arrived in.
+        const QPoint inside(330, 210);
+        movePointerTo(overlay, inside);
+        QTest::qWait(100);
+        QVERIFY2(overlay.hovered() && sameBlock(overlay.hovered()->bounds, whole),
+                 qPrintable(QString("the block on offer is kept when the pointer moves into what "
+                                    "is inside it (%1,%2 %3x%4, was %5,%6 %7x%8)")
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.x() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.y() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.width() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.height() : -1)
+                                .arg(whole.x())
+                                .arg(whole.y())
+                                .arg(whole.width())
+                                .arg(whole.height())));
+        artifact(overlay, "block-is-kept-inside.png");
+        overlay.hide();
+    }
     // REG-091: the block the wheel had picked out did not survive an arrow key. Being
     // asked to move the pointer is answered with a move event of the pointer's own,
     // and that event started the search for a block all over again, which put the

@@ -84,6 +84,13 @@ class CandidatePicker {
     // block again. Only a fresh start should do this: moving the pointer over the
     // screen is not a fresh start, and a level that was asked for has to survive it.
     void forget();
+    // Whether a block that still contains the pointer is kept when a smaller one turns
+    // up underneath it. The capture window wants that: having been asked for a row, it
+    // must not hand back a cell the moment the pointer travels into one. The editor
+    // wants the opposite, because pointing at a component is how a component is chosen.
+    void setKeepInside(bool keep) {
+        keepInside_ = keep;
+    }
     std::optional<Candidate> current() const;
     int level() const {
         return index_ + 1;
@@ -96,6 +103,10 @@ class CandidatePicker {
     QVector<Candidate> levels_;
     int index_ = 0;
     std::optional<QPoint> anchor_;
+    // The block to stay with while the pointer is still inside it, kept across looks
+    // so that arriving in a smaller block does not quietly shrink the choice.
+    std::optional<Candidate> held_;
+    bool keepInside_ = false;
     // How far out in the pile of blocks the wheel left the choice. Kept across looks
     // so that a level asked for once is the level offered everywhere until it is
     // asked for again; without it every step of the pointer handed back the smallest

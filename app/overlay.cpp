@@ -42,6 +42,10 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
     // came from, so the pointer is somewhere on it; a keypress before the first move of
     // the mouse then starts from there instead of from the corner.
     pointer_ = mapFromGlobal(QCursor::pos());
+    // While a block is being looked for the one on offer is kept as long as the
+    // pointer is still inside it: a block arrived at by moving is not a block asked
+    // for, and a row must not turn back into a cell because the pointer crossed one.
+    picker_.setKeepInside(true);
     setAttribute(Qt::WA_DeleteOnClose, false);
     hoverTimer_.setSingleShot(true);
     hoverTimer_.setInterval(250);
@@ -163,9 +167,9 @@ void Overlay::resetSelection() {
     handle_ = -1;
     keyboardOffset_ = {};
     setCursor(Qt::CrossCursor);
-    picker_.reset();
-    // A fresh start also forgets the level the wheel had asked for: wanting the row
-    // rather than the cell is a wish about this look, not a setting for the next one.
+    // A fresh start forgets the level the wheel had asked for and the block that was
+    // being kept: wanting the row rather than the cell is a wish about this look, not
+    // a setting for the next one.
     picker_.forget();
     hideTools();
     update();
