@@ -1304,9 +1304,12 @@ void Overlay::ensureShade() {
     }
     if (!shade_->isVisible()) {
         shade_->show();
-        // The film is shown above the desktop and so, momentarily, above this window;
-        // the frame, the move handle and the tools have to come back on top of it.
-        raise();
+        // Both windows are topmost, and of two topmost windows the one shown last is
+        // the one on top: the film would sit over the frame, the move handle and the
+        // tools. Putting this window back at the head of the topmost band is what
+        // keeps them visible and reachable — raise() only asks for the head of the
+        // ordinary band, which for a topmost window is not the same thing.
+        configureNativeWindow(this, true);
     }
 }
 

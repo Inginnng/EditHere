@@ -1,5 +1,6 @@
 #include "controller.h"
 #include "capturetoolbar.h"
+#include "scrollshade.h"
 #include <QPushButton>
 #include <QLabel>
 #include <QScreen>
@@ -118,6 +119,71 @@ class ScrollControllerTests : public QObject {
         bar->annotate();
         QVERIFY(owner.editor_.hasDocument());
         QVERIFY(owner.overlays_.isEmpty());
+#else
+        QSKIP("Windows native integration test");
+#endif
+    }
+    // The film is over the whole screen, and the frames the run reads are grabs of
+    // the whole screen. If the film were part of what is grabbed, every frame of the
+    // long picture would carry its dimming and the picture would come out dark.
+    void theLongCaptureFilmStaysOutOfTheFramesItReads() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == "offscreen")
+            QSKIP("Requires the Windows desktop compositor");
+        QWidget patch;
+        patch.setWindowFlag(Qt::WindowStaysOnTopHint);
+        patch.setWindowTitle("EditHere film regression fixture");
+        patch.setStyleSheet(QStringLiteral("background: rgb(200, 30, 30);"));
+        patch.setGeometry(60, 60, 320, 240);
+        patch.show();
+        patch.raise();
+        QVERIFY(QTest::qWaitForWindowExposed(&patch));
+        QTest::qWait(300);
+        ScreenFrame first;
+        captureScreens([&first](QVector<ScreenFrame> frames, QString) {
+            if (!frames.isEmpty())
+                first = frames.first();
+        });
+        QVERIFY2(!first.image.isNull(), "the screen has to be readable for this to mean anything");
+        // Where the patch is in the pixels of the grab.
+        const auto toGrab = [&first](QPoint logical) {
+            const QRect screen = first.logicalGeometry;
+            const double sx = screen.isEmpty() ? 1.0 : double(first.image.width()) / screen.width();
+            const double sy = screen.isEmpty() ? 1.0 : double(first.image.height()) / screen.height();
+            return QPoint(qRound((logical.x() - screen.x()) * sx),
+                          qRound((logical.y() - screen.y()) * sy));
+        };
+        const QPoint spot = toGrab(patch.geometry().center());
+        QVERIFY(first.image.rect().contains(spot));
+        const int before = qRed(first.image.pixel(spot));
+        QVERIFY2(before > 150, "the patch has to be the colour it was painted");
+        // A long capture somewhere else on the screen: the patch is then outside the
+        // region, which is exactly where the film lies over it.
+        Overlay overlay(first);
+        overlay.show();
+        const QRect window(QPoint(0, 0), first.logicalGeometry.size());
+        const QPoint start(first.logicalGeometry.width() - 600, first.logicalGeometry.height() - 500);
+        QVERIFY(window.contains(start) && window.contains(start + QPoint(300, 240)));
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(&overlay, start + QPoint(300, 240));
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, start + QPoint(300, 240));
+        QVERIFY(!overlay.selection().isEmpty());
+        overlay.beginScroll(true, first.image.copy(overlay.selection()), Qt::Vertical);
+        QVERIFY2(overlay.scrollShade() != nullptr && overlay.scrollShade()->isVisible(),
+                 "the film has to be up for this to mean anything");
+        QTest::qWait(400);
+        ScreenFrame second;
+        captureScreens([&second](QVector<ScreenFrame> frames, QString) {
+            if (!frames.isEmpty())
+                second = frames.first();
+        });
+        QVERIFY2(!second.image.isNull(), "the screen has to stay readable while the film is up");
+        const int now = qRed(second.image.pixel(spot));
+        qInfo() << "film grab red" << before << "->" << now;
+        QVERIFY2(std::abs(now - before) <= 20,
+                 "the film must not be part of what the capture reads");
+        overlay.beginScroll(false, {}, Qt::Vertical, false);
+        overlay.hide();
 #else
         QSKIP("Windows native integration test");
 #endif
