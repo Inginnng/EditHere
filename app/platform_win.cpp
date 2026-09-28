@@ -309,9 +309,10 @@ bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
     const UINT message = axis == Qt::Horizontal ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL;
     // A wheel message counts its movement in the direction of the wheel, and the caller
     // counts it in the direction the content should travel: positive steps are the page
-    // moving on, which is what a long capture asks for. A wheel pushed away from the
-    // user is the page moving back, so the sign is turned round here.
-    const WPARAM delta = MAKEWPARAM(0, static_cast<short>(-steps * WHEEL_DELTA));
+    // moving on. Vertical wheel messages use negative deltas for down, whereas
+    // horizontal wheel messages use positive deltas for right.
+    const int direction = axis == Qt::Horizontal ? 1 : -1;
+    const WPARAM delta = MAKEWPARAM(0, static_cast<short>(direction * steps * WHEEL_DELTA));
     // The point goes with the message in screen coordinates. It is what the application
     // hit-tests with, and it is why the pointer does not have to be moved at all: moving
     // it would pull the cursor out of the region the user is dragging.

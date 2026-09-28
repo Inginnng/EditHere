@@ -7,6 +7,7 @@
 #include "ui.h"
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QMenu>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -49,6 +50,15 @@ class CaptureTests : public QObject {
         return image;
     }
   private slots:
+    void initTestCase() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == "offscreen") {
+            const QString fonts = qEnvironmentVariable("WINDIR") + "/Fonts/";
+            QVERIFY(QFontDatabase::addApplicationFont(fonts + "segoeui.ttf") >= 0);
+            QVERIFY(QFontDatabase::addApplicationFont(fonts + "msyh.ttc") >= 0);
+        }
+#endif
+    }
 
     void ratiosKnowTheirSizeAndName() {
         QCOMPARE(captureRatioSize(CaptureRatio::Free), QSize());
@@ -705,6 +715,45 @@ class CaptureTests : public QObject {
         QCOMPARE(picture.pixel(4, kHeader + content.height() - 1), content.pixel(0, content.height() - 1));
         QCOMPARE(picture.pixel(4, picture.height() - 1), qRgb(20, 60, 200));
         QVERIFY2(!stitcher.partial(), "an exact page should not need a rough match");
+    }
+    void aRejectedFrameDoesNotChangeThePictureOrBands() {
+        const QImage content = noisyImage(64, 300, 71);
+        const QImage first = bandedFrame(64, 100, 12, 8, content, 0);
+        ScrollStitcher stitcher;
+        stitcher.reset(first);
+        QImage unrelated = noisyImage(64, 100, 97);
+        for (int y = 92; y < 100; ++y)
+            for (int x = 0; x < 64; ++x)
+                unrelated.setPixel(x, y, qRgb(21, 61, 201));
+        QCOMPARE(stitcher.add(unrelated), -1);
+        QCOMPARE(stitcher.picture(), first);
+        QCOMPARE(stitcher.lastFrame(), first);
+        QCOMPARE(stitcher.bands().top, 0);
+        QCOMPARE(stitcher.bands().bottom, 0);
+        QCOMPARE(stitcher.add(bandedFrame(64, 100, 12, 8, content, 20)), 20);
+        QCOMPARE(stitcher.height(), 120);
+    }
+    void horizontalCaptureRebuildsPixelsInTheirOriginalOrientation() {
+        const QImage content = noisyImage(220, 64, 13);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 100, 64), 1, Qt::Horizontal);
+        for (int x = 20; x <= 120; x += 20)
+            QCOMPARE(session.take(content.copy(x, 0, 100, 64)), ScrollCapture::Outcome::Added);
+        QCOMPARE(session.picture(), content);
+        QCOMPARE(session.take(content.copy(120, 0, 100, 64)), ScrollCapture::Outcome::Repeat);
+    }
+    void aPausedCaptureContinuesWithoutLosingItsFrames() {
+        const QImage content = noisyImage(64, 140, 17);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        QCOMPARE(session.take(content.copy(0, 20, 64, 100)), ScrollCapture::Outcome::Added);
+        session.pause();
+        QVERIFY(!session.running());
+        QCOMPARE(session.frames(), 1);
+        session.resume();
+        QCOMPARE(session.take(content.copy(0, 40, 64, 100)), ScrollCapture::Outcome::Added);
+        QCOMPARE(session.frames(), 2);
+        QCOMPARE(session.picture(), content);
     }
     void theBandsOfAFrameSayWhatDidNotMove() {
         const QImage content = stripedImage(64, 300);

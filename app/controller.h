@@ -27,6 +27,7 @@ class Controller final : public QObject {
     void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
+    friend class ScrollControllerTests;
     void finishAgentSession();
     // Rebuilds the tray menu and tooltip; called on startup and on a language change.
     void retranslate();
@@ -42,9 +43,8 @@ class Controller final : public QObject {
     void recognizeRegion(Overlay *source, OcrLanguageMode language);
     void startScrollCapture(Overlay *source);
     void finishScrollCapture(QImage picture, QString message, bool ok);
-    // One turn of a long capture: ask the page to move, wait for it to settle, read the
-    // region again and hand the frame to the session. The session decides where the
-    // frame belongs; the window that owns the region decides when the next turn happens.
+    // Observe user-driven scrolling and place each settled frame without finishing
+    // automatically when the content is unchanged or temporarily unmatched.
     void stepScrollCapture();
     // Reads the region once and settles it before the frame is placed.
     void readScrollFrame();
@@ -55,19 +55,17 @@ class Controller final : public QObject {
     // Stops a run and puts the windows back the way they were. `keep` leaves the region
     // where it is with the toolbar up, which is what the user asking to cancel means.
     void abortScrollCapture(bool keep);
-    // What the long capture needs to read the region again and where the wheel goes.
+    // The screen region and the candidate waiting to settle.
     struct ScrollRun {
         QString screen;
         QRect pixels;
-        QPoint nativePoint;
         Qt::Orientation axis = Qt::Vertical;
-        int step = 1;
         int settles = 0;
-        int idle = 0;
         QImage held;
-        bool moving = false;
     };
     ScrollRun scrollRun_;
+    quint64 scrollGeneration_ = 0;
+    QPointer<Overlay> scrollSource_;
     // The screen is covered while a region is being picked, so anything that opens a
     // window of its own has to take the covers off first and put them back if the user
     // changes their mind.

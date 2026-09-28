@@ -169,25 +169,23 @@ int ScrollStitcher::add(const QImage &frame) {
     if (bands.top + bands.bottom >= next.height())
         return -1;
     const int bottom = std::clamp(bands.bottom, 0, next.height() - bands.top - 1);
-    body_ = body_.convertToFormat(QImage::Format_ARGB32);
+    QImage candidate = body_.convertToFormat(QImage::Format_ARGB32);
     // The first frame was grabbed before any band was known about, so the footer it
     // carries is taken off the moment the first pair of frames reveals one.
     if (!stripped_) {
-        body_ = first_.copy(0, 0, first_.width(), first_.height() - bottom);
-        stripped_ = true;
+        candidate = first_.copy(0, 0, first_.width(), first_.height() - bottom);
     }
-    if (bottom > 0)
-        bottom_ = next.copy(0, next.height() - bottom, next.width(), bottom);
-    bands_ = bands;
     // The fixed bands are taken off both ends: the header would never line up with
     // the rows the picture already ends on, and the footer is put back once at the
     // end instead of being repeated after every frame.
     const QImage inner = next.copy(0, bands.top, next.width(), next.height() - bands.top - bottom);
     int added = -1;
     for (double tolerance : kTolerances) {
-        QImage grown = body_;
+        QImage grown = candidate;
         added = appendScrolledFrame(&grown, inner, 8, tolerance);
         if (added > 0) {
+            if (grown.height() + bottom > maxHeight())
+                return -1;
             body_ = grown;
             if (tolerance != kTolerances[0])
                 partial_ = true;
@@ -196,6 +194,9 @@ int ScrollStitcher::add(const QImage &frame) {
     }
     if (added <= 0)
         return -1;
+    stripped_ = true;
+    bands_ = bands;
+    bottom_ = bottom > 0 ? next.copy(0, next.height() - bottom, next.width(), bottom) : QImage();
     previous_ = next;
     return added;
 }

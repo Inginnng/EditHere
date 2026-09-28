@@ -19,7 +19,21 @@ int scrollFrameLimit() {
 
 ScrollCapture::ScrollCapture(QObject *parent) : QObject(parent) {}
 
-void ScrollCapture::begin(QImage first, int step) {
+QImage ScrollCapture::orient(const QImage &image) const {
+    if (axis_ == Qt::Vertical || image.isNull())
+        return image;
+    const QImage source = image.convertToFormat(QImage::Format_ARGB32);
+    QImage result(source.height(), source.width(), QImage::Format_ARGB32);
+    for (int y = 0; y < source.height(); ++y) {
+        const auto *row = reinterpret_cast<const QRgb *>(source.constScanLine(y));
+        for (int x = 0; x < source.width(); ++x)
+            reinterpret_cast<QRgb *>(result.scanLine(x))[y] = row[x];
+    }
+    return result;
+}
+
+void ScrollCapture::begin(QImage first, int step, Qt::Orientation axis) {
+    axis_ = axis;
     notice_.clear();
     step_ = std::max(1, step);
     frames_ = 0;
@@ -28,7 +42,7 @@ void ScrollCapture::begin(QImage first, int step) {
         stitcher_.reset({});
         return;
     }
-    stitcher_.reset(first);
+    stitcher_.reset(orient(first));
     running_ = true;
 }
 
@@ -44,12 +58,13 @@ ScrollCapture::Outcome ScrollCapture::take(const QImage &frame) {
     // answer as a frame that has nothing in common with it, and only one of those two
     // means the content has run out.
     const QImage previous = stitcher_.lastFrame();
-    const int added = stitcher_.add(frame);
+    const QImage normalized = orient(frame);
+    const int added = stitcher_.add(normalized);
     if (added > 0) {
         ++frames_;
         return Outcome::Added;
     }
-    if (!previous.isNull() && frameDifference(previous, frame) <= kSameFrame) {
+    if (!previous.isNull() && frameDifference(previous, normalized) <= kSameFrame) {
         return Outcome::Repeat;
     }
     return Outcome::Failed;

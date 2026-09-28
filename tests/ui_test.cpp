@@ -1,7 +1,9 @@
 #include "controller.h"
+#include "capturetoolbar.h"
 #include "editor.h"
 #include "explosion.h"
 #include "overlay.h"
+#include "scrollshade.h"
 #include "settingsdialog.h"
 #include "ui.h"
 #include <QApplication>
@@ -3210,6 +3212,48 @@ class UiTests : public QObject {
             }
         }
         QVERIFY2(button != nullptr && button->isVisible(), "the long capture has to be offered by a button");
+        QVERIFY(button->isEnabled());
+        QVERIFY(!overlay.mask().contains(QPoint(settled.center().x() / 2, settled.center().y() / 2)));
+        QVERIFY(overlay.findChild<QPushButton *>("scrollAxisButton")->isVisible());
+        QSignalSpy startAgain(&overlay, &Overlay::scrollRequested);
+        QSignalSpy stop(&overlay, &Overlay::scrollStopRequested);
+        QTest::keyClick(&overlay, Qt::Key_L);
+        QCOMPARE(stop.count(), 1);
+        overlay.beginScroll(false, {}, Qt::Vertical, true);
+        QTest::keyClick(&overlay, Qt::Key_L);
+        QCOMPARE(startAgain.count(), 1);
+        overlay.hide();
+    }
+    void longCaptureExportsAndTrimsTheStitchedPixels() {
+        QImage screen(1000, 800, QImage::Format_ARGB32);
+        screen.fill(Qt::white);
+        Overlay overlay({"trim", {0, 0, 1000, 800}, {0, 0, 1000, 800}, screen, true});
+        overlay.show();
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {400, 500});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {400, 500});
+        QImage stitched(300, 900, QImage::Format_ARGB32);
+        for (int y = 0; y < stitched.height(); ++y)
+            for (int x = 0; x < stitched.width(); ++x)
+                stitched.setPixel(x, y, qRgb(x % 255, y % 255, (x + y) % 255));
+        overlay.beginScroll(true, stitched, Qt::Vertical);
+        artifact(overlay, "long-capture-running.png");
+        QCOMPARE(overlay.selectionPixels(), stitched);
+        QVERIFY(!overlay.trimScroll(true, 10));
+        overlay.beginScroll(false, {}, Qt::Vertical, true);
+        QVERIFY(overlay.trimScroll(true, 10));
+        QVERIFY(overlay.trimScroll(false, 20));
+        QCOMPARE(overlay.selectionPixels(), stitched.copy(0, 10, 300, 870));
+        artifact(overlay, "long-capture-stopped.png");
+        QVERIFY(!overlay.trimScroll(true, 870));
+        // Resizing while stopped prepares a fresh capture instead of mixing widths.
+        auto *bar = overlay.findChild<CaptureToolbar *>();
+        QVERIFY(bar);
+        bar->sizeRequested(QSize(350, 400));
+        QCOMPARE(overlay.selection().width(), 350);
+        QVERIFY(!overlay.hasScrollPicture());
+        overlay.beginScroll(false, {}, Qt::Vertical, false);
+        QVERIFY(overlay.mask().isEmpty());
         overlay.hide();
     }
     // REG-095's sibling: while a long capture runs, the region may only be dragged along
@@ -3247,6 +3291,13 @@ class UiTests : public QObject {
         QCOMPARE(after.width(), settled.width());
         QCOMPARE(after.x(), settled.x());
         QVERIFY2(after.y() >= settled.y(), "a vertical capture's region slides downwards, not sideways");
+        const QPoint edgeStart = toWindow(after.center());
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, edgeStart);
+        QTest::mouseMove(&overlay, edgeStart + QPoint(-1, -1));
+        QTest::mouseMove(&overlay, QPoint(edgeStart.x(), 359));
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, QPoint(edgeStart.x(), 359));
+        QCOMPARE(overlay.selection().size(), settled.size());
+        QCOMPARE(overlay.selection().bottom(), image.height() - 1);
         overlay.beginScroll(true, image.copy(after), Qt::Horizontal);
         const QRect beforeSideways = overlay.selection();
         const QPoint sidewaysStart = toWindow(beforeSideways.center());
@@ -3296,6 +3347,112 @@ class UiTests : public QObject {
         QCOMPARE(overlay.selection(), settled);
         QTest::keyClick(&overlay, Qt::Key_Escape);
         QVERIFY2(stopped.count() >= 2, "Escape has to leave the run");
+        overlay.hide();
+    }
+    // The mode has to read as a capture in progress rather than as a frame loose on
+    // the desktop: the film over everything outside the region is what says so. It
+    // appears with the mode and leaves with it, even through a pause that keeps the
+    // stitched picture.
+    void aLongCapturePutsAFilmOverTheScreenOutsideTheRegion() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"film", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {340, 280});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {340, 280});
+        QVERIFY(overlay.scrollShade() == nullptr);
+        overlay.beginScroll(true, image.copy(overlay.selection()), Qt::Vertical);
+        ScrollShade *shade = overlay.scrollShade();
+        QVERIFY2(shade != nullptr, "the film appears when the mode does");
+        QVERIFY2(shade->isVisible(), "the film covers the screen while the mode is on");
+        // Pausing keeps the picture and the mode, so the film stays; leaving the mode
+        // is when it goes.
+        overlay.beginScroll(false, {}, Qt::Vertical, true);
+        QVERIFY(shade->isVisible());
+        overlay.beginScroll(false, {}, Qt::Vertical, false);
+        QVERIFY(!shade->isVisible());
+        overlay.hide();
+    }
+    // The region is the one hole in the film: through it the live desktop shows,
+    // which is what the page is read through while it scrolls. Everything else is
+    // dimmed the way the ordinary capture dims it.
+    void theLongCaptureFilmLeavesTheRegionAsATransparentHole() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(Qt::black);
+        ScrollShade shade(image.size(), QRect(0, 0, 560, 360));
+        shade.setHole({200, 160, 400, 240});
+        QImage rendered(560, 360, QImage::Format_ARGB32);
+        rendered.fill(Qt::transparent);
+        shade.render(&rendered);
+        // The hole is in picture pixels, mapped into the film's own units: 2:1 here,
+        // so {200,160,400,240} of the picture is (100,80)–(300,200) of the film.
+        QCOMPARE(qAlpha(rendered.pixel(200, 140)), 0);
+        QCOMPARE(qAlpha(rendered.pixel(150, 100)), 0);
+        const QRgb outside = rendered.pixel(20, 20);
+        QCOMPARE(qAlpha(outside), 105);
+        // The film is the same colour the ordinary capture dims the screen with, up
+        // to the rounding of the rasteriser.
+        QVERIFY2(std::abs(qRed(outside) - 16) <= 2, "the film has to be the capture's dim colour");
+        const QRgb below = rendered.pixel(280, 340);
+        QCOMPARE(qAlpha(below), 105);
+    }
+    // The cut is judged by looking, so the line on the whole picture is what is
+    // dragged — not a number typed into a dialog. Escape puts the end back; pressing
+    // the same end again keeps the cut.
+    void aStoppedLongCaptureCutsWithADraggedLine() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"cut", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {60, 60});
+        QTest::mouseMove(&overlay, {260, 300});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {260, 300});
+        QImage stitched(400, 900, QImage::Format_ARGB32);
+        stitched.fill(Qt::white);
+        // A cut is for a picture that has stopped growing: a run in flight could place
+        // another frame under the line at any moment.
+        overlay.beginScroll(true, stitched, Qt::Vertical);
+        overlay.requestScrollTrim(true);
+        QCOMPARE(overlay.selectionPixels().height(), 900);
+        overlay.beginScroll(false, {}, Qt::Vertical, true);
+        // The panel the line is on is placed the way the run's preview is.
+        overlay.requestScrollTrim(true);
+        auto *bar = overlay.findChild<CaptureToolbar *>();
+        QVERIFY(bar);
+        const QRect settled = overlay.selection();
+        const QRectF region(settled.x() / 2.0, settled.y() / 2.0, settled.width() / 2.0,
+                            settled.height() / 2.0);
+        const QRectF placed = scrollPreviewPlacement(region, QSizeF(560, 360), Qt::Vertical,
+                                                     {QRectF(bar->geometry())});
+        QVERIFY2(!placed.isEmpty(), "the cut has to show the whole picture on the panel");
+        const QPoint spot(int(placed.left() + placed.width() / 2), int(placed.top() + 30));
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, spot);
+        QTest::mouseMove(&overlay, spot + QPoint(0, 20));
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, spot + QPoint(0, 20));
+        const int dragged = 900 - overlay.selectionPixels().height();
+        QVERIFY2(dragged > 0, "dragging the line has to cut pixels off the start");
+        // Escape puts the end back where the cut found it.
+        QTest::keyClick(&overlay, Qt::Key_Escape);
+        QCOMPARE(overlay.selectionPixels().height(), 900);
+        // Cutting again and pressing the same end keeps the cut as it stands.
+        overlay.requestScrollTrim(true);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, spot);
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, spot);
+        const int kept = 900 - overlay.selectionPixels().height();
+        QVERIFY2(kept > 0, "a press on the panel puts the line where the press is");
+        overlay.requestScrollTrim(true);
+        QCOMPARE(overlay.selectionPixels().height(), 900 - kept);
+        // The cut mode is over: the next Escape leaves the run, not the cut.
+        QSignalSpy stopped(&overlay, &Overlay::scrollStopRequested);
+        QTest::keyClick(&overlay, Qt::Key_Escape);
+        QCOMPARE(stopped.count(), 1);
         overlay.hide();
     }
 };

@@ -14,6 +14,7 @@ class QPainter;
 namespace h2d {
 class CaptureToolbar;
 class CaptureSidebar;
+class ScrollShade;
 // The window a capture starts in. It shows one screen, lets a region be drawn, and
 // then keeps that region while the bar above it and the column of tools beside it
 // offer what to do with it. Handing the region to the annotation editor is one of
@@ -23,6 +24,9 @@ class Overlay final : public QWidget {
     Q_OBJECT
   public:
     explicit Overlay(ScreenFrame frame, QWidget *parent = nullptr);
+    // The film is a window of its own rather than a child, so it goes when the
+    // capture window does.
+    ~Overlay() override;
     const ScreenFrame &frame() const {
         return frame_;
     }
@@ -87,6 +91,7 @@ class Overlay final : public QWidget {
     bool isScrolling() const {
         return scrolling_;
     }
+    bool hasScrollPicture() const { return !scrollPicture_.isNull(); }
     // Which way a long capture of this region runs. The window owns the choice because
     // the menu that makes it is the window's own.
     Qt::Orientation scrollAxis() const {
@@ -100,6 +105,19 @@ class Overlay final : public QWidget {
     // One more frame has been placed: the preview panel grows and the bar says how far
     // the run has got.
     void updateScroll(const QImage &picture, int frames, bool partial);
+    void updateScrollScreen(const QImage &picture);
+    void setScrollNotice(const QString &notice);
+    bool trimScroll(bool fromStart, int pixels);
+    // Offers the cut tool for one end of the stitched picture: the preview panel
+    // appears with a cut line that is dragged to where the picture is to end, and
+    // pressing the same end again finishes the cut. Escape puts the end back.
+    void requestScrollTrim(bool fromStart);
+    // The film over everything outside the region while a long capture runs, which is
+    // what makes the mode read as a capture rather than as a frame loose on the
+    // desktop. Null when the mode has never been entered.
+    ScrollShade *scrollShade() const {
+        return shade_;
+    }
   signals:
     void accepted(QRect pixels, QVector<h2d::Candidate> candidates);
     void copyRequested(QRect pixels);
@@ -131,6 +149,7 @@ class Overlay final : public QWidget {
   protected:
     void paintEvent(QPaintEvent *) override;
     void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
     void leaveEvent(QEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
@@ -179,7 +198,31 @@ class Overlay final : public QWidget {
     // that grows downwards, under it for one that grows sideways. It is kept clear of
     // the toolbar and the tool column the same way the magnifier is.
     QRect scrollPreviewRect() const;
+    QRect scrollMoveRect() const;
+    void updateScrollMask();
     void drawScrollPreview(QPainter &painter);
+    // The mapping between the preview panel and the pixels of the stitched picture,
+    // shared by the painter and by the pointer so that where the cut line is drawn is
+    // also where a drag puts it.
+    struct ScrollPreviewLayout {
+        QRect panel;        // Where the panel sits in this window.
+        QRectF inner;       // Where the picture is drawn inside the panel.
+        int totalLength = 0;   // The whole picture, trimmed parts included.
+        int pictureCross = 0;  // The picture across the run, in pixels.
+        bool sideways = false; // True for a horizontal capture.
+        // The scale a run paints with — as much of the picture as the panel holds —
+        // and the one a cut paints with — the whole picture, whatever it takes.
+        double runFit = 0.0;
+        double cutFit = 0.0;
+    };
+    ScrollPreviewLayout scrollPreviewLayout() const;
+    void drawScrollCut(QPainter &painter, const ScrollPreviewLayout &layout);
+    // Cut mode: entering it shows the whole picture with a line to drag, leaving it
+    // with `apply` false puts the end back where it was.
+    void enterScrollTrim(bool fromStart);
+    void leaveScrollTrim(bool apply);
+    void setScrollTrim(int pixels);
+    int scrollTrimPixelsAt(QPointF at) const;
     // What the bar says while a run is going: the length stitched so far and whether it
     // is still running.
     QString scrollStatus() const;
@@ -247,6 +290,19 @@ class Overlay final : public QWidget {
     // release can tell a move from a new region being drawn.
     bool scrollDrag_ = false;
     QString scrollStatus_;
+    int scrollTrimStart_ = 0, scrollTrimEnd_ = 0;
+    // Cut mode. Which end of the picture the cut line is on (-1 = not cutting; 0 is
+    // the start the picture grows from, 1 the end it grows to), what that end was
+    // worth when cutting began — an Escape puts it back — and whether the line is
+    // being dragged right now.
+    int scrollTrimming_ = -1;
+    int scrollTrimUndo_ = 0;
+    bool scrollTrimDrag_ = false;
+    // The film over the screen outside the region, shown for exactly as long as the
+    // long-capture mode is. Owned here because the film and the region belong to the
+    // same screen; created on first use and deleted with the window.
+    ScrollShade *shade_ = nullptr;
+    void ensureShade();
 };} // namespace h2d
 Q_DECLARE_METATYPE(QVector<h2d::Candidate>)
 Q_DECLARE_METATYPE(h2d::OcrLanguageMode)

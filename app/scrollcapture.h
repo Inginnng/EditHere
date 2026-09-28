@@ -42,14 +42,17 @@ class ScrollCapture final : public QObject {
     explicit ScrollCapture(QObject *parent = nullptr);
     // Starts a run from the frame already on screen. `step` is how many wheel lines
     // are sent between frames, which is only needed by the caller doing the scrolling.
-    void begin(QImage first, int step = 1);
+    void begin(QImage first, int step = 1, Qt::Orientation axis = Qt::Vertical);
+    // Pausing preserves the overlap reference and frame count for resume/finish.
+    void resume() { running_ = !stitcher_.picture().isNull(); }
+    void pause() { running_ = false; }
     // Places one more look at the region. Anything the frame does not have in common
     // with the picture is added; the outcome says which of the three cases it was.
     Outcome take(const QImage &frame);
     // The picture as it stands, which is what the preview panel shows while the run is
     // going and what is handed over when it ends.
     QImage picture() const {
-        return stitcher_.picture();
+        return orient(stitcher_.picture());
     }
     int height() const {
         return stitcher_.height();
@@ -78,6 +81,8 @@ class ScrollCapture final : public QObject {
     void stop();
 
   private:
+    QImage orient(const QImage &image) const;
+    Qt::Orientation axis_ = Qt::Vertical;
     ScrollStitcher stitcher_;
     QString notice_;
     int step_ = 1;

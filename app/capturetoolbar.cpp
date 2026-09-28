@@ -222,7 +222,7 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     // monochrome bar: a blue rounded rectangle around it, which is how a capture tool
     // marks the thing it is for.
     const QColor mark = accent();
-    setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; }"
+    setStyleSheet(QStringLiteral("QPushButton { color: #e8e9ee; background: transparent; border: none; }"
                                  "QPushButton[tool=\"true\"]:hover { background: rgba(255, 255, 255, 0.14);"
                                  " border-radius: 8px; }"
                                  "QPushButton[primary=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
@@ -263,7 +263,28 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     (void)addButton(QStringLiteral("pin"), tr("贴图"));
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
     (void)addButton(QStringLiteral("copy"), tr("复制图像"));
-    (void)addButton(QStringLiteral("scroll"), tr("长截图（自动滚动）"));
+    (void)addButton(QStringLiteral("scroll"), tr("长截图"));
+    scrollAxisButton_ = new QPushButton(this);
+    scrollAxisButton_->setObjectName("scrollAxisButton");
+    scrollTrimStart_ = new QPushButton(this);
+    scrollTrimStart_->setObjectName("scrollTrimStart");
+    scrollTrimEnd_ = new QPushButton(this);
+    scrollTrimEnd_->setObjectName("scrollTrimEnd");
+    for (auto *button : {scrollAxisButton_, scrollTrimStart_, scrollTrimEnd_}) {
+        button->setProperty("tool", true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumWidth(46);
+        button->setMinimumHeight(34);
+        button->hide();
+        layout->addWidget(button);
+    }
+    connect(scrollAxisButton_, &QPushButton::clicked, this, [this] {
+        const auto axis = scrollAxis_ == Qt::Vertical ? Qt::Horizontal : Qt::Vertical;
+        emit scrollAxisChanged(axis);
+        setScrollState(true, false, axis);
+    });
+    connect(scrollTrimStart_, &QPushButton::clicked, this, [this] { emit scrollTrimRequested(true); });
+    connect(scrollTrimEnd_, &QPushButton::clicked, this, [this] { emit scrollTrimRequested(false); });
     more_ = new QPushButton(this);
     more_->setIcon(glyph(QStringLiteral("more"), kGlyph));
     more_->setIconSize({20, 20});
@@ -335,9 +356,13 @@ void CaptureToolbar::retranslate() {
         else if (name == QLatin1String("ocr"))
             label = tr("文字识别");
         else if (name == QLatin1String("scroll"))
-            label = scrollRunning_ ? tr("停止长截图") : tr("长截图（%1）").arg(scrollAxisLabel(scrollAxis_));
+            label = scrollActive_ ? (scrollRunning_ ? tr("停止") : tr("开始")) : tr("长截图");
         else if (name == QLatin1String("edit"))
-            label = tr("批注");
+            label = scrollActive_ ? tr("完成") : tr("批注");
+        if (name == QLatin1String("scroll") || name == QLatin1String("edit")) {
+            button->setText(scrollActive_ ? label : QString());
+            button->setFixedWidth(scrollActive_ ? 70 : 34);
+        }
         if (!label.isEmpty()) {
             button->setToolTip(label);
             button->setAccessibleName(label);
@@ -348,6 +373,10 @@ void CaptureToolbar::retranslate() {
     size_->setToolTip(tr("点击输入精确尺寸"));
     ratio_->setToolTip(tr("点击选择固定比例"));
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
+    scrollAxisButton_->setText(scrollAxisLabel(scrollAxis_));
+    scrollAxisButton_->setToolTip(tr("切换方向并重新开始"));
+    scrollTrimStart_->setText(scrollAxis_ == Qt::Vertical ? tr("裁上") : tr("裁左"));
+    scrollTrimEnd_->setText(scrollAxis_ == Qt::Vertical ? tr("裁下") : tr("裁右"));
     if (!message_.isEmpty())
         status_->setText(message_);
     else if (!scrollStatus_.isEmpty())
@@ -476,6 +505,15 @@ void CaptureToolbar::setScrollState(bool active, bool running, Qt::Orientation a
     scrollActive_ = active;
     scrollRunning_ = running;
     scrollAxis_ = axis;
+    size_->setVisible(!active);
+    ratio_->setVisible(!active);
+    for (auto *button : {scrollAxisButton_, scrollTrimStart_, scrollTrimEnd_})
+        button->setVisible(active);
+    scrollTrimStart_->setEnabled(!running);
+    scrollTrimEnd_->setEnabled(!running);
+    for (auto *button : buttons_)
+        if (button->property("glyphName").toString() == QLatin1String("ocr"))
+            button->setVisible(!active);
     for (auto *button : buttons_) {
         if (button->property("glyphName").toString() != QLatin1String("scroll"))
             continue;

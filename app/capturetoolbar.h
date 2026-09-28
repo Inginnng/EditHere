@@ -140,6 +140,7 @@ class CaptureToolbar final : public QWidget {
     void scrollStopRequested();
     // The direction the next run takes was switched.
     void scrollAxisChanged(Qt::Orientation axis);
+    void scrollTrimRequested(bool fromStart);
     void annotateRequested();
     void dismissed();
     // The user picked a size or a ratio, which the window applies to the selection
@@ -166,6 +167,9 @@ class CaptureToolbar final : public QWidget {
     QPushButton *ratio_ = nullptr;
     QLabel *status_ = nullptr;
     QPushButton *more_ = nullptr;
+    QPushButton *scrollAxisButton_ = nullptr;
+    QPushButton *scrollTrimStart_ = nullptr;
+    QPushButton *scrollTrimEnd_ = nullptr;
     QVector<QPushButton *> buttons_;
     CaptureRatio ratioChoice_ = CaptureRatio::Free;
     OcrLanguageMode ocrLanguage_ = OcrLanguageMode::System;
