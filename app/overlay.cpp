@@ -82,7 +82,6 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         emit ocrRequested(selected_, ocrLanguage_);
     });
     connect(bar_, &CaptureToolbar::scrollRequested, this, [this] { emit scrollRequested(selected_); });
-    connect(bar_, &CaptureToolbar::pickRequested, this, &Overlay::startPicking);
     connect(bar_, &CaptureToolbar::annotateRequested, this,
             [this] { emit accepted(selected_, candidates()); });
     connect(bar_, &CaptureToolbar::dismissed, this, [this] { emit cancelled(); });

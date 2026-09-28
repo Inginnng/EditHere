@@ -104,7 +104,6 @@ class CaptureToolbar final : public QWidget {
     void save();
     void recognize();
     void scroll();
-    void pick();
     void annotate();
     void dismiss();
 
@@ -114,7 +113,6 @@ class CaptureToolbar final : public QWidget {
     void saveRequested();
     void ocrRequested();
     void scrollRequested();
-    void pickRequested();
     void annotateRequested();
     void dismissed();
     // The user picked a size or a ratio, which the window applies to the selection

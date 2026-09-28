@@ -30,8 +30,8 @@
         <translation>Manual annotation</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="60"/>
-        <location filename="../overlay.cpp" line="140"/>
+        <location filename="../overlay.cpp" line="64"/>
+        <location filename="../overlay.cpp" line="144"/>
         <source>整个屏幕</source>
         <translation>Whole screen</translation>
     </message>
@@ -740,62 +740,62 @@
         <translation>unknown reason</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1179"/>
+        <location filename="../model.cpp" line="1195"/>
         <source>探索     收藏     关于</source>
         <translation>Explore     Saved     About</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1181"/>
+        <location filename="../model.cpp" line="1197"/>
         <source>为日常，留一点空白。</source>
         <translation>Leave a little blank space for every day.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1184"/>
+        <location filename="../model.cpp" line="1200"/>
         <source>点选这里，写下你希望改变的细节。</source>
         <translation>Click here and write down the detail you want to change.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1189"/>
+        <location filename="../model.cpp" line="1205"/>
         <source>发现灵感  →</source>
         <translation>Find inspiration  →</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1190"/>
+        <location filename="../model.cpp" line="1206"/>
         <source>林间的光</source>
         <translation>Light through the trees</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1190"/>
+        <location filename="../model.cpp" line="1206"/>
         <source>山的轮廓</source>
         <translation>Outlines of the mountains</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1190"/>
+        <location filename="../model.cpp" line="1206"/>
         <source>慢一点的午后</source>
         <translation>A slower afternoon</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1213"/>
+        <location filename="../model.cpp" line="1229"/>
         <source>生活观察   /   VOL. 0%1</source>
         <translation>Life Notes   /   VOL. 0%1</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1216"/>
+        <location filename="../model.cpp" line="1232"/>
         <source>© FIELDNOTES · 示例图片，仅用于体验批注</source>
         <translation>© FIELDNOTES · Sample image, for trying out annotations only</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1232"/>
+        <location filename="../model.cpp" line="1248"/>
         <source>预览图片过大，请保存项目</source>
         <translation>The preview image is too large; save the project instead</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1270"/>
+        <location filename="../model.cpp" line="1286"/>
         <source>批注 %1 条</source>
         <translation>%1 annotations</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1286"/>
+        <location filename="../model.cpp" line="1302"/>
         <source>整体意见</source>
         <translation>Overall note</translation>
     </message>
@@ -1103,39 +1103,39 @@
 <context>
     <name>h2d::CaptureSidebar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="674"/>
-        <location filename="../capturetoolbar.cpp" line="693"/>
+        <location filename="../capturetoolbar.cpp" line="663"/>
+        <location filename="../capturetoolbar.cpp" line="682"/>
         <source>圆角</source>
         <translation>Rounded corners</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="675"/>
-        <location filename="../capturetoolbar.cpp" line="700"/>
+        <location filename="../capturetoolbar.cpp" line="664"/>
+        <location filename="../capturetoolbar.cpp" line="689"/>
         <source>阴影 / 边框</source>
         <translation>Shadow / border</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="676"/>
+        <location filename="../capturetoolbar.cpp" line="665"/>
         <source>重置圆角、边框与阴影</source>
         <translation>Reset corners, border and shadow</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="693"/>
+        <location filename="../capturetoolbar.cpp" line="682"/>
         <source>圆角 %1 px</source>
         <translation>Corners %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="696"/>
+        <location filename="../capturetoolbar.cpp" line="685"/>
         <source>阴影 %1</source>
         <translation>Shadow %1</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="698"/>
+        <location filename="../capturetoolbar.cpp" line="687"/>
         <source>边框 %1 px</source>
         <translation>Border %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="699"/>
+        <location filename="../capturetoolbar.cpp" line="688"/>
         <source>%1 · 边框 %2 px</source>
         <translation>%1 · border %2 px</translation>
     </message>
@@ -1144,192 +1144,185 @@
     <name>h2d::CaptureToolbar</name>
     <message>
         <location filename="../capturetoolbar.cpp" line="263"/>
-        <location filename="../capturetoolbar.cpp" line="331"/>
-        <location filename="../capturetoolbar.cpp" line="612"/>
+        <location filename="../capturetoolbar.cpp" line="328"/>
+        <location filename="../capturetoolbar.cpp" line="601"/>
         <source>复制图像</source>
         <translation>Copy image</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="262"/>
-        <location filename="../capturetoolbar.cpp" line="335"/>
-        <location filename="../capturetoolbar.cpp" line="613"/>
+        <location filename="../capturetoolbar.cpp" line="332"/>
+        <location filename="../capturetoolbar.cpp" line="602"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="260"/>
-        <location filename="../capturetoolbar.cpp" line="337"/>
-        <location filename="../capturetoolbar.cpp" line="615"/>
+        <location filename="../capturetoolbar.cpp" line="334"/>
+        <location filename="../capturetoolbar.cpp" line="604"/>
         <source>文字识别</source>
         <translation>Text recognition</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="264"/>
-        <location filename="../capturetoolbar.cpp" line="339"/>
+        <location filename="../capturetoolbar.cpp" line="336"/>
         <source>长截图（自动滚动）</source>
         <translation>Long capture (auto scroll)</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="259"/>
-        <location filename="../capturetoolbar.cpp" line="343"/>
-        <location filename="../capturetoolbar.cpp" line="536"/>
+        <location filename="../capturetoolbar.cpp" line="338"/>
+        <location filename="../capturetoolbar.cpp" line="526"/>
         <source>批注</source>
         <translation>Annotate</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="349"/>
-        <location filename="../capturetoolbar.cpp" line="350"/>
-        <location filename="../capturetoolbar.cpp" line="619"/>
+        <location filename="../capturetoolbar.cpp" line="344"/>
+        <location filename="../capturetoolbar.cpp" line="345"/>
+        <location filename="../capturetoolbar.cpp" line="608"/>
         <source>更多选项</source>
         <translation>More options</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="351"/>
+        <location filename="../capturetoolbar.cpp" line="346"/>
         <source>点击输入精确尺寸</source>
         <translation>Click to type an exact size</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="352"/>
+        <location filename="../capturetoolbar.cpp" line="347"/>
         <source>点击选择固定比例</source>
         <translation>Click to choose a fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="591"/>
+        <location filename="../capturetoolbar.cpp" line="581"/>
         <source>%1 × %2</source>
         <translation>%1 × %2</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="483"/>
+        <location filename="../capturetoolbar.cpp" line="473"/>
         <source>输入选区尺寸</source>
         <translation>Selection size</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="261"/>
-        <location filename="../capturetoolbar.cpp" line="333"/>
-        <location filename="../capturetoolbar.cpp" line="614"/>
+        <location filename="../capturetoolbar.cpp" line="330"/>
+        <location filename="../capturetoolbar.cpp" line="603"/>
         <source>贴图</source>
         <translation>Pin to screen</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="265"/>
-        <location filename="../capturetoolbar.cpp" line="341"/>
-        <location filename="../capturetoolbar.cpp" line="617"/>
+        <location filename="../capturetoolbar.cpp" line="606"/>
         <source>取色</source>
         <translation>Pick a colour</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="363"/>
+        <location filename="../capturetoolbar.cpp" line="358"/>
         <source>%1 × %2 px</source>
         <translation>%1 × %2 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="371"/>
+        <location filename="../capturetoolbar.cpp" line="366"/>
         <source>%1, %2 · %3 × %4 px</source>
         <translation>%1, %2 · %3 × %4 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="488"/>
-        <location filename="../capturetoolbar.cpp" line="492"/>
+        <location filename="../capturetoolbar.cpp" line="478"/>
+        <location filename="../capturetoolbar.cpp" line="482"/>
         <source> 像素</source>
         <translation> px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="493"/>
+        <location filename="../capturetoolbar.cpp" line="483"/>
         <source>宽</source>
         <translation>Width</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="494"/>
+        <location filename="../capturetoolbar.cpp" line="484"/>
         <source>高</source>
         <translation>Height</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="539"/>
+        <location filename="../capturetoolbar.cpp" line="529"/>
         <source>固定比例</source>
         <translation>Fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="549"/>
+        <location filename="../capturetoolbar.cpp" line="539"/>
         <source>自定义…</source>
         <translation>Custom…</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="555"/>
+        <location filename="../capturetoolbar.cpp" line="545"/>
         <source>自定义比例</source>
         <translation>Custom ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="555"/>
+        <location filename="../capturetoolbar.cpp" line="545"/>
         <source>宽:高，例如 21:9</source>
         <translation>Width:height, for example 21:9</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="607"/>
-        <source>取色（移动鼠标选色）</source>
-        <translation>Pick a colour (move the pointer to choose)</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="620"/>
+        <location filename="../capturetoolbar.cpp" line="609"/>
         <source>历史截图上一张 / 下一张</source>
         <translation>Previous / next capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="621"/>
+        <location filename="../capturetoolbar.cpp" line="610"/>
         <source>从对角收缩 1 px</source>
         <translation>Shrink 1 px from the far corner</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="622"/>
+        <location filename="../capturetoolbar.cpp" line="611"/>
         <source>向外扩展 1 px</source>
         <translation>Grow 1 px outwards</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="623"/>
+        <location filename="../capturetoolbar.cpp" line="612"/>
         <source>移动选区 1 px</source>
         <translation>Move the region 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="571"/>
+        <location filename="../capturetoolbar.cpp" line="561"/>
         <source>截图历史</source>
         <translation>Capture history</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="581"/>
+        <location filename="../capturetoolbar.cpp" line="571"/>
         <source>上一张  &lt;</source>
         <translation>Previous  &lt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="584"/>
+        <location filename="../capturetoolbar.cpp" line="574"/>
         <source>下一张  &gt;</source>
         <translation>Next  &gt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="588"/>
+        <location filename="../capturetoolbar.cpp" line="578"/>
         <source>最近的选区</source>
         <translation>Recent regions</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="595"/>
+        <location filename="../capturetoolbar.cpp" line="585"/>
         <source>文字识别语言</source>
         <translation>Recognition language</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="610"/>
+        <location filename="../capturetoolbar.cpp" line="599"/>
         <source>快捷键</source>
         <translation>Shortcuts</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="616"/>
+        <location filename="../capturetoolbar.cpp" line="605"/>
         <source>长截图</source>
         <translation>Long capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="618"/>
+        <location filename="../capturetoolbar.cpp" line="607"/>
         <source>恢复上次选区</source>
         <translation>Restore last region</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="624"/>
+        <location filename="../capturetoolbar.cpp" line="613"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
@@ -2407,37 +2400,37 @@ Right-click the tray icon to check for updates.</translation>
         <translation>EditHere · Select a screenshot area</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="256"/>
+        <location filename="../overlay.cpp" line="263"/>
         <source>已复制颜色值 %1</source>
         <translation>Copied the colour %1</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="258"/>
+        <location filename="../overlay.cpp" line="265"/>
         <source>移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色</source>
         <translation>Move to the colour you want · C copies it · Shift changes the format · Esc ends picking</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="268"/>
+        <location filename="../overlay.cpp" line="275"/>
         <source>拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消</source>
         <translation>Drag to move · corners to resize · double click or Ctrl+C copies · Enter annotates · C picks a colour · Esc cancels</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="285"/>
+        <location filename="../overlay.cpp" line="292"/>
         <source>拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消</source>
         <translation>Drag to capture · click a block · release to annotate, pin or pick · Esc to cancel</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="380"/>
+        <location filename="../overlay.cpp" line="387"/>
         <source>像素 ( %1 , %2 )</source>
         <translation>Pixel ( %1 , %2 )</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="402"/>
+        <location filename="../overlay.cpp" line="409"/>
         <source>C 复制颜色值 · Shift 切换格式</source>
         <translation>C copies the colour · Shift changes the format</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="281"/>
+        <location filename="../overlay.cpp" line="288"/>
         <source>%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小</source>
         <translation>%1  ·  %2 / %3  ·  Scroll ↑ bigger ↓ smaller</translation>
     </message>

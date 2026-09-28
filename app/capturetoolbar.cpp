@@ -262,7 +262,6 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
     (void)addButton(QStringLiteral("copy"), tr("复制图像"));
     (void)addButton(QStringLiteral("scroll"), tr("长截图（自动滚动）"));
-    (void)addButton(QStringLiteral("picker"), tr("取色"));
     more_ = new QPushButton(this);
     more_->setIcon(glyph(QStringLiteral("more"), kGlyph));
     more_->setIconSize({20, 20});
@@ -311,8 +310,6 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
             recognize();
         else if (glyphName == QLatin1String("scroll"))
             scroll();
-        else if (glyphName == QLatin1String("picker"))
-            pick();
         else if (glyphName == QLatin1String("edit"))
             annotate();
     });
@@ -337,8 +334,6 @@ void CaptureToolbar::retranslate() {
             label = tr("文字识别");
         else if (name == QLatin1String("scroll"))
             label = tr("长截图（自动滚动）");
-        else if (name == QLatin1String("picker"))
-            label = tr("取色");
         else if (name == QLatin1String("edit"))
             label = tr("批注");
         if (!label.isEmpty()) {
@@ -461,11 +456,6 @@ void CaptureToolbar::recognize() {
 void CaptureToolbar::scroll() {
     if (!busy_)
         emit scrollRequested();
-}
-
-void CaptureToolbar::pick() {
-    if (!busy_)
-        emit pickRequested();
 }
 
 void CaptureToolbar::annotate() {
@@ -604,7 +594,6 @@ void CaptureToolbar::buildMenu() {
         });
     }
     menu->addSeparator();
-    menu->addAction(tr("取色（移动鼠标选色）"), this, &CaptureToolbar::pick);
     // The shortcuts are the only way to reach some of this at speed, so they are
     // written down where they can be found.
     auto *keys = menu->addMenu(tr("快捷键"));
