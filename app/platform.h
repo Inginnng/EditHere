@@ -29,13 +29,10 @@ bool requestAccessibility();
 // drives a page while a long picture is being captured: the caller takes one grab,
 // scrolls, takes the next one and stitches them together. Positive steps scroll the
 // way a wheel pushed away from the user does, or towards the right when the axis is
-// horizontal. Returns false when there is nothing under the point that can be
-// scrolled that way.
+// horizontal. Returns false only when there is nothing to send the wheel to — whether
+// the window moves is left to the frame that comes back, because no cheap question
+// about it is reliable (most pages carry no scroll-bar style at all).
 bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis = Qt::Vertical);
-// Whether the window under a native point can scroll the way an axis asks. A long
-// capture asks before it starts, because scrolling a page that cannot move either
-// produces one frame and a misleading finished picture, or nothing at all.
-bool scrollableAt(QPoint nativePoint, Qt::Orientation axis);
 void configureNativeWindow(QWidget *window, bool overlay);
 QString globalShortcutLabel();
 class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {

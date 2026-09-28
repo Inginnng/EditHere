@@ -767,6 +767,11 @@ void Controller::abortScrollCapture(bool keep) {
 
 void Controller::finishScrollCapture(QImage picture, QString message, bool ok) {
     updateTrayShortcut();
+    // Whether anything was ever stitched has to be asked before the session is stopped,
+    // because stopping clears the count. A picture is always there — it starts as the
+    // frame the region was taken from — so "the picture is null" is never a way to say
+    // that nothing was added.
+    const bool addedAny = scroller_ != nullptr && scroller_->frames() > 0;
     const bool partial = scroller_ != nullptr && scroller_->partial();
     if (scroller_ != nullptr)
         scroller_->stop();
@@ -776,7 +781,7 @@ void Controller::finishScrollCapture(QImage picture, QString message, bool ok) {
     // A page with something moving in it gets its frames placed on a looser match than
     // an exact one. The picture is still the whole page, so it is handed over with a
     // note rather than held back.
-    if (ok && picture.isNull()) {
+    if (ok && !addedAny) {
         // Nothing was ever added: the region was on something that does not scroll, and
         // a one-frame "long capture" would be a plain screenshot with a misleading name.
         clearOverlays();

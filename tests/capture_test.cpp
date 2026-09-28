@@ -797,6 +797,26 @@ class CaptureTests : public QObject {
         QVERIFY2(!session.partial(), "a frame that was refused is not a rough placement");
         QCOMPARE(session.height(), 100);
     }
+    // REG-102: a run over something that does not scroll has to be told apart from a run
+    // that made a long picture. The picture is never missing — it starts as the frame the
+    // region was taken from — so "the picture is null" cannot be the test; the number of
+    // frames that were actually placed is.
+    void aRunWhereNothingWasPlacedPlacedNoFrames() {
+        const QImage content = stripedImage(64, 300);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        QVERIFY2(!session.picture().isNull(), "the first frame is the picture before anything is added");
+        QCOMPARE(session.frames(), 0);
+        // The page did not move, twice: the run is over, and no frame was ever placed.
+        QCOMPARE(session.take(content.copy(0, 0, 64, 100)), ScrollCapture::Outcome::Repeat);
+        QCOMPARE(session.take(content.copy(0, 0, 64, 100)), ScrollCapture::Outcome::Repeat);
+        QCOMPARE(session.frames(), 0);
+        QCOMPARE(session.height(), 100);
+        // The count is what says nothing was stitched, and it survives until the session
+        // is stopped — the caller reads it before stopping exactly for that reason.
+        session.stop();
+        QCOMPARE(session.frames(), 0);
+    }
     void aLongCaptureStopsAtItsLimit() {
         const QImage content = stripedImage(64, 300);
         ScrollCapture session;

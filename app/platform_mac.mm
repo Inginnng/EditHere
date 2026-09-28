@@ -302,13 +302,6 @@ bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
     CFRelease(event);
     return true;
 }
-// macOS leaves "can this view scroll" to the view itself, and asking a foreign process
-// for its scroll views needs accessibility access that may not have been granted. The
-// run is started by the user anyway, and a page that turns out not to move is reported
-// as the end of the content, so there is nothing to answer here.
-bool scrollableAt(QPoint, Qt::Orientation) {
-    return true;
-}
 void configureNativeWindow(QWidget *widget, bool overlay) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
