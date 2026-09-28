@@ -79,6 +79,27 @@ class Overlay final : public QWidget {
     // be browsed without leaving the window. A null picture brings the screen back,
     // which is what stepping forward past the newest capture means.
     void showHistoryPicture(const QImage &picture);
+
+    // --- 长截图 ---
+    // True while a long capture is being taken of this window's region. The region is
+    // then a window onto the page rather than a picture: it stays where it is, the
+    // page moves underneath it, and the picture grows in the panel beside it.
+    bool isScrolling() const {
+        return scrolling_;
+    }
+    // Which way a long capture of this region runs. The window owns the choice because
+    // the menu that makes it is the window's own.
+    Qt::Orientation scrollAxis() const {
+        return scrollAxis_;
+    }
+    // Enters or leaves long-capture mode. `running` starts the frames; `picture` and
+    // `axis` are what has been stitched so far and which way it runs, which is what the
+    // preview panel shows. Without `keep` the region is handed back to the ordinary
+    // capture tools when the run ends.
+    void beginScroll(bool running, const QImage &picture, Qt::Orientation axis, bool keep = false);
+    // One more frame has been placed: the preview panel grows and the bar says how far
+    // the run has got.
+    void updateScroll(const QImage &picture, int frames, bool partial);
   signals:
     void accepted(QRect pixels, QVector<h2d::Candidate> candidates);
     void copyRequested(QRect pixels);
@@ -86,6 +107,17 @@ class Overlay final : public QWidget {
     void saveRequested(QRect pixels);
     void ocrRequested(QRect pixels, h2d::OcrLanguageMode language);
     void scrollRequested(QRect pixels);
+    // The user asked for a long capture of this region to run or to stop. One button
+    // does both, which is what makes a capture that can be left running manually.
+    void scrollRunRequested(bool running);
+    // The user asked to stop and give the region back to the ordinary tools.
+    void scrollStopRequested();
+    // The region was dragged while a long capture was running, which moves where the
+    // next frame is read from.
+    void scrollRegionMoved(QRect pixels);
+    // The direction a long capture runs in was switched. The owner stops whatever was
+    // running, because half a picture stitched one way and half the other is not one.
+    void scrollAxisChanged();
     // The user picked an earlier capture to open instead of taking a new one.
     void historyRequested(int index);
     // The user stepped through the history with < or >.
@@ -139,6 +171,18 @@ class Overlay final : public QWidget {
     // The next click reads a colour instead of touching the region.
     void startPicking();
     void leavePicking();
+    // What a long capture offers: which way it runs, whether it is running, and whether
+    // the region can be dragged to reach the last of the content. Rebuilt on every use
+    // so the ticks match the state the run is actually in.
+    void buildScrollMenu();
+    // Where the preview panel goes for the region as it stands: beside it for a picture
+    // that grows downwards, under it for one that grows sideways. It is kept clear of
+    // the toolbar and the tool column the same way the magnifier is.
+    QRect scrollPreviewRect() const;
+    void drawScrollPreview(QPainter &painter);
+    // What the bar says while a run is going: the length stitched so far and whether it
+    // is still running.
+    QString scrollStatus() const;
     // Brings back the most recent selection, which is the one the user is most likely
     // to want again.
     void restoreLastSelection();
@@ -186,6 +230,23 @@ class Overlay final : public QWidget {
     QRect dragOrigin_;
     QPoint dragStart_;
     QVector<QRect> selections_;
+    // --- 长截图 ---
+    // True once the region has been handed to a long capture. The region then stays
+    // where it is while the page moves under it, and the bar offers the run rather than
+    // the picture-making actions.
+    bool scrolling_ = false;
+    bool scrollRunning_ = false;
+    Qt::Orientation scrollAxis_ = Qt::Vertical;
+    // What has been stitched so far, which the panel beside the region shows. It is the
+    // whole picture rather than a scaled copy: the panel scales it as it paints, and a
+    // copy would have to be made again for every frame.
+    QImage scrollPicture_;
+    int scrollFrames_ = 0;
+    bool scrollPartial_ = false;
+    // Set while the region is being dragged to reach the last of the content, so the
+    // release can tell a move from a new region being drawn.
+    bool scrollDrag_ = false;
+    QString scrollStatus_;
 };} // namespace h2d
 Q_DECLARE_METATYPE(QVector<h2d::Candidate>)
 Q_DECLARE_METATYPE(h2d::OcrLanguageMode)

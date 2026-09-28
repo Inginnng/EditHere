@@ -31,12 +31,12 @@
     </message>
     <message>
         <location filename="../overlay.cpp" line="64"/>
-        <location filename="../overlay.cpp" line="144"/>
+        <location filename="../overlay.cpp" line="163"/>
         <source>整个屏幕</source>
         <translation>Whole screen</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="159"/>
+        <location filename="../platform_win.cpp" line="194"/>
         <source>窗口</source>
         <translation>Window</translation>
     </message>
@@ -801,7 +801,7 @@
     </message>
     <message>
         <location filename="../platform_mac.mm" line="197"/>
-        <location filename="../platform_win.cpp" line="168"/>
+        <location filename="../platform_win.cpp" line="203"/>
         <source>无法读取屏幕画面</source>
         <translation>Could not capture the screen image</translation>
     </message>
@@ -1067,7 +1067,17 @@
         <translation>Some screens could not be captured</translation>
     </message>
     <message>
-        <location filename="../capturesession.cpp" line="57"/>
+        <location filename="../capturesession.cpp" line="55"/>
+        <source>横向</source>
+        <translation>Horizontal</translation>
+    </message>
+    <message>
+        <location filename="../capturesession.cpp" line="55"/>
+        <source>纵向</source>
+        <translation>Vertical</translation>
+    </message>
+    <message>
+        <location filename="../capturesession.cpp" line="61"/>
         <source>自由</source>
         <translation>Free</translation>
     </message>
@@ -1075,6 +1085,16 @@
         <location filename="../ocr.cpp" line="122"/>
         <source>简体中文</source>
         <translation>Simplified Chinese</translation>
+    </message>
+    <message>
+        <location filename="../ui.cpp" line="212"/>
+        <source>%1 px</source>
+        <translation>%1 px</translation>
+    </message>
+    <message>
+        <location filename="../ui.cpp" line="213"/>
+        <source>%1 万像素</source>
+        <translation>%1 万 px</translation>
     </message>
 </context>
 <context>
@@ -1103,39 +1123,39 @@
 <context>
     <name>h2d::CaptureSidebar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="663"/>
-        <location filename="../capturetoolbar.cpp" line="682"/>
+        <location filename="../capturetoolbar.cpp" line="736"/>
+        <location filename="../capturetoolbar.cpp" line="755"/>
         <source>圆角</source>
         <translation>Rounded corners</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="664"/>
-        <location filename="../capturetoolbar.cpp" line="689"/>
+        <location filename="../capturetoolbar.cpp" line="737"/>
+        <location filename="../capturetoolbar.cpp" line="762"/>
         <source>阴影 / 边框</source>
         <translation>Shadow / border</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="665"/>
+        <location filename="../capturetoolbar.cpp" line="738"/>
         <source>重置圆角、边框与阴影</source>
         <translation>Reset corners, border and shadow</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="682"/>
+        <location filename="../capturetoolbar.cpp" line="755"/>
         <source>圆角 %1 px</source>
         <translation>Corners %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="685"/>
+        <location filename="../capturetoolbar.cpp" line="758"/>
         <source>阴影 %1</source>
         <translation>Shadow %1</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="687"/>
+        <location filename="../capturetoolbar.cpp" line="760"/>
         <source>边框 %1 px</source>
         <translation>Border %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="688"/>
+        <location filename="../capturetoolbar.cpp" line="761"/>
         <source>%1 · 边框 %2 px</source>
         <translation>%1 · border %2 px</translation>
     </message>
@@ -1143,186 +1163,221 @@
 <context>
     <name>h2d::CaptureToolbar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="263"/>
-        <location filename="../capturetoolbar.cpp" line="328"/>
-        <location filename="../capturetoolbar.cpp" line="601"/>
+        <location filename="../capturetoolbar.cpp" line="265"/>
+        <location filename="../capturetoolbar.cpp" line="330"/>
+        <location filename="../capturetoolbar.cpp" line="674"/>
         <source>复制图像</source>
         <translation>Copy image</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="262"/>
-        <location filename="../capturetoolbar.cpp" line="332"/>
-        <location filename="../capturetoolbar.cpp" line="602"/>
+        <location filename="../capturetoolbar.cpp" line="264"/>
+        <location filename="../capturetoolbar.cpp" line="334"/>
+        <location filename="../capturetoolbar.cpp" line="675"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="260"/>
-        <location filename="../capturetoolbar.cpp" line="334"/>
-        <location filename="../capturetoolbar.cpp" line="604"/>
+        <location filename="../capturetoolbar.cpp" line="262"/>
+        <location filename="../capturetoolbar.cpp" line="336"/>
+        <location filename="../capturetoolbar.cpp" line="677"/>
         <source>文字识别</source>
         <translation>Text recognition</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="264"/>
-        <location filename="../capturetoolbar.cpp" line="336"/>
+        <location filename="../capturetoolbar.cpp" line="266"/>
         <source>长截图（自动滚动）</source>
         <translation>Long capture (auto scroll)</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="259"/>
-        <location filename="../capturetoolbar.cpp" line="338"/>
-        <location filename="../capturetoolbar.cpp" line="526"/>
+        <location filename="../capturetoolbar.cpp" line="261"/>
+        <location filename="../capturetoolbar.cpp" line="340"/>
+        <location filename="../capturetoolbar.cpp" line="567"/>
         <source>批注</source>
         <translation>Annotate</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="344"/>
-        <location filename="../capturetoolbar.cpp" line="345"/>
-        <location filename="../capturetoolbar.cpp" line="608"/>
+        <location filename="../capturetoolbar.cpp" line="346"/>
+        <location filename="../capturetoolbar.cpp" line="347"/>
+        <location filename="../capturetoolbar.cpp" line="681"/>
         <source>更多选项</source>
         <translation>More options</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="346"/>
+        <location filename="../capturetoolbar.cpp" line="348"/>
         <source>点击输入精确尺寸</source>
         <translation>Click to type an exact size</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="347"/>
+        <location filename="../capturetoolbar.cpp" line="349"/>
         <source>点击选择固定比例</source>
         <translation>Click to choose a fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="581"/>
+        <location filename="../capturetoolbar.cpp" line="654"/>
         <source>%1 × %2</source>
         <translation>%1 × %2</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="473"/>
+        <location filename="../capturetoolbar.cpp" line="514"/>
         <source>输入选区尺寸</source>
         <translation>Selection size</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="261"/>
-        <location filename="../capturetoolbar.cpp" line="330"/>
-        <location filename="../capturetoolbar.cpp" line="603"/>
+        <location filename="../capturetoolbar.cpp" line="263"/>
+        <location filename="../capturetoolbar.cpp" line="332"/>
+        <location filename="../capturetoolbar.cpp" line="676"/>
         <source>贴图</source>
         <translation>Pin to screen</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="606"/>
+        <location filename="../capturetoolbar.cpp" line="679"/>
         <source>取色</source>
         <translation>Pick a colour</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="358"/>
+        <location filename="../capturetoolbar.cpp" line="362"/>
         <source>%1 × %2 px</source>
         <translation>%1 × %2 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="366"/>
+        <location filename="../capturetoolbar.cpp" line="338"/>
+        <source>停止长截图</source>
+        <translation>Stop long capture</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="338"/>
+        <location filename="../capturetoolbar.cpp" line="486"/>
+        <source>长截图（%1）</source>
+        <translation>Long capture (%1)</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="370"/>
         <source>%1, %2 · %3 × %4 px</source>
         <translation>%1, %2 · %3 × %4 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="478"/>
-        <location filename="../capturetoolbar.cpp" line="482"/>
+        <location filename="../capturetoolbar.cpp" line="485"/>
+        <source>停止长截图（%1）</source>
+        <translation>Stop long capture (%1)</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="519"/>
+        <location filename="../capturetoolbar.cpp" line="523"/>
         <source> 像素</source>
         <translation> px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="483"/>
+        <location filename="../capturetoolbar.cpp" line="524"/>
         <source>宽</source>
         <translation>Width</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="484"/>
+        <location filename="../capturetoolbar.cpp" line="525"/>
         <source>高</source>
         <translation>Height</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="529"/>
+        <location filename="../capturetoolbar.cpp" line="592"/>
+        <source>停止</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="592"/>
+        <source>开始</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="595"/>
+        <source>退出长截图</source>
+        <translation>Leave long capture</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="602"/>
         <source>固定比例</source>
         <translation>Fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="539"/>
+        <location filename="../capturetoolbar.cpp" line="612"/>
         <source>自定义…</source>
         <translation>Custom…</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="545"/>
+        <location filename="../capturetoolbar.cpp" line="618"/>
         <source>自定义比例</source>
         <translation>Custom ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="545"/>
+        <location filename="../capturetoolbar.cpp" line="618"/>
         <source>宽:高，例如 21:9</source>
         <translation>Width:height, for example 21:9</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="609"/>
+        <location filename="../capturetoolbar.cpp" line="678"/>
+        <source>长截图开始 / 停止</source>
+        <translation>Start / stop long capture</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="682"/>
         <source>历史截图上一张 / 下一张</source>
         <translation>Previous / next capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="610"/>
+        <location filename="../capturetoolbar.cpp" line="683"/>
         <source>从对角收缩 1 px</source>
         <translation>Shrink 1 px from the far corner</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="611"/>
+        <location filename="../capturetoolbar.cpp" line="684"/>
         <source>向外扩展 1 px</source>
         <translation>Grow 1 px outwards</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="612"/>
+        <location filename="../capturetoolbar.cpp" line="685"/>
         <source>移动选区 1 px</source>
         <translation>Move the region 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="561"/>
+        <location filename="../capturetoolbar.cpp" line="634"/>
         <source>截图历史</source>
         <translation>Capture history</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="571"/>
+        <location filename="../capturetoolbar.cpp" line="644"/>
         <source>上一张  &lt;</source>
         <translation>Previous  &lt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="574"/>
+        <location filename="../capturetoolbar.cpp" line="647"/>
         <source>下一张  &gt;</source>
         <translation>Next  &gt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="578"/>
+        <location filename="../capturetoolbar.cpp" line="651"/>
         <source>最近的选区</source>
         <translation>Recent regions</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="585"/>
+        <location filename="../capturetoolbar.cpp" line="658"/>
         <source>文字识别语言</source>
         <translation>Recognition language</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="599"/>
+        <location filename="../capturetoolbar.cpp" line="672"/>
         <source>快捷键</source>
         <translation>Shortcuts</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="605"/>
+        <location filename="../capturetoolbar.cpp" line="573"/>
         <source>长截图</source>
         <translation>Long capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="607"/>
+        <location filename="../capturetoolbar.cpp" line="680"/>
         <source>恢复上次选区</source>
         <translation>Restore last region</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="613"/>
+        <location filename="../capturetoolbar.cpp" line="686"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
@@ -1330,234 +1385,250 @@
 <context>
     <name>h2d::Controller</name>
     <message>
-        <location filename="../controller.cpp" line="57"/>
+        <location filename="../controller.cpp" line="63"/>
         <source>已启用系统元素识别</source>
         <translation>System element recognition is on</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="59"/>
+        <location filename="../controller.cpp" line="65"/>
         <source>请在系统设置中授予辅助功能权限，图片识别仍可直接使用。</source>
         <translation>Grant Accessibility permission in System Settings. Image recognition still works without it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="83"/>
+        <location filename="../controller.cpp" line="89"/>
         <source>无法记录引导状态，下次启动时可能再次显示。
 </source>
         <translation>Could not save the guide state; it may show again on the next launch.
 </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="88"/>
+        <location filename="../controller.cpp" line="94"/>
         <source>截图快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>The screenshot shortcut could not be registered. Right-click the tray icon to open Settings and change it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="91"/>
+        <location filename="../controller.cpp" line="97"/>
         <source>打开图片或项目</source>
         <translation>Open image or project</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="92"/>
+        <location filename="../controller.cpp" line="98"/>
         <source>粘贴图片</source>
         <translation>Paste image</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="93"/>
+        <location filename="../controller.cpp" line="99"/>
         <source>恢复批注窗口</source>
         <translation>Restore the annotation window</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="94"/>
+        <location filename="../controller.cpp" line="100"/>
         <source>启用系统元素识别</source>
         <translation>Enable system element recognition</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="95"/>
+        <location filename="../controller.cpp" line="101"/>
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="96"/>
+        <location filename="../controller.cpp" line="102"/>
         <source>检查更新…</source>
         <translation>Check for updates…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="97"/>
+        <location filename="../controller.cpp" line="103"/>
         <source>退出</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="102"/>
+        <location filename="../controller.cpp" line="108"/>
         <source>截图</source>
         <translation>Screenshot</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="103"/>
+        <location filename="../controller.cpp" line="109"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="134"/>
+        <location filename="../controller.cpp" line="140"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>Could not load the interface language. Please reinstall EditHere.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="141"/>
+        <location filename="../controller.cpp" line="147"/>
         <source>截图快捷键无法注册，请更换组合键。</source>
         <translation>The screenshot shortcut cannot be registered. Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="147"/>
-        <location filename="../controller.cpp" line="158"/>
+        <location filename="../controller.cpp" line="153"/>
+        <location filename="../controller.cpp" line="164"/>
         <source>
 原快捷键未能恢复，请重新设置截图快捷键。</source>
         <translation>
 The original shortcut could not be restored. Set the screenshot shortcut again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="156"/>
+        <location filename="../controller.cpp" line="162"/>
         <source>
 开机自启未能恢复：</source>
         <translation>
 Launch at login could not be restored: </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="170"/>
+        <location filename="../controller.cpp" line="176"/>
         <source>截图快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>The screenshot shortcut could not be restored. Choose a different combination in Settings.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="173"/>
+        <location filename="../controller.cpp" line="179"/>
         <source>EditHere 开机自启</source>
         <translation>EditHere launch at login</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="195"/>
+        <location filename="../controller.cpp" line="201"/>
         <source>示例产品页面</source>
         <translation>Sample product page</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="210"/>
+        <location filename="../controller.cpp" line="216"/>
         <source>EditHere 更新</source>
         <translation>EditHere update</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="210"/>
+        <location filename="../controller.cpp" line="216"/>
         <source>
 右键托盘选择检查更新。</source>
         <translation>
 Right-click the tray icon to check for updates.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="268"/>
-        <location filename="../controller.cpp" line="658"/>
+        <location filename="../controller.cpp" line="274"/>
+        <location filename="../controller.cpp" line="832"/>
         <source>截图未完成</source>
         <translation>Screenshot not completed</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="349"/>
+        <location filename="../controller.cpp" line="371"/>
         <source>第 %1 张 · 已不在缓存里</source>
         <translation>No. %1 · no longer in the cache</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="350"/>
+        <location filename="../controller.cpp" line="372"/>
         <source>第 %1 张 · %2 × %3</source>
         <translation>No. %1 · %2 × %3</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="371"/>
-        <location filename="../controller.cpp" line="394"/>
+        <location filename="../controller.cpp" line="393"/>
+        <location filename="../controller.cpp" line="416"/>
         <source>这张截图已经不在缓存里了。</source>
         <translation>That capture is no longer in the cache.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="389"/>
+        <location filename="../controller.cpp" line="411"/>
         <source>已记住这个样式，以后每次截图都从这里开始。</source>
         <translation>Style remembered: every capture from now on starts from it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="399"/>
+        <location filename="../controller.cpp" line="421"/>
         <source>历史截图</source>
         <translation>Earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="403"/>
+        <location filename="../controller.cpp" line="425"/>
         <source>无法打开历史截图</source>
         <translation>Could not open the earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="503"/>
+        <location filename="../controller.cpp" line="525"/>
         <source>置顶图片</source>
         <translation>Pinned picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="506"/>
+        <location filename="../controller.cpp" line="528"/>
         <source>无法打开这张图片</source>
         <translation>Could not open this picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="521"/>
+        <location filename="../controller.cpp" line="543"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="522"/>
+        <location filename="../controller.cpp" line="544"/>
         <source>PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*)</source>
         <translation>PNG image (*.png);;JPEG image (*.jpg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="526"/>
+        <location filename="../controller.cpp" line="548"/>
         <source>已保存 %1</source>
         <translation>Saved %1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="529"/>
+        <location filename="../controller.cpp" line="551"/>
         <source>保存失败</source>
         <translation>Could not save</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="529"/>
+        <location filename="../controller.cpp" line="551"/>
         <source>无法写入 %1，请检查目录是否存在以及是否可写。</source>
         <translation>Could not write %1. Check that the folder exists and is writable.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="591"/>
-        <source>正在自动滚动并拼接…</source>
-        <translation>Scrolling and stitching…</translation>
-    </message>
-    <message>
-        <location filename="../controller.cpp" line="598"/>
-        <source>长截图 · 已拼接 %1 帧 · %2 像素高</source>
-        <translation>Long capture · %1 frames · %2 pixels tall</translation>
-    </message>
-    <message>
-        <location filename="../controller.cpp" line="614"/>
+        <location filename="../controller.cpp" line="789"/>
         <source>长截图已完成</source>
         <translation>Long capture finished</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="614"/>
+        <location filename="../controller.cpp" line="789"/>
         <source>拼接有偏差：有一处是按放宽的匹配接上的，接缝可能有一两像素错位。</source>
         <translation>The stitch is imperfect: one seam had to be matched loosely, so it may be off by a pixel or two.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="621"/>
-        <location filename="../controller.cpp" line="635"/>
+        <location filename="../controller.cpp" line="795"/>
+        <location filename="../controller.cpp" line="809"/>
         <source>长截图未完成</source>
         <translation>Long capture unfinished</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="622"/>
+        <location filename="../controller.cpp" line="796"/>
         <source>未能完成长截图，请重试。</source>
         <translation>The long capture could not be finished. Please try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="628"/>
+        <location filename="../controller.cpp" line="785"/>
+        <location filename="../controller.cpp" line="802"/>
         <source>长截图</source>
         <translation>Long capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="641"/>
+        <location filename="../controller.cpp" line="652"/>
+        <source>选区下面的内容不能滚动，长截图到此为止。</source>
+        <translation>The region cannot scroll any further, so the long capture ends here.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="687"/>
+        <source>找不到要截取的屏幕。</source>
+        <translation>The screen to capture could not be found.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="693"/>
+        <source>选区已不在屏幕范围内。</source>
+        <translation>The region is no longer on the screen.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="747"/>
+        <source>有一帧与已拼接的长图对不上，长截图到此为止。</source>
+        <translation>One frame did not line up with the picture so far, so the long capture ends here.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="785"/>
+        <source>选区里的内容没有滚动，没有拼出比选区更长的画面。</source>
+        <translation>Nothing in the region scrolled, so no picture longer than the region was stitched.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="815"/>
         <source>屏幕截图</source>
         <translation>Screen capture</translation>
     </message>
@@ -2030,43 +2101,43 @@ Right-click the tray icon to check for updates.</translation>
 <context>
     <name>h2d::GlobalShortcut</name>
     <message>
-        <location filename="../platform_mac.mm" line="344"/>
-        <location filename="../platform_win.cpp" line="324"/>
+        <location filename="../platform_mac.mm" line="363"/>
+        <location filename="../platform_win.cpp" line="377"/>
         <source>全局截图快捷键只支持一组按键，不能使用连续组合。</source>
         <translation>The global screenshot shortcut supports only one key combination; key sequences are not allowed.</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="332"/>
+        <location filename="../platform_win.cpp" line="385"/>
         <source>不支持此按键，请使用字母、数字、F1–F24、PrintScreen 或方向与导航键。</source>
         <translation>This key is not supported. Use a letter, a digit, F1–F24, PrintScreen, or a navigation or arrow key.</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="346"/>
+        <location filename="../platform_win.cpp" line="399"/>
         <source>无法创建快捷键注册，请稍后重试。</source>
         <translation>Could not create the shortcut registration. Try again later.</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="353"/>
+        <location filename="../platform_win.cpp" line="406"/>
         <source>这个快捷键已被其他应用或系统占用，请更换一组按键。</source>
         <translation>This shortcut is already used by another app or by the system. Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="354"/>
+        <location filename="../platform_win.cpp" line="407"/>
         <source>系统无法注册此快捷键（错误 %1），请更换一组按键。</source>
         <translation>The system could not register this shortcut (error %1). Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="352"/>
+        <location filename="../platform_mac.mm" line="371"/>
         <source>不支持此按键，请使用字母、数字、F1–F20 或方向与导航键。</source>
         <translation>This key is not supported. Use a letter, a digit, F1–F20, or a navigation or arrow key.</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="388"/>
+        <location filename="../platform_mac.mm" line="407"/>
         <source>无法监听系统快捷键（错误 %1）。</source>
         <translation>Could not listen for the system shortcut (error %1).</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="400"/>
+        <location filename="../platform_mac.mm" line="419"/>
         <source>此快捷键已被占用或系统无法注册（错误 %1），请更换一组按键。</source>
         <translation>This shortcut is already taken or the system could not register it (error %1). Choose a different combination.</translation>
     </message>
@@ -2400,37 +2471,87 @@ Right-click the tray icon to check for updates.</translation>
         <translation>EditHere · Select a screenshot area</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="263"/>
+        <location filename="../overlay.cpp" line="293"/>
         <source>已复制颜色值 %1</source>
         <translation>Copied the colour %1</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="265"/>
+        <location filename="../overlay.cpp" line="295"/>
         <source>移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色</source>
         <translation>Move to the colour you want · C copies it · Shift changes the format · Esc ends picking</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="275"/>
+        <location filename="../overlay.cpp" line="311"/>
+        <source>横向长截图 · 拖动选区扫过要截的内容 · 再按一次长截图停止</source>
+        <translation>Horizontal long capture · drag the region across the content · press long capture again to stop</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="312"/>
+        <source>纵向长截图 · 滚轮滚动要截的内容 · 拖动选区可补最后一屏 · 再按一次长截图停止</source>
+        <translation>Vertical long capture · scroll the page to capture it · drag the region to reach the last screen · press long capture again to stop</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="313"/>
+        <source>长截图已停止 · 按「开始」继续，或按「完成」收下这张图</source>
+        <translation>Long capture stopped · press Start to carry on, or Done to keep this picture</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="324"/>
         <source>拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消</source>
         <translation>Drag to move · corners to resize · double click or Ctrl+C copies · Enter annotates · C picks a colour · Esc cancels</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="292"/>
+        <location filename="../overlay.cpp" line="341"/>
         <source>拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消</source>
         <translation>Drag to capture · click a block · release to annotate, pin or pick · Esc to cancel</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="387"/>
+        <location filename="../overlay.cpp" line="436"/>
         <source>像素 ( %1 , %2 )</source>
         <translation>Pixel ( %1 , %2 )</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="409"/>
+        <location filename="../overlay.cpp" line="458"/>
         <source>C 复制颜色值 · Shift 切换格式</source>
         <translation>C copies the colour · Shift changes the format</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="288"/>
+        <location filename="../overlay.cpp" line="538"/>
+        <source>%1 帧</source>
+        <translation>%1 frames</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1112"/>
+        <source>长截图 · %1 · 按开始采集</source>
+        <translation>Long capture · %1 · press Start to capture</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1115"/>
+        <source>长截图 · %1 · 已停止</source>
+        <translation>Long capture · %1 · stopped</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1116"/>
+        <source>长截图 · %1 · %2%3</source>
+        <translation>Long capture · %1 · %2%3</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1118"/>
+        <source>采集中，再次按下停止</source>
+        <translation>capturing, press again to stop</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1118"/>
+        <source>已停止</source>
+        <translation>stopped</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="1119"/>
+        <source> · 有一处接缝是放宽的</source>
+        <translation> · one seam was matched loosely</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="337"/>
         <source>%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小</source>
         <translation>%1  ·  %2 / %3  ·  Scroll ↑ bigger ↓ smaller</translation>
     </message>
@@ -2531,19 +2652,9 @@ Right-click the tray icon to check for updates.</translation>
 <context>
     <name>h2d::ScrollCapture</name>
     <message>
-        <location filename="../scrollcapture.cpp" line="42"/>
-        <source>没有可以继续的长截图内容。</source>
-        <translation>There is nothing left to capture.</translation>
-    </message>
-    <message>
-        <location filename="../scrollcapture.cpp" line="112"/>
-        <source>找不到要截取的屏幕。</source>
-        <translation>The screen to capture could not be found.</translation>
-    </message>
-    <message>
-        <location filename="../scrollcapture.cpp" line="117"/>
-        <source>选区已不在屏幕范围内。</source>
-        <translation>The region is no longer on the screen.</translation>
+        <location filename="../scrollcapture.cpp" line="39"/>
+        <source>已达长截图上限。</source>
+        <translation>The long capture limit has been reached.</translation>
     </message>
 </context>
 <context>

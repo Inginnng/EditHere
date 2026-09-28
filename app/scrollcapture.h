@@ -10,7 +10,7 @@
 
 namespace h2d {
 // Where a long picture is taken from. The region is in the pixels of the screen it
-// belongs to; every frame is re-read from that same region while the page scrolls.
+// belongs to; every frame is re-read from that region while the page scrolls.
 struct ScrollTarget {
     QString screenName;
     QRect pixels;
@@ -21,47 +21,67 @@ struct ScrollTarget {
 // stops moving would otherwise keep growing for as long as the target answers.
 int scrollFrameLimit();
 
-// Drives a page while a long picture is taken: scroll, grab, stitch, and stop once
-// the page stops moving. The frames come from the same capture path the rest of the
-// application uses, so the overlay has to be hidden before a run starts.
+// A long capture that the user drives. It owns the growing picture and the arithmetic
+// that decides where each frame belongs, and nothing else: frames are handed to it by
+// whoever manages to read the screen, and the wheel is sent by whoever owns the window
+// under the pointer. That split is what lets the capture window stay on screen, stay
+// draggable, and stop the moment the user says so — the timer-driven version had to
+// hide the window and could not be interrupted.
+//
+// One frame is added at a time, and the answer says whether anything new was found.
+// Nothing here talks to a screen, a timer or a wheel, so a test can drive a whole
+// capture with pictures it made up.
 class ScrollCapture final : public QObject {
     Q_OBJECT
   public:
-    using Progress = std::function<void(int frames, int height)>;
-    using Done = std::function<void(QImage picture, QString message, bool ok)>;
+    enum class Outcome {
+        Added,  // The frame carried rows that were not in the picture yet.
+        Repeat, // The frame was the same page again: the content has run out.
+        Failed, // The frame could not be placed at all, even loosely.
+    };
     explicit ScrollCapture(QObject *parent = nullptr);
-    // The first frame is the one already on screen, so the first grab is not wasted.
-    // "step" is how many wheel lines to send between frames.
-    void start(QImage first, ScrollTarget target, int step, Done done);
-    void setProgress(Progress progress) {
-        progress_ = std::move(progress);
+    // Starts a run from the frame already on screen. `step` is how many wheel lines
+    // are sent between frames, which is only needed by the caller doing the scrolling.
+    void begin(QImage first, int step = 1);
+    // Places one more look at the region. Anything the frame does not have in common
+    // with the picture is added; the outcome says which of the three cases it was.
+    Outcome take(const QImage &frame);
+    // The picture as it stands, which is what the preview panel shows while the run is
+    // going and what is handed over when it ends.
+    QImage picture() const {
+        return stitcher_.picture();
     }
-    bool running() const {
-        return running_;
+    int height() const {
+        return stitcher_.height();
     }
+    int frames() const {
+        return frames_;
+    }
+    int step() const {
+        return step_;
+    }
+    // True once the picture has grown as far as a run is allowed to. The caller is
+    // expected to stop offering frames at that point and say so.
+    bool atLimit() const;
     // True when at least one frame had to be placed on a rough match. The picture is
     // still usable, only not pixel perfect.
     bool partial() const {
         return stitcher_.partial();
     }
+    bool running() const {
+        return running_;
+    }
+    // The last message worth showing the user, or an empty string.
+    QString notice() const {
+        return notice_;
+    }
     void stop();
 
   private:
-    void grab();
-    void stitch(const QImage &frame);
-    void advance();
-    void retry();
-    void succeed();
-    void fail(const QString &message);
-    ScrollTarget target_;
     ScrollStitcher stitcher_;
-    QImage held_; // The last look at the frame being waited on.
-    Progress progress_;
-    Done done_;
+    QString notice_;
     int step_ = 1;
     int frames_ = 0;
-    int stableTries_ = 0;
-    int idle_ = 0;
     bool running_ = false;
 };
 } // namespace h2d

@@ -91,6 +91,24 @@ class CaptureToolbar final : public QWidget {
     void setHistoryIndex(int index);
     // Opens the same menu the button shows, so the keyboard can reach it too.
     void showMenu();
+    // --- 长截图 ---
+    // What a long capture is doing, so the button that starts it can also stop it and
+    // the bar can say how far the run has got. Starting and stopping are the same
+    // button, which is what makes a run that can be left going and interrupted rather
+    // than one that has to be waited out.
+    void setScrollState(bool active, bool running, Qt::Orientation axis);
+    bool scrollActive() const {
+        return scrollActive_;
+    }
+    bool scrollRunning() const {
+        return scrollRunning_;
+    }
+    Qt::Orientation scrollAxis() const {
+        return scrollAxis_;
+    }
+    // What the button says the run is doing, which the window sets while frames are
+    // being placed.
+    void setScrollStatus(const QString &status);
     // Disables the whole bar and says what is going on, which is what a long capture
     // or a recognition needs while it runs.
     void setBusy(bool busy, const QString &message = {});
@@ -113,6 +131,15 @@ class CaptureToolbar final : public QWidget {
     void saveRequested();
     void ocrRequested();
     void scrollRequested();
+    // The long-capture button was pressed: true starts a run, false stops the one that
+    // is going. One button, because that is how a capture the user drives is left and
+    // interrupted.
+    void scrollRunRequested(bool running);
+    // The user asked to leave long-capture mode altogether and get the ordinary tools
+    // back for this region.
+    void scrollStopRequested();
+    // The direction the next run takes was switched.
+    void scrollAxisChanged(Qt::Orientation axis);
     void annotateRequested();
     void dismissed();
     // The user picked a size or a ratio, which the window applies to the selection
@@ -148,6 +175,10 @@ class CaptureToolbar final : public QWidget {
     int historyIndex_ = -1;
     bool busy_ = false;
     QString message_;
+    bool scrollActive_ = false;
+    bool scrollRunning_ = false;
+    Qt::Orientation scrollAxis_ = Qt::Vertical;
+    QString scrollStatus_;
 };
 
 // The column of style tools that stands beside a selection, the way a capture tool

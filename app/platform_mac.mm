@@ -273,7 +273,7 @@ bool requestAccessibility() {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
-bool scrollAt(QPoint nativePoint, int steps) {
+bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
     if (steps == 0)
         return false;
     // The wheel event goes to whatever is under the pointer, so the cursor is moved
@@ -283,17 +283,30 @@ bool scrollAt(QPoint nativePoint, int steps) {
     CGWarpMouseCursorPosition(point);
     CGAssociateMouseAndMouseCursorPosition(true);
     // The first argument is an event source, not an allocator: passing
-    // kCFAllocatorDefault there does not match the declaration at all.
-    if (CGEventRef event = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 1,
-                                                        int32_t(-steps))) {
-        // A long capture scrolls a page, and a page is read line by line, so the
-        // steps are counted in lines rather than in pixels.
-        CGEventSetLocation(event, point);
-        CGEventPost(kCGHIDEventTap, event);
-        CFRelease(event);
+    // kCFAllocatorDefault there does not match the declaration at all. A horizontal
+    // wheel is a second axis on the same event rather than an event of its own, and an
+    // event created with one axis cannot be given the other afterwards, so the two are
+    // built separately.
+    CGEventRef event = nullptr;
+    if (axis == Qt::Horizontal) {
+        event = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 2, 0, int32_t(-steps));
     } else {
-        return false;
+        // A long capture scrolls a page, and a page is read line by line, so the steps
+        // are counted in lines rather than in pixels.
+        event = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 1, int32_t(-steps));
     }
+    if (event == nullptr)
+        return false;
+    CGEventSetLocation(event, point);
+    CGEventPost(kCGHIDEventTap, event);
+    CFRelease(event);
+    return true;
+}
+// macOS leaves "can this view scroll" to the view itself, and asking a foreign process
+// for its scroll views needs accessibility access that may not have been granted. The
+// run is started by the user anyway, and a page that turns out not to move is reported
+// as the end of the content, so there is nothing to answer here.
+bool scrollableAt(QPoint, Qt::Orientation) {
     return true;
 }
 void configureNativeWindow(QWidget *widget, bool overlay) {
@@ -309,9 +322,15 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
             NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
         window.level = NSStatusWindowLevel + 1;
         window.hasShadow = NO;
+        // A long capture leaves the overlay on screen and reads the page underneath it
+        // frame by frame, so the overlay has to stay out of what is read. Windows gets
+        // this from SetWindowDisplayAffinity; on macOS the equivalent is saying that the
+        // window is not shared with anything.
+        window.sharingType = NSWindowSharingNone;
     } else {
         window.collectionBehavior = NSWindowCollectionBehaviorDefault;
         window.level = NSNormalWindowLevel;
+        window.sharingType = NSWindowSharingReadWrite;
     }
 }
 QString globalShortcutLabel() {

@@ -3171,6 +3171,133 @@ class UiTests : public QObject {
         QCOMPARE(notAccepted.count(), 0);
         cancelledOverlay.hide();
     }
+    // The region a long capture is taken of stays exactly where the user put it: it is a
+    // window onto a page, not a picture, and the page is what moves underneath it. This
+    // is what the whole rewrite is for — the old capture started scrolling the moment it
+    // was asked to and there was no way to place the region first.
+    void aLongCaptureLeavesTheRegionWhereItIs() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(245, 245, 245));
+        ScreenFrame frame{"long", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {120, 120});
+        QTest::mouseMove(&overlay, {360, 300});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {360, 300});
+        const QRect settled = overlay.selection();
+        QVERIFY(!settled.isEmpty());
+        QVERIFY2(!overlay.isScrolling(), "taking a region is not the same as starting a run");
+        // Asked for a long capture: the region is unchanged, the mode is on, and nothing
+        // has been read from the screen — the frames only come when the user starts one.
+        QSignalSpy run(&overlay, &Overlay::scrollRunRequested);
+        overlay.beginScroll(true, image.copy(settled), Qt::Vertical);
+        QVERIFY(overlay.isScrolling());
+        QCOMPARE(overlay.scrollAxis(), Qt::Vertical);
+        QCOMPARE(overlay.selection(), settled);
+        QCOMPARE(run.count(), 0);
+        QVERIFY2(overlay.isScrolling(), "long-capture mode has to be something the user can see");
+        // A second press of the same button is what starts and stops a run, so the window
+        // reports the press and the owner decides; the mode itself does not flip here.
+        const auto *bar = overlay.findChild<QWidget *>(QStringLiteral("captureToolbar"));
+        QVERIFY2(bar != nullptr, "the bar has to be there to offer the long capture");
+        QPushButton *button = nullptr;
+        for (QPushButton *candidate : bar->findChildren<QPushButton *>()) {
+            if (candidate->property("glyphName").toString() == QStringLiteral("scroll")) {
+                button = candidate;
+                break;
+            }
+        }
+        QVERIFY2(button != nullptr && button->isVisible(), "the long capture has to be offered by a button");
+        overlay.hide();
+    }
+    // REG-095's sibling: while a long capture runs, the region may only be dragged along
+    // the way the picture runs. A region that could also move sideways would read the
+    // same frame from a different column and the picture would not line up.
+    void aRunningLongCaptureOnlySlidesAlongItsOwnWay() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"slide", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {340, 280});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {340, 280});
+        const QRect settled = overlay.selection();
+        QVERIFY(!settled.isEmpty());
+        overlay.beginScroll(true, image.copy(settled), Qt::Vertical);
+        QSignalSpy moved(&overlay, &Overlay::scrollRegionMoved);
+        // The selection is in picture pixels and the mouse is put on the window in its own
+        // pixels: this frame is twice the size of the window, so one is two of the other.
+        const auto toWindow = [](QPoint pixel) { return QPoint(pixel.x() / 2, pixel.y() / 2); };
+        // Drag from inside the region, downwards and to the right at once. A vertical
+        // capture may only take the downward part.
+        const QPoint inside = toWindow(settled.center());
+        const QPoint target = inside + QPoint(60, 40);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, inside);
+        QTest::mouseMove(&overlay, inside + QPoint(-2, -2));
+        QTest::mouseMove(&overlay, target);
+        QTest::qWait(20);
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, target);
+        QVERIFY2(!moved.isEmpty(), "dragging the region has to move it");
+        const QRect after = overlay.selection();
+        QCOMPARE(after.width(), settled.width());
+        QCOMPARE(after.x(), settled.x());
+        QVERIFY2(after.y() >= settled.y(), "a vertical capture's region slides downwards, not sideways");
+        overlay.beginScroll(true, image.copy(after), Qt::Horizontal);
+        const QRect beforeSideways = overlay.selection();
+        const QPoint sidewaysStart = toWindow(beforeSideways.center());
+        const QPoint sidewaysEnd = sidewaysStart + QPoint(50, 70);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, sidewaysStart);
+        QTest::mouseMove(&overlay, sidewaysStart + QPoint(-2, -2));
+        QTest::mouseMove(&overlay, sidewaysEnd);
+        QTest::qWait(20);
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, sidewaysEnd);
+        const QRect sideways = overlay.selection();
+        QCOMPARE(sideways.height(), beforeSideways.height());
+        QCOMPARE(sideways.y(), beforeSideways.y());
+        QVERIFY2(sideways.x() != beforeSideways.x(), "a sideways capture's region slides sideways");
+        overlay.hide();
+    }
+    // The region is what the user reaches for the last of the content with, and while a
+    // run is going there is nothing else to do with the pointer: a click inside it must
+    // not start a new region, and the picture-taking keys must not fire — a picture of
+    // the page halfway through a scroll is a frame, not the page.
+    void aRunningLongCaptureOffersNoOtherCapture() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        image.fill(QColor(250, 250, 250));
+        ScreenFrame frame{"quiet", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
+        QTest::mouseMove(&overlay, {340, 280});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {340, 280});
+        const QRect settled = overlay.selection();
+        QVERIFY(!settled.isEmpty());
+        overlay.beginScroll(true, image.copy(settled), Qt::Vertical);
+        QSignalSpy copied(&overlay, &Overlay::copyRequested);
+        QSignalSpy pinned(&overlay, &Overlay::pinRequested);
+        QSignalSpy accepted(&overlay, &Overlay::accepted);
+        QSignalSpy stopped(&overlay, &Overlay::scrollStopRequested);
+        // The ordinary keys for making a picture out of the region do nothing.
+        QTest::keyClick(&overlay, Qt::Key_C, Qt::ControlModifier);
+        QTest::keyClick(&overlay, Qt::Key_Return);
+        QCOMPARE(copied.count(), 0);
+        QCOMPARE(accepted.count(), 0);
+        // Escape and the right button leave the run rather than taking a picture.
+        const QPoint inside(settled.center().x() / 2, settled.center().y() / 2);
+        QTest::mouseClick(&overlay, Qt::RightButton, Qt::NoModifier, inside);
+        QVERIFY2(stopped.count() >= 1, "the right button has to leave the run");
+        QCOMPARE(overlay.selection(), settled);
+        QTest::keyClick(&overlay, Qt::Key_Escape);
+        QVERIFY2(stopped.count() >= 2, "Escape has to leave the run");
+        overlay.hide();
+    }
 };
 QTEST_MAIN(UiTests)
 #include "ui_test.moc"

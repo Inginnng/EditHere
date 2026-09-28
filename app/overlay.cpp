@@ -82,6 +82,25 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         emit ocrRequested(selected_, ocrLanguage_);
     });
     connect(bar_, &CaptureToolbar::scrollRequested, this, [this] { emit scrollRequested(selected_); });
+    connect(bar_, &CaptureToolbar::scrollRunRequested, this, [this](bool running) {
+        if (running)
+            emit scrollRequested(selected_);
+        else
+            emit scrollStopRequested();
+    });
+    connect(bar_, &CaptureToolbar::scrollStopRequested, this, &Overlay::scrollStopRequested);
+    connect(bar_, &CaptureToolbar::scrollAxisChanged, this, [this](Qt::Orientation axis) {
+        if (scrollAxis_ == axis)
+            return;
+        scrollAxis_ = axis;
+        // Half a picture stitched downwards and half sideways is not one picture, so
+        // the run that was going is stopped before the new direction takes effect.
+        scrollPicture_ = {};
+        scrollFrames_ = 0;
+        scrollPartial_ = false;
+        scrollAxisChanged();
+        update();
+    });
     connect(bar_, &CaptureToolbar::annotateRequested, this,
             [this] { emit accepted(selected_, candidates()); });
     connect(bar_, &CaptureToolbar::dismissed, this, [this] { emit cancelled(); });
@@ -155,6 +174,11 @@ QVector<Candidate> Overlay::candidates() const {
     return result;
 }
 void Overlay::resetSelection() {
+    // A long capture belongs to the region it was taken of, so throwing the region away
+    // ends the run as well. This is said before anything else, because the owner keeps
+    // the frames that were stitched and has to stop adding to them.
+    if (scrolling_)
+        emit scrollStopRequested();
     selected_ = {};
     drawing_ = false;
     ready_ = false;
@@ -222,7 +246,11 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
     }
     p.setPen(QPen(accent(), 2));
     p.drawRoundedRect(outline, radius, radius);
-    if (ready_) {
+    // The corners are where the region is resized, and a region being resized in the
+    // middle of a long capture would change what the frames are read from without the
+    // stitched picture knowing. They are therefore not offered while the run is going;
+    // the region can still be dragged along the run to reach the last of the content.
+    if (ready_ && !scrollRunning_) {
         // The corners are where the region can be resized, so they are shown, and
         // they are round because a round handle reads as a handle rather than as a
         // speck of dirt on the picture.
@@ -241,13 +269,15 @@ void Overlay::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     drawScene(p, rect());
+    if (scrolling_)
+        drawScrollPreview(p);
     // The magnifier and the colour readout are up while a region is being found, and
     // again once it has settled whenever the pointer is inside it: pointing at the
     // picture that was just taken is exactly when a colour is wanted, so reading one
     // should not cost a keystroke. C still turns it into a mode that copies on click.
     const bool overSettledRegion =
         ready_ && !selected_.isEmpty() && selected_.contains(cursor_);
-    if (!finished_ && (!ready_ || picking_ || overSettledRegion)) {
+    if (!finished_ && !scrolling_ && (!ready_ || picking_ || overSettledRegion)) {
         QPointF at(double(cursor_.x()) * width() / frame_.image.width(),
                    double(cursor_.y()) * height() / frame_.image.height());
         for (const auto &pen : {QPen(Qt::white, 0)}) {
@@ -266,6 +296,25 @@ void Overlay::paintEvent(QPaintEvent *) {
         p.setFont(QFont("Microsoft YaHei", 10));
         const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         const QRectF hint((width() - w) / 2, 24, w, 36);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(30, 31, 37, 235));
+        p.drawRoundedRect(hint, 10, 10);
+        p.setPen(Qt::white);
+        p.drawText(hint, Qt::AlignCenter, text);
+    } else if (scrolling_) {
+        // In long-capture mode the bar carries the state, so the only thing said up here
+        // is what the region itself is for now: a window onto a page that is being
+        // scrolled or dragged underneath it.
+        const QString text =
+            scrollRunning_
+                ? (scrollAxis_ == Qt::Horizontal
+                       ? tr("横向长截图 · 拖动选区扫过要截的内容 · 再按一次长截图停止")
+                       : tr("纵向长截图 · 滚轮滚动要截的内容 · 拖动选区可补最后一屏 · 再按一次长截图停止"))
+                : tr("长截图已停止 · 按「开始」继续，或按「完成」收下这张图");
+        p.setFont(QFont("Microsoft YaHei", 10));
+        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
+        const QRectF hint(bar_ != nullptr && bar_->y() < height() / 2 ? QRectF((width() - w) / 2, height() - 60, w, 36)
+                                                                     : QRectF((width() - w) / 2, 24, w, 36));
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(30, 31, 37, 235));
         p.drawRoundedRect(hint, 10, 10);
@@ -409,12 +458,99 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     p.drawText(note, Qt::AlignVCenter, tr("C 复制颜色值 · Shift 切换格式"));
 }
 
+QRect Overlay::scrollPreviewRect() const {
+    if (!scrolling_ || selected_.isEmpty())
+        return {};
+    QVector<QRectF> tools;
+    if (bar_ != nullptr && bar_->isVisible())
+        tools.append(bar_->geometry());
+    if (sidebar_ != nullptr && sidebar_->isVisible())
+        tools.append(sidebar_->geometry());
+    const QRectF placed =
+        scrollPreviewPlacement(localRect(selected_), QSizeF(width(), height()), scrollAxis_, tools);
+    return placed.toRect();
+}
+
+void Overlay::drawScrollPreview(QPainter &p) {
+    const QRect panel = scrollPreviewRect();
+    // Nowhere to put it is better than putting it over the region it is a preview of:
+    // the region is what the user is reading the page through.
+    if (panel.isEmpty() || scrollPicture_.isNull())
+        return;
+    p.setPen(QPen(QColor(255, 255, 255, 90), 1));
+    p.setBrush(QColor(25, 28, 34, 245));
+    p.drawRoundedRect(QRectF(panel).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+    const QRectF inner = QRectF(panel).adjusted(scrollPreviewPadding, scrollPreviewPadding,
+                                                -scrollPreviewPadding, -scrollPreviewPadding);
+    // The picture is scaled to fit the panel rather than the panel being resized to the
+    // picture, which for a capture many screens long would otherwise run off the display.
+    const bool sideways = scrollAxis_ == Qt::Horizontal;
+    const int pictureLength = sideways ? scrollPicture_.width() : scrollPicture_.height();
+    const int pictureCross = sideways ? scrollPicture_.height() : scrollPicture_.width();
+    if (pictureLength <= 0 || pictureCross <= 0)
+        return;
+    // The length is scaled to fill the panel; the cross axis follows at the same scale,
+    // so what is shown is the picture's shape rather than a stretched one. The panel is
+    // much longer than it is wide, so the length is what usually decides the fit.
+    const double fit = std::min(sideways ? inner.width() / pictureLength : inner.height() / pictureLength,
+                                sideways ? inner.height() / pictureCross : inner.width() / pictureCross);
+    // The new end is the one worth seeing, so the shown window sits at the end of the
+    // picture that is growing; a preview pinned to the start would show the oldest part
+    // of the page while the run was still going.
+    const int shownLength =
+        std::min(pictureLength, int(std::floor((sideways ? inner.width() : inner.height()) / fit)));
+    const QRect source = sideways
+                             ? QRect(0, 0, shownLength, pictureCross)
+                             : QRect(0, pictureLength - shownLength, pictureCross, shownLength);
+    const QRectF frame = sideways
+                             ? QRectF(inner.right() - shownLength * fit,
+                                      inner.top() + (inner.height() - pictureCross * fit) / 2,
+                                      shownLength * fit, pictureCross * fit)
+                             : QRectF(inner.left() + (inner.width() - pictureCross * fit) / 2,
+                                      inner.bottom() - shownLength * fit, pictureCross * fit,
+                                      shownLength * fit);
+    p.save();
+    p.setClipRect(inner);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    // The parts of the page that are still to come are dimmed, so the bright band in the
+    // panel is where the region is looking right now.
+    p.setBrush(QColor(255, 255, 255, 26));
+    p.setPen(Qt::NoPen);
+    p.drawRect(inner);
+    p.drawImage(frame, scrollPicture_, source);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    p.restore();
+    // The window the region is looking through, as a share of the whole picture: the
+    // panel is how the user sees how much of the page is left above the region.
+    const int windowLength = sideways ? selected_.width() : selected_.height();
+    if (windowLength > 0 && pictureLength >= windowLength) {
+        const double band = windowLength * fit;
+        const QRectF here =
+            sideways ? QRectF(frame.right() - band, frame.top(), band, frame.height())
+                     : QRectF(frame.left(), frame.bottom() - band, frame.width(), band);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(accent(), 1.5));
+        p.drawRect(here);
+    }
+    p.setFont(QFont("Microsoft YaHei", 9));
+    p.setPen(QColor(0x8d, 0x90, 0x9c));
+    p.drawText(QRect(panel.left(), panel.bottom() + 2, panel.width(), 16), Qt::AlignHCenter,
+               tr("%1 帧").arg(scrollFrames_));
+}
+
 void Overlay::mousePressEvent(QMouseEvent *e) {
     if (busy_)
         return;
     if (e->button() == Qt::RightButton) {
         if (picking_) {
             leavePicking();
+            return;
+        }
+        // A right click in long-capture mode stops the run and gives the region back its
+        // ordinary tools, which is the same thing the bar's 退出长截图 does. Throwing the
+        // region away instead would lose the frames that were just stitched.
+        if (scrolling_) {
+            emit scrollStopRequested();
             return;
         }
         if (selected_.isEmpty())
@@ -449,7 +585,11 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
             handle_ = kMoving;
             dragOrigin_ = selected_;
             dragStart_ = pixel;
-            setCursor(Qt::SizeAllCursor);
+            // A region being dragged sideways during a long capture is how the last of
+            // the content is reached, so the cursor says that rather than that the whole
+            // region is free to go anywhere.
+            setCursor(scrolling_ ? (scrollAxis_ == Qt::Horizontal ? Qt::SizeHorCursor : Qt::SizeVerCursor)
+                                 : Qt::SizeAllCursor);
             return;
         }
         ready_ = false;
@@ -495,6 +635,36 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (handle_ == kMoving) {
         const QPoint shift = pixel - dragStart_;
         if (shift != QPoint()) {
+            if (scrolling_) {
+                // While a long capture is running the region is a window onto the page
+                // and can only be moved along the run: a region dragged sideways during
+                // a vertical capture would read a frame from a different column of the
+                // page, which cannot be stitched onto the one before it. Moving along
+                // the run is how the last of the content is reached once the page has
+                // stopped scrolling.
+                QRect moved = dragOrigin_;
+                if (scrollAxis_ == Qt::Horizontal)
+                    moved.translate(shift.x(), 0);
+                else
+                    moved.translate(0, shift.y());
+                moved = moved.intersected(QRect(QPoint(0, 0), frame_.image.size()));
+                if (!moved.isEmpty() && moved != dragOrigin_) {
+                    dragOrigin_ = moved;
+                    selected_ = moved;
+                    // The bar and the preview panel are placed against the region, so
+                    // they travel with it rather than being left pointing at where it
+                    // used to be.
+                    showBar();
+                    // Dragging the region is what moves where the next frame is read
+                    // from; a page that has stopped scrolling is not going to move again,
+                    // so the rows already placed are left as they are and the new frames
+                    // come from where the region has been put.
+                    emit scrollRegionMoved(selected_);
+                    update();
+                }
+                dragStart_ = pixel;
+                return;
+            }
             applySelection(dragOrigin_.translated(shift), true);
             dragStart_ = pixel;
         }
@@ -559,14 +729,16 @@ void Overlay::mouseDoubleClickEvent(QMouseEvent *e) {
     if (busy_ || e->button() != Qt::LeftButton)
         return;
     // A double click on the region copies it, which is the gesture a capture tool
-    // teaches before anything else.
-    if (ready_ && !selected_.isEmpty()) {
+    // teaches before anything else. It is not offered in long-capture mode: what is
+    // under the region is one frame of a page, and copying it would be copying that
+    // frame rather than the long picture the run is building.
+    if (ready_ && !selected_.isEmpty() && !scrolling_) {
         emit copyRequested(selected_);
         e->accept();
     }
 }
 void Overlay::wheelEvent(QWheelEvent *e) {
-    if (drawing_ || finished_ || ready_ || busy_ || !selected_.isEmpty())
+    if (drawing_ || finished_ || ready_ || busy_ || !selected_.isEmpty() || scrolling_)
         return;
     pointer_ = e->position().toPoint();
     cursor_ = pixelPoint(e->position());
@@ -634,6 +806,24 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         return;
     }
     if (ready_ && !selected_.isEmpty()) {
+        if (e->key() == Qt::Key_Escape && scrolling_) {
+            // Leaving the run is one thing and leaving the capture is another, so the
+            // first Escape gives the region back and the second cancels the capture.
+            emit scrollStopRequested();
+            e->accept();
+            return;
+        }
+        if (e->key() == Qt::Key_L) {
+            // The same button as the bar's, and the same rule: once to start, once to
+            // stop. Everything else is what acts on a still picture, and a long capture
+            // is not a still picture.
+            if (scrolling_)
+                emit scrollStopRequested();
+            else
+                emit scrollRequested(selected_);
+            e->accept();
+            return;
+        }
         if (e->key() == Qt::Key_Less || e->key() == Qt::Key_Comma) {
             emit historyStepRequested(-1);
             e->accept();
@@ -660,6 +850,11 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             e->accept();
             return;
         }
+        // Everything below acts on a still picture, and none of it can be about a region
+        // that is a window onto a page being scrolled: the picture those actions would
+        // take is one frame of a run, not the run itself.
+        if (scrolling_)
+            return;
         if (e->matches(QKeySequence::Copy)) {
             emit copyRequested(selected_);
             e->accept();
@@ -679,11 +874,6 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         }
         if ((shift && e->key() == Qt::Key_C) || e->key() == Qt::Key_T) {
             emit ocrRequested(selected_, ocrLanguage_);
-            e->accept();
-            return;
-        }
-        if (e->key() == Qt::Key_L) {
-            emit scrollRequested(selected_);
             e->accept();
             return;
         }
@@ -871,6 +1061,64 @@ void Overlay::setSelections(const QVector<QRect> &selections) {
         bar_->setSelections(selections);
 }
 
+// --- 长截图 ---
+
+void Overlay::beginScroll(bool running, const QImage &picture, Qt::Orientation axis, bool keep) {
+    scrollRunning_ = running;
+    if (running) {
+        scrolling_ = true;
+        scrollAxis_ = axis;
+        scrollPicture_ = picture;
+        scrollFrames_ = 0;
+        scrollPartial_ = false;
+    } else if (!keep) {
+        // The run is over and the region goes back to being an ordinary capture. The
+        // picture and the panel go with it: leaving a stitched long picture beside a
+        // region that is no longer a window onto a page would be a picture of nothing.
+        scrolling_ = false;
+        scrollPicture_ = {};
+        scrollFrames_ = 0;
+        scrollPartial_ = false;
+    }
+    if (bar_ != nullptr) {
+        bar_->setScrollState(scrolling_, scrollRunning_, scrollAxis_);
+        bar_->setScrollStatus(scrollStatus());
+        // While the region is a window onto a page the picture-making actions would take
+        // a picture of whatever happens to be under the region at that instant, which is
+        // a frame of the run rather than the page. 完成 and 关闭 are what is left.
+        bar_->setBusy(scrollRunning_, scrollRunning_ ? scrollStatus() : QString());
+    }
+    if (sidebar_ != nullptr)
+        sidebar_->setBusy(scrollRunning_);
+    // The region is settled: a long capture is taken of a region, not of a half-drawn
+    // one, and dragging it is how the last of the content is reached.
+    ready_ = !selected_.isEmpty();
+    update();
+}
+
+void Overlay::updateScroll(const QImage &picture, int frames, bool partial) {
+    scrollPicture_ = picture;
+    scrollFrames_ = frames;
+    scrollPartial_ = partial;
+    if (bar_ != nullptr)
+        bar_->setScrollStatus(scrollStatus());
+    update();
+}
+
+QString Overlay::scrollStatus() const {
+    if (!scrolling_)
+        return {};
+    if (!scrollRunning_ && scrollPicture_.isNull())
+        return tr("长截图 · %1 · 按开始采集").arg(scrollAxisLabel(scrollAxis_));
+    const int length = scrollAxis_ == Qt::Horizontal ? scrollPicture_.width() : scrollPicture_.height();
+    if (!scrollRunning_ && scrollFrames_ == 0 && !scrollPicture_.isNull())
+        return tr("长截图 · %1 · 已停止").arg(scrollLengthText(length));
+    return tr("长截图 · %1 · %2%3")
+        .arg(scrollLengthText(length))
+        .arg(scrollRunning_ ? tr("采集中，再次按下停止") : tr("已停止"))
+        .arg(scrollPartial_ ? tr(" · 有一处接缝是放宽的") : QString());
+}
+
 void Overlay::restoreLastSelection() {
     if (selections_.isEmpty())
         return;
@@ -878,6 +1126,12 @@ void Overlay::restoreLastSelection() {
 }
 
 void Overlay::applySelection(QRect area, bool move) {
+    // The region a long capture is being taken of is not reshaped underneath the frames
+    // that were already read from it: the width of a vertical capture is what every
+    // frame has to agree on, and a region that changed shape would leave the older ones
+    // with nothing to line up against.
+    if (scrolling_)
+        return;
     const QRect bounds(QPoint(0, 0), frame_.image.size());
     area = area.intersected(bounds);
     // A region that is being moved keeps its shape; one that is being sized follows the

@@ -27,6 +27,12 @@ namespace {
 // handful would be a list nobody reads, and the pictures live in a cache that is
 // trimmed to twenty anyway.
 constexpr int kHistoryMenuEntries = 5;
+// How long a page is given to come to rest after the wheel before the region is read.
+// A smooth-scrolling page needs a moment, and a frame taken while it is still sliding
+// would be stitched at a position it never rested at.
+constexpr int kScrollSettleMs = 300;
+// Two looks at the same place that agree this closely count as the page having stopped.
+constexpr double kScrollStableDifference = 1.0;
 } // namespace
 Controller::Controller(QObject *parent, const AppSettings &settings, const QString &settingsFile)
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
@@ -293,6 +299,22 @@ void Controller::capture() {
                         });
                 connect(overlay, &Overlay::scrollRequested, owner,
                         [owner, overlay](QRect) { owner->startScrollCapture(overlay); });
+                connect(overlay, &Overlay::scrollAxisChanged, owner, [owner] {
+                    // The direction is settled before the run starts, and switching it
+                    // while frames were being placed would leave half a picture stitched
+                    // one way and half the other. The window asks for a stop first.
+                    owner->abortScrollCapture(true);
+                });
+                connect(overlay, &Overlay::scrollStopRequested, owner,
+                        [owner] { owner->abortScrollCapture(true); });
+                connect(overlay, &Overlay::scrollRegionMoved, owner, [owner, overlay](QRect area) {
+                    // Dragging the region to reach the last of the content moves where
+                    // the next frame is read from, and nothing else: the wheels already
+                    // sent and the rows already placed are not undone by it.
+                    if (!overlay->isScrolling())
+                        return;
+                    owner->scrollRun_.pixels = area;
+                });
                 connect(overlay, &Overlay::historyRequested, owner,
                         [owner](int index) { owner->openHistory(index); });
                 connect(overlay, &Overlay::historyStepRequested, owner,
@@ -577,43 +599,195 @@ void Controller::runRecognition(OcrLanguageMode language) {
     });
 }
 void Controller::startScrollCapture(Overlay *source) {
+    if (source == nullptr || source->isScrolling())
+        return;
     const QRect selection = source->selection();
     const ScreenFrame frame = source->frame();
     const QRect inside = selection.intersected(QRect(QPoint(0, 0), frame.image.size()));
     if (inside.isEmpty())
         return;
-    const QImage first = frame.image.copy(inside);
+    // A long capture of a picture that is not the screen has nothing to scroll, so the
+    // session starts from the region as it is and the run is over before it begins.
     const ScrollTarget target = source->scrollTarget();
-    const CaptureStyle style = source->style();
     if (scroller_ == nullptr)
         scroller_ = new ScrollCapture(this);
+    scrollRun_ = ScrollRun{};
+    scrollRun_.screen = target.screenName;
+    scrollRun_.pixels = target.pixels;
+    scrollRun_.nativePoint = target.nativePoint;
+    scrollRun_.axis = source->scrollAxis();
+    scrollRun_.step = 1;
+    auto first = frame.image.copy(inside);
+    scroller_->begin(std::move(first), 1);
+    // The overlay stays where it is. It is on screen for the whole run, both because the
+    // user has to be able to drag the region to reach the last of the content and be-
+    // cause the window is what says whether the capture is still going; the platform
+    // keeps it out of the grabs instead of it having to hide.
     for (auto overlay : overlays_)
-        overlay->setBusy(true, tr("正在自动滚动并拼接…"));
-    // A moment of warning before the covers come off, because the next thing that
-    // happens is the page under the pointer scrolling on its own.
-    QTimer::singleShot(400, this, [this, first, target, style] {
-        for (auto overlay : overlays_)
-            overlay->hide();
-        scroller_->setProgress([this](int frames, int height) {
-            tray_.setToolTip(tr("长截图 · 已拼接 %1 帧 · %2 像素高").arg(frames).arg(height));
-        });
-        scroller_->start(first, target, 1, [this, style](QImage picture, QString message, bool ok) {
-            if (ok && !picture.isNull())
-                picture = composeCapture(picture, style);
-            partialScroll_ = scroller_->partial();
-            finishScrollCapture(std::move(picture), std::move(message), ok);
-        });
+        overlay->beginScroll(true, scroller_->picture(), scrollRun_.axis);
+    stepScrollCapture();
+}
+
+void Controller::stepScrollCapture() {
+    if (scroller_ == nullptr || !scroller_->running())
+        return;
+    Overlay *source = activeScrollOverlay();
+    if (source == nullptr)
+        return;
+    if (scroller_->atLimit()) {
+        finishScrollCapture(scroller_->picture(), scroller_->notice(), true);
+        return;
+    }
+    scrollRun_.settles = 0;
+    scrollRun_.held = {};
+    const QPoint point = scrollRun_.nativePoint;
+    const Qt::Orientation axis = scrollRun_.axis;
+    const int step = scrollRun_.step;
+    // Where the wheel goes is worked out again for every turn, because the region may
+    // have been dragged since the last one and the page under it may have changed.
+    if (!scrollAt(point, step, axis)) {
+        // Nothing under the point can scroll that way. That is not always the end: a
+        // window that was not ready for the wheel answers the second time.
+        if (++scrollRun_.idle >= 2) {
+            finishScrollCapture(scroller_->picture(), tr("选区下面的内容不能滚动，长截图到此为止。"), true);
+            return;
+        }
+        QTimer::singleShot(kScrollSettleMs, this, &Controller::stepScrollCapture);
+        return;
+    }
+    QTimer::singleShot(kScrollSettleMs, this, [this] { readScrollFrame(); });
+}
+
+void Controller::readScrollFrame() {
+    if (scroller_ == nullptr || !scroller_->running())
+        return;
+    // The region is re-read through the same path the first screenshot came from, so
+    // scaling and multi-monitor handling stay in one place. Nothing in this process is
+    // in the picture: the overlay declares itself out of capture sources.
+    QPointer<Controller> self(this);
+    captureScreens([self](QVector<ScreenFrame> frames, QString error) {
+        if (!self)
+            return;
+        auto owner = self.data();
+        Overlay *source = owner->activeScrollOverlay();
+        if (source == nullptr || owner->scroller_ == nullptr || !owner->scroller_->running())
+            return;
+        if (!error.isEmpty()) {
+            owner->finishScrollCapture({}, error, false);
+            return;
+        }
+        const ScreenFrame *frame = nullptr;
+        for (const auto &candidate : frames) {
+            if (candidate.name == owner->scrollRun_.screen) {
+                frame = &candidate;
+                break;
+            }
+        }
+        if (frame == nullptr || frame->image.isNull()) {
+            owner->finishScrollCapture({}, tr("找不到要截取的屏幕。"), false);
+            return;
+        }
+        const QRect area =
+            owner->scrollRun_.pixels.intersected(QRect(QPoint(0, 0), frame->image.size()));
+        if (area.isEmpty()) {
+            owner->finishScrollCapture({}, tr("选区已不在屏幕范围内。"), false);
+            return;
+        }
+        const QImage grabbed = frame->image.copy(area);
+        // The window under it went on screen the moment the run started, so it is what
+        // the user drags to reach content at the end of the page; a region that moved
+        // is the next frame taken from somewhere else rather than a page that scrolled.
+        owner->scrollRun_.pixels = source->selection().intersected(
+            QRect(QPoint(0, 0), frame->image.size()));
+        // A page takes a moment to stop moving, and a frame taken while it is still
+        // sliding would be stitched at a position it never rested at. Two looks at the
+        // same place that agree are what makes a frame trustworthy.
+        if (frameDifference(owner->scrollRun_.held, grabbed) <= kScrollStableDifference) {
+            owner->placeScrollFrame(grabbed);
+            return;
+        }
+        owner->scrollRun_.held = grabbed;
+        if (++owner->scrollRun_.settles > 3) {
+            owner->placeScrollFrame(grabbed);
+            return;
+        }
+        QTimer::singleShot(90, owner, [owner] { owner->readScrollFrame(); });
     });
 }
+
+void Controller::placeScrollFrame(const QImage &frame) {
+    if (scroller_ == nullptr || !scroller_->running())
+        return;
+    const auto outcome = scroller_->take(frame);
+    Overlay *source = activeScrollOverlay();
+    if (source != nullptr)
+        source->updateScroll(scroller_->picture(), scroller_->frames(), scroller_->partial());
+    switch (outcome) {
+    case ScrollCapture::Outcome::Added:
+        // One frame that showed nothing new may be a page still loading, so the wheel is
+        // tried once more before the run is called finished.
+        scrollRun_.idle = 0;
+        if (scroller_->atLimit()) {
+            finishScrollCapture(scroller_->picture(), scroller_->notice(), true);
+            return;
+        }
+        stepScrollCapture();
+        return;
+    case ScrollCapture::Outcome::Repeat:
+        if (++scrollRun_.idle >= 2) {
+            finishScrollCapture(scroller_->picture(), {}, true);
+            return;
+        }
+        stepScrollCapture();
+        return;
+    case ScrollCapture::Outcome::Failed:
+        // A frame that cannot be placed at all means the page jumped further than the
+        // overlap can span, and the picture is left as it stands rather than growing a
+        // seam that is in the wrong place.
+        finishScrollCapture(scroller_->picture(), tr("有一帧与已拼接的长图对不上，长截图到此为止。"), true);
+        return;
+    }
+}
+
+Overlay *Controller::activeScrollOverlay() const {
+    for (auto overlay : overlays_)
+        if (overlay->isScrolling())
+            return overlay;
+    return nullptr;
+}
+
+void Controller::abortScrollCapture(bool keep) {
+    if (scroller_ != nullptr)
+        scroller_->stop();
+    scrollRun_ = ScrollRun{};
+    for (auto overlay : overlays_)
+        overlay->beginScroll(false, {}, Qt::Vertical, keep);
+    updateTrayShortcut();
+}
+
 void Controller::finishScrollCapture(QImage picture, QString message, bool ok) {
     updateTrayShortcut();
+    const bool partial = scroller_ != nullptr && scroller_->partial();
+    if (scroller_ != nullptr)
+        scroller_->stop();
+    scrollRun_ = ScrollRun{};
+    for (auto overlay : overlays_)
+        overlay->beginScroll(false, {}, Qt::Vertical, false);
     // A page with something moving in it gets its frames placed on a looser match than
     // an exact one. The picture is still the whole page, so it is handed over with a
     // note rather than held back.
-    if (ok && partialScroll_) {
+    if (ok && picture.isNull()) {
+        // Nothing was ever added: the region was on something that does not scroll, and
+        // a one-frame "long capture" would be a plain screenshot with a misleading name.
+        clearOverlays();
+        if (wasVisible_)
+            activate();
+        QMessageBox::information(&editor_, tr("长截图"), tr("选区里的内容没有滚动，没有拼出比选区更长的画面。"));
+        return;
+    }
+    if (ok && partial) {
         tray_.showMessage(tr("长截图已完成"), tr("拼接有偏差：有一处是按放宽的匹配接上的，接缝可能有一两像素错位。"));
     }
-    partialScroll_ = false;
     if (!ok) {
         clearOverlays();
         if (wasVisible_)

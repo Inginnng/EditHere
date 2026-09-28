@@ -78,6 +78,41 @@ ATOM allocateShortcutId() {
         QString("EditHere.HotKey.%1.%2").arg(GetCurrentProcessId()).arg(nextId.fetch_add(1));
     return GlobalAddAtomW(reinterpret_cast<LPCWSTR>(name.utf16()));
 }
+// The style bit that says a window scrolls that way. It is the cheapest question that
+// can be asked about an arbitrary window: there is no call that says "would you react
+// to a wheel", and issuing a real wheel to find out would move the page.
+bool windowStyleScrolls(HWND window, Qt::Orientation axis) {
+    if (window == nullptr)
+        return false;
+    const LONG style = GetWindowLongW(window, GWL_STYLE);
+    if (axis == Qt::Horizontal)
+        return (style & WS_HSCROLL) != 0;
+    return (style & WS_VSCROLL) != 0;
+}
+// What the wheel would reach: the window under the point, or the child of it that
+// actually carries the scroll bar.
+HWND scrollingWindowUnder(HWND target, Qt::Orientation axis) {
+    if (target == nullptr)
+        return nullptr;
+    if (windowStyleScrolls(target, axis))
+        return target;
+    struct Search {
+        HWND found = nullptr;
+        Qt::Orientation axis = Qt::Vertical;
+    } search{nullptr, axis};
+    EnumChildWindows(
+        target,
+        [](HWND child, LPARAM data) -> BOOL {
+            auto *search = reinterpret_cast<Search *>(data);
+            if (IsWindowVisible(child) && windowStyleScrolls(child, search->axis)) {
+                search->found = child;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&search));
+    return search.found;
+}
 } // namespace
 void prepareScreenCapture(QObject *context, std::function<void()> ready) {
     // Run after QMenu / the native tray callback has returned to the event loop.
@@ -256,7 +291,7 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
 bool requestAccessibility() {
     return true;
 }
-bool scrollAt(QPoint nativePoint, int steps) {
+bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
     if (steps == 0)
         return false;
     const POINT point{nativePoint.x(), nativePoint.y()};
@@ -273,15 +308,33 @@ bool scrollAt(QPoint nativePoint, int steps) {
     // the window that gets scrolled.
     if (process == GetCurrentProcessId())
         return false;
+    // A window that cannot scroll along an axis is asked along the other one before the
+    // run starts: the wheel would otherwise be swallowed and the capture would end
+    // after a single frame with nothing said about why.
+    if (scrollingWindowUnder(target, axis) == nullptr)
+        return false;
     // The cursor is really moved: the wheel is delivered to whatever is under it, and
     // posting the message instead would need every coordinate to line up exactly.
     if (!SetCursorPos(point.x, point.y))
         return false;
     INPUT input{};
     input.type = INPUT_MOUSE;
-    input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+    input.mi.dwFlags = axis == Qt::Horizontal ? MOUSEEVENTF_HWHEEL : MOUSEEVENTF_WHEEL;
     input.mi.mouseData = DWORD(steps * WHEEL_DELTA);
     return SendInput(1, &input, sizeof(INPUT)) == 1;
+}
+bool scrollableAt(QPoint nativePoint, Qt::Orientation axis) {
+    const POINT point{nativePoint.x(), nativePoint.y()};
+    HWND target = WindowFromPoint(point);
+    if (target == nullptr)
+        return false;
+    if (HWND root = GetAncestor(target, GA_ROOT))
+        target = root;
+    DWORD process = 0;
+    GetWindowThreadProcessId(target, &process);
+    if (process == GetCurrentProcessId())
+        return false;
+    return scrollingWindowUnder(target, axis) != nullptr;
 }
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());

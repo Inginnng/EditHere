@@ -2,6 +2,7 @@
 #include "capturetoolbar.h"
 #include "model.h"
 #include "pinwindow.h"
+#include "scrollcapture.h"
 #include "scrollstitch.h"
 #include "ui.h"
 #include <QDir>
@@ -762,6 +763,151 @@ class CaptureTests : public QObject {
         const QImage first = noisyImage(64, 120, 11);
         const QImage second = noisyImage(64, 100, 22);
         QVERIFY(!matchVerticalOverlap(first, second, 4, 100).found);
+    }
+    // A long capture is now driven a frame at a time by whoever is reading the screen,
+    // rather than running a timer of its own to its limit. What the session has to get
+    // right is telling the three cases apart: a frame that adds rows, a frame that is
+    // the same page again, and a frame that cannot be placed at all.
+    void aFrameAtATimeGrowsTheLongPicture() {
+        const QImage content = stripedImage(64, 300);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        QVERIFY(session.running());
+        QCOMPARE(session.height(), 100);
+        QCOMPARE(session.frames(), 0);
+        // The page moved twenty rows, so the frame repeats all but twenty of the rows the
+        // picture already ends on and twenty more are added.
+        QCOMPARE(session.take(content.copy(0, 20, 64, 100)), ScrollCapture::Outcome::Added);
+        QCOMPARE(session.height(), 120);
+        QCOMPARE(session.frames(), 1);
+        QVERIFY(session.picture().convertToFormat(QImage::Format_ARGB32) ==
+                content.copy(0, 0, 64, 120).convertToFormat(QImage::Format_ARGB32));
+        // The same frame again means the page has run out, which is not a failure.
+        QCOMPARE(session.take(content.copy(0, 20, 64, 100)), ScrollCapture::Outcome::Repeat);
+        QVERIFY(session.running());
+        QCOMPARE(session.height(), 120);
+    }
+    void aFrameThatCannotBePlacedIsToldApartFromTheEndOfThePage() {
+        const QImage content = stripedImage(64, 300);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        // A page that jumped somewhere else shares nothing with the picture, and a seam
+        // placed on a guess would be worse than stopping.
+        QCOMPARE(session.take(noisyImage(64, 100, 31)), ScrollCapture::Outcome::Failed);
+        QVERIFY2(!session.partial(), "a frame that was refused is not a rough placement");
+        QCOMPARE(session.height(), 100);
+    }
+    void aLongCaptureStopsAtItsLimit() {
+        const QImage content = stripedImage(64, 300);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        int added = 0;
+        for (int top = 20; top + 100 <= content.height(); top += 20) {
+            if (session.take(content.copy(0, top, 64, 100)) != ScrollCapture::Outcome::Added)
+                break;
+            ++added;
+        }
+        QCOMPARE(added, 10);
+        QCOMPARE(session.height(), 300);
+        // The page has run out: a frame that shares too little with the picture to be
+        // placed is refused rather than glued on with a visible seam.
+        QCOMPARE(session.take(noisyImage(64, 100, 41)), ScrollCapture::Outcome::Failed);
+        QCOMPARE(session.height(), 300);
+    }
+    // A page that never ends is what the frame limit is for: the height limit alone would
+    // let a run grow for as long as the target answered.
+    void aLongCaptureHasAFrameLimit() {
+        QVERIFY(scrollFrameLimit() > 1);
+        QVERIFY(scrollFrameLimit() <= 200);
+        QCOMPARE(ScrollStitcher::maxHeight(), 20000);
+        // A page that keeps producing rows, for far longer than a run is allowed to go.
+        const QImage content = stripedImage(64, 40 * scrollFrameLimit());
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        int taken = 0;
+        for (int top = 20; top + 100 <= content.height() && !session.atLimit(); top += 20) {
+            if (session.take(content.copy(0, top, 64, 100)) == ScrollCapture::Outcome::Added)
+                ++taken;
+            else
+                break;
+        }
+        QCOMPARE(taken, scrollFrameLimit());
+        QVERIFY2(session.atLimit(), "a run that took every frame it was allowed is not at its limit");
+        // At the limit nothing more is added, and the session says so rather than growing
+        // past what it promised.
+        const int height = session.height();
+        QCOMPARE(session.take(content.copy(0, 20 * scrollFrameLimit(), 64, 100)),
+                 ScrollCapture::Outcome::Repeat);
+        QCOMPARE(session.height(), height);
+        QVERIFY(!session.notice().isEmpty());
+    }
+    void aStoppedLongCaptureTakesNothingMore() {
+        const QImage content = stripedImage(64, 300);
+        ScrollCapture session;
+        session.begin(content.copy(0, 0, 64, 100));
+        QCOMPARE(session.take(content.copy(0, 20, 64, 100)), ScrollCapture::Outcome::Added);
+        session.stop();
+        QVERIFY(!session.running());
+        QCOMPARE(session.take(content.copy(0, 40, 64, 100)), ScrollCapture::Outcome::Failed);
+        QCOMPARE(session.height(), 120);
+    }
+    // The panel a long capture grows in sits on the side the picture grows towards, so
+    // the part of the screen the user is reading is not covered by it.
+    void theLongPictureGrowsWhereItIsSeen() {
+        const QSizeF window(560, 360);
+        const QRectF tall(100, 20, 200, 130);
+        const QRectF down = scrollPreviewPlacement(tall, window, Qt::Vertical);
+        QVERIFY2(!down.isEmpty(), "there is room beside the region for the panel");
+        QCOMPARE(down.size(), QSizeF(scrollPreviewWidth, scrollPreviewHeight));
+        QVERIFY2(down.left() >= tall.right(), "a picture growing downwards is shown beside the region");
+        QVERIFY(down.right() <= window.width());
+        const QRectF shallow(100, 8, 260, 60);
+        const QRectF sideways = scrollPreviewPlacement(shallow, window, Qt::Horizontal);
+        QVERIFY2(!sideways.isEmpty(), "there is room under the region for the panel");
+        QVERIFY2(sideways.top() >= shallow.bottom(), "a picture growing sideways is shown under the region");
+        QVERIFY(sideways.bottom() <= window.height());
+    }
+    void theLongPicturePanelIsAlwaysOnTheScreen() {
+        const QSizeF window(560, 360);
+        // A region against the right edge leaves no room on the side a downwards picture
+        // would want, and one against the bottom edge none for a sideways one: the panel
+        // flips to the other side rather than hanging off the screen.
+        const QRectF right(400, 40, 140, 200);
+        const QRectF flipped = scrollPreviewPlacement(right, window, Qt::Vertical);
+        QVERIFY2(!flipped.isEmpty(), "the panel flipped to the other side rather than giving up");
+        QVERIFY(flipped.left() >= 0);
+        QVERIFY(flipped.right() <= window.width());
+        const QRectF bottom(60, 240, 200, 100);
+        const QRectF above = scrollPreviewPlacement(bottom, window, Qt::Horizontal);
+        QVERIFY2(!above.isEmpty(), "the panel flipped above the region");
+        QVERIFY(above.top() >= 0);
+        QVERIFY(above.bottom() <= window.height());
+    }
+    // REG-094 in reverse: a panel that cannot be put anywhere clear of the tools is not
+    // put nowhere-at-all-but-on-top-of-them, it is not drawn. A half-hidden readout is
+    // worse than one the user has to move the region to see.
+    void theLongPicturePanelWouldRatherVanishThanHideBehindATool() {
+        const QRectF region(100, 60, 200, 240);
+        const QSizeF window(560, 360);
+        // Tools that take the whole window leave nowhere clear for the panel.
+        const QVector<QRectF> everywhere{QRectF(0, 0, 560, 360)};
+        QVERIFY2(scrollPreviewPlacement(region, window, Qt::Vertical, everywhere).isEmpty(),
+                 "a panel with nowhere clear to go has to be dropped, not drawn over a tool");
+        // One tool on the far side is stepped around rather than swallowed.
+        const QVector<QRectF> oneTool{QRectF(0, 0, 560, 40)};
+        const QRectF placed = scrollPreviewPlacement(region, window, Qt::Horizontal, oneTool);
+        QVERIFY2(!placed.isEmpty(), "a single tool is stepped around, not a reason to give up");
+        QVERIFY2(!placed.intersects(oneTool.first()), "the panel has to keep off the tool");
+    }
+    void aLongPictureSaysItsLengthTheWayAPersonReadsIt() {
+        QCOMPARE(scrollLengthText(0), QStringLiteral("0 px"));
+        QCOMPARE(scrollLengthText(320), QStringLiteral("320 px"));
+        QCOMPARE(scrollLengthText(9999), QStringLiteral("9999 px"));
+        // Past four digits the exact number stops being worth reading, so it is given in
+        // tens of thousands with one decimal.
+        QCOMPARE(scrollLengthText(10000), QStringLiteral("1.0 万像素"));
+        QCOMPARE(scrollLengthText(12345), QStringLiteral("1.2 万像素"));
+        QCOMPARE(scrollLengthText(20000), QStringLiteral("2.0 万像素"));
     }
 };
 QTEST_MAIN(CaptureTests)

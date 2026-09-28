@@ -68,6 +68,12 @@ class ScrollStitcher final {
     ScrollBands bands() const {
         return bands_;
     }
+    // The frame that was placed last, which is the one the next frame has to overlap.
+    // A caller watching for the end of a page asks whether the new frame is this one
+    // again, and needs the same picture the stitcher compared against.
+    const QImage &lastFrame() const {
+        return previous_;
+    }
     int height() const {
         return body_.height() + bottom_.height();
     }

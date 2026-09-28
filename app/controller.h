@@ -42,6 +42,32 @@ class Controller final : public QObject {
     void recognizeRegion(Overlay *source, OcrLanguageMode language);
     void startScrollCapture(Overlay *source);
     void finishScrollCapture(QImage picture, QString message, bool ok);
+    // One turn of a long capture: ask the page to move, wait for it to settle, read the
+    // region again and hand the frame to the session. The session decides where the
+    // frame belongs; the window that owns the region decides when the next turn happens.
+    void stepScrollCapture();
+    // Reads the region once and settles it before the frame is placed.
+    void readScrollFrame();
+    // Hands one settled frame to the session and works out what happens next.
+    void placeScrollFrame(const QImage &frame);
+    // The window whose region a long capture is being taken of, or null.
+    Overlay *activeScrollOverlay() const;
+    // Stops a run and puts the windows back the way they were. `keep` leaves the region
+    // where it is with the toolbar up, which is what the user asking to cancel means.
+    void abortScrollCapture(bool keep);
+    // What the long capture needs to read the region again and where the wheel goes.
+    struct ScrollRun {
+        QString screen;
+        QRect pixels;
+        QPoint nativePoint;
+        Qt::Orientation axis = Qt::Vertical;
+        int step = 1;
+        int settles = 0;
+        int idle = 0;
+        QImage held;
+        bool moving = false;
+    };
+    ScrollRun scrollRun_;
     // The screen is covered while a region is being picked, so anything that opens a
     // window of its own has to take the covers off first and put them back if the user
     // changes their mind.
@@ -87,9 +113,6 @@ class Controller final : public QObject {
     // came from, which is the whole point of pinning it.
     QVector<PinWindow *> pins_;
     ScrollCapture *scroller_ = nullptr;
-    // Whether the last long capture had to place a frame on a looser match than an
-    // exact one, which is worth telling the user about once it is finished.
-    bool partialScroll_ = false;
     OcrEngine *ocr_ = nullptr;
     QPointer<OcrDialog> ocrDialog_;
     QImage ocrPicture_;

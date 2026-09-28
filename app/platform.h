@@ -3,6 +3,10 @@
 #include <QAbstractNativeEventFilter>
 #include <QKeySequence>
 #include <QObject>
+#include <QPoint>
+#include <QRect>
+#include <QString>
+#include <QVector>
 #include <functional>
 class QWidget;
 namespace h2d {
@@ -24,9 +28,14 @@ bool requestAccessibility();
 // Sends wheel steps to whatever window sits under a native point. This is what
 // drives a page while a long picture is being captured: the caller takes one grab,
 // scrolls, takes the next one and stitches them together. Positive steps scroll the
-// way a wheel pushed away from the user does. Returns false when there is nothing
-// under the point that can be scrolled.
-bool scrollAt(QPoint nativePoint, int steps);
+// way a wheel pushed away from the user does, or towards the right when the axis is
+// horizontal. Returns false when there is nothing under the point that can be
+// scrolled that way.
+bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis = Qt::Vertical);
+// Whether the window under a native point can scroll the way an axis asks. A long
+// capture asks before it starts, because scrolling a page that cannot move either
+// produces one frame and a misleading finished picture, or nothing at all.
+bool scrollableAt(QPoint nativePoint, Qt::Orientation axis);
 void configureNativeWindow(QWidget *window, bool overlay);
 QString globalShortcutLabel();
 class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {

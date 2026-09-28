@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QMouseEvent>
@@ -32,6 +33,11 @@ void paintTransparency(QPainter &painter, const QRect &area) {
     painter.restore();
 }
 namespace {
+// Free functions have no tr(); the enclosing "h2d" context groups them so the
+// translation file stays easy to review.
+inline QString tr(const char *text) {
+    return QCoreApplication::translate("h2d", text);
+}
 ThemeMode currentTheme = ThemeMode::Light;
 bool darkTheme = false;
 bool applyingTheme = false;
@@ -200,6 +206,67 @@ bool isDarkTheme() {
 }
 QColor accent() {
     return QColor(darkTheme ? "#0a84ff" : "#007aff");
+}
+QString scrollLengthText(int pixels) {
+    if (pixels < 10000)
+        return tr("%1 px").arg(pixels);
+    return tr("%1 万像素").arg(QString::number(pixels / 10000.0, 'f', 1));
+}
+QRectF scrollPreviewPlacement(const QRectF &region, QSizeF window, Qt::Orientation axis,
+                              const QVector<QRectF> &tools) {
+    const QSizeF panel(scrollPreviewWidth, scrollPreviewHeight);
+    constexpr double gap = 12, margin = 8;
+    const auto settle = [&](double x, double y) {
+        return QPointF(std::clamp(x, margin, std::max(margin, window.width() - panel.width() - margin)),
+                       std::clamp(y, margin, std::max(margin, window.height() - panel.height() - margin)));
+    };
+    const auto clear = [&](QPointF topLeft) {
+        const QRectF here(topLeft, panel);
+        for (const QRectF &tool : tools)
+            if (here.intersects(tool))
+                return false;
+        return true;
+    };
+    // Beside the region for a picture that grows downwards, under it for one that grows
+    // sideways: the panel is always put where the growth would go, which is the side the
+    // user is not reading.
+    QPointF placed;
+    if (axis == Qt::Horizontal) {
+        placed = settle(region.left(), region.bottom() + gap);
+        if (placed.y() < region.bottom() + gap || placed.y() + panel.height() > window.height() - margin)
+            placed = settle(region.left(), region.top() - gap - panel.height());
+    } else {
+        placed = settle(region.right() + gap, region.top());
+        if (placed.x() < region.right() + gap || placed.x() + panel.width() > window.width() - margin)
+            placed = settle(region.left() - gap - panel.width(), region.top());
+    }
+    if (clear(placed))
+        return {placed, panel};
+    // It has landed on a tool. Stepping out along whichever side of that tool is nearest
+    // keeps the panel as close to the region as it can be; anywhere still on a tool or
+    // off the window is not a way out, and then there is nowhere to put it.
+    double nearest = std::numeric_limits<double>::max();
+    QPointF best;
+    for (const QRectF &tool : tools) {
+        if (!QRectF(placed, panel).intersects(tool))
+            continue;
+        const QVector<QPointF> ways{settle(placed.x(), tool.top() - panel.height() - margin),
+                                    settle(placed.x(), tool.bottom() + margin),
+                                    settle(tool.left() - panel.width() - margin, placed.y()),
+                                    settle(tool.right() + margin, placed.y())};
+        for (const QPointF &way : ways) {
+            if (!clear(way))
+                continue;
+            const double distance = std::abs(way.x() - placed.x()) + std::abs(way.y() - placed.y());
+            if (distance < nearest) {
+                nearest = distance;
+                best = way;
+            }
+        }
+    }
+    if (nearest == std::numeric_limits<double>::max())
+        return {};
+    return {best, panel};
 }
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools) {
     const QSizeF panel(magnifierPanelWidth, magnifierPanelHeight);

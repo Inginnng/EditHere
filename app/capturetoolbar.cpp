@@ -228,6 +228,8 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
                                  "QPushButton[primary=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
                                  " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
                                  "QPushButton[primary=\"true\"]:hover { background: rgba(%1, %2, %3, 0.46); }"
+                                 "QPushButton[active=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
+                                 " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
                                  "QPushButton:disabled { color: rgba(232, 233, 238, 0.4); }"
                                  "QLabel { color: #e8e9ee; }")
                       .arg(mark.red())
@@ -333,7 +335,7 @@ void CaptureToolbar::retranslate() {
         else if (name == QLatin1String("ocr"))
             label = tr("文字识别");
         else if (name == QLatin1String("scroll"))
-            label = tr("长截图（自动滚动）");
+            label = scrollRunning_ ? tr("停止长截图") : tr("长截图（%1）").arg(scrollAxisLabel(scrollAxis_));
         else if (name == QLatin1String("edit"))
             label = tr("批注");
         if (!label.isEmpty()) {
@@ -348,6 +350,8 @@ void CaptureToolbar::retranslate() {
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
     if (!message_.isEmpty())
         status_->setText(message_);
+    else if (!scrollStatus_.isEmpty())
+        status_->setText(scrollStatus_);
     adjustSize();
 }
 
@@ -454,8 +458,45 @@ void CaptureToolbar::recognize() {
 }
 
 void CaptureToolbar::scroll() {
-    if (!busy_)
-        emit scrollRequested();
+    if (busy_)
+        return;
+    // One button for the whole run: the first press starts it, the next stops it. That
+    // is what makes a long capture something the user drives rather than something that
+    // runs to its limit on its own.
+    if (scrollRunning_) {
+        setScrollState(scrollActive_, false, scrollAxis_);
+        emit scrollRunRequested(false);
+        return;
+    }
+    setScrollState(true, true, scrollAxis_);
+    emit scrollRunRequested(true);
+}
+
+void CaptureToolbar::setScrollState(bool active, bool running, Qt::Orientation axis) {
+    scrollActive_ = active;
+    scrollRunning_ = running;
+    scrollAxis_ = axis;
+    for (auto *button : buttons_) {
+        if (button->property("glyphName").toString() != QLatin1String("scroll"))
+            continue;
+        button->setProperty("active", active && running);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->setToolTip(running ? tr("停止长截图（%1）").arg(scrollAxisLabel(axis))
+                                   : tr("长截图（%1）").arg(scrollAxisLabel(axis)));
+        button->setAccessibleName(button->toolTip());
+    }
+    retranslate();
+}
+
+void CaptureToolbar::setScrollStatus(const QString &status) {
+    scrollStatus_ = status;
+    if (!message_.isEmpty())
+        return;
+    status_->setText(status);
+    status_->setVisible(!status.isEmpty());
+    adjustSize();
+    raise();
 }
 
 void CaptureToolbar::annotate() {
@@ -525,6 +566,38 @@ void CaptureToolbar::buildMenu() {
     // menu is how the keyboard reaches it.
     auto *annotate = menu->addAction(tr("批注"), this, &CaptureToolbar::annotate);
     annotate->setIcon(glyph(QStringLiteral("edit"), accent()));
+    menu->addSeparator();
+    // 长截图 gets a submenu rather than a one-line entry because it has a direction and
+    // a state: a run that is going has a different set of things to offer from one that
+    // has not started, and the direction cannot be changed while frames are being placed.
+    auto *longCapture = menu->addMenu(tr("长截图"));
+    longCapture->setIcon(glyph(QStringLiteral("scroll"), accent()));
+    auto *axisVertical = longCapture->addAction(scrollAxisLabel(Qt::Vertical));
+    axisVertical->setCheckable(true);
+    axisVertical->setChecked(scrollAxis_ == Qt::Vertical);
+    axisVertical->setEnabled(!scrollRunning_);
+    connect(axisVertical, &QAction::triggered, this, [this] {
+        setScrollState(scrollActive_, scrollRunning_, Qt::Vertical);
+        emit scrollAxisChanged(Qt::Vertical);
+    });
+    auto *axisHorizontal = longCapture->addAction(scrollAxisLabel(Qt::Horizontal));
+    axisHorizontal->setCheckable(true);
+    axisHorizontal->setChecked(scrollAxis_ == Qt::Horizontal);
+    axisHorizontal->setEnabled(!scrollRunning_);
+    connect(axisHorizontal, &QAction::triggered, this, [this] {
+        setScrollState(scrollActive_, scrollRunning_, Qt::Horizontal);
+        emit scrollAxisChanged(Qt::Horizontal);
+    });
+    longCapture->addSeparator();
+    auto *run = longCapture->addAction(scrollRunning_ ? tr("停止") : tr("开始"));
+    connect(run, &QAction::triggered, this, &CaptureToolbar::scroll);
+    if (scrollActive_) {
+        auto *leave = longCapture->addAction(tr("退出长截图"));
+        connect(leave, &QAction::triggered, this, [this] {
+            setScrollState(false, false, scrollAxis_);
+            emit scrollStopRequested();
+        });
+    }
     menu->addSeparator();
     auto *ratios = menu->addMenu(tr("固定比例"));
     const QVector<CaptureRatio> choices{CaptureRatio::Free,    CaptureRatio::Square,
@@ -602,7 +675,7 @@ void CaptureToolbar::buildMenu() {
              {QStringLiteral("Ctrl+S"), tr("保存图片")},
              {QStringLiteral("Ctrl+T / Ctrl+2 / P"), tr("贴图")},
              {QStringLiteral("Shift+C / T"), tr("文字识别")},
-             {QStringLiteral("L"), tr("长截图")},
+             {QStringLiteral("L"), tr("长截图开始 / 停止")},
              {QStringLiteral("C"), tr("取色")},
              {QStringLiteral("R"), tr("恢复上次选区")},
              {QStringLiteral("H"), tr("更多选项")},

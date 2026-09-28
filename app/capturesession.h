@@ -16,6 +16,11 @@ QSize captureRatioSize(CaptureRatio ratio, int customWidth = 16, int customHeigh
 // How a ratio reads in a menu, e.g. "3:2" or "16:10".
 QString captureRatioLabel(CaptureRatio ratio, int customWidth = 16, int customHeight = 10);
 
+// The two directions a long capture can run in, as they read in a menu. The names are
+// about the page rather than about the wheel, because the user is looking at the
+// content: a vertical capture is a page that scrolls up and down.
+QString scrollAxisLabel(Qt::Orientation axis);
+
 // The rectangle a drag ends up with: the free rectangle between the two corners,
 // reshaped so that its width and height keep the locked ratio. The corner the drag
 // started from never moves, so the selection grows away from the pointer.
