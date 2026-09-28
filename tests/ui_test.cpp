@@ -2664,6 +2664,41 @@ class UiTests : public QObject {
                                 .arg(marked)));
         overlay.hide();
     }
+    // REG-089: while a block is still being looked for the arrows did nothing at all,
+    // so the only way to point at a pixel was to move the mouse over it — the one
+    // gesture that cannot land on one. The arrows aim the pointer before a capture just
+    // as they do after one.
+    void arrowsMoveThePointerBeforeAnythingHasBeenTaken() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        // A screen that changes from column to column, so a pointer that has moved
+        // shows a different enlargement even when nothing else about it has.
+        for (int column = 0; column < image.width(); ++column)
+            for (int row = 0; row < image.height(); ++row)
+                image.setPixelColor(column, row, QColor(column % 256, 200, 200));
+        ScreenFrame frame{"arrows", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        movePointerTo(overlay, {200, 180});
+        QTest::qWait(50);
+        // Nothing taken, nothing being drawn: this is the state the arrows were missing from.
+        QVERIFY(overlay.selection().isEmpty());
+        const QRect panel = magnifierPanel(overlay, QPoint(200, 180), QSize(560, 360));
+        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
+                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        const QImage before = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QTest::keyClick(&overlay, Qt::Key_Right);
+        QTest::qWait(50);
+        const QImage after = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        artifact(overlay, "magnifier-arrow-before-capture.png");
+        // The key aims, it does not take anything: there is still no region.
+        QVERIFY(overlay.selection().isEmpty());
+        QVERIFY2(before.copy(zoom) != after.copy(zoom),
+                 "the enlargement is aimed by the pointer, so an arrow key has to move the "
+                 "pointer while a block is still being looked for");
+        overlay.hide();
+    }
     // REG-088: the panel is painted by the window, but the bar and the column of tools
     // are its children and are painted over it, so a panel placed without looking at
     // them ends up half behind the toolbar — exactly the moment a colour is being read.

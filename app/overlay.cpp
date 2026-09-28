@@ -552,6 +552,16 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
     }
     const bool ctrl = e->modifiers().testFlag(Qt::ControlModifier);
     const bool shift = e->modifiers().testFlag(Qt::ShiftModifier);
+    // The arrows aim the pointer. That is what they do in every state except a drag,
+    // where they are already stretching the region that is being drawn.
+    const bool arrow = e->key() == Qt::Key_Left || e->key() == Qt::Key_Right ||
+                       e->key() == Qt::Key_Up || e->key() == Qt::Key_Down;
+    const int stepX = e->key() == Qt::Key_Left ? -1 : e->key() == Qt::Key_Right ? 1 : 0;
+    const int stepY = e->key() == Qt::Key_Up ? -1 : e->key() == Qt::Key_Down ? 1 : 0;
+    const auto aim = [&] {
+        movePointer(stepX, stepY);
+        e->accept();
+    };
     if (picking_) {
         if (e->key() == Qt::Key_Escape) {
             leavePicking();
@@ -572,6 +582,9 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             e->accept();
             return;
         }
+        // Reading a colour is aiming at a pixel, so the arrows keep working here too.
+        if (arrow)
+            return aim();
         e->ignore();
         return;
     }
@@ -612,8 +625,7 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             else if (ctrl)
                 stretchSelection(Qt::Key(e->key()), 1);
             else
-                movePointer(e->key() == Qt::Key_Left ? -1 : e->key() == Qt::Key_Right ? 1 : 0,
-                            e->key() == Qt::Key_Up ? -1 : e->key() == Qt::Key_Down ? 1 : 0);
+                movePointer(stepX, stepY);
             e->accept();
             return;
         }
@@ -655,9 +667,20 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             return;
         }
     }
-    if (drawing_ && (e->key()==Qt::Key_Left || e->key()==Qt::Key_Right || e->key()==Qt::Key_Up || e->key()==Qt::Key_Down)) {
-        QPoint next = cursor_ + QPoint(e->key()==Qt::Key_Right ? 1 : e->key()==Qt::Key_Left ? -1 : 0,
-                                       e->key()==Qt::Key_Down ? 1 : e->key()==Qt::Key_Up ? -1 : 0);
+    if (arrow && selected_.isEmpty() && !drawing_) {
+        // Nothing has been taken and nothing is being drawn: the pointer is looking for
+        // a block, and the arrows are the only way to put it on one pixel on purpose.
+        // The block being offered and the enlargement both follow it, exactly as they
+        // do when the mouse moves there.
+        movePointer(stepX, stepY);
+        picker_.update(candidates(), cursor_);
+        debounce_.start();
+        update();
+        e->accept();
+        return;
+    }
+    if (drawing_ && arrow) {
+        QPoint next = cursor_ + QPoint(stepX, stepY);
         next.setX(std::clamp(next.x(),0,frame_.image.width()));
         next.setY(std::clamp(next.y(),0,frame_.image.height()));
         keyboardOffset_ += next-cursor_;
@@ -877,7 +900,9 @@ void Overlay::movePointer(int dx, int dy) {
     const QPoint local(qRound(double(target.x()) / sx), qRound(double(target.y()) / sy));
     QCursor::setPos(mapToGlobal(local));
     cursor_ = pixelPoint(local);
-    magnifierVisible_ = !selected_.isEmpty() && selected_.contains(cursor_);
+    // Before anything has been taken the readout is up wherever the pointer is; after
+    // that it is up over the picture that was taken and nowhere else.
+    magnifierVisible_ = selected_.isEmpty() || selected_.contains(cursor_);
     update();
 }
 
