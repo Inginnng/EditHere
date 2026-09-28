@@ -2869,19 +2869,23 @@ class UiTests : public QObject {
         artifact(overlay, "wheel-level-is-kept.png");
         overlay.hide();
     }
-    // REG-092: arriving in a smaller block took it over. The block on offer was chosen
-    // again from scratch on every step of the pointer, and a fresh choice is the
-    // smallest block under the pointer, so crossing into a cell turned the block that
-    // was on offer into that cell.
-    void theBlockOnOfferIsKeptWhenThePointerMovesIntoWhatIsInsideIt() {
-        ScreenFrame frame{"inside", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
+    // REG-092: fine-tuning with the arrow keys re-chose the block from scratch at every
+    // step, so a block that had been settled on turned into whatever smaller block the
+    // pointer had travelled into — and then had to be found all over again. A mouse
+    // that travels is not fine-tuning, and there the block still follows the pointer.
+    void fineTuningWithTheArrowKeysKeepsTheBlockOnOffer() {
+        ScreenFrame frame{"fine", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(800, 600);
         QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
-        // Off the table, where the screen itself is the only block there is.
-        const QPoint outside(30, 550);
+        // Just off the left edge of the table, where the screen itself is the block.
+        const QPoint outside(65, 210);
         movePointerTo(overlay, outside);
+        // The look for the blocks of the screen runs outside this window, and its answer
+        // arrives when it arrives: it must not land in the middle of the fine-tuning
+        // and be mistaken for what the keys did.
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QProcess *>().isEmpty(), 5000);
         QTest::qWait(200);
         QVERIFY(overlay.hovered().has_value());
         const QRect whole = overlay.hovered()->bounds;
@@ -2891,14 +2895,13 @@ class UiTests : public QObject {
                                 .arg(whole.y())
                                 .arg(whole.width())
                                 .arg(whole.height())));
-        // Now into a cell of the table, which sits inside the screen: the block on
-        // offer has to be the same one, not the cell that was arrived in.
-        const QPoint inside(330, 210);
-        movePointerTo(overlay, inside);
-        QTest::qWait(100);
+        // Ten presses of the right arrow, which is more than a tremble and lands inside
+        // the table: fine-tuning must not hand back the cell that was arrived in.
+        for (int i = 0; i < 10; ++i)
+            QTest::keyClick(&overlay, Qt::Key_Right);
         QVERIFY2(overlay.hovered() && sameBlock(overlay.hovered()->bounds, whole),
-                 qPrintable(QString("the block on offer is kept when the pointer moves into what "
-                                    "is inside it (%1,%2 %3x%4, was %5,%6 %7x%8)")
+                 qPrintable(QString("fine-tuning keeps the block on offer (%1,%2 %3x%4, was %5,%6 "
+                                    "%7x%8)")
                                 .arg(overlay.hovered() ? overlay.hovered()->bounds.x() : -1)
                                 .arg(overlay.hovered() ? overlay.hovered()->bounds.y() : -1)
                                 .arg(overlay.hovered() ? overlay.hovered()->bounds.width() : -1)
@@ -2907,7 +2910,18 @@ class UiTests : public QObject {
                                 .arg(whole.y())
                                 .arg(whole.width())
                                 .arg(whole.height())));
-        artifact(overlay, "block-is-kept-inside.png");
+        // A mouse that travels somewhere else is not fine-tuning: the block follows it,
+        // which is the whole point of finding blocks by hovering.
+        movePointerTo(overlay, QPoint(330, 210));
+        QTest::qWait(100);
+        QVERIFY2(overlay.hovered() && !sameBlock(overlay.hovered()->bounds, whole),
+                 qPrintable(QString("moving the mouse takes the block under the pointer (%1,%2 "
+                                    "%3x%4)")
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.x() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.y() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.width() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.height() : -1)));
+        artifact(overlay, "fine-tuning-keeps-the-block.png");
         overlay.hide();
     }
     // REG-091: the block the wheel had picked out did not survive an arrow key. Being

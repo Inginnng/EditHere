@@ -77,20 +77,17 @@ QImage exampleImage();
 QImage previewImage(const Document &doc);
 class CandidatePicker {
   public:
-    void update(const QVector<Candidate> &candidates, QPoint point);
+    // `keep` is for a pointer being fine-tuned with the keys rather than moved about
+    // with the mouse: the block on offer stays the one on offer while the pointer is
+    // still inside it, however far the tuning takes it. A mouse that travels is not
+    // fine-tuning, and there the smallest block under the pointer is what is offered.
+    void update(const QVector<Candidate> &candidates, QPoint point, bool keep = false);
     void step(int direction);
     void reset();
     // Forgets the level the wheel picked, so the next look starts from the smallest
     // block again. Only a fresh start should do this: moving the pointer over the
     // screen is not a fresh start, and a level that was asked for has to survive it.
     void forget();
-    // Whether a block that still contains the pointer is kept when a smaller one turns
-    // up underneath it. The capture window wants that: having been asked for a row, it
-    // must not hand back a cell the moment the pointer travels into one. The editor
-    // wants the opposite, because pointing at a component is how a component is chosen.
-    void setKeepInside(bool keep) {
-        keepInside_ = keep;
-    }
     std::optional<Candidate> current() const;
     int level() const {
         return index_ + 1;
@@ -103,10 +100,6 @@ class CandidatePicker {
     QVector<Candidate> levels_;
     int index_ = 0;
     std::optional<QPoint> anchor_;
-    // The block to stay with while the pointer is still inside it, kept across looks
-    // so that arriving in a smaller block does not quietly shrink the choice.
-    std::optional<Candidate> held_;
-    bool keepInside_ = false;
     // How far out in the pile of blocks the wheel left the choice. Kept across looks
     // so that a level asked for once is the level offered everywhere until it is
     // asked for again; without it every step of the pointer handed back the smallest

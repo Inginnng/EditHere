@@ -402,36 +402,35 @@ class CoreTests : public QObject {
         picker.update(candidates, {15, 15});
         QCOMPARE(picker.current()->bounds, row12);
     }
-    void aBlockIsKeptWhileThePointerIsStillInsideIt() {
+    void aBlockIsKeptWhileThePointerIsFineTuned() {
         const auto target = manualTarget();
         const QRect cell1(10, 10, 20, 20), row12(10, 10, 40, 20), cell3(10, 30, 20, 20),
             row34(10, 30, 40, 20), lower3456(10, 30, 40, 40), entire123456(10, 10, 40, 60);
         QVector<Candidate> candidates{{lower3456, target},    {row12, target}, {cell1, target},
                                       {entire123456, target}, {cell3, target}, {row34, target}};
         CandidatePicker picker;
-        picker.setKeepInside(true);
         // Beside the cell rather than in it: the row is the smallest block here, so
         // the row is what is offered.
         picker.update(candidates, {35, 15});
         QCOMPARE(picker.current()->bounds, row12);
-        // Into the cell, which is inside the row: arriving in a smaller block is not a
-        // request for it, so the row stays.
-        picker.update(candidates, {15, 15});
+        // Fine-tuning into the cell with the keys keeps the row: a block that moved
+        // while it was being fine-tuned is a block that has to be found again.
+        picker.update(candidates, {15, 15}, true);
         QCOMPARE(picker.current()->bounds, row12);
-        picker.update(candidates, {25, 25});
+        picker.update(candidates, {25, 25}, true);
         QCOMPARE(picker.current()->bounds, row12);
-        // Out of the row altogether, where the smallest block under the pointer is
-        // offered again.
+        // Arriving there with the mouse takes what is under the pointer instead, which
+        // is what finding blocks by hovering is for. It has to be a spot the pointer
+        // has really travelled to: a look at the very spot it is already on is not a
+        // request for anything.
+        picker.update(candidates, {12, 12});
+        QCOMPARE(picker.current()->bounds, cell1);
+        // Out of the row altogether: the smallest block under the pointer again, and
+        // fine-tuning from there keeps that.
         picker.update(candidates, {15, 35});
         QCOMPARE(picker.current()->bounds, cell3);
-        picker.step(1);
-        QCOMPARE(picker.current()->bounds, row34);
-        picker.update(candidates, {15, 15});
-        QCOMPARE(picker.current()->bounds, row12);
-        // A fresh start keeps nothing.
-        picker.forget();
-        picker.update(candidates, {15, 15});
-        QCOMPARE(picker.current()->bounds, cell1);
+        picker.update(candidates, {25, 35}, true);
+        QCOMPARE(picker.current()->bounds, cell3);
     }
     void equalAreaAndDuplicateRegions() {
         auto native = manualTarget(), visual = manualTarget();

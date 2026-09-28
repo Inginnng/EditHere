@@ -42,10 +42,6 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
     // came from, so the pointer is somewhere on it; a keypress before the first move of
     // the mouse then starts from there instead of from the corner.
     pointer_ = mapFromGlobal(QCursor::pos());
-    // While a block is being looked for the one on offer is kept as long as the
-    // pointer is still inside it: a block arrived at by moving is not a block asked
-    // for, and a row must not turn back into a cell because the pointer crossed one.
-    picker_.setKeepInside(true);
     setAttribute(Qt::WA_DeleteOnClose, false);
     hoverTimer_.setSingleShot(true);
     hoverTimer_.setInterval(250);
@@ -709,7 +705,11 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         // The block being offered and the enlargement both follow it, exactly as they
         // do when the mouse moves there.
         movePointer(stepX, stepY);
-        picker_.update(candidates(), cursor_);
+        // The arrows are how a block already settled is fine-tuned, so the block on
+        // offer is kept while the pointer is still inside it. A mouse that travels is
+        // not fine-tuning: there the block follows the pointer, which is the whole
+        // point of finding blocks by hovering.
+        picker_.update(candidates(), cursor_, true);
         debounce_.start();
         update();
         e->accept();
