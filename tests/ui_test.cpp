@@ -46,6 +46,37 @@
 #include <QWheelEvent>
 using namespace h2d;
 
+// Where the crosshair is, which is where the window thinks the pointer is: a white
+// cross nine pixels each way on a screen that has nothing else as light. It is read off
+// the rendering rather than asked of the window, because what has to hold is what the
+// user sees.
+static QPoint crosshair(const QImage &image, int left, int right) {
+    int row = -1, start = 0, longest = 0;
+    for (int y = 100; y < 300; ++y) {
+        int first = -1, width = 0;
+        for (int x = left; x <= right; ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            const bool light = pixel.red() > 244 && pixel.green() > 244 && pixel.blue() > 244;
+            if (light) {
+                if (first < 0)
+                    first = x;
+                ++width;
+            } else if (width > longest) {
+                longest = width;
+                row = y;
+                start = first;
+                width = 0;
+                first = -1;
+            }
+        }
+        if (width > longest) {
+            longest = width;
+            row = y;
+            start = first;
+        }
+    }
+    return {start + longest / 2, row};
+}
 // Puts the pointer on a point and makes sure the window is told about it. A move to
 // where the pointer already is is not delivered at all, and a test that runs after
 // another one that left the pointer on the same spot would otherwise be testing a
@@ -53,6 +84,15 @@ using namespace h2d;
 static void movePointerTo(QWidget &overlay, QPoint at) {
     QTest::mouseMove(&overlay, at + QPoint(3, 3));
     QTest::mouseMove(&overlay, at);
+}
+// The same, on a point that is not a whole pixel. A mouse is put where the system can
+// put it, and on a scaled display that is a fraction of a pixel off the pixel that was
+// aimed at, which is the ordinary state of affairs rather than an oddity.
+static void putPointerOn(QWidget &overlay, QPointF at) {
+    for (const QPointF &spot : {at + QPointF(3, 3), at}) {
+        QMouseEvent move(QEvent::MouseMove, spot, spot, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&overlay, &move);
+    }
 }
 // The rectangles the window's own tools occupy. They are children, so they are painted
 // over the magnifier, and the panel has to be placed clear of them.
@@ -2662,6 +2702,105 @@ class UiTests : public QObject {
         QVERIFY2(marked > 2000,
                  qPrintable(QString("the frame has to be enlarged with the pixels it marks (%1)")
                                 .arg(marked)));
+        overlay.hide();
+    }
+    // REG-090: an arrow key took its step in pixels of the grab and then rounded the
+    // answer back into pixels of the pointer. On a scaled display that rounding
+    // sometimes landed on the pixel the step had started from, which is a key that
+    // looks dead; and it rounded each axis on its own, which is a key that moves the
+    // pointer two ways at once, the first press going askew and the ones after it
+    // going straight because the askew part had been rounded out of them. A step is one
+    // whole pixel of the pointer now, on the axis that was pressed and nowhere else.
+    void arrowKeysMoveThePointerOneStepAtATime() {
+        // A display at one and a quarter: the grab is 700 pixels across and the window
+        // is 560, which is the 125% setting where the rounding showed. Whole-number
+        // scalings hide the fault, which is why it took one of these to see it.
+        QImage image(700, 450, QImage::Format_ARGB32);
+        image.fill(QColor(240, 240, 240));
+        ScreenFrame frame{"steps", {0, 0, 560, 360}, {0, 0, 700, 450}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(560, 360);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QVERIFY(overlay.selection().isEmpty());
+        // Neither does a mouse land on a whole pixel: at one and a quarter the only
+        // places it can be put are fifths of a pixel apart. Starting from such a point
+        // is what used to send the first press off at an angle.
+        putPointerOn(overlay, QPointF(200.8, 179.2));
+        QTest::qWait(50);
+        // What comes back after the pointer has been asked to move: the system puts it
+        // on the nearest place it can address — a fifth of a pixel short of the one
+        // that was asked for — and then reports that place as a move of the mouse. The
+        // report is not the user, and taking it as one is what pulled the aim back and
+        // made a key do nothing.
+        const auto echo = [&] {
+            const QPoint at = overlay.pointer();
+            const QPointF rounded(std::floor(at.x() * 1.25) / 1.25,
+                                  std::floor(at.y() * 1.25) / 1.25);
+            QMouseEvent move(QEvent::MouseMove, rounded, rounded, Qt::NoButton, Qt::NoButton,
+                             Qt::NoModifier);
+            QApplication::sendEvent(&overlay, &move);
+            QVERIFY2(overlay.pointer() == at,
+                     qPrintable(QString("the answer of the system must not move the pointer "
+                                        "back off %1,%2 (it is at %3,%4)")
+                                    .arg(at.x())
+                                    .arg(at.y())
+                                    .arg(overlay.pointer().x())
+                                    .arg(overlay.pointer().y())));
+        };
+        const QPoint start = overlay.pointer();
+        const QPoint drawn = crosshair(
+            overlay.grab().toImage().convertedTo(QImage::Format_ARGB32), 150, 240);
+        QVERIFY2(std::abs(drawn.x() - start.x()) <= 2 && std::abs(drawn.y() - start.y()) <= 2,
+                 qPrintable(QString("the crosshair is drawn where the pointer is (%1,%2 and %3,%4)")
+                                .arg(drawn.x())
+                                .arg(drawn.y())
+                                .arg(start.x())
+                                .arg(start.y())));
+        // Right, up, left, down and back again, in runs: every press has to move the
+        // pointer one step, and no press may touch the axis that was not pressed.
+        const QVector<QPair<Qt::Key, QPoint>> presses{
+            {Qt::Key_Right, {1, 0}},  {Qt::Key_Right, {1, 0}}, {Qt::Key_Up, {0, -1}},
+            {Qt::Key_Up, {0, -1}},    {Qt::Key_Up, {0, -1}},   {Qt::Key_Left, {-1, 0}},
+            {Qt::Key_Down, {0, 1}},   {Qt::Key_Down, {0, 1}},  {Qt::Key_Left, {-1, 0}},
+            {Qt::Key_Right, {1, 0}}};
+        QPoint asked = start;
+        for (const auto &press : presses) {
+            QTest::keyClick(&overlay, press.first);
+            QTest::qWait(20);
+            const QPoint at = overlay.pointer();
+            const QPoint moved(at.x() - asked.x(), at.y() - asked.y());
+            const bool sideways = press.second.x() != 0;
+            const int along = sideways ? moved.x() : moved.y();
+            const int across = sideways ? moved.y() : moved.x();
+            const int expected = sideways ? press.second.x() : press.second.y();
+            // A press that moves nothing is one that was rounded away. A press that
+            // moves the other axis as well is the two axes being rounded each on its
+            // own. A press that moves two steps is a step that was taken too coarse.
+            // None of the three may happen, however fine the pixels underneath are.
+            QVERIFY2(across == 0 && along == expected,
+                     qPrintable(QString("one press is one step on the axis that was pressed and "
+                                        "nothing on the other (moved %1,%2, expected %3,%4)")
+                                    .arg(moved.x())
+                                    .arg(moved.y())
+                                    .arg(press.second.x())
+                                    .arg(press.second.y())));
+            asked = at;
+            echo();
+        }
+        // Ten presses, ten steps: the pointer has to have arrived where they asked for,
+        // not hovered about the place because every other press was taken back again.
+        QCOMPARE(overlay.pointer(), start + QPoint(1, -1));
+        const QPoint ended = crosshair(
+            overlay.grab().toImage().convertedTo(QImage::Format_ARGB32), 150, 240);
+        QVERIFY2(std::abs(ended.x() - overlay.pointer().x()) <= 2 &&
+                     std::abs(ended.y() - overlay.pointer().y()) <= 2,
+                 qPrintable(QString("the crosshair follows the pointer to %1,%2 (it is at %3,%4)")
+                                .arg(overlay.pointer().x())
+                                .arg(overlay.pointer().y())
+                                .arg(ended.x())
+                                .arg(ended.y())));
+        artifact(overlay, "magnifier-arrow-steps.png");
         overlay.hide();
     }
     // REG-089: while a block is still being looked for the arrows did nothing at all,

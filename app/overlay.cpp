@@ -38,6 +38,10 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);
     setCursor(Qt::CrossCursor);
     setGeometry(frame_.logicalGeometry);
+    // Where the pointer is to start with. The window is put over the screen the grab
+    // came from, so the pointer is somewhere on it; a keypress before the first move of
+    // the mouse then starts from there instead of from the corner.
+    pointer_ = mapFromGlobal(QCursor::pos());
     setAttribute(Qt::WA_DeleteOnClose, false);
     hoverTimer_.setSingleShot(true);
     hoverTimer_.setInterval(250);
@@ -115,6 +119,7 @@ void Overlay::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     const QPoint local = mapFromGlobal(QCursor::pos());
     if (rect().contains(local)) {
+        pointer_ = local;
         cursor_ = pixelPoint(local);
         magnifierVisible_ = true; update();
     }
@@ -419,6 +424,7 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton || finished_)
         return;
     const QPoint pixel = pixelPoint(e->position());
+    pointer_ = e->position().toPoint();
     if (picking_) {
         // The colour under the pointer is what the window is for at this moment, and
         // the region is left exactly where it was.
@@ -463,7 +469,20 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
 void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (busy_)
         return;
-    const QPoint pixel = pixelPoint(e->position());
+    const QPointF local = e->position();
+    // A request to put the pointer somewhere is answered with the same place rounded
+    // off to the pixels the system can address, and on a scaled display those are finer
+    // than a whole pixel of the pointer. Taking that answer as the truth dragged the aim
+    // back by the rounding on every press — which is what made an arrow key sometimes do
+    // nothing — and the two axes were rounded independently, which is what made one key
+    // move the pointer in two directions at once. Anything less than a whole pixel away
+    // is that answer rather than the user, and is left alone. A drag is always the user.
+    const bool dragging = drawing_ || handle_ != -1;
+    const bool adopted = dragging || std::abs(local.x() - pointer_.x()) >= 1.0 ||
+                         std::abs(local.y() - pointer_.y()) >= 1.0;
+    if (adopted)
+        pointer_ = local.toPoint();
+    const QPoint pixel = pixelPoint(local);
     if (handle_ == kMoving) {
         const QPoint shift = pixel - dragStart_;
         if (shift != QPoint()) {
@@ -487,7 +506,8 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
         return;
     }
     if (!drawing_) { native_.clear(); picker_.reset(); }
-    cursor_ = pixel + (drawing_ ? keyboardOffset_ : QPoint());
+    if (adopted)
+        cursor_ = pixel + (drawing_ ? keyboardOffset_ : QPoint());
     cursor_.setX(std::clamp(cursor_.x(), 0, frame_.image.width()));
     cursor_.setY(std::clamp(cursor_.y(), 0, frame_.image.height()));
     magnifierVisible_ = drawing_ || picking_ || !ready_ ||
@@ -512,6 +532,7 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
         return;
     drawing_ = false;
     setCursor(Qt::CrossCursor);
+    pointer_ = e->position().toPoint();
     QPoint end = pixelPoint(e->position()) + keyboardOffset_;
     end.setX(std::clamp(end.x(),0,frame_.image.width()));
     end.setY(std::clamp(end.y(),0,frame_.image.height()));
@@ -538,6 +559,7 @@ void Overlay::mouseDoubleClickEvent(QMouseEvent *e) {
 void Overlay::wheelEvent(QWheelEvent *e) {
     if (drawing_ || finished_ || ready_ || busy_ || !selected_.isEmpty())
         return;
+    pointer_ = e->position().toPoint();
     cursor_ = pixelPoint(e->position());
     picker_.update(candidates(), cursor_);
     if (e->angleDelta().y() != 0)
@@ -886,20 +908,18 @@ void Overlay::hideTools() {
 void Overlay::movePointer(int dx, int dy) {
     if ((dx == 0 && dy == 0) || frame_.image.isNull() || width() <= 0 || height() <= 0)
         return;
-    // One step is one pixel as the window manager counts them, which on a scaled
-    // display is more than one pixel of the grab; the step is taken in the grab's own
-    // units because that is what the enlargement and the readout are counted in.
-    const double sx = double(frame_.image.width()) / width();
-    const double sy = double(frame_.image.height()) / height();
-    QPoint target = cursor_ + QPoint(qRound(dx * std::max(1.0, sx)), qRound(dy * std::max(1.0, sy)));
-    target.setX(std::clamp(target.x(), 0, frame_.image.width() - 1));
-    target.setY(std::clamp(target.y(), 0, frame_.image.height() - 1));
-    // A pointer can only be put on a whole logical pixel, so the step is settled on one
-    // before it is handed back to the window manager; anything else would be rounded
-    // away and the key would look dead on a scaled display.
-    const QPoint local(qRound(double(target.x()) / sx), qRound(double(target.y()) / sy));
-    QCursor::setPos(mapToGlobal(local));
-    cursor_ = pixelPoint(local);
+    // One whole step of the pointer, on one axis only. The step is taken here and not
+    // in pixels of the grab: on a scaled display a grab pixel is a fraction of a step,
+    // so a step taken there and rounded back into steps of the pointer sometimes
+    // rounded to where it had started — an arrow key that appeared to do nothing — and
+    // sometimes rounded the two axes different ways, which is what made pressing one
+    // key move the pointer in two directions at once.
+    const QPoint base(std::clamp(pointer_.x(), 0, width() - 1),
+                      std::clamp(pointer_.y(), 0, height() - 1));
+    pointer_ = QPoint(std::clamp(base.x() + dx, 0, width() - 1),
+                      std::clamp(base.y() + dy, 0, height() - 1));
+    QCursor::setPos(mapToGlobal(pointer_));
+    cursor_ = pixelPoint(pointer_);
     // Before anything has been taken the readout is up wherever the pointer is; after
     // that it is up over the picture that was taken and nowhere else.
     magnifierVisible_ = selected_.isEmpty() || selected_.contains(cursor_);
