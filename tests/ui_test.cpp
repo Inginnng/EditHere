@@ -2803,6 +2803,83 @@ class UiTests : public QObject {
         artifact(overlay, "magnifier-arrow-steps.png");
         overlay.hide();
     }
+    // REG-091: the block the wheel had picked out did not survive an arrow key. Being
+    // asked to move the pointer is answered with a move event of the pointer's own,
+    // and that event started the search for a block all over again, which put the
+    // smallest block under the pointer back and threw away the bigger one the wheel
+    // had just picked. The answer of the system is not the user moving the mouse, so
+    // the search is not started again for it.
+    void theLayerPickedWithTheWheelSurvivesAnArrowKey() {
+        // A table, because it is the ordinary shape that offers several blocks at one
+        // spot — a cell inside a row inside the whole table — which is what gives the
+        // wheel something to choose between.
+        QImage image(800, 600, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        {
+            QPainter p(&image);
+            const QRect table(70, 60, 600, 400);
+            for (int x = 0; x <= 3; ++x)
+                p.fillRect(table.x() + x * table.width() / 3, table.y(), 1, table.height() + 1,
+                           QColor("#404040"));
+            for (int y = 0; y <= 4; ++y)
+                p.fillRect(table.x(), table.y() + y * table.height() / 4, table.width() + 1, 1,
+                           QColor("#404040"));
+        }
+        ScreenFrame frame{"layer", {0, 0, 800, 600}, {0, 0, 800, 600}, image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        // A cell of the table: several blocks contain this spot, one inside the next.
+        const QPoint spot(330, 210);
+        movePointerTo(overlay, spot);
+        QTest::qWait(200);
+        QVERIFY2(overlay.hovered().has_value(),
+                 qPrintable(QString("a block is offered at %1,%2").arg(spot.x()).arg(spot.y())));
+        const QRect smallest = overlay.hovered()->bounds;
+        // The wheel walks outwards through the blocks that contain the pointer: the
+        // cell, then the row it sits in, then the table.
+        QWheelEvent turn(QPointF(spot), QPointF(overlay.mapToGlobal(spot)), QPoint(), QPoint(0, 120),
+                         Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&overlay, &turn);
+        QTest::qWait(50);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect bigger = overlay.hovered()->bounds;
+        QVERIFY2(bigger != smallest,
+                 qPrintable(QString("the wheel picks another block than the one first offered "
+                                    "(%1,%2 %3x%4 and %5,%6 %7x%8)")
+                                .arg(smallest.x())
+                                .arg(smallest.y())
+                                .arg(smallest.width())
+                                .arg(smallest.height())
+                                .arg(bigger.x())
+                                .arg(bigger.y())
+                                .arg(bigger.width())
+                                .arg(bigger.height())));
+        // Now an arrow key, which asks for the pointer to be put one step along. What
+        // comes back is the answer of the system rather than the user, and it must not
+        // start the search again: the block the wheel picked is still the one on offer.
+        QTest::keyClick(&overlay, Qt::Key_Right);
+        QTest::qWait(50);
+        const QPoint at = overlay.pointer();
+        QMouseEvent echo(QEvent::MouseMove, QPointF(at), QPointF(at), Qt::NoButton, Qt::NoButton,
+                         Qt::NoModifier);
+        QApplication::sendEvent(&overlay, &echo);
+        QTest::qWait(50);
+        QVERIFY2(overlay.hovered() && overlay.hovered()->bounds == bigger,
+                 qPrintable(QString("the block picked with the wheel is still the one offered "
+                                    "(%1,%2 %3x%4, but now %5,%6 %7x%8)")
+                                .arg(bigger.x())
+                                .arg(bigger.y())
+                                .arg(bigger.width())
+                                .arg(bigger.height())
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.x() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.y() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.width() : -1)
+                                .arg(overlay.hovered() ? overlay.hovered()->bounds.height() : -1)));
+        artifact(overlay, "layer-survives-arrow.png");
+        overlay.hide();
+    }
     // REG-089: while a block is still being looked for the arrows did nothing at all,
     // so the only way to point at a pixel was to move the mouse over it — the one
     // gesture that cannot land on one. The arrows aim the pointer before a capture just

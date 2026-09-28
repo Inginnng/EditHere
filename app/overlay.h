@@ -5,6 +5,7 @@
 #include "settings.h"
 #include <QColor>
 #include <QImage>
+#include <optional>
 #include <QProcess>
 #include <QRect>
 #include <QTimer>
@@ -43,6 +44,11 @@ class Overlay final : public QWidget {
     // underneath are.
     QPoint pointer() const {
         return pointer_;
+    }
+    // The block the window is offering, which is the one a click would take. It is the
+    // block the wheel picked, so a caller can tell whether that choice was kept.
+    std::optional<Candidate> hovered() const {
+        return picker_.current();
     }
     // The corner radius, border and shadow the user settled on; the caller applies
     // them again to a picture the window did not take itself, such as a long capture.

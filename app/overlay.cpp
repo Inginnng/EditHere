@@ -482,6 +482,13 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
                          std::abs(local.y() - pointer_.y()) >= 1.0;
     if (adopted)
         pointer_ = local.toPoint();
+    // Everything below is work done on the assumption that the user moved the mouse,
+    // and this is not the user. Throwing the block away and looking for it again here
+    // dropped the layer the wheel had picked and handed back the smallest block under
+    // the pointer, which is why stepping the pointer with an arrow key put the little
+    // block straight back.
+    if (!adopted)
+        return;
     const QPoint pixel = pixelPoint(local);
     if (handle_ == kMoving) {
         const QPoint shift = pixel - dragStart_;
