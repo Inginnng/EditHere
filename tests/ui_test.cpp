@@ -1636,6 +1636,119 @@ class UiTests : public QObject {
                      defaults.toolbarActions.contains(definition.id));
         editor.hide();
     }
+    void movementCardsCountAndOpenTextFromSidebar() {
+        auto doc = gridDocument();
+        doc.layout = createLayout(doc.image.size(), doc.candidates);
+        transformLayoutGroup(*doc.layout, doc.layout->groups[0].id,
+                             doc.layout->groups[0].originalBounds.translated(20, 10));
+        const auto markers = movementMarkers(*doc.layout, doc.notes);
+        QVERIFY(!markers.isEmpty());
+        Editor editor;
+        editor.setDocument(doc);
+        auto count = editor.findChild<QLabel *>("noteCount");
+        QVERIFY(count);
+        const auto expected = QString("批注 %1 条").arg(markers.size());
+        QCOMPARE(count->text(), expected);
+        QVERIFY(!editor.findChild<QLabel *>("emptyNotes")->isVisible());
+        QWidget *movement = nullptr;
+        for (auto card : editor.findChildren<QWidget *>("noteCard"))
+            if (card->property("orphanMovement").toBool() && card->isVisible()) { movement = card; break; }
+        QVERIFY(movement);
+        QTest::mouseClick(movement->findChild<QLabel *>("noteCoordinates"), Qt::LeftButton);
+        QTRY_COMPARE(editor.document().notes.size(), 1);
+        const auto id = editor.document().notes.first().id;
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + id);
+        QVERIFY(input);
+        QTRY_VERIFY(input->hasFocus());
+        QCOMPARE(count->text(), expected);
+        finishInlineNote(editor, "移动后与标题对齐");
+        QCOMPARE(editor.document().notes.first().comment, QString("移动后与标题对齐"));
+        QCOMPARE(count->text(), expected);
+        QTest::mouseClick(editor.findChild<QWidget *>("noteText_" + id)->parentWidget(), Qt::LeftButton, Qt::NoModifier, QPoint(2, 2));
+        QTRY_VERIFY(input->hasFocus());
+        QCOMPARE(editor.document().notes.size(), 1);
+        artifact(editor, "movement-card-edit.png");
+        editor.hide();
+    }
+    void movementKeepsCreationOrderWithoutText() {
+        Editor editor;
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        editor.findChild<QPushButton *>("addGlobalNote")->click();
+        finishInlineNote(editor, "移动前的批注");
+        editor.findChild<QPushButton *>("explodeButton")->click();
+        auto layout = editor.layoutCanvas();
+        QVERIFY(layout);
+        layout->zoomRequested(1.0);
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+        QVERIFY(!layout->selected().isEmpty());
+        layout->transformSelection(QRectF(440, 60, 120, 90));
+        QCOMPARE(editor.document().notes.size(), 2);
+        QVERIFY(editor.document().notes[1].movementSource.has_value());
+        QVERIFY(editor.document().notes[1].comment.isEmpty());
+        const QString movementId = editor.document().notes[1].id;
+        editor.findChild<QPushButton *>("addGlobalNote")->click();
+        finishInlineNote(editor, "移动后的批注");
+        QCOMPARE(editor.document().notes.size(), 3);
+        QCOMPARE(editor.document().notes[1].id, movementId);
+        auto count = editor.findChild<QLabel *>("noteCount");
+        QCOMPARE(count->text(), QString("批注 3 条"));
+        auto movementCard = editor.findChild<QWidget *>("noteText_" + movementId)->parentWidget();
+        auto badge = movementCard->findChild<QLabel *>("noteBadge");
+        QCOMPARE(badge->text(), QString("2"));
+        QCOMPARE(editor.document().notes[2].comment, QString("移动后的批注"));
+        QTest::mouseClick(movementCard->findChild<QLabel *>("noteCoordinates"), Qt::LeftButton);
+        auto movementText = editor.findChild<QPlainTextEdit *>("noteText_" + movementId);
+        QTRY_VERIFY(movementText->hasFocus());
+        finishInlineNote(editor, "移动的说明", movementId);
+        QCOMPARE(editor.document().notes[1].id, movementId);
+        QCOMPARE(badge->text(), QString("2"));
+        QCOMPARE(count->text(), QString("批注 3 条"));
+        auto saved = serializeDocument(editor.document(), true);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("ordered.edithere");
+        saveBytes(path, saved);
+        const auto loaded = loadDocument(path);
+        QCOMPARE(loaded.notes.size(), 3);
+        QCOMPARE(loaded.notes[1].id, movementId);
+        editor.hide();
+    }
+    void emptyMovementAnnotationFollowsItsBlock() {
+        Editor editor;
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        editor.setDocument(document);
+        editor.resize(1240, 820);
+        editor.findChild<QPushButton *>("explodeButton")->click();
+        auto layout = editor.layoutCanvas();
+        QVERIFY(layout);
+        layout->zoomRequested(1.0);
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {100, 110}));
+        QVERIFY(!layout->selected().isEmpty());
+        const auto home = layout->selectionBounds();
+        layout->transformSelection(QRectF(440, 60, 120, 90));
+        QCOMPARE(editor.document().notes.size(), 1);
+        QVERIFY(editor.document().notes.first().movementSource.has_value());
+        // Putting the block back leaves no movement, and an empty movement annotation
+        // has nothing else to stand on.
+        layout->transformSelection(home);
+        QVERIFY(editor.document().notes.isEmpty());
+        QVERIFY(movementMarkers(*editor.document().layout, editor.document().notes).isEmpty());
+        QCOMPARE(editor.findChild<QLabel *>("noteCount")->text(), QString("批注 0 条"));
+        // Text written for a movement is feedback of its own and outlives the block
+        // returning to its place.
+        layout->transformSelection(QRectF(440, 60, 120, 90));
+        const QString movementId = editor.document().notes.first().id;
+        finishInlineNote(editor, "这一格挪到右边", movementId);
+        layout->transformSelection(home);
+        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes.first().id, movementId);
+        QCOMPARE(editor.document().notes.first().comment, QString("这一格挪到右边"));
+        editor.hide();
+    }
     void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {
         Editor editor;
         editor.setDocument(gridDocument());
@@ -1940,12 +2053,16 @@ class UiTests : public QObject {
         QVERIFY(!canvas->selected().isEmpty());
         QVERIFY(!canvas->drawingMode());
         const auto afterManual = canvas->state();
-        QCOMPARE(editor.document().notes.size(), 1);
+        // Moving the block above is already an annotation, so the manual draft is
+        // the second one and stays behind it.
+        QCOMPARE(editor.document().notes.size(), 2);
+        QVERIFY(editor.document().notes.first().movementSource.has_value());
         auto manualDraft = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
         QVERIFY(manualDraft);
         QTRY_VERIFY(manualDraft->hasFocus());
         canvas->setFocus();
-        QTRY_VERIFY(editor.document().notes.isEmpty());
+        QTRY_COMPARE(editor.document().notes.size(), 1);
+        QVERIFY(editor.document().notes.first().movementSource.has_value());
         auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
         QVERIFY(undo && redo && undo->isEnabled());
         undo->click();
@@ -2154,9 +2271,9 @@ class UiTests : public QObject {
         QVERIFY(component->isVisible() && !component->isChecked());
         QCOMPARE(result->zoom(), 1.0);
         QTest::mouseClick(result, Qt::LeftButton, Qt::NoModifier, QPoint(500, 80));
-        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes.size(), 2);
         finishInlineNote(editor, "标题希望更有编辑感。");
-        QCOMPARE(editor.document().notes[0].point, QPoint(500, 80));
+        QCOMPARE(editor.document().notes[1].point, QPoint(500, 80));
         QVERIFY(editor.document().layout == movedLayout);
 
         // The shared frame tool also starts its annotation immediately in explosion mode.
@@ -2164,7 +2281,7 @@ class UiTests : public QObject {
         QVERIFY(layout->isVisible() && layout->drawingMode());
         const auto beforeManualFeedback = exportLayoutChanges(*editor.document().layout);
         drag(layout, {450, 70}, {540, 125});
-        QCOMPARE(editor.document().notes.size(), 2);
+        QCOMPARE(editor.document().notes.size(), 3);
         auto frameInput = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
         QVERIFY(frameInput);
         QTRY_VERIFY(frameInput->hasFocus());
@@ -2174,8 +2291,8 @@ class UiTests : public QObject {
         auto annotate = editor.findChild<QPushButton *>("annotateComponent");
         QVERIFY(annotate && annotate->isEnabled());
         finishInlineNote(editor, "这个区域的内容需要对齐。");
-        QVERIFY(!editor.document().notes[1].isPoint);
-        QCOMPARE(editor.document().notes[1].rect, QRect(450, 70, 90, 55));
+        QVERIFY(!editor.document().notes[2].isPoint);
+        QCOMPARE(editor.document().notes[2].rect, QRect(450, 70, 90, 55));
         const auto firstNotes = editor.document().notes;
         const auto firstLayout = *editor.document().layout;
         const auto originalPieceCount = firstLayout.pieces.size();
@@ -2216,8 +2333,8 @@ class UiTests : public QObject {
         layout->transformSelection(QRectF(600, 240, 120, 90));
         const auto secondLayout = *editor.document().layout;
         const auto secondNotes = editor.document().notes;
-        QCOMPARE(secondNotes[0].point, QPoint(660, 260));
-        QCOMPARE(secondNotes[1].rect, QRect(610, 250, 90, 55));
+        QCOMPARE(secondNotes[1].point, QPoint(660, 260));
+        QCOMPARE(secondNotes[2].rect, QRect(610, 250, 90, 55));
         QCOMPARE(secondLayout.pieces.size(), originalPieceCount);
         auto undo = toolButton(editor, "撤销"), redo = toolButton(editor, "重做");
         QVERIFY(undo && redo && undo->isEnabled());
@@ -2237,18 +2354,18 @@ class UiTests : public QObject {
         QSignalSpy geometryChanged(layout, &LayoutCanvas::changed);
         annotate->click();
         finishInlineNote(editor, "保持这个组件的新位置。");
-        QCOMPARE(editor.document().notes.size(), 3);
-        QVERIFY(!editor.document().notes[2].isPoint);
-        QCOMPARE(editor.document().notes[2].rect, QRect(600, 240, 120, 90));
+        QCOMPARE(editor.document().notes.size(), 4);
+        QVERIFY(!editor.document().notes[3].isPoint);
+        QCOMPARE(editor.document().notes[3].rect, QRect(600, 240, 120, 90));
         QVERIFY(editor.explosionActive() && explode->isChecked() && layout->isVisible());
         QVERIFY(layout->state() == secondLayout);
         QCOMPARE(layout->selected(), componentId);
         const auto beforeTextEdit = editor.document().notes;
         QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {660, 260}));
-        finishInlineNote(editor, "标题字号改成 24 像素。", firstNotes[0].id);
-        QCOMPARE(editor.document().notes.size(), 3);
-        QCOMPARE(editor.document().notes[0].comment, QString("标题字号改成 24 像素。"));
-        QCOMPARE(editor.document().notes[0].point, QPoint(660, 260));
+        finishInlineNote(editor, "标题字号改成 24 像素。", firstNotes[1].id);
+        QCOMPARE(editor.document().notes.size(), 4);
+        QCOMPARE(editor.document().notes[1].comment, QString("标题字号改成 24 像素。"));
+        QCOMPARE(editor.document().notes[1].point, QPoint(660, 260));
         QCOMPARE(geometryChanged.count(), 0);
         QVERIFY(layout->state() == secondLayout);
         const auto afterTextEdit = editor.document().notes;
@@ -2441,12 +2558,12 @@ class UiTests : public QObject {
         QCOMPARE(parsed.object()["tool"].toString(), QString("EditHere"));
         QVERIFY(parsed.object()["capture"].isObject());
         QVERIFY(parsed.object()["layout"].isObject());
-        QCOMPARE(parsed.object()["annotations"].toArray().size(), 2);
+        QCOMPARE(parsed.object()["annotations"].toArray().size(), 3);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(restored.png, document.png);
         QCOMPARE(renderLayout(restored.image, *restored.layout), expectedImage);
-        QCOMPARE(restored.notes.size(), 2);
+        QCOMPARE(restored.notes.size(), 3);
         QVERIFY(restored.notes[0].isPoint);
         QCOMPARE(restored.notes[0].point, QPoint(500, 105));
         QCOMPARE(restored.notes[0].comment, point.comment);

@@ -137,7 +137,10 @@ void validateDocument(const Document &d) {
         validateLayout(*d.layout, d.image.size());
     QSet<QString> ids;
     for (const auto &n : d.notes) {
-        if (n.id.isEmpty() || ids.contains(n.id) || n.comment.trimmed().isEmpty() || n.comment.size() > 10000)
+        // A movement counts as an annotation on its own, so its text stays optional.
+        const bool textOptional = n.movementSource.has_value();
+        if (n.id.isEmpty() || ids.contains(n.id) || n.comment.size() > 10000 ||
+            (!textOptional && n.comment.trimmed().isEmpty()))
             fail(tr("批注编号或文字不正确"));
         ids.insert(n.id);
         if (n.isGlobal && n.movementSource)
@@ -530,7 +533,8 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         }
         if (note.movementSource) {
             const int idx = ensureEntry(*note.movementSource);
-            entries[idx].texts.append(note.comment);
+            if (!note.comment.trimmed().isEmpty())
+                entries[idx].texts.append(note.comment);
             continue;
         }
         // Standalone point or rect annotation.

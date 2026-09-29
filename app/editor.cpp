@@ -61,10 +61,17 @@
 #include <functional>
 namespace h2d {
 namespace {
+int annotationCount(const Document &doc) {
+    int count = doc.notes.size();
+    if (doc.layout)
+        for (const auto &marker : movementMarkers(*doc.layout, doc.notes))
+            if (marker.noteIndex < 0) ++count;
+    return count;
+}
 QString toolbarGlyph(const QString &id) {
     if (id == "saveProject") return "save";
     if (id == "saveImage") return "image-save";
-    if (id == "copyJson") return "json-copy";
+    if (id == "copyJson" || id == "copyJsonText") return "json-copy";
     if (id == "exportJson") return "json";
     if (id == "capture") return "capture";
     if (id == "fit") return "fit";
@@ -820,8 +827,8 @@ void Editor::renderNotes() {
             it = noteCards_.erase(it);
         } else ++it;
     }
-    emptyNotes_->setVisible(doc_.notes.isEmpty());
-    noteCount_->setText(tr("批注 %1 条").arg(doc_.notes.size()));
+    emptyNotes_->setVisible(annotationCount(doc_) == 0);
+    noteCount_->setText(tr("批注 %1 条").arg(annotationCount(doc_)));
     int number = 0;
     for (const auto &n : doc_.notes) {
         QWidget *card = noteCards_.value(n.id);
@@ -905,6 +912,13 @@ void Editor::renderNotes() {
                 canvas_->select({}); changed();
             });
         }
+        if (n.movementSource) {
+            card->installEventFilter(this);
+            card->setProperty("movementSource", *n.movementSource);
+            card->setProperty("movementDestination", QRectF(n.rect));
+            card->setCursor(Qt::PointingHandCursor);
+            for (auto label : card->findChildren<QLabel *>()) label->installEventFilter(this);
+        }
         card->setProperty("selected", canvas_->selected().contains(n.id));
         card->style()->unpolish(card); card->style()->polish(card);
         card->findChild<QLabel *>("noteBadge")->setText(QString::number(++number));
@@ -948,29 +962,17 @@ void Editor::renderNotes() {
                 position->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
                 row->addWidget(position, 1);
                 l->addLayout(row);
-                auto text = new InlineNoteEdit(card);
-                text->setObjectName("noteText_" + key);
-                text->setProperty("noteId", key);
-                text->setAccessibleName(tr("批注内容"));
-                text->setPlaceholderText(tr("点击此处为这次移动添加文字…"));
-                text->setTabChangesFocus(true);
-                text->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-                text->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+                auto text = mutedLabel(tr("点击此处为这次移动添加文字…"), card);
+                text->setWordWrap(true);
                 l->addWidget(text);
-                text->started = [this, src = marker.source, dst = marker.destination] {
-                    editMovement(src, dst);
-                };
-                text->finished = [this, key] { QTimer::singleShot(0, this, [this,key] { finishNoteEdit(); }); };
-                text->cancelled = [this] { cancelNoteEdit(); };
-                connect(text, &QPlainTextEdit::textChanged, this, [this,text,key] {
-                    text->fitContent();
-                    if (renderingNotes_) return;
-                    QString value = text->toPlainText();
-                    if (value.size() > 10000) { value.truncate(10000); QSignalBlocker blocker(text); text->setPlainText(value); }
-                });
+                card->setCursor(Qt::PointingHandCursor);
+                card->installEventFilter(this);
+                for (auto label : card->findChildren<QLabel *>())
+                    label->installEventFilter(this);
                 noteCards_.insert(key, card);
-                noteEditors_.insert(key, text);
             }
+            card->setProperty("movementSource", marker.source);
+            card->setProperty("movementDestination", marker.destination);
             card->setProperty("selected", false);
             card->style()->unpolish(card); card->style()->polish(card);
             card->findChild<QLabel *>("noteBadge")->setText(QString::number(marker.number));
@@ -1103,6 +1105,18 @@ void Editor::toggleAnnotations() {
     if(layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
+    if (event->type() == QEvent::MouseButtonPress &&
+        static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+        auto card = qobject_cast<QWidget *>(object);
+        while (card && card->objectName() != "noteCard") card = card->parentWidget();
+        if (card && card->property("movementSource").isValid()) {
+            const auto source = card->property("movementSource").toRectF();
+            const auto destination = card->property("movementDestination").toRectF();
+            // Creating a text note rebuilds the orphan card; finish this mouse event first.
+            QTimer::singleShot(0, this, [this, source, destination] { editMovement(source, destination); });
+            return true;
+        }
+    }
     if (object == imageScroll_->viewport()) {
         // The viewport settles at its real size after the window does, so the layers
         // pinned to it are synced here rather than only in resizeEvent, where the
@@ -1333,8 +1347,31 @@ void Editor::setExplosionActive(bool enabled) {
                                                               exportLayoutChanges(layoutCanvas_->state());
                 remember();
                 const auto notes = remapNotes(doc_.notes, *doc_.layout, layoutCanvas_->state());
-                const bool notesChanged = doc_.notes != notes;
-                doc_.notes = notes;
+                auto orderedNotes = notes;
+                auto markers = movementMarkers(layoutCanvas_->state(), orderedNotes);
+                // A movement without text is the movement itself, so it follows the
+                // block: putting the block back leaves nothing to annotate.
+                QVector<QRectF> movedSources;
+                for (const auto &marker : markers)
+                    movedSources.append(marker.source);
+                orderedNotes.removeIf([&](const Note &note) {
+                    return note.movementSource && note.comment.trimmed().isEmpty() &&
+                           !movedSources.contains(*note.movementSource);
+                });
+                // A movement is an annotation as soon as it is made. Keep its place
+                // among later text notes even if no comment is ever entered.
+                markers = movementMarkers(layoutCanvas_->state(), orderedNotes);
+                for (const auto &marker : markers) {
+                    if (marker.noteIndex >= 0 || orderedNotes.size() >= MaxNotes)
+                        continue;
+                    Note note;
+                    note.isPoint = false;
+                    note.rect = marker.destination.toAlignedRect();
+                    note.movementSource = marker.source;
+                    orderedNotes.append(note);
+                }
+                const bool notesChanged = doc_.notes != orderedNotes;
+                doc_.notes = std::move(orderedNotes);
                 doc_.layout = layoutCanvas_->state();
                 changed(contentChanged || notesChanged);
             });
@@ -1612,7 +1649,7 @@ void Editor::exportJson() {
     dialog.resize(730, 640);
     auto layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(24, 22, 24, 22);
-    auto title = new QLabel(tr("查看 JSON  ·  批注 %1 条").arg(doc_.notes.size()), &dialog);
+    auto title = new QLabel(tr("查看 JSON  ·  批注 %1 条").arg(annotationCount(doc_)), &dialog);
     QFont font = title->font();
     font.setPointSize(15);
     font.setBold(true);
