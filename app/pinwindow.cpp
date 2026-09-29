@@ -232,12 +232,18 @@ void PinWindow::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.drawImage(QPoint(0, 0), display_);
-    // The pin is the region that was captured, so it wears the outline the region wore.
-    // That is what makes it visible where it starts and ends — including while it is
-    // being made bigger — and it is the edge a drag grabs.
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(accent(), kOutline));
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    // A pin that has a shadow is already told apart from the desktop by the shadow,
+    // and a line on top of that reads as a frame drawn around the picture rather than
+    // as the picture's own edge — which is what was on screen before and looked wrong.
+    // So the outline is only drawn when there is no shadow to do the job: a flat pin
+    // on a desktop of the same colour would otherwise have no edge at all. The edge a
+    // drag grabs is the picture's edge either way, which is what pictureRect() is for.
+    if (decoration_ <= 0) {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(accent(), kOutline));
+        const QRect picture = pictureRect();
+        painter.drawRect(picture.adjusted(0, 0, -1, -1));
+    }
 }
 
 void PinWindow::mousePressEvent(QMouseEvent *event) {
@@ -290,18 +296,37 @@ void PinWindow::mouseReleaseEvent(QMouseEvent *event) {
     applyEdgeCursor(edgeAt(event->position().toPoint()));
 }
 
+QRect PinWindow::pictureRect() const {
+    QRect area = rect();
+    if (decoration_ <= 0 || image_.isNull() || image_.width() <= 0 || image_.height() <= 0)
+        return area;
+    // The picture was stretched to fill the window, halo included, so the margin the
+    // halo takes up here is the same fraction of the window it is of the picture.
+    const int across = qRound(decoration_ * double(area.width()) / image_.width());
+    const int down = qRound(decoration_ * double(area.height()) / image_.height());
+    // Never let the margin eat the picture: a pin whose halo is wider than it is tall
+    // would otherwise be outlined around nothing at all.
+    const int marginX = std::min(across, area.width() / 2 - 1);
+    const int marginY = std::min(down, area.height() / 2 - 1);
+    return area.adjusted(marginX, marginY, -marginX, -marginY);
+}
+
 int PinWindow::edgeAt(QPoint point) const {
+    // The edge a drag grabs is the edge that is drawn, which is the picture's and not
+    // the window's: a shadow is margin, and grabbing margin to resize a picture would
+    // be grabbing a place the picture is not.
+    const QRect picture = pictureRect();
     // A pin dragged down to nothing could never be grabbed again, so the strip that
     // counts as an edge never eats the whole picture.
-    const int grab = std::min(kEdgeGrab, std::min(width(), height()) / 3);
+    const int grab = std::min(kEdgeGrab, std::min(picture.width(), picture.height()) / 3);
     int edge = SideNone;
-    if (point.x() <= grab)
+    if (point.x() <= picture.left() + grab)
         edge |= SideLeft;
-    else if (point.x() >= width() - 1 - grab)
+    else if (point.x() >= picture.right() - grab)
         edge |= SideRight;
-    if (point.y() <= grab)
+    if (point.y() <= picture.top() + grab)
         edge |= SideTop;
-    else if (point.y() >= height() - 1 - grab)
+    else if (point.y() >= picture.bottom() - grab)
         edge |= SideBottom;
     return edge;
 }

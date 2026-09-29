@@ -478,6 +478,46 @@ class CaptureTests : public QObject {
         QCOMPARE(window.editableImage().size(), region.size());
         window.hide();
     }
+    // A pin used to wear a solid accent line around the very outside of the window,
+    // which is not the outside of the picture: the window is the picture plus the
+    // shadow's reach, so the line landed out in the halo and a soft shadow arrived
+    // framed by a hard rectangle. The shadow is what sets a pin apart from the
+    // desktop; the line is only for a pin that has no shadow to do it.
+    void aPinWithAShadowIsEdgedByTheShadowAndNotByALine() {
+        const QImage region = stripedImage(60, 40);
+        CaptureStyle style = bareStyle();
+        style.shadow = true;
+        style.shadowStrength = 100;
+        PinWindow window(composeCapture(region, style));
+        window.setUndecorated(region, style);
+        window.setDecoration(style.shadowRadius());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const int halo = window.decoration();
+        QVERIFY2(halo >= 8, "the shadow has to be wide enough for the two to be told apart");
+        const QImage shot = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QVERIFY2(shot.width() > halo * 3, "the halo has to be a margin, not the whole pin");
+        // The outermost columns are where the shadow has all but faded out. A line
+        // drawn there would make them opaque accent instead of nearly nothing.
+        const int middle = shot.height() / 2;
+        QVERIFY2(qAlpha(shot.pixel(0, middle)) < 200,
+                 qPrintable(QStringLiteral("the left rim of a pin is halo, not a drawn line (alpha %1)")
+                                .arg(qAlpha(shot.pixel(0, middle)))));
+        QVERIFY2(qAlpha(shot.pixel(shot.width() - 1, middle)) < 200,
+                 qPrintable(QStringLiteral("the right rim of a pin is halo, not a drawn line (alpha %1)")
+                                .arg(qAlpha(shot.pixel(shot.width() - 1, middle)))));
+        // The picture under the halo is still there, which is what makes the margin
+        // read as a shadow rather than as an empty window.
+        QCOMPARE(qAlpha(shot.pixel(shot.width() / 2, middle)), 255);
+        // Taking the shadow off puts the line back: a flat pin on a desktop of its
+        // own colour has nothing else to say where it ends.
+        window.setShadowEnabled(false);
+        const QImage flat = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QVERIFY2(qAlpha(flat.pixel(0, flat.height() / 2)) > 200,
+                 qPrintable(QStringLiteral("a pin with no shadow still has an edge (alpha %1)")
+                                .arg(qAlpha(flat.pixel(0, flat.height() / 2)))));
+        window.hide();
+    }
     void aPinOffersMoreThanCopying() {
         QImage picture(40, 30, QImage::Format_ARGB32);
         picture.fill(Qt::blue);

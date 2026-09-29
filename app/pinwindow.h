@@ -95,6 +95,13 @@ class PinWindow final : public QWidget {
     // Puts the picture back together from the undecorated one and the style, then
     // resizes and re-centres the window around where it already was.
     void rebuild();
+    // Where the picture itself sits inside this window, in the window's own units.
+    // The window is the picture plus whatever halo the style put around it, and the
+    // halo is not part of what was captured: it is margin. Everything that has to
+    // land on the picture — the outline, the edge a drag grabs — is placed from this
+    // rather than from the whole window, or a pin with a shadow wears its outline out
+    // in the halo where there is nothing to outline.
+    QRect pictureRect() const;
     // Which edge or corner the point is on, as a combination of Side bits, or zero.
     int edgeAt(QPoint point) const;
     void applyEdgeCursor(int edge);
