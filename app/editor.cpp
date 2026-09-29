@@ -777,10 +777,12 @@ void Editor::updateToolbar() {
         button->setProperty("tool", !labelled);
         button->setProperty("primary", definition.id == "copyJson");
         button->setText(labelled ? definition.label : QString());
-        button->setFixedSize(labelled ? button->fontMetrics().horizontalAdvance(definition.label) + 40 : 34, 34);
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->setIcon(glyph(button->property("glyphName").toString(), definition.id == "copyJson" ? QColor(Qt::white) : QColor()));
+        // Let the polished style account for the icon, spacing, padding and border.
+        // A fixed allowance beyond the text width clips labels inside the padded content area.
+        button->setFixedSize(labelled ? button->sizeHint().width() : 34, 34);
     }
     // Keep the permanent tools accessible when optional actions exceed the window width.
     if (dock_) {

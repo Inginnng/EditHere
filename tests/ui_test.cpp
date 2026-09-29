@@ -40,6 +40,8 @@
 #include <QSignalSpy>
 #include <QSystemTrayIcon>
 #include <QStandardPaths>
+#include <QStyle>
+#include <QStyleOptionButton>
 #include <QScrollBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -1545,7 +1547,19 @@ class UiTests : public QObject {
                 QVERIFY(action->toolTip().contains("Agent"));
             else
                 QCOMPARE(action->toolTip(), definition.label);
+            if (action->isVisible() && !action->text().isEmpty()) {
+                QStyleOptionButton option;
+                option.initFrom(action);
+                option.text = action->text();
+                option.icon = action->icon();
+                option.iconSize = action->iconSize();
+                const auto contents = action->style()->subElementRect(QStyle::SE_PushButtonContents, &option, action);
+                const int required = action->fontMetrics().size(Qt::TextShowMnemonic, action->text()).width()
+                    + action->iconSize().width() + 4;
+                QVERIFY2(contents.width() >= required, qPrintable(definition.id));
+            }
         }
+        artifact(editor, "toolbar-labels.png");
         QVERIFY(!editor.findChild<QPushButton *>("componentTool"));
         QVERIFY(!editor.findChild<QPushButton *>("manualRegion"));
         auto separator = editor.findChild<QWidget *>("toolbarSeparator");

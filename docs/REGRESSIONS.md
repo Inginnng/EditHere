@@ -70,6 +70,7 @@
 | REG-034 | 缩放后鼠标下方的像素发生漂移，平移过或图片小于窗口时尤其明显 | 0.8.11 → 0.8.12 | 缩放锚点用了视口中心而非指针位置 | `tests/ui_test.cpp::wheelZoomKeepsThePixelUnderThePointer` | ✅ |
 | REG-035 | 保存文件失败只提示"保存失败"，无法定位是权限还是被占用 | 0.9.0 | 错误信息未带 QQFile 的 `errorString()` 与目标路径 | `tests/settings_test.cpp::failedWriteReportsError`（设置写入路径）；导出路径由 `invalidExportKeepsUnsavedWork` 覆盖 | ⚠️ |
 | REG-036 | 过期的一次异步识别结果覆盖了当前窗口的候选 | 0.8.16 → 0.8.17 | 异步结果未按窗口顺序/请求代次校验 | `tests/startup_flow_test.cpp::overlappingWindowsNeverSelectBehindFront` | ✅ |
+| REG-114 | 批注窗口底部工具条里带文字的按钮文字被截断（「查看 JSON」「复制 JSON 文件」「复制 JSON 内容」「复制并带批注图片」） | 0.9.7 → 0.9.8 | 按钮宽度按"文字宽度 + 40"固定，没算样式里的 `padding:7px 13px`、1px 边框和图标占位；而且这个尺寸设在 `unpolish/polish` 之前，样式生效后的实际内容区更窄。0.9.7 换上更长的按钮文字后才露出来 | `tests/ui_test.cpp::toolbarPreferencesKeepCoreToolsAndSettingsReachable`（按 `SE_PushButtonContents` 对比"文字 + 图标 + 间距"所需的宽度）；反向验证：换回旧算法即在 `exportJson` 上失败 | 🆕 |
 
 ## 五、大爆炸与布局
 
