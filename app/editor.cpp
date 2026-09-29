@@ -8,6 +8,7 @@
 #include "projectfiles.h"
 #include "settings.h"
 #include "ui.h"
+#include "fonts.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -1555,7 +1556,7 @@ void Editor::exportJson() {
     json->setAccessibleName(tr("标准化 JSON"));
     json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    json->setFont(QFont("Consolas", 10));
+    json->setFont(QFont(h2d::monoFontFamily(), 10));
     layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog);
     status->setObjectName("exportStatus");

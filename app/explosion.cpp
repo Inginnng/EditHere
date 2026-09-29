@@ -1,6 +1,7 @@
 #include "explosion.h"
 #include "i18n.h"
 #include "ui.h"
+#include "fonts.h"
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QFocusEvent>
@@ -375,7 +376,7 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
         p.setBrush(accent());
         p.drawEllipse(anchor, 13 + pulse * 1.5, 13 + pulse * 1.5);
         p.setPen(Qt::white);
-        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.setFont(QFont(h2d::latinFontFamily(), 10, QFont::DemiBold));
         p.drawText(QRectF(anchor.x() - 13, anchor.y() - 13, 26, 26), Qt::AlignCenter,
                    QString::number(number));
     }

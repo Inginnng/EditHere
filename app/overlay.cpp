@@ -3,6 +3,7 @@
 #include "detector.h"
 #include "i18n.h"
 #include "ui.h"
+#include "fonts.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -266,7 +267,7 @@ void Overlay::paintEvent(QPaintEvent *) {
         const QString text = colourCopied_ ? tr("已复制颜色值 %1")
                                                  .arg(captureColourText(colourAt(cursor_), colourFormat_))
                                            : tr("移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色");
-        p.setFont(QFont("Microsoft YaHei", 10));
+        p.setFont(QFont(h2d::cjkFontFamily(), 10));
         const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         const QRectF hint((width() - w) / 2, 24, w, 36);
         p.setPen(Qt::NoPen);
@@ -276,7 +277,7 @@ void Overlay::paintEvent(QPaintEvent *) {
         p.drawText(hint, Qt::AlignCenter, text);
     } else if (ready_ && !selected_.isEmpty()) {
         const QString text = tr("拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消");
-        p.setFont(QFont("Microsoft YaHei", 10));
+        p.setFont(QFont(h2d::cjkFontFamily(), 10));
         const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         // The bar sits above the region, so the hint takes the other side when there
         // is room for it.
@@ -293,7 +294,7 @@ void Overlay::paintEvent(QPaintEvent *) {
                                                .arg(picker_.level())
                                                .arg(picker_.count())
                                          : tr("拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消");
-        p.setFont(QFont("Microsoft YaHei", 10));
+        p.setFont(QFont(h2d::cjkFontFamily(), 10));
         int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
         QRectF hint((width() - w) / 2, 24, w, 36);
         p.setPen(Qt::NoPen);
@@ -383,7 +384,7 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     const auto slotRect = [&](int slot) {
         return QRectF(x + magnifierPanelPadding, firstRow + slot * kRowHeight, inner, kRowHeight);
     };
-    p.setFont(QFont("Microsoft YaHei", 9));
+    p.setFont(QFont(h2d::cjkFontFamily(), 9));
     // The pixel the colour came from, written the way a colour tool writes it.
     p.setPen(QColor(0xc9, 0xcb, 0xd4));
     p.drawText(slotRect(kPixelSlot), Qt::AlignVCenter,

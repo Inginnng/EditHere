@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "fonts.h"
 #include "i18n.h"
 #include <algorithm>
 #include <limits>
@@ -265,9 +266,12 @@ void applyTheme(ThemeMode mode) {
 }
 void applyInterfaceFont() {
 #ifdef Q_OS_MAC
-    qApp->setFont(QFont(".AppleSystemUIFont", 12));
+    qApp->setFont(QFont(resolveFontFamily({".AppleSystemUIFont", "SF Pro Text", "PingFang SC"}), 12));
 #else
-    qApp->setFont(QFont(isChineseInterface() ? "Microsoft YaHei UI" : "Segoe UI", 9));
+    qApp->setFont(QFont(isChineseInterface()
+                            ? cjkFontFamily()
+                            : latinFontFamily(),
+                        9));
 #endif
 }
 QIcon glyph(const QString &name, QColor color) {

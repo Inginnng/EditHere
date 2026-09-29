@@ -1,4 +1,5 @@
 #include "model.h"
+#include "fonts.h"
 #include <QBuffer>
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -1189,13 +1190,13 @@ QImage exampleImage() {
     p.setRenderHint(QPainter::Antialiasing);
     p.fillRect(0, 0, 1120, 80, Qt::white);
     p.setPen(QColor("#35453c"));
-    p.setFont(QFont("Segoe UI", 14));
+    p.setFont(QFont(h2d::latinFontFamily(), 14));
     p.drawText(44, 48, "FIELDNOTES");
-    p.setFont(QFont("Segoe UI", 11));
+    p.setFont(QFont(h2d::latinFontFamily(), 11));
     p.drawText(878, 48, tr("探索     收藏     关于"));
-    p.setFont(QFont("Microsoft YaHei", 28, QFont::DemiBold));
+    p.setFont(QFont(h2d::cjkFontFamily(), 28, QFont::DemiBold));
     p.drawText(48, 164, tr("为日常，留一点空白。"));
-    p.setFont(QFont("Microsoft YaHei", 11));
+    p.setFont(QFont(h2d::cjkFontFamily(), 11));
     p.setPen(QColor("#788278"));
     p.drawText(48, 203, tr("点选这里，写下你希望改变的细节。"));
     p.setBrush(QColor("#456b51"));
@@ -1222,10 +1223,10 @@ QImage exampleImage() {
             p.drawEllipse(QRectF(x + 63, 330, 203, 116));
         }
         p.setPen(QColor("#35453c"));
-        p.setFont(QFont("Microsoft YaHei", 13));
+        p.setFont(QFont(h2d::cjkFontFamily(), 13));
         p.drawText(x + 22, 551, titles[i]);
         p.setPen(QColor("#929c91"));
-        p.setFont(QFont("Segoe UI", 10));
+        p.setFont(QFont(h2d::latinFontFamily(), 10));
         p.drawText(x + 22, 594, QString(tr("生活观察   /   VOL. 0%1")).arg(i + 1));
     }
     p.setPen(QColor("#8b948a"));
@@ -1233,7 +1234,7 @@ QImage exampleImage() {
     return image;
 }
 QImage previewImage(const Document &doc) {
-    QFont font("Microsoft YaHei", 11);
+    QFont font(h2d::cjkFontFamily(), 11);
     QFontMetrics fm(font);
     QVector<int> heights;
     int total = 76;
@@ -1272,7 +1273,7 @@ QImage previewImage(const Document &doc) {
         p.setBrush(QColor("#007aff"));
         p.drawEllipse(c, 14, 14);
         p.setPen(Qt::white);
-        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.setFont(QFont(h2d::latinFontFamily(), 10, QFont::DemiBold));
         p.drawText(QRectF(c.x() - 14, c.y() - 14, 28, 28), Qt::AlignCenter, QString::number(n));
     };
     QHash<int, QPointF> movementAnchors;
@@ -1281,7 +1282,7 @@ QImage previewImage(const Document &doc) {
             movementAnchors.insert(marker.noteIndex,
                                    movementMarkerAnchor(marker, 1, doc.image.size()) + QPointF(24, 24));
     int y = 72, i = 0, x = doc.image.width() + 60;
-    p.setFont(QFont("Microsoft YaHei", 13, QFont::DemiBold));
+    p.setFont(QFont(h2d::cjkFontFamily(), 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
     p.drawText(x, 44, QString(tr("批注 %1 条")).arg(doc.notes.size()));
     for (const auto &n : doc.notes) {
@@ -1298,7 +1299,7 @@ QImage previewImage(const Document &doc) {
         p.drawRoundedRect(QRectF(x, y, 324, heights[i]), 12, 12);
         badge(QPointF(x + 28, y + 26), i + 1);
         p.setPen(QColor("#85858b"));
-        p.setFont(QFont("Segoe UI", 9));
+        p.setFont(QFont(h2d::latinFontFamily(), 9));
         QString coords = n.isGlobal ? QString(tr("整体意见")) : n.isPoint ? QString("(%1, %2)").arg(n.point.x()).arg(n.point.y())
                                    : QString("(%1, %2) → (%3, %4)")
                                          .arg(n.rect.x())

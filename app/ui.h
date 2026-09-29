@@ -27,7 +27,8 @@ QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tool
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin
-// metrics, so English uses the system face instead.
+// metrics, so English uses the system face instead. The families themselves come
+// from fonts.h, which resolves them against what the machine actually has.
 void applyInterfaceFont();
 bool isDarkTheme();
 void paintTransparency(QPainter &painter, const QRect &area);

@@ -5,6 +5,7 @@
 #include "overlay.h"
 #include "settingsdialog.h"
 #include "ui.h"
+#include "fonts.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -314,6 +315,26 @@ class UiTests : public QObject {
         QVERIFY(!editor.hasDocument());
         QVERIFY(well->isVisible());
         editor.hide();
+    }
+    // A family asked for by name can be missing on a slimmed-down Windows install,
+    // and the digits then fall back into a symbol font (REG-108). Every family the
+    // app ends up using has to be one the machine actually has, or none at all.
+    void aFontThatIsNotInstalledIsNeverAskedForByName() {
+        QVERIFY2(resolveFontFamily({"EditHere Missing Font XYZ"}).isEmpty(),
+                 "an unknown family resolves to nothing, not to some other face");
+        const QStringList installed = QFontDatabase::families();
+        if (!installed.isEmpty()) {
+            const QString picked =
+                resolveFontFamily({"EditHere Missing Font XYZ", installed.first()});
+            QVERIFY2(picked == installed.first(),
+                     "the first installed candidate wins over the unknown one");
+        }
+        applyInterfaceFont();
+        const QString family = qApp->font().family();
+        QVERIFY2(family.isEmpty() || installed.contains(family, Qt::CaseInsensitive),
+                 "the application font names an installed family or leaves it to the platform");
+        QVERIFY2(!latinFontFamily().isEmpty() || !installed.isEmpty(),
+                 "the Latin face either resolves or is left to the platform default");
     }
     void defaultPreferencesApplyToNextImageAndExport() {
         Editor editor;
