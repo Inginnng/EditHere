@@ -19,7 +19,8 @@ $outputPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory))
 if (-not $outputPath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Output must be inside the project." }
 if ((Test-Path -LiteralPath $outputPath) -or (Test-Path -LiteralPath ($outputPath + ".zip"))) { throw "Output folder or ZIP already exists. Choose a fresh OutputDirectory." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtbase/LGPL-3.0-only.txt"))) { throw "Third-party license materials are missing." }
-if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-v0.7.schema.json"))) { throw "The current feedback schema is missing." }
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-minimal.schema.json"))) { throw "The current feedback schema is missing." }
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/project-v3.schema.json"))) { throw "The project schema is missing." }
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $notice))) { throw "Application license material is missing: $notice" }
 }

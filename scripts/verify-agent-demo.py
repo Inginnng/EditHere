@@ -1,3 +1,8 @@
+# One-off verification for the recorded Agent demo take (out/take-2/*), kept as the record of
+# how that take was checked. The take was captured while the compact feedback still used the
+# v0.7 annotations/changes shape, so the assertions below are frozen against that artefact and
+# cannot pass against a current export: today's export writes objects (docs/AGENT-CLI.md).
+# Do not treat this as a rerunnable test of the current format.
 from pathlib import Path
 import base64,io,json,subprocess,sys,hashlib
 import cv2,numpy as np

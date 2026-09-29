@@ -109,7 +109,7 @@ node connector/mcp-server.mjs
 - 同一时刻只支持一个标注会话：会话进行中再次发起会返回 `busy`（退出码 4）。等待期间可以正常调用 `status` 等其他工具。
 - 非阻塞会话只存在于连接器进程内；连接器重启后旧 `sessionId` 失效并会明确报错，需重新发起。
 - 必填参数缺失（如未传 `imagePath`）会在调用 CLI 前拦下并说明原因，不把参数问题透成文件或 I/O 错误。
-- 反馈遵循 `schema/feedback-v0.7.schema.json`；坐标为图像像素，原点在左上角，不能直接当作屏幕坐标或 CSS 像素。
+- 反馈遵循 `schema/feedback-minimal.schema.json`：当前导出为 `objects` 对象结构（每项含 `source`、`movements`、`annotations`），早期版本的 `annotations` / `changes` 并行数组仍可导入。坐标为图像像素，原点在左上角，不能直接当作屏幕坐标或 CSS 像素。
 
 ## 许可
 

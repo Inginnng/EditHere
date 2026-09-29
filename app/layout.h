@@ -19,7 +19,10 @@ struct LayoutPiece {
 };
 struct LayoutGroup {
     QString id, label, origin;
-    QRectF originalBounds; // Empty for a manually selected region in the current composition.
+    // Source-space bounds of the region. A region made by hand records them at creation time so
+    // that removing a piece later cannot move it; only projects saved before 0.9.0 leave it empty,
+    // which is why validateLayout accepts either. Both layout schemas allow the same two cases.
+    QRectF originalBounds;
     QStringList pieces;
     bool operator==(const LayoutGroup &) const = default;
 };

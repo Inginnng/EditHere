@@ -24,7 +24,8 @@ cmake -S "$project_root" -B "$build_path" -G Ninja \
 cmake --build "$build_path" --parallel
 export H2D_TEST_ARTIFACTS="$project_root/artifacts/native-ui"
 ctest --test-dir "$build_path" --output-on-failure --output-junit "$build_path/test-results.xml"
-if [[ ! -f "$project_root/schema/feedback-v0.7.schema.json" ]]; then printf '%s\n' "The current feedback schema is missing." >&2; exit 1; fi
+if [[ ! -f "$project_root/schema/feedback-minimal.schema.json" ]]; then printf '%s\n' "The current feedback schema is missing." >&2; exit 1; fi
+if [[ ! -f "$project_root/schema/project-v3.schema.json" ]]; then printf '%s\n' "The project schema is missing." >&2; exit 1; fi
 build_version="$(cat "$build_path/version.txt")"
 if [[ ! "$build_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf '%s\n' "Invalid build version." >&2; exit 1; fi
 output="$project_root/dist/EditHere-$build_version-macos-universal"

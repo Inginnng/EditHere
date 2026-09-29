@@ -72,7 +72,7 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 
 - `image` 是**调整前**原图的 data URL，不是调整后的预览。缺少 `image` 时需自行关联本次输入原图。
 - `annotationSpace` 固定为 `result`：批注位置对应**调整后**的画面。坐标原点在图像左上角，单位是**图像像素**，独立于窗口位置与缩放——**不能**直接当作屏幕坐标或网页 CSS 像素。
-- 新版格式用 `objects`：每个对象含 `source`（原图区域）、`movements`（移动到的位置）、`annotations`（修改意见文本）。旧版格式用 `annotations` + `changes`：`annotations[].text` 是意见，`point` 定位一点、`rectangle` 定位区域、仅 `text` 为全局意见、`change` 是 `changes` 的**零基索引**。
+- 新版格式用 `objects`：每个对象含 `source`（原图区域；`null` 表示全局意见，点批注是零面积区域 `x1 == x2 && y1 == y2`，要按点处理而不是丢弃）、`movements`（移动到的位置）、`annotations`（修改意见文本）。旧版格式用 `annotations` + `changes`：`annotations[].text` 是意见，`point` 定位一点、`rectangle` 定位区域、仅 `text` 为全局意见、`change` 是 `changes` 的**零基索引**。
 - 矩形用 `x1/y1/x2/y2`，右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`，可含小数。
 - 需要重建画面时：先从原图提取每个对象的 `source`（旧格式为 `changes[].from`）并清空这些原位置，再按数组顺序绘制到 `movements[].to`（旧格式为 `changes[].to`），最后解释结果画面上的批注。留空处透明，**不推测被遮挡的内容**。
 

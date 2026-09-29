@@ -623,6 +623,41 @@ class CoreTests : public QObject {
                       QJsonDocument(exportDocument(doc, true)).toJson());
         }
     }
+    void legacyFeedbackStillImports() {
+        // The compact feedback moved to the object structure in 0.9.0, but the parallel
+        // annotations/changes arrays stay importable (docs/AGENT-CLI.md). Nothing writes that
+        // shape any more, so it is built by hand here; without this test the documented
+        // "old files still open" promise would only be verified by reading the source.
+        auto doc = fromImage(exampleImage(), "demo", "旧版反馈");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("legacy.json");
+        const QJsonObject feedback{
+            {"annotationSpace", "result"},
+            {"annotations",
+             QJsonArray{QJsonObject{{"point", QJsonObject{{"x", 30}, {"y", 50}}},
+                                    {"text", "这里的文字改一下"}},
+                        QJsonObject{{"rectangle", QJsonObject{{"x1", 10}, {"y1", 200}, {"x2", 60}, {"y2", 240}}},
+                                    {"text", "这块放大"}},
+                        QJsonObject{{"change", 0}, {"text", "把这个挪到右下"}},
+                        QJsonObject{{"text", "整体再简洁一些"}}}},
+            {"changes",
+             QJsonArray{QJsonObject{
+                 {"from", QJsonObject{{"x1", 0}, {"y1", 0}, {"x2", 40}, {"y2", 40}}},
+                 {"to", QJsonObject{{"x1", 80}, {"y1", 80}, {"x2", 120}, {"y2", 120}}}}}},
+            {"image", "data:image/png;base64," + QString::fromLatin1(doc.png.toBase64())}};
+        saveBytes(path, QJsonDocument(feedback).toJson(QJsonDocument::Compact));
+        const auto imported = loadDocument(path);
+        QCOMPARE(imported.notes.size(), 4);
+        QCOMPARE(imported.notes[0].point, QPoint(30, 50));
+        QCOMPARE(imported.notes[0].comment, QString("这里的文字改一下"));
+        QCOMPARE(imported.notes[1].rect, QRect(10, 200, 50, 40));
+        QVERIFY(imported.notes[2].movementSource.has_value());
+        QCOMPARE(imported.notes[2].rect, QRect(80, 80, 40, 40));
+        QVERIFY(imported.notes[3].isGlobal);
+        QVERIFY(imported.layout.has_value());
+        // Re-exporting an imported old file already uses the current structure.
+        QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"annotationSpace", "objects"}));
+    }
     void imageFormats() {
         auto formats = QImageReader::supportedImageFormats();
         for (auto format : {"png", "jpeg", "bmp", "webp"})

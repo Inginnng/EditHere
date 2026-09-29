@@ -89,7 +89,7 @@ edithere-cli annotate <image-or-project> --output <new-feedback.json> [--no-imag
 - `image` 是**调整前**原图的 PNG/JPEG data URL，不是调整后的预览。缺少 `image` 时需保留并关联本次输入原图；独立重新导入反馈通常需要同名 PNG。
 - `annotationSpace` 固定为 `result`：所有批注位置对应调整后的画面。坐标原点在图像左上，单位是图像像素，独立于窗口位置与缩放；不能直接当作屏幕坐标或网页 CSS 像素。
 - 反馈有两种格式（schema/feedback-minimal.schema.json 的 `oneOf`）：
-  - **面向对象格式（0.9.0 起，`objects` 键）**：每个对象统一记录 `source`（原图区域，`null` 表示全局意见）、`movements`（数组，`to` 为移动后的区域）和 `annotations`（修改意见文字数组）。同一对象的批注与移动天然关联。
+  - **面向对象格式（0.9.0 起，`objects` 键）**：每个对象统一记录 `source`（原图区域，`null` 表示全局意见，点批注是零面积区域 `x1 == x2`、`y1 == y2`，按点处理而不是丢弃）、`movements`（数组，`to` 为移动后的区域）和 `annotations`（修改意见文字数组）。同一对象的批注与移动天然关联。
   - **旧版动作格式（`annotations` + `changes` 键）**：`annotations` 的 `text` 是修改意见；`point` 定位一点，`rectangle` 定位区域，仅有 `text` 表示全局意见，`change` 是 `changes` 数组的**零基索引**。
 - 矩形一律用 `x1/y1/x2/y2`，右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`；移动坐标可含小数。
 - 需要重建画面时（旧格式），先从原图提取全部 `from` 并清空这些原位置，再按数组顺序绘制到各个 `to`，最后解释结果画面上的批注；留空处透明，不推测被遮挡内容。新格式则对每个对象提取其 `source` 并绘制到对应 `movements.to`。

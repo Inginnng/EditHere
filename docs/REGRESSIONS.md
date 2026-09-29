@@ -80,6 +80,7 @@
 | REG-039 | 整体移动大块只显示一条轨迹；单独调整小块时不增加它自己的轨迹 | 0.8.9 → 0.8.10 | 轨迹按像素分区而非按实际调整的选区记录 | `tests/layout_test.cpp::trajectoriesTrackSelectedGroupsInsteadOfNestedPixelPartitions`、`tests/core_test.cpp::separatelyMovedRegionsKeepTheirOwnTrajectories` | ✅ |
 | REG-040 | 大爆炸拖动过程中窗口失焦，未提交的操作被保留下来 | 0.8.0 → 0.8.1 | 失焦时未取消进行中的手势 | `tests/ui_test.cpp::explosionCancelsInterruptedGesturesAndPreservesSelectionOnFocusChange` | ✅ |
 | REG-041 | 嵌套移动的箭头与编号关系错乱；同一区域反复调整生成多条轨迹 | 0.8.10 | 合并规则按像素级分区而不是按跟踪组 | `tests/canvas_feedback_test.cpp::nestedMovementsKeepOneArrowPerSelectedComponent`、`mergedMovementKeepsAdditionalNoteBadgesEditable`、`tests/layout_test.cpp::minimalChangesMergeAParentAndKeepNestedEditsSeparate` | ✅ |
+| REG-112 | 按 `project-v3.schema.json` 或 `feedback-v2.schema.json` 校验程序自己导出的项目，会被判定为非法 | 0.9.0 → 未发布 | 0.9.0 让"手动切分"的区域在创建时记下成员的原始范围（`addLayoutRegion` 写入 `sourceBounds`，目的是之后移除成员也不会带动这块区域），但两份 schema 仍写着"手动区域必须 `originalRectangle: null`"，比 `validateLayout` 和导出器都更严；当时没有地方拿真实导出比对 schema，所以一直没暴露 | `scripts/check-packaging.py::layout_schema`（写入器仍记原始范围时，schema 不得强制手动区域为 `null`）；`scripts/validate-exports.py` 在 macOS 构建里校验真实导出（含新增的 `project-v3.json` 样本） | 🆕 |
 
 ## 六、检测与导出
 
@@ -104,6 +105,7 @@
 | REG-053 | 用户取消或超时后仍然导出了反馈 | 0.8.20 | 取消路径与完成路径共用导出 | `tests/agent_cli_test.cpp::cancellationAndTimeoutKeepDocumentWithoutOutput`、`completionPublishesFeedbackOnlyOnExplicitFinish` | ✅ |
 | REG-054 | macOS 上隔离测试的 socket 路径超过 Unix 长度上限 | 0.8.20 → 0.8.21 | 套接字名过长 | `tests/agent_cli_test.cpp::socketNamesFitMacTemporaryDirectory` | ✅ |
 | REG-055 | 分片到达的消息被当成完整帧处理 | 0.8.20 | 未按长度前缀切帧 | `tests/agent_cli_test.cpp::fragmentedMessagesRequireCompleteFrame` | ✅ |
+| REG-111 | **AI 与命令行文档、skill 按旧的 `annotations` / `changes` 描述反馈**，程序导出的却是 `objects`；照它解析的读取方拿到空批注，把"用户提了意见"误判成"没有意见" | 0.9.0 → 0.9.7 | `0.9.0` 的 `614661b` 把精简反馈改成 `objects` 对象结构，`docs/AGENT-CLI.md`、三份 `skills/edithere/SKILL.md` 与 `docs/DEVELOPMENT.md` 仍按 `0.8.21` 的并行数组写；"当前反馈"的 schema 名为 `feedback-minimal.schema.json`，看不出是当前格式（同目录 `feedback-v1` / `v1.1` / `v2` 描述的是早期**项目文档**），打包护栏还在断言 `feedback-v0.7` | `check-packaging.py::feedback_docs`（`exportFeedback` 必须写 `annotationSpace` / `objects` / `movements` / `annotations`；四份文档必须写明 `objects` 结构；`AGENT-CLI.md` 保留三行字段说明，且其中链接的 schema 都要存在） | 🆕 |
 
 ## 八、版本与仓库材料
 

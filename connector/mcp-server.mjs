@@ -17,7 +17,8 @@
 //
 // CLI 定位顺序：EDITHERE_CLI 环境变量 → PATH → 默认安装目录；
 // EDITHERE_CLI 指向的路径不可用时直接报错，不静默改用其他来源的 CLI。
-// 反馈 JSON 遵循 schema/feedback-v0.7.schema.json（并兼容新版 objects 结构）。
+// 反馈 JSON 遵循 schema/feedback-minimal.schema.json：当前导出为 objects 对象结构，
+// 兼容早期版本的 annotations + changes 并行数组。
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

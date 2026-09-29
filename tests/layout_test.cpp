@@ -640,11 +640,13 @@ class LayoutTests : public QObject {
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            auto legacy = feedback;
-            legacy.remove("annotationSpace");
-            saveBytes(QDir(folder).filePath("feedback-minimal.json"),
-                      QJsonDocument(legacy).toJson(QJsonDocument::Compact));
-            saveBytes(QDir(folder).filePath("feedback-minimal.png"), document.png);
+            // The tag is optional on import, so the sample that drops it cannot be validated
+            // against the schema that requires it; it is published as feedback-notag.json.
+            auto notag = feedback;
+            notag.remove("annotationSpace");
+            saveBytes(QDir(folder).filePath("feedback-notag.json"),
+                      QJsonDocument(notag).toJson(QJsonDocument::Compact));
+            saveBytes(QDir(folder).filePath("feedback-notag.png"), document.png);
         }
         auto invalid = feedback;
         invalid["tool"] = "unexpected";
@@ -722,11 +724,14 @@ class LayoutTests : public QObject {
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
 
+        // Artifact names carry the format, not the application version: this is the current
+        // compact feedback, with and without the embedded original. scripts/validate-exports.py
+        // reads exactly these names.
         const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            saveBytes(QDir(folder).filePath("feedback-v0.7.json"), serializeFeedback(document, true));
-            saveBytes(QDir(folder).filePath("feedback-v0.7-no-image.json"), serializeFeedback(document));
+            saveBytes(QDir(folder).filePath("feedback.json"), serializeFeedback(document, true));
+            saveBytes(QDir(folder).filePath("feedback-no-image.json"), serializeFeedback(document));
         }
         for (const auto &invalidImage :
              {QJsonValue(true), QJsonValue("data:image/jpeg;base64,AA=="),
@@ -1001,6 +1006,9 @@ class LayoutTests : public QObject {
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
             saveBytes(QDir(folder).filePath("feedback-v2.json"), QJsonDocument(exported).toJson());
+            // The current project format needs its own sample: this document carries a region made
+            // by hand, which is where project-v3.schema.json and the writer disagreed.
+            saveBytes(QDir(folder).filePath("project-v3.json"), serializeDocument(document, true));
         }
         auto broken = exported;
         auto layout = broken["layout"].toObject();

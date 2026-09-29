@@ -12,7 +12,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.21` 的精简反馈继续由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简反馈的当前格式由 `feedback-minimal.schema.json` 定义（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整项目使用 `project-v3.schema.json`。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
@@ -33,9 +33,9 @@ Windows PowerShell 7，CMake 在 PATH 中：
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
 ```
 
-构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`，详见 [多语言与翻译](i18n.md)。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出；macOS 构建（`.github/workflows/native-macos.yml`）会为同一批产物自动运行它，schema 与真实导出不符时构建即失败。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`，详见 [多语言与翻译](i18n.md)。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
-除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符，以及 `.ts` 与预编译 `.qm` 的逐条对应；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
+除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符、`.ts` 与预编译 `.qm` 的逐条对应，以及 AI 与命令行文档、skill 里的反馈结构与导出字段的一致性；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
 
 ## 截图流程与文字识别
 

@@ -147,11 +147,13 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 
 反馈遵循 [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json)。当前导出为面向对象结构，早期版本使用的 `annotations` / `changes` 并行数组仍可导入。完整项目遵循 [project-v3.schema.json](../schema/project-v3.schema.json)。
 
+`schema/` 下的文件名代表数据格式，不代表应用版本：`feedback-minimal.schema.json` 是当前精简反馈，`project-v3.schema.json` 是完整项目，其余为历史格式，其中 `feedback-v1` / `v1.1` / `v2` 描述的是早期项目文档而非反馈。
+
 | 字段 | 真实含义 |
 | --- | --- |
 | `image` | 调整前原图的 PNG 或 JPEG data URL；可省略，但需要另行提供原图 |
 | `annotationSpace` | 固定为 `result`，批注位于调整后的画面 |
-| `objects[].source` | 该对象在原图中的区域；全局意见为 `null` |
+| `objects[].source` | 该对象在原图中的区域；全局意见为 `null`，点批注是零面积区域（`x1 == x2`、`y1 == y2`） |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放，`to` 为最终区域 |
 | `objects[].annotations` | 挂在该对象上的文字意见 |
 | 旧格式 `annotations` | 文字批注，可用 `point`、`rectangle` 定位；只有 `text` 的批注针对整体；`change` 对应 `changes` 的零基索引 |

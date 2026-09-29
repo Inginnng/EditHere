@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import re
 import shutil
@@ -533,6 +534,91 @@ def check_ocr_bridge() -> list[Problem]:
 
 
 # --------------------------------------------------------------------------- #
+# Feedback format documentation
+# --------------------------------------------------------------------------- #
+FEEDBACK_DOCS = (
+    ROOT / "docs" / "AGENT-CLI.md",
+    ROOT / "skills" / "edithere" / "SKILL.md",
+    ROOT / "connector" / "skills" / "edithere" / "SKILL.md",
+    ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
+)
+FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movements", "annotations")
+
+
+def check_feedback_docs() -> list[Problem]:
+    """REG-111  Every page explaining the feedback must name the fields the exporter writes."""
+    problems = []
+    source = read(ROOT / "app" / "model.cpp")
+    start = source.find("QJsonObject exportFeedback")
+    end = source.find("QByteArray serializeFeedback")
+    if start < 0 or end < start:
+        return [
+            "app/model.cpp: exportFeedback is no longer recognisable, so the shipped pages cannot be "
+            "checked against it."
+        ]
+    exporter = source[start:end]
+    for key in FEEDBACK_PRODUCER_KEYS:
+        if f'"{key}"' not in exporter:
+            problems.append(
+                f"app/model.cpp: exportFeedback no longer writes {key!r}. The feedback structure "
+                f"changed, so docs/AGENT-CLI.md and the three skills/edithere copies have to be "
+                f"updated in the same commit."
+            )
+    for path in FEEDBACK_DOCS:
+        name = path.relative_to(ROOT).as_posix()
+        if "objects" not in read(path):
+            problems.append(
+                f"{name}: explains the feedback with the legacy annotations/changes pair only. The "
+                f"exporter writes objects, so a reader following this page finds no notes at all."
+            )
+    guide = read(ROOT / "docs" / "AGENT-CLI.md")
+    for token in ("objects[].source", "objects[].movements", "objects[].annotations"):
+        if token not in guide:
+            problems.append(
+                f"docs/AGENT-CLI.md: the field table no longer documents {token}; it is the page AI "
+                f"readers follow to interpret a feedback file."
+            )
+    # Both packages rewrite the ../schema/ links and ship the directory, so a linked schema that
+    # does not exist becomes a dead link inside the installed package (REG-012).
+    for match in re.finditer(r"\.\./schema/([\w.\-]+\.schema\.json)", guide):
+        if not (ROOT / "schema" / match.group(1)).is_file():
+            problems.append(f"docs/AGENT-CLI.md: links to schema/{match.group(1)}, which does not exist.")
+    return problems
+
+
+LAYOUT_SCHEMAS = ("project-v3.schema.json", "feedback-v2.schema.json")
+
+
+def check_layout_schema() -> list[Problem]:
+    """REG-112  The published layout schema must accept the groups exportLayout writes."""
+    problems = []
+    layout_cpp = read(ROOT / "app" / "layout.cpp")
+    if '"manual", sourceBounds' not in layout_cpp:
+        # A region made by hand no longer records its source bounds, so nothing to guard here.
+        return problems
+    for name in LAYOUT_SCHEMAS:
+        path = ROOT / "schema" / name
+        try:
+            group = json.loads(read(path))["$defs"]["layoutGroup"]
+        except (json.JSONDecodeError, KeyError) as error:
+            problems.append(f"schema/{name}: the layoutGroup definition is unreadable ({error}).")
+            continue
+        for rule in group.get("allOf", []):
+            origin = rule.get("if", {}).get("properties", {}).get("origin", {})
+            if origin.get("const") != "manual":
+                continue
+            branch = json.dumps(rule.get("then", {}), ensure_ascii=False)
+            if '"type": "null"' in branch and "layoutRectangle" not in branch:
+                problems.append(
+                    f"schema/{name}: the manual-group branch forces originalRectangle to null, but "
+                    f"app/layout.cpp::addLayoutRegion records the members' source bounds so that a "
+                    f"later piece removal cannot move the region. Every exported project would be "
+                    f"rejected by scripts/validate-exports.py, which the macOS build runs."
+                )
+    return problems
+
+
+# --------------------------------------------------------------------------- #
 # Build recipe
 # --------------------------------------------------------------------------- #
 def check_build_recipe() -> list[Problem]:
@@ -570,6 +656,8 @@ CHECKS = [
     ("english_names", check_english_names),
     ("ci_toolchain", check_ci_toolchain),
     ("ocr_bridge", check_ocr_bridge),
+    ("feedback_docs", check_feedback_docs),
+    ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
 ]
 

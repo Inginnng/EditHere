@@ -458,21 +458,18 @@
       },
       "allOf": [
         {
+          "description": "A region made by hand records the source bounds of its members at creation time, so that a later piece removal cannot move it; it may also be null in a project saved before 0.9.0. Detected and canvas regions always carry their rectangle.",
           "if": {
             "properties": {
               "origin": {
-                "const": "manual"
+                "enum": [
+                  "detected",
+                  "canvas"
+                ]
               }
             }
           },
           "then": {
-            "properties": {
-              "originalRectangle": {
-                "type": "null"
-              }
-            }
-          },
-          "else": {
             "properties": {
               "originalRectangle": {
                 "$ref": "#/$defs/layoutRectangle"
