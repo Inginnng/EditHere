@@ -17,8 +17,21 @@
 #include <cstring>
 #endif
 namespace h2d {
-QString agentServerName() {
+QString agentStateLocation() {
+    // Resolve the shared directory under a fixed identity, then hand the caller's own identity
+    // back: the value has to be the same in the GUI, the CLI and every tool binary, and
+    // QStandardPaths derives it from the application and organization name.
+    const auto name = QCoreApplication::applicationName();
+    const auto organization = QCoreApplication::organizationName();
+    QCoreApplication::setApplicationName("EditHere");
+    QCoreApplication::setOrganizationName("EditHere");
     const auto state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QCoreApplication::setApplicationName(name);
+    QCoreApplication::setOrganizationName(organization);
+    return state;
+}
+QString agentServerName() {
+    const auto state = agentStateLocation();
     return "EditHere-agent-v1-" + QString::fromLatin1(QCryptographicHash::hash(state.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
 }
 QByteArray encodeAgentMessage(const QJsonObject &message) {

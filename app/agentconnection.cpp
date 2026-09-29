@@ -2,7 +2,6 @@
 #include "agentprotocol.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
-#include <QStandardPaths>
 #include <QThread>
 namespace h2d {
 namespace {
@@ -38,7 +37,9 @@ QJsonObject endpointUnavailable(const AgentSocketResult &result) {
 }
 }
 QString legacyDesktopServerName() {
-    const auto state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    // Shares agentStateLocation() with the Agent endpoint: both names have to be reached from
+    // any process identity, not just from the GUI that listens on them.
+    const auto state = agentStateLocation();
     return "EditHere-native-" + QString::number(qHash(state));
 }
 AgentSocketResult connectAgentSocket(QLocalSocket &socket, const QString &name, int timeout) {

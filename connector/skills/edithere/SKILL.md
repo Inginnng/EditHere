@@ -68,6 +68,8 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 
 `running:null` 表示状态未知，不能当作 `false`。
 
+0.9.6 与 0.9.7 的命令行按自己的程序名推算通信端点，与桌面程序使用的名字不同：桌面程序在运行，`status` 也返回 `running:false`，`open`、`capture`、`annotate` 报 `startup_timeout`。核对版本后升级到 0.9.8，不要循环重启桌面程序。
+
 ## 解读反馈
 
 - `image` 是**调整前**原图的 data URL，不是调整后的预览。缺少 `image` 时需自行关联本次输入原图。

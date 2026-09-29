@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "agentconnection.h"
 #include "agentserver.h"
 #include "autostart.h"
 #include "i18n.h"
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
     QDir().mkpath(state);
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);
-    const QString serverName = "EditHere-native-" + QString::number(qHash(state));
+    const QString serverName = legacyDesktopServerName();
     const QStringList args = app.arguments();
     const bool agentStart = args.contains("--agent-start");
     const bool background = args.contains("--autostart") || agentStart;

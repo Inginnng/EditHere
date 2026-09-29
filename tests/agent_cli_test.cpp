@@ -16,6 +16,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 #ifdef Q_OS_MACOS
@@ -209,6 +210,31 @@ class AgentCliTests : public QObject {
         }
     }
 #endif
+    void endpointNamesIgnoreTheCallerIdentity() {
+        // The GUI runs as "EditHere"/"EditHere", the CLI as "edithere-cli" with no organization,
+        // so QStandardPaths answers with a different directory for each. Both endpoint names have
+        // to be derived from the shared one: otherwise the CLI looks for a name the GUI never
+        // created, and every desktop command fails with startup_timeout (REG-113).
+        const auto name = QCoreApplication::applicationName();
+        const auto organization = QCoreApplication::organizationName();
+        QCoreApplication::setApplicationName("EditHere");
+        QCoreApplication::setOrganizationName("EditHere");
+        // Resolve the GUI's own directory first, so a cached answer cannot mask the mistake.
+        const auto guiState = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+        const auto guiAgent = agentServerName();
+        const auto guiDesktop = legacyDesktopServerName();
+        QCoreApplication::setApplicationName("edithere-cli");
+        QCoreApplication::setOrganizationName(QString());
+        const auto cliState = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+        const auto cliAgent = agentServerName();
+        const auto cliDesktop = legacyDesktopServerName();
+        QCoreApplication::setApplicationName(name);
+        QCoreApplication::setOrganizationName(organization);
+        QVERIFY2(guiState != cliState, "the two identities must resolve differently for this test to mean anything");
+        QCOMPARE(cliAgent, guiAgent);
+        QCOMPARE(cliDesktop, guiDesktop);
+        QCOMPARE(agentStateLocation(), guiState);
+    }
     void realTransportKeepsMissingErrorAndDesktopProbeSendsNothing() {
         QLocalSocket socket;
         // macOS prepends its long per-user temp path to Unix socket names.
