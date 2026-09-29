@@ -51,10 +51,6 @@ QSize captureRatioSize(CaptureRatio ratio, int customWidth, int customHeight) {
     return {};
 }
 
-QString scrollAxisLabel(Qt::Orientation axis) {
-    return axis == Qt::Horizontal ? tr("横向") : tr("纵向");
-}
-
 QString captureRatioLabel(CaptureRatio ratio, int customWidth, int customHeight) {
     switch (ratio) {
     case CaptureRatio::Free:

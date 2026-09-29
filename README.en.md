@@ -55,8 +55,8 @@ Use it for web and app interfaces, game HUDs, charts, and other visuals where yo
 
 | Feature | What you can do |
 | --- | --- |
-| **Capture toolbar** | Start a capture with a global shortcut. Hover to select a region, use the scroll wheel to switch the selection scope, or draw a selection manually. Releasing the mouse settles the region and brings up a toolbar above it and a column of style tools beside it: annotate, recognise text, pin, save, copy, take a long capture or pick a colour, with corner radius and shadow in the style column. |
-| **Pin, recognise and capture long pages** | Pin a region on top of everything else to work against it, read the text inside a region and copy it line by line, and let a long page scroll itself into one tall picture. |
+| **Capture toolbar** | Start a capture with a global shortcut. Hover to select a region, use the scroll wheel to switch the selection scope, or draw a selection manually. Releasing the mouse settles the region and brings up a toolbar above it and a column of style tools beside it: annotate, recognise text, pin, save, copy or pick a colour, with corner radius and shadow in the style column. |
+| **Pin and recognise** | Pin a region on top of everything else to work against it, and read the text inside a region and copy it line by line. |
 | **Connect each comment to its location** | Combine point, rectangle, and global annotations. Write comments in the sidebar and use numbered markers to find the corresponding locations on the image. |
 | **Rearrange the layout directly** | Enable “Explode” (大爆炸) to drag or resize image regions, or enter exact coordinates and dimensions. You can also annotate the regions you have adjusted. |
 | **Hand feedback to AI** | Copy or export JSON. With the companion skill and CLI, AI can open an image, wait for you to explicitly finish annotating, and then receive your feedback to continue editing. |

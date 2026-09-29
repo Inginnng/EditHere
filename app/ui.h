@@ -2,8 +2,6 @@
 #include "settings.h"
 #include <QColor>
 #include <QIcon>
-#include <QRectF>
-#include <QString>
 #include <QWidget>
 class QPushButton;
 class QLabel;
@@ -26,20 +24,6 @@ constexpr double magnifierZoomCell = 15;
 // pointer. The window and the tests ask for the same rectangle from here, so the two
 // cannot drift apart.
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools = {});
-// The panel a long capture grows in, beside the region. It is a fixed strip: the picture
-// in it is scaled to fit rather than the panel changing size, because a panel that grew
-// with the picture would end up taller than the screen it is on.
-constexpr double scrollPreviewWidth = 84;
-constexpr double scrollPreviewHeight = 210;
-constexpr double scrollPreviewPadding = 8;
-// Where the panel goes. A picture that grows downwards is shown beside the region and
-// one that grows sideways under it, which is the side there is room on in each case. It
-// is kept clear of the tools the same way the magnifier is, and shares that search.
-QRectF scrollPreviewPlacement(const QRectF &region, QSizeF window, Qt::Orientation axis,
-                              const QVector<QRectF> &tools = {});
-// "1234 px" or "1.2 万像素" — a long capture can get far past the point where four
-// digits are worth reading.
-QString scrollLengthText(int pixels);
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin

@@ -79,40 +79,6 @@ ATOM allocateShortcutId() {
     return GlobalAddAtomW(reinterpret_cast<LPCWSTR>(name.utf16()));
 }
 } // namespace
-void *windowUnderPoint(QPoint nativePoint) {
-    const POINT point{nativePoint.x(), nativePoint.y()};
-    // What the user sees at a point, which is not always what Windows answers with: the
-    // capture window covers every screen it was taken over and is topmost for as long as
-    // a long picture is being taken, so WindowFromPoint lands on it every time. The
-    // window that has to be scrolled is the first one below it in the z-order that really
-    // lies under the point and is not ours.
-    HWND candidate = WindowFromPoint(point);
-    if (candidate == nullptr)
-        return nullptr;
-    // A child of our own window is still ours, so every candidate is walked back up to
-    // its top level before it is judged. Doing that first also keeps the walk below on
-    // the z-order of top level windows rather than on that of some child.
-    if (HWND root = GetAncestor(candidate, GA_ROOT))
-        candidate = root;
-    for (; candidate != nullptr; candidate = GetWindow(candidate, GW_HWNDNEXT)) {
-        DWORD process = 0;
-        GetWindowThreadProcessId(candidate, &process);
-        if (process == GetCurrentProcessId())
-            continue;
-        if (!IsWindowVisible(candidate) || IsIconic(candidate))
-            continue;
-        // A cloaked window is on the z-order but is not on screen: it is what a window
-        // of a suspended or virtual desktop looks like.
-        DWORD cloaked = 0;
-        DwmGetWindowAttribute(candidate, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
-        if (cloaked != 0)
-            continue;
-        RECT bounds{};
-        if (GetWindowRect(candidate, &bounds) && PtInRect(&bounds, point))
-            return candidate;
-    }
-    return nullptr;
-}
 void prepareScreenCapture(QObject *context, std::function<void()> ready) {
     // Run after QMenu / the native tray callback has returned to the event loop.
     QTimer::singleShot(0, context, [context, ready = std::move(ready)]() mutable {
@@ -289,35 +255,6 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
 }
 bool requestAccessibility() {
     return true;
-}
-bool scrollAt(QPoint nativePoint, int steps, Qt::Orientation axis) {
-    if (steps == 0)
-        return false;
-    const POINT point{nativePoint.x(), nativePoint.y()};
-    HWND target = reinterpret_cast<HWND>(windowUnderPoint(nativePoint));
-    if (target == nullptr)
-        return false;
-    // The wheel is sent whether or not the window advertises a scroll bar. Most pages
-    // today are drawn by the application itself and carry no WS_VSCROLL at all, so
-    // asking that question first would refuse to scroll exactly the windows a long
-    // capture is for. A wheel over something that cannot scroll is simply ignored, and
-    // the run ends on the frame that did not move.
-    // The wheel is posted to the window that was found rather than injected. An injected
-    // wheel is delivered to whatever is under the pointer, and while a long capture runs
-    // that is the capture window itself, which stays on screen for the whole run so the
-    // region can still be dragged to reach the end of a page.
-    const UINT message = axis == Qt::Horizontal ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL;
-    // A wheel message counts its movement in the direction of the wheel, and the caller
-    // counts it in the direction the content should travel: positive steps are the page
-    // moving on. Vertical wheel messages use negative deltas for down, whereas
-    // horizontal wheel messages use positive deltas for right.
-    const int direction = axis == Qt::Horizontal ? 1 : -1;
-    const WPARAM delta = MAKEWPARAM(0, static_cast<short>(direction * steps * WHEEL_DELTA));
-    // The point goes with the message in screen coordinates. It is what the application
-    // hit-tests with, and it is why the pointer does not have to be moved at all: moving
-    // it would pull the cursor out of the region the user is dragging.
-    const LPARAM where = MAKELPARAM(point.x, point.y);
-    return PostMessageW(target, message, delta, where) != FALSE;
 }
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());

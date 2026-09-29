@@ -9,7 +9,6 @@
 namespace h2d {
 class OcrDialog;
 class PinWindow;
-class ScrollCapture;
 class Controller final : public QObject {
     Q_OBJECT
   public:
@@ -27,7 +26,6 @@ class Controller final : public QObject {
     void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
-    friend class ScrollControllerTests;
     void finishAgentSession();
     // Rebuilds the tray menu and tooltip; called on startup and on a language change.
     void retranslate();
@@ -41,31 +39,6 @@ class Controller final : public QObject {
     void pinRegion(Overlay *source);
     void saveRegion(Overlay *source);
     void recognizeRegion(Overlay *source, OcrLanguageMode language);
-    void startScrollCapture(Overlay *source);
-    void finishScrollCapture(QImage picture, QString message, bool ok);
-    // Observe user-driven scrolling and place each settled frame without finishing
-    // automatically when the content is unchanged or temporarily unmatched.
-    void stepScrollCapture();
-    // Reads the region once and settles it before the frame is placed.
-    void readScrollFrame();
-    // Hands one settled frame to the session and works out what happens next.
-    void placeScrollFrame(const QImage &frame);
-    // The window whose region a long capture is being taken of, or null.
-    Overlay *activeScrollOverlay() const;
-    // Stops a run and puts the windows back the way they were. `keep` leaves the region
-    // where it is with the toolbar up, which is what the user asking to cancel means.
-    void abortScrollCapture(bool keep);
-    // The screen region and the candidate waiting to settle.
-    struct ScrollRun {
-        QString screen;
-        QRect pixels;
-        Qt::Orientation axis = Qt::Vertical;
-        int settles = 0;
-        QImage held;
-    };
-    ScrollRun scrollRun_;
-    quint64 scrollGeneration_ = 0;
-    QPointer<Overlay> scrollSource_;
     // The screen is covered while a region is being picked, so anything that opens a
     // window of its own has to take the covers off first and put them back if the user
     // changes their mind.
@@ -110,7 +83,6 @@ class Controller final : public QObject {
     // Pinned pictures are owned by nobody but this list: a pin outlives the region it
     // came from, which is the whole point of pinning it.
     QVector<PinWindow *> pins_;
-    ScrollCapture *scroller_ = nullptr;
     OcrEngine *ocr_ = nullptr;
     QPointer<OcrDialog> ocrDialog_;
     QImage ocrPicture_;

@@ -222,14 +222,12 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     // monochrome bar: a blue rounded rectangle around it, which is how a capture tool
     // marks the thing it is for.
     const QColor mark = accent();
-    setStyleSheet(QStringLiteral("QPushButton { color: #e8e9ee; background: transparent; border: none; }"
+    setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; }"
                                  "QPushButton[tool=\"true\"]:hover { background: rgba(255, 255, 255, 0.14);"
                                  " border-radius: 8px; }"
                                  "QPushButton[primary=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
                                  " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
                                  "QPushButton[primary=\"true\"]:hover { background: rgba(%1, %2, %3, 0.46); }"
-                                 "QPushButton[active=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
-                                 " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
                                  "QPushButton:disabled { color: rgba(232, 233, 238, 0.4); }"
                                  "QLabel { color: #e8e9ee; }")
                       .arg(mark.red())
@@ -263,28 +261,6 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     (void)addButton(QStringLiteral("pin"), tr("贴图"));
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
     (void)addButton(QStringLiteral("copy"), tr("复制图像"));
-    (void)addButton(QStringLiteral("scroll"), tr("长截图"));
-    scrollAxisButton_ = new QPushButton(this);
-    scrollAxisButton_->setObjectName("scrollAxisButton");
-    scrollTrimStart_ = new QPushButton(this);
-    scrollTrimStart_->setObjectName("scrollTrimStart");
-    scrollTrimEnd_ = new QPushButton(this);
-    scrollTrimEnd_->setObjectName("scrollTrimEnd");
-    for (auto *button : {scrollAxisButton_, scrollTrimStart_, scrollTrimEnd_}) {
-        button->setProperty("tool", true);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumWidth(46);
-        button->setMinimumHeight(34);
-        button->hide();
-        layout->addWidget(button);
-    }
-    connect(scrollAxisButton_, &QPushButton::clicked, this, [this] {
-        const auto axis = scrollAxis_ == Qt::Vertical ? Qt::Horizontal : Qt::Vertical;
-        emit scrollAxisChanged(axis);
-        setScrollState(true, false, axis);
-    });
-    connect(scrollTrimStart_, &QPushButton::clicked, this, [this] { emit scrollTrimRequested(true); });
-    connect(scrollTrimEnd_, &QPushButton::clicked, this, [this] { emit scrollTrimRequested(false); });
     more_ = new QPushButton(this);
     more_->setIcon(glyph(QStringLiteral("more"), kGlyph));
     more_->setIconSize({20, 20});
@@ -331,8 +307,6 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
             save();
         else if (glyphName == QLatin1String("ocr"))
             recognize();
-        else if (glyphName == QLatin1String("scroll"))
-            scroll();
         else if (glyphName == QLatin1String("edit"))
             annotate();
     });
@@ -355,14 +329,8 @@ void CaptureToolbar::retranslate() {
             label = tr("保存图片");
         else if (name == QLatin1String("ocr"))
             label = tr("文字识别");
-        else if (name == QLatin1String("scroll"))
-            label = scrollActive_ ? (scrollRunning_ ? tr("停止") : tr("开始")) : tr("长截图");
         else if (name == QLatin1String("edit"))
-            label = scrollActive_ ? tr("完成") : tr("批注");
-        if (name == QLatin1String("scroll") || name == QLatin1String("edit")) {
-            button->setText(scrollActive_ ? label : QString());
-            button->setFixedWidth(scrollActive_ ? 70 : 34);
-        }
+            label = tr("批注");
         if (!label.isEmpty()) {
             button->setToolTip(label);
             button->setAccessibleName(label);
@@ -373,14 +341,8 @@ void CaptureToolbar::retranslate() {
     size_->setToolTip(tr("点击输入精确尺寸"));
     ratio_->setToolTip(tr("点击选择固定比例"));
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
-    scrollAxisButton_->setText(scrollAxisLabel(scrollAxis_));
-    scrollAxisButton_->setToolTip(tr("切换方向并重新开始"));
-    scrollTrimStart_->setText(scrollAxis_ == Qt::Vertical ? tr("裁上") : tr("裁左"));
-    scrollTrimEnd_->setText(scrollAxis_ == Qt::Vertical ? tr("裁下") : tr("裁右"));
     if (!message_.isEmpty())
         status_->setText(message_);
-    else if (!scrollStatus_.isEmpty())
-        status_->setText(scrollStatus_);
     adjustSize();
 }
 
@@ -486,57 +448,6 @@ void CaptureToolbar::recognize() {
         emit ocrRequested();
 }
 
-void CaptureToolbar::scroll() {
-    if (busy_)
-        return;
-    // One button for the whole run: the first press starts it, the next stops it. That
-    // is what makes a long capture something the user drives rather than something that
-    // runs to its limit on its own.
-    if (scrollRunning_) {
-        setScrollState(scrollActive_, false, scrollAxis_);
-        emit scrollRunRequested(false);
-        return;
-    }
-    setScrollState(true, true, scrollAxis_);
-    emit scrollRunRequested(true);
-}
-
-void CaptureToolbar::setScrollState(bool active, bool running, Qt::Orientation axis) {
-    scrollActive_ = active;
-    scrollRunning_ = running;
-    scrollAxis_ = axis;
-    size_->setVisible(!active);
-    ratio_->setVisible(!active);
-    for (auto *button : {scrollAxisButton_, scrollTrimStart_, scrollTrimEnd_})
-        button->setVisible(active);
-    scrollTrimStart_->setEnabled(!running);
-    scrollTrimEnd_->setEnabled(!running);
-    for (auto *button : buttons_)
-        if (button->property("glyphName").toString() == QLatin1String("ocr"))
-            button->setVisible(!active);
-    for (auto *button : buttons_) {
-        if (button->property("glyphName").toString() != QLatin1String("scroll"))
-            continue;
-        button->setProperty("active", active && running);
-        button->style()->unpolish(button);
-        button->style()->polish(button);
-        button->setToolTip(running ? tr("停止长截图（%1）").arg(scrollAxisLabel(axis))
-                                   : tr("长截图（%1）").arg(scrollAxisLabel(axis)));
-        button->setAccessibleName(button->toolTip());
-    }
-    retranslate();
-}
-
-void CaptureToolbar::setScrollStatus(const QString &status) {
-    scrollStatus_ = status;
-    if (!message_.isEmpty())
-        return;
-    status_->setText(status);
-    status_->setVisible(!status.isEmpty());
-    adjustSize();
-    raise();
-}
-
 void CaptureToolbar::annotate() {
     if (!busy_)
         emit annotateRequested();
@@ -604,38 +515,6 @@ void CaptureToolbar::buildMenu() {
     // menu is how the keyboard reaches it.
     auto *annotate = menu->addAction(tr("批注"), this, &CaptureToolbar::annotate);
     annotate->setIcon(glyph(QStringLiteral("edit"), accent()));
-    menu->addSeparator();
-    // 长截图 gets a submenu rather than a one-line entry because it has a direction and
-    // a state: a run that is going has a different set of things to offer from one that
-    // has not started, and the direction cannot be changed while frames are being placed.
-    auto *longCapture = menu->addMenu(tr("长截图"));
-    longCapture->setIcon(glyph(QStringLiteral("scroll"), accent()));
-    auto *axisVertical = longCapture->addAction(scrollAxisLabel(Qt::Vertical));
-    axisVertical->setCheckable(true);
-    axisVertical->setChecked(scrollAxis_ == Qt::Vertical);
-    axisVertical->setEnabled(!scrollRunning_);
-    connect(axisVertical, &QAction::triggered, this, [this] {
-        setScrollState(scrollActive_, scrollRunning_, Qt::Vertical);
-        emit scrollAxisChanged(Qt::Vertical);
-    });
-    auto *axisHorizontal = longCapture->addAction(scrollAxisLabel(Qt::Horizontal));
-    axisHorizontal->setCheckable(true);
-    axisHorizontal->setChecked(scrollAxis_ == Qt::Horizontal);
-    axisHorizontal->setEnabled(!scrollRunning_);
-    connect(axisHorizontal, &QAction::triggered, this, [this] {
-        setScrollState(scrollActive_, scrollRunning_, Qt::Horizontal);
-        emit scrollAxisChanged(Qt::Horizontal);
-    });
-    longCapture->addSeparator();
-    auto *run = longCapture->addAction(scrollRunning_ ? tr("停止") : tr("开始"));
-    connect(run, &QAction::triggered, this, &CaptureToolbar::scroll);
-    if (scrollActive_) {
-        auto *leave = longCapture->addAction(tr("退出长截图"));
-        connect(leave, &QAction::triggered, this, [this] {
-            setScrollState(false, false, scrollAxis_);
-            emit scrollStopRequested();
-        });
-    }
     menu->addSeparator();
     auto *ratios = menu->addMenu(tr("固定比例"));
     const QVector<CaptureRatio> choices{CaptureRatio::Free,    CaptureRatio::Square,
@@ -713,7 +592,6 @@ void CaptureToolbar::buildMenu() {
              {QStringLiteral("Ctrl+S"), tr("保存图片")},
              {QStringLiteral("Ctrl+T / Ctrl+2 / P"), tr("贴图")},
              {QStringLiteral("Shift+C / T"), tr("文字识别")},
-             {QStringLiteral("L"), tr("长截图开始 / 停止")},
              {QStringLiteral("C"), tr("取色")},
              {QStringLiteral("R"), tr("恢复上次选区")},
              {QStringLiteral("H"), tr("更多选项")},

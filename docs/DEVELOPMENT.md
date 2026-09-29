@@ -38,8 +38,6 @@ Windows PowerShell 7，CMake 在 PATH 中：
 | `app/overlay.{h,cpp}` | 选区绘制与调整、候选块、取色、工具条的宿主；只发信号，不做动作 |
 | `app/capturetoolbar.{h,cpp}` | 工具条控件与「更多」菜单（固定比例、圆角/边框/阴影、识别语言、历史与选区） |
 | `app/capturesession.{h,cpp}` | 比例与尺寸换算、样式合成 `composeCapture()`、跨会话的 `CaptureHistory` |
-| `app/scrollcapture.{h,cpp}` | 长截图的驱动：滚动、抓帧、拼接、到底判定 |
-| `app/scrollstitch.{h,cpp}` | 相邻两帧的重叠匹配与竖向拼接（纯图片运算，可离线测试） |
 | `app/pinwindow.{h,cpp}` | 置顶看图窗口：拖动、缩放、透明度、右键菜单 |
 | `app/ocr.{h,cpp}` + `app/ocr_mac.mm` | 识别引擎封装：分条带、坐标还原、结果解析；macOS 走 Vision |
 | `app/ocrdialog.{h,cpp}` | 识别结果窗口：逐行列表与原图高亮联动 |

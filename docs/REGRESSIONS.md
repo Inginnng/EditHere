@@ -113,9 +113,11 @@
 | REG-057 | 打包脚本把旧程序标记成新版本 | 0.8.0 → 0.8.1 | 打包脚本里另写了一份版本号 | `check-packaging.py::version_consistency`（`project()` 为唯一来源；`version.txt` 由 CMake 构建后生成，打包脚本只读它） | 🆕 |
 | REG-058 | 在 Windows 上用 Visual Studio 生成器构建直接失败（`MSB6001 ... 关键字 "PATH"`） | 开发环境 | 环境里同时存在 `Path` 与 `PATH` 两个拼写，MSBuild 的 ToolTask 崩溃 | `check-packaging.py::build_recipe`（脚本、文档、CI 中不得出现 VS 生成器，只用 Ninja） | 🆕 |
 
-## 九、截图工具条、长截图与文字识别
+## 九、截图工具条与文字识别
 
-截图不再"松手即批注"：松开鼠标只把选定的区域定下来，选区上方的工具条（批注、识别、贴图、保存、复制、长截图）与它右侧的样式列（圆角、阴影/边框、贴图、重置）才是动作的入口。本节记录实现这套流程时踩到的问题。
+截图不再"松手即批注"：松开鼠标只把选定的区域定下来，选区上方的工具条（批注、识别、贴图、保存、复制）与它右侧的样式列（圆角、阴影/边框、贴图、重置）才是动作的入口。本节记录实现这套流程时踩到的问题。
+
+⚠️ **长截图已移出主线**（2026-09-29）：`app/scrollcapture.*`、`app/scrollstitch.*`、`app/scrollshade.*` 与对应测试整体搬到 **`feature/long-capture` 分支**，0.9.6 不打包这个功能。下表里的 **REG-081、REG-101、REG-102、REG-103、REG-104** 五条只对该分支成立——主线上已无对应代码与测试，它们留在这里是为了长截图回来时照着验一遍，不是当前主线的回归信号。
 
 | 编号 | 现象 | 首现 → 修复 | 根因 | 回归检查 | 状态 |
 | --- | --- | --- | --- | --- | --- |
@@ -180,7 +182,7 @@
 | ENV-008 | 公开英文名"大爆炸 = Explode"的文档侧一致性 | 由 REG-023 的 `english_names` 检查覆盖，但 README 措辞本身仍需人工审阅 |
 | ENV-009 | offscreen 平台没有字体目录，任何依赖真实字形的绘制都会得到空白图，容易让测试假通过 | 需要真实文字时自绘点阵字形（见 REG-062），或改用 `WINDIR/Fonts` 下的系统字体并接受平台绑定 |
 | ENV-010 | offscreen 平台的 `QCursor::setPos()` 不只是不出事件，它还会在下一次事件循环里回一个**恰好差 1 像素**的"已到达" MouseMove（真机是 0.2 像素，被回声判定挡掉） | 断言"按完方向键之后的状态"时**不要在按键后 `qWait`**——那一等就把这个假移动派发出去，走 `mouseMoveEvent` 重新选块，用例凭空失败（REG-092 的 UI 用例踩到）。要等就等在那之前（如等 `findChildren<QProcess *>()` 清空） |
-| ENV-011 | `scroll_controller_tests` 在**真实桌面**（不带 `-platform offscreen`）跑时，用例会在 7 秒内全部跑完、结果文件也写全，但进程不退出，得手工 `taskkill` | 只在真机手工验证时踩到：`run-tests.sh` 用的是 offscreen（4 通过 / 3 跳过，正常退出）。真机验证请用 `-o <文件>,txt` 取结果，别等进程返回；判定看结果文件里的 `Totals` 行 |
+| ENV-011 | 需要在**真实桌面**上跑的 Qt 测试，常常是"用例跑完、结果文件写全，但进程不退出"（长截图的 `scroll_controller_tests` 在真机上就是 7 秒跑完却要手工 `taskkill`） | 真机验证请用 `-o <文件>,txt` 取结果，别等进程返回；判定看结果文件里的 `Totals` 行 |
 
 ## 新增检查清单
 
@@ -194,13 +196,12 @@
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
 | `canvas_feedback_tests::layoutGuidesStayVisibleForUnselectedComponents` | `tests/canvas_feedback_test.cpp` | REG-037 |
 | `ocr_tests`（14 例） | `tests/ocr_test.cpp`，CTest 名 `ocr` | REG-061/062 |
-| `capture_tests`（46 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079/081/101/102 |
-| `ui_tests`（72 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/101 |
+| `capture_tests`（27 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079 |
+| `ui_tests`（69 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
-| `platform_tests`（8 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031/103；其中 `aWheelReachesTheWindowBelowTheCaptureWindow` 与 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
-| `scroll_controller_tests::theLongCaptureFilmStaysOutOfTheFramesItReads` | `tests/scroll_controller_test.cpp` | REG-104；**仅真机有效**（offscreen 下 QSKIP），CI 与本地 offscreen 跑不到，改遮罩或改抓屏后必须手工在真机跑一次 |
+| `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
 
-长截图的做法对照过两个开源实现，取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
+长截图的做法对照过两个开源实现（**该段只对 `feature/long-capture` 分支成立**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 
 `scripts/check-packaging.py` 不依赖 Qt 与 NSIS（找不到 `makensis` 时只跳过实编译，其余检查照常执行），所以它能在 CI 里跑；`scripts/check-translations.py` 需要 `lupdate`，CI 的精简 Qt 没有 Linguist，因此只在本地 Qt 完整安装时注册为测试。i18n 的工具无关部分（`.ts` ↔ `.qm` 逐条比对）已并入 `check-packaging.py`，保证 CI 也能拦住"改了 `.ts` 忘了 `lrelease`"。
 
