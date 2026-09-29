@@ -310,9 +310,15 @@ class UiTests : public QObject {
         QVERIFY2(hint != nullptr, "an empty window has to say what it is waiting for");
         QVERIFY2(!hint->text().isEmpty(), "the hint has to actually say something");
         QVERIFY2(well->isVisible(), "an empty window shows the hint");
+        // The well has to cover the viewport at the size the window opens with, not
+        // the size it had while being constructed: with a stale geometry its button
+        // once showed up as a sliver in the corner.
+        auto *wellViewport = editor.findChild<QScrollArea *>("imageWell")->viewport();
+        QTest::qWait(60);
+        QCOMPARE(well->geometry(), QRect(QPoint(0, 0), wellViewport->size()));
         editor.resize(1240, 820);
         QTest::qWait(80);
-        artifact(editor, "empty-window-check.png");
+        QCOMPARE(well->geometry(), QRect(QPoint(0, 0), wellViewport->size()));
         // The drop is not the only way in: the button opens the same file chooser as
         // the tray entry, so the window is usable with nothing to drag into it.
         auto *import = editor.findChild<QPushButton *>("emptyImport");

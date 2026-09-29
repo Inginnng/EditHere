@@ -45,6 +45,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
@@ -1100,6 +1101,17 @@ void Editor::toggleAnnotations() {
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
     if (object == imageScroll_->viewport()) {
+        // The viewport settles at its real size after the window does, so the layers
+        // pinned to it are synced here rather than only in resizeEvent, where the
+        // viewport rect can still be the old one — the empty-window hint once kept
+        // its construction-time size and its button showed as a sliver in the corner.
+        if (event->type() == QEvent::Resize) {
+            const QSize area = static_cast<QResizeEvent *>(event)->size();
+            if (wave_)
+                wave_->resize(area);
+            if (emptyWell_)
+                emptyWell_->resize(area);
+        }
         if (event->type() == QEvent::MouseButtonPress) {
             const auto mouse = static_cast<QMouseEvent *>(event);
             if (hasDocument() && mouse->button() == Qt::MiddleButton &&
@@ -1481,6 +1493,9 @@ void Editor::updateEmptyState() {
     // waiting for is the whole feature: the picture comes from somewhere else.
     if (emptyWell_ == nullptr)
         return;
+    // Synced here as well, so a window shown at the size it was created with still
+    // covers the whole viewport on its first appearance.
+    emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     emptyWell_->setVisible(!hasDocument() && !guideActive());
     emptyWell_->raise();
 }
