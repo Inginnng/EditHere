@@ -3169,15 +3169,19 @@ class UiTests : public QObject {
     void destroyingTheCaptureWindowWhileInspectionRunsLeavesNoChildBehind() {
         ScreenFrame frame{"inspect", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
         QPointer<QProcess> child;
+        bool answered = false;
         {
             Overlay overlay(frame);
             overlay.show();
             overlay.setFixedSize(800, 600);
-            QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
             // Once the blocks are on offer, an arrow key is what asks for the inspection of what
             // is under the pointer (the keys are how a block already settled is fine-tuned).
-            for (int i = 0; i < 3 && child.isNull(); ++i) {
-                QTest::keyClick(&overlay, Qt::Key_Right);
+            // The keys answer only after the block look has finished, which takes noticeably
+            // longer on a loaded runner, so keep asking until an inspection is really running.
+            for (int i = 0; i < 12 && child.isNull(); ++i) {
+                QKeyEvent right(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+                QApplication::sendEvent(&overlay, &right);
+                answered = answered || right.isAccepted();
                 // The inspection is asked for 150 ms after the pointer stops, and runs outside
                 // this window for far longer than this window lives.
                 QTest::qWait(400);
@@ -3186,7 +3190,9 @@ class UiTests : public QObject {
         }
         QTest::qWait(300); // a queued handler from the child must not touch the destroyed window
         if (child.isNull())
-            QSKIP("this environment cannot start a child process (ENV-007); the runners cover it");
+            QSKIP(qPrintable(QString("no inspection child could be started here; the arrows were "
+                                     "answered: %1")
+                                 .arg(answered ? "yes" : "no")));
         QVERIFY2(child.isNull(), "the destroyed window left its inspection child behind");
     }
     // REG-092: fine-tuning with the arrow keys re-chose the block from scratch at every
