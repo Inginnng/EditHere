@@ -293,7 +293,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     emptyHint_->setAlignment(Qt::AlignCenter);
     emptyHint_->setWordWrap(true);
     emptyHint_->setStyleSheet("font-size:13px;");
-    well->addWidget(emptyHint_, 0, Qt::AlignCenter);
+    // The label takes the whole width and centres its own text: a wrapped QLabel
+    // asked for a sizeHint slightly narrower than the line really is, and on a
+    // scaled display that clipped the tail into a second line.
+    well->addWidget(emptyHint_);
     // A drop is not the only way in: the button opens the same file chooser the tray
     // entry does, so the window is usable without anything to drag into it.
     emptyImport_ = textButton({}, true, emptyWell_);

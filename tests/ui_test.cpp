@@ -310,6 +310,17 @@ class UiTests : public QObject {
         QVERIFY2(hint != nullptr, "an empty window has to say what it is waiting for");
         QVERIFY2(!hint->text().isEmpty(), "the hint has to actually say something");
         QVERIFY2(well->isVisible(), "an empty window shows the hint");
+        {
+            // The wrapped hint once asked for a width a hair narrower than its line,
+            // and on a scaled display the tail clipped into a second line: the label
+            // has to span the well so the line always fits.
+            auto *hintLabel = editor.findChild<QLabel *>("emptyHint");
+            auto *wellViewport = editor.findChild<QScrollArea *>("imageWell")->viewport();
+            QVERIFY2(hintLabel->width() >= hintLabel->sizeHint().width(),
+                     qPrintable(QStringLiteral("the hint line fits without wrapping (%1 < %2)")
+                                    .arg(hintLabel->width()).arg(hintLabel->sizeHint().width())));
+            QVERIFY2(wellViewport->width() - hintLabel->width() >= 0, "the hint lives inside the well");
+        }
         // The well has to cover the viewport at the size the window opens with, not
         // the size it had while being constructed: with a stale geometry its button
         // once showed up as a sliver in the corner.
