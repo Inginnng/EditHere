@@ -142,7 +142,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Extract changelog for this version
+      - name: Extract release notes for this version
         id: changelog
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -151,6 +151,15 @@ jobs:
           import os, re, pathlib
 
           version = os.environ["VERSION"]
+
+          # A curated draft in docs/releases/<version>.md wins: the CHANGELOG
+          # records history, the release page carries the user-facing summary.
+          curated = pathlib.Path("docs/releases/%s.md" % version)
+          if curated.is_file():
+              pathlib.Path("release-notes.md").write_text(curated.read_text(encoding="utf-8"), encoding="utf-8")
+              print("::notice::Using curated notes from %s" % curated)
+              raise SystemExit(0)
+
           lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
           section, capturing = [], False
           for line in lines:
@@ -170,9 +179,32 @@ jobs:
           PY
           cat release-notes.md
 
+      - name: Require every package before publishing
+        # A tag without installers is a broken release: fail loudly here rather
+        # than publishing a source-only release.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd artifacts
+          missing=0
+          for package in EditHere-win-x64-setup.exe EditHere-win-x64.zip EditHere-macos-universal.dmg; do
+            if [[ ! -s "$package" ]]; then
+              echo "::error::Missing or empty release package: $package"
+              missing=1
+            fi
+          done
+          if [[ "$missing" != "0" ]]; then
+            ls -l
+            exit 1
+          fi
+          echo "All packages present for $VERSION:"
+          ls -l EditHere-win-x64-setup.exe EditHere-win-x64.zip EditHere-macos-universal.dmg
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # Never publish a release whose assets did not land.
+          fail_on_unmatched_files: true
           tag_name: ${{ steps.version.outputs.tag }}
           name: EditHere ${{ steps.version.outputs.version }}
           # The changelog section is prepended to the generated notes, which keep

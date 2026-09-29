@@ -14,6 +14,14 @@
 
 产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：`0.8.21` 的精简反馈继续由 `feedback-v0.7.schema.json` 定义，完整项目使用 `project-v3.schema.json`。
 
+## 发布流程
+
+打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows 与 macOS 构建任务分别产出安装包，release 任务汇总后创建 GitHub Release。
+
+- **发布必须带完整安装包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg` 三者均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。
+- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`。
+- 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
+
 ## 构建与验证
 
 依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。

@@ -112,6 +112,7 @@
 | REG-056 | 程序版本在多个文件里各说各话（`connector/README.md` 停在 0.8.21，程序已到 0.9.2） | 0.8.0 → 0.9.2 | 版本号没有唯一来源，改一处漏一处 | `check-packaging.py::version_consistency` | 🆕 |
 | REG-057 | 打包脚本把旧程序标记成新版本 | 0.8.0 → 0.8.1 | 打包脚本里另写了一份版本号 | `check-packaging.py::version_consistency`（`project()` 为唯一来源；`version.txt` 由 CMake 构建后生成，打包脚本只读它） | 🆕 |
 | REG-058 | 在 Windows 上用 Visual Studio 生成器构建直接失败（`MSB6001 ... 关键字 "PATH"`） | 开发环境 | 环境里同时存在 `Path` 与 `PATH` 两个拼写，MSBuild 的 ToolTask 崩溃 | `check-packaging.py::build_recipe`（脚本、文档、CI 中不得出现 VS 生成器，只用 Ninja） | 🆕 |
+| REG-109 | 标签已推送、GitHub Release 也建好了，页面上却只有源码压缩包，没有安装包 | 0.9.6 | 发布工作流的 `release` 任务依赖两个构建任务，任一构建失败即被跳过；而 `softprops/action-gh-release` 对同一标签仍会建出一个空资产 Release，看上去"发布成功" | `.github/workflows/release.yml` 的 `Require every package before publishing`：三个包（setup.exe / zip / dmg）任一缺失或为空即令工作流失败，并置 `fail_on_unmatched_files: true` | 🆕 |
 
 ## 九、截图工具条与文字识别
 
@@ -204,6 +205,7 @@
 | `ui_tests`（71 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
+| 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing` | REG-109 |
 
 长截图的做法对照过两个开源实现（**该段只对 `feature/long-capture` 分支成立**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 
