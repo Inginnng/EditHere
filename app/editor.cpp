@@ -1499,6 +1499,13 @@ void Editor::updateEmptyState() {
     const bool empty = !hasDocument() && !guideActive();
     emptyWell_->setVisible(empty);
     emptyWell_->raise();
+    // The viewport can still be settling: on some machines the first layout pass lands
+    // after this call, so the size is taken once more once everything has been shown.
+    if (empty)
+        QTimer::singleShot(0, this, [this] {
+            if (emptyWell_ && emptyWell_->isVisible())
+                emptyWell_->setGeometry(imageScroll_->viewport()->rect());
+        });
     // Nothing has been opened yet, so there is no picture-shaped panel either: the
     // canvas keeps its background for a picture and loses it while waiting for one.
     // The flag goes through a property and a re-polish rather than an inline
