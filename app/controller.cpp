@@ -41,21 +41,16 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     auto menu = new QMenu(&editor_);
     captureAction_ = menu->addAction(QString(), this, &Controller::capture);
     captureAction_->setObjectName("trayCapture");
-    openAction_ = menu->addAction(QString(), &editor_, [this] {
-        editor_.openFile();
-        if (guidePending_ && editor_.hasDocument()) showGuide();
-    });
-    pasteAction_ = menu->addAction(QString(), &editor_, [this] {
-        editor_.pasteImage();
-        if (guidePending_ && editor_.hasDocument()) showGuide();
-    });
     annotateAction_ = menu->addAction(QString(), this, [this] {
         if (auto menu = tray_.contextMenu())
             menu->close();
         editor_.openEmpty();
     });
     annotateAction_->setObjectName("trayAnnotate");
-    restoreAction_ = menu->addAction(QString(), this, &Controller::activate);
+    openAction_ = menu->addAction(QString(), &editor_, [this] {
+        editor_.openFile();
+        if (guidePending_ && editor_.hasDocument()) showGuide();
+    });
 #ifdef Q_OS_MAC
     accessibilityAction_ = menu->addAction(QString(), this, [this] {
         if (requestAccessibility())
@@ -103,9 +98,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
 }
 void Controller::retranslate() {
     if (openAction_) openAction_->setText(tr("打开图片或项目"));
-    if (pasteAction_) pasteAction_->setText(tr("粘贴图片"));
     if (annotateAction_) annotateAction_->setText(tr("新建批注（空窗口）"));
-    if (restoreAction_) restoreAction_->setText(tr("恢复批注窗口"));
     if (accessibilityAction_) accessibilityAction_->setText(tr("启用系统元素识别"));
     if (settingsAction_) settingsAction_->setText(tr("设置…"));
     if (updatesAction_) updatesAction_->setText(tr("检查更新…"));

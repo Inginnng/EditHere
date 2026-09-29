@@ -281,11 +281,28 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     // What the middle of the window says when there is no picture in it yet. It sits
     // on the viewport rather than in a layout so that it covers exactly the place a
     // picture is going to land, which is the place to aim a drop at.
-    emptyWell_ = new QLabel(imageScroll_->viewport());
+    emptyWell_ = new QWidget(imageScroll_->viewport());
     emptyWell_->setObjectName("emptyWell");
-    emptyWell_->setAlignment(Qt::AlignCenter);
-    emptyWell_->setWordWrap(true);
-    emptyWell_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto well = new QVBoxLayout(emptyWell_);
+    well->setContentsMargins(24, 24, 24, 24);
+    well->setSpacing(16);
+    well->addStretch();
+    emptyHint_ = mutedLabel({}, emptyWell_);
+    emptyHint_->setObjectName("emptyHint");
+    emptyHint_->setAlignment(Qt::AlignCenter);
+    emptyHint_->setWordWrap(true);
+    emptyHint_->setStyleSheet("font-size:13px;");
+    well->addWidget(emptyHint_, 0, Qt::AlignCenter);
+    // A drop is not the only way in: the button opens the same file chooser the tray
+    // entry does, so the window is usable without anything to drag into it.
+    emptyImport_ = textButton({}, true, emptyWell_);
+    emptyImport_->setObjectName("emptyImport");
+    emptyImport_->setMinimumWidth(184);
+    emptyImport_->setFixedHeight(34);
+    connect(emptyImport_, &QPushButton::clicked, this, [this] { openFile(); });
+    well->addWidget(emptyImport_, 0, Qt::AlignCenter);
+    well->addStretch();
+    emptyWell_->installEventFilter(this);
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     emptyWell_->hide();
     layout->addLayout(content, 1);
@@ -471,8 +488,10 @@ void Editor::retranslate() {
     if (auto finish = findChild<QPushButton *>("agentFinish"))
         finish->setText(tr("完成并返回 AI"));
     emptyNotes_->setText(tr("圈出位置，或添加一条全局意见。"));
-    if (emptyWell_)
-        emptyWell_->setText(tr("把图片拖到这里\n也可以按 Ctrl+V 粘贴，或从菜单里打开图片"));
+    if (emptyHint_)
+        emptyHint_->setText(tr("可直接拖入或粘贴图片"));
+    if (emptyImport_)
+        emptyImport_->setText(tr("导入图片或项目"));
     zoom_->setToolTip(tr("适应图片"));
     auto primary = [](QPushButton *button, const QString &text) {
         button->setToolTip(text);
@@ -1113,6 +1132,23 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
             stopViewportPan();
         }
         if (viewportPanning_ && event->type() == QEvent::Wheel) return true;
+    }
+    // The empty-window hint covers the whole viewport, so a picture aimed at the
+    // middle of the window lands on it instead of on the window. It does not know how
+    // to open a picture, so the drop is handed straight back to the window.
+    if (object == emptyWell_) {
+        if (event->type() == QEvent::DragEnter) {
+            dragEnterEvent(static_cast<QDragEnterEvent *>(event));
+            return true;
+        }
+        if (event->type() == QEvent::DragMove) {
+            event->accept();
+            return true;
+        }
+        if (event->type() == QEvent::Drop) {
+            dropEvent(static_cast<QDropEvent *>(event));
+            return true;
+        }
     }
     if (object==imageScroll_->viewport() && event->type()==QEvent::Wheel && hasDocument()) {
         const auto wheel=static_cast<QWheelEvent *>(event);

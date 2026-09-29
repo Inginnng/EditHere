@@ -13,6 +13,8 @@
 #include <QDir>
 #include <QMimeData>
 #include <QDoubleSpinBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -302,10 +304,30 @@ class UiTests : public QObject {
         editor.openEmpty();
         QVERIFY(QTest::qWaitForWindowExposed(&editor));
         QVERIFY2(!editor.hasDocument(), "the window opens with nothing in it");
-        auto *well = editor.findChild<QLabel *>("emptyWell");
+        auto *well = editor.findChild<QWidget *>("emptyWell");
         QVERIFY2(well != nullptr, "an empty window has to say so");
-        QVERIFY2(!well->text().isEmpty(), "the hint has to actually say something");
+        auto *hint = editor.findChild<QLabel *>("emptyHint");
+        QVERIFY2(hint != nullptr, "an empty window has to say what it is waiting for");
+        QVERIFY2(!hint->text().isEmpty(), "the hint has to actually say something");
         QVERIFY2(well->isVisible(), "an empty window shows the hint");
+        editor.resize(1240, 820);
+        QTest::qWait(80);
+        artifact(editor, "empty-window-check.png");
+        // The drop is not the only way in: the button opens the same file chooser as
+        // the tray entry, so the window is usable with nothing to drag into it.
+        auto *import = editor.findChild<QPushButton *>("emptyImport");
+        QVERIFY2(import != nullptr, "an empty window offers to open a picture");
+        QVERIFY2(import->isVisible() && !import->text().isEmpty(),
+                 "the button says what it opens");
+        bool asked = false;
+        QTimer::singleShot(60, &editor, [&] {
+            if (auto dialog = QApplication::activeModalWidget()) {
+                asked = true;
+                dialog->close();
+            }
+        });
+        import->click();
+        QVERIFY2(asked, "the button opens the file chooser rather than doing nothing");
         // Once a picture is in it, the hint gets out of the way.
         editor.setDocument(gridDocument());
         QVERIFY(editor.hasDocument());
@@ -314,6 +336,17 @@ class UiTests : public QObject {
         editor.openEmpty();
         QVERIFY(!editor.hasDocument());
         QVERIFY(well->isVisible());
+        // A picture dropped on the window still arrives: the well covers the whole
+        // viewport, so the drop has to keep travelling up to the window itself.
+        editor.openEmpty();
+        QMimeData data;
+        data.setImageData(gridDocument().image);
+        const QPoint at = editor.rect().center();
+        QDragEnterEvent entering(at, Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(editor.focusWidget() ? editor.focusWidget() : &editor, &entering);
+        QDropEvent dropping(at, Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(well, &dropping);
+        QVERIFY2(editor.hasDocument(), "a picture dropped on the empty window lands in it");
         editor.hide();
     }
     // A family asked for by name can be missing on a slimmed-down Windows install,

@@ -161,7 +161,12 @@ class Editor final : public QWidget {
     QVBoxLayout *noteLayout_;
     QHBoxLayout *dock_;
     QWidget *inspectorSeparator_ = nullptr;
-    QLabel *meta_, *hint_, *noteCount_, *emptyNotes_, *emptyWell_;
+    QLabel *meta_, *hint_, *noteCount_, *emptyNotes_;
+    // The middle of the window while it has no picture: a line saying how a picture
+    // arrives, and a button that opens one instead of waiting for a drop.
+    QWidget *emptyWell_ = nullptr;
+    QLabel *emptyHint_ = nullptr;
+    QPushButton *emptyImport_ = nullptr;
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
