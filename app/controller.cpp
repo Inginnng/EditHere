@@ -49,6 +49,12 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         editor_.pasteImage();
         if (guidePending_ && editor_.hasDocument()) showGuide();
     });
+    annotateAction_ = menu->addAction(QString(), this, [this] {
+        if (auto menu = tray_.contextMenu())
+            menu->close();
+        editor_.openEmpty();
+    });
+    annotateAction_->setObjectName("trayAnnotate");
     restoreAction_ = menu->addAction(QString(), this, &Controller::activate);
 #ifdef Q_OS_MAC
     accessibilityAction_ = menu->addAction(QString(), this, [this] {
@@ -83,12 +89,22 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
+    connect(&editor_, &Editor::preferencesChanged, this, [this] {
+        // The editor turned a preference off by itself — the "don't ask again" box on
+        // the close question does — and an answer the user gave has to outlive the
+        // window it was given in.
+        settings_.confirmBeforeDiscard = false;
+        QString error;
+        if (!saveSettings(settings_, &error, settingsFile_))
+            tray_.showMessage("EditHere", tr("设置未能保存：") + error);
+    });
     if (!shortcut_.start(settings_.shortcuts.value("capture")))
         tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));
 }
 void Controller::retranslate() {
     if (openAction_) openAction_->setText(tr("打开图片或项目"));
     if (pasteAction_) pasteAction_->setText(tr("粘贴图片"));
+    if (annotateAction_) annotateAction_->setText(tr("新建批注（空窗口）"));
     if (restoreAction_) restoreAction_->setText(tr("恢复批注窗口"));
     if (accessibilityAction_) accessibilityAction_->setText(tr("启用系统元素识别"));
     if (settingsAction_) settingsAction_->setText(tr("设置…"));

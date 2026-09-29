@@ -203,6 +203,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.launchAtLogin = boolean("defaults/launchAtLogin", false);
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
+    result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
     // The capture style arrived after the first settings file did, so a missing key
     // means "the built-in look" rather than "the user turned it off".
@@ -271,6 +272,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/launchAtLogin", settings.launchAtLogin);
     target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
+    target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("defaults/feedbackDir", settings.feedbackDir);

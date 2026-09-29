@@ -39,8 +39,17 @@ class Editor final : public QWidget {
         return !doc_.image.isNull();
     }
     bool allowReplace();
+    // Closing is not the same question as replacing: the user is walking away, not
+    // choosing something else, and being stopped every single time about a screenshot
+    // that was only ever going to be thrown away is what "don't ask again" is for.
+    bool confirmDiscardOnClose();
     bool saveProject();
     void openFile(const QString &path = {});
+    // Opens the annotation window with nothing in it, so a picture can be brought in
+    // by dropping it on the window: annotating a picture that is already on disk is a
+    // different job from taking a new screenshot, and it should not have to start
+    // with one.
+    void openEmpty();
     void pasteImage();
     void exportJson();
     void fit();
@@ -62,6 +71,9 @@ class Editor final : public QWidget {
     void hiddenToTray();
     void toolbarSettingsRequested();
     void settingsRequested();
+    // The editor changed a preference itself — the "don't ask again" box does — and the
+    // owner has to write it down, or the answer would only last until the next start.
+    void preferencesChanged();
 
   protected:
     bool eventFilter(QObject *, QEvent *) override;
@@ -78,6 +90,8 @@ class Editor final : public QWidget {
     // Rebuilds every label of the permanent chrome. Called from the constructor
     // and again whenever the interface language changes.
     void retranslate();
+    // What the window says while there is no picture in it, and whether it says it.
+    void updateEmptyState();
     void updateToolLabels();
     void beginNoteEdit(const QString &id);
     void finishNoteEdit();
@@ -147,7 +161,7 @@ class Editor final : public QWidget {
     QVBoxLayout *noteLayout_;
     QHBoxLayout *dock_;
     QWidget *inspectorSeparator_ = nullptr;
-    QLabel *meta_, *hint_, *noteCount_, *emptyNotes_;
+    QLabel *meta_, *hint_, *noteCount_, *emptyNotes_, *emptyWell_;
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;

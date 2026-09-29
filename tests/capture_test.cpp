@@ -518,6 +518,54 @@ class CaptureTests : public QObject {
                                 .arg(qAlpha(flat.pixel(0, flat.height() / 2)))));
         window.hide();
     }
+    // Several pins can be on screen at once, so the shadow is what says which one the
+    // user is on: the accent while it is the window being used, grey once the pointer
+    // has gone elsewhere. A pin whose shadow is off shows neither — turning it off is
+    // asking for a plain picture, not for a grey halo.
+    void aPinSaysWhetherItIsTheOneBeingUsedByTheColourOfItsShadow() {
+        const QImage region = stripedImage(60, 40);
+        CaptureStyle style = bareStyle();
+        style.shadow = true;
+        style.shadowStrength = 100;
+        PinWindow window(composeCapture(region, style));
+        window.setUndecorated(region, style);
+        window.setDecoration(style.shadowRadius());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const QColor themeAccent = accent();
+        QVERIFY(window.isActive());
+        // Read in the halo, well clear of the picture and of the window's rim.
+        const QPoint probe(window.width() / 2, 2);
+        const QImage lit = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        const QColor litPixel = QColor::fromRgb(lit.pixel(probe));
+        QVERIFY2(litPixel.blue() > litPixel.red() + 8,
+                 qPrintable(QStringLiteral("the shadow of the pin being used is the accent (%1)")
+                                .arg(litPixel.name())));
+        QVERIFY2(std::abs(litPixel.blue() - themeAccent.blue()) < 90,
+                 qPrintable(QStringLiteral("the lit shadow is cast in the accent (%1 vs %2)")
+                                .arg(litPixel.name(), themeAccent.name())));
+        // Going to another window takes the accent off it and leaves a grey halo.
+        window.setActive(false);
+        const QImage idle = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        const QColor idlePixel = QColor::fromRgb(idle.pixel(probe));
+        QVERIFY2(std::abs(idlePixel.blue() - idlePixel.red()) <= 12,
+                 qPrintable(QStringLiteral("the shadow of a pin left behind is grey (%1)")
+                                .arg(idlePixel.name())));
+        QVERIFY2(qAlpha(idle.pixel(probe)) > 0, "the grey halo is still a shadow, not nothing");
+        // Coming back puts the accent back.
+        window.setActive(true);
+        const QImage again = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        const QColor againPixel = QColor::fromRgb(again.pixel(probe));
+        QVERIFY2(againPixel.blue() > againPixel.red() + 8,
+                 qPrintable(QStringLiteral("coming back to a pin relights its shadow (%1)")
+                                .arg(againPixel.name())));
+        // With the shadow off there is no halo to colour either way.
+        window.setShadowEnabled(false);
+        window.setActive(false);
+        const QImage flat = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
+        QVERIFY2(flat.size() == region.size(), "a shadowless pin is the picture and nothing else");
+        window.hide();
+    }
     void aPinOffersMoreThanCopying() {
         QImage picture(40, 30, QImage::Format_ARGB32);
         picture.fill(Qt::blue);

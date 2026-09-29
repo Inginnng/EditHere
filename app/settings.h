@@ -24,6 +24,11 @@ struct AppSettings {
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
+    // Whether closing the annotation window asks about unsaved changes. Turning it off
+    // is what the "don't ask again" box on that question does: from then on closing
+    // throws the changes away instead of stopping to ask. It is a preference rather
+    // than a one-off so that it can be turned back on in the settings.
+    bool confirmBeforeDiscard = true;
     bool checkUpdatesOnStartup = false;
     QString feedbackDir; // Empty = default CacheLocation/feedback.
     int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.

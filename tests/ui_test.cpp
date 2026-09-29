@@ -292,6 +292,29 @@ class UiTests : public QObject {
         QVERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
+    // Annotating a picture that already exists should not have to start with taking a
+    // screenshot: the window opens empty and says what it is waiting for, and the
+    // picture arrives by being dropped on it.
+    void anEmptyAnnotationWindowSaysItIsWaitingForAPicture() {
+        Editor editor;
+        editor.setPreferences(defaultSettings());
+        editor.openEmpty();
+        QVERIFY(QTest::qWaitForWindowExposed(&editor));
+        QVERIFY2(!editor.hasDocument(), "the window opens with nothing in it");
+        auto *well = editor.findChild<QLabel *>("emptyWell");
+        QVERIFY2(well != nullptr, "an empty window has to say so");
+        QVERIFY2(!well->text().isEmpty(), "the hint has to actually say something");
+        QVERIFY2(well->isVisible(), "an empty window shows the hint");
+        // Once a picture is in it, the hint gets out of the way.
+        editor.setDocument(gridDocument());
+        QVERIFY(editor.hasDocument());
+        QVERIFY2(!well->isVisible(), "the hint is only for a window with no picture");
+        // Closing and opening empty again is the same state, not a leftover one.
+        editor.openEmpty();
+        QVERIFY(!editor.hasDocument());
+        QVERIFY(well->isVisible());
+        editor.hide();
+    }
     void defaultPreferencesApplyToNextImageAndExport() {
         Editor editor;
         auto preferences = defaultSettings();

@@ -67,6 +67,10 @@ class Controller final : public QObject {
     bool guidePending_ = false;
     QAction *captureAction_ = nullptr;
     QAction *openAction_ = nullptr, *pasteAction_ = nullptr, *restoreAction_ = nullptr;
+    // Opens the annotation window with nothing in it, which is how a picture that is
+    // already on disk gets annotated: drop it on the window rather than screenshot it
+    // again.
+    QAction *annotateAction_ = nullptr;
     QAction *accessibilityAction_ = nullptr;
     QAction *settingsAction_ = nullptr, *updatesAction_ = nullptr, *quitAction_ = nullptr;
     Editor editor_;

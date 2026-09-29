@@ -277,6 +277,16 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     content->addWidget(detailsStack_);
     wave_ = new ExplosionWave(imageScroll_->viewport());
     wave_->setGeometry(imageScroll_->viewport()->rect());
+    // What the middle of the window says when there is no picture in it yet. It sits
+    // on the viewport rather than in a layout so that it covers exactly the place a
+    // picture is going to land, which is the place to aim a drop at.
+    emptyWell_ = new QLabel(imageScroll_->viewport());
+    emptyWell_->setObjectName("emptyWell");
+    emptyWell_->setAlignment(Qt::AlignCenter);
+    emptyWell_->setWordWrap(true);
+    emptyWell_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    emptyWell_->setGeometry(imageScroll_->viewport()->rect());
+    emptyWell_->hide();
     layout->addLayout(content, 1);
     hint_ = mutedLabel({}, shell);
     hint_->setAlignment(Qt::AlignCenter);
@@ -460,6 +470,8 @@ void Editor::retranslate() {
     if (auto finish = findChild<QPushButton *>("agentFinish"))
         finish->setText(tr("完成并返回 AI"));
     emptyNotes_->setText(tr("圈出位置，或添加一条全局意见。"));
+    if (emptyWell_)
+        emptyWell_->setText(tr("把图片拖到这里\n也可以按 Ctrl+V 粘贴，或从菜单里打开图片"));
     zoom_->setToolTip(tr("适应图片"));
     auto primary = [](QPushButton *button, const QString &text) {
         button->setToolTip(text);
@@ -596,6 +608,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     activateWindow();
     canvas_->setFocus();
     updateControls();
+    updateEmptyState();
 }
 void Editor::toggleFullscreen() {
     stopViewportPan();
@@ -698,6 +711,8 @@ void Editor::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
     if (wave_)
         wave_->setGeometry(imageScroll_->viewport()->rect());
+    if (emptyWell_)
+        emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     updateToolbar();
     if (fitted_)
         QTimer::singleShot(0, this, [this] {
@@ -1398,6 +1413,66 @@ bool Editor::allowReplace() {
         return false;
     return answer == QMessageBox::Discard || saveProject();
 }
+void Editor::openEmpty() {
+    if (agentSession_) {
+        toast(tr("请先完成或取消当前 AI 批注任务"));
+        return;
+    }
+    if (!allowReplace())
+        return;
+    ++generation_;
+    stopViewportPan();
+    resetLayoutTools();
+    doc_ = {};
+    undoHistory_.clear();
+    redoHistory_.clear();
+    projectPath_.clear();
+    canvas_->setDocument(nullptr);
+    meta_->setText({});
+    renderNotes();
+    updateControls();
+    updateEmptyState();
+    if (isMinimized())
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
+    configureNativeWindow(this, false);
+    raise();
+    activateWindow();
+}
+void Editor::updateEmptyState() {
+    // An empty window that says nothing looks broken, and one that says what it is
+    // waiting for is the whole feature: the picture comes from somewhere else.
+    if (emptyWell_ == nullptr)
+        return;
+    emptyWell_->setVisible(!hasDocument() && !guideActive());
+    emptyWell_->raise();
+}
+bool Editor::confirmDiscardOnClose() {
+    finishNoteEdit();
+    if (!doc_.dirty)
+        return true;
+    // What the box said the last time it was shown: from then on closing throws the
+    // changes away. Saving is still one button away while the window is open, so
+    // nothing is lost that the user could have wanted to keep.
+    if (!preferences_.confirmBeforeDiscard)
+        return true;
+    QMessageBox box(this);
+    box.setWindowTitle(tr("保留当前修改？"));
+    box.setText(tr("当前批注或布局修改尚未保存。是否先保存项目？"));
+    box.setIcon(QMessageBox::Question);
+    box.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Save);
+    auto *never = new QCheckBox(tr("不再提醒，可在设置中修改"), &box);
+    box.setCheckBox(never);
+    const auto answer = box.exec();
+    if (never->isChecked()) {
+        preferences_.confirmBeforeDiscard = false;
+        emit preferencesChanged();
+    }
+    if (answer == QMessageBox::Cancel)
+        return false;
+    return answer == QMessageBox::Discard || saveProject();
+}
 void Editor::openFile(const QString &provided) {
     QString path = provided;
     if (path.isEmpty())
@@ -1622,7 +1697,7 @@ void Editor::closeEvent(QCloseEvent *e) {
         return;
     }
     if (guideActive()) { dismissGuide(); return; }
-    if (!allowReplace())
+    if (!confirmDiscardOnClose())
         return;
     ++generation_;
     stopViewportPan();
@@ -1636,10 +1711,24 @@ void Editor::closeEvent(QCloseEvent *e) {
     emit hiddenToTray();
 }
 void Editor::dragEnterEvent(QDragEnterEvent *e) {
-    if (e->mimeData()->hasUrls())
+    // A file being dragged in is the ordinary case; an image coming straight from
+    // another program is the other one, and it is worth taking because that is what
+    // "drag this picture over to annotate it" means when the picture is not a file.
+    if (e->mimeData()->hasUrls() || e->mimeData()->hasImage())
         e->acceptProposedAction();
 }
 void Editor::dropEvent(QDropEvent *e) {
+    if (!e->mimeData()->hasUrls() && e->mimeData()->hasImage()) {
+        if (agentSession_) {
+            toast(tr("请先完成或取消当前 AI 批注任务"));
+            return;
+        }
+        if (!allowReplace())
+            return;
+        setDocument(fromImage(qvariant_cast<QImage>(e->mimeData()->imageData()), "drop",
+                              tr("拖入的图片")));
+        return;
+    }
     const auto urls = e->mimeData()->urls();
     if (!urls.isEmpty() && urls.first().isLocalFile()) {
         openFile(urls.first().toLocalFile());

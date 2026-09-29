@@ -30,6 +30,7 @@ class SettingsTests : public QObject {
         changed.launchAtLogin = true;
         changed.fitImageOnOpen = false;
         changed.embedOriginal = false;
+        changed.confirmBeforeDiscard = false;
         changed.checkUpdatesOnStartup = true;
         changed.defaultTool = 2;
         changed.toolbarActions = {"saveProject", "copyJson"};
@@ -42,6 +43,9 @@ class SettingsTests : public QObject {
         QVERIFY(loadSettings(path) == changed);
         QSettings persisted(path, QSettings::IniFormat);
         QCOMPARE(persisted.value("appearance/theme").toString(), QString("dark"));
+        // "Don't ask again" is a preference, not a mood: it has to come back after a
+        // restart the same way it was left.
+        QVERIFY(!persisted.value("defaults/confirmBeforeDiscard").toBool());
         QVERIFY(persisted.value("defaults/launchAtLogin").toBool());
         QCOMPARE(persisted.value("shortcuts/capture").toString(), QString("Ctrl+Alt+9"));
         QVERIFY(persisted.contains("shortcuts/point"));

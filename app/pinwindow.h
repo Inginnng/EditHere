@@ -55,6 +55,13 @@ class PinWindow final : public QWidget {
         return style_.shadow;
     }
     void setShadowEnabled(bool on);
+    // Whether this is the pin the user is on. The shadow says so: the accent while it
+    // is, a plain grey once the pointer has gone to another window. Both are the
+    // shadow, so a pin whose shadow is off shows neither.
+    void setActive(bool active);
+    bool isActive() const {
+        return active_;
+    }
     // Turns the picture a quarter turn at a time, keeping the middle where it is.
     void rotate(int quarters);
     // Turns it over, left to right or top to bottom.
@@ -88,6 +95,7 @@ class PinWindow final : public QWidget {
     void contextMenuEvent(QContextMenuEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void closeEvent(QCloseEvent *) override;
+    void changeEvent(QEvent *) override;
 
   private:
     void setZoom(qreal zoom);
@@ -95,6 +103,9 @@ class PinWindow final : public QWidget {
     // Puts the picture back together from the undecorated one and the style, then
     // resizes and re-centres the window around where it already was.
     void rebuild();
+    // The style as it is being drawn right now, which is the style the pin was given
+    // with the shadow's colour swapped for grey while this is not the active window.
+    CaptureStyle effectiveStyle() const;
     // Where the picture itself sits inside this window, in the window's own units.
     // The window is the picture plus whatever halo the style put around it, and the
     // halo is not part of what was captured: it is margin. Everything that has to
@@ -134,6 +145,9 @@ class PinWindow final : public QWidget {
     // around it would be a lie about its size.
     bool dragging_ = false;
     int decoration_ = 0;
+    // Whether this is the pin the user is on. A pin that has just been made is, which
+    // is why it starts out true: it is the thing that was just put on the screen.
+    bool active_ = true;
     // Which edge is being dragged to resize, zero when none is.
     int draggingEdge_ = 0;
     QRect dragStartGeometry_;

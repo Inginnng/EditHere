@@ -43,7 +43,8 @@ class SettingsDialog final : public QDialog {
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.
     LanguageMode appliedLanguage_ = LanguageMode::System;
-    QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_, *checkUpdatesOnStartup_;
+    QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_,
+        *confirmBeforeDiscard_, *checkUpdatesOnStartup_;
     QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;

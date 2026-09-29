@@ -24,6 +24,11 @@ constexpr int kOutline = 2;
 constexpr int kEdgeGrab = 6;
 // The smallest a pin can be dragged down to, so it can always be grabbed again.
 constexpr int kMinimumSide = 24;
+// The colour the halo falls back to once the user has gone to another window. It is
+// the shadow of a picture nobody is looking at: still there, so the pin still reads
+// as a thing lying on the desktop, but no longer claiming the accent — which is how
+// several pins say which one is being worked on.
+constexpr auto kIdleShadow = QColor(120, 120, 122);
 } // namespace
 
 PinWindow::PinWindow(QImage image, QRect placement, QWidget *parent)
@@ -159,6 +164,34 @@ void PinWindow::setShadowEnabled(bool on) {
     rebuild();
 }
 
+void PinWindow::changeEvent(QEvent *event) {
+    // Becoming the window the user is on, and ceasing to be it, both arrive here.
+    // Nothing else about the pin changes: the same picture stays put, only the halo
+    // changes colour.
+    if (event->type() == QEvent::ActivationChange)
+        setActive(isActiveWindow());
+    QWidget::changeEvent(event);
+}
+
+CaptureStyle PinWindow::effectiveStyle() const {
+    CaptureStyle style = style_;
+    if (!active_ && style.shadow)
+        style.shadowColor = kIdleShadow;
+    return style;
+}
+
+void PinWindow::setActive(bool active) {
+    if (active_ == active)
+        return;
+    active_ = active;
+    // Only the colour of the halo changes, and only a pin that has one has anything
+    // to redraw: a picture that arrived on its own has no shadow either way.
+    if (canToggleShadow() && style_.shadow)
+        rebuild();
+    else
+        update();
+}
+
 void PinWindow::rebuild() {
     // A pin is dragged around by hand as often as it is placed, so what has to stay
     // put is the middle of where it is now rather than the rectangle it arrived in.
@@ -167,7 +200,7 @@ void PinWindow::rebuild() {
     // is, and it stops saying that the moment the picture grows.
     const qreal ratio = deviceRatio();
     const int before = decoration_;
-    image_ = composeCapture(undecorated_, style_);
+    image_ = composeCapture(undecorated_, effectiveStyle());
     decoration_ = style_.shadowRadius();
     if (!placement_.isEmpty()) {
         // The rectangle it belongs to grows with the halo, in the units the window

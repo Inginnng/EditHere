@@ -152,6 +152,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
     embedOriginal_ = new QCheckBox(defaults);
     embedOriginal_->setObjectName("defaultEmbedOriginal");
+    confirmBeforeDiscard_ = new QCheckBox(defaults);
+    confirmBeforeDiscard_->setObjectName("confirmBeforeDiscard");
     defaultsLayout->addWidget(captureOnStartup_);
     auto loginLayout = new QVBoxLayout;
     loginLayout->setSpacing(6);
@@ -164,6 +166,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
     defaultsLayout->addWidget(embedOriginal_);
+    defaultsLayout->addWidget(confirmBeforeDiscard_);
     auto feedbackRow = new QHBoxLayout;
     feedbackDir_ = new QLineEdit(defaults);
     feedbackDir_->setObjectName("feedbackDir");
@@ -427,6 +430,9 @@ void SettingsDialog::retranslate() {
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
     fitImageOnOpen_->setToolTip(tr("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。"));
     embedOriginal_->setText(tr("导出 JSON 默认包含原图"));
+    confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
+    confirmBeforeDiscard_->setToolTip(
+        tr("关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。"));
     if (auto label = findChild<QLabel *>("feedbackDirLabel"))
         label->setText(tr("反馈临时目录"));
     feedbackDir_->setPlaceholderText(tr("默认：缓存目录下的 feedback"));
@@ -527,6 +533,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     embedOriginal_->setChecked(settings.embedOriginal);
+    confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
     feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
     defaultTool_->setCurrentIndex(settings.defaultTool);
@@ -537,6 +544,7 @@ AppSettings SettingsDialog::settings() const {
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.embedOriginal = embedOriginal_->isChecked();
+    result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());
     result.defaultTool = defaultTool_->currentIndex();
