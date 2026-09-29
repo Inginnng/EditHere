@@ -18,8 +18,6 @@ namespace h2d {
 namespace {
 constexpr qreal kMinimumZoom = 0.1;
 constexpr qreal kMaximumZoom = 4.0;
-// How thick the outline drawn around a pin is, in logical pixels.
-constexpr int kOutline = 2;
 // How close to an edge the pointer has to be to grab it.
 constexpr int kEdgeGrab = 6;
 // The smallest a pin can be dragged down to, so it can always be grabbed again.
@@ -139,9 +137,8 @@ void PinWindow::setZoom(qreal zoom) {
         painter.end();
     }
     display_.setDevicePixelRatio(ratio);
-    // The outline is drawn over the outermost pixels rather than around them, so the
-    // window is exactly the size the picture is: a pin of a region has to be the size
-    // of that region, to the pixel.
+    // The window is exactly the size the picture is: a pin of a region has to be the
+    // size of that region, to the pixel.
     setFixedSize(logical);
     update();
 }
@@ -264,19 +261,12 @@ void PinWindow::setTransparency(qreal transparency) {
 void PinWindow::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    // The picture and nothing else. A pin is told apart from the desktop by its
+    // shadow, and a pin whose shadow has been turned off is meant to be just a
+    // picture sitting there — on a desktop of the same colour it is supposed to
+    // blend in, so no line is drawn around it in either state. The edge a drag
+    // grabs is the picture's edge, which is what pictureRect() is for.
     painter.drawImage(QPoint(0, 0), display_);
-    // A pin that has a shadow is already told apart from the desktop by the shadow,
-    // and a line on top of that reads as a frame drawn around the picture rather than
-    // as the picture's own edge — which is what was on screen before and looked wrong.
-    // So the outline is only drawn when there is no shadow to do the job: a flat pin
-    // on a desktop of the same colour would otherwise have no edge at all. The edge a
-    // drag grabs is the picture's edge either way, which is what pictureRect() is for.
-    if (decoration_ <= 0) {
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QPen(accent(), kOutline));
-        const QRect picture = pictureRect();
-        painter.drawRect(picture.adjusted(0, 0, -1, -1));
-    }
 }
 
 void PinWindow::mousePressEvent(QMouseEvent *event) {
@@ -338,7 +328,7 @@ QRect PinWindow::pictureRect() const {
     const int across = qRound(decoration_ * double(area.width()) / image_.width());
     const int down = qRound(decoration_ * double(area.height()) / image_.height());
     // Never let the margin eat the picture: a pin whose halo is wider than it is tall
-    // would otherwise be outlined around nothing at all.
+    // would otherwise leave nothing to grab.
     const int marginX = std::min(across, area.width() / 2 - 1);
     const int marginY = std::min(down, area.height() / 2 - 1);
     return area.adjusted(marginX, marginY, -marginX, -marginY);

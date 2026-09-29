@@ -509,13 +509,24 @@ class CaptureTests : public QObject {
         // The picture under the halo is still there, which is what makes the margin
         // read as a shadow rather than as an empty window.
         QCOMPARE(qAlpha(shot.pixel(shot.width() / 2, middle)), 255);
-        // Taking the shadow off puts the line back: a flat pin on a desktop of its
-        // own colour has nothing else to say where it ends.
+        // Taking the shadow off leaves a plain picture and nothing else: no line is
+        // drawn in either state, because a pin with no shadow is meant to sit on a
+        // desktop of its own colour without betraying where it ends.
         window.setShadowEnabled(false);
         const QImage flat = window.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        QVERIFY2(qAlpha(flat.pixel(0, flat.height() / 2)) > 200,
-                 qPrintable(QStringLiteral("a pin with no shadow still has an edge (alpha %1)")
-                                .arg(qAlpha(flat.pixel(0, flat.height() / 2)))));
+        QCOMPARE(flat.size(), region.size());
+        CaptureStyle off = style;
+        off.shadow = false;
+        const QImage plain = composeCapture(region, off).convertedTo(QImage::Format_ARGB32);
+        QCOMPARE(flat.size(), plain.size());
+        int extra = 0;
+        for (int y = 0; y < flat.height() && extra == 0; ++y)
+            for (int x = 0; x < flat.width(); ++x)
+                if (flat.pixel(x, y) != plain.pixel(x, y))
+                    ++extra;
+        QVERIFY2(extra == 0, qPrintable(QStringLiteral(
+                     "a pin with no shadow shows the picture and nothing drawn on top of it "
+                     "(%1 pixel(s) differ)").arg(extra)));
         window.hide();
     }
     // Several pins can be on screen at once, so the shadow is what says which one the
