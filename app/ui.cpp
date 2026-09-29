@@ -80,8 +80,8 @@ QWidget { color:@text@; }
 QDialog, QMessageBox, QWidget#settingsDialog { background:@window@; }
 QWidget#editorShell { background:@window@; border:1px solid @border@; border-radius:15px; }
 QWidget#imageWell { background:@well@; }
-QPushButton { background:@button@; border:1px solid transparent; border-radius:8px; padding:7px 13px; min-height:20px; }
-QPushButton:hover { background:@hover@; }
+QWidget#imageWell[empty="true"] { background:transparent; }
+QPushButton { background:@button@; border:1px solid transparent; border-radius:8px; padding:7px 13px; min-height:20px; }QPushButton:hover { background:@hover@; }
 QPushButton:pressed { background:@pressed@; }
 QPushButton:checked { background:@selected@; color:@accent@; }
 QPushButton:disabled { background:@disabledBg@; color:@disabled@; }

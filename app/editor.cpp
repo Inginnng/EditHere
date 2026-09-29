@@ -1496,8 +1496,20 @@ void Editor::updateEmptyState() {
     // Synced here as well, so a window shown at the size it was created with still
     // covers the whole viewport on its first appearance.
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
-    emptyWell_->setVisible(!hasDocument() && !guideActive());
+    const bool empty = !hasDocument() && !guideActive();
+    emptyWell_->setVisible(empty);
     emptyWell_->raise();
+    // Nothing has been opened yet, so there is no picture-shaped panel either: the
+    // canvas keeps its background for a picture and loses it while waiting for one.
+    // The flag goes through a property and a re-polish rather than an inline
+    // stylesheet, which would cascade down onto the hint and its button.
+    if (imageScroll_->property("empty").toBool() != empty) {
+        imageScroll_->setProperty("empty", empty ? QVariant(true) : QVariant(false));
+        if (auto *style = imageScroll_->style()) {
+            style->unpolish(imageScroll_);
+            style->polish(imageScroll_);
+        }
+    }
 }
 bool Editor::confirmDiscardOnClose() {
     finishNoteEdit();
