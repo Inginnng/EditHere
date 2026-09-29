@@ -42,6 +42,7 @@
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionButton>
+#include <QPointer>
 #include <QScrollBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -3159,6 +3160,29 @@ class UiTests : public QObject {
                                 .arg(overlay.hovered() ? overlay.hovered()->bounds.height() : -1)));
         artifact(overlay, "wheel-level-is-kept.png");
         overlay.hide();
+    }
+    // REG-115: the capture window owns the child process it starts to inspect what is under the
+    // pointer, and QObject destroys child objects only after the class's own members are gone.
+    // Destroying the window while that child is still running let its finished handler read freed
+    // members, and the test process died with SIGSEGV on the macOS runner. This destroys the
+    // window while the inspection it asked for is still on its way.
+    void destroyingTheCaptureWindowWhileInspectionRunsLeavesNoChildBehind() {
+        ScreenFrame frame{"inspect", {0, 0, 800, 600}, {0, 0, 800, 600}, tableShot(), true};
+        QPointer<QProcess> child;
+        {
+            Overlay overlay(frame);
+            overlay.show();
+            overlay.setFixedSize(800, 600);
+            movePointerTo(overlay, QPoint(330, 210));
+            // The inspection runs outside this window, 150 ms after the pointer stops, and takes
+            // longer than this window lives: it is still running when the window goes away.
+            QTest::qWait(400);
+            child = overlay.findChildren<QProcess *>().value(0);
+        }
+        QTest::qWait(300); // a queued handler from the child must not touch the destroyed window
+        if (child.isNull())
+            QSKIP("this environment cannot start a child process (ENV-007); the runners cover it");
+        QVERIFY2(child.isNull(), "the destroyed window left its inspection child behind");
     }
     // REG-092: fine-tuning with the arrow keys re-chose the block from scratch at every
     // step, so a block that had been settled on turned into whatever smaller block the

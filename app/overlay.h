@@ -22,6 +22,7 @@ class Overlay final : public QWidget {
     Q_OBJECT
   public:
     explicit Overlay(ScreenFrame frame, QWidget *parent = nullptr);
+    ~Overlay() override;
     const ScreenFrame &frame() const {
         return frame_;
     }

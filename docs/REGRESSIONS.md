@@ -70,6 +70,7 @@
 | REG-034 | 缩放后鼠标下方的像素发生漂移，平移过或图片小于窗口时尤其明显 | 0.8.11 → 0.8.12 | 缩放锚点用了视口中心而非指针位置 | `tests/ui_test.cpp::wheelZoomKeepsThePixelUnderThePointer` | ✅ |
 | REG-035 | 保存文件失败只提示"保存失败"，无法定位是权限还是被占用 | 0.9.0 | 错误信息未带 QQFile 的 `errorString()` 与目标路径 | `tests/settings_test.cpp::failedWriteReportsError`（设置写入路径）；导出路径由 `invalidExportKeepsUnsavedWork` 覆盖 | ⚠️ |
 | REG-036 | 过期的一次异步识别结果覆盖了当前窗口的候选 | 0.8.16 → 0.8.17 | 异步结果未按窗口顺序/请求代次校验 | `tests/startup_flow_test.cpp::overlappingWindowsNeverSelectBehindFront` | ✅ |
+| REG-115 | macOS 构建**间歇性**失败（近 20 次里 7 次），失败的永远是 `ui` 测试，以 `SIGSEGV`（地址 `0x70`）结束，日志里紧挨着 `QProcess: Destroyed while process ("…/ui_tests") is still running` | 早已存在 → 未发布 | `Overlay` 用 `new QProcess(this)` 起"看指针下是什么元素"的子进程（把**自己**当子进程再跑一次：`--inspect x y pid`），但 `Overlay` 没有析构函数。窗口销毁时 `QObject` 最后才销毁子对象，而该子进程的 `finished` 回调会读写 `debounce_`、`picker_` 并调用 `update()` —— 这些成员那时**已经析构**，回调踩到已释放内存。macOS 运行器上子进程（整套 ui_tests）更慢，正好撞进这个时间窗；本机与 Windows 时序躲开了 | `tests/ui_test.cpp::destroyingTheCaptureWindowWhileInspectionRunsLeavesNoChildBehind`（在探测刚发出、子进程仍在运行时销毁窗口；本机沙箱起不了子进程会 `QSKIP`，覆盖来自 CI 运行器） | 🆕 |
 | REG-114 | 批注窗口底部工具条里带文字的按钮文字被截断（「查看 JSON」「复制 JSON 文件」「复制 JSON 内容」「复制并带批注图片」） | 0.9.7 → 0.9.8 | 按钮宽度按"文字宽度 + 40"固定，没算样式里的 `padding:7px 13px`、1px 边框和图标占位；而且这个尺寸设在 `unpolish/polish` 之前，样式生效后的实际内容区更窄。0.9.7 换上更长的按钮文字后才露出来 | `tests/ui_test.cpp::toolbarPreferencesKeepCoreToolsAndSettingsReachable`（按 `SE_PushButtonContents` 对比"文字 + 图标 + 间距"所需的宽度）；反向验证：换回旧算法即在 `exportJson` 上失败 | 🆕 |
 
 ## 五、大爆炸与布局

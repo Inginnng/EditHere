@@ -114,6 +114,23 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
     connect(sidebar_, &CaptureSidebar::rememberRequested, this, &Overlay::styleRememberRequested);
 }
 
+Overlay::~Overlay() {
+    // The inspection child is a child object, so QObject destroys it only after every member of
+    // this class is gone — but its finished handler reads debounce_, picker_ and calls update().
+    // When the window is destroyed while that child still runs (its 1200 ms deadline has not
+    // passed yet), the handler used to run against a half-destroyed window: the macOS runner
+    // died with SIGSEGV at the end of a ui test (REG-115). Cut the signals first, then reap.
+    QProcess *probe = probe_;
+    probe_ = nullptr;
+    if (!probe)
+        return;
+    probe->disconnect(this);
+    if (probe->state() != QProcess::NotRunning) {
+        probe->kill();
+        probe->waitForFinished(1000);
+    }
+}
+
 void Overlay::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     const QPoint local = mapFromGlobal(QCursor::pos());
