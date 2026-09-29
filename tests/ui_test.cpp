@@ -3173,11 +3173,16 @@ class UiTests : public QObject {
             Overlay overlay(frame);
             overlay.show();
             overlay.setFixedSize(800, 600);
-            movePointerTo(overlay, QPoint(330, 210));
-            // The inspection runs outside this window, 150 ms after the pointer stops, and takes
-            // longer than this window lives: it is still running when the window goes away.
-            QTest::qWait(400);
-            child = overlay.findChildren<QProcess *>().value(0);
+            QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+            // Once the blocks are on offer, an arrow key is what asks for the inspection of what
+            // is under the pointer (the keys are how a block already settled is fine-tuned).
+            for (int i = 0; i < 3 && child.isNull(); ++i) {
+                QTest::keyClick(&overlay, Qt::Key_Right);
+                // The inspection is asked for 150 ms after the pointer stops, and runs outside
+                // this window for far longer than this window lives.
+                QTest::qWait(400);
+                child = overlay.findChildren<QProcess *>().value(0);
+            }
         }
         QTest::qWait(300); // a queued handler from the child must not touch the destroyed window
         if (child.isNull())
