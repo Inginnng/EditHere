@@ -79,7 +79,7 @@ bool validCombination(QKeyCombination combination) {
 }
 } // namespace
 QVector<ShortcutDefinition> shortcutDefinitions() {
-    return {{"capture", tr("截图"), true, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_2)},
+    return {{"capture", tr("截图"), true, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_2)},
             {"open", tr("打开图片或项目"), false, QKeySequence(QKeySequence::Open)},
             {"paste", tr("粘贴图片"), false, QKeySequence(QKeySequence::Paste)},
             {"save", tr("保存项目"), false, QKeySequence(QKeySequence::Save)},

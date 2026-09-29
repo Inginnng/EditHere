@@ -127,7 +127,9 @@ bool carbonKey(Qt::Key key, UInt32 &code) {
     return true;
 }
 } // namespace
-void prepareScreenCapture(QObject *context, std::function<void()> ready) {
+quintptr captureForegroundWindow() { return 0; }
+void restoreCaptureForegroundWindow(quintptr) {}
+void prepareScreenCapture(QObject *context, std::function<void()> ready, bool) {
     // Cocoa finishes dismissing the status-item menu after its action returns.
     QTimer::singleShot(250, context, std::move(ready));
 }
@@ -293,7 +295,7 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
     }
 }
 QString globalShortcutLabel() {
-    return QKeySequence("Ctrl+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
+    return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
 }
 GlobalShortcut::GlobalShortcut(QObject *parent) : QObject(parent) {}
 GlobalShortcut::~GlobalShortcut() {

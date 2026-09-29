@@ -39,7 +39,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("edithereTray");
     auto menu = new QMenu(&editor_);
-    captureAction_ = menu->addAction(QString(), this, &Controller::capture);
+    captureAction_ = menu->addAction(QString(), this, [this] { beginCapture(true); });
     captureAction_->setObjectName("trayCapture");
     annotateAction_ = menu->addAction(QString(), this, [this] {
         if (auto menu = tray_.contextMenu())
@@ -72,7 +72,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     tray_.show();
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger)
-            capture();
+            beginCapture(true);
     });
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
@@ -242,7 +242,8 @@ void Controller::activate() {
     else
         capture();
 }
-void Controller::capture() {
+void Controller::capture() { beginCapture(false); }
+void Controller::beginCapture(bool fromTray) {
     if (!agentSessionId_.isEmpty()) { activate(); return; }
     if (capturing_ || QApplication::activeModalWidget())
         return;
@@ -250,12 +251,14 @@ void Controller::capture() {
         showGuide();
         return;
     }
+    const auto foreground = captureForegroundWindow();
     editor_.dismissGuide();
     if (auto menu = tray_.contextMenu())
         menu->close();
     if (!editor_.allowReplace())
         return;
     capturing_ = true;
+    captureForeground_ = fromTray ? 0 : foreground;
     // A new capture always starts on the screen, not on whatever was being browsed
     // before it.
     historyIndex_ = -1;
@@ -271,8 +274,7 @@ void Controller::capture() {
             auto owner = self.data();
             if (frames.isEmpty()) {
                 owner->capturing_ = false;
-                if (owner->wasVisible_)
-                    owner->activate();
+                owner->restoreAfterCapture();
                 QMessageBox::warning(&owner->editor_, tr("截图未完成"), error);
                 return;
             }
@@ -322,7 +324,20 @@ void Controller::capture() {
                     break;
                 }
         });
-    });
+    }, fromTray);
+}
+void Controller::restoreAfterCapture() {
+    if (wasVisible_) {
+        if (captureForeground_) {
+            editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
+            editor_.show();
+            editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
+        } else {
+            activate();
+        }
+    }
+    restoreCaptureForegroundWindow(captureForeground_);
+    captureForeground_ = 0;
 }
 void Controller::clearOverlays() {
     for (auto overlay : overlays_) {
@@ -334,8 +349,7 @@ void Controller::clearOverlays() {
 }
 void Controller::cancelCapture() {
     clearOverlays();
-    if (wasVisible_)
-        activate();
+    restoreAfterCapture();
 }
 void Controller::remember(const QImage &image, const QRect &selection) {
     // The recent captures and the recent selections are what the history is for, and
@@ -404,8 +418,7 @@ void Controller::openHistory(int index) {
     try {
         editor_.setDocument(fromImage(picture, "history", tr("历史截图")));
     } catch (const std::exception &error) {
-        if (wasVisible_)
-            activate();
+        restoreAfterCapture();
         QMessageBox::warning(&editor_, tr("无法打开历史截图"), QString::fromUtf8(error.what()));
     }
 }
@@ -428,8 +441,7 @@ void Controller::copyRegion(Overlay *source) {
         remember(picture, source->selection());
     }
     clearOverlays();
-    if (wasVisible_)
-        activate();
+    restoreAfterCapture();
 }
 void Controller::pinRegion(Overlay *source) {
     const QImage bare = source->selectionPixels();
@@ -452,8 +464,7 @@ void Controller::pinRegion(Overlay *source) {
         }
     }
     clearOverlays();
-    if (wasVisible_)
-        activate();
+    restoreAfterCapture();
 }
 void Controller::saveRegion(Overlay *source) {
     const QImage picture = source->selectionImage();
@@ -464,8 +475,7 @@ void Controller::saveRegion(Overlay *source) {
         // The region was kept, so it is worth keeping it in the history too.
         remember(picture, source->selection());
         clearOverlays();
-        if (wasVisible_)
-            activate();
+        restoreAfterCapture();
         return;
     }
     // Nothing was written, which means the user changed their mind: the region comes
@@ -481,8 +491,7 @@ void Controller::recognizeRegion(Overlay *source, OcrLanguageMode language) {
         return;
     remember(picture, source->selection());
     clearOverlays();
-    if (wasVisible_)
-        activate();
+    restoreAfterCapture();
     recognize(picture, language);
 }
 PinWindow *Controller::pinImage(const QImage &image, QRect placement) {
@@ -601,8 +610,7 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
         editor_.setDocument(std::move(doc));
     } catch (const std::exception &e) {
         clearOverlays();
-        if (wasVisible_)
-            activate();
+        restoreAfterCapture();
         QMessageBox::warning(&editor_, tr("截图未完成"), QString::fromUtf8(e.what()));
     }
 }

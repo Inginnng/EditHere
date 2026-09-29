@@ -26,6 +26,9 @@ class Controller final : public QObject {
     void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
+    void beginCapture(bool fromTray);
+    void restoreAfterCapture();
+    quintptr captureForeground_ = 0;
     void finishAgentSession();
     // Rebuilds the tray menu and tooltip; called on startup and on a language change.
     void retranslate();

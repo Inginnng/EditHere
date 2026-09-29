@@ -17,7 +17,9 @@ struct ScreenFrame {
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 // Let transient tray UI close before reading any screen pixels.
-void prepareScreenCapture(QObject *context, std::function<void()> ready);
+void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fromTray = false);
+quintptr captureForegroundWindow();
+void restoreCaptureForegroundWindow(quintptr window);
 void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
@@ -28,7 +30,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   public:
     explicit GlobalShortcut(QObject *parent = nullptr);
     ~GlobalShortcut() override;
-    bool start(const QKeySequence &sequence = QKeySequence("Ctrl+Shift+2", QKeySequence::PortableText));
+    bool start(const QKeySequence &sequence = QKeySequence("Alt+Shift+2", QKeySequence::PortableText));
     void stop();
     QKeySequence sequence() const {
         return sequence_;

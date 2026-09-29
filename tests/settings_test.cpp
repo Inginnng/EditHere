@@ -22,6 +22,7 @@ class SettingsTests : public QObject {
         const auto path = directory.filePath("config/settings.ini");
         const auto defaults = defaultSettings();
         QVERIFY(validateSettings(defaults).isEmpty());
+        QCOMPARE(defaults.shortcuts.value("capture"), QKeySequence("Alt+Shift+2"));
         QVERIFY(!defaults.launchAtLogin);
         QVERIFY(loadSettings(path) == defaults);
         auto changed = defaults;

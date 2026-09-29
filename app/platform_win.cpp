@@ -79,7 +79,23 @@ ATOM allocateShortcutId() {
     return GlobalAddAtomW(reinterpret_cast<LPCWSTR>(name.utf16()));
 }
 } // namespace
-void prepareScreenCapture(QObject *context, std::function<void()> ready) {
+quintptr captureForegroundWindow() {
+    return reinterpret_cast<quintptr>(GetForegroundWindow());
+}
+void restoreCaptureForegroundWindow(quintptr window) {
+    const auto hwnd = reinterpret_cast<HWND>(window);
+    if (hwnd && IsWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd))
+        SetForegroundWindow(hwnd);
+}
+void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fromTray) {
+    if (!fromTray) {
+        // Keyboard capture must not inject keys or activate a preparation window.
+        QTimer::singleShot(0, context, [ready = std::move(ready)] {
+            DwmFlush();
+            ready();
+        });
+        return;
+    }
     // Run after QMenu / the native tray callback has returned to the event loop.
     QTimer::singleShot(0, context, [context, ready = std::move(ready)]() mutable {
         struct ActivationWindow {
@@ -90,16 +106,20 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
             }
         };
         auto activation = std::make_shared<ActivationWindow>();
-        // Send Escape to dismiss any active shell popup (tray overflow flyout,
-        // jump list, etc.). SetForegroundWindow alone does not reliably close
-        // Windows 11's tray overflow panel.
-        INPUT escape[2]{};
-        escape[0].type = INPUT_KEYBOARD;
-        escape[0].ki.wVk = VK_ESCAPE;
-        escape[1].type = INPUT_KEYBOARD;
-        escape[1].ki.wVk = VK_ESCAPE;
-        escape[1].ki.dwFlags = KEYEVENTF_KEYUP;
-        SendInput(2, escape, sizeof(INPUT));
+        // Only tray actions need to dismiss Explorer's overflow popup. Never
+        // combine Escape with physical modifiers (notably Alt+Escape).
+        if (!(GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+            !(GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+            !(GetAsyncKeyState(VK_MENU) & 0x8000) &&
+            !(GetAsyncKeyState(VK_LWIN) & 0x8000) &&
+            !(GetAsyncKeyState(VK_RWIN) & 0x8000)) {
+            INPUT escape[2]{};
+            escape[0].type = INPUT_KEYBOARD;
+            escape[0].ki.wVk = VK_ESCAPE;
+            escape[1] = escape[0];
+            escape[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, escape, sizeof(INPUT));
+        }
         // A visible (fully transparent) window can become foreground. Merely hiding
         // the editor or waiting leaves Explorer's overflow panel active on a tray click.
         activation->handle = CreateWindowExW(
@@ -111,7 +131,7 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready) {
             ShowWindow(activation->handle, SW_SHOW);
             SetForegroundWindow(activation->handle);
         }
-        // Escape closes the flyout quickly; 200ms is enough for the compositor flush.
+        // Give the tray popup time to close before the compositor flush.
         QTimer::singleShot(200, context, [activation, ready = std::move(ready)] {
             if (activation->handle)
                 ShowWindow(activation->handle, SW_HIDE);
@@ -267,7 +287,7 @@ void configureNativeWindow(QWidget *window, bool overlay) {
         SetWindowDisplayAffinity(hwnd, 0x00000011);
 }
 QString globalShortcutLabel() {
-    return QKeySequence("Ctrl+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
+    return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
 }
 GlobalShortcut::GlobalShortcut(QObject *parent) : QObject(parent) {}
 GlobalShortcut::~GlobalShortcut() {

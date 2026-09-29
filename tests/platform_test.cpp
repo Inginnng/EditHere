@@ -142,11 +142,41 @@ class PlatformTests : public QObject {
         prepareScreenCapture(this, [&] {
             dismissedAtCapture = panel.dismissed && !panel.isVisible();
             completed = true;
-        });
+        }, true);
         QVERIFY(!completed);
         QTRY_VERIFY_WITH_TIMEOUT(completed, 2500);
         QVERIFY(dismissedAtCapture);
-        QVERIFY(elapsed.elapsed() >= 500);
+        QVERIFY(elapsed.elapsed() >= 200);
+    }
+    void keyboardPreparationPreservesForegroundAndRestoresAfterOverlay() {
+        QWidget behind, target, overlay;
+        behind.show();
+        target.show();
+        target.raise();
+        target.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&target));
+        QTest::qWait(200);
+        if (!captureForegroundWindow())
+            QSKIP("This desktop session does not expose a foreground window.");
+        QTRY_COMPARE(captureForegroundWindow(), quintptr(target.winId()));
+        const auto original = captureForegroundWindow();
+        bool completed = false;
+        bool preserved = false;
+        prepareScreenCapture(this, [&] {
+            preserved = captureForegroundWindow() == original;
+            completed = true;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(completed, 2500);
+        QVERIFY(preserved);
+        overlay.show();
+        overlay.raise();
+        overlay.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&overlay));
+        overlay.hide();
+        restoreCaptureForegroundWindow(original);
+        QTRY_COMPARE(captureForegroundWindow(), original);
+        restoreCaptureForegroundWindow(0);
+        QCOMPARE(captureForegroundWindow(), original);
     }
     void preparationIsCancelledWithOwner() {
         bool completed = false;
