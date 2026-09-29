@@ -157,6 +157,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addSpacing(10);
     header->addWidget(meta_);
     header->addStretch();
+    auto jsonHelp = textButton(tr("无法使用？"), false, bar);
+    jsonHelp->setObjectName("jsonHelp");
+    header->addWidget(jsonHelp);
+    connect(jsonHelp, &QPushButton::clicked, this, &Editor::showJsonHelp);
     hideAnnotations_ = iconButton("eye", {}, bar);
     hideAnnotations_->setObjectName("hideAnnotations");
     hideAnnotations_->setCheckable(true);
@@ -379,6 +383,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         dock->addWidget(button);
         if (definition.id == "saveProject") connect(button, &QPushButton::clicked, this, [this] { saveProject(); });
         else if (definition.id == "saveImage") connect(button, &QPushButton::clicked, this, [this] { saveImage(true); });
+        else if (definition.id == "copyJsonText") connect(button, &QPushButton::clicked, this, &Editor::copyJsonText);
         else if (definition.id == "copyJson") connect(button, &QPushButton::clicked, this, &Editor::copyJson);
         else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
         else if (definition.id == "capture") connect(button, &QPushButton::clicked, this, &Editor::captureRequested);
@@ -759,14 +764,20 @@ void Editor::updateToolbar() {
     for (const auto &definition : toolbarActionDefinitions()) {
         auto button = outputButtons_.value(definition.id);
         if (!button) continue;
-        button->setVisible(preferences_.toolbarActions.contains(definition.id));
-        button->setToolTip(definition.label);
+        button->setVisible(preferences_.toolbarActions.contains(definition.id) ||
+                           (definition.id == "copyJsonText" && preferences_.toolbarActions.contains("copyJson")));
+        button->setToolTip(definition.id == "copyJson"
+            ? tr("直接复制文件（携带原图信息），适用于可以发送文件的 Agent。")
+            : definition.id == "copyJsonText"
+                ? tr("复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。")
+                : definition.label);
         button->setAccessibleName(definition.label);
-        const bool labelled = !compact && (definition.id == "copyJson" || definition.id == "copyImage");
+        const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" ||
+                              definition.id == "exportJson" || (!compact && definition.id == "copyImage");
         button->setProperty("tool", !labelled);
         button->setProperty("primary", definition.id == "copyJson");
         button->setText(labelled ? definition.label : QString());
-        button->setFixedSize(labelled ? (definition.id == "copyJson" ? 118 : 160) : 34, 34);
+        button->setFixedSize(labelled ? button->fontMetrics().horizontalAdvance(definition.label) + 40 : 34, 34);
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->setIcon(glyph(button->property("glyphName").toString(), definition.id == "copyJson" ? QColor(Qt::white) : QColor()));
@@ -774,7 +785,7 @@ void Editor::updateToolbar() {
     // Keep the permanent tools accessible when optional actions exceed the window width.
     if (dock_) {
         dock_->invalidate();
-        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJson"};
+        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson"};
         for (const auto &id : overflowOrder) {
             if (dock_->sizeHint().width() <= width()-2) break;
             if (auto button = outputButtons_.value(id); button && !button->isHidden()) {
@@ -1195,17 +1206,41 @@ void Editor::toast(const QString &message) {
     hint_->setText(message);
     QToolTip::showText(mapToGlobal(QPoint(width()/2,height()-65)),message,this,{},2000);
 }
+void Editor::copyJsonText() {
+    finishNoteEdit();
+    if (!hasDocument()) return;
+    try {
+        QApplication::clipboard()->setText(QString::fromUtf8(serializeFeedback(doc_, true, true)));
+        toast(tr("JSON 文本已复制，包含完整原图"));
+    } catch (const std::exception &error) { showError(QString::fromUtf8(error.what())); }
+}
+void Editor::showJsonHelp() {
+    QMessageBox help(this);
+    help.setObjectName("jsonHelpDialog");
+    help.setWindowTitle(tr("无法使用 JSON？"));
+    help.setTextFormat(Qt::RichText);
+    help.setText(tr(
+        "<h3>1. 发送 JSON 文本被截断，又无法发送 JSON 文件？</h3>"
+        "<p>打开“查看 JSON”，关闭“包含原图”，点击“复制 JSON 内容”。然后向 Agent 上传原图，"
+        "再发送复制的带批注图片和这份 JSON 文本。</p>"
+        "<h3>2. 都不支持上传，只支持对话怎么办？</h3>"
+        "<p>可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。</p>"
+        "<h3>3. AI 没认出来原图信息怎么办？</h3>"
+        "<p>可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。</p>"));
+    help.setStandardButtons(QMessageBox::Ok);
+    help.exec();
+}
 void Editor::copyJson() {
     finishNoteEdit();
     if (!hasDocument()) return;
     try {
-        const QByteArray bytes = serializeFeedback(doc_, preferences_.embedOriginal, true);
+        const QByteArray bytes = serializeFeedback(doc_, true, true);
         const QString path = writeFeedbackTempFile(bytes, preferences_.feedbackDir);
         cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
         auto mime = new QMimeData;
         mime->setUrls({QUrl::fromLocalFile(path)});
         QApplication::clipboard()->setMimeData(mime);
-        toast(preferences_.embedOriginal ? tr("JSON 文件已复制，包含完整原图") : tr("JSON 文件已复制，未包含原图"));
+        toast(tr("JSON 文件已复制，包含完整原图"));
     } catch(const std::exception &error) { showError(QString::fromUtf8(error.what())); }
 }
 void Editor::changed(bool contentChanged) {
@@ -1674,7 +1709,10 @@ void Editor::exportJson() {
     layout->addWidget(status);
     auto row = new QHBoxLayout;
     auto save = textButton(tr("保存 JSON 与图片"), false, &dialog), close = textButton(tr("关闭"), false, &dialog),
-         copy = textButton(tr("复制 JSON"), true, &dialog);
+         copy = textButton(tr("复制 JSON 文件"), true, &dialog);
+    auto copyText = textButton(tr("复制 JSON 内容"), false, &dialog);
+    copy->setObjectName("copyJsonFile");
+    copyText->setObjectName("copyJsonText");
     save->setProperty("glyphName","save");save->setIcon(glyph("save"));
     close->setProperty("glyphName","close");close->setIcon(glyph("close"));
     copy->setProperty("glyphName","json-copy");copy->setIcon(glyph("json-copy",Qt::white));
@@ -1682,6 +1720,7 @@ void Editor::exportJson() {
     row->addWidget(save);
     row->addStretch();
     row->addWidget(close);
+    row->addWidget(copyText);
     row->addWidget(copy);
     layout->addLayout(row);
     QByteArray exportBytes;
@@ -1705,6 +1744,13 @@ void Editor::exportJson() {
             lines.append("  ]");
             lines.append("}");
             json->setPlainText(lines.join('\n'));
+            copy->setToolTip(embed->isChecked()
+                ? tr("直接复制文件（携带原图信息），适用于可以发送文件的 Agent。")
+                : tr("直接复制文件（不包含原图信息），适用于可以发送文件的 Agent。"));
+            copyText->setToolTip(embed->isChecked()
+                ? tr("复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。")
+                : tr("复制 JSON 文本（不包含原图信息），适用于无法发送文件的 Agent。"));
+            copyText->setEnabled(true);
             copy->setEnabled(true);
             save->setEnabled(true);
             status->setText(tr("%1 · %2 字符 · 批注坐标对应调整后的画面")
@@ -1714,6 +1760,7 @@ void Editor::exportJson() {
         } catch (const std::exception &error) {
             exportBytes.clear();
             json->clear();
+            copyText->setEnabled(false);
             copy->setEnabled(false);
             save->setEnabled(false);
             status->setText(QString::fromUtf8(error.what()));
@@ -1737,7 +1784,14 @@ void Editor::exportJson() {
             status->setText(QString::fromUtf8(error.what()));
         }
     };
-    json->copyJson = copyJson;
+    auto copyJsonText = [&] {
+        if (exportBytes.isEmpty()) return;
+        QApplication::clipboard()->setText(QString::fromUtf8(exportBytes));
+        status->setText(embed->isChecked() ? tr("JSON 文本已复制，包含完整原图")
+                                         : tr("JSON 文本已复制，未包含原图"));
+    };
+    json->copyJson = copyJsonText;
+    connect(copyText, &QPushButton::clicked, &dialog, copyJsonText);
     connect(copy, &QPushButton::clicked, &dialog, copyJson);
     connect(save, &QPushButton::clicked, &dialog, [&] {
         if (exportBytes.isEmpty())

@@ -85,7 +85,7 @@ QVector<ShortcutDefinition> shortcutDefinitions() {
             {"save", tr("保存项目"), false, QKeySequence(QKeySequence::Save)},
             {"export", tr("查看 JSON"), false, QKeySequence(Qt::CTRL | Qt::Key_E)},
             {"copy", tr("复制带批注图片"), false, QKeySequence(QKeySequence::Copy)},
-            {"copyJson", tr("复制 JSON"), false, {}},
+            {"copyJson", tr("复制 JSON 文件"), false, {}},
             {"saveImage", tr("保存图片"), false, {}},
             {"hideAnnotations", tr("隐藏 / 显示批注标记"), false, {}},
             {"addGlobalNote", tr("添加全局批注"), false, {}},
@@ -105,7 +105,8 @@ QVector<ToolbarActionDefinition> toolbarActionDefinitions() {
     return {{"saveProject", tr("保存项目")},
             {"saveImage", tr("保存图片")},
             {"exportJson", tr("查看 JSON")},
-            {"copyJson", tr("复制 JSON")},
+            {"copyJsonText", tr("复制 JSON 内容")},
+            {"copyJson", tr("复制 JSON 文件")},
             {"copyImage", tr("复制带批注图片")},
             {"capture", tr("重新截图")},
             {"fit", tr("适应图片")}};

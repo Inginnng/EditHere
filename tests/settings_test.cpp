@@ -135,7 +135,7 @@ class SettingsTests : public QObject {
         QTemporaryDir directory;
         const auto path = directory.filePath("settings.ini");
         auto settings = defaultSettings();
-        QCOMPARE(settings.toolbarActions.size(), 5);
+        QCOMPARE(settings.toolbarActions.size(), 6);
         for (const auto &id : {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"})
             QVERIFY(settings.toolbarActions.contains(id));
         QVERIFY(!settings.toolbarActions.contains("capture"));

@@ -104,6 +104,8 @@ class Editor final : public QWidget {
     void addManualRegion(QRect area);
     void toggleAnnotations();
     void copyJson();
+    void copyJsonText();
+    void showJsonHelp();
     void updateToolbar();
     void toast(const QString &message);
     void toggleFullscreen();

@@ -1541,7 +1541,10 @@ class UiTests : public QObject {
             auto action = editor.findChild<QPushButton *>(definition.id);
             QVERIFY(action);
             QCOMPARE(action->isVisible(), defaults.toolbarActions.contains(definition.id));
-            QCOMPARE(action->toolTip(), definition.label);
+            if (definition.id == "copyJson" || definition.id == "copyJsonText")
+                QVERIFY(action->toolTip().contains("Agent"));
+            else
+                QCOMPARE(action->toolTip(), definition.label);
         }
         QVERIFY(!editor.findChild<QPushButton *>("componentTool"));
         QVERIFY(!editor.findChild<QPushButton *>("manualRegion"));
@@ -1561,7 +1564,7 @@ class UiTests : public QObject {
         editor.setPreferences(preferences);
         for (const auto &definition : toolbarActionDefinitions())
             QCOMPARE(editor.findChild<QPushButton *>(definition.id)->isVisible(),
-                     preferences.toolbarActions.contains(definition.id));
+                     (preferences.toolbarActions.contains(definition.id) || definition.id == "copyJsonText"));
         QSignalSpy captures(&editor, &Editor::captureRequested);
         editor.findChild<QPushButton *>("capture")->click();
         QCOMPARE(captures.size(), 1);
@@ -1749,6 +1752,68 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().notes.first().comment, QString("这一格挪到右边"));
         editor.hide();
     }
+    void separateJsonClipboardFormatsAndHelp() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 740);
+        QTest::qWait(60);
+        auto text = editor.findChild<QPushButton *>("copyJsonText");
+        auto file = editor.findChild<QPushButton *>("copyJson");
+        QVERIFY(text && file && text->isVisible() && file->isVisible());
+        text->click();
+        QVERIFY(QApplication::clipboard()->mimeData()->hasText());
+        QVERIFY(!QApplication::clipboard()->mimeData()->hasUrls());
+        auto expected = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8());
+        QVERIFY(expected.object().value("image").toString().startsWith("data:image/"));
+        file->click();
+        QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
+        QCOMPARE(clipboardJson(), expected);
+        const auto tools = editor.findChild<QPushButton *>("mode_smart");
+        QCOMPARE(text->mapTo(&editor, QPoint()).y(), tools->mapTo(&editor, QPoint()).y());
+        QVERIFY(editor.findChild<QPushButton *>("jsonHelp")->mapTo(&editor, QPoint()).y() < 42);
+        artifact(editor, "json-actions.png");
+        editor.resize(1260, 850);
+        QTest::qWait(30);
+        artifact(editor, "json-actions-wide.png");
+        editor.resize(740, 600);
+        QTest::qWait(30);
+        artifact(editor, "json-actions-narrow.png");
+        editor.resize(1000, 740);
+        bool checked = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto copyText = dialog->findChild<QPushButton *>("copyJsonText");
+            auto copyFile = dialog->findChild<QPushButton *>("copyJsonFile");
+            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
+            QVERIFY(copyText && copyFile && embed);
+            copyText->click();
+            QCOMPARE(clipboardJson(), expected);
+            embed->setChecked(false);
+            copyText->click();
+            auto withoutImage = clipboardJson();
+            QVERIFY(!withoutImage.object().contains("image"));
+            copyFile->click();
+            QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
+            QCOMPARE(clipboardJson(), withoutImage);
+            artifact(*dialog, "json-preview-actions.png");
+            checked = true;
+            dialog->accept();
+        });
+        QTimer::singleShot(3000, &editor, [] {
+            if (auto dialog = QApplication::activeModalWidget()) dialog->close();
+        });
+        editor.exportJson();
+        QVERIFY(checked);
+        QTimer::singleShot(60, &editor, [&] {
+            if (auto dialog = QApplication::activeModalWidget()) {
+                artifact(*dialog, "json-help.png");
+                dialog->close();
+            }
+        });
+        editor.findChild<QPushButton *>("jsonHelp")->click();
+        editor.hide();
+    }
     void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {
         Editor editor;
         editor.setDocument(gridDocument());
@@ -1757,12 +1822,12 @@ class UiTests : public QObject {
         auto copy = editor.findChild<QPushButton *>("copyJson");
         auto view = editor.findChild<QPushButton *>("exportJson");
         QVERIFY(copy && view && copy->isVisible() && view->isVisible());
-        QCOMPARE(copy->text(), QString("复制 JSON"));
+        QCOMPARE(copy->text(), QString("复制 JSON 文件"));
         QVERIFY(copy->property("primary").toBool());
-        QVERIFY(view->text().isEmpty());
+        QCOMPARE(view->text(), QString("查看 JSON"));
         QVERIFY(!view->property("primary").toBool());
         QCOMPARE(view->toolTip(), QString("查看 JSON"));
-        QVERIFY(copy->width() > view->width() * 2);
+        QVERIFY(copy->width() >= view->width());
         editor.findChild<QPushButton *>("addGlobalNote")->click();
         auto input = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
         QVERIFY(input);
@@ -2473,7 +2538,7 @@ class UiTests : public QObject {
             QCOMPARE(preview, expectedFeedback);
             QPushButton *copy = nullptr;
             for (auto button : dialog->findChildren<QPushButton *>())
-                if (button->text() == "复制 JSON")
+                if (button->text() == "复制 JSON 文件")
                     copy = button;
             QVERIFY(copy && copy->isEnabled());
             copy->click();
@@ -2672,7 +2737,7 @@ class UiTests : public QObject {
             QVERIFY(json);
             bool copyDisabled = false, saveDisabled = false;
             for (auto button : dialog->findChildren<QPushButton *>()) {
-                if (button->text() == "复制 JSON")
+                if (button->text() == "复制 JSON 文件")
                     copyDisabled = !button->isEnabled();
                 if (button->text() == "保存 JSON 与图片")
                     saveDisabled = !button->isEnabled();

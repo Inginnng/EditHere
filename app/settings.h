@@ -19,7 +19,7 @@ struct AppSettings {
     LanguageMode language = LanguageMode::System;
     OcrLanguageMode ocrLanguage = OcrLanguageMode::System;
     QMap<QString, QKeySequence> shortcuts;
-    QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"};
+    QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJsonText", "copyJson", "copyImage"};
     bool captureOnStartup = true;
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
