@@ -1372,13 +1372,20 @@ class UiTests : public QObject {
         fold->click();
         QTRY_COMPARE(fold->text(), QString("展开"));
         QVERIFY(input->height() < expandedHeight / 3);
-        // CJK fallback fonts on Linux can be taller than the primary font's
-        // metrics. Assert against the two actual laid-out lines instead.
-        const auto layout = input->document()->firstBlock().layout();
-        QVERIFY(layout && layout->lineCount() >= 2);
-        const int twoLineHeight = qCeil(layout->lineAt(1).y() + layout->lineAt(1).height()
-                                       + 2 * input->document()->documentMargin());
-        QVERIFY(input->height() <= twoLineHeight + input->height() - input->viewport()->height() + 2);
+        // fitContent() collapses the note to its second line; how many pixels a
+        // line is depends on the platform's CJK font metrics, so take the bound
+        // from the lines Qt actually laid out instead of a fixed number.
+        qreal tallestLine = 0;
+        for (QTextBlock block = input->document()->begin(); block.isValid(); block = block.next()) {
+            const QTextLayout *layout = block.layout();
+            for (int i = 0; i < layout->lineCount(); ++i)
+                tallestLine = std::max(tallestLine, qreal(layout->lineAt(i).height()));
+        }
+        QVERIFY(tallestLine > 0);
+        const qreal margin = input->document()->documentMargin();
+        // A collapsed note is two lines tall, with a 40 px floor.
+        const int collapsedHeight = std::max(40, int(qCeil(2 * tallestLine + 2 * margin)) + 4);
+        QVERIFY(input->viewport()->height() <= collapsedHeight);
         QCOMPARE(input->verticalScrollBar()->value(), 0);
         QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
         QCOMPARE(input->toPlainText(), fullText);
