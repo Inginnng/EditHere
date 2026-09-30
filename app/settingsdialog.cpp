@@ -279,6 +279,12 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     progressBar->setObjectName("updateProgress");
     progressBar->setVisible(false);
     aboutLayout->addWidget(progressBar);
+    auto feedback = mutedLabel({}, about);
+    feedback->setObjectName("aboutFeedback");
+    feedback->setWordWrap(true);
+    // The group number is the whole point of the line, so let it be selected.
+    feedback->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    aboutLayout->addWidget(feedback);
     aboutLayout->addStretch();
     tabs->addTab(about, {});
     updater_ = new UpdateChecker(this);
@@ -486,6 +492,8 @@ void SettingsDialog::retranslate() {
         check->setText(tr("检查更新"));
     if (auto releases = findChild<QPushButton *>("openReleases"))
         releases->setText(releases->property("automaticUpdate").toBool() ? tr("立即更新") : tr("打开发布页"));
+    if (auto feedback = findChild<QLabel *>("aboutFeedback"))
+        feedback->setText(tr("也可以加入 QQ 群 1018416966（反馈信息专用）；加群时请说明来自 GitHub。"));
     if (auto reset = findChild<QPushButton *>("settingsReset"))
         reset->setText(tr("恢复默认"));
     if (auto guide = findChild<QPushButton *>("restartGuide")) {

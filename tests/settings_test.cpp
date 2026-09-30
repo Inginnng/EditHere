@@ -227,6 +227,11 @@ class SettingsTests : public QObject {
         QVERIFY(validateSettings(dialog.settings()).isEmpty());
         dialog.showUpdates();
         QCOMPARE(tabs->currentWidget()->objectName(), QString("settingsAboutPage"));
+        // The update page carries the feedback group, so users who cannot update
+        // still have a way to report the problem.
+        auto feedback = dialog.findChild<QLabel *>("aboutFeedback");
+        QVERIFY(feedback);
+        QVERIFY(feedback->text().contains("1018416966"));
         dialog.findChild<QPushButton *>("settingsReset")->click();
         QCOMPARE(dialog.settings().toolbarActions, defaultSettings().toolbarActions);
     }
