@@ -206,6 +206,8 @@ The following documents are currently in Chinese:
 
 [Report a problem or suggest an improvement](https://github.com/Inginnng/EditHere/issues). Please include your operating system and app versions, steps to reproduce the issue, and a screenshot or sample project you are comfortable sharing.
 
+Feedback is also welcome in the QQ group **1018416966**, which is dedicated to feedback; please mention that you came from GitHub when joining.
+
 ## Star History
 
 <p align="center">

@@ -5,7 +5,7 @@
 <p align="center">改这里</p>
 <p align="center"><strong>让 AI 看懂，你想怎么改。</strong></p>
 <p align="center">截图、写下意见、直接调整布局，把修改意图一次交给 AI。</p>
-<p align="center">Windows · macOS 预览版   /   本地截图与图像识别</p>
+<p align="center">Windows · macOS / Linux 预览版   /   本地截图与图像识别</p>
 <p align="center">
   <a href="#下载与安装">下载</a> ·
   <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
@@ -122,6 +122,8 @@ Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页�
 
 Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 
+Linux x86_64 预览实现与 AppImage 构建流程已加入项目，当前尚未公开发布。运行、OCR 依赖与 X11/Wayland 行为见 [Linux 说明](docs/LINUX.md)。
+
 Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 
 源码与发布包已公开，可直接查看代码和下载。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
@@ -162,6 +164,8 @@ EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与�
 [使用指南](docs/USER-GUIDE.md) · [AI 与命令行](docs/AGENT-CLI.md) · [构建与开发](docs/DEVELOPMENT.md) · [更新日志](CHANGELOG.md) · [报告问题或建议](https://github.com/Inginnng/EditHere/issues)
 
 反馈问题时，请附上系统版本、程序版本、复现步骤，以及方便分享的截图或示例项目。
+
+也可以加入 QQ 群 **1018416966**（反馈信息专用）；加群时请说明来自 GitHub。
 
 ## Star History
 
