@@ -11,6 +11,27 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void previewLayoutIsIndependentOfSourceResolution() {
+        auto makeDocument = [](int factor) {
+            QImage image(960 * factor, 540 * factor, QImage::Format_RGB32);
+            image.fill(Qt::white);
+            auto doc = fromImage(image, "file", "proportional preview");
+            Note note;
+            note.isPoint = false;
+            note.rect = {120 * factor, 100 * factor, 200 * factor, 150 * factor};
+            note.comment = "Consistent annotation layout";
+            doc.notes.append(note);
+            return doc;
+        };
+        const auto small = makeDocument(1), large = makeDocument(4);
+        const auto first = previewImage(small), second = previewImage(large);
+        QCOMPARE(first.size(), second.size());
+        // Coordinates are displayed as original pixels, so compare the image
+        // area, title and comment body independently of the coordinate label.
+        QCOMPARE(first.copy(0, 0, 984, first.height()), second.copy(0, 0, 984, second.height()));
+        QCOMPARE(first.copy(1020, 122, 324, 60), second.copy(1020, 122, 324, 60));
+        QCOMPARE(large.notes[0].rect, QRect(480, 400, 800, 600));
+    }
     void compressedFeedbackKeepsCoordinatesAndProjectPixels() {
         QImage image(640,480,QImage::Format_RGB32);
         quint32 seed=42;
@@ -70,7 +91,7 @@ class CoreTests : public QObject {
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
     }
     void movementNumbersMatchNotesAndStayOutOfJson() {
-        QImage image(360, 220, QImage::Format_ARGB32);
+        QImage image(960, 220, QImage::Format_ARGB32);
         image.fill(Qt::white);
         auto doc = fromImage(image, "demo", "箭头编号");
         doc.layout = createLayout(image.size(), {});
@@ -88,7 +109,7 @@ class CoreTests : public QObject {
         }
         // A movement without a note still gets a sequential orphan number so the
         // sidebar can display it; the canvas preview omits orphan badges.
-        QCOMPARE(previewImage(doc).size(), QSize(768, 268));
+        QCOMPARE(previewImage(doc).size(), QSize(1368, 268));
         Note global;
         global.isGlobal = true;
         global.comment = "整体留白";

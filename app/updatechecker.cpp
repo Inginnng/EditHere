@@ -79,13 +79,14 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
     const QStringList portableNames{QString("EditHere-%1-win-x64.zip").arg(ver),
                                     QStringLiteral("EditHere-win-x64.zip")};
     const Asset installer = pickAsset(installerNames);
-    const Asset installerHash = pickAsset({installerNames.first() + ".sha256", installerNames.last() + ".sha256"});
+    const Asset installerHash = installer.name.isEmpty() ? Asset{} : pickAsset({installer.name + ".sha256"});
     const Asset portable = pickAsset(portableNames);
-    const Asset portableHash = pickAsset({portableNames.first() + ".sha256", portableNames.last() + ".sha256"});
+    const Asset portableHash = portable.name.isEmpty() ? Asset{} : pickAsset({portable.name + ".sha256"});
     const int order = QVersionNumber::compare(remote, local);
     if (order > 0)
-        return {Available, tr("发现新版本 %1，点击立即更新自动下载安装。").arg(tag), url,
-                tag, installer, installerHash, portable, portableHash};
+        return {Available, tr("发现新版本 %1。").arg(tag), url,
+                tag, installer, installerHash, portable, portableHash,
+                QVersionNumber::compare(remote, QVersionNumber(0, 9, 9)) >= 0};
     if (order < 0)
         return {NewerLocal, tr("当前版本高于已发布的正式版 %1。").arg(tag), url,
                 tag, {}, {}, {}, {}};
@@ -95,13 +96,21 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
 UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
     timeout_.setSingleShot(true);
     timeout_.setInterval(15000);
+    cliTimeout_.setSingleShot(true);
+    cliTimeout_.setInterval(3000);
+    connect(&cliTimeout_, &QTimer::timeout, this, [this] {
+        if (!busy_) return;
+        publicRequested_ = true;
+        process_.kill();
+        requestPublic();
+    });
 #ifdef Q_OS_WIN
     process_.setCreateProcessArgumentsModifier(
         [](QProcess::CreateProcessArguments *args) { args->flags |= CREATE_NO_WINDOW; });
 #endif
     connect(&timeout_, &QTimer::timeout, this, [this] { finish(failure(tr("检查超时，请检查网络后重试。"))); });
     connect(&process_, &QProcess::readyReadStandardOutput, this, [this] {
-        if (!busy_)
+        if (!busy_ || publicRequested_)
             return;
         output_ += process_.readAllStandardOutput();
         if (output_.size() > maximumResponse)
@@ -116,6 +125,8 @@ UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
             [this](int code, QProcess::ExitStatus status) {
                 if (!busy_)
                     return;
+                cliTimeout_.stop();
+                if (publicRequested_) return;
                 output_ += process_.readAllStandardOutput();
                 if (code == 0 && status == QProcess::NormalExit)
                     finish(parseRelease(output_, QStringLiteral(EDITHERE_VERSION)));
@@ -144,13 +155,14 @@ UpdateChecker::~UpdateChecker() {
     }
 }
 void UpdateChecker::check() {
-    if (busy_)
+    if (busy_ || installing_)
         return;
     if (process_.state() != QProcess::NotRunning) {
         QTimer::singleShot(100, this, &UpdateChecker::check);
         return;
     }
     busy_ = true;
+    publicRequested_ = false;
     output_.clear();
     timeout_.start();
     auto gh = QStandardPaths::findExecutable("gh");
@@ -174,10 +186,13 @@ void UpdateChecker::check() {
         return;
     }
     process_.start(gh, {"api", "repos/Inginnng/EditHere/releases/latest", "--hostname", "github.com"});
+    if (!publicRequested_) cliTimeout_.start();
 }
 void UpdateChecker::requestPublic() {
     if (!busy_ || reply_)
         return;
+    publicRequested_ = true;
+    cliTimeout_.stop();
     QNetworkRequest request(QUrl("https://api.github.com/repos/Inginnng/EditHere/releases/latest"));
     request.setRawHeader("Accept", "application/vnd.github+json");
     request.setRawHeader("User-Agent", "EditHere/" EDITHERE_VERSION);
@@ -213,6 +228,7 @@ void UpdateChecker::finish(Result result) {
         return;
     busy_ = false;
     timeout_.stop();
+    cliTimeout_.stop();
     if (reply_) {
         auto reply = reply_.data();
         reply_ = nullptr;
@@ -231,28 +247,44 @@ QString UpdateChecker::prepareDownloadTarget(const QString &directory, const QSt
     return path;
 }
 void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller) {
-    if (downloadReply_ || hashReply_)
+    if (busy_ || installing_)
         return;
+#ifndef Q_OS_WIN
+    emit installFailed(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
+    return;
+#endif
+    if (!isValidAssetUrl(package.url) || !isValidAssetUrl(hashAsset.url) ||
+        !package.name.endsWith("-win-x64-setup.exe") ||
+        QFileInfo(package.name).fileName() != package.name ||
+        hashAsset.name != package.name + ".sha256") {
+        emit installFailed(tr("未找到校验文件，无法验证安装包完整性。"));
+        return;
+    }
+    installing_ = true;
     isInstallerUpdate_ = isInstaller;
     downloadFileName_ = package.name;
-    // Remove any leftover download (e.g. a previous attempt that failed or was
-    // interrupted): the writer below appends, and a stale file would corrupt
-    // the package and fail the SHA256 check.
-    downloadPath_ = prepareDownloadTarget(
-        QStandardPaths::writableLocation(QStandardPaths::TempLocation), package.name);
+    // Qt supplies unique paths and atomic writes; retries cannot concatenate an
+    // earlier download or overwrite another running installer's payload.
+    downloadDirectory_ = std::make_unique<QTemporaryDir>(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath("EditHere-update-XXXXXX"));
+    downloadPath_ = downloadDirectory_->filePath(package.name);
+    downloadFile_ = std::make_unique<QSaveFile>(downloadPath_);
+    if (!downloadDirectory_->isValid() || !downloadFile_->open(QIODevice::WriteOnly)) {
+        failInstall(tr("无法写入更新文件：%1").arg(downloadFile_->errorString()));
+        return;
+    }
     // Download the package.
     QNetworkRequest request(package.url);
+    request.setTransferTimeout(30000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     downloadReply_ = network_.get(request);
     connect(downloadReply_, &QNetworkReply::downloadProgress, this, &UpdateChecker::downloadProgress);
     connect(downloadReply_, &QNetworkReply::readyRead, this, [this] {
         if (!downloadReply_)
             return;
-        QFile f(downloadPath_);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
-            f.write(downloadReply_->readAll());
-            f.close();
-        }
+        const auto bytes = downloadReply_->readAll();
+        if (downloadFile_->write(bytes) != bytes.size())
+            failInstall(tr("无法写入更新文件：%1").arg(downloadFile_->errorString()));
     });
     connect(downloadReply_, &QNetworkReply::finished, this, [this, hashAsset] {
         if (!downloadReply_)
@@ -261,32 +293,34 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
         downloadReply_ = nullptr;
         reply->disconnect(this);
         if (reply->error() != QNetworkReply::NoError) {
-            reply->abort();
             reply->deleteLater();
-            QFile::remove(downloadPath_);
-            emit installFailed(tr("下载失败，请检查网络后重试。"));
+            failInstall(tr("下载失败，请检查网络后重试。"));
             return;
         }
+        const auto remaining = reply->readAll();
         reply->deleteLater();
-        // Download the hash file.
-        if (!hashAsset.url.isValid()) {
-            emit installFailed(tr("未找到校验文件，无法验证安装包完整性。"));
-            QFile::remove(downloadPath_);
+        if (downloadFile_->write(remaining) != remaining.size() || !downloadFile_->commit()) {
+            failInstall(tr("无法写入更新文件：%1").arg(downloadFile_->errorString()));
             return;
         }
+        downloadFile_.reset();
         QNetworkRequest hashRequest(hashAsset.url);
+        hashRequest.setTransferTimeout(15000);
         hashRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         hashReply_ = network_.get(hashRequest);
+        hashReply_->setReadBufferSize(4097);
+        connect(hashReply_, &QNetworkReply::readyRead, this, [this] {
+            if (hashReply_ && hashReply_->bytesAvailable() > 4096)
+                failInstall(tr("校验失败：安装包已损坏或不完整。"));
+        });
         connect(hashReply_, &QNetworkReply::finished, this, [this] {
             if (!hashReply_)
                 return;
             const auto reply = hashReply_.data();
             hashReply_ = nullptr;
             if (reply->error() != QNetworkReply::NoError) {
-                reply->abort();
                 reply->deleteLater();
-                QFile::remove(downloadPath_);
-                emit installFailed(tr("无法下载校验文件，请检查网络后重试。"));
+                failInstall(tr("无法下载校验文件，请检查网络后重试。"));
                 return;
             }
             const QByteArray hashData = reply->readAll();
@@ -297,68 +331,75 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
         });
     });
 }
-void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller) {
-    // Compute SHA256 of the downloaded file.
-    QFile f(filePath);
-    if (!f.open(QIODevice::ReadOnly)) {
-        emit installFailed(tr("无法读取已下载的文件。"));
-        QFile::remove(filePath);
-        return;
-    }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&f)) {
-        emit installFailed(tr("校验文件失败。"));
-        QFile::remove(filePath);
-        return;
-    }
-    f.close();
-    const QString actualHash = QString::fromLatin1(hash.result().toHex());
-    if (!expectedHash.isEmpty() && actualHash.compare(expectedHash, Qt::CaseInsensitive) != 0) {
-        emit installFailed(tr("校验失败：安装包已损坏或不完整。"));
-        QFile::remove(filePath);
-        return;
-    }
-    if (isInstaller) {
-        // Launch NSIS installer silently: /S = silent, /UPDATE = skip pages, /RESTART = restart app.
-        QProcess::startDetached(filePath, {"/S", "/UPDATE", "/RESTART"});
-        emit installStarted();
-    } else {
-        // Portable ZIP update: generate a batch script to replace files after the app exits.
-        const QString appDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
-        const QString batPath = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                                    .filePath("_edithere_update.bat");
-        QFile bat(batPath);
-        if (!bat.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            emit installFailed(tr("无法创建更新脚本。"));
-            QFile::remove(filePath);
-            return;
+void UpdateChecker::failInstall(const QString &message) {
+    for (auto *pointer : {&downloadReply_, &hashReply_}) {
+        if (*pointer) {
+            auto reply = pointer->data();
+            *pointer = nullptr;
+            reply->disconnect(this);
+            reply->abort();
+            reply->deleteLater();
         }
-        // The batch waits for EditHere to exit, extracts the ZIP, restarts, and self-deletes.
-        // Using tar (built into Windows 10+) to extract ZIP.
-        const QString exeName = QFileInfo(QCoreApplication::applicationFilePath()).fileName();
-        bat.write(QString(
-            "@echo off\r\n"
-            "setlocal\r\n"
-            "set APPDIR=%1\r\n"
-            "set ZIPPATH=%2\r\n"
-            "set EXE=%3\r\n"
-            ":: Wait for EditHere to exit\r\n"
-            ":wait\r\n"
-            "tasklist /fi \"imagename eq %EXE%\" | find /i \"%EXE%\" >nul\r\n"
-            "if not errorlevel 1 (\r\n"
-            "  timeout /t 1 /nobreak >nul\r\n"
-            "  goto wait\r\n"
-            ")\r\n"
-            ":: Extract ZIP over existing files\r\n"
-            "tar -xf \"%ZIPPATH%\" -C \"%APPDIR%\"\r\n"
-            ":: Restart EditHere\r\n"
-            "start \"\" \"%APPDIR%\\%EXE%\"\r\n"
-            ":: Self-delete\r\n"
-            "del \"%~f0\"\r\n"
-        ).arg(appDir, filePath, exeName).toUtf8());
-        bat.close();
-        QProcess::startDetached("cmd", {"/c", batPath});
-        emit installStarted();
     }
+    downloadFile_.reset();
+    downloadDirectory_.reset();
+    installing_ = false;
+    emit installFailed(message);
+}
+bool UpdateChecker::canAutoInstall(const Result &result, bool installed, bool windows) {
+    return windows && result.status == Available && (installed || result.portableInstallerSupported) &&
+           isValidAssetUrl(result.installer.url) && isValidAssetUrl(result.installerHash.url) &&
+           result.installerHash.name == result.installer.name + ".sha256";
+}
+bool UpdateChecker::verifyPackage(const QString &filePath, const QString &expectedHash, QString *error) {
+    auto fail = [error](const QString &message) {
+        if (error) *error = message;
+        return false;
+    };
+    static const QRegularExpression sha256("^[0-9a-fA-F]{64}$");
+    if (!sha256.match(expectedHash).hasMatch())
+        return fail(tr("校验失败：安装包已损坏或不完整。"));
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly))
+        return fail(tr("无法读取已下载的文件。"));
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&f))
+        return fail(tr("校验文件失败。"));
+    const QString actualHash = QString::fromLatin1(hash.result().toHex());
+    if (actualHash.compare(expectedHash, Qt::CaseInsensitive) != 0)
+        return fail(tr("校验失败：安装包已损坏或不完整。"));
+    if (error) error->clear();
+    return true;
+}
+void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller) {
+    QString error;
+    if (!verifyPackage(filePath, expectedHash, &error)) {
+        failInstall(error);
+        return;
+    }
+    // Confirmation comes after downloading, before ANY external installer runs.
+    if (!confirmInstall_ || !confirmInstall_()) {
+        failInstall(tr("已取消更新，当前工作保持不变。"));
+        return;
+    }
+#ifdef Q_OS_WIN
+    QProcess installer;
+    installer.setProgram(filePath);
+    installer.setArguments(isInstaller ? QStringList{"/S", "/UPDATE"}
+                                       : QStringList{"/S", "/UPDATE", "/PORTABLE"});
+    // NSIS requires /D= last and unquoted even with spaces. No command shell is
+    // involved, so &, %, Unicode, and parentheses are ordinary path characters.
+    installer.setNativeArguments("/D=" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
+    installer.setWorkingDirectory(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+    if (!installer.startDetached()) {
+        failInstall(tr("无法启动更新安装器。") + "\n" + installer.errorString());
+        return;
+    }
+    // The detached NSIS process still needs this file after our QObject dies.
+    downloadDirectory_->setAutoRemove(false);
+    emit installStarted();
+#else
+    failInstall(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
+#endif
 }
 } // namespace h2d

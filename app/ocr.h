@@ -74,6 +74,8 @@ QRectF ocrBandBoxToImage(const QRectF &box, const QRect &band, const QSize &size
 // be covered by a test without a recogniser being installed.
 bool parseOcrPayload(const QByteArray &payload, const QRect &band, const QSize &size,
                      QString *language, QVector<OcrLine> *lines, QString *error);
+bool parseTesseractTsv(const QByteArray &payload, const QRect &band, const QSize &size,
+                      QVector<OcrLine> *lines);
 
 // Fills in the placeholders of the Windows bridge script. Two details matter and
 // neither is visible from the caller: the paths have to reach the script as native

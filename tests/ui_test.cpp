@@ -32,6 +32,9 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QTextBlock>
+#include <QTextLayout>
+#include <QtMath>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
@@ -1369,7 +1372,13 @@ class UiTests : public QObject {
         fold->click();
         QTRY_COMPARE(fold->text(), QString("展开"));
         QVERIFY(input->height() < expandedHeight / 3);
-        QVERIFY(input->height() <= input->fontMetrics().lineSpacing() * 3 + 16);
+        // CJK fallback fonts on Linux can be taller than the primary font's
+        // metrics. Assert against the two actual laid-out lines instead.
+        const auto layout = input->document()->firstBlock().layout();
+        QVERIFY(layout && layout->lineCount() >= 2);
+        const int twoLineHeight = qCeil(layout->lineAt(1).y() + layout->lineAt(1).height()
+                                       + 2 * input->document()->documentMargin());
+        QVERIFY(input->height() <= twoLineHeight + input->height() - input->viewport()->height() + 2);
         QCOMPARE(input->verticalScrollBar()->value(), 0);
         QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
         QCOMPARE(input->toPlainText(), fullText);

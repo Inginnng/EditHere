@@ -24,6 +24,8 @@
 
 ## 构建与验证
 
+Linux 预览版的系统依赖、构建、AppImage 打包与 X11/Wayland 行为见 [Linux 说明](LINUX.md)。
+
 依赖：Qt **6.8.3**（qtbase、qtimageformats 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。
 
 Windows PowerShell 7，CMake 在 PATH 中：
@@ -66,6 +68,10 @@ Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 
 ```
 
 请将示例中的 NSIS 路径换为实际位置。0.8.21 的安装器输出为 `dist/EditHere-0.8.21-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
+
+应用内 Windows 更新复用 NSIS 的 Unicode 文件操作，安装版和便携版共用安装包。便携更新参数为 `/S /UPDATE /PORTABLE /D=<原目录>`，`/D=` 必须最后且不加引号；该协议从 0.9.9 起支持，旧发行版仅打开发布页。先准备同级暂存目录，再移动旧目录、切换新目录，切换失败时恢复旧目录；成功后保留备份及 `update-backup.txt`。便携模式跳过系统集成。下载使用 Qt 的独立临时目录和原子写入，并强制校验同名 SHA-256 文件。macOS 当前仅提供手动下载入口。
+
+选择沿用现有开源 NSIS，避免额外维护 cmd/tar 更新脚本；WinSparkle 需要新增 appcast 与签名发布链，Qt Installer Framework 需要迁移安装器及更新仓库，不适合作为本次修复的必要依赖。`tests/installer_transaction_test.py` 使用真实 NSIS 和无副作用的测试程序，在隔离目录验证成功替换、复制失败、目录锁定和切换失败回滚；需要设置 `NSIS_MAKENSIS` 与 `EDITHERE_UPDATE_STUB`，缺失时跳过。
 
 Mac 构建（尚未实机验收）：
 

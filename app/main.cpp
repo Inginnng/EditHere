@@ -65,6 +65,9 @@ int main(int argc, char **argv) {
     initializeLaunchAtLoginDetection();
     EditHereApplication app(argc, argv);
     app.setApplicationName("EditHere");
+#ifdef Q_OS_LINUX
+    app.setDesktopFileName("com.edithere.capture");
+#endif
     app.setOrganizationName("EditHere");
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     app.setApplicationDisplayName(QCoreApplication::translate("h2d", "EditHere · 改这里"));
@@ -152,6 +155,9 @@ int main(int argc, char **argv) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
-    QTimer::singleShot(0, &app, [&] { controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide()); });
+    QTimer::singleShot(0, &app, [&] {
+        controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide());
+        if (args.contains("--capture")) controller.capture();
+    });
     return app.exec();
 }

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+directory="$(cd "$(dirname "$0")" && pwd)"
+exec "$directory/EditHere-linux-x86_64.AppImage" --cli "$@"

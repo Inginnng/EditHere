@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+appdir="${APPDIR:-$(cd "$(dirname "$0")" && pwd)}"
+export LD_LIBRARY_PATH="$appdir/usr/lib:${LD_LIBRARY_PATH:-}"
+export QT_PLUGIN_PATH="$appdir/usr/plugins"
+if [[ "${1:-}" == '--cli' ]]; then
+  shift
+  exec "$appdir/usr/bin/edithere-cli" "$@"
+fi
+exec "$appdir/usr/bin/EditHere" "$@"

@@ -14,7 +14,15 @@ $ErrorActionPreference='Stop'
 # as a plain launch, which would trigger a capture instead of an exit, so the
 # request is only sent to installations that understand it.
 $quitRequestSince=[version]'0.9.4'
-function Get-EditHereProcesses { @(Get-Process -Name EditHere -ErrorAction SilentlyContinue) }
+function Get-EditHereProcesses {
+    $target=[IO.Path]::GetFullPath((Join-Path $InstallDirectory 'EditHere.exe'))
+    @(Get-Process -Name EditHere -ErrorAction SilentlyContinue | Where-Object {
+        # Another checkout/portable copy must not block this installation or be
+        # asked to quit. An unreadable image path cannot prove it is unrelated.
+        if (!$_.Path) { throw 'Cannot determine the path of a running EditHere process.' }
+        [IO.Path]::GetFullPath($_.Path) -ieq $target
+    })
+}
 function Test-QuitRequestSupported([string]$root) {
     $versionFile=Join-Path $root 'version.txt'
     if (!(Test-Path -LiteralPath $versionFile -PathType Leaf)) { return $false }

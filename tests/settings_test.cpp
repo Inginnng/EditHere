@@ -16,6 +16,27 @@ using namespace h2d;
 class SettingsTests : public QObject {
     Q_OBJECT
   private slots:
+    void savingSettingsPreservesRememberedCaptureStyle() {
+        auto original = defaultSettings();
+        original.captureStyle.cornerRadius = 19;
+        original.captureStyle.shadow = false;
+        original.captureStyle.shadowStrength = 77;
+        original.captureStyle.border = true;
+        original.captureStyle.borderColor = QColor("#aabbcc");
+        SettingsDialog dialog(original);
+        QCOMPARE(dialog.settings().captureStyle, original.captureStyle);
+        bool applied = false;
+        dialog.setApplyHandler([&](const AppSettings &next) {
+            applied = true;
+            if (!(next.captureStyle == original.captureStyle)) return QString("Style lost");
+            return QString();
+        });
+        dialog.findChild<QPushButton *>("settingsSave")->click();
+        QVERIFY(applied);
+        QCOMPARE(dialog.result(), int(QDialog::Accepted));
+        dialog.findChild<QPushButton *>("settingsReset")->click();
+        QCOMPARE(dialog.settings().captureStyle, defaultSettings().captureStyle);
+    }
     void defaultsAndPortablePersistence() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

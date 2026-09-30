@@ -1238,6 +1238,13 @@ QImage exampleImage() {
     return image;
 }
 QImage previewImage(const Document &doc) {
+    // Lay out every export in the same coordinate space. Source pixels and
+    // annotation coordinates remain untouched in projects and JSON exports.
+    const double imageScale = 960.0 / doc.image.width();
+    const int imageWidth = 960;
+    const double scaledHeight = doc.image.height() * imageScale;
+    if (scaledHeight > 32767 - 48) fail(tr("预览图片过大，请保存项目"));
+    const int imageHeight = std::max(1, qRound(scaledHeight));
     QFont font(h2d::cjkFontFamily(), 11);
     QFontMetrics fm(font);
     QVector<int> heights;
@@ -1248,18 +1255,20 @@ QImage previewImage(const Document &doc) {
         heights.append(h);
         total += h + 12;
     }
-    int width = doc.image.width() + 408, height = std::max(doc.image.height() + 48, total + 24);
+    int width = imageWidth + 408, height = std::max(imageHeight + 48, total + 24);
     if (qint64(width) * height > MaxPixels || height > 32767)
         fail(tr("预览图片过大，请保存项目"));
     QImage image(width, height, QImage::Format_ARGB32);
     image.fill(QColor("#f5f5f7"));
     QPainter p(&image);
     p.setRenderHint(QPainter::Antialiasing);
-    p.drawImage(24, 24, doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.drawImage(QRectF(24, 24, imageWidth, imageHeight),
+                doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
     const auto markers = doc.layout ? movementMarkers(*doc.layout, doc.notes) : QVector<MovementMarker>{};
     for (const auto &marker : markers) {
-        const auto from = marker.source.center() + QPointF(24, 24);
-        const auto to = marker.destination.center() + QPointF(24, 24);
+        const auto from = marker.source.center() * imageScale + QPointF(24, 24);
+        const auto to = marker.destination.center() * imageScale + QPointF(24, 24);
         const QLineF line(from, to);
         const auto direction = (to - from) / line.length();
         const QPointF normal(-direction.y(), direction.x());
@@ -1284,8 +1293,8 @@ QImage previewImage(const Document &doc) {
     for (const auto &marker : markers)
         if (marker.noteIndex >= 0)
             movementAnchors.insert(marker.noteIndex,
-                                   movementMarkerAnchor(marker, 1, doc.image.size()) + QPointF(24, 24));
-    int y = 72, i = 0, x = doc.image.width() + 60;
+                                   movementMarkerAnchor(marker, imageScale, QSizeF(imageWidth, imageHeight)) + QPointF(24, 24));
+    int y = 72, i = 0, x = imageWidth + 60;
     p.setFont(QFont(h2d::cjkFontFamily(), 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
     p.drawText(x, 44, QString(tr("批注 %1 条")).arg(doc.notes.size()));
@@ -1293,10 +1302,11 @@ QImage previewImage(const Document &doc) {
         if (!n.isGlobal && !n.isPoint) {
             p.setPen(QPen(QColor("#007aff"), 2));
             p.setBrush(Qt::NoBrush);
-            p.drawRect(QRectF(n.rect).translated(24, 24));
+            p.drawRect(QRectF(n.rect.x() * imageScale + 24, n.rect.y() * imageScale + 24,
+                             n.rect.width() * imageScale, n.rect.height() * imageScale));
         }
         if (!n.isGlobal)
-            badge(movementAnchors.value(i, QPointF(n.isPoint ? n.point : n.rect.topLeft()) + QPointF(24, 24)),
+            badge(movementAnchors.value(i, QPointF(n.isPoint ? n.point : n.rect.topLeft()) * imageScale + QPointF(24, 24)),
                   i + 1);
         p.setPen(Qt::NoPen);
         p.setBrush(Qt::white);

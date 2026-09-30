@@ -1,5 +1,6 @@
 #include "updatechecker.h"
 #include <QDir>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -10,6 +11,17 @@
 #include <QTemporaryDir>
 #include <QTest>
 using namespace h2d;
+namespace h2d {
+// Exercise the real verification/confirmation/launcher boundary without network
+// traffic or ever running an installer against the developer's application.
+class UpdateCheckerTestAccess {
+  public:
+    static void install(UpdateChecker &checker, const QString &path, const QString &hash) {
+        checker.installing_ = true;
+        checker.verifyAndInstall(path, hash, true);
+    }
+};
+}
 class UpdateTests : public QObject {
     Q_OBJECT
     QByteArray release(const QString &version) {
@@ -39,6 +51,70 @@ class UpdateTests : public QObject {
         return QJsonDocument(object).toJson();
     }
   private slots:
+    void cancellationAndLaunchFailureNeverAnnounceInstallation() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("not-an-executable.exe");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("payload");
+        file.close();
+        const auto hash = QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex());
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        int confirmations = 0;
+        checker.setInstallConfirmation([&] { ++confirmations; return false; });
+        UpdateCheckerTestAccess::install(checker, path, QString());
+        QCOMPARE(confirmations, 0);
+        UpdateCheckerTestAccess::install(checker, path, hash);
+        QCOMPARE(confirmations, 1);
+        QCOMPARE(started.size(), 0);
+        QVERIFY(!checker.downloading());
+        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        UpdateCheckerTestAccess::install(checker, path, hash);
+        QCOMPARE(confirmations, 2);
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 3);
+        QVERIFY(!checker.downloading());
+    }
+    void hashMustBePresentWellFormedAndMatch() {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("package.exe");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("payload");
+        file.close();
+        const auto hash = QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex());
+        QString error;
+        QVERIFY(UpdateChecker::verifyPackage(path, hash.toUpper(), &error));
+        QVERIFY(error.isEmpty());
+        for (const auto &invalid : {QString(), QString(" "), QString(64, 'z'), QString(64, '0'), hash + "\n"}) {
+            QVERIFY(!UpdateChecker::verifyPackage(path, invalid, &error));
+            QVERIFY(!error.isEmpty());
+        }
+        QVERIFY(!UpdateChecker::verifyPackage(directory.filePath("missing"), hash, &error));
+    }
+    void automaticUpdatesRespectPlatformAndInstallerCapabilities() {
+        auto old = UpdateChecker::parseRelease(releaseWithAssets("v0.9.8", false), "0.9.7");
+        QVERIFY(UpdateChecker::canAutoInstall(old, true, true));
+        QVERIFY(!UpdateChecker::canAutoInstall(old, false, true));
+        auto next = UpdateChecker::parseRelease(releaseWithAssets("v0.9.9", false), "0.9.8");
+        QVERIFY(UpdateChecker::canAutoInstall(next, false, true));
+        QVERIFY(!UpdateChecker::canAutoInstall(next, false, false));
+        QVERIFY(!UpdateChecker::canAutoInstall(next, true, false));
+        next.installerHash = {};
+        QVERIFY(!UpdateChecker::canAutoInstall(next, true, true));
+    }
+    void hashAssetMustBelongToSelectedPackage() {
+        auto object = QJsonDocument::fromJson(releaseWithAssets("v0.9.9", false)).object();
+        auto assets = object["assets"].toArray();
+        assets.append(asset("EditHere-0.9.9-win-x64-setup.exe"));
+        object["assets"] = assets;
+        const auto result = UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.9.8");
+        QCOMPARE(result.installer.name, QString("EditHere-0.9.9-win-x64-setup.exe"));
+        QVERIFY(result.installerHash.url.isEmpty());
+        QVERIFY(!UpdateChecker::canAutoInstall(result, true, true));
+    }
     void httpsBackendAvailable() {
         QVERIFY2(QSslSocket::supportsSsl(), "HTTPS support must be included in the portable app");
     }

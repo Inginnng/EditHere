@@ -1,0 +1,47 @@
+name: Native Linux build
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["app/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux.yml"]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libatspi2.0-dev libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-x11-0 libxcb-shape0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra fonts-noto-cjk xvfb dbus-x11 desktop-file-utils
+          python3 -m venv .tools/python
+          .tools/python/bin/pip install aqtinstall==3.3.0 ninja
+          .tools/python/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --modules qtimageformats --outputdir .tools/qt
+      - name: Build and test
+        env:
+          QT_ROOT: ${{ github.workspace }}/.tools/qt/6.8.3/gcc_64
+        run: |
+          export PATH="$PWD/.tools/python/bin:$PATH"
+          dbus-run-session -- bash scripts/build-linux.sh
+          dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          desktop-file-validate packaging/linux/com.edithere.capture.desktop
+      - name: Package AppImage
+        env:
+          QT_ROOT: ${{ github.workspace }}/.tools/qt/6.8.3/gcc_64
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .tools/python/bin/python scripts/fetch-linuxdeploy.py
+          export LINUXDEPLOY="$PWD/.tools/linuxdeploy/linuxdeploy-x86_64.AppImage"
+          export LINUXDEPLOY_PLUGIN_QT="$PWD/.tools/linuxdeploy/linuxdeploy-plugin-qt-x86_64.AppImage"
+          bash scripts/package-linux.sh
+          dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linux-*/EditHere-linux-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-build-results
+          path: |
+            dist/linux-*/*.AppImage*
+            dist/linux-*/edithere-cli
+            build-linux/test-results.xml
+            build-linux/Testing/Temporary/LastTest.log
+            artifacts/linux-ui/

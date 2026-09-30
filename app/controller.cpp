@@ -70,6 +70,12 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     retranslate();
     updateTrayShortcut();
     tray_.show();
+#ifdef Q_OS_LINUX
+    connect(&editor_, &Editor::hiddenToTray, this, [] {
+        if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable())
+            QCoreApplication::quit();
+    });
+#endif
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger)
             beginCapture(true);
@@ -124,6 +130,13 @@ void Controller::openSettings(bool updates, bool toolbar) {
     if (startupReadError.isEmpty())
         draft.launchAtLogin = registered;
     SettingsDialog dialog(draft, &editor_);
+    dialog.setUpdatePreparationHandler([this] {
+        // Never discard an active agent session to make room for an update.
+        // allowReplace also commits inline edits and offers Save/Discard/Cancel.
+        return editor_.allowReplace();
+    });
+    bool updateStarted = false;
+    connect(&dialog, &SettingsDialog::updateInstallStarted, &dialog, [&] { updateStarted = true; });
     dialog.setLaunchAtLoginNotice(startupReadError.isEmpty() ? launchAtLoginNotice() : startupReadError);
     // A language switch inside the dialog is applied live; the tray menu is not a
     // top-level widget, so it has to rebuild its own labels here.
@@ -174,6 +187,13 @@ void Controller::openSettings(bool updates, bool toolbar) {
         return {};
     });
     const bool accepted = dialog.exec() == QDialog::Accepted;
+    if (updateStarted) {
+        tray_.hide();
+        // The user has already confirmed and the installer has actually started.
+        // Do not run the close-to-tray path or ask the same question a second time.
+        QCoreApplication::exit(0);
+        return;
+    }
     if (!accepted && !shortcut_.start(activeShortcut))
         tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
     if (accepted) {
@@ -192,6 +212,11 @@ void Controller::showGuide() {
     editor_.showGuide();
 }
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
+#ifdef Q_OS_LINUX
+    // GNOME may have no tray host. Keep a visible entry point in that case.
+    if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)
+        editor_.show();
+#endif
     guidePending_ = guidePending_ || firstUse;
     if (!agentSessionId_.isEmpty()) {
         activate();

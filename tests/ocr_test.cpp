@@ -7,6 +7,21 @@
 using namespace h2d;
 class OcrTests : public QObject {
     Q_OBJECT
+  private slots:
+    void tesseractLinesKeepBandCoordinates() {
+        const QByteArray header = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n";
+        QVector<OcrLine> lines;
+        QVERIFY(parseTesseractTsv(header + "5\t1\t1\t1\t1\t1\t10\t20\t30\t15\t90\tHello\n"
+                                           "5\t1\t1\t1\t1\t2\t45\t20\t40\t15\t91\tworld\n",
+                                  QRect(0, 100, 200, 100), QSize(200, 400), &lines));
+        QCOMPARE(lines.size(), 1);
+        QCOMPARE(lines[0].text, QString("Hello world"));
+        QCOMPARE(lines[0].box, QRectF(0.05, 0.30, 0.375, 0.0375));
+        QVERIFY(!parseTesseractTsv(header + "5\t1\t1\t1\t1\t1\t-1\t20\t30\t15\t90\tBad\n",
+                                   QRect(0, 0, 200, 100), QSize(200, 100), &lines));
+        QVERIFY(!parseTesseractTsv("not a TSV", QRect(0, 0, 200, 100), QSize(200, 100), &lines));
+    }
+  private:
     // Rows of a five by seven pixel font, one string per row. Qt ships no fonts for
     // the offscreen platform, so drawing real text there would produce a blank
     // picture and a test that passes for the wrong reason.

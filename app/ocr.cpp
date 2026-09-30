@@ -11,6 +11,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QLocale>
 #include <algorithm>
 #ifdef Q_OS_APPLE
 #include <QtConcurrent>
@@ -252,6 +253,8 @@ OcrEngine::~OcrEngine() {
 bool OcrEngine::supported() {
 #if defined(Q_OS_WIN) || defined(Q_OS_APPLE)
     return true;
+#elif defined(Q_OS_LINUX)
+    return !QStandardPaths::findExecutable("tesseract").isEmpty();
 #else
     return false;
 #endif
@@ -274,6 +277,18 @@ QStringList OcrEngine::availableLanguages() {
         kLanguagesTimeoutMs, scratch.filePath(QStringLiteral("languages.txt")));
 #elif defined(Q_OS_APPLE)
     return visionLanguageTags();
+#elif defined(Q_OS_LINUX)
+    QProcess process;
+    process.start(QStandardPaths::findExecutable("tesseract"), {"--list-langs"});
+    if (!process.waitForFinished(5000)) { process.kill(); process.waitForFinished(1000); return {}; }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) return {};
+    QStringList languages;
+    const auto rows = QString::fromUtf8(process.readAllStandardOutput()).split('\n');
+    for (const auto &row : rows) {
+        const auto value = row.trimmed();
+        if (!value.isEmpty() && !value.startsWith("List of available languages")) languages.append(value);
+    }
+    return languages;
 #else
     return {};
 #endif
@@ -404,6 +419,27 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
     watcher->setFuture(QtConcurrent::run([image = sent_, preferred = preferred_ ] {
         return visionRecognize(image, preferred);
     }));
+#elif defined(Q_OS_LINUX)
+    const auto available = availableLanguages();
+    QString desired = preferred_.startsWith("zh-Hant") ? "chi_tra" : preferred_.startsWith("zh") ? "chi_sim" : "eng";
+    if (request_ == OcrLanguageMode::System) {
+        desired = QLocale().language() == QLocale::Chinese ? "chi_sim" : "eng";
+        if (!available.contains(desired) && !available.isEmpty()) desired = available.first();
+    }
+    if (!available.contains(desired)) {
+        finish(failure(OcrFailure::NoEngine, tr("未安装所需的 Tesseract 语言包：%1").arg(desired))); return;
+    }
+    preferred_ = desired;
+    language_ = desired;
+    scratch_ = new QTemporaryDir;
+    if (!scratch_->isValid()) { finish(failure(OcrFailure::Unavailable, tr("无法创建文字识别临时目录。"))); return; }
+    bands_ = ocrBands(sent_.size(), ocrMaxImageDimension());
+    for (int i = 0; i < bands_.size(); ++i) {
+        const auto path = scratch_->filePath(QString("band-%1.png").arg(i));
+        if (!sent_.copy(bands_[i]).save(path)) { finish(failure(OcrFailure::Unavailable, tr("无法写入待识别图片。"))); return; }
+        bandPaths_.append(path);
+    }
+    startNextBand();
 #else
     Q_UNUSED(language);
     finish(failure(OcrFailure::Unsupported, tr("当前平台不支持文字识别。")));
@@ -460,6 +496,42 @@ void OcrEngine::startNextBand() {
                    {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
                     QStringLiteral("-EncodedCommand"), encodeForPowerShell(script)});
     timeout->start();
+#elif defined(Q_OS_LINUX)
+    const auto output = scratch_->filePath(QString("result-%1.tsv").arg(bandIndex_));
+    auto *process = new QProcess(this);
+    process_ = process;
+    process->setStandardOutputFile(output);
+    const auto diagnostic = scratch_->filePath("diagnostic.txt");
+    process->setStandardErrorFile(diagnostic);
+    auto *timer = new QTimer(process);
+    timer->setSingleShot(true);
+    timer->setInterval(30000);
+    connect(timer, &QTimer::timeout, this, [this, process] {
+        if (process_ == process) finish(failure(OcrFailure::Failed, tr("文字识别超时，请重试。")));
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
+        if (process_ == process && error == QProcess::FailedToStart)
+            finish(failure(OcrFailure::Unavailable, tr("无法启动 Tesseract。")));
+    });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, process, output](int code, QProcess::ExitStatus status) {
+        if (process_ != process) return;
+        if (code != 0 || status != QProcess::NormalExit) { finish(failure(OcrFailure::Failed, tr("文字识别失败，请检查 Tesseract 语言包。"))); return; }
+        QFile file(output);
+        QVector<OcrLine> lines;
+        if (!file.open(QIODevice::ReadOnly) || file.size() > 8 * 1024 * 1024 ||
+            !parseTesseractTsv(file.readAll(), bands_[bandIndex_], sent_.size(), &lines)) {
+            finish(failure(OcrFailure::Failed, tr("无法读取文字识别结果，请重试。"))); return;
+        }
+        lines_ += lines;
+        process_ = nullptr;
+        process->deleteLater();
+        ++bandIndex_;
+        startNextBand();
+    });
+    process->start(QStandardPaths::findExecutable("tesseract"),
+                   {bandPaths_[bandIndex_], "stdout", "-l", preferred_, "tsv"});
+    timer->start();
 #endif
 }
 

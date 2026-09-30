@@ -30,3 +30,19 @@ Upstream source references:
 
 System fonts are loaded from the operating system and are not bundled.
 No Snipaste, PixPin or Agentation source code or assets are included.
+
+The Linux preview additionally dynamically links Qt DBus, Qt Wayland and AT-SPI,
+and their runtime dependencies. Distribution copyright and license notices for
+the bundled Linux libraries are included under licenses/linux in the AppImage's
+usr/share/doc/edithere directory. Qt Wayland and SVG source archives are available
+from the same Qt 6.8.3 submodules directory linked above. AT-SPI source is available
+at https://gitlab.gnome.org/GNOME/at-spi2-core ; the Ubuntu package source and exact
+installed version can be obtained through `apt-get source at-spi2-core` and
+`apt-cache policy libatspi2.0-0`. Libraries are dynamically linked and can be
+replaced in an extracted AppImage. No modified third-party library is distributed.
+
+Linux OCR invokes the separately installed Tesseract executable (Apache-2.0),
+https://github.com/tesseract-ocr/tesseract ; language data is installed by the
+user's package manager and is not bundled. linuxdeploy and its Qt plugin are
+build tools, not application components; their official binaries are pinned
+and SHA-256 verified by scripts/fetch-linuxdeploy.py.

@@ -25,6 +25,23 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 namespace h2d {
+namespace {
+bool installedCopy() {
+#ifdef Q_OS_WIN
+    QSettings reg("HKEY_CURRENT_USER\\Software\\EditHere\\Installer", QSettings::NativeFormat);
+    const QString registered = QFileInfo(reg.value("InstallDir").toString()).canonicalFilePath();
+    return !registered.isEmpty() && registered.compare(
+        QFileInfo(QCoreApplication::applicationDirPath()).canonicalFilePath(), Qt::CaseInsensitive) == 0;
+#else
+    return false;
+#endif
+}
+#ifdef Q_OS_WIN
+constexpr bool windowsUpdates = true;
+#else
+constexpr bool windowsUpdates = false;
+#endif
+}
 SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : QDialog(parent) {
     setObjectName("settingsDialog");
     setMinimumSize(500, 440);
@@ -266,6 +283,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     tabs->addTab(about, {});
     updater_ = new UpdateChecker(this);
     connect(check, &QPushButton::clicked, this, [this, status, check] {
+        if (updater_->downloading()) return;
         status->setText(tr("正在检查更新…"));
         check->setEnabled(false);
         updater_->check();
@@ -276,38 +294,27 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
                 check->setEnabled(true);
                 releases->setProperty("updateAvailable", state == UpdateChecker::Available);
                 releases->setProperty("releaseUrl", url);
+                const bool automatic = UpdateChecker::canAutoInstall(updater_->lastResult(), installedCopy(), windowsUpdates);
+                releases->setProperty("automaticUpdate", automatic);
                 // The button label depends on the availability, so refresh it here.
-                releases->setText(state == UpdateChecker::Available ? tr("立即更新") : tr("打开发布页"));
+                releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
             });
     connect(releases, &QPushButton::clicked, this, [this, releases, status, progressBar] {
         if (releases->property("updateAvailable").toBool()) {
             const auto &result = updater_->lastResult();
-            bool isInstaller = false;
-#ifdef Q_OS_WIN
-            {
-                QSettings reg("HKEY_CURRENT_USER\\Software\\EditHere\\Installer", QSettings::NativeFormat);
-                const QString installDir = reg.value("InstallDir").toString();
-                if (!installDir.isEmpty()) {
-                    const QString appDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
-                    isInstaller = QDir::fromNativeSeparators(installDir).compare(
-                        QDir::fromNativeSeparators(appDir), Qt::CaseInsensitive) == 0;
-                }
-            }
-#endif
-            if (isInstaller && result.installer.url.isValid()) {
-                status->setText(tr("正在下载安装器…"));
-                updater_->downloadAndInstall(result.installer, result.installerHash, true);
-            } else if (result.portable.url.isValid()) {
-                status->setText(tr("正在下载免安装包…"));
-                updater_->downloadAndInstall(result.portable, result.portableHash, false);
-            } else {
-                status->setText(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
+            const bool isInstaller = installedCopy();
+            if (!UpdateChecker::canAutoInstall(result, isInstaller, windowsUpdates)) {
+                if (!QDesktopServices::openUrl(result.url))
+                    status->setText(tr("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。"));
                 return;
             }
+            status->setText(tr("正在下载安装器…"));
             releases->setEnabled(false);
+            findChild<QPushButton *>("checkUpdates")->setEnabled(false);
             progressBar->setVisible(true);
             progressBar->setRange(0, 100);
             progressBar->setValue(0);
+            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
             if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
@@ -320,13 +327,16 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
                     progressBar->setValue(static_cast<int>(received * 100 / total));
             });
     connect(updater_, &UpdateChecker::installStarted, this, [this] {
-        QDialog::accept();
-        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        // Updating is not saving the settings draft. Restore the live preview,
+        // and let the controller own the already-confirmed application exit.
+        reject();
+        emit updateInstallStarted();
     });
     connect(updater_, &UpdateChecker::installFailed, this,
             [this, status, releases, progressBar](const QString &message) {
                 status->setText(message);
                 releases->setEnabled(true);
+                findChild<QPushButton *>("checkUpdates")->setEnabled(true);
                 progressBar->setVisible(false);
             });
     error_ = new QLabel(this);
@@ -475,7 +485,7 @@ void SettingsDialog::retranslate() {
     if (auto check = findChild<QPushButton *>("checkUpdates"))
         check->setText(tr("检查更新"));
     if (auto releases = findChild<QPushButton *>("openReleases"))
-        releases->setText(releases->property("updateAvailable").toBool() ? tr("立即更新") : tr("打开发布页"));
+        releases->setText(releases->property("automaticUpdate").toBool() ? tr("立即更新") : tr("打开发布页"));
     if (auto reset = findChild<QPushButton *>("settingsReset"))
         reset->setText(tr("恢复默认"));
     if (auto guide = findChild<QPushButton *>("restartGuide")) {
@@ -522,6 +532,7 @@ void SettingsDialog::setLaunchAtLoginNotice(const QString &notice) {
     launchAtLoginNotice_->setVisible(!notice.isEmpty());
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
+    captureStyle_ = settings.captureStyle;
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
     for (auto it = toolbarActions_.cbegin(); it != toolbarActions_.cend(); ++it)
@@ -540,6 +551,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
 }
 AppSettings SettingsDialog::settings() const {
     AppSettings result;
+    result.captureStyle = captureStyle_;
     result.captureOnStartup = captureOnStartup_->isChecked();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
@@ -561,6 +573,9 @@ AppSettings SettingsDialog::settings() const {
 }
 void SettingsDialog::setApplyHandler(std::function<QString(const AppSettings &)> handler) {
     apply_ = std::move(handler);
+}
+void SettingsDialog::setUpdatePreparationHandler(std::function<bool()> handler) {
+    updater_->setInstallConfirmation(std::move(handler));
 }
 void SettingsDialog::save() {
     const auto draft = settings();

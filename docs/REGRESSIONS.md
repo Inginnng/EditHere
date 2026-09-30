@@ -15,6 +15,21 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 本次更新修复（0.9.9）
+
+Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。
+
+批注图片按统一展示宽度排版，避免高分辨率原图导致批注过小；`CoreTests::previewLayoutIsIndependentOfSourceResolution` 对比同一内容的 1 倍与 4 倍分辨率，验证图片区域和批注正文布局一致，并保留项目坐标。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-116 | 设置保存丢失截图样式；草稿保留圆角、阴影和边框 | `settings_test::savingSettingsPreservesRememberedCaptureStyle` | ✅ |
+| REG-117 | 空校验值跳过验证或错配校验文件；强制合法 SHA-256 与同名资产 | `update_test::hashMustBePresentWellFormedAndMatch`、`hashAssetMustBelongToSelectedPackage` | ✅ |
+| REG-118 | 取消确认或安装器启动失败仍退出；确认置于启动前并检查启动结果 | `update_test::cancellationAndLaunchFailureNeverAnnounceInstallation`；编辑器保存确认仍依赖现有 UI 测试，完整交互需人工验收 | ⚠️ |
+| REG-119 | macOS 误选 Windows 包、旧安装器不支持便携更新 | `update_test::automaticUpdatesRespectPlatformAndInstallerCapabilities` | ✅ |
+| REG-120 | 逐文件覆盖失败留下混合版本；NSIS 暂存、目录切换与回滚 | `installer_transaction_test.py` 四种隔离安装场景，需要真实 NSIS | ⚠️ |
+| REG-121 | 升级参数被启动选项读取覆盖、PATH 选择丢失、误检查其他目录实例 | `check-packaging.py` 编译检查；注册表选项保留尚需安装版实机验收 | ⚠️ |
+
 ## 一、安装、升级与打包
 
 | 编号 | 现象 | 首现 → 修复 | 根因 | 回归检查 | 状态 |

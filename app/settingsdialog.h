@@ -18,6 +18,7 @@ class SettingsDialog final : public QDialog {
     void showToolbar();
     void setLaunchAtLoginNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
+    void setUpdatePreparationHandler(std::function<bool()> handler);
     // Cancelling also rolls the live language preview back. QDialog::reject() is a
     // public slot, so the override keeps the same access.
     void reject() override;
@@ -27,6 +28,7 @@ class SettingsDialog final : public QDialog {
     // Emitted whenever a language is installed, so chrome outside this dialog
     // (the tray menu and tooltip) can rebuild its own labels.
     void languageApplied();
+    void updateInstallStarted();
 
   protected:
     void changeEvent(QEvent *) override;
@@ -59,5 +61,6 @@ class SettingsDialog final : public QDialog {
     QMap<QString, QKeySequenceEdit *> keys_;
     QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;
+    CaptureStyle captureStyle_;
 };
 } // namespace h2d

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=EditHere
+Name[zh_CN]=EditHere · 改这里
+Comment=Screenshot annotation and visual feedback
+Exec=EditHere %f
+Icon=edithere
+Terminal=false
+Categories=Graphics;Utility;
+MimeType=application/x-edithere;
+StartupWMClass=EditHere
+Actions=Capture;
+
+[Desktop Action Capture]
+Name=Capture screen
+Name[zh_CN]=截图
+Exec=EditHere --capture

@@ -6,7 +6,12 @@
 #include <QProcess>
 #include <QTimer>
 #include <QUrl>
+#include <QSaveFile>
+#include <QTemporaryDir>
+#include <functional>
+#include <memory>
 namespace h2d {
+class UpdateCheckerTestAccess;
 class UpdateChecker final : public QObject {
     Q_OBJECT
   public:
@@ -25,6 +30,7 @@ class UpdateChecker final : public QObject {
         Asset installerHash;
         Asset portable;
         Asset portableHash;
+        bool portableInstallerSupported = false;
     };
     explicit UpdateChecker(QObject *parent = nullptr);
     ~UpdateChecker() override;
@@ -35,12 +41,15 @@ class UpdateChecker final : public QObject {
     // attempt would be concatenated with the new package and fail the SHA256
     // check with "安装包已损坏或不完整".
     static QString prepareDownloadTarget(const QString &directory, const QString &packageName);
+    static bool verifyPackage(const QString &filePath, const QString &expectedHash, QString *error);
+    static bool canAutoInstall(const Result &result, bool installed, bool windows);
+    void setInstallConfirmation(std::function<bool()> confirmation) { confirmInstall_ = std::move(confirmation); }
     void check();
     bool busy() const {
         return busy_;
     }
     bool downloading() const {
-        return downloadReply_ != nullptr;
+        return installing_;
     }
     const Result & lastResult() const {
         return lastResult_;
@@ -53,20 +62,28 @@ class UpdateChecker final : public QObject {
     void installFailed(QString message);
 
   private:
+    friend class UpdateCheckerTestAccess;
     void requestPublic();
     void finish(Result result);
     void verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller);
+    void failInstall(const QString &message);
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QPointer<QNetworkReply> downloadReply_;
     QPointer<QNetworkReply> hashReply_;
     QProcess process_;
     QTimer timeout_;
+    QTimer cliTimeout_;
     QByteArray output_;
     QString downloadPath_;
     QString downloadFileName_;
     bool busy_ = false;
     bool isInstallerUpdate_ = false;
+    bool installing_ = false;
+    bool publicRequested_ = false;
+    std::unique_ptr<QTemporaryDir> downloadDirectory_;
+    std::unique_ptr<QSaveFile> downloadFile_;
+    std::function<bool()> confirmInstall_;
     Result lastResult_;
 };
 } // namespace h2d
