@@ -29,6 +29,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | REG-119 | macOS 误选 Windows 包、旧安装器不支持便携更新 | `update_test::automaticUpdatesRespectPlatformAndInstallerCapabilities` | ✅ |
 | REG-120 | 逐文件覆盖失败留下混合版本；NSIS 暂存、目录切换与回滚 | `installer_transaction_test.py` 四种隔离安装场景，需要真实 NSIS | ⚠️ |
 | REG-121 | 升级参数被启动选项读取覆盖、PATH 选择丢失、误检查其他目录实例 | `check-packaging.py` 编译检查；注册表选项保留尚需安装版实机验收 | ⚠️ |
+| REG-122 | 0.9.9 的发布页上只有 Windows 与 macOS 三个包，Linux 包不存在 | 标签触发的 `release.yml` 只等 `build-windows` 与 `build-macos` 两个构建，`native-linux.yml` 又只有 `workflow_dispatch` 与 `pull_request` 触发——打标签时没有任何任务会去构建 AppImage。发布说明里"提供 AppImage"那句因此成了一句空话 | `native-linux.yml` 增加 `workflow_call`，`release.yml` 新增 `build-linux` 任务调用它，`needs` 与"每包齐全"护栏一并纳入 AppImage，发布资产与 `SHA256SUMS.txt` 补上 AppImage 与 `edithere-cli`；包与构建日志拆成两个 artefact 上传，好让包解压后落在归档根目录 | `check-packaging.py` 的 `release_assets` 检查：Linux 工作流必须可被调用、必须收集 AppImage 与 CLI、`release.yml` 必须把 AppImage 同时列进"必须有"清单与发布资产 | ✅ |
 
 ## 一、安装、升级与打包
 
@@ -226,7 +227,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
-| 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing` | REG-109 |
+| 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包任一缺失即失败 | REG-109/122 |
 
 长截图的做法对照过两个开源实现（**该段只对 `feature/long-capture` 分支成立**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 

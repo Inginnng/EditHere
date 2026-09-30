@@ -44,6 +44,6 @@ bash scripts/package-linux.sh
 dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linux-*/EditHere-linux-x86_64.AppImage
 ```
 
-默认打包到 `dist/linux-<版本>/`，已有目录时拒绝覆盖；可用 `EDITHERE_PACKAGE_DIR` 指定新目录。Linux CI 支持手动运行和相关 PR，不会自动公开发布。专项测试在独立 DBus 会话模拟 Portal，真实 X11 通过 Xvfb 验证，不替代 GNOME/KDE 会话验收。开机启动登记原始 AppImage 路径，不使用临时挂载路径；移动后保存设置可刷新。
+默认打包到 `dist/linux-<版本>/`，已有目录时拒绝覆盖；可用 `EDITHERE_PACKAGE_DIR` 指定新目录。Linux 构建随发布标签与相关 PR 触发：打标签时由发布工作流一并产出 AppImage，与其他平台的包一同挂到发布页。专项测试在独立 DBus 会话模拟 Portal，真实 X11 通过 Xvfb 验证，不替代 GNOME/KDE 会话验收。开机启动登记原始 AppImage 路径，不使用临时挂载路径；移动后保存设置可刷新。
 
 官方接口资料：[Qt QScreen](https://doc.qt.io/qt-6.8/qscreen.html)、[Screenshot portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html)、[GlobalShortcuts portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)。

@@ -214,10 +214,12 @@ def check_portable_zip_flat() -> list[Problem]:
 # --------------------------------------------------------------------------- #
 RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 MACOS_WORKFLOW = ROOT / ".github" / "workflows" / "native-macos.yml"
+LINUX_WORKFLOW = ROOT / ".github" / "workflows" / "native-linux.yml"
+LINUX_APPIMAGE = "EditHere-linux-x86_64.AppImage"
 
 
 def check_release_assets() -> list[Problem]:
-    """REG-002/012  Version-less asset names, per-file hashes, dual-name lookup."""
+    """REG-002/012/122  Version-less asset names, per-file hashes, every platform."""
     problems = []
     workflow = read(RELEASE)
     for pattern, stable in (
@@ -230,11 +232,15 @@ def check_release_assets() -> list[Problem]:
                 f"release.yml: {pattern} is no longer published as the version-less name "
                 f"{stable}; /releases/latest/download links would break again."
             )
-    if "for f in *.zip *.exe; do sha256sum" not in workflow:
-        problems.append(
-            "release.yml: per-file .sha256 for *.zip and *.exe is missing; the portable "
-            "updater refuses to run without a checksum file."
-        )
+    per_file = re.search(r"for f in ([^;]+); do sha256sum", workflow)
+    hashed = per_file.group(1).split() if per_file else []
+    for needed in ("*.zip", "*.exe", "*.AppImage"):
+        if needed not in hashed:
+            problems.append(
+                f"release.yml: {needed} no longer gets a per-file .sha256; the "
+                f"updater and the download page both point at that checksum file."
+            )
+    problems += check_linux_release_package(workflow)
     checker = read(ROOT / "app" / "updatechecker.cpp")
     for bare in ('EditHere-win-x64-setup.exe', 'EditHere-win-x64.zip'):
         if bare not in checker:
@@ -249,6 +255,53 @@ def check_release_assets() -> list[Problem]:
         )
     return problems
 
+
+def check_linux_release_package(release_workflow: str) -> list[Problem]:
+    """REG-122  A tag has to publish the Linux package, not just build it on demand.
+
+    0.9.9's release notes promised an AppImage while no job ever built one: the
+    Linux workflow had no tag trigger and the release job only waited on the
+    Windows and macOS builds. A Linux build that nothing attaches to a release
+    is not a package, so the whole chain is pinned here.
+
+    Comparisons are whole-line on purpose: ``EditHere-linux-x86_64.AppImage`` is
+    a prefix of its own ``.sha256`` sibling, and a substring test would let a
+    broken pipeline pass on the checksum file alone.
+    """
+    problems = []
+    linux_name = LINUX_WORKFLOW.relative_to(ROOT).as_posix()
+    linux = read(LINUX_WORKFLOW)
+    linux_lines = [line.strip() for line in linux.splitlines()]
+    release_lines = [line.strip() for line in release_workflow.splitlines()]
+    if "workflow_call:" not in linux_lines:
+        problems.append(
+            f"{linux_name}: no workflow_call trigger, so release.yml cannot reuse the "
+            f"Linux build."
+        )
+    if f"uses: ./{linux_name}" not in release_lines:
+        problems.append(
+            "release.yml: the Linux workflow is no longer called, so a tag builds no "
+            "AppImage and the release ships without one again."
+        )
+    for wanted, why in (
+        ("name: linux-package", "the package artefact has no name of its own"),
+        (f"dist/linux-*/{LINUX_APPIMAGE}", "the AppImage is not collected from the build"),
+        ("dist/linux-*/edithere-cli", "the CLI wrapper is not collected from the build"),
+    ):
+        if wanted not in linux_lines:
+            problems.append(f"{linux_name}: {why}.")
+    required = [line for line in release_lines if line.startswith("packages=")]
+    if not required or LINUX_APPIMAGE not in required[0]:
+        problems.append(
+            f"release.yml: {LINUX_APPIMAGE} is not one of the packages the release "
+            f"insists on, so a tag can still publish without Linux."
+        )
+    if "artifacts/*.AppImage" not in release_lines:
+        problems.append(
+            f"release.yml: the AppImage is not attached to the release assets, so the "
+            f"release would look complete while Linux is missing."
+        )
+    return problems
 
 def check_release_notes() -> list[Problem]:
     """REG-011  Generated notes only list merged pull requests, and this repo pushes commits."""

@@ -117,12 +117,13 @@ AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成�
 | **Windows x64 · 推荐**            | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe)   | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。                  |
 | **Windows x64 · 免安装版**        | [下载免安装版 ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip)       | 完整解压后运行`EditHere.exe`，保留同目录的 DLL 和插件文件夹。                         |
 | **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | 打开 DMG，将`EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
+| **Linux x86_64 · 预览**           | [下载 AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后直接运行；同一发布页提供 SHA-256 校验文件与 `edithere-cli` 启动脚本。目标环境 Ubuntu 24.04 x86_64，详见 [Linux 说明](docs/LINUX.md)。 |
 
 Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
 
 Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 
-Linux x86_64 预览实现与 AppImage 构建流程已加入项目，当前尚未公开发布。运行、OCR 依赖与 X11/Wayland 行为见 [Linux 说明](docs/LINUX.md)。
+Linux x86_64 为预览版本，目标环境为 Ubuntu 24.04；Wayland 下截图先由系统完成授权与选区，交互与 Windows 不完全一致。运行方式、OCR 依赖与 X11/Wayland 行为见 [Linux 说明](docs/LINUX.md)。
 
 Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，已通过构建与自动测试，**仍处于预览阶段，尚未实机验收和 Apple 公证**。
 

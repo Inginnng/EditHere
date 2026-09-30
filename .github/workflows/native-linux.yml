@@ -1,6 +1,10 @@
 name: Native Linux build
 on:
   workflow_dispatch:
+  # release.yml calls this so a tag produces the AppImage alongside the
+  # Windows and macOS packages, instead of the Linux build living in a
+  # workflow a tag never triggers (REG-122).
+  workflow_call:
   pull_request:
     paths: ["app/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux.yml"]
 permissions:
@@ -35,13 +39,23 @@ jobs:
           export LINUXDEPLOY_PLUGIN_QT="$PWD/.tools/linuxdeploy/linuxdeploy-plugin-qt-x86_64.AppImage"
           bash scripts/package-linux.sh
           dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linux-*/EditHere-linux-x86_64.AppImage
-      - uses: actions/upload-artifact@v4
+      # The package is uploaded on its own so the archive root holds just the
+      # three release files. Release assets are picked up with a flat
+      # artefacts/*.<ext> glob, which a dist/linux-<version>/ prefix would miss.
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: |
+            dist/linux-*/EditHere-linux-x86_64.AppImage
+            dist/linux-*/EditHere-linux-x86_64.AppImage.sha256
+            dist/linux-*/edithere-cli
+      - name: Upload build results
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-build-results
           path: |
-            dist/linux-*/*.AppImage*
-            dist/linux-*/edithere-cli
             build-linux/test-results.xml
             build-linux/Testing/Temporary/LastTest.log
             artifacts/linux-ui/
