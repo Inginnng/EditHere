@@ -1,0 +1,16 @@
+{
+    "Id": "pffft",
+    "Name": "pffft",
+    "QDocModule": "qtspatialaudio",
+    "Description": "A pretty fast FFT.",
+    "QtUsage": "Used to support spatial audio.",
+    "SecurityCritical": false,
+
+    "Homepage": "https://bitbucket.org/jpommier/pffft.git",
+    "Version": "02fe7715a5bf8bfd914681c53429600f94e0f536",
+    "DownloadLocation": "https://bitbucket.org/jpommier/pffft/get/02fe7715a5bf.zip",
+    "CopyrightFile": "COPYRIGHTS",
+    "License": "BSD 3-Clause \"New\" or \"Revised\" License",
+    "LicenseId": "BSD-3-Clause",
+    "LicenseFile": "LICENSE"
+}

@@ -4,7 +4,7 @@
 // 把本地 edithere-cli 的 Agent 接口封装为 MCP 工具，供 WorkBuddy 等
 // MCP 客户端调用：
 //   edithere_status           查询 EditHere 运行与文档状态
-//   edithere_open             打开图片或 .edithere 项目（仅请求受理）
+//   edithere_open             打开图片、视频或 .edithere 项目（仅请求受理）
 //   edithere_capture          唤起截图（仅请求受理）
 //   edithere_annotate_start   发起标注会话后立即返回会话 ID（推荐）
 //   edithere_annotate_poll    查询会话是否完成，完成时返回反馈摘要
@@ -210,9 +210,250 @@ function makeOutputPath(outputDir, tag) {
 }
 
 function dataUrlToImageContent(dataUrl) {
-  const match = /^data:(image\/(?:png|jpeg));base64,(.+)$/s.exec(dataUrl || '');
-  if (!match) return null;
+  if (typeof dataUrl !== 'string') return null;
+  const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!match || match[2].length % 4 !== 0) return null;
   return { type: 'image', data: match[2], mimeType: match[1] };
+}
+
+// A video document can hold hundreds of screenshots. Keep its JSON intact on
+// disk, and make both text and image transport limits visible to the caller.
+const MAX_FEEDBACK_FILE_BYTES = 512 * 1024 * 1024;
+const MAX_VIDEO_FRAMES = 10000;
+const MAX_VIDEO_SUMMARY_FRAMES = 128;
+const MAX_VIDEO_SUMMARY_OBJECTS = 256;
+const MAX_VIDEO_SUMMARY_CHARS = 100000;
+const MAX_VIDEO_RESULT_IMAGES = 8;
+const MAX_VIDEO_RESULT_IMAGE_CHARS = 24 * 1024 * 1024;
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isVideoFeedback(feedback) {
+  return feedback.schemaVersion === 'video-feedback-1';
+}
+
+function formatTimestamp(timestampMs) {
+  const hours = Math.floor(timestampMs / 3600000);
+  const minutes = Math.floor(timestampMs / 60000) % 60;
+  const seconds = Math.floor(timestampMs / 1000) % 60;
+  const milliseconds = timestampMs % 1000;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+}
+
+function validateRectangle(rectangle, location) {
+  if (!isRecord(rectangle)
+      || !['x1', 'y1', 'x2', 'y2'].every((key) => Number.isFinite(rectangle[key]))
+      || rectangle.x1 < 0 || rectangle.y1 < 0
+      || rectangle.x2 < rectangle.x1 || rectangle.y2 < rectangle.y1) {
+    throw new Error(`${location} 不是有效的像素矩形。`);
+  }
+}
+
+function validateVideoObject(object, location) {
+  if (!isRecord(object) || !Array.isArray(object.movements) || !Array.isArray(object.annotations)) {
+    throw new Error(`${location} 必须包含 source、movements 和 annotations。`);
+  }
+  if (object.source !== null) validateRectangle(object.source, `${location}.source`);
+  object.movements.forEach((movement, index) => {
+    if (!isRecord(movement)) throw new Error(`${location}.movements[${index}] 不是对象。`);
+    validateRectangle(movement.to, `${location}.movements[${index}].to`);
+  });
+  if (object.annotations.some((text) => typeof text !== 'string' || !text.trim())) {
+    throw new Error(`${location}.annotations 必须是非空文字数组。`);
+  }
+}
+
+function objectIndexKey(object) {
+  return JSON.stringify([object.source, object.movements, object.annotations]);
+}
+
+function validateVideoFeedback(feedback) {
+  if (!isRecord(feedback.video) || typeof feedback.video.source !== 'string' || !feedback.video.source.trim()
+      || feedback.video.source.length > 32768) {
+    throw new Error('video.source 必须是源视频的路径或地址。');
+  }
+  for (const field of ['durationMs', 'width', 'height']) {
+    const value = feedback.video[field];
+    if (!Number.isSafeInteger(value) || value < (field === 'durationMs' ? 0 : 1)) {
+      throw new Error(`video.${field} 不是有效的非负时长或正整数尺寸。`);
+    }
+  }
+  if (!Array.isArray(feedback.frames) || feedback.frames.length > MAX_VIDEO_FRAMES) {
+    throw new Error(`frames 必须是数组，最多 ${MAX_VIDEO_FRAMES} 帧。`);
+  }
+  const byId = new Map();
+  feedback.frames.forEach((frame, index) => {
+    const location = `frames[${index}]`;
+    if (!isRecord(frame) || typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 256 || byId.has(frame.id)) {
+      throw new Error(`${location}.id 必须是唯一的非空字符串。`);
+    }
+    if (!Number.isSafeInteger(frame.timestampMs) || frame.timestampMs < 0
+        || frame.timestampMs > feedback.video.durationMs) {
+      throw new Error(`${location}.timestampMs 必须位于视频时长范围内。`);
+    }
+    if (frame.timestampUs !== undefined && (!Number.isSafeInteger(frame.timestampUs) || frame.timestampUs < 0
+        || Math.floor(frame.timestampUs / 1000) !== frame.timestampMs)) {
+      throw new Error(`${location}.timestampUs 与 timestampMs 不一致。`);
+    }
+    if (!isRecord(frame.feedback) || frame.feedback.annotationSpace !== 'result'
+        || !Array.isArray(frame.feedback.objects)) {
+      throw new Error(`${location}.feedback 必须是 annotationSpace=result 的对象反馈。`);
+    }
+    if (frame.feedback.image !== undefined && typeof frame.feedback.image !== 'string') {
+      throw new Error(`${location}.feedback.image 必须是图像 data URL 字符串。`);
+    }
+    if (frame.feedback.image && !dataUrlToImageContent(frame.feedback.image)) {
+      throw new Error(`${location}.feedback.image 不是有效的 PNG/JPEG Base64 data URL。`);
+    }
+    if (frame.imageFile !== undefined && (typeof frame.imageFile !== 'string'
+        || /[\\/:\0]/.test(frame.imageFile) || !/\.(png|jpe?g)$/i.test(frame.imageFile))) {
+      throw new Error(`${location}.imageFile 必须是反馈 JSON 同目录的 PNG/JPEG 文件名，不能包含路径。`);
+    }
+    frame.feedback.objects.forEach((object, objectIndex) => {
+      validateVideoObject(object, `${location}.feedback.objects[${objectIndex}]`);
+    });
+    const remaining = new Map();
+    frame.feedback.objects.forEach((object) => {
+      const key = objectIndexKey(object);
+      remaining.set(key, (remaining.get(key) || 0) + 1);
+    });
+    byId.set(frame.id, { frame, remaining });
+  });
+  // The expanded root index is optional for older preview exports, but if it
+  // exists it must reference exactly the frame-local objects. Never merge by
+  // rectangle: the same location at two timestamps can mean different edits.
+  if (feedback.objects !== undefined) {
+    if (!Array.isArray(feedback.objects)) throw new Error('根 objects 必须是展开索引数组。');
+    feedback.objects.forEach((object, index) => {
+      if (!isRecord(object)) throw new Error(`objects[${index}] 不是对象。`);
+      const entry = byId.get(object.frameId);
+      if (!entry || object.timestampMs !== entry.frame.timestampMs) {
+        throw new Error(`objects[${index}] 的 frameId 或 timestampMs 没有匹配的帧。`);
+      }
+      validateVideoObject(object, `objects[${index}]`);
+      const key = objectIndexKey(object);
+      const remaining = entry.remaining.get(key) || 0;
+      if (!remaining) throw new Error(`objects[${index}] 与对应帧的批注内容不一致。`);
+      if (remaining === 1) entry.remaining.delete(key);
+      else entry.remaining.set(key, remaining - 1);
+    });
+    if ([...byId.values()].some((entry) => entry.remaining.size)) {
+      throw new Error('根 objects 展开索引遗漏了帧中的对象。');
+    }
+  }
+}
+
+function summarizeVideoFeedback(feedback, feedbackPath) {
+  const frames = feedback.frames;
+  const objectCount = frames.reduce((total, frame) => total + frame.feedback.objects.length, 0);
+  const imageCount = frames.reduce((total, frame) => total + (frame.feedback.image ? 1 : 0), 0);
+  const externalImageCount = frames.reduce((total, frame) => total + (frame.imageFile ? 1 : 0), 0);
+  const noteCount = frames.reduce((total, frame) => total + frame.feedback.objects.reduce((n, object) => n + object.annotations.length, 0), 0);
+  const lines = [
+    `反馈文件: ${feedbackPath}`,
+    '反馈类型: video-feedback-1（视频按帧反馈）',
+    `源视频: ${feedback.video.source}`,
+    `视频: ${feedback.video.width}x${feedback.video.height}，时长 ${formatTimestamp(feedback.video.durationMs)}（${feedback.video.durationMs} ms）`,
+    `标注帧数量: ${frames.length}，对象数量: ${objectCount}，批注数量: ${noteCount}，内嵌截图数量: ${imageCount}，外部截图文件索引数量: ${externalImageCount}`,
+    '时间戳: 相对源视频起点，timestampMs 为毫秒；timestampUs 如存在则是更精确的实际截帧时间（微秒）。请用 frameId + timestampMs + 坐标定位修改点，不能把不同时刻的相同坐标合并。',
+    '坐标系: 对应帧截图的图像像素，原点在左上角；annotationSpace=result。source 是该帧原图区域，movements.to 是调整后的区域；右下边界不包含自身。坐标不能直接当作屏幕坐标或 CSS 像素。',
+    'frames[n].feedback 保留原图片反馈结构；根 objects 是同一批对象的展开索引，请勿重复执行两遍批注。每帧截图提取位置: frames[n].feedback.image（data URL，不是视频地址）；如有 frames[n].imageFile，则指向反馈 JSON 同目录的帧截图文件。源视频只以地址引用，文件不存在时仍可根据已保存截图分析。',
+  ];
+  let characterCount = lines.join('\n').length;
+  let trimmed = false;
+  let displayedObjects = 0;
+  const add = (line) => {
+    if (characterCount + line.length + 1 > MAX_VIDEO_SUMMARY_CHARS) {
+      trimmed = true;
+      return false;
+    }
+    characterCount += line.length + 1;
+    lines.push(line);
+    return true;
+  };
+  frames.slice(0, MAX_VIDEO_SUMMARY_FRAMES).forEach((frame, index) => {
+    if (!add(`帧 frames[${index}]: frameId=${frame.id}，时间 ${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}${frame.timestampUs === undefined ? '' : `，timestampUs=${frame.timestampUs}`}），${frame.feedback.objects.length} 个对象，截图=${frame.feedback.image ? `frames[${index}].feedback.image` : '未内嵌'}${frame.imageFile ? `，外部截图=${frame.imageFile}（JSON 同目录）` : ''}`)) return;
+    frame.feedback.objects.forEach((object, objectIndex) => {
+      if (displayedObjects >= MAX_VIDEO_SUMMARY_OBJECTS) { trimmed = true; return; }
+      if (!add(`  frames[${index}].feedback.objects[${objectIndex}]: ${formatVideoSource(object.source)}`)) return;
+      displayedObjects += 1;
+      object.movements.slice(0, 32).forEach((movement, movementIndex) => add(`      移动#${movementIndex}: -> ${formatRectangle(movement.to)}`));
+      object.annotations.slice(0, 64).forEach((text, noteIndex) => {
+        const shortened = text.length > 1000;
+        if (shortened) trimmed = true;
+        add(`      批注#${noteIndex}: ${text.slice(0, 1000)}${shortened ? '…（全文见 JSON）' : ''}`);
+      });
+      if (object.movements.length > 32 || object.annotations.length > 64) trimmed = true;
+    });
+  });
+  if (!objectCount) lines.push('用户本轮没有提交任何对象（这是有效结果，不要编造修改意见）。');
+  if (trimmed || frames.length > MAX_VIDEO_SUMMARY_FRAMES) {
+    lines.push(`摘要限量: 最多 ${MAX_VIDEO_SUMMARY_FRAMES} 帧、${MAX_VIDEO_SUMMARY_OBJECTS} 个对象、${MAX_VIDEO_SUMMARY_CHARS} 字符，部分内容未在摘要展开；完整批注和截图仍保存在反馈 JSON。请按 frames[n] 逐帧读取，帧索引范围 0–${frames.length - 1}；不能把摘要当作全部修改要求。`);
+  }
+  return lines.join('\n');
+}
+
+function readExternalFrameImage(filename, feedbackPath, maximumCharacters) {
+  const directory = fs.realpathSync(path.dirname(feedbackPath));
+  const candidate = path.join(directory, filename);
+  // Filenames are checked during parsing. A symlink must not turn a same-dir
+  // frame reference into a request to read an unrelated file elsewhere.
+  const resolved = fs.realpathSync(candidate);
+  if (path.dirname(resolved) !== directory) throw new Error('外部截图不能通过符号链接读取其他目录。');
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile() || !stat.size) throw new Error('外部截图不是有效的非空文件。');
+  const size = stat.size;
+  if (Math.ceil(size / 3) * 4 > maximumCharacters) return null;
+  const mimeType = /\.png$/i.test(filename) ? 'image/png' : 'image/jpeg';
+  return { type: 'image', data: fs.readFileSync(resolved).toString('base64'), mimeType };
+}
+
+function videoImageContents(feedback, feedbackPath) {
+  const content = [];
+  const omitted = [];
+  const missing = [];
+  let imageCount = 0;
+  let imageCharacters = 0;
+  feedback.frames.forEach((frame, index) => {
+    const location = frame.feedback.image ? `frames[${index}].feedback.image`
+      : `frames[${index}].imageFile = ${frame.imageFile}（反馈 JSON 同目录）`;
+    if (!frame.feedback.image && !frame.imageFile) {
+      missing.push(index);
+      return;
+    }
+    if (imageCount >= MAX_VIDEO_RESULT_IMAGES) {
+      omitted.push(index);
+      return;
+    }
+    let image = dataUrlToImageContent(frame.feedback.image);
+    if (!image) {
+      try {
+        image = readExternalFrameImage(frame.imageFile, feedbackPath, MAX_VIDEO_RESULT_IMAGE_CHARS - imageCharacters);
+      } catch (error) {
+        content.push({ type: 'text', text: `帧 frames[${index}] 外部截图不可读取: ${frame.imageFile}；${String(error?.message || error)}` });
+        missing.push(index);
+        return;
+      }
+    }
+    if (!image || imageCharacters + image.data.length > MAX_VIDEO_RESULT_IMAGE_CHARS) {
+      omitted.push(index);
+      return;
+    }
+    content.push({ type: 'text', text: `下面的截图对应 frameId=${frame.id}，${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}）；提取位置 ${location}。` });
+    content.push(image);
+    imageCount += 1;
+    imageCharacters += image.data.length;
+  });
+  const indexDescription = (indices) => `${indices.slice(0, 128).join(', ')}${indices.length > 128 ? `, …（共 ${indices.length} 帧；其余索引请遍历 frames）` : ''}`;
+  if (omitted.length) {
+    content.push({ type: 'text', text: `工具图片内容限量: 最多 ${MAX_VIDEO_RESULT_IMAGES} 张，Base64 总量 ${MAX_VIDEO_RESULT_IMAGE_CHARS} 字符。${omitted.length} 张截图未在此次工具结果附上，其内嵌图像数据或外部文件索引仍完整保存在反馈 JSON；提取 frames[n].feedback.image，或读取 frames[n].imageFile 指向的同目录文件，n = ${indexDescription(omitted)}。外部截图需随 JSON 一起保留。请按这些索引继续读取，不要把已附截图当作全部标注帧。` });
+  }
+  if (missing.length) {
+    content.push({ type: 'text', text: `${missing.length} 帧未内嵌可用的 PNG/JPEG 截图；索引 n = ${indexDescription(missing)}。这些帧仍有时间戳和文字坐标反馈，视觉核对需读取源视频或重新导出包含截图的 JSON。` });
+  }
+  return content;
 }
 
 function formatRectangle(r) {
@@ -220,9 +461,18 @@ function formatRectangle(r) {
   return `(${r.x1}, ${r.y1}) ${r.x2 - r.x1}x${r.y2 - r.y1}`;
 }
 
+function formatVideoSource(rectangle) {
+  if (!rectangle) return '全局对象（无 source）';
+  if (rectangle.x1 === rectangle.x2 && rectangle.y1 === rectangle.y2) {
+    return `原图点(${rectangle.x1}, ${rectangle.y1})`;
+  }
+  return `原图区域${formatRectangle(rectangle)}`;
+}
+
 // 把反馈 JSON 摘要成紧凑文本，坐标与 schema 语义保持一致。
 // 支持两种格式：0.9.0 面向对象格式（objects）与旧版动作格式（annotations+changes）。
 function summarizeFeedback(feedback, feedbackPath) {
+  if (isVideoFeedback(feedback)) return summarizeVideoFeedback(feedback, feedbackPath);
   const lines = [];
   const objects = Array.isArray(feedback.objects) ? feedback.objects : null;
   const annotations = Array.isArray(feedback.annotations) ? feedback.annotations : [];
@@ -388,7 +638,7 @@ function finishSessionContent(session) {
 
 // ---------------------------------------------------------------- MCP 工具定义
 
-const FEEDBACK_NOTE = '返回结构化反馈摘要；反馈 JSON 原文保存在输出的反馈文件路径，需要原图 data URL 时可用文件工具读取该文件。';
+const FEEDBACK_NOTE = '返回结构化反馈摘要；视频反馈按帧提供时间戳、坐标及修改意见，同坐标的不同时间点不会合并。反馈 JSON 原文保存在输出的反馈文件路径，需要原图或帧截图 data URL 时可用文件工具读取该文件。includeImage 最多附带 8 张视频帧截图，未附图的帧会明确给出提取索引。';
 
 const TOOLS = [
   {
@@ -398,12 +648,12 @@ const TOOLS = [
   },
   {
     name: 'edithere_open',
-    description: '让 EditHere 打开一张图片或 .edithere 项目。仅表示请求受理，不等待用户反馈；需要等待用户提交批注请用 edithere_annotate。',
+    description: '让 EditHere 打开图片、视频或 .edithere 项目（含视频项目）。仅表示请求受理，不等待用户反馈；需要等待用户提交批注请用 edithere_annotate_start。',
     inputSchema: {
       type: 'object',
       required: ['imagePath'],
       properties: {
-        imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）或 .edithere 项目的绝对路径' },
+        imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）、视频（如 MP4/MOV/WebM）或 .edithere 项目（含视频项目）的绝对路径；为兼容已有客户端，参数名仍为 imagePath' },
       },
       additionalProperties: false,
     },
@@ -415,15 +665,15 @@ const TOOLS = [
   },
   {
     name: 'edithere_annotate',
-    description: `发起一次 EditHere 标注会话：打开指定图片/项目，等待用户写批注、调整布局并点击"完成并返回 AI"，然后返回结构化反馈（批注文字、坐标、布局变化）。此调用会阻塞直到用户提交、取消或超时（默认 1800 秒）。同一时刻只支持一个标注会话：已有会话进行中时再次调用会返回 busy（退出码 4），请先让用户处理未保存文档、截图或进行中的会话。取消或超时不算收到反馈，不要重试覆盖。${FEEDBACK_NOTE}`,
+    description: `发起一次 EditHere 标注会话：打开指定图片、视频或项目，等待用户写批注、调整布局并点击"完成并返回 AI"，然后返回结构化反馈（批注文字、坐标、布局变化；视频还包括每帧时间戳）。视频可播放、拖动时间轴并暂停后逐帧标注。此调用会阻塞直到用户提交、取消或超时（默认 1800 秒）。同一时刻只支持一个标注会话：已有会话进行中时再次调用会返回 busy（退出码 4），请先让用户处理未保存文档、截图或进行中的会话。取消或超时不算收到反馈，不要重试覆盖。${FEEDBACK_NOTE}`,
     inputSchema: {
       type: 'object',
       required: ['imagePath'],
       properties: {
-        imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）或 .edithere 项目的绝对路径' },
+        imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
-        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图（默认内嵌）' },
-        includeImage: { type: 'boolean', description: '为 true 时在工具结果中附上原图（图片内容块），便于模型直接查看' },
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
+        includeImage: { type: 'boolean', description: '为 true 时在工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
       additionalProperties: false,
@@ -431,15 +681,15 @@ const TOOLS = [
   },
   {
     name: 'edithere_annotate_start',
-    description: `发起一次 EditHere 标注会话并立即返回会话 ID，不阻塞等待。推荐用它替代 edithere_annotate：调用立刻返回，你随后告知用户在 EditHere 中批注或调整布局，再点击顶部"完成并返回 AI"，然后用 edithere_annotate_poll 带同一 sessionId 查询结果（等待期间可以处理其他独立任务）。同一时刻只支持一个标注会话，已有会话进行中时不会重复发起，会提示先处理该会话。取消或超时不算收到反馈，不要重试覆盖。${FEEDBACK_NOTE}`,
+    description: `打开图片、视频或 .edithere 项目，发起 EditHere 标注会话并立即返回会话 ID，不阻塞等待。推荐用它替代 edithere_annotate：调用立刻返回，你随后告知用户在 EditHere 中批注或调整布局（视频先暂停到目标画面），再点击顶部"完成并返回 AI"，然后用 edithere_annotate_poll 带同一 sessionId 查询结果（等待期间可以处理其他独立任务）。同一时刻只支持一个标注会话，已有会话进行中时不会重复发起，会提示先处理该会话。取消或超时不算收到反馈，不要重试覆盖。${FEEDBACK_NOTE}`,
     inputSchema: {
       type: 'object',
       required: ['imagePath'],
       properties: {
-        imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）或 .edithere 项目的绝对路径' },
+        imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
-        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图（默认内嵌）' },
-        includeImage: { type: 'boolean', description: '为 true 时在完成后的工具结果中附上原图（图片内容块）' },
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
+        includeImage: { type: 'boolean', description: '为 true 时完成后的工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
       additionalProperties: false,
@@ -458,14 +708,14 @@ const TOOLS = [
   },
   {
     name: 'edithere_export',
-    description: `离线把已保存的 .edithere 项目、图片或有效反馈 JSON 转为反馈 JSON，不等待用户输入。${FEEDBACK_NOTE}`,
+    description: `离线把已保存的 .edithere 项目（含视频项目）、图片或有效反馈 JSON 转为反馈 JSON，不等待用户输入。视频项目导出已保存的标注帧，不需要源视频文件仍然存在；新视频的标注请先用 edithere_annotate_start。${FEEDBACK_NOTE}`,
     inputSchema: {
       type: 'object',
       required: ['imagePath'],
       properties: {
-        imagePath: { type: 'string', description: '.edithere 项目、图片或有效反馈 JSON 的绝对路径' },
-        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图（默认内嵌）' },
-        includeImage: { type: 'boolean', description: '为 true 时在工具结果中附上原图（图片内容块）' },
+        imagePath: { type: 'string', description: '.edithere 项目（含视频项目）、图片或有效图片/视频反馈 JSON 的绝对路径' },
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
+        includeImage: { type: 'boolean', description: '为 true 时工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
       additionalProperties: false,
@@ -482,7 +732,7 @@ function requirePathArg(p, name = 'imagePath') {
     return {
       content: [{
         type: 'text',
-        text: `缺少必填参数 ${name}：需要图片（PNG/JPEG/WebP/BMP）或 .edithere 项目文件的路径。建议传入绝对路径。`,
+        text: `缺少必填参数 ${name}：需要图片、视频或 .edithere 项目文件的路径。建议传入绝对路径。`,
       }],
       isError: true,
     };
@@ -665,18 +915,29 @@ function annotateResultToContent(r, outputPath, p) {
   const content = [];
   let feedback = null;
   try {
+    if (fs.statSync(outputPath).size > MAX_FEEDBACK_FILE_BYTES) {
+      throw new Error('反馈文件超过 512 MiB 的连接器读取上限。请拆分标注项目或压缩帧截图。');
+    }
     feedback = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
-  } catch {
+    if (!isRecord(feedback)) throw new Error('反馈 JSON 顶层必须是对象。');
+    if (isVideoFeedback(feedback)) validateVideoFeedback(feedback);
+    else if (feedback.video !== undefined || feedback.frames !== undefined) {
+      throw new Error(`不支持的视频反馈版本: ${String(feedback.schemaVersion || '未指定')}；需要 video-feedback-1。`);
+    }
+  } catch (error) {
     return {
-      content: [{ type: 'text', text: `命令回执成功但反馈文件无法读取: ${outputPath}\n${cliErrorText(r)}` }],
+      content: [{ type: 'text', text: `命令回执成功但反馈文件无法读取或解析: ${outputPath}\n${String(error?.message || error)}` }],
       isError: true,
     };
   }
   content.push({ type: 'text', text: summarizeFeedback(feedback, outputPath) });
   if (p.includeImage) {
-    const imageContent = dataUrlToImageContent(feedback.image);
-    if (imageContent) content.push(imageContent);
-    else content.push({ type: 'text', text: '反馈中未包含原图 data URL。' });
+    if (isVideoFeedback(feedback)) content.push(...videoImageContents(feedback, outputPath));
+    else {
+      const imageContent = dataUrlToImageContent(feedback.image);
+      if (imageContent) content.push(imageContent);
+      else content.push({ type: 'text', text: '反馈中未包含原图 data URL。' });
+    }
   }
   return { content, isError: false };
 }
@@ -764,7 +1025,7 @@ async function handleRequest(msg) {
 
 async function main() {
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    process.stdout.write(`EditHere MCP 连接器 v${SERVER_VERSION}\nCLI: ${CLI.path}（来源: ${CLI.source}）\nstdio MCP server；工具: ${TOOLS.map((t) => t.name).join(', ')}\n`);
+    process.stdout.write(`EditHere MCP 连接器 v${SERVER_VERSION}\nCLI: ${CLI.path}（来源: ${CLI.source}）\nstdio MCP server；支持图片、视频及 .edithere 视频项目。视频反馈按帧返回时间戳、坐标和批注，可附带帧截图。\n工具: ${TOOLS.map((t) => t.name).join(', ')}\n`);
     process.exit(0);
   }
   process.stderr.write(`[edithere-mcp] CLI: ${CLI.path}（来源: ${CLI.source}）${CLI.error ? ' — 不可用' : ''}\n`);
@@ -806,7 +1067,7 @@ async function main() {
 
 // Keep the transport entry point separate from the helpers so their real child
 // processes can be covered by Node's built-in test runner.
-export { runCli, cliResultToContent, statusContent, main };
+export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, main };
 
 if (process.argv[1]
     && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {

@@ -1,0 +1,55 @@
+[
+    {
+        "Id": "ffmpeg",
+        "Name": "FFmpeg",
+        "QDocModule": "qtmultimedia",
+        "Description": "FFmpeg is a collection of libraries and tools to process multimedia content such as audio, video, subtitles, and related metadata.",
+        "QtUsage": "The FFmpeg media backend uses the \\l {https://ffmpeg.org}{FFmpeg framework}. FFmpeg is licensed under LGPLv2.1 or later versions of the licenses. Note that, while FFmpeg also features some optional components available under GPL or LGPLv3, the binaries that ship with Qt in the online installer do not contain these components. Build scripts for the prebuilt FFmpeg binaries can be found in the \\l{https://code.qt.io/cgit/qt/qt5.git/tree/coin/provisioning}{Qt git repository}. See the \\l {https://ffmpeg.org/legal.html}{FFmpeg licensing page} for further details.",
+        "Homepage": "https://ffmpeg.org/",
+        "DownloadLocation": "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.tar.gz",
+        "SecurityCritical": true,
+        "Version": "n7.1",
+        "LicenseId": "LGPL-2.1-or-later AND BSD-3-Clause AND BSD-2-Clause AND BSD-Source-Code AND ISC AND MIT AND MPL-2.0",
+        "License": "GNU Lesser General Public License v2.1 or later and BSD 3-Clause \"New\" or \"Revised\" License and BSD 2-Clause \"Simplified\" License and BSD Source Code Attribution and ISC License and MIT License and Mozilla Public License 2.0",
+        "Copyright": "Copyright (c) 2000-2023 the FFmpeg developers"
+    },
+    {
+        "Id": "ffmpeg-libjpeg",
+        "Name": "libjpeg",
+        "QDocModule": "qtmultimedia",
+        "Description": "libjpeg is a widely used C library for reading and writing JPEG image files.",
+        "QtUsage": "The FFmpeg media backend uses modified code from libjpeg in `libavcodec/jfdctfst.c`, `libavcodec/jfdctint_template.c` and `libavcodec/jrevdct.c`. For list of modifications, see \\l {https://git.ffmpeg.org/ffmpeg.git}{FFmpeg source code management system}.",
+        "SecurityCritical": true,
+        "Homepage": "https://libjpeg.sourceforge.net/",
+        "DownloadLocation": "https://libjpeg.sourceforge.net/",
+        "License": "Independent JPEG Group License",
+        "LicenseId": "IJG",
+        "Copyright": "Copyright (C) 1991-2020, Thomas G. Lane, Guido Vollbeding."
+    },
+    {
+        "Id": "ffmpeg-zlib",
+        "Name": "zlib",
+        "QDocModule": "qtmultimedia",
+        "Description": "Zlib is a software library used for data compression",
+        "QtUsage": "The FFmpeg media backend uses the Adler-32 algorithm from zlib",
+        "SecurityCritical": false,
+        "Homepage": "https://www.zlib.net/",
+        "DownloadLocation": "https://www.zlib.net/",
+        "License": "zlib License",
+        "LicenseId": "Zlib",
+        "Copyright": "Copyright (C) 1995-2022 Jean-loup Gailly and Mark Adler."
+    },
+    {
+        "Id": "ffmpeg-boost",
+        "Name": "boost",
+        "QDocModule": "qtmultimedia",
+        "Description": "Boost is a set of libraries for the C++ programming language ",
+        "QtUsage": "The FFmpeg media backend uses algorithms from the Boost math library",
+        "SecurityCritical": false,
+        "Homepage": "https://www.boost.org/",
+        "DownloadLocation": "https://www.boost.org/",
+        "License": "Boost Software License 1.0",
+        "LicenseId": "BSL-1.0",
+        "Copyright": "(C) Copyright John Maddock 2006. Copyright (c) 2006 Xiaogang Zhang"
+    }
+]

@@ -1,6 +1,7 @@
 #pragma once
 #include "canvas.h"
 #include "settings.h"
+#include "videoproject.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QPointer>
@@ -19,6 +20,7 @@ class ImageArea;
 class LayoutInspector;
 class ExplosionWave;
 class GuideOverlay;
+class VideoPlayback;
 class Editor final : public QWidget {
     Q_OBJECT
   public:
@@ -45,6 +47,13 @@ class Editor final : public QWidget {
     bool confirmDiscardOnClose();
     bool saveProject();
     void openFile(const QString &path = {});
+    // Throws on invalid input; used by CLI requests without swallowing errors in a dialog.
+    void loadMedia(const QString &path);
+    void setVideoProject(VideoProject project, const QString &projectPath = {});
+    bool hasVideo() const { return video_.has_value(); }
+    int totalAnnotationCount();
+    QByteArray projectBytes();
+    VideoProject videoProject();
     // Opens the annotation window with nothing in it, so a picture can be brought in
     // by dropping it on the window: annotating a picture that is already on disk is a
     // different job from taking a new screenshot, and it should not have to start
@@ -118,6 +127,12 @@ class Editor final : public QWidget {
     void removeSelected();
     void setMode(Canvas::Mode mode);
     void updateControls();
+    void clearVideo();
+    void commitVideoFrame();
+    void displayVideoFrame(const QImage &image, qint64 timestampUs);
+    void reviewVideoFrame(qint64 timestampUs);
+    void updateVideoFrames();
+    QByteArray feedbackBytes(bool embed, bool compress = false);
     void undo();
     void redo();
     void zoom(double value);
@@ -128,6 +143,11 @@ class Editor final : public QWidget {
     QWidget *agentBanner_ = nullptr;
     bool agentSession_ = false;
     Document doc_;
+    std::optional<VideoProject> video_;
+    qint64 videoFrameUs_ = -1;
+    bool switchingVideoFrame_ = false;
+    VideoPlayback *videoPlayback_ = nullptr;
+    QStackedWidget *mediaStack_ = nullptr;
     AppSettings preferences_;
     struct Snapshot {
         QVector<Note> notes;

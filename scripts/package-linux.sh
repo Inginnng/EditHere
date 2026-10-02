@@ -31,7 +31,7 @@ done
 export APPIMAGE_EXTRACT_AND_RUN=1
 export QMAKE="$QT_ROOT/bin/qmake"
 export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
-export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration"
+export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;multimedia"
 export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
 export VERSION="$version" ARCH=x86_64 OUTPUT="EditHere-linux-x86_64.AppImage"
 export LDAI_RUNTIME_FILE="$project_root/.tools/linuxdeploy/runtime-x86_64"

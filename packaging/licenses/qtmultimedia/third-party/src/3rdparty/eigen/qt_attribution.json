@@ -1,0 +1,20 @@
+{
+    "Id": "eigen",
+    "Name": "Eigen",
+    "QDocModule": "qtspatialaudio",
+    "Description": "The Eigen C++ linear algebra library.",
+    "QtUsage": "Used for mathematics to support spatial audio.",
+    "SecurityCritical": false,
+
+    "Homepage": "https://eigen.tuxfamily.org/",
+    "Version": "3.4.0",
+    "DownloadLocation": "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2",
+
+    "License": "Mozilla Public License 2.0 and BSD 3-Clause \"New\" or \"Revised\" License",
+    "LicenseId": "MPL-2.0 AND BSD-3-Clause",
+    "CopyrightFile": "COPYRIGHTS",
+    "LicenseFiles": [
+        "COPYING.MPL2",
+        "COPYING.BSD"
+    ]
+}

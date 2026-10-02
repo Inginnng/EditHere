@@ -1,6 +1,7 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
 #include "model.h"
+#include "videoproject.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -36,12 +37,14 @@ int main(int argc, char **argv) {
                   "Usage:\n"
                   "  edithere-cli --help | --version\n"
                   "  edithere-cli status\n"
-                  "  edithere-cli open <image-or-project>\n"
+                  "  edithere-cli open <image-video-or-project>\n"
                   "  edithere-cli capture\n"
                   "  edithere-cli export <project> --output <new.json> [--no-image]\n"
-                  "  edithere-cli annotate <image-or-project> --output <new.json> [--no-image] [--timeout <seconds>]\n\n"
+                  "  edithere-cli annotate <image-video-or-project> --output <new.json> [--no-image] [--timeout <seconds>]\n\n"
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
                   "Feedback embeds the image by default. Output must not exist; its parent must exist.\n"
+                  "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
+                  "Source videos stay referenced by path; --no-image omits all embedded frame screenshots.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
                   "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
@@ -57,7 +60,7 @@ int main(int argc, char **argv) {
     int timeoutSeconds = 1800;
     if (withPath) {
         if (args.isEmpty() || args.first().startsWith("--"))
-            return printResult(agentError("invalid_arguments", "An image or project path is required."));
+            return printResult(agentError("invalid_arguments", "An image, video or project path is required."));
         input = QFileInfo(args.takeFirst()).absoluteFilePath();
     }
     bool outputSeen = false, imageSeen = false, timeoutSeen = false;
@@ -85,6 +88,14 @@ int main(int argc, char **argv) {
     }
     if (command == "export") {
         try {
+            if (isVideoProjectFile(input)) {
+                const auto project = loadVideoProject(input);
+                writeNewFeedback(output, serializeVideoFeedback(project, embed));
+                return printResult({{"ok", true}, {"command", "export"}, {"output", output},
+                                    {"annotations", videoAnnotationCount(project)},
+                                    {"frames", project.frames.size()}, {"imageIncluded", embed},
+                                    {"schemaVersion", "video-feedback-1"}});
+            }
             const auto doc = loadDocument(input);
             writeNewFeedback(output, serializeFeedback(doc, embed));
             return printResult({{"ok", true}, {"command", "export"}, {"output", output}, {"annotations", doc.notes.size()}, {"imageIncluded", embed}});

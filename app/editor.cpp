@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "videoplayback.h"
 #include "imagearea.h"
 #include "guide.h"
 #include "inlinenoteedit.h"
@@ -40,6 +41,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
@@ -242,7 +244,12 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     imageScroll_->setCanvas(canvas_);
     imageScroll_->viewport()->installEventFilter(this);
     imageScroll_->viewport()->setMouseTracking(true);
-    content->addWidget(imageScroll_, 1);
+    mediaStack_ = new QStackedWidget(shell);
+    mediaStack_->setObjectName("mediaStack");
+    mediaStack_->addWidget(imageScroll_);
+    videoPlayback_ = new VideoPlayback(shell);
+    mediaStack_->addWidget(videoPlayback_->videoWidget());
+    content->addWidget(mediaStack_, 1);
     notesPanel_ = new QWidget(shell);
     notesPanel_->setObjectName("notesPanel");
     notesPanel_->setFixedWidth(360);
@@ -321,6 +328,32 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     emptyWell_->hide();
     layout->addLayout(content, 1);
+    layout->addWidget(videoPlayback_);
+    videoPlayback_->hide();
+    connect(videoPlayback_, &VideoPlayback::framePaused, this, &Editor::displayVideoFrame);
+    connect(videoPlayback_, &VideoPlayback::playbackStarted, this, [this] {
+        if (!video_) return;
+        finishNoteEdit(); commitVideoFrame(); resetLayoutTools();
+        mediaStack_->setCurrentWidget(videoPlayback_->videoWidget());
+        detailsStack_->setEnabled(false); updateControls();
+    });
+    connect(videoPlayback_, &VideoPlayback::metadataChanged, this, [this](qint64 duration) {
+        if (video_) { video_->durationMs = duration; updateVideoFrames(); }
+    });
+    connect(videoPlayback_, &VideoPlayback::reviewRequested, this, &Editor::reviewVideoFrame);
+    connect(videoPlayback_, &VideoPlayback::failed, this, [this](const QString &error) {
+        toast(error); detailsStack_->setEnabled(true); updateControls();
+    });
+    connect(videoPlayback_, &VideoPlayback::sourceRelocationRequested, this, [this] {
+        if (!video_) return;
+        const QString path = QFileDialog::getOpenFileName(this, tr("重新指定视频"), {},
+            tr("视频 (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;所有文件 (*)"));
+        if (path.isEmpty()) return;
+        finishNoteEdit(); commitVideoFrame();
+        video_->source = QFileInfo(path).absoluteFilePath(); video_->dirty = true;
+        videoPlayback_->open(video_->source, videoFrameUs_ >= 0 ? videoFrameUs_ / 1000 : video_->positionMs);
+    });
+    qApp->installEventFilter(this);
     hint_ = mutedLabel({}, shell);
     hint_->setAlignment(Qt::AlignCenter);
     hint_->setFixedHeight(26);
@@ -485,7 +518,7 @@ void Editor::retranslate() {
     };
     tooltip("captureImage", tr("重新截图"));
     tooltip("showGuide", tr("使用引导"));
-    tooltip("importDocument", tr("导入图片或项目"));
+    tooltip("importDocument", tr("导入图片、视频或项目"));
     tooltip("openSettings", tr("设置"));
     tooltip("minimizeWindow", tr("最小化"));
     tooltip("fullscreenWindow", tr("全屏"));
@@ -505,9 +538,11 @@ void Editor::retranslate() {
         finish->setText(tr("完成并返回 AI"));
     emptyNotes_->setText(tr("圈出位置，或添加一条全局意见。"));
     if (emptyHint_)
-        emptyHint_->setText(tr("可直接拖入或粘贴图片"));
+        emptyHint_->setText(tr("可拖入图片或视频，也可粘贴图片"));
     if (emptyImport_)
-        emptyImport_->setText(tr("导入图片或项目"));
+        emptyImport_->setText(tr("导入图片、视频或项目"));
+    if (videoPlayback_) videoPlayback_->retranslate();
+    if (video_) updateVideoFrames();
     zoom_->setToolTip(tr("适应图片"));
     auto primary = [](QPushButton *button, const QString &text) {
         button->setToolTip(text);
@@ -586,12 +621,15 @@ void Editor::updateToolLabels() {
 void Editor::setDocument(Document document, const QString &projectPath) {
     dismissGuide();
     finishNoteEdit();
+    if (!switchingVideoFrame_) clearVideo();
     annotationsVisible_ = true;
     hideAnnotations_->setChecked(false);
     canvas_->setAnnotationsVisible(true);
     resetLayoutTools();
     doc_ = std::move(document);
-    projectPath_ = projectPath;
+    if (!switchingVideoFrame_) projectPath_ = projectPath;
+    mediaStack_->setCurrentWidget(imageScroll_);
+    detailsStack_->setEnabled(true);
     undoHistory_.clear();
     redoHistory_.clear();
     canvas_->setDocument(&doc_);
@@ -610,7 +648,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     QRect available = QGuiApplication::screenAt(QCursor::pos())
                           ? QGuiApplication::screenAt(QCursor::pos())->availableGeometry()
                           : QGuiApplication::primaryScreen()->availableGeometry();
-    if (!isFullScreen() && !isMaximized()) {
+    if (!switchingVideoFrame_ && !isFullScreen() && !isMaximized()) {
         resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
         move(available.center() - rect().center());
     }
@@ -645,6 +683,128 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     canvas_->setFocus();
     updateControls();
     updateEmptyState();
+}
+void Editor::clearVideo() {
+    video_.reset(); videoFrameUs_ = -1;
+    if (videoPlayback_) { videoPlayback_->clear(); videoPlayback_->hide(); }
+    if (mediaStack_) mediaStack_->setCurrentWidget(imageScroll_);
+    if (detailsStack_) detailsStack_->setEnabled(true);
+}
+void Editor::loadMedia(const QString &path) {
+    if (isVideoFile(path)) {
+        if (!QFileInfo(path).isFile()) throw std::runtime_error(tr("视频文件不存在").toStdString());
+        VideoProject project;
+        project.source = QFileInfo(path).absoluteFilePath();
+        setVideoProject(std::move(project));
+    } else if (isVideoProjectFile(path)) {
+        setVideoProject(loadVideoProject(path), path.endsWith(".edithere", Qt::CaseInsensitive) ? path : QString());
+    } else {
+        setDocument(loadDocument(path), path.endsWith(".edithere", Qt::CaseInsensitive) ? path : QString());
+    }
+}
+void Editor::setVideoProject(VideoProject project, const QString &path) {
+    dismissGuide(); finishNoteEdit(); clearVideo(); resetLayoutTools(); ++generation_;
+    video_ = std::move(project); projectPath_ = path;
+    doc_ = {}; canvas_->setDocument(nullptr); undoHistory_.clear(); redoHistory_.clear();
+    videoPlayback_->show(); mediaStack_->setCurrentWidget(videoPlayback_->videoWidget());
+    renderNotes(); updateControls(); updateEmptyState();
+    show(); configureNativeWindow(this, false); raise(); activateWindow();
+    if (!video_->frames.isEmpty()) {
+        // Review is available independently of source-video availability.
+        const auto frame = video_->frames.first();
+        switchingVideoFrame_ = true;
+        setDocument(frame.document);
+        switchingVideoFrame_ = false;
+        videoFrameUs_ = frame.timestampUs;
+        videoPlayback_->reviewAt(frame.timestampUs);
+    }
+    const QUrl source(video_->source);
+    const bool local = QFileInfo(video_->source).isAbsolute() || source.scheme().isEmpty() || source.isLocalFile();
+    const QString localPath = source.isLocalFile() ? source.toLocalFile() : video_->source;
+    if (!local || QFileInfo(localPath).isFile())
+        videoPlayback_->open(video_->source, video_->positionMs);
+    else toast(tr("源视频未找到，可查看已保存的批注画面，或重新指定视频。"));
+    updateVideoFrames();
+}
+void Editor::commitVideoFrame() {
+    if (!video_ || videoFrameUs_ < 0 || doc_.image.isNull()) return;
+    video_->positionMs = videoFrameUs_ / 1000;
+    if (doc_.dirty) video_->dirty = true;
+    const bool annotated = !exportFeedback(doc_)["objects"].toArray().isEmpty();
+    auto it = std::find_if(video_->frames.begin(), video_->frames.end(), [this](const VideoFrame &frame) {
+        return frame.timestampUs == videoFrameUs_;
+    });
+    if (annotated) {
+        if (it == video_->frames.end()) video_->frames.append({videoFrameUs_, doc_});
+        else it->document = doc_;
+    } else if (it != video_->frames.end()) video_->frames.erase(it);
+    std::sort(video_->frames.begin(), video_->frames.end(), [](const VideoFrame &a, const VideoFrame &b) {
+        return a.timestampUs < b.timestampUs;
+    });
+    updateVideoFrames();
+}
+void Editor::displayVideoFrame(const QImage &image, qint64 timestampUs) {
+    if (!video_) return;
+    try {
+        finishNoteEdit(); commitVideoFrame();
+        Document next;
+        const auto it = std::find_if(video_->frames.cbegin(), video_->frames.cend(), [timestampUs](const VideoFrame &frame) {
+            return frame.timestampUs == timestampUs;
+        });
+        if (it != video_->frames.cend()) next = it->document;
+        else next = fromImage(image, "file", tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)));
+        // Pausing twice on the same frame must preserve the active draft and undo.
+        if (videoFrameUs_ == timestampUs && doc_.id == next.id) {
+            mediaStack_->setCurrentWidget(imageScroll_); detailsStack_->setEnabled(true); updateControls(); return;
+        }
+        switchingVideoFrame_ = true;
+        setDocument(std::move(next));
+        switchingVideoFrame_ = false;
+        videoFrameUs_ = timestampUs;
+        video_->positionMs = timestampUs / 1000;
+        meta_->setText(tr("%1 × %2 · %3").arg(doc_.image.width()).arg(doc_.image.height()).arg(videoTimeLabel(timestampUs / 1000)));
+        updateVideoFrames();
+    } catch (const std::exception &error) {
+        switchingVideoFrame_ = false;
+        showError(QString::fromUtf8(error.what()));
+    }
+}
+void Editor::reviewVideoFrame(qint64 timestampUs) {
+    if (!video_) return;
+    finishNoteEdit(); commitVideoFrame();
+    const auto it = std::find_if(video_->frames.cbegin(), video_->frames.cend(), [timestampUs](const VideoFrame &frame) {
+        return frame.timestampUs == timestampUs;
+    });
+    if (it == video_->frames.cend()) return;
+    const auto document = it->document;
+    videoPlayback_->reviewAt(timestampUs);
+    switchingVideoFrame_ = true; setDocument(document); switchingVideoFrame_ = false;
+    videoFrameUs_ = timestampUs; video_->positionMs = timestampUs / 1000;
+    meta_->setText(tr("%1 × %2 · %3").arg(doc_.image.width()).arg(doc_.image.height()).arg(videoTimeLabel(timestampUs / 1000)));
+    updateVideoFrames();
+}
+void Editor::updateVideoFrames() {
+    if (!video_) return;
+    QVector<QPair<qint64, int>> frames;
+    for (const auto &frame : video_->frames) frames.append({frame.timestampUs, annotationCount(frame.document)});
+    videoPlayback_->setAnnotatedFrames(frames);
+}
+VideoProject Editor::videoProject() {
+    finishNoteEdit(); commitVideoFrame();
+    if (!video_) throw std::runtime_error("No video project is open");
+    return *video_;
+}
+int Editor::totalAnnotationCount() {
+    if (video_) { finishNoteEdit(); commitVideoFrame(); return videoAnnotationCount(*video_); }
+    return annotationCount(doc_);
+}
+QByteArray Editor::projectBytes() {
+    finishNoteEdit(); commitVideoFrame();
+    return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
+}
+QByteArray Editor::feedbackBytes(bool embed, bool compress) {
+    finishNoteEdit(); commitVideoFrame();
+    return video_ ? serializeVideoFeedback(*video_, embed, compress) : serializeFeedback(doc_, embed, compress);
 }
 void Editor::toggleFullscreen() {
     stopViewportPan();
@@ -811,6 +971,11 @@ void Editor::setMode(Canvas::Mode mode) {
     updateControls();
 }
 void Editor::updateControls() {
+    const bool playingVideo = video_ && mediaStack_->currentWidget() != imageScroll_;
+    for (int i = 0; i < modes_.size(); i++)
+        modes_[i]->setEnabled(!playingVideo && hasDocument());
+    if (auto global = findChild<QPushButton *>("addGlobalNote")) global->setEnabled(!playingVideo && hasDocument());
+    if (playingVideo) explosion_->setEnabled(false);
     for (int i = 0; i < modes_.size(); i++)
         modes_[i]->setChecked(i == (componentEditing_ ? (layoutCanvas_->drawingMode() ? Canvas::Rectangle : Canvas::Smart) : canvas_->mode()));
     undo_->setEnabled(!undoHistory_.isEmpty());
@@ -818,7 +983,7 @@ void Editor::updateControls() {
     notesToggle_->setChecked(!detailsStack_->isHidden());
     notesToggle_->setToolTip(detailsStack_->isHidden() ? tr("展开批注框") : tr("收起批注框"));
     for (auto it = outputButtons_.begin(); it != outputButtons_.end(); ++it)
-        it.value()->setEnabled(it.key()=="capture" || hasDocument());
+        it.value()->setEnabled(it.key()=="capture" || hasDocument() || video_.has_value());
     hideAnnotations_->setEnabled(hasDocument());
 }
 QString Editor::coords(const Note &n) const {
@@ -1118,6 +1283,18 @@ void Editor::toggleAnnotations() {
     if(layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
+    if (auto owner = qobject_cast<QWidget *>(object); owner && owner->window() != this)
+        return QWidget::eventFilter(object, event);
+    if (video_ && event->type() == QEvent::KeyPress) {
+        auto owner = qobject_cast<QWidget *>(object);
+        const auto key = static_cast<QKeyEvent *>(event);
+        if (owner && owner->window() == this && key->key() == Qt::Key_Space &&
+            key->modifiers() == Qt::NoModifier && !qobject_cast<QPlainTextEdit *>(owner) &&
+            !qobject_cast<QTextEdit *>(owner) && !qobject_cast<QLineEdit *>(owner)) {
+            if (!key->isAutoRepeat()) { finishNoteEdit(); videoPlayback_->toggle(); }
+            return true;
+        }
+    }
     if (event->type() == QEvent::MouseButtonPress &&
         static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
         auto card = qobject_cast<QWidget *>(object);
@@ -1212,7 +1389,7 @@ void Editor::copyJsonText() {
     finishNoteEdit();
     if (!hasDocument()) return;
     try {
-        QApplication::clipboard()->setText(QString::fromUtf8(serializeFeedback(doc_, true, true)));
+        QApplication::clipboard()->setText(QString::fromUtf8(feedbackBytes(true, true)));
         toast(tr("JSON 文本已复制，包含完整原图"));
     } catch (const std::exception &error) { showError(QString::fromUtf8(error.what())); }
 }
@@ -1236,7 +1413,7 @@ void Editor::copyJson() {
     finishNoteEdit();
     if (!hasDocument()) return;
     try {
-        const QByteArray bytes = serializeFeedback(doc_, true, true);
+        const QByteArray bytes = feedbackBytes(true, true);
         const QString path = writeFeedbackTempFile(bytes, preferences_.feedbackDir);
         cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
         auto mime = new QMimeData;
@@ -1248,6 +1425,7 @@ void Editor::copyJson() {
 void Editor::changed(bool contentChanged) {
     if (contentChanged)
         doc_.dirty = true;
+    if (video_) { if (contentChanged) video_->dirty = true; commitVideoFrame(); }
     canvas_->refresh();
     if (layoutCanvas_)
         layoutCanvas_->setAnnotations(doc_.notes);
@@ -1486,7 +1664,7 @@ void Editor::showError(const QString &text) {
 }
 bool Editor::saveProject() {
     finishNoteEdit();
-    if (!hasDocument())
+    if (!hasDocument() && !video_)
         return true;
     QString path = QFileDialog::getSaveFileName(this, tr("保存 EditHere 项目"),
                                                 projectPath_.isEmpty() ? tr("设计反馈.edithere") : projectPath_,
@@ -1496,10 +1674,11 @@ bool Editor::saveProject() {
     if (!path.endsWith(".edithere", Qt::CaseInsensitive))
         path += ".edithere";
     try {
-        const auto bytes = serializeDocument(doc_, true);
+        const auto bytes = projectBytes();
         saveBytes(path, bytes);
         projectPath_ = path;
         doc_.dirty = false;
+        if (video_) { video_->dirty = false; for (auto &frame : video_->frames) frame.document.dirty = false; }
         QString associationError;
         if (!QStandardPaths::isTestModeEnabled())
             registerProjectFileAssociation(&associationError);
@@ -1517,12 +1696,12 @@ void Editor::setAgentSession(bool active) {
 bool Editor::hasUnsavedChanges() {
     finishNoteEdit();
     // Agent requests also protect images that exist only in this editor.
-    return doc_.dirty || (hasDocument() && projectPath_.isEmpty() &&
+    return doc_.dirty || (video_ && video_->dirty) || (hasDocument() && projectPath_.isEmpty() &&
                           (doc_.source == "screen" || doc_.source == "clipboard"));
 }
 QByteArray Editor::agentFeedback(bool embed) {
     finishNoteEdit();
-    return serializeFeedback(doc_, embed);
+    return feedbackBytes(embed);
 }
 bool Editor::allowReplace() {
     if (agentSession_) {
@@ -1530,7 +1709,7 @@ bool Editor::allowReplace() {
         return false;
     }
     finishNoteEdit();
-    if (!doc_.dirty)
+    if (!doc_.dirty && (!video_ || !video_->dirty))
         return true;
     auto answer = QMessageBox::question(
         this, tr("保留当前修改？"), tr("当前批注或布局修改尚未保存。是否先保存项目？"),
@@ -1547,6 +1726,7 @@ void Editor::openEmpty() {
     if (!allowReplace())
         return;
     ++generation_;
+    clearVideo();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};
@@ -1573,7 +1753,7 @@ void Editor::updateEmptyState() {
     // Synced here as well, so a window shown at the size it was created with still
     // covers the whole viewport on its first appearance.
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
-    const bool empty = !hasDocument() && !guideActive();
+    const bool empty = !hasDocument() && !video_ && !guideActive();
     emptyWell_->setVisible(empty);
     emptyWell_->raise();
     // The viewport can still be settling: on some machines the first layout pass lands
@@ -1597,7 +1777,7 @@ void Editor::updateEmptyState() {
 }
 bool Editor::confirmDiscardOnClose() {
     finishNoteEdit();
-    if (!doc_.dirty)
+    if (!doc_.dirty && (!video_ || !video_->dirty))
         return true;
     // What the box said the last time it was shown: from then on closing throws the
     // changes away. Saving is still one button away while the window is open, so
@@ -1624,17 +1804,14 @@ bool Editor::confirmDiscardOnClose() {
 void Editor::openFile(const QString &provided) {
     QString path = provided;
     if (path.isEmpty())
-        path = QFileDialog::getOpenFileName(this, tr("打开图片或项目"), {},
-                                            tr("图片或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.edithere)"));
+        path = QFileDialog::getOpenFileName(this, tr("打开图片、视频或项目"), {},
+            tr("图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)"));
     if (path.isEmpty())
         return;
     try {
-        Document next = loadDocument(path);
         if (!allowReplace())
             return;
-        setDocument(std::move(next));
-        if (path.endsWith(".edithere", Qt::CaseInsensitive))
-            projectPath_ = path;
+        loadMedia(path);
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
     }
@@ -1682,11 +1859,12 @@ void Editor::exportJson() {
     if (!hasDocument())
         return;
     QDialog dialog(this);
+    dialog.setObjectName("feedbackDialog");
     dialog.setWindowTitle(tr("查看 JSON"));
     dialog.resize(730, 640);
     auto layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(24, 22, 24, 22);
-    auto title = new QLabel(tr("查看 JSON  ·  批注 %1 条").arg(annotationCount(doc_)), &dialog);
+    auto title = new QLabel(tr("查看 JSON  ·  批注 %1 条").arg(totalAnnotationCount()), &dialog);
     QFont font = title->font();
     font.setPointSize(15);
     font.setBold(true);
@@ -1728,8 +1906,25 @@ void Editor::exportJson() {
     QByteArray exportBytes;
     auto refresh = [&] {
         try {
-            exportBytes = serializeFeedback(doc_, embed->isChecked(),compress->isChecked());
+            exportBytes = feedbackBytes(embed->isChecked(), compress->isChecked());
             const auto feedback = QJsonDocument::fromJson(exportBytes).object();
+            if (video_) {
+                auto readable = feedback;
+                auto frames = readable["frames"].toArray();
+                for (qsizetype index = 0; index < frames.size(); ++index) {
+                    auto frame = frames[index].toObject();
+                    auto nested = frame["feedback"].toObject();
+                    if (nested.contains("image"))
+                        nested["image"] = nested["image"].toString().section(',', 0, 0) + tr(",[图片编码已折叠]");
+                    frame["feedback"] = nested; frames[index] = frame;
+                }
+                readable["frames"] = frames;
+                json->setPlainText(QString::fromUtf8(QJsonDocument(readable).toJson(QJsonDocument::Indented)));
+                copyText->setEnabled(true); copy->setEnabled(true); save->setEnabled(true);
+                status->setText(tr("%1 个批注画面 · 时间戳为视频相对时间 · 复制和保存包含完整 JSON")
+                    .arg(frames.size()));
+                return;
+            }
             QStringList lines{"{"};
             if (embed->isChecked())
                 lines.append(
@@ -1802,6 +1997,19 @@ void Editor::exportJson() {
         if (base.isEmpty())
             return;
         try {
+            if (video_) {
+                commitVideoFrame();
+                const QString folder = QDir(base).filePath("EditHere-video-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + "-" + uniqueId().left(4));
+                if (!QDir().mkpath(folder)) throw std::runtime_error("Unable to create export folder");
+                const QDir directory(folder);
+                for (const auto &frame : video_->frames) {
+                    saveBytes(directory.filePath("frame-" + frame.document.id + ".png"), frame.document.png);
+                    saveBytes(directory.filePath("annotations-" + frame.document.id + ".png"), encodePng(previewImage(frame.document)));
+                }
+                saveBytes(directory.filePath("feedback.json"), exportBytes);
+                status->setText(tr("视频 JSON 与所有批注帧截图已保存到：") + folder);
+                return;
+            }
             validateProjectStorageSize(exportBytes.size(), embed->isChecked() ? 0 : doc_.png.size());
             QString folder =
                 QDir(base).filePath("EditHere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
@@ -1850,7 +2058,7 @@ void Editor::showContext(QPoint p) {
         action->setEnabled(button->isEnabled());
     }
     menu.addSeparator();
-    menu.addAction(glyph("open"),tr("导入图片或项目"),this,[this] { openFile(); });
+    menu.addAction(glyph("open"),tr("导入图片、视频或项目"),this,[this] { openFile(); });
     menu.addAction(glyph("close"),tr("关闭当前截图"),this,&QWidget::close);
     menu.exec(p);
 }
@@ -1867,6 +2075,7 @@ void Editor::closeEvent(QCloseEvent *e) {
     if (!confirmDiscardOnClose())
         return;
     ++generation_;
+    clearVideo();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};

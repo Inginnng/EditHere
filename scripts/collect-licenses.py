@@ -5,11 +5,13 @@ import shutil
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--qt-source", type=Path, required=True, help="Qt 6.8.3/Src directory")
+parser.add_argument("--qt-source", type=Path, required=True, help="Matching Qt source directory containing module subdirectories")
+parser.add_argument("--qt-modules", nargs="+", default=["qtbase", "qtimageformats", "qtmultimedia"], help="Qt module source trees to collect")
+parser.add_argument("--ffmpeg-source", type=Path, help="Matching FFmpeg source directory")
 parser.add_argument("--mingw-licenses", type=Path)
 args = parser.parse_args()
 destination = Path(__file__).resolve().parents[1] / "packaging" / "licenses"
-for module in ("qtbase", "qtimageformats"):
+for module in args.qt_modules:
     root = args.qt_source / module
     if not (root / "LICENSES").is_dir():
         raise SystemExit(f"Missing source license directory: {root}")
@@ -35,4 +37,14 @@ for module in ("qtbase", "qtimageformats"):
                 shutil.copy2(source, target)
 if args.mingw_licenses:
     shutil.copytree(args.mingw_licenses, destination / "mingw", dirs_exist_ok=True)
+if args.ffmpeg_source:
+    out = destination / "ffmpeg"
+    out.mkdir(parents=True, exist_ok=True)
+    for name in ("COPYING.LGPLv2.1", "COPYING.LGPLv3", "LICENSE.md", "README.md"):
+        source = args.ffmpeg_source / name
+        if not source.is_file():
+            raise SystemExit(f"Missing FFmpeg license material: {source}")
+        shutil.copy2(source, out / name)
+    for source in args.ffmpeg_source.glob("COPYING.*"):
+        shutil.copy2(source, out / source.name)
 print(f"License material: {destination}")

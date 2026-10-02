@@ -2,23 +2,29 @@
 #include "agentconnection.h"
 #include "agentserver.h"
 #include "controller.h"
+#include "videoplayback.h"
 #include "ui.h"
 #include <QApplication>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QDir>
 #include <stdexcept>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLineEdit>
 #include <QLocalSocket>
 #include <QMenu>
+#include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #ifdef Q_OS_MACOS
 #include <sys/un.h>
 #endif
@@ -51,6 +57,27 @@ class AgentCliTests : public QObject {
         return {{"protocol", 1}, {"command", "annotate"}, {"input", input}, {"output", output}, {"timeout", timeout}};
     }
     static QByteArray readFile(const QString &path) { QFile file(path); if (!file.open(QIODevice::ReadOnly)) return {}; return file.readAll(); }
+    static QString cliExecutable() {
+#ifdef Q_OS_WIN
+        return QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli.exe");
+#else
+        return QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli");
+#endif
+    }
+    static void addVideoPointNote(Editor &editor, QPoint point, const QString &comment) {
+        const auto mode = editor.findChild<QPushButton *>("mode_point");
+        QVERIFY(mode);
+        mode->click();
+        const auto count = editor.document().notes.size();
+        const auto canvas = editor.canvas();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, (QPointF(point) * canvas->zoom()).toPoint());
+        QTRY_COMPARE(editor.document().notes.size(), count + 1);
+        const auto id = editor.document().notes.last().id;
+        const auto edit = editor.findChild<QPlainTextEdit *>("noteText_" + id);
+        QVERIFY(edit);
+        edit->setPlainText(comment);
+        editor.agentFeedback(true);
+    }
   private slots:
     void initTestCase() {
 #ifdef Q_OS_WIN
@@ -562,6 +589,188 @@ class AgentCliTests : public QObject {
         cli.start(executable, {"annotate", input, "--output", directory.filePath("other.json"), "--timeout", "0"});
         QVERIFY(cli.waitForFinished(15000));
         QCOMPARE(cli.exitCode(), 2);
+    }
+    void consoleVideoOpenAnnotateSaveAndReopenThroughAgentTransport() {
+        const auto source = qEnvironmentVariable("EDITHERE_VIDEO_TEST_SOURCE");
+        if (source.isEmpty())
+            QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise online video CLI and real decoding.");
+        QVERIFY2(QFileInfo(source).isFile(), qPrintable("Video test source not found: " + source));
+        struct StandardPathsTestMode {
+            const bool previous = QStandardPaths::isTestModeEnabled();
+            StandardPathsTestMode() { QStandardPaths::setTestModeEnabled(true); }
+            ~StandardPathsTestMode() { QStandardPaths::setTestModeEnabled(previous); }
+        } isolatedStandardPaths;
+#ifdef Q_OS_WIN
+        const auto videoCli = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test.exe");
+#else
+        const auto videoCli = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
+#endif
+        QVERIFY2(QFileInfo(videoCli).isFile(), qPrintable("Video test CLI not found: " + videoCli));
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        const auto editor = editorOf(controller);
+        QVERIFY(editor);
+        AgentServer server(controller);
+        // Both processes use Qt test mode. Windows can accept multiple named
+        // pipe listeners, so a successful listen on the ordinary endpoint would
+        // not prove that CLI requests are isolated from a user's running app.
+        QVERIFY2(server.listen(agentServerName()), qPrintable(server.errorString()));
+        const auto playback = editor->findChild<VideoPlayback *>();
+        QVERIFY(playback);
+        QSignalSpy paused(playback, &VideoPlayback::framePaused);
+
+        QProcess open;
+        open.start(videoCli, {"open", source});
+        QVERIFY2(open.waitForStarted(), qPrintable(open.errorString()));
+        QTRY_COMPARE_WITH_TIMEOUT(open.state(), QProcess::NotRunning, 15000);
+        const auto openOutput = open.readAllStandardOutput();
+        const auto openErrors = open.readAllStandardError();
+        QVERIFY2(open.exitCode() == 0,
+                 qPrintable(QString("Video open CLI failed (exit %1):\n%2\n%3")
+                            .arg(open.exitCode()).arg(QString::fromUtf8(openOutput), QString::fromUtf8(openErrors))));
+        const auto accepted = QJsonDocument::fromJson(openOutput).object();
+        QVERIFY(accepted["ok"].toBool());
+        QVERIFY(accepted["accepted"].toBool());
+        QCOMPARE(accepted["command"].toString(), QString("open"));
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !editor->document().image.isNull(), 15000);
+        QVERIFY(editor->hasVideo());
+        QCOMPARE(editor->videoProject().source, QFileInfo(source).absoluteFilePath());
+        QVERIFY(playback->durationMs() > 3000);
+
+        const auto embeddedPath = directory.filePath("video-embedded.json");
+        const int beforeAnnotate = paused.size();
+        QProcess annotate;
+        annotate.start(videoCli, {"annotate", source, "--output", embeddedPath, "--timeout", "60"});
+        QVERIFY2(annotate.waitForStarted(), qPrintable(annotate.errorString()));
+        QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeAnnotate && !editor->document().image.isNull(), 15000);
+        QCOMPARE(annotate.state(), QProcess::Running);
+        QVERIFY(!QFileInfo::exists(embeddedPath));
+
+        const qint64 duration = playback->durationMs();
+        const qint64 firstTarget = qMax<qint64>(1000, qMin<qint64>(duration / 3, 65000));
+        const qint64 secondTarget = qMax<qint64>(firstTarget + 1000, qMin<qint64>(duration * 2 / 3, 105000));
+        int beforeSeek = paused.size();
+        playback->seek(firstTarget);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek &&
+                                qAbs(paused.last()[1].toLongLong() / 1000 - firstTarget) < 1000, 15000);
+        const QPoint samePoint(editor->document().image.width() / 3, editor->document().image.height() / 3);
+        const QString firstComment = "第一个时间点：放大标题文字";
+        const QString secondComment = "第二个时间点：将此区域改为蓝色";
+        const QString thirdComment = "第二个时间点：缩短这一行说明";
+        addVideoPointNote(*editor, samePoint, firstComment);
+        beforeSeek = paused.size();
+        playback->seek(secondTarget);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek &&
+                                qAbs(paused.last()[1].toLongLong() / 1000 - secondTarget) < 1000, 15000);
+        addVideoPointNote(*editor, samePoint, secondComment);
+        // Existing annotation badges take a 17-screen-pixel hit radius. Choose
+        // a distinct image location that stays outside it at fitted zoom.
+        const QPoint thirdPoint(editor->document().image.width() * 2 / 3,
+                                editor->document().image.height() / 2);
+        addVideoPointNote(*editor, thirdPoint, thirdComment);
+        QCOMPARE(editor->totalAnnotationCount(), 3);
+        QCOMPARE(editor->videoProject().frames.size(), 2);
+
+        // Exercise the real save action and file dialog, including clearing the
+        // dirty state needed before a subsequent Agent request can replace it.
+        const auto projectPath = directory.filePath("saved-video.edithere");
+        const bool oldDialogs = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        const bool oldTestMode = QStandardPaths::isTestModeEnabled();
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+        QStandardPaths::setTestModeEnabled(true);
+        bool selectedFile = false, saveError = false;
+        QTimer selectFile, saveDeadline;
+        connect(&selectFile, &QTimer::timeout, editor, [&] {
+            auto active = QApplication::activeModalWidget();
+            if (const auto dialog = qobject_cast<QFileDialog *>(active); dialog && !selectedFile) {
+                selectedFile = true;
+                if (const auto filename = dialog->findChild<QLineEdit *>("fileNameEdit")) {
+                    filename->setText(projectPath);
+                    QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+                } else {
+                    saveError = true;
+                    dialog->reject();
+                }
+            } else if (const auto error = qobject_cast<QMessageBox *>(active)) {
+                saveError = true;
+                error->accept();
+            }
+        });
+        saveDeadline.setSingleShot(true);
+        connect(&saveDeadline, &QTimer::timeout, editor, [] {
+            if (const auto modal = QApplication::activeModalWidget()) modal->close();
+        });
+        selectFile.start(20);
+        saveDeadline.start(5000);
+        const bool saved = editor->saveProject();
+        selectFile.stop();
+        saveDeadline.stop();
+        QStandardPaths::setTestModeEnabled(oldTestMode);
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, oldDialogs);
+        QVERIFY(selectedFile && !saveError && saved);
+        QVERIFY(!editor->hasUnsavedChanges());
+        QCOMPARE(loadVideoProject(projectPath).frames.size(), 2);
+        QCOMPARE(QJsonDocument::fromJson(readFile(projectPath)).object()["schemaVersion"].toString(), QString("video-project-1"));
+
+        editor->findChild<QPushButton *>("agentFinish")->click();
+        QTRY_COMPARE_WITH_TIMEOUT(annotate.state(), QProcess::NotRunning, 15000);
+        QCOMPARE(annotate.exitCode(), 0);
+        const auto result = QJsonDocument::fromJson(annotate.readAllStandardOutput()).object();
+        QVERIFY(result["ok"].toBool());
+        QCOMPARE(result["annotations"].toInt(), 3);
+        QCOMPARE(result["imageIncluded"].toBool(), true);
+        QCOMPARE(result["output"].toString(), embeddedPath);
+        const auto embedded = QJsonDocument::fromJson(readFile(embeddedPath)).object();
+        QCOMPARE(embedded["schemaVersion"].toString(), QString("video-feedback-1"));
+        QCOMPARE(embedded["frames"].toArray().size(), 2);
+        const auto objects = embedded["objects"].toArray();
+        QCOMPARE(objects.size(), 3);
+        QCOMPARE(objects[0].toObject()["source"], objects[1].toObject()["source"]);
+        QVERIFY(objects[0].toObject()["frameId"] != objects[1].toObject()["frameId"]);
+        QVERIFY(objects[0].toObject()["timestampMs"].toInteger() < objects[1].toObject()["timestampMs"].toInteger());
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toString(), firstComment);
+        QCOMPARE(objects[1].toObject()["annotations"].toArray()[0].toString(), secondComment);
+        QCOMPARE(objects[2].toObject()["annotations"].toArray()[0].toString(), thirdComment);
+        for (const auto &frame : embedded["frames"].toArray())
+            QVERIFY(frame.toObject()["feedback"].toObject().contains("image"));
+
+        open.start(videoCli, {"open", projectPath});
+        QVERIFY(open.waitForStarted());
+        QTRY_COMPARE_WITH_TIMEOUT(open.state(), QProcess::NotRunning, 15000);
+        QCOMPARE(open.exitCode(), 0);
+        QVERIFY(QJsonDocument::fromJson(open.readAllStandardOutput()).object()["accepted"].toBool());
+        QCOMPARE(editor->videoProject().frames.size(), 2);
+        QCOMPARE(editor->totalAnnotationCount(), 3);
+
+        const auto noImagePath = directory.filePath("video-no-image.json");
+        annotate.start(videoCli, {"annotate", projectPath, "--output", noImagePath, "--no-image", "--timeout", "60"});
+        QVERIFY(annotate.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
+        QCOMPARE(editor->totalAnnotationCount(), 3);
+        QVERIFY(!QFileInfo::exists(noImagePath));
+        editor->findChild<QPushButton *>("agentFinish")->click();
+        QTRY_COMPARE_WITH_TIMEOUT(annotate.state(), QProcess::NotRunning, 15000);
+        QCOMPARE(annotate.exitCode(), 0);
+        const auto noImageResult = QJsonDocument::fromJson(annotate.readAllStandardOutput()).object();
+        QVERIFY(noImageResult["ok"].toBool());
+        QCOMPARE(noImageResult["annotations"].toInt(), 3);
+        QCOMPARE(noImageResult["imageIncluded"].toBool(), false);
+        const auto noImage = QJsonDocument::fromJson(readFile(noImagePath)).object();
+        QCOMPARE(noImage["frames"].toArray().size(), 2);
+        QCOMPARE(noImage["objects"], embedded["objects"]);
+        for (const auto &frame : noImage["frames"].toArray())
+            QVERIFY(!frame.toObject()["feedback"].toObject().contains("image"));
+
+        const auto artifactFolder = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
+        if (!artifactFolder.isEmpty()) {
+            QDir().mkpath(artifactFolder);
+            saveBytes(QDir(artifactFolder).filePath("cli-video-project.edithere"), readFile(projectPath));
+            saveBytes(QDir(artifactFolder).filePath("cli-video-embedded.json"), readFile(embeddedPath));
+            saveBytes(QDir(artifactFolder).filePath("cli-video-no-image.json"), readFile(noImagePath));
+            editor->grab().save(QDir(artifactFolder).filePath("cli-video-session.png"));
+        }
+        editor->hide();
     }
 };
 QTEST_MAIN(AgentCliTests)

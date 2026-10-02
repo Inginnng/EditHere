@@ -21,7 +21,7 @@ jobs:
       - name: Install Qt 6.8.3 MinGW and compiler
         run: |
           python -m pip install aqtinstall==3.3.0 ninja
-          python -m aqt install-qt windows desktop 6.8.3 win64_mingw --modules qtimageformats --archives qtbase qtimageformats qttranslations --outputdir .tools/qt
+          python -m aqt install-qt windows desktop 6.8.3 win64_mingw --modules qtimageformats qtmultimedia --archives qtbase qtimageformats qtmultimedia qttranslations --outputdir .tools/qt
           python -m aqt install-tool windows desktop tools_mingw1310 qt.tools.win64_mingw1310 --outputdir .tools/qt
 
       - name: Build
@@ -80,7 +80,7 @@ jobs:
         run: |
           python3 -m venv .tools/python
           .tools/python/bin/pip install aqtinstall==3.3.0 ninja
-          .tools/python/bin/python -m aqt install-qt mac desktop 6.8.3 clang_64 --modules qtimageformats --archives qtbase qtimageformats qttranslations --outputdir .tools/qt
+          .tools/python/bin/python -m aqt install-qt mac desktop 6.8.3 clang_64 --modules qtimageformats qtmultimedia --archives qtbase qtimageformats qtmultimedia qttranslations --outputdir .tools/qt
 
       - name: Build and package
         env:

@@ -1,0 +1,18 @@
+{
+    "Id": "resonance-audio",
+    "Name": "Resonance Audio",
+    "QDocModule": "qtspatialaudio",
+    "Description": "3D audio support.",
+    "QtUsage": "Used to implement spatial audio.",
+    "SecurityCritical": true,
+
+    "Homepage": "https://resonance-audio.github.io/resonance-audio/",
+    "Version": "e225aedb5ec7",
+    "DownloadLocation":
+            "https://github.com/resonance-audio/resonance-audio/tree/e225aedb5ec76ca6a0fe7079c0b84dbcbb490553",
+
+    "CopyrightFile": "COPYRIGHTS",
+    "License": "Apache License 2.0",
+    "LicenseId": "Apache-2.0",
+    "LicenseFile": "LICENSE"
+}

@@ -1051,9 +1051,8 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
         if (timeout < 1 || timeout > 86400) return agentError("invalid_arguments", "Timeout must be between 1 and 86400 seconds.");
     }
     try {
-        auto doc = loadDocument(input);
         guidePending_ = false;
-        editor_.setDocument(std::move(doc), input.endsWith(".edithere", Qt::CaseInsensitive) ? input : QString());
+        editor_.loadMedia(input);
     } catch (const std::exception &error) { return agentError("io_error", QString::fromUtf8(error.what())); }
     if (command == "open") return {{"ok", true}, {"command", command}, {"accepted", true}, {"input", input}};
     agentSessionId_ = uniqueId();
@@ -1085,7 +1084,7 @@ void Controller::finishAgentSession() {
         return;
     }
     const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
-                            {"annotations", editor_.document().notes.size()}, {"imageIncluded", agentEmbed_}};
+                            {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentEmbed_}};
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);

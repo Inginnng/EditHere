@@ -308,9 +308,7 @@
         },
         "comment": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 10000,
-          "pattern": "\\S"
+          "maxLength": 10000
         },
         "target": {
           "$ref": "#/$defs/target"
@@ -328,6 +326,10 @@
         }
       },
       "allOf": [
+        {
+          "if": {"not": {"required": ["movementSource"]}},
+          "then": {"properties": {"comment": {"minLength": 1, "pattern": "\\S"}}}
+        },
         {
           "if": {
             "properties": {
