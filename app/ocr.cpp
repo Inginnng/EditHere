@@ -241,13 +241,7 @@ QString OcrResult::text() const {
 OcrEngine::OcrEngine(QObject *parent) : QObject(parent) {}
 
 OcrEngine::~OcrEngine() {
-    if (process_ != nullptr) {
-        process_->disconnect(this);
-        process_->kill();
-        process_ = nullptr;
-    }
-    delete scratch_;
-    scratch_ = nullptr;
+    cancel();
 }
 
 bool OcrEngine::supported() {
@@ -310,7 +304,12 @@ void OcrEngine::cancel() {
         QProcess *process = process_;
         process_ = nullptr;
         process->disconnect(this);
-        process->kill();
+        if (process->state() == QProcess::Starting)
+            process->waitForStarted(1000);
+        if (process->state() != QProcess::NotRunning) {
+            process->kill();
+            process->waitForFinished(1000);
+        }
         process->deleteLater();
     }
 #ifdef Q_OS_APPLE
@@ -478,24 +477,36 @@ void OcrEngine::startNextBand() {
     auto *timeout = new QTimer(process);
     timeout->setSingleShot(true);
     timeout->setInterval(kTimeoutMs);
-    connect(timeout, &QTimer::timeout, process, &QProcess::kill);
+    connect(timeout, &QTimer::timeout, this, [this, process] {
+        if (process_ == process)
+            finish(failure(OcrFailure::Failed, tr("文字识别超时，请重试。")));
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
+        if (process_ == process && error == QProcess::FailedToStart)
+            finish(failure(OcrFailure::Unavailable, tr("文字识别失败，请重试。")));
+    });
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this, process, output, logs](int code, QProcess::ExitStatus status) {
+                if (process_ != process)
+                    return;
+                process_ = nullptr;
+                process->disconnect(this);
+                process->deleteLater();
                 const QString payload = readTextFile(output);
-                if (code != 0) {
+                if (code != 0 || status != QProcess::NormalExit) {
                     // A failed run explains itself in the output file, which is
                     // easier to read than the error stream's CLIXML.
-                    reportFailure(code, status == QProcess::CrashExit,
+                    reportFailure(code == 0 ? 1 : code, false,
                                   payload.isEmpty() ? readTextFile(logs + QStringLiteral(".err"))
                                                     : payload);
                     return;
                 }
                 collectBand(payload, readTextFile(logs + QStringLiteral(".err")));
             });
+    timeout->start();
     process->start(QString::fromLatin1(kPowerShell),
                    {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
                     QStringLiteral("-EncodedCommand"), encodeForPowerShell(script)});
-    timeout->start();
 #elif defined(Q_OS_LINUX)
     const auto output = scratch_->filePath(QString("result-%1.tsv").arg(bandIndex_));
     auto *process = new QProcess(this);
@@ -587,7 +598,12 @@ void OcrEngine::finish(OcrResult result) {
         QProcess *process = process_;
         process_ = nullptr;
         process->disconnect(this);
-        process->kill();
+        if (process->state() == QProcess::Starting)
+            process->waitForStarted(1000);
+        if (process->state() != QProcess::NotRunning) {
+            process->kill();
+            process->waitForFinished(1000);
+        }
         process->deleteLater();
     }
 #ifdef Q_OS_APPLE

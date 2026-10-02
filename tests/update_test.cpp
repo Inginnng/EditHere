@@ -70,7 +70,14 @@ class UpdateTests : public QObject {
         QCOMPARE(confirmations, 1);
         QCOMPARE(started.size(), 0);
         QVERIFY(!checker.downloading());
-        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        // Remove the verified payload during confirmation to force a launch
+        // failure without Windows trying to load a deliberately corrupt EXE.
+        // Its loader/error-reporting UI can outlive the test and retain CTest's
+        // output handles, making an otherwise completed run wait indefinitely.
+        checker.setInstallConfirmation([&] {
+            ++confirmations;
+            return QFile::remove(path);
+        });
         UpdateCheckerTestAccess::install(checker, path, hash);
         QCOMPARE(confirmations, 2);
         QCOMPARE(started.size(), 0);

@@ -47,7 +47,7 @@
         "annotationSpace": {"const": "result"},
         "objects": {
           "type": "array",
-          "maxItems": 1000,
+          "maxItems": 9704,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -62,6 +62,7 @@
               },
               "movements": {
                 "type": "array",
+                "maxItems": 8704,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,

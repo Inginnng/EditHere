@@ -43,6 +43,10 @@ struct LayoutChoice {
     QString id, label;
     QRectF bounds;
 };
+struct LayoutSequence {
+    QRectF source;
+    QVector<QRectF> destinations;
+};
 LayoutState createLayout(QSize size, const QVector<Candidate> &candidates);
 QString addLayoutRegion(LayoutState &state, QRectF currentBounds,
                         const QString &label = QT_TRANSLATE_NOOP("EditHere", "手动区域"));
@@ -62,6 +66,7 @@ QImage renderLayout(const QImage &original, const LayoutState &state);
 void validateLayout(const LayoutState &state, QSize originalSize);
 QJsonArray exportLayoutChanges(const LayoutState &state);
 LayoutState importLayoutChanges(const QJsonArray &changes, QSize originalSize);
+LayoutState importLayoutSequences(const QVector<LayoutSequence> &sequences, QSize originalSize);
 QJsonObject exportLayout(const LayoutState &state);
 LayoutState importLayout(const QJsonObject &json, QSize originalSize);
 } // namespace h2d

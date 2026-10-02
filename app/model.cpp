@@ -396,7 +396,7 @@ QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector
     int nextOrphan = notes.size() + 1;
     for (int i = 0; i < movements.size(); ++i) {
         const auto &movement = movements[i];
-        if (QLineF(movement.source.center(), movement.destination.center()).length() <= 0.01)
+        if (sameMovementRect(movement.source, movement.destination))
             continue;
         const int noteIndex = firstNotes[i];
         const int number = noteIndex >= 0 ? noteIndex + 1 : nextOrphan++;
@@ -404,8 +404,18 @@ QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector
     }
     return markers;
 }
+QLineF movementMarkerLine(const MovementMarker &marker) {
+    QLineF line(marker.source.center(), marker.destination.center());
+    if (line.length() <= 0.01) {
+        const QLineF first(marker.source.topLeft(), marker.destination.topLeft());
+        const QLineF last(marker.source.bottomRight(), marker.destination.bottomRight());
+        line = first.length() >= last.length() ? first : last;
+    }
+    return line;
+}
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport) {
-    const QLineF line(marker.source.center() * zoom, marker.destination.center() * zoom);
+    const auto trajectory = movementMarkerLine(marker);
+    const QLineF line(trajectory.p1() * zoom, trajectory.p2() * zoom);
     const auto clampAnchor = [&](QPointF anchor) {
         anchor.setX(std::clamp(anchor.x(), 14.0, std::max(14.0, viewport.width() - 14.0)));
         anchor.setY(std::clamp(anchor.y(), 14.0, std::max(14.0, viewport.height() - 14.0)));
@@ -508,7 +518,8 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
     QVector<ObjectEntry> entries;
     QHash<QString, int> bySource;
     auto keyFor = [](QRectF r) {
-        return QString("%1,%2,%3,%4").arg(r.left()).arg(r.top()).arg(r.right()).arg(r.bottom());
+        return QString("%1,%2,%3,%4").arg(r.left(), 0, 'g', 17).arg(r.top(), 0, 'g', 17)
+            .arg(r.right(), 0, 'g', 17).arg(r.bottom(), 0, 'g', 17);
     };
     auto ensureEntry = [&](QRectF source) -> int {
         const QString key = keyFor(source);
@@ -518,7 +529,7 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         return entries.size() - 1;
     };
     for (const auto &m : movements) {
-        if (QLineF(m.source.center(), m.destination.center()).length() <= 0.01)
+        if (sameMovementRect(m.source, m.destination))
             continue;
         const int idx = ensureEntry(m.source);
         entries[idx].dests.append(m.destination);
@@ -769,7 +780,8 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
     if (feedback.contains("objects")) {
         // Object-oriented format. Each entry describes a source region (or a null
         // source for global feedback) together with its movements and text notes.
-        if (!feedback["objects"].isArray() || feedback["objects"].toArray().size() > MaxNotes)
+        if (!feedback["objects"].isArray() ||
+            feedback["objects"].toArray().size() > MaxNotes + MaxLayoutMovements)
             fail(tr("对象列表格式或数量不正确"));
         const auto objects = feedback["objects"].toArray();
         // Source rects may be zero-area (point annotations). Parse them with a
@@ -786,14 +798,22 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                 if (!o[key].isDouble() || !std::isfinite(o[key].toDouble()) ||
                     std::abs(o[key].toDouble()) > 10000000)
                     fail(tr("对象源区域坐标不正确"));
-            return QRectF(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
-                          QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
+            const QRectF rect(QPointF(o["x1"].toDouble(), o["y1"].toDouble()),
+                              QPointF(o["x2"].toDouble(), o["y2"].toDouble()));
+            const bool point = rect.width() == 0 && rect.height() == 0;
+            if (!point && (rect.width() <= 1e-7 || rect.height() <= 1e-7))
+                fail(tr("对象源区域尺寸不正确"));
+            return rect;
         };
         // Build the layout by adding regions and applying movements, mirroring
         // the interactive flow. This supports nested objects (parent + child
         // with overlapping sources) that the flat change-list cannot represent.
-        struct LayoutObject { QRectF source; QVector<QRectF> destinations; };
-        QVector<LayoutObject> layoutObjects;
+        QVector<LayoutSequence> layoutObjects;
+        qsizetype noteCount = 0, movementCount = 0;
+        const auto fitsImage = [&](QRectF rect) {
+            return rect.left() >= 0 && rect.top() >= 0 && rect.right() <= image.width() + 1e-7 &&
+                   rect.bottom() <= image.height() + 1e-7;
+        };
         for (const auto &value : objects) {
             if (!value.isObject())
                 fail(tr("对象格式不正确"));
@@ -801,34 +821,50 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             exactKeys(obj, {"source", "movements", "annotations"});
             if (!obj["movements"].isArray() || !obj["annotations"].isArray())
                 fail(tr("对象移动或批注格式不正确"));
-            if (obj["source"].isNull())
+            const auto movements = obj["movements"].toArray();
+            const auto annotations = obj["annotations"].toArray();
+            noteCount += annotations.size();
+            movementCount += movements.size();
+            if (noteCount > MaxNotes || movementCount > MaxLayoutMovements)
+                fail(tr("批注或移动数量超出限制"));
+            for (const auto &text : annotations)
+                if (!text.isString() || text.toString().size() > 10000)
+                    fail(tr("批注文字格式不正确"));
+            if (obj["source"].isNull()) {
+                if (!movements.isEmpty())
+                    fail(tr("全局批注不能关联移动"));
                 continue;
+            }
             const auto source = sourceRect(obj["source"]);
-            if (source.width() < 1e-7 || source.height() < 1e-7)
+            if (!fitsImage(source))
+                fail(tr("对象源区域超出画布"));
+            if (source.isNull()) {
+                if (!movements.isEmpty())
+                    fail(tr("点标注不能关联移动"));
+                if (!containsPixel(QRect(QPoint(0, 0), image.size()),
+                                   QPoint(qRound(source.left()), qRound(source.top()))))
+                    fail(tr("点标注超出画布"));
                 continue;
-            LayoutObject info;
+            }
+            LayoutSequence info;
             info.source = source;
-            for (const auto &movement : obj["movements"].toArray()) {
+            bool changed = false;
+            for (const auto &movement : movements) {
                 if (!movement.isObject())
                     fail(tr("移动格式不正确"));
                 const auto moveObj = movement.toObject();
                 exactKeys(moveObj, {"to"});
                 const auto dest = floatingJsonRect(moveObj["to"].toObject());
-                if (!sameMovementRect(source, dest))
-                    info.destinations.append(dest);
+                if (!fitsImage(dest) || dest.width() <= 1e-7 || dest.height() <= 1e-7)
+                    fail(tr("移动目标超出画布或尺寸不正确"));
+                changed |= !sameMovementRect(source, dest);
+                info.destinations.append(dest);
             }
-            if (!info.destinations.isEmpty())
+            if (changed)
                 layoutObjects.append(info);
         }
         if (!layoutObjects.isEmpty()) {
-            auto layout = createLayout(image.size(), {});
-            QStringList groupIds;
-            for (const auto &info : layoutObjects)
-                groupIds.append(addLayoutRegion(layout, info.source));
-            for (int i = 0; i < layoutObjects.size(); ++i)
-                for (const auto &dest : layoutObjects[i].destinations)
-                    transformLayoutGroup(layout, groupIds[i], dest);
-            doc.layout = std::move(layout);
+            doc.layout = importLayoutSequences(layoutObjects, image.size());
         }
         for (const auto &value : objects) {
             const auto obj = value.toObject();
@@ -848,7 +884,7 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                 continue;
             }
             const auto source = sourceRect(obj["source"]);
-            const bool isPoint = source.width() < 1e-7 || source.height() < 1e-7;
+            const bool isPoint = source.isNull();
             const auto movements = obj["movements"].toArray();
             const bool hasMovements = !movements.isEmpty();
             for (const auto &text : texts) {
@@ -864,9 +900,9 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                 } else if (hasMovements) {
                     note.isPoint = false;
                     note.movementSource = source;
-                    const auto firstDest =
-                        floatingJsonRect(movements[0].toObject()["to"].toObject());
-                    note.rect = firstDest.toAlignedRect()
+                    const auto finalDest =
+                        floatingJsonRect(movements.last().toObject()["to"].toObject());
+                    note.rect = finalDest.toAlignedRect()
                                     .intersected(QRect(QPoint(0, 0), image.size()));
                     if (note.rect.isEmpty())
                         fail(tr("框选超出画布"));
@@ -944,7 +980,8 @@ Document loadDocument(const QString &path) {
         QImageReader reader(&file);
         reader.setAutoTransform(true);
         QSize size = reader.size();
-        if (!size.isValid() || qint64(size.width()) * size.height() > MaxPixels)
+        if (!size.isValid() || size.width() > 32767 || size.height() > 32767 ||
+            qint64(size.width()) * size.height() > MaxPixels)
             fail(tr("图片尺寸超出限制"));
         return fromImage(reader.read(), "file", QFileInfo(path).fileName());
     }
@@ -1005,7 +1042,7 @@ Document loadDocument(const QString &path) {
     if (!c["title"].isString())
         fail(tr("项目标题格式不正确"));
     const int w = integer(c["width"]), h = integer(c["height"]);
-    if (w <= 0 || h <= 0 || qint64(w) * h > MaxPixels)
+    if (w <= 0 || h <= 0 || w > 32767 || h > 32767 || qint64(w) * h > MaxPixels)
         fail(tr("项目图片尺寸不正确"));
     const QString name = c["imageFile"].toString();
     if (QFileInfo(name).fileName() != name || name.contains('\\') || name.contains('/') ||
@@ -1267,9 +1304,12 @@ QImage previewImage(const Document &doc) {
                 doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
     const auto markers = doc.layout ? movementMarkers(*doc.layout, doc.notes) : QVector<MovementMarker>{};
     for (const auto &marker : markers) {
-        const auto from = marker.source.center() * imageScale + QPointF(24, 24);
-        const auto to = marker.destination.center() * imageScale + QPointF(24, 24);
+        const auto trajectory = movementMarkerLine(marker);
+        const auto from = trajectory.p1() * imageScale + QPointF(24, 24);
+        const auto to = trajectory.p2() * imageScale + QPointF(24, 24);
         const QLineF line(from, to);
+        if (line.length() <= 1e-7)
+            continue;
         const auto direction = (to - from) / line.length();
         const QPointF normal(-direction.y(), direction.x());
         const double head = std::min(8.0, line.length() * 0.4);

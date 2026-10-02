@@ -693,6 +693,78 @@ class LayoutTests : public QObject {
         invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
     }
+    void centeredResizeSurvivesFeedbackRoundTrip() {
+        auto document = fromImage(sourceImage(), "demo", "centered resize");
+        document.layout = createLayout(document.image.size(), {});
+        const auto id = addLayoutRegion(*document.layout, {40, 30, 40, 40});
+        transformLayoutGroup(*document.layout, id, {30, 20, 60, 60});
+        const auto feedback = exportFeedback(document);
+        QCOMPARE(feedback["objects"].toArray().size(), 1);
+        const auto object = feedback["objects"].toArray()[0].toObject();
+        QCOMPARE(object["movements"].toArray().size(), 1);
+        const auto restored = loadFeedback(feedback, document.image);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(renderLayout(restored.image, *restored.layout),
+                 renderLayout(document.image, *document.layout));
+        QCOMPARE(exportFeedback(restored), feedback);
+    }
+    void feedbackKeepsDistinctFractionalSourceRegions() {
+        auto document = fromImage(sourceImage(), "demo", "fractional source regions");
+        document.layout = createLayout(document.image.size(), {});
+        const QRectF first(10.000001, 10, 20, 20), second(10.000002, 10, 20, 20);
+        const auto firstId = addLayoutRegion(*document.layout, first);
+        const auto secondId = addLayoutRegion(*document.layout, second);
+        transformLayoutGroup(*document.layout, firstId, {50, 30, 20, 20});
+        transformLayoutGroup(*document.layout, secondId, {80, 50, 20, 20});
+        const auto objects = exportFeedback(document)["objects"].toArray();
+        QCOMPARE(objects.size(), 2);
+        QCOMPARE(objects[0].toObject()["source"].toObject()["x1"].toDouble(), first.x());
+        QCOMPARE(objects[1].toObject()["source"].toObject()["x1"].toDouble(), second.x());
+        QCOMPARE(objects[0].toObject()["movements"].toArray().size(), 1);
+        QCOMPARE(objects[1].toObject()["movements"].toArray().size(), 1);
+    }
+    void feedbackKeepsChangesBeyondTheSelectableGroupLimit() {
+        QImage image(1600, 80, QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor(x % 256, y * 3, (x + y) % 256));
+        QJsonArray changes;
+        for (int i = 0; i < MaxLayoutGroups; ++i)
+            changes.append(QJsonObject{{"from", rectJson({i * 3, 10, 2, 10})},
+                                        {"to", rectJson({i * 3, 40 + i % 2, 2, 10})}});
+        const QJsonObject legacy{{"annotationSpace", "result"}, {"changes", changes},
+                                 {"annotations", QJsonArray{}}};
+        const auto original = loadFeedback(legacy, image);
+        const auto feedback = exportFeedback(original);
+        QCOMPARE(feedback["objects"].toArray().size(), MaxLayoutGroups);
+        const auto restored = loadFeedback(feedback, image);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(restored.layout->groups.size(), MaxLayoutGroups);
+        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(renderLayout(restored.image, *restored.layout),
+                 renderLayout(original.image, *original.layout));
+        QVERIFY(importLayout(exportLayout(*restored.layout), image.size()) == *restored.layout);
+    }
+    void objectReconstructionBoundsTemporaryMembership() {
+        QVector<LayoutSequence> duplicateSources;
+        for (int i = 0; i < MaxLayoutMovements; ++i)
+            duplicateSources.append({QRectF(10, 10, 20, 20), {QRectF(50, 50, 20, 20)}});
+        QVERIFY_EXCEPTION_THROWN(importLayoutSequences(duplicateSources, {100, 100}), std::runtime_error);
+        QVector<LayoutSequence> overlapping;
+        for (int i = 0; i < MaxLayoutMovements; ++i) {
+            const QRectF source(10 + i * .001, 10, 50, 50);
+            overlapping.append({source, {QRectF(20, 20, 50, 50)}});
+        }
+        bool referenceLimitRejected = false;
+        try {
+            importLayoutSequences(overlapping, {100, 100});
+        } catch (const std::runtime_error &error) {
+            referenceLimitRejected = QString::fromUtf8(error.what()).contains("引用数量超出限制");
+        }
+        QVERIFY(referenceLimitRejected);
+        QVERIFY_EXCEPTION_THROWN(importLayoutSequences({{QRectF(10, 10, 20, 20), {}}}, {100, 100}),
+                                 std::runtime_error);
+    }
     void embeddedFeedbackNeedsNoSidecarAndPreservesOriginal() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

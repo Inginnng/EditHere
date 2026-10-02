@@ -127,6 +127,21 @@ bool carbonKey(Qt::Key key, UInt32 &code) {
     return true;
 }
 } // namespace
+bool supportsScrollingCapture(QString *reason) {
+    if (reason)
+        *reason = tr("此版本暂不支持 macOS 长截图。");
+    return false;
+}
+ScrollCaptureTarget scrollCaptureTargetAt(QPoint) { return {}; }
+bool scrollCaptureStep(const ScrollCaptureTarget &, QPoint, int, QString *error) {
+    supportsScrollingCapture(error);
+    return false;
+}
+void captureScrollRegion(const QRect &, ScrollRegionCallback callback) {
+    QString error;
+    supportsScrollingCapture(&error);
+    callback({}, error);
+}
 quintptr captureForegroundWindow() { return 0; }
 void restoreCaptureForegroundWindow(quintptr) {}
 void prepareScreenCapture(QObject *context, std::function<void()> ready, bool) {

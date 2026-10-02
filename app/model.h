@@ -2,6 +2,7 @@
 #include "layout.h"
 #include <QImage>
 #include <QJsonObject>
+#include <QLineF>
 #include <QRect>
 #include <QString>
 #include <QVector>
@@ -64,6 +65,7 @@ QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compres
 QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false);
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
+QLineF movementMarkerLine(const MovementMarker &marker);
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);

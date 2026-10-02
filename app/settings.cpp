@@ -221,6 +221,12 @@ AppSettings loadSettings(const QString &filePath) {
     if (numeric && strength >= 0 && strength <= 100)
         result.captureStyle.shadowStrength = strength;
     result.captureStyle.border = boolean("capture/border", result.captureStyle.border);
+    const QColor borderColor(source.value("capture/borderColor").toString());
+    if (borderColor.isValid())
+        result.captureStyle.borderColor = borderColor;
+    const QColor shadowColor(source.value("capture/shadowColor").toString());
+    if (shadowColor.isValid())
+        result.captureStyle.shadowColor = shadowColor;
     // The shadow used to start switched off, and settings files written back then say
     // so. That "off" was never a choice anybody made, so it is only honoured from a
     // file that was written after the default changed; without this marker an upgrade
@@ -285,8 +291,11 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("capture/cornerRadius", settings.captureStyle.cornerRadius);
     target.setValue("capture/border", settings.captureStyle.border);
     target.setValue("capture/borderWidth", settings.captureStyle.borderWidth);
+    target.setValue("capture/borderColor", settings.captureStyle.borderColor.name(QColor::HexArgb));
     target.setValue("capture/shadow", settings.captureStyle.shadow);
     target.setValue("capture/shadowStrength", settings.captureStyle.shadowStrength);
+    target.setValue("capture/shadowColor", settings.captureStyle.shadowColor.isValid()
+        ? settings.captureStyle.shadowColor.name(QColor::HexArgb) : QString());
     // Written so a later change of the built-in look can tell a file that never had a
     // say from one that did.
     target.setValue("capture/styleVersion", kCaptureStyleVersion);

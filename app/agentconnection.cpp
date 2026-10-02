@@ -3,6 +3,9 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QThread>
+#include <QTimer>
+#include <QStringDecoder>
+#include <memory>
 namespace h2d {
 namespace {
 bool missing(const AgentSocketResult &result) {
@@ -41,6 +44,50 @@ QString legacyDesktopServerName() {
     // any process identity, not just from the GUI that listens on them.
     const auto state = agentStateLocation();
     return "EditHere-native-" + QString::number(qHash(state));
+}
+void receiveDesktopRequest(QLocalSocket &socket, QObject &receiver,
+                           const std::function<void(const QString &)> &dispatch, int timeoutMs) {
+    constexpr qsizetype maximumBytes = 65536;
+    socket.setReadBufferSize(maximumBytes + 1);
+    struct State { QByteArray bytes; bool invalid = false; bool finished = false; };
+    auto state = std::make_shared<State>();
+    auto deadline = new QTimer(&socket);
+    deadline->setSingleShot(true);
+    auto collect = [&socket, state] {
+        if (state->invalid || !socket.isOpen()) return;
+        state->bytes += socket.readAll();
+        if (state->bytes.size() > maximumBytes) {
+            state->invalid = true;
+            state->bytes.clear();
+            socket.abort();
+        }
+    };
+    QObject::connect(&socket, &QLocalSocket::readyRead, &socket, collect);
+    QObject::connect(deadline, &QTimer::timeout, &socket, [&socket, state] {
+        state->invalid = true;
+        state->bytes.clear();
+        socket.abort();
+        socket.deleteLater();
+    });
+    auto finish = [state, deadline, collect, dispatch] {
+        if (state->finished) return;
+        state->finished = true;
+        deadline->stop();
+        collect();
+        if (state->invalid || state->bytes.isEmpty()) return;
+        QStringDecoder decode(QStringDecoder::Utf8, QStringConverter::Flag::Stateless);
+        const QString text = decode(state->bytes);
+        if (!decode.hasError()) dispatch(text);
+    };
+    QObject::connect(&socket, &QLocalSocket::disconnected, &receiver, finish);
+    QObject::connect(&socket, &QLocalSocket::disconnected, &socket, &QObject::deleteLater);
+    deadline->start(qMax(1, timeoutMs));
+    // The peer can write before nextPendingConnection() is called.
+    if (socket.bytesAvailable()) collect();
+    if (socket.state() == QLocalSocket::UnconnectedState) {
+        finish();
+        socket.deleteLater();
+    }
 }
 AgentSocketResult connectAgentSocket(QLocalSocket &socket, const QString &name, int timeout) {
     socket.abort();

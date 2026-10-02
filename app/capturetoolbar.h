@@ -94,6 +94,7 @@ class CaptureToolbar final : public QWidget {
     // Disables the whole bar and says what is going on, which is what a recognition
     // needs while it runs.
     void setBusy(bool busy, const QString &message = {});
+    void setScrollAvailable(bool available);
     // Re-applies every visible string; called once at construction and again on a
     // language change.
     void retranslate();
@@ -105,6 +106,7 @@ class CaptureToolbar final : public QWidget {
     void recognize();
     void annotate();
     void dismiss();
+    void scroll();
 
   signals:
     void copyRequested();
@@ -113,6 +115,7 @@ class CaptureToolbar final : public QWidget {
     void ocrRequested();
     void annotateRequested();
     void dismissed();
+    void scrollRequested();
     // The user picked a size or a ratio, which the window applies to the selection
     // before the bar is told what came of it.
     void sizeRequested(QSize size);
@@ -145,7 +148,35 @@ class CaptureToolbar final : public QWidget {
     QVector<QRect> selections_;
     int historyIndex_ = -1;
     bool busy_ = false;
+    bool scrollAvailable_ = true;
     QString message_;
+};
+
+// A separate window keeps the capture controls live while the frozen screen covers
+// are hidden. It sits outside the captured region whenever there is room.
+class ScrollCaptureProgress final : public QWidget {
+    Q_OBJECT
+  public:
+    explicit ScrollCaptureProgress(QWidget *parent = nullptr);
+    void placeBeside(const QRect &selection, const QRect &screen);
+    void setProgress(const QImage &image, int addedFrames);
+    void setAutomatic(bool automatic);
+    void setStopped(const QString &message);
+  signals:
+    void stopRequested();
+    void finishRequested();
+    void cancelRequested();
+    void automaticChanged(bool automatic);
+  protected:
+    void keyPressEvent(QKeyEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
+  private:
+    QLabel *preview_ = nullptr;
+    QLabel *status_ = nullptr;
+    QPushButton *stop_ = nullptr;
+    QPushButton *finish_ = nullptr;
+    QCheckBox *automatic_ = nullptr;
+    bool hasProgress_ = false;
 };
 
 // The column of style tools that stands beside a selection, the way a capture tool

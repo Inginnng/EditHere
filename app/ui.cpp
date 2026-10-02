@@ -2,6 +2,7 @@
 #include "fonts.h"
 #include "i18n.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <QApplication>
 #include <QKeySequenceEdit>
@@ -283,12 +284,27 @@ QIcon glyph(const QString &name, QColor color) {
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing);
     p.scale(2, 2);
-    p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.setPen(QPen(color, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.setBrush(Qt::NoBrush);
     if (name == "open") {
-        p.drawLine(3, 8, 3, 20); p.drawLine(3,20,21,20); p.drawLine(21,20,21,10);
-        p.drawLine(3,8,9,8); p.drawLine(9,8,11,11); p.drawLine(11,11,15,11);
-        p.drawLine(17,3,17,14); p.drawLine(13,10,17,14); p.drawLine(21,10,17,14);
+        // The open front flap makes this a folder, rather than a download arrow.
+        QPainterPath folder;
+        folder.moveTo(3, 18.5);
+        folder.lineTo(3, 6);
+        folder.quadTo(3, 4.5, 4.5, 4.5);
+        folder.lineTo(8.5, 4.5);
+        folder.lineTo(11, 7.5);
+        folder.lineTo(18.5, 7.5);
+        folder.quadTo(20, 7.5, 20, 9);
+        folder.lineTo(20, 10.5);
+        p.drawPath(folder);
+        QPainterPath flap;
+        flap.moveTo(3, 19.5);
+        flap.lineTo(6.5, 11);
+        flap.lineTo(22, 11);
+        flap.lineTo(18.5, 19.5);
+        flap.closeSubpath();
+        p.drawPath(flap);
     } else if (name == "help") {
         p.drawEllipse(QRectF(3, 3, 18, 18));
         QPainterPath question;
@@ -323,7 +339,7 @@ QIcon glyph(const QString &name, QColor color) {
             p.drawEllipse(QPointF(12,12),1.2,1.2);
         }
     } else if (name == "ocr") {
-        // A frame made of four corners with text lines inside it.
+        // Text recognition: capture corners surrounding a legible T.
         for (int corner = 0; corner < 4; ++corner) {
             p.save();
             p.translate(12, 12);
@@ -332,39 +348,70 @@ QIcon glyph(const QString &name, QColor color) {
             p.drawLine(-9, -9, -9, -4);
             p.restore();
         }
-        p.drawLine(7, 10, 17, 10);
-        p.drawLine(7, 14, 14, 14);
+        p.drawLine(8, 8, 16, 8);
+        p.drawLine(12, 8, 12, 17);
     } else if (name == "scroll") {
-        // A page with an arrow running down beside it.
-        p.drawRoundedRect(QRectF(5, 3, 9, 18), 1.5, 1.5);
-        p.drawLine(16, 5, 16, 16);
-        p.drawLine(13, 13, 16, 16);
-        p.drawLine(19, 13, 16, 16);
+        // A tall capture frame, with arrows showing the vertical extent.
+        // Keep both arrowheads: a single downward arrow reads as Save/Download.
+        p.drawPolyline(QPolygonF{{6.5, 3.5}, {3.5, 3.5}, {3.5, 8}});
+        p.drawPolyline(QPolygonF{{10.5, 3.5}, {13.5, 3.5}, {13.5, 8}});
+        p.drawPolyline(QPolygonF{{3.5, 16}, {3.5, 20.5}, {6.5, 20.5}});
+        p.drawPolyline(QPolygonF{{13.5, 16}, {13.5, 20.5}, {10.5, 20.5}});
+        p.drawLine(QPointF(6.5, 9), QPointF(10.5, 9));
+        p.drawLine(QPointF(6.5, 12), QPointF(10.5, 12));
+        p.drawLine(QPointF(6.5, 15), QPointF(10.5, 15));
+        p.drawLine(18, 5, 18, 19);
+        p.drawPolyline(QPolygonF{{15.5, 7.5}, {18, 5}, {20.5, 7.5}});
+        p.drawPolyline(QPolygonF{{15.5, 16.5}, {18, 19}, {20.5, 16.5}});
     } else if (name == "picker") {
         // A dropper leaning towards the bottom left corner.
         p.drawLine(3, 21, 12, 12);
         p.drawLine(3, 21, 3, 18);
         p.drawLine(12, 12, 15, 9);
         p.drawRoundedRect(QRectF(13, 3, 8, 8), 2.5, 2.5);
-    } else if (name == "image-copy" || name == "image-save") {
-        p.drawRoundedRect(QRectF(3,4,17,15),2,2);p.drawEllipse(QPointF(8,9),1.5,1.5);
-        p.drawPolyline(QPolygonF{{4,17},{10,12},{14,16},{17,13},{20,16}});
-        if(name=="image-copy") {p.drawLine(7,22,23,22);p.drawLine(23,22,23,8);}
-        else {p.drawLine(17,15,17,23);p.drawLine(14,20,17,23);p.drawLine(20,20,17,23);}
+    } else if (name == "image-copy") {
+        p.drawRoundedRect(QRectF(3.5, 3.5, 14, 13), 1.5, 1.5);
+        p.drawEllipse(QPointF(7.5, 7.5), 1.2, 1.2);
+        p.drawPolyline(QPolygonF{{4.5, 14.5}, {8.5, 10.5}, {11.5, 13.5}, {14, 11}, {17.5, 14.5}});
+        p.drawPolyline(QPolygonF{{8, 20.5}, {21, 20.5}, {21, 7.5}});
     } else if (name == "settings") {
-        p.drawLine(3,6,21,6);p.drawLine(3,12,21,12);p.drawLine(3,18,21,18);
-        p.drawEllipse(QPointF(8,6),2,2);p.drawEllipse(QPointF(16,12),2,2);p.drawEllipse(QPointF(10,18),2,2);
+        QPainterPath cog;
+        const auto toothPoint = [](double degrees, double radius) {
+            const double radians = degrees * 3.14159265358979323846 / 180;
+            return QPointF(12 + radius * std::cos(radians), 12 + radius * std::sin(radians));
+        };
+        cog.moveTo(toothPoint(-22.5, 7));
+        for (int tooth = 0; tooth < 8; ++tooth) {
+            const double angle = tooth * 45.0;
+            for (const auto [offset, radius] : {std::pair{-22.5, 7.0}, {-13.0, 7.0},
+                                               {-10.0, 9.0}, {10.0, 9.0},
+                                               {13.0, 7.0}, {22.5, 7.0}}) {
+                const auto at = toothPoint(angle + offset, radius);
+                cog.lineTo(at);
+            }
+        }
+        cog.closeSubpath();
+        p.drawPath(cog);
+        p.drawEllipse(QPointF(12, 12), 3, 3);
     } else if (name == "fit") {
-        p.drawRect(QRectF(4,4,16,16));p.drawLine(8,8,11,8);p.drawLine(8,8,8,11);p.drawLine(16,16,13,16);p.drawLine(16,16,16,13);
+        // Show the image expanding to its view, distinct from taking a screenshot.
+        p.drawRoundedRect(QRectF(3.5, 3.5, 17, 17), 1.5, 1.5);
+        p.drawLine(8, 16, 16, 8);
+        p.drawPolyline(QPolygonF{{12, 8}, {16, 8}, {16, 12}});
+        p.drawPolyline(QPolygonF{{8, 12}, {8, 16}, {12, 16}});
     } else if (name == "point") {
         p.drawEllipse(QPointF(12, 12), 7, 7);
         p.drawEllipse(QPointF(12, 12), 2, 2);
     } else if (name == "rect")
         p.drawRoundedRect(QRectF(4, 5, 16, 14), 1, 1);
     else if (name == "smart") {
-        for (auto r : QVector<QRectF>{{3, 3, 6, 6}, {15, 3, 6, 6}, {3, 15, 6, 6}, {15, 15, 6, 6}}) {
-            p.drawLine(r.topLeft(), r.topRight());
-            p.drawLine(r.topLeft(), r.bottomLeft());
+        for (int corner = 0; corner < 4; ++corner) {
+            p.save();
+            p.translate(12, 12);
+            p.rotate(corner * 90);
+            p.drawLine(-9, -4, -9, -9);
+            p.drawLine(-9, -9, -4, -9);
+            p.restore();
         }
         p.drawLine(8, 12, 16, 12);
         p.drawLine(12, 8, 12, 16);
@@ -404,13 +451,21 @@ QIcon glyph(const QString &name, QColor color) {
         p.drawRoundedRect(QRectF(8, 8, 12, 13), 2, 2);
         p.drawLine(4, 16, 4, 4);
         p.drawLine(4, 4, 15, 4);
-    } else if (name == "save") {
-        p.drawLine(12, 3, 12, 15);
-        p.drawLine(7, 10, 12, 15);
-        p.drawLine(17, 10, 12, 15);
-        p.drawLine(4, 15, 4, 20);
-        p.drawLine(4, 20, 20, 20);
-        p.drawLine(20, 20, 20, 15);
+    } else if (name == "save" || name == "image-save") {
+        // Use the same familiar Save symbol for project files and image files.
+        QPainterPath disk;
+        disk.moveTo(4.5, 3.5);
+        disk.lineTo(17, 3.5);
+        disk.lineTo(20.5, 7);
+        disk.lineTo(20.5, 19.5);
+        disk.quadTo(20.5, 20.5, 19.5, 20.5);
+        disk.lineTo(4.5, 20.5);
+        disk.quadTo(3.5, 20.5, 3.5, 19.5);
+        disk.lineTo(3.5, 4.5);
+        disk.quadTo(3.5, 3.5, 4.5, 3.5);
+        p.drawPath(disk);
+        p.drawPolyline(QPolygonF{{7.5, 3.5}, {7.5, 9}, {15.5, 9}, {15.5, 3.5}});
+        p.drawPolyline(QPolygonF{{7.5, 20.5}, {7.5, 13.5}, {16.5, 13.5}, {16.5, 20.5}});
     } else if (name == "notes") {
         p.drawRoundedRect(QRectF(3, 4, 18, 16), 2, 2);
         p.drawLine(14, 4, 14, 20);

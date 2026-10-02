@@ -11,6 +11,7 @@
 #include <QWidget>
 #include <QtGui/qscreen_platform.h>
 #include <atomic>
+#include <limits>
 #include <memory>
 namespace h2d {
 namespace {
@@ -78,7 +79,148 @@ ATOM allocateShortcutId() {
         QString("EditHere.HotKey.%1.%2").arg(GetCurrentProcessId()).arg(nextId.fetch_add(1));
     return GlobalAddAtomW(reinterpret_cast<LPCWSTR>(name.utf16()));
 }
+HWND scrollRootAt(QPoint nativePoint) {
+    struct Search {
+        POINT point;
+        HWND window = nullptr;
+    } search{{nativePoint.x(), nativePoint.y()}};
+    EnumWindows([](HWND hwnd, LPARAM param) -> BOOL {
+        auto &search = *reinterpret_cast<Search *>(param);
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == GetCurrentProcessId() || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+            return TRUE;
+        DWORD cloaked = 0;
+        DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+        if (cloaked)
+            return TRUE;
+        RECT bounds{};
+        if (!GetWindowRect(hwnd, &bounds) || !PtInRect(&bounds, search.point))
+            return TRUE;
+        wchar_t name[128]{};
+        GetClassNameW(hwnd, name, 128);
+        if (wcscmp(name, L"Progman") == 0 || wcscmp(name, L"WorkerW") == 0)
+            return TRUE;
+        search.window = hwnd;
+        return FALSE;
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.window;
+}
+HWND scrollChildAt(HWND root, QPoint nativePoint) {
+    HWND target = root;
+    // Browser render surfaces and scrollable child controls need the wheel at
+    // the child, even when neither child nor parent advertises WS_VSCROLL.
+    for (int depth = 0; depth < 32; ++depth) {
+        POINT local{nativePoint.x(), nativePoint.y()};
+        if (!ScreenToClient(target, &local))
+            break;
+        HWND child = ChildWindowFromPointEx(target, local,
+            CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT);
+        if (!child || child == target)
+            break;
+        target = child;
+    }
+    return target;
+}
 } // namespace
+bool supportsScrollingCapture(QString *reason) {
+    if (reason)
+        reason->clear();
+    return true;
+}
+ScrollCaptureTarget scrollCaptureTargetAt(QPoint nativePoint) {
+    HWND root = scrollRootAt(nativePoint);
+    DWORD pid = 0;
+    if (root)
+        GetWindowThreadProcessId(root, &pid);
+    return {reinterpret_cast<quintptr>(root), pid};
+}
+bool scrollCaptureStep(const ScrollCaptureTarget &target, QPoint nativePoint, int wheelSteps,
+                       QString *error) {
+    if (error)
+        error->clear();
+    auto fail = [&](const QString &message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    HWND root = reinterpret_cast<HWND>(target.window);
+    DWORD pid = 0;
+    if (!root || !IsWindow(root) || !GetWindowThreadProcessId(root, &pid) ||
+        !pid || pid != target.processId || pid == GetCurrentProcessId() ||
+        !IsWindowVisible(root) || IsIconic(root))
+        return fail(tr("原滚动窗口已关闭或不可见，长截图已停止。"));
+    if (scrollRootAt(nativePoint) != root)
+        return fail(tr("滚动区域被其他窗口遮挡，长截图已停止。"));
+    if (!IsWindowEnabled(root))
+        return fail(tr("滚动窗口暂时无法接收输入，请先关闭它的弹出对话框。"));
+    if (!wheelSteps || wheelSteps < -8 || wheelSteps > 8 ||
+        nativePoint.x() < std::numeric_limits<short>::min() ||
+        nativePoint.x() > std::numeric_limits<short>::max() ||
+        nativePoint.y() < std::numeric_limits<short>::min() ||
+        nativePoint.y() > std::numeric_limits<short>::max())
+        return fail(tr("滚动步长或屏幕坐标无效。"));
+    const HWND child = scrollChildAt(root, nativePoint);
+    // Embedded browser surfaces may be owned by a renderer process. Their root
+    // must still be the locked window, but their PID need not equal its owner.
+    if (!child || GetAncestor(child, GA_ROOT) != root)
+        return fail(tr("原滚动窗口已关闭或不可见，长截图已停止。"));
+    DWORD_PTR result = 0;
+    SetLastError(ERROR_SUCCESS);
+    const auto sent = SendMessageTimeoutW(child, WM_MOUSEWHEEL,
+        MAKEWPARAM(0, static_cast<short>(-wheelSteps * WHEEL_DELTA)),
+        MAKELPARAM(nativePoint.x(), nativePoint.y()),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK | SMTO_ERRORONEXIT, 250, &result);
+    if (!sent) {
+        if (GetLastError() == ERROR_ACCESS_DENIED)
+            return fail(tr("目标窗口以更高权限运行，Windows 阻止了滚动输入。请用相同权限运行两个应用。"));
+        return fail(tr("滚动窗口未响应输入，长截图已停止。"));
+    }
+    return true;
+}
+void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callback) {
+    const QRect desktop(GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+                        GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    if (nativeRegion.isEmpty() || !desktop.contains(nativeRegion) ||
+        qint64(nativeRegion.width()) * nativeRegion.height() > MaxPixels) {
+        callback({}, tr("长截图区域无效或过大。"));
+        return;
+    }
+    // ShareX also captures a fixed physical region after each wheel event. This
+    // implementation uses our own GDI readout; no GPL source is incorporated.
+    // https://github.com/ShareX/ShareX/blob/73967140f4fd64ca4b93203ae8ad5ac05ade9aaf/ShareX.ScreenCaptureLib/ScrollingCaptureManager.cs
+    DwmFlush();
+    HDC screen = GetDC(nullptr);
+    HDC memory = screen ? CreateCompatibleDC(screen) : nullptr;
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = nativeRegion.width();
+    info.bmiHeader.biHeight = -nativeRegion.height();
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    void *pixels = nullptr;
+    HBITMAP bitmap = memory ? CreateDIBSection(screen, &info, DIB_RGB_COLORS, &pixels, nullptr, 0) : nullptr;
+    HGDIOBJ previous = bitmap ? SelectObject(memory, bitmap) : nullptr;
+    QImage image;
+    if (bitmap && pixels && previous && previous != HGDI_ERROR &&
+        BitBlt(memory, 0, 0, nativeRegion.width(), nativeRegion.height(), screen,
+               nativeRegion.x(), nativeRegion.y(), SRCCOPY | CAPTUREBLT)) {
+        GdiFlush();
+        image = QImage(static_cast<const uchar *>(pixels), nativeRegion.width(), nativeRegion.height(),
+                       nativeRegion.width() * 4, QImage::Format_RGB32).copy();
+    }
+    if (previous && previous != HGDI_ERROR)
+        SelectObject(memory, previous);
+    if (bitmap)
+        DeleteObject(bitmap);
+    if (memory)
+        DeleteDC(memory);
+    if (screen)
+        ReleaseDC(nullptr, screen);
+    const QString error = image.isNull() ? tr("无法读取长截图区域，请检查屏幕采集权限。") : QString();
+    callback(std::move(image), error);
+}
 quintptr captureForegroundWindow() {
     return reinterpret_cast<quintptr>(GetForegroundWindow());
 }

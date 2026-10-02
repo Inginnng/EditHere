@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>EditHere scrolling browser fixture</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 24px; background: #151f29; color: #222; font: 16px Arial, sans-serif; }
+#stage { width: 492px; height: 452px; border: 6px solid rgb(3,251,151); background: white; }
+header, footer { height: 40px; line-height: 40px; padding-left: 16px; color: white; }
+header { background: rgb(44,86,160); }
+footer { background: rgb(55,65,75); }
+#viewport { width: 480px; height: 360px; overflow-y: auto; scrollbar-width: none; scroll-behavior: smooth; }
+#viewport::-webkit-scrollbar { display: none; }
+.row { height: 40px; padding: 10px 12px; white-space: nowrap; border-bottom: 1px solid #eceff3; }
+.row span { display: inline-block; width: 12px; height: 12px; margin-right: 10px; }
+</style>
+<section id="stage">
+  <header>Fixed document header</header>
+  <div id="viewport"></div>
+  <footer>Fixed document footer</footer>
+</section>
+<script>
+const viewport = document.querySelector('#viewport');
+for (let i = 0; i < 60; ++i) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const icon = document.createElement('span');
+  icon.style.background = `rgb(${(i * 61) % 255},${(i * 7) % 255},${(i * 37) % 255})`;
+  row.append(icon, `Document row ${String(i).padStart(3, '0')} — scrolling content`);
+  viewport.append(row);
+}
+window.fixture = { documentHeight: viewport.scrollHeight, fixedHeader: 40, fixedFooter: 40 };
+</script>
+</html>

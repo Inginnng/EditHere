@@ -143,16 +143,11 @@ int main(int argc, char **argv) {
     app.openProject=[&controller](const QString &path) {controller.start(false,path);};
     QObject::connect(&server, &QLocalServer::newConnection, &app, [&] {
         while (auto socket = server.nextPendingConnection()) {
-            // Legacy launchers delimit requests by closing the connection. Buffer
-            // until EOF so split local-socket writes never become partial paths.
-            socket->setReadBufferSize(65536);
-            QObject::connect(socket, &QLocalSocket::disconnected, &app, [&, socket] {
-                const auto text = QString::fromUtf8(socket->readAll());
+            receiveDesktopRequest(*socket, controller, [&controller](const QString &text) {
                 if (text == "capture") controller.capture();
                 else if (text == "quit") controller.quit();
                 else if (!text.isEmpty()) controller.start(false, text);
             });
-            QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
     QTimer::singleShot(0, &app, [&] {

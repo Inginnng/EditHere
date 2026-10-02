@@ -13,6 +13,12 @@ using AgentConnectAttempt = std::function<AgentSocketResult(AgentEndpoint, int)>
 // An empty launch error means that the OS accepted the launch, not that the GUI is ready.
 using AgentLaunchAttempt = std::function<QString()>;
 QString legacyDesktopServerName();
+// Legacy launchers delimit a UTF-8 request with EOF. Consume fragments while
+// connected, and discard incomplete/oversized requests instead of retaining an
+// idle socket or dispatching a partial file path.
+void receiveDesktopRequest(QLocalSocket &socket, QObject &receiver,
+                           const std::function<void(const QString &)> &dispatch,
+                           int timeoutMs = 5000);
 AgentSocketResult connectAgentSocket(QLocalSocket &socket, const QString &name, int timeout);
 QJsonObject agentConnectionError(const AgentSocketResult &result, AgentEndpoint endpoint,
                                 const QString &phase, const QString &context = {});

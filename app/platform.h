@@ -16,6 +16,20 @@ struct ScreenFrame {
     QVector<Candidate> frontWindows; // Front-to-back snapshot, in image pixels.
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
+// A scrolling session keeps the original window and its owner, rather than
+// retargeting the next wheel event if another application appears in the region.
+struct ScrollCaptureTarget {
+    quintptr window = 0;
+    quint32 processId = 0;
+};
+using ScrollRegionCallback = std::function<void(QImage, QString)>;
+bool supportsScrollingCapture(QString *reason = nullptr);
+ScrollCaptureTarget scrollCaptureTargetAt(QPoint nativePoint);
+// Positive wheelSteps move down. Coordinates are physical desktop pixels.
+// A successful send does not imply movement; the caller compares stable frames.
+bool scrollCaptureStep(const ScrollCaptureTarget &target, QPoint nativePoint, int wheelSteps,
+                       QString *error = nullptr);
+void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callback);
 // Let transient tray UI close before reading any screen pixels.
 void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fromTray = false);
 quintptr captureForegroundWindow();

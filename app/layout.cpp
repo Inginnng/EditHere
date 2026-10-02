@@ -7,6 +7,7 @@
 #include <QSet>
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 namespace h2d {
@@ -234,8 +235,8 @@ LayoutState createLayout(QSize size, const QVector<Candidate> &input) {
     state.groups.append({uniqueId(), QT_TRANSLATE_NOOP("EditHere", "整个图片"), "canvas", full, all});
     return state;
 }
-QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label) {
-    require(state.groups.size() < MaxLayoutGroups, tr("最多支持 512 个可选区域"));
+static QString addLayoutRegionUnchecked(LayoutState &state, QRectF bounds, const QString &label,
+                                       qsizetype referenceLimit = -1) {
     bounds = bounds.intersected(QRectF(QPointF(0, 0), state.canvas));
     if (!positive(bounds))
         return {};
@@ -243,6 +244,13 @@ QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label)
     auto members = cut(next, bounds);
     if (members.isEmpty())
         return {};
+    if (referenceLimit >= 0) {
+        qsizetype references = members.size();
+        for (const auto &group : next.groups) {
+            references += group.pieces.size();
+            require(references <= referenceLimit, tr("布局区域引用数量超出限制"));
+        }
+    }
     // Store original pixel-space bounds from the member pieces' sources so
     // originalGroupBounds stays stable even if pieces are later removed from
     // this group by the B1 parent-detachment logic.
@@ -255,6 +263,10 @@ QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label)
     next.groups.append({id, label.left(1000), "manual", sourceBounds, members});
     state = std::move(next);
     return id;
+}
+QString addLayoutRegion(LayoutState &state, QRectF bounds, const QString &label) {
+    require(state.groups.size() < MaxLayoutGroups, tr("最多支持 512 个可选区域"));
+    return addLayoutRegionUnchecked(state, bounds, label);
 }
 QRectF layoutBounds(const LayoutState &state, const QString &groupId) {
     QStringList ids;
@@ -463,6 +475,47 @@ void paintLayout(QPainter &painter, const QImage &original, const LayoutState &s
             if ((!sameRectangle(piece.source, piece.destination)) == changed)
                 painter.drawImage(piece.destination, original, piece.source);
     painter.restore();
+}
+LayoutState importLayoutSequences(const QVector<LayoutSequence> &sequences, QSize original) {
+    require(sequences.size() <= MaxLayoutMovements, tr("变化数量超出限制"));
+    auto state = createLayout(original, {});
+    QStringList groupIds;
+    qsizetype movementCount = 0;
+    std::set<std::tuple<double, double, double, double>> sources;
+    constexpr qsizetype maxReferences = MaxLayoutPieces * 8;
+    // Build all source memberships before transforming anything, including nested
+    // regions. Old pixel changes may outnumber selectable groups, so keep the
+    // extra memberships only during reconstruction and retain their trajectories.
+    for (const auto &sequence : sequences) {
+        require(fits(sequence.source, original), tr("变化坐标超出原图"));
+        require(!sequence.destinations.isEmpty(), tr("变化字段不完整"));
+        require(sources.emplace(sequence.source.x(), sequence.source.y(), sequence.source.width(),
+                                sequence.source.height()).second,
+                tr("变化重复引用原图区域"));
+        movementCount += sequence.destinations.size();
+        require(movementCount <= MaxLayoutMovements, tr("布局轨迹数量超出限制"));
+        for (const auto &destination : sequence.destinations)
+            require(fits(destination, original), tr("变化坐标超出原图"));
+        const auto id = addLayoutRegionUnchecked(state, sequence.source,
+                                                tr("调整 %1").arg(groupIds.size() + 1), maxReferences);
+        require(!id.isEmpty(), tr("变化坐标超出原图"));
+        groupIds.append(id);
+    }
+    for (int i = 0; i < sequences.size(); ++i)
+        for (const auto &destination : sequences[i].destinations)
+            transformLayoutGroup(state, groupIds[i], destination);
+    if (state.groups.size() > MaxLayoutGroups) {
+        state.groups.resize(MaxLayoutGroups);
+        QSet<QString> kept;
+        for (const auto &group : state.groups)
+            kept.insert(group.id);
+        if (state.movements)
+            for (auto &movement : *state.movements)
+                if (!kept.contains(movement.groupId))
+                    movement.groupId.clear();
+    }
+    validateLayout(state, original);
+    return state;
 }
 QImage renderLayout(const QImage &original, const LayoutState &state) {
     QImage image(state.canvas, QImage::Format_ARGB32_Premultiplied);

@@ -6,9 +6,12 @@
 #include "settings.h"
 #include <QPointer>
 #include <QSystemTrayIcon>
+#include <QElapsedTimer>
 namespace h2d {
 class OcrDialog;
 class PinWindow;
+class ScrollCapture;
+class ScrollCaptureProgress;
 class Controller final : public QObject {
     Q_OBJECT
   public:
@@ -26,6 +29,7 @@ class Controller final : public QObject {
     void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
+    friend class ScrollControllerTests;
     void beginCapture(bool fromTray);
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
@@ -42,6 +46,48 @@ class Controller final : public QObject {
     void pinRegion(Overlay *source);
     void saveRegion(Overlay *source);
     void recognizeRegion(Overlay *source, OcrLanguageMode language);
+    void startScrollCapture(Overlay *source);
+    void beginScrollSettle();
+    void armScrollTimeout(quint64 generation, quint64 round);
+    void stepScrollCapture();
+    void setAutoScrollCapture(bool automatic);
+    void readScrollFrame();
+    void placeScrollFrame(const QImage &frame);
+    void pauseScrollCapture(const QString &message);
+    void finishScrollCapture();
+    void abortScrollCapture(const QString &message = {});
+    void discardScrollRun();
+    struct ScrollRun {
+        QRect nativeRegion;
+        QRect logicalRegion;
+        ScrollCaptureTarget target;
+        QImage held;
+        QElapsedTimer settleDeadline;
+        quint64 settleRound = 0;
+        int unchanged = 0;
+        bool initial = true;
+        bool paused = false;
+        bool automatic = false;
+    };
+    ScrollRun scrollRun_;
+    quint64 scrollGeneration_ = 0;
+    QPointer<Overlay> scrollSource_;
+    QPointer<ScrollCaptureProgress> scrollProgress_;
+    ScrollCapture *scroller_ = nullptr;
+    // The same asynchronous paths are exercised with deterministic frames by the
+    // lifecycle tests, including callbacks arriving after cancellation.
+    struct ScrollIo {
+        std::function<void(QObject *, std::function<void()>)> prepare =
+            [](QObject *context, std::function<void()> ready) {
+                prepareScreenCapture(context, std::move(ready));
+            };
+        std::function<bool(QString *)> supported = supportsScrollingCapture;
+        std::function<ScrollCaptureTarget(QPoint)> targetAt = scrollCaptureTargetAt;
+        std::function<void(quintptr)> focus = restoreCaptureForegroundWindow;
+        std::function<bool(const ScrollCaptureTarget &, QPoint, int, QString *)> step = scrollCaptureStep;
+        std::function<void(const QRect &, std::function<void(QImage, QString)>)> grab = captureScrollRegion;
+        int settleTimeoutMs = 2200;
+    } scrollIo_;
     // The screen is covered while a region is being picked, so anything that opens a
     // window of its own has to take the covers off first and put them back if the user
     // changes their mind.

@@ -149,6 +149,22 @@ QString globalShortcutLabel() { return wayland() ? tr("截图快捷键（由桌�
 void prepareScreenCapture(QObject *context, std::function<void()> ready, bool) {
     QTimer::singleShot(150, context, std::move(ready));
 }
+bool supportsScrollingCapture(QString *reason) {
+    if (reason)
+        *reason = wayland() ? tr("此版本暂不支持 Wayland 长截图。") :
+                             tr("此版本暂不支持 X11 长截图。");
+    return false;
+}
+ScrollCaptureTarget scrollCaptureTargetAt(QPoint) { return {}; }
+bool scrollCaptureStep(const ScrollCaptureTarget &, QPoint, int, QString *error) {
+    supportsScrollingCapture(error);
+    return false;
+}
+void captureScrollRegion(const QRect &, ScrollRegionCallback callback) {
+    QString error;
+    supportsScrollingCapture(&error);
+    callback({}, error);
+}
 quintptr captureForegroundWindow() { return 0; }
 void restoreCaptureForegroundWindow(quintptr) {}
 QVector<Candidate> linuxAccessibleElements(QPoint, qint64);

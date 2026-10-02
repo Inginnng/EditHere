@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QCursor>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -11,11 +12,13 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
 #include <QPushButton>
 #include <QScreen>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStyle>
@@ -252,12 +255,14 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     divider->setFixedHeight(20);
     layout->addWidget(divider);
     status_ = new QLabel(this);
+    status_->setObjectName(QStringLiteral("captureBusyStatus"));
     layout->addWidget(status_);
     status_->hide();
     // The order is the order they are reached in: what the capture is for, then what
     // can be read out of it, then the two that end the session.
     (void)addButton(QStringLiteral("edit"), tr("批注"));
     (void)addButton(QStringLiteral("ocr"), tr("文字识别"));
+    (void)addButton(QStringLiteral("scroll"), tr("长截图"));
     (void)addButton(QStringLiteral("pin"), tr("贴图"));
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
     (void)addButton(QStringLiteral("copy"), tr("复制图像"));
@@ -309,6 +314,8 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
             recognize();
         else if (glyphName == QLatin1String("edit"))
             annotate();
+        else if (glyphName == QLatin1String("scroll"))
+            scroll();
     });
     layout()->addWidget(button);
     buttons_.append(button);
@@ -331,6 +338,8 @@ void CaptureToolbar::retranslate() {
             label = tr("文字识别");
         else if (name == QLatin1String("edit"))
             label = tr("批注");
+        else if (name == QLatin1String("scroll"))
+            label = tr("长截图");
         if (!label.isEmpty()) {
             button->setToolTip(label);
             button->setAccessibleName(label);
@@ -393,14 +402,22 @@ void CaptureToolbar::setBusy(bool busy, const QString &message) {
     busy_ = busy;
     message_ = message;
     status_->setText(message);
-    status_->setVisible(busy);
+    status_->setVisible(!message.isEmpty());
     for (auto *button : buttons_)
-        button->setEnabled(!busy);
+        button->setEnabled(!busy && (button->property("glyphName").toString() != QLatin1String("scroll") ||
+                                    scrollAvailable_));
     more_->setEnabled(!busy);
     size_->setEnabled(!busy);
     ratio_->setEnabled(!busy);
     adjustSize();
     raise();
+}
+
+void CaptureToolbar::setScrollAvailable(bool available) {
+    scrollAvailable_ = available;
+    for (auto *button : buttons_)
+        if (button->property("glyphName").toString() == QLatin1String("scroll"))
+            button->setEnabled(available && !busy_);
 }
 
 void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
@@ -456,6 +473,130 @@ void CaptureToolbar::annotate() {
 void CaptureToolbar::dismiss() {
     if (!busy_)
         emit dismissed();
+}
+
+void CaptureToolbar::scroll() {
+    if (!busy_ && scrollAvailable_)
+        emit scrollRequested();
+}
+
+ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
+    : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint) {
+    setObjectName(QStringLiteral("scrollCaptureProgress"));
+    setWindowTitle(tr("EditHere · 长截图"));
+    setAttribute(Qt::WA_ShowWithoutActivating);
+    setFocusPolicy(Qt::StrongFocus);
+    setAutoFillBackground(true);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(12, 12, 12, 12);
+    auto *dragBar = new DragBar(this);
+    dragBar->setObjectName(QStringLiteral("scrollDragBar"));
+    dragBar->setToolTip(tr("拖动窗口，避开滚动区域。"));
+    auto *heading = new QHBoxLayout(dragBar);
+    heading->setContentsMargins(0, 0, 0, 0);
+    auto *title = new QLabel(tr("长截图"), dragBar);
+    auto *dragHint = mutedLabel(tr("拖动窗口"), dragBar);
+    for (auto *label : {title, dragHint})
+        label->setAttribute(Qt::WA_TransparentForMouseEvents);
+    heading->addWidget(title);
+    heading->addStretch();
+    heading->addWidget(dragHint);
+    layout->addWidget(dragBar);
+    preview_ = new QLabel(this);
+    preview_->setObjectName(QStringLiteral("scrollPreview"));
+    preview_->setFixedSize(232, 190);
+    preview_->setAlignment(Qt::AlignCenter);
+    layout->addWidget(preview_);
+    status_ = new QLabel(tr("正在准备长截图…"), this);
+    status_->setObjectName(QStringLiteral("scrollStatus"));
+    status_->setWordWrap(true);
+    status_->setMinimumHeight(44);
+    layout->addWidget(status_);
+    automatic_ = new QCheckBox(tr("自动滚动"), this);
+    automatic_->setObjectName(QStringLiteral("scrollAutomatic"));
+    automatic_->setToolTip(tr("勾选后由程序向下滚动；默认由你手动滚动页面。"));
+    layout->addWidget(automatic_);
+    auto *buttons = new QHBoxLayout;
+    stop_ = new QPushButton(tr("停止"), this);
+    stop_->setObjectName(QStringLiteral("scrollStop"));
+    finish_ = textButton(tr("完成长截图"), true, this);
+    finish_->setObjectName(QStringLiteral("scrollFinish"));
+    finish_->setEnabled(false);
+    buttons->addWidget(stop_);
+    buttons->addWidget(finish_);
+    layout->addLayout(buttons);
+    auto *cancel = new QPushButton(tr("返回选区 (Esc)"), this);
+    cancel->setObjectName(QStringLiteral("scrollCancel"));
+    layout->addWidget(cancel);
+    connect(stop_, &QPushButton::clicked, this, &ScrollCaptureProgress::stopRequested);
+    connect(finish_, &QPushButton::clicked, this, &ScrollCaptureProgress::finishRequested);
+    connect(cancel, &QPushButton::clicked, this, &ScrollCaptureProgress::cancelRequested);
+    connect(automatic_, &QCheckBox::toggled, this, &ScrollCaptureProgress::automaticChanged);
+    setFixedWidth(256);
+    adjustSize();
+}
+
+void ScrollCaptureProgress::placeBeside(const QRect &selection, const QRect &screen) {
+    adjustSize();
+    const int gap = 12;
+    const QVector<QPoint> positions = {
+        {selection.right() + gap, selection.top()},
+        {selection.left() - width() - gap, selection.top()},
+        {selection.left(), selection.top() - height() - gap},
+        {selection.left(), selection.bottom() + gap}};
+    for (const auto &position : positions)
+        if (screen.contains(QRect(position, size()))) {
+            move(position);
+            return;
+        }
+    move(std::clamp(screen.right() - width() - gap, screen.left(),
+                    std::max(screen.left(), screen.right() - width())),
+         std::clamp(screen.top() + gap, screen.top(),
+                    std::max(screen.top(), screen.bottom() - height())));
+}
+
+void ScrollCaptureProgress::setProgress(const QImage &image, int addedFrames) {
+    hasProgress_ = addedFrames > 0;
+    finish_->setEnabled(hasProgress_);
+    if (!image.isNull())
+        preview_->setPixmap(QPixmap::fromImage(image.scaled(preview_->size(), Qt::KeepAspectRatio,
+                                                          Qt::SmoothTransformation)));
+    status_->setText((automatic_->isChecked()
+                         ? tr("正在自动滚动 · %1 × %2 px\n已追加 %3 帧，随时可停止")
+                         : tr("请在选区内向下滚动页面\n%1 × %2 px · 已追加 %3 帧"))
+                         .arg(image.width()).arg(image.height()).arg(addedFrames));
+}
+
+void ScrollCaptureProgress::setAutomatic(bool automatic) {
+    const QSignalBlocker blocked(automatic_);
+    automatic_->setChecked(automatic);
+}
+
+void ScrollCaptureProgress::setStopped(const QString &message) {
+    status_->setText(message);
+    setAutomatic(false);
+    automatic_->setEnabled(false);
+    stop_->hide();
+    finish_->show();
+    finish_->setEnabled(hasProgress_);
+}
+
+void ScrollCaptureProgress::keyPressEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Escape) {
+        emit cancelRequested();
+        event->accept();
+    } else if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+               finish_->isVisible() && hasProgress_) {
+        emit finishRequested();
+        event->accept();
+    } else {
+        QWidget::keyPressEvent(event);
+    }
+}
+
+void ScrollCaptureProgress::closeEvent(QCloseEvent *event) {
+    event->ignore();
+    emit cancelRequested();
 }
 
 QSize CaptureToolbar::askForSize(QWidget *parent, QSize current, bool *accepted) {

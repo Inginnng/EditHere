@@ -12,6 +12,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QWheelEvent>
+#include <algorithm>
 #include <stdexcept>
 using namespace h2d;
 class CanvasFeedbackTests : public QObject {
@@ -431,6 +432,50 @@ class CanvasFeedbackTests : public QObject {
         canvas.setAnnotationsVisible(true);
         QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, {14, 14});
         QCOMPARE(edits.size(), 1); // The global note has no origin marker.
+    }
+    void centeredResizesRemainVisibleAndClickable_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::newRow("canvas") << false;
+        QTest::newRow("explosion") << true;
+    }
+    void centeredResizesRemainVisibleAndClickable() {
+        QFETCH(bool, exploded);
+        auto doc = document();
+        doc.layout = createLayout(doc.image.size(), doc.candidates);
+        const auto id = firstGroup(*doc.layout);
+        QVERIFY(!id.isEmpty());
+        const QRectF source(60, 60, 120, 80), destination(0, 20, 240, 160);
+        QCOMPARE(source.center(), destination.center());
+        transformLayoutGroup(*doc.layout, id, destination);
+        const auto markers = movementMarkers(*doc.layout, doc.notes);
+        const auto marker = std::find_if(markers.begin(), markers.end(), [&](const auto &item) {
+            return item.source == source && item.destination == destination;
+        });
+        QVERIFY(marker != markers.end());
+        QCOMPARE(marker->number, 1);
+        const auto trajectory = movementMarkerLine(*marker);
+        QVERIFY(trajectory.length() > 10);
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setLayoutPreview(true);
+        LayoutCanvas layout(doc.image, *doc.layout);
+        QWidget &surface = exploded ? static_cast<QWidget &>(layout) : static_cast<QWidget &>(canvas);
+        QSignalSpy canvasMoves(&canvas, &Canvas::movementAnnotationRequested);
+        QSignalSpy layoutMoves(&layout, &LayoutCanvas::movementAnnotationRequested);
+        auto &moves = exploded ? layoutMoves : canvasMoves;
+        surface.show();
+        const auto withArrow = rendered(surface);
+        if (exploded) layout.setAnnotationsVisible(false);
+        else canvas.setAnnotationsVisible(false);
+        const auto withoutArrow = rendered(surface);
+        QVERIFY(withArrow != withoutArrow);
+        if (exploded) layout.setAnnotationsVisible(true);
+        else canvas.setAnnotationsVisible(true);
+        // This point is on the visible corner trajectory and far from the shared center.
+        QTest::mouseClick(&surface, Qt::LeftButton, Qt::NoModifier, trajectory.pointAt(.25).toPoint());
+        QCOMPARE(moves.size(), 1);
+        QCOMPARE(moves.first().at(0).toRectF(), source);
+        QCOMPARE(moves.first().at(1).toRectF(), destination);
     }
     void arrowsUseActualChangesAndRemainEditableAcrossModes() {
         auto doc = document();

@@ -77,6 +77,8 @@ OcrDialog::OcrDialog(QImage image, OcrLanguageMode language, QWidget *parent)
     layout->addLayout(top);
     auto *body = new QHBoxLayout;
     auto *preview = new OcrPreview(this);
+    previewWidget_ = preview;
+    preview->setObjectName("ocrPreview");
     preview->setPicture(image_);
     body->addWidget(preview, 3);
     lines_ = new QListWidget(this);
@@ -137,6 +139,17 @@ QString OcrDialog::text() const {
     for (const auto &line : result_)
         parts.append(line.text);
     return parts.join(QLatin1Char('\n'));
+}
+
+void OcrDialog::setImage(const QImage &image, OcrLanguageMode language) {
+    image_ = image;
+    result_.clear();
+    refreshPreview();
+    auto *preview = static_cast<OcrPreview *>(previewWidget_);
+    preview->setPicture(image_);
+    preview->setHighlight({});
+    language_->setCurrentIndex(language_->findData(int(language)));
+    setBusy(true);
 }
 
 void OcrDialog::setBusy(bool busy) {

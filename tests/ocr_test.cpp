@@ -1,13 +1,47 @@
 #include "ocr.h"
+#include "ocrdialog.h"
+#include <QComboBox>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
+#include <QListWidget>
 #include <QPainter>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 using namespace h2d;
 class OcrTests : public QObject {
     Q_OBJECT
   private slots:
+    void aReusedDialogShowsOnlyTheNewPictureAndLanguage() {
+        QImage first(200, 100, QImage::Format_ARGB32);
+        first.fill(Qt::red);
+        OcrDialog dialog(first, OcrLanguageMode::English);
+        dialog.show();
+        QTest::qWait(30);
+        auto *preview = dialog.findChild<QWidget *>("ocrPreview");
+        QVERIFY(preview);
+        const auto before = preview->grab().toImage();
+        QCOMPARE(before.pixelColor(before.rect().center()), QColor(Qt::red));
+        OcrResult oldResult;
+        oldResult.ok = true;
+        oldResult.lines = {{"old picture", {}}};
+        dialog.setResult(oldResult);
+        QCOMPARE(dialog.text(), QString("old picture"));
+        QImage second(100, 200, QImage::Format_ARGB32);
+        second.fill(Qt::green);
+        dialog.setImage(second, OcrLanguageMode::SimplifiedChinese);
+        const auto after = preview->grab().toImage();
+        QCOMPARE(after.pixelColor(after.rect().center()), QColor(Qt::green));
+        QVERIFY(dialog.text().isEmpty());
+        QCOMPARE(dialog.findChild<QListWidget *>()->count(), 0);
+        auto *language = dialog.findChild<QComboBox *>();
+        QVERIFY(language);
+        QCOMPARE(language->currentData().toInt(), int(OcrLanguageMode::SimplifiedChinese));
+        QVERIFY(!language->isEnabled());
+    }
     void tesseractLinesKeepBandCoordinates() {
         const QByteArray header = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n";
         QVector<OcrLine> lines;
@@ -233,6 +267,55 @@ class OcrTests : public QObject {
         QVERIFY(OcrResult().text().isEmpty());
     }
 #ifdef Q_OS_WIN
+    void missingHelperReportsFailureAndStopsBeingBusy() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto previousPath = qgetenv("PATH");
+        const bool hadPath = qEnvironmentVariableIsSet("PATH");
+        qputenv("PATH", directory.path().toLocal8Bit());
+        OcrEngine engine;
+        int replies = 0;
+        OcrResult result;
+        engine.recognize(sampleImage("EDITHERE"), OcrLanguageMode::English,
+                         [&](OcrResult answer) { ++replies; result = std::move(answer); });
+        QTest::qWait(500);
+        if (hadPath) qputenv("PATH", previousPath);
+        else qunsetenv("PATH");
+        QCOMPARE(replies, 1);
+        QVERIFY(!engine.busy());
+        QVERIFY(!result.ok);
+        QCOMPARE(result.failure, OcrFailure::Unavailable);
+        QVERIFY(!result.message.isEmpty());
+        QTest::qWait(100);
+        QCOMPARE(replies, 1);
+    }
+    void cancellingAnActiveHelperDoesNotAnswerAnEarlierRequest() {
+        QTest::failOnWarning(QRegularExpression("^(QTemporaryDir: Unable to remove|QProcess: Destroyed while process)"));
+        OcrEngine engine;
+        int abandoned = 0, replacement = 0;
+        engine.recognize(sampleImage("EDITHERE"), OcrLanguageMode::English,
+                         [&](OcrResult) { ++abandoned; });
+        QVERIFY(engine.busy());
+        auto *helper = engine.findChild<QProcess *>();
+        QVERIFY(helper);
+        const auto encoded = QByteArray::fromBase64(helper->arguments().last().toLatin1());
+        const auto script = QString::fromUtf16(reinterpret_cast<const char16_t *>(encoded.constData()),
+                                               encoded.size() / 2);
+        const auto imagePath = QRegularExpression(R"(\$path = '((?:[^']|'')*)')").match(script);
+        QVERIFY(imagePath.hasMatch());
+        auto path = imagePath.captured(1);
+        path.replace("''", "'");
+        const auto scratch = QFileInfo(path).absolutePath();
+        QVERIFY(QFileInfo::exists(path));
+        engine.cancel();
+        QVERIFY2(!QFileInfo::exists(scratch), qPrintable(scratch));
+        engine.recognize(QImage(), OcrLanguageMode::English,
+                         [&](OcrResult) { ++replacement; });
+        QTest::qWait(100);
+        QCOMPARE(abandoned, 0);
+        QCOMPARE(replacement, 1);
+        QVERIFY(!engine.busy());
+    }
     void theBridgeScriptIsEmbedded() {
         QFile file(QStringLiteral(":/ocr/ocrbridge.ps1"));
         QVERIFY2(file.open(QIODevice::ReadOnly), "the PowerShell bridge is missing from the build");
@@ -249,6 +332,25 @@ class OcrTests : public QObject {
         QVERIFY2(!script.startsWith("\xef\xbb\xbf"), "the bridge script must not carry a byte order mark");
     }
 #endif
+    void completedBandsLeaveNoHelperObjects() {
+#ifndef Q_OS_WIN
+        QSKIP("the helper lifetime regression concerns the Windows bridge");
+#else
+        OcrEngine engine;
+        QImage blank(120, ocrMaxImageDimension() + 100, QImage::Format_ARGB32);
+        blank.fill(Qt::white);
+        QVERIFY(ocrBands(blank.size(), ocrMaxImageDimension()).size() > 1);
+        bool answered = false;
+        const auto result = recognizeAndWait(engine, blank, OcrLanguageMode::System, &answered);
+        QVERIFY2(answered, "the recogniser never answered");
+        if (!result.ok && result.failure == OcrFailure::NoEngine)
+            QSKIP("no recogniser language is installed for this session");
+        QVERIFY2(result.ok, qPrintable(result.message));
+        QVERIFY(result.lines.isEmpty());
+        QVERIFY(!engine.busy());
+        QTRY_VERIFY_WITH_TIMEOUT(engine.findChildren<QProcess *>().isEmpty(), 1000);
+#endif
+    }
     void textIsReadBackFromAPicture() {
         if (!OcrEngine::supported())
             QSKIP("this build has no recogniser");

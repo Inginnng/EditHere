@@ -16,6 +16,32 @@ using namespace h2d;
 class SettingsTests : public QObject {
     Q_OBJECT
   private slots:
+    void captureStyleColoursSurviveRestart() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        auto settings = defaultSettings();
+        settings.captureStyle.border = true;
+        settings.captureStyle.borderColor = QColor(21, 73, 129, 86);
+        settings.captureStyle.shadowColor = QColor(142, 31, 67, 150);
+        QString error;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QCOMPARE(loadSettings(path).captureStyle, settings.captureStyle);
+
+        // Clearing a remembered colour restores the automatic accent on restart.
+        settings.captureStyle.shadowColor = {};
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QCOMPARE(loadSettings(path).captureStyle, settings.captureStyle);
+
+        QSettings source(path, QSettings::IniFormat);
+        source.setValue("capture/borderColor", "invalid");
+        source.setValue("capture/shadowColor", "invalid");
+        source.sync();
+        const auto restored = loadSettings(path);
+        QCOMPARE(restored.captureStyle.borderColor, defaultSettings().captureStyle.borderColor);
+        QVERIFY(!restored.captureStyle.shadowColor.isValid());
+        QVERIFY(restored.captureStyle.border);
+    }
     void savingSettingsPreservesRememberedCaptureStyle() {
         auto original = defaultSettings();
         original.captureStyle.cornerRadius = 19;

@@ -94,6 +94,37 @@ function resolveCli() {
 }
 
 const CLI = resolveCli();
+const CLI_CHILDREN = new Set();
+const MAX_CLI_OUTPUT_CHARS = 1024 * 1024;
+let closing = false;
+
+function trackCliChild(child) {
+  CLI_CHILDREN.add(child);
+  child.once('close', () => CLI_CHILDREN.delete(child));
+  return child;
+}
+
+function terminateCliChildren() {
+  closing = true;
+  for (const child of CLI_CHILDREN) child.kill('SIGKILL');
+}
+
+// A Buffer may end halfway through a UTF-8 character. Let each stream's decoder
+// carry the remaining bytes, and cap retained text if a broken CLI floods output.
+function captureCliOutput(child, result) {
+  for (const [stream, key] of [[child.stdout, 'stdout'], [child.stderr, 'stderr']]) {
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk) => {
+      if (result.error) return;
+      const remaining = MAX_CLI_OUTPUT_CHARS - result.stdout.length - result.stderr.length;
+      result[key] += chunk.slice(0, remaining);
+      if (chunk.length > remaining) {
+        result.error = { code: 'output_limit', message: 'CLI output exceeded the supported size; the process was terminated.' };
+        child.kill('SIGKILL');
+      }
+    });
+  }
+}
 
 // ---------------------------------------------------------------- CLI 调用
 
@@ -101,16 +132,14 @@ function runCli(args, { timeoutMs = 60_000, onWaiting } = {}) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(CLI.path, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      child = trackCliChild(spawn(CLI.path, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }));
     } catch (err) {
       resolve({ ok: false, exitCode: -1, error: { code: 'spawn_failed', message: String(err?.message || err) } });
       return;
     }
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
+    const output = { stdout: '', stderr: '', timedOut: false };
     const timer = setTimeout(() => {
-      timedOut = true;
+      output.timedOut = true;
       child.kill('SIGKILL');
     }, timeoutMs);
 
@@ -120,8 +149,7 @@ function runCli(args, { timeoutMs = 60_000, onWaiting } = {}) {
       waitingTimer.unref?.();
     }
 
-    child.stdout.on('data', (d) => { stdout += d; });
-    child.stderr.on('data', (d) => { stderr += d; });
+    captureCliOutput(child, output);
     child.on('error', (err) => {
       clearTimeout(timer);
       if (waitingTimer) clearInterval(waitingTimer);
@@ -130,13 +158,11 @@ function runCli(args, { timeoutMs = 60_000, onWaiting } = {}) {
     child.on('close', (code) => {
       clearTimeout(timer);
       if (waitingTimer) clearInterval(waitingTimer);
-      const parsed = parseCliJson(stdout);
+      const parsed = parseCliJson(output.stdout);
       resolve({
+        ...output,
         exitCode: code ?? -1,
         json: parsed,
-        stdout,
-        stderr,
-        timedOut,
       });
     });
   });
@@ -289,7 +315,7 @@ function startAnnotateSession(p) {
   if (p.noImage) cliArgs.push('--no-image');
   let child;
   try {
-    child = spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    child = trackCliChild(spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }));
   } catch (err) {
     return { error: `无法启动 edithere-cli：${String(err?.message || err)}` };
   }
@@ -309,8 +335,7 @@ function startAnnotateSession(p) {
     finishedAt: 0,
     resultContent: null,
   };
-  child.stdout.on('data', (d) => { session.stdout += d; });
-  child.stderr.on('data', (d) => { session.stderr += d; });
+  captureCliOutput(child, session);
   child.on('error', (err) => {
     session.state = 'finished';
     session.exitCode = -1;
@@ -352,6 +377,7 @@ function finishSessionContent(session) {
       stdout: session.stdout,
       stderr: session.stderr,
       timedOut: session.timedOut,
+      error: session.error,
     };
     const body = annotateResultToContent(r, session.outputPath, { includeImage: session.includeImage });
     const prefix = { type: 'text', text: `会话 ${session.id} 已结束。` };
@@ -583,7 +609,7 @@ async function toolCall(name, args, notifyProgress) {
 
 // status 结果附带连接器信息与实际使用的 CLI，便于排查"用了哪一份 CLI"。
 function statusContent(r) {
-  const ok = r.json?.ok === true;
+  const ok = cliSucceeded(r);
   if (!ok) return cliResultToContent(r);
   const body = {
     ...r.json,
@@ -599,10 +625,11 @@ function clampTimeout(t) {
 }
 
 function cliErrorText(r) {
-  const code = r.json?.error?.code;
-  const message = r.json?.error?.message;
+  const code = r.error?.code || r.json?.error?.code;
+  const message = r.error?.message || r.json?.error?.message;
   const hint = EXIT_CODE_HINTS[r.exitCode];
   const parts = [`edithere-cli 退出码 ${r.exitCode}`];
+  if (r.timedOut) parts.push('连接器等待 CLI 超时，已终止本次进程。');
   if (code) parts.push(`error.code=${code}`);
   if (message) parts.push(message);
   if (hint) parts.push(`提示: ${hint}`);
@@ -612,8 +639,12 @@ function cliErrorText(r) {
 }
 
 // CLI 一行 JSON 结果 → MCP content
+function cliSucceeded(r) {
+  return r.exitCode === 0 && !r.timedOut && !r.error && r.json?.ok === true;
+}
+
 function cliResultToContent(r) {
-  const ok = r.json?.ok === true;
+  const ok = cliSucceeded(r);
   const body = r.json
     ? JSON.stringify(r.json, null, 2)
     : (r.stdout || r.stderr || '（无输出）').trim();
@@ -628,7 +659,7 @@ function cliResultToContent(r) {
 
 // annotate/export 结果 → 反馈摘要（+可选原图）
 function annotateResultToContent(r, outputPath, p) {
-  const ok = r.json?.ok === true;
+  const ok = cliSucceeded(r);
   if (!ok) return cliResultToContent(r);
 
   const content = [];
@@ -660,6 +691,7 @@ class McpError extends Error {
 }
 
 function writeMessage(obj) {
+  if (closing) return;
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
@@ -736,26 +768,50 @@ async function main() {
     process.exit(0);
   }
   process.stderr.write(`[edithere-mcp] CLI: ${CLI.path}（来源: ${CLI.source}）${CLI.error ? ' — 不可用' : ''}\n`);
+  process.once('exit', terminateCliChildren);
+  process.once('SIGINT', () => process.exit(0));
+  process.once('SIGTERM', () => process.exit(0));
+  process.stdout.on('error', (err) => {
+    if (err.code === 'EPIPE') process.exit(0);
+    else throw err;
+  });
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-  for await (const line of rl) {
-    const t = line.trim();
-    if (!t) continue;
-    let msg;
-    try {
-      msg = JSON.parse(t);
-    } catch {
-      continue; // 忽略非 JSON 行
-    }
-    if (msg && msg.jsonrpc === '2.0') {
-      // 不 await：顺序处理即可，annotate 长任务阻塞后续请求是可接受的
+  try {
+    for await (const line of rl) {
+      const t = line.trim();
+      if (!t) continue;
+      let msg;
+      try {
+        msg = JSON.parse(t);
+      } catch {
+        replyError(null, -32700, '消息不是有效的 JSON。');
+        continue;
+      }
+      if (!msg || Array.isArray(msg) || typeof msg !== 'object'
+          || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
+        replyError(null, -32600, '消息不是有效的 JSON-RPC 请求。');
+        continue;
+      }
+      // Keep long annotation requests from blocking status and polling calls.
       handleRequest(msg).catch((err) => {
-        if (msg.id !== undefined) replyError(msg.id, -32700, String(err?.message || err));
+        if (msg.id !== undefined) replyError(msg.id, -32603, String(err?.message || err));
       });
     }
+  } finally {
+    // Host disconnects must cancel waiting CLI sessions as well; otherwise the
+    // orphan CLI keeps the GUI busy until its annotation timeout expires.
+    terminateCliChildren();
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[edithere-mcp] fatal: ${String(err?.stack || err)}\n`);
-  process.exit(1);
-});
+// Keep the transport entry point separate from the helpers so their real child
+// processes can be covered by Node's built-in test runner.
+export { runCli, cliResultToContent, statusContent, main };
+
+if (process.argv[1]
+    && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
+  main().catch((err) => {
+    process.stderr.write(`[edithere-mcp] fatal: ${String(err?.stack || err)}\n`);
+    process.exit(1);
+  });
+}

@@ -15,6 +15,37 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 稳定性排查（2026-10-01，未发布）
+
+本轮以能复现的运行和数据稳定性缺陷为依据。以下测试在 Windows 本地构建执行；macOS/Linux 的平台专属行为仍需各自 CI 或实机验证。
+
+新增 40 个测试场景。最终 Windows 构建的 20 组 CTest 全部通过（51.27 秒），包括真实 OCR、多分带进程回收、Windows 平台与 NSIS 安装事务；真实导出 schema、610 条翻译和 NSIS 实编译检查通过。测试结果保存在 `artifacts/stability-tests.xml`，定向复现与修复后日志保存在 `artifacts/`。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-123 | 同中心缩放因中心位移为零被导出和标注过滤；按整个矩形判定变化，缩放使用角点轨迹 | `LayoutTests::centeredResizeSurvivesFeedbackRoundTrip`、`CoreTests::separatelyMovedRegionsKeepTheirOwnTrajectories`、`CanvasFeedbackTests::centeredResizesRemainVisibleAndClickable`（两种画布） | ✅ |
+| REG-124 | 源坐标用默认浮点精度构造对象键，临近区域被合并；使用可往返的 17 位精度 | `LayoutTests::feedbackKeepsDistinctFractionalSourceRegions` | ✅ |
+| REG-125 | 对象反馈的越界/反向/单轴零尺寸源被裁剪或当作点，点对象的异常移动被忽略；重建前检查全部几何 | `CoreTests::objectFeedbackRejectsInvalidGeometry`（8 行） | ✅ |
+| REG-126 | 对象数被误当作批注数，1000 条批注加移动的合法导出无法重开；分别限制累计批注和移动，并同步 schema | `CoreTests::objectFeedbackLimitsCountAnnotationsAndMovementsSeparately`、`validate-exports.py` 的真实 1001 对象样本 | ✅ |
+| REG-127 | 顺序移动最终位置已更新，批注却取第一项目标；批注与最后一次目标保持一致 | `CoreTests::objectFeedbackNotesUseTheFinalDestination` | ✅ |
+| REG-128 | 超过 511 个旧变化重新导入时被可选组上限阻断；批量重建保留全部轨迹，限制可选组及临时引用数量 | `LayoutTests::feedbackKeepsChangesBeyondTheSelectableGroupLimit`（512 个变化，导出、像素和完整布局往返）、`objectReconstructionBoundsTemporaryMembership`（重复/密集重叠/空目标） | ✅ |
+| REG-129 | Windows OCR 只处理 finished，启动失败后请求不返回；补启动失败/超时完成路径与当前进程身份检查，回收每个已结束分带进程 | `OcrTests::missingHelperReportsFailureAndStopsBeingBusy`（修复前回调数为 0）、`completedBandsLeaveNoHelperObjects`（真实多分带 OCR） | ✅ |
+| REG-130 | 复用 OCR 窗口识别新图时预览/语言仍是旧值；统一替换输入并清除旧文字和高亮 | `OcrTests::aReusedDialogShowsOnlyTheNewPictureAndLanguage`（预览中心像素、文字列表和语言） | ✅ |
+| REG-131 | 切换历史图片后旧检测 worker 把屏幕区域覆盖到新图；重新检测并检查代次，清理旧 native probe | `UiTests::historySwitchDoesNotUseDetectionFromThePreviousPicture`（修复前空白图仍选中旧表格区域；返回实时截图重新检测） | ✅ |
+| REG-132 | legacy 桌面 socket 只在 EOF 读取，缓冲满时发送和接收互相等待，空闲连接不释放；持续消费、限制 64 KiB、5 秒截止，处理回调注册前的 EOF | `AgentCliTests::desktopRequestsConsumeFragmentsAndWaitForEof`、`desktopRequestAlreadyAtEofIsNotLost`、`invalidDesktopRequestsAreDiscardedAndNextClientWorks`；另验证 6 类 Agent 协议错误后下一连接恢复 | ✅ |
+| REG-133 | MCP 逐块转字符串破坏 UTF-8；仅凭成功 JSON 忽略退出码/超时；无限收集输出和宿主断开后遗留 CLI；畸形 JSON 无回应 | `tests/connector_test.mjs`（6 例，真实 Node 子进程与 stdio；修复前全部失败），注册为 CTest `connector` | ✅ |
+| REG-134 | 设置只保存截图样式数值，边框/阴影颜色及透明度在重启后丢失；新增 ARGB 持久化，缺失/异常值回落默认 | `SettingsTests::captureStyleColoursSurviveRestart`（修复前失败，修复后通过） | ✅ |
+| REG-135 | 更新测试在 CTest 中超时，直接写结果文件却已完成；测试刻意启动损坏 EXE 会触发 Windows 加载器行为。改成确认期间移除已验证文件，仍验证真实启动失败 | `UpdateTests::cancellationAndLaunchFailureNeverAnnounceInstallation`；修改前 CTest 两次超时，修改后通过 | ✅ |
+| REG-136 | 取消 OCR 时先删临时目录，辅助进程还在写日志，残留目录且延迟销毁运行中的 QProcess；终止后有限等待，再释放临时文件 | `OcrTests::cancellingAnActiveHelperDoesNotAnswerAnEarlierRequest`（旧回调不再回答，辅助进程和目录均释放） | ✅ |
+
+## 长截图点击修复（2026-10-02，未发布）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-137 | 长截图启动失败或没有滚动时，提示插入操作栏使按钮移位；再次点击原位置可能命中保存等其他动作。失败提示改为独立区域，操作栏尺寸和按钮位置保持不变 | `ScrollControllerTests::toolbarMouseClickStartsScrollingWithoutSaving`、`failedStartupKeepsMouseTargetForRetry`、`noMovementReturnsSelectionWithoutCreatingLongScreenshot`；修复前按钮中心从 `(424,32)` 移至 `(810,32)`。原生 `realScrollingWindowProducesCompleteImage` 从生产全屏截图入口框选并点击按钮，核对完整结果且无保存信号 | ✅ |
+| REG-138 | 长截图默认自动滚动、自动结束，用户无法自己选择滚动范围。改为每次默认手动滚动、自动拼接，稳定画面不动时持续等待；点击完成才交付，可勾选自动滚动。手动连续滚动不因等待稳定超时而停止，模式切换废弃过期回调，采样不抢页面焦点 | `ScrollControllerTests::manualCaptureWaitsForUserWithoutScrollingOrCompleting`、`manualContinuousMovementWaitsForPauseWhileCaptureKeepsResponding`、`manualCaptureFinishesWhileRunningAndRejectsLateFrames`、`automaticChoiceCancelsPendingManualFrameAndCanReturnToManual`、`manualCaptureRequiresOriginalWindowAndStopsBeforeCapturingAnother`；原生窗口及浏览器用例由独立滚轮驱动页面，断言控制器自身滚轮次数为 0，最后点击完成 | ✅ |
+| REG-139 | 设置、保存、长截图等图标不直观或彼此相似。设置改为八齿齿轮，保存统一为软盘，长截图改为纵向取景框和长度箭头，打开使用文件夹，文字识别使用取景框内的 T；适应窗口与截图区分，修正智能选择四角和复制图片边界 | `icon_gallery` 渲染全部 39 种图标及真实截图工具栏、手动/自动/停止进度窗，人工检查浅色、深色及 20/24 px。实际预览曾发现齿轮外圈未绘制，修复首点 `moveTo` 后再次确认 | ⚠️ |
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。
@@ -139,7 +170,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 截图不再"松手即批注"：松开鼠标只把选定的区域定下来，选区上方的工具条（批注、识别、贴图、保存、复制）与它右侧的样式列（圆角、阴影/边框、贴图、重置）才是动作的入口。本节记录实现这套流程时踩到的问题。
 
-⚠️ **长截图已移出主线**（2026-09-29）：`app/scrollcapture.*`、`app/scrollstitch.*`、`app/scrollshade.*` 与对应测试整体搬到 **`feature/long-capture` 分支**，0.9.6 不打包这个功能。下表里的 **REG-081、REG-101、REG-102、REG-103、REG-104** 五条只对该分支成立——主线上已无对应代码与测试，它们留在这里是为了长截图回来时照着验一遍，不是当前主线的回归信号。
+**长截图实现更新（开发版）**：旧实现于 2026-09-29 移到 `feature/long-capture`。本轮重新加入 Windows 纵向长截图，默认手动滚动，采用独立进度窗、稳定帧采样与置信度拼接；明确勾选自动滚动后才向锁定目标投递滚轮。下表 **REG-081、REG-101、REG-102、REG-103、REG-104** 保留旧实现的事故记录和历史测试名；当前对应检查集中于 `scrollstitch_tests`、`scroll_controller_tests`、`scroll_platform_tests`，实现参考见 [LONG-CAPTURE.md](LONG-CAPTURE.md)。旧横向拖框及全屏遮罩方案没有恢复。
 
 | 编号 | 现象 | 首现 → 修复 | 根因 | 回归检查 | 状态 |
 | --- | --- | --- | --- | --- | --- |
@@ -229,7 +260,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
 | 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包任一缺失即失败 | REG-109/122 |
 
-长截图的做法对照过两个开源实现（**该段只对 `feature/long-capture` 分支成立**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
+旧长截图的做法对照过两个开源实现（**该段描述 `feature/long-capture` 的历史方案，当前实现见 [LONG-CAPTURE.md](LONG-CAPTURE.md)**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 
 `scripts/check-packaging.py` 不依赖 Qt 与 NSIS（找不到 `makensis` 时只跳过实编译，其余检查照常执行），所以它能在 CI 里跑；`scripts/check-translations.py` 需要 `lupdate`，CI 的精简 Qt 没有 Linguist，因此只在本地 Qt 完整安装时注册为测试。i18n 的工具无关部分（`.ts` ↔ `.qm` 逐条比对）已并入 `check-packaging.py`，保证 CI 也能拦住"改了 `.ts` 忘了 `lrelease`"。
 

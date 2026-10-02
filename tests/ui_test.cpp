@@ -301,6 +301,25 @@ class UiTests : public QObject {
         QVERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
+    void historySwitchDoesNotUseDetectionFromThePreviousPicture() {
+        ScreenFrame frame{"history-generation", {0, 0, 800, 600}, {}, tableShot(), false};
+        Overlay overlay(frame);
+        overlay.show();
+        QImage blank(800, 600, QImage::Format_ARGB32);
+        blank.fill(Qt::white);
+        // Switch before the original worker can deliver its table detections.
+        overlay.showHistoryPicture(blank);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        movePointerTo(overlay, QPoint(330, 210));
+        QVERIFY(overlay.hovered());
+        QCOMPARE(overlay.hovered()->bounds, blank.rect());
+        // Returning to the live frame must detect it again rather than leave no blocks.
+        overlay.showHistoryPicture(QImage());
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        movePointerTo(overlay, QPoint(330, 210));
+        QVERIFY(overlay.hovered());
+        QVERIFY(overlay.hovered()->bounds != frame.image.rect());
+    }
     // Annotating a picture that already exists should not have to start with taking a
     // screenshot: the window opens empty and says what it is waiting for, and the
     // picture arrives by being dropped on it.

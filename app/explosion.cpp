@@ -38,8 +38,9 @@ double segmentDistance(QPointF point, QPointF start, QPointF finish) {
 }
 void paintMovement(QPainter &p, const MovementMarker &movement,
                    double zoom, bool hovered, double phase) {
-    const auto start = movement.source.center() * zoom;
-    const auto finish = movement.destination.center() * zoom;
+    const auto trajectory = movementMarkerLine(movement);
+    const auto start = trajectory.p1() * zoom;
+    const auto finish = trajectory.p2() * zoom;
     const auto line = QLineF(start, finish);
     if (line.length() < .5)
         return;
@@ -134,12 +135,13 @@ void LayoutCanvas::rebuildMovements() {
 }
 int LayoutCanvas::hitMovement(QPointF screen) const {
     if (annotationsVisible_)
-        for (int i = movements_.size() - 1; i >= 0; --i)
-            if (segmentDistance(screen, movements_[i].source.center() * zoom_,
-                                movements_[i].destination.center() * zoom_) < 8 ||
+        for (int i = movements_.size() - 1; i >= 0; --i) {
+            const auto trajectory = movementMarkerLine(movements_[i]);
+            if (segmentDistance(screen, trajectory.p1() * zoom_, trajectory.p2() * zoom_) < 8 ||
                 (movements_[i].noteIndex >= 0 &&
                  QLineF(screen, movementMarkerAnchor(movements_[i], zoom_, size())).length() < 17))
                 return i;
+        }
     return -1;
 }
 void LayoutCanvas::updateAnnotationHover(QPointF screen) {

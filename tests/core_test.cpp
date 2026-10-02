@@ -225,10 +225,13 @@ class CoreTests : public QObject {
         transformLayoutGroup(layout, left, {20, 20, 20, 40});
         transformLayoutGroup(layout, right, {40, 20, 20, 40});
         QVERIFY(movementMarkers(layout, {leftNote, rightNote}).isEmpty());
-        // A resize about the same center has no directional arrow to number.
+        // A centered resize uses a corner trajectory so it can still be selected.
         transformLayoutGroup(layout, left, {15, 10, 30, 60});
         QVERIFY(!exportLayoutChanges(layout).isEmpty());
-        QVERIFY(movementMarkers(layout, {leftNote}).isEmpty());
+        const auto resizeMarkers = movementMarkers(layout, {leftNote});
+        QCOMPARE(resizeMarkers.size(), 1);
+        QCOMPARE(resizeMarkers[0].noteIndex, 0);
+        QVERIFY(movementMarkerLine(resizeMarkers[0]).length() > 0);
     }
     void nestedMovementNotesFollowTheirOwnFrames() {
         QImage image(800, 600, QImage::Format_ARGB32);
@@ -678,6 +681,88 @@ class CoreTests : public QObject {
         QVERIFY(imported.layout.has_value());
         // Re-exporting an imported old file already uses the current structure.
         QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"annotationSpace", "objects"}));
+    }
+    void objectFeedbackRejectsInvalidGeometry_data() {
+        QTest::addColumn<QJsonValue>("source");
+        QTest::addColumn<QJsonArray>("movements");
+        QTest::addColumn<QJsonArray>("annotations");
+        const QJsonObject rect = rectJson({10, 10, 20, 20});
+        const QJsonObject point{{"x1", 10}, {"y1", 10}, {"x2", 10}, {"y2", 10}};
+        const QJsonArray text{"comment"};
+        QTest::newRow("negative source") << QJsonValue(rectJson({30, 30, -20, -20})) << QJsonArray{} << text;
+        QTest::newRow("line source") << QJsonValue(rectJson({10, 10, 0, 20})) << QJsonArray{} << text;
+        QTest::newRow("clipped source") << QJsonValue(rectJson({-5, 10, 20, 20})) << QJsonArray{} << text;
+        QTest::newRow("empty off-canvas source") << QJsonValue(rectJson({500, 500, 20, 20}))
+                                                   << QJsonArray{} << QJsonArray{};
+        QTest::newRow("clipped destination") << QJsonValue(rect)
+            << QJsonArray{QJsonObject{{"to", rectJson({-5, 10, 20, 20})}}} << text;
+        QTest::newRow("point movement") << QJsonValue(point)
+            << QJsonArray{QJsonObject{{"to", rectJson({50, 50, 20, 20})}}} << text;
+        QTest::newRow("point malformed movement") << QJsonValue(point) << QJsonArray{42} << QJsonArray{};
+        QTest::newRow("global malformed movement") << QJsonValue(QJsonValue::Null)
+                                                     << QJsonArray{42} << QJsonArray{};
+    }
+    void objectFeedbackRejectsInvalidGeometry() {
+        QFETCH(QJsonValue, source);
+        QFETCH(QJsonArray, movements);
+        QFETCH(QJsonArray, annotations);
+        QImage image(100, 100, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QJsonObject feedback{{"annotationSpace", "result"},
+            {"objects", QJsonArray{QJsonObject{{"source", source}, {"movements", movements},
+                                               {"annotations", annotations}}}}};
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, image), std::runtime_error);
+    }
+    void objectFeedbackLimitsCountAnnotationsAndMovementsSeparately() {
+        QImage image(100, 100, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        auto document = fromImage(image, "demo", "feedback limits");
+        document.layout = createLayout(image.size(), {});
+        const auto id = addLayoutRegion(*document.layout, {10, 10, 20, 20});
+        transformLayoutGroup(*document.layout, id, {50, 50, 20, 20});
+        for (int i = 0; i < MaxNotes; ++i) {
+            Note note;
+            note.isGlobal = true;
+            note.comment = "global comment";
+            document.notes.append(note);
+        }
+        const auto feedback = exportFeedback(document);
+        QCOMPARE(feedback["objects"].toArray().size(), MaxNotes + 1);
+        const auto restored = loadFeedback(feedback, image);
+        QCOMPARE(restored.notes.size(), MaxNotes);
+        QVERIFY(restored.layout.has_value());
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("feedback-limit.json"), serializeFeedback(document, true));
+        }
+        auto invalid = feedback;
+        auto objects = feedback["objects"].toArray();
+        objects.append(QJsonObject{{"source", QJsonValue::Null}, {"movements", QJsonArray{}},
+                                   {"annotations", QJsonArray{"too many notes"}}});
+        invalid["objects"] = objects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image), std::runtime_error);
+        QJsonArray movements;
+        for (int i = 0; i <= MaxLayoutMovements; ++i)
+            movements.append(QJsonObject{{"to", rectJson({50, 50, 20, 20})}});
+        invalid["objects"] = QJsonArray{QJsonObject{{"source", rectJson({10, 10, 20, 20})},
+                                                   {"movements", movements}, {"annotations", QJsonArray{}}}};
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image), std::runtime_error);
+    }
+    void objectFeedbackNotesUseTheFinalDestination() {
+        QImage image(100, 100, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QJsonObject feedback{{"annotationSpace", "result"},
+            {"objects", QJsonArray{QJsonObject{{"source", rectJson({10, 10, 20, 20})},
+                {"movements", QJsonArray{QJsonObject{{"to", rectJson({40, 40, 20, 20})}},
+                                         QJsonObject{{"to", rectJson({70, 70, 20, 20})}}}},
+                {"annotations", QJsonArray{"final position"}}}}}};
+        const auto restored = loadFeedback(feedback, image);
+        QVERIFY(restored.layout.has_value());
+        QCOMPARE(restored.notes.size(), 1);
+        QCOMPARE(restored.notes[0].rect, QRect(70, 70, 20, 20));
+        QCOMPARE(movementAnnotationDestination(restored.notes[0], *restored.layout),
+                 std::optional<QRectF>(QRectF(70, 70, 20, 20)));
     }
     void imageFormats() {
         auto formats = QImageReader::supportedImageFormats();

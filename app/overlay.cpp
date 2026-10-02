@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -58,19 +59,7 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         colourCopied_ = false;
         update();
     });
-    auto worker = new QFutureWatcher<QVector<Candidate>>(this);
-    connect(worker, &QFutureWatcher<QVector<Candidate>>::finished, this, [this, worker] {
-        visual_ = worker->result();
-        auto full = manualTarget();
-        full["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
-        visual_.append({QRect(QPoint(0, 0), frame_.image.size()), full});
-        if (selected_.isEmpty()) {
-            picker_.update(candidates(), cursor_);
-            update();
-        }
-        worker->deleteLater();
-    });
-    worker->setFuture(QtConcurrent::run([image = frame_.image] { return detectBlocks(image); }));
+    requestDetection();
     // The bar and the column of tools are children of this window, so the keyboard
     // keeps reaching the window and neither can end up behind the screen it belongs to.
     bar_ = new CaptureToolbar(this);
@@ -84,6 +73,7 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
     });
     connect(bar_, &CaptureToolbar::annotateRequested, this,
             [this] { emit accepted(selected_, candidates()); });
+    connect(bar_, &CaptureToolbar::scrollRequested, this, [this] { emit scrollRequested(selected_); });
     connect(bar_, &CaptureToolbar::dismissed, this, [this] { emit cancelled(); });
     connect(bar_, &CaptureToolbar::historyRequested, this, &Overlay::historyRequested);
     connect(bar_, &CaptureToolbar::historyStepRequested, this, &Overlay::historyStepRequested);
@@ -112,6 +102,26 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         update();
     });
     connect(sidebar_, &CaptureSidebar::rememberRequested, this, &Overlay::styleRememberRequested);
+}
+
+void Overlay::requestDetection() {
+    const quint64 generation = ++detectionGeneration_;
+    auto *worker = new QFutureWatcher<QVector<Candidate>>(this);
+    connect(worker, &QFutureWatcher<QVector<Candidate>>::finished, this,
+            [this, worker, generation] {
+        if (generation == detectionGeneration_) {
+            visual_ = worker->result();
+            auto full = manualTarget();
+            full["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
+            visual_.append({QRect(QPoint(0, 0), frame_.image.size()), full});
+            if (selected_.isEmpty()) {
+                picker_.update(candidates(), cursor_);
+                update();
+            }
+        }
+        worker->deleteLater();
+    });
+    worker->setFuture(QtConcurrent::run([image = frame_.image] { return detectBlocks(image); }));
 }
 
 Overlay::~Overlay() {
@@ -713,6 +723,11 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             e->accept();
             return;
         }
+        if (e->key() == Qt::Key_L) {
+            bar_->scroll();
+            e->accept();
+            return;
+        }
     }
     if (arrow && selected_.isEmpty() && !drawing_) {
         // Nothing has been taken and nothing is being drawn: the pointer is looking for
@@ -816,6 +831,55 @@ void Overlay::setBusy(bool busy, const QString &message) {
     update();
 }
 
+void Overlay::setCaptureNotice(const QString &message) {
+    if (message.isEmpty()) {
+        if (captureNotice_)
+            captureNotice_->hide();
+        return;
+    }
+    if (!captureNotice_) {
+        captureNotice_ = new QLabel(this);
+        captureNotice_->setObjectName(QStringLiteral("captureStatus"));
+        captureNotice_->setWordWrap(true);
+        captureNotice_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        captureNotice_->setStyleSheet(QStringLiteral(
+            "QLabel { color: #e8e9ee; background: rgba(28, 30, 36, 240);"
+            " border: 1px solid rgba(255, 255, 255, 40); border-radius: 8px; padding: 10px; }"));
+    }
+    captureNotice_->setText(message);
+    placeCaptureNotice();
+    captureNotice_->show();
+    captureNotice_->raise();
+}
+
+void Overlay::placeCaptureNotice() {
+    if (!captureNotice_ || !bar_)
+        return;
+    // A failed action must leave its button under the pointer for a retry. The
+    // notice is a sibling of the bar so its text cannot resize or move the tools.
+    const int gap = 8;
+    captureNotice_->setFixedWidth(std::max(1, std::min(480, width() - 2 * gap)));
+    captureNotice_->adjustSize();
+    const int x = std::clamp(bar_->x(), gap, std::max(gap, width() - captureNotice_->width() - gap));
+    const QRect selection = localRect(selected_).toRect();
+    const QRect side = sidebar_ && sidebar_->isVisible() ? sidebar_->geometry() : QRect();
+    const QVector<int> positions = {
+        std::max({bar_->geometry().bottom(), selection.bottom(), side.bottom()}) + gap,
+        std::min(bar_->y(), selection.y()) - captureNotice_->height() - gap,
+        bar_->geometry().bottom() + gap,
+        bar_->y() - captureNotice_->height() - gap,
+        height() - captureNotice_->height() - gap,
+        gap};
+    for (int y : positions) {
+        const QRect area(QPoint(x, y), captureNotice_->size());
+        if (rect().contains(area) && !area.intersects(bar_->geometry()) && !area.intersects(side)) {
+            captureNotice_->move(x, y);
+            return;
+        }
+    }
+    captureNotice_->move(x, gap);
+}
+
 void Overlay::setOcrLanguage(OcrLanguageMode language) {
     ocrLanguage_ = language;
     if (bar_ != nullptr)
@@ -842,6 +906,15 @@ void Overlay::setHistoryIndex(int index) {
 }
 
 void Overlay::showHistoryPicture(const QImage &picture) {
+    if (bar_)
+        bar_->setScrollAvailable(picture.isNull());
+    debounce_.stop();
+    if (auto *process = probe_) {
+        probe_ = nullptr;
+        process->disconnect(this);
+        process->kill();
+        process->deleteLater();
+    }
     if (picture.isNull()) {
         // Stepping forward past the newest capture is the screen itself, which is where
         // the window started.
@@ -860,6 +933,7 @@ void Overlay::showHistoryPicture(const QImage &picture) {
     // the wrong picture.
     frameScaled_ = {};
     resetSelection();
+    requestDetection();
     update();
 }
 
@@ -885,6 +959,8 @@ void Overlay::applySelection(QRect area, bool move) {
                    .intersected(bounds);
     if (area.isEmpty())
         return;
+    if (captureNotice_ && area != selected_)
+        captureNotice_->hide();
     selected_ = area;
     ready_ = true;
     showBar();
@@ -902,6 +978,10 @@ void Overlay::showBar() {
     bar_->placeNear(local, rect());
     bar_->show();
     bar_->raise();
+    if (captureNotice_ && captureNotice_->isVisible()) {
+        placeCaptureNotice();
+        captureNotice_->raise();
+    }
     if (sidebar_ != nullptr) {
         sidebar_->placeBeside(local, rect());
         sidebar_->show();
@@ -910,6 +990,8 @@ void Overlay::showBar() {
 }
 
 void Overlay::hideTools() {
+    if (captureNotice_ != nullptr)
+        captureNotice_->hide();
     if (bar_ != nullptr)
         bar_->hide();
     if (sidebar_ != nullptr)

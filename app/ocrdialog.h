@@ -19,6 +19,7 @@ class OcrDialog final : public QDialog {
     // Fills the window in. A failure keeps the picture and replaces the text with the
     // reason, so the same window is used for both outcomes.
     void setResult(const OcrResult &result);
+    void setImage(const QImage &image, OcrLanguageMode language);
     void setBusy(bool busy);
     QString text() const;
 
@@ -32,6 +33,7 @@ class OcrDialog final : public QDialog {
     QImage image_;
     QImage preview_;
     QLabel *picture_ = nullptr;
+    QWidget *previewWidget_ = nullptr;
     QLabel *status_ = nullptr;
     QListWidget *lines_ = nullptr;
     QComboBox *language_ = nullptr;

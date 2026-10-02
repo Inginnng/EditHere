@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QWidget>
 class QPainter;
+class QLabel;
 namespace h2d {
 class CaptureToolbar;
 class CaptureSidebar;
@@ -66,6 +67,7 @@ class Overlay final : public QWidget {
     // While something is running the region is frozen and the bar says what is going
     // on, so the picture under it does not move while it is being read.
     void setBusy(bool busy, const QString &message = {});
+    void setCaptureNotice(const QString &message);
     void setOcrLanguage(OcrLanguageMode language);
     // The recent work the owner knows about, handed on to the bar's menu. The window
     // only lists and forwards: the pictures themselves stay with the owner.
@@ -83,6 +85,7 @@ class Overlay final : public QWidget {
     void pinRequested(QRect pixels);
     void saveRequested(QRect pixels);
     void ocrRequested(QRect pixels, h2d::OcrLanguageMode language);
+    void scrollRequested(QRect pixels);
     // The user picked an earlier capture to open instead of taking a new one.
     void historyRequested(int index);
     // The user stepped through the history with < or >.
@@ -112,12 +115,15 @@ class Overlay final : public QWidget {
     // grab and letting the painter scale it means resampling the whole screen on every
     // repaint, and a repaint happens on every move of the pointer.
     const QImage &scaledFrame();
+    void requestDetection();
+    quint64 detectionGeneration_ = 0;
     void requestProbe();
     QVector<Candidate> candidates() const;
     void finish(bool copy);
     // Moves the region to a new rectangle and brings the tools up to date with it.
     void applySelection(QRect area, bool move);
     void showBar();
+    void placeCaptureNotice();
     void hideTools();
     // Grows or shrinks the region by one pixel on the side the arrow points at, which
     // is what Shift and Ctrl turn an arrow into now that the plain arrow moves the
@@ -165,6 +171,7 @@ class Overlay final : public QWidget {
     QProcess *probe_ = nullptr;
     QImage frameScaled_;
     CaptureToolbar *bar_ = nullptr;
+    QLabel *captureNotice_ = nullptr;
     CaptureSidebar *sidebar_ = nullptr;
     CaptureStyle style_;
     CaptureRatio ratio_ = CaptureRatio::Free;

@@ -258,6 +258,130 @@ class AgentCliTests : public QObject {
         QCOMPARE(reads.size(), 0);
         delete accepted;
     }
+    void desktopRequestsConsumeFragmentsAndWaitForEof() {
+        QLocalServer server;
+        const auto name = isolatedSocketName();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        QStringList requests;
+        QLocalSocket client;
+        client.connectToServer(name);
+        QVERIFY(client.waitForConnected(1000));
+        QTRY_VERIFY(server.hasPendingConnections());
+        const auto accepted = server.nextPendingConnection();
+        receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); });
+        const QString path = "C:/中文 目录/图片.png";
+        const auto bytes = path.toUtf8();
+        // Split inside the first three-byte character, then let both reads run
+        // before EOF so neither fragment can be dispatched as a partial path.
+        const auto split = bytes.indexOf(QString("中").toUtf8()) + 1;
+        client.write(bytes.first(split)); client.flush();
+        QTRY_COMPARE(accepted->bytesAvailable(), 0);
+        QTest::qWait(30);
+        QVERIFY(requests.isEmpty());
+        client.write(bytes.mid(split)); client.flush();
+        QTest::qWait(30);
+        QVERIFY(requests.isEmpty());
+        client.disconnectFromServer();
+        QTRY_COMPARE(requests, QStringList{path});
+    }
+    void desktopRequestAlreadyAtEofIsNotLost() {
+        QLocalServer server;
+        const auto name = isolatedSocketName();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        QLocalSocket client;
+        client.connectToServer(name);
+        QVERIFY(client.waitForConnected(1000));
+        QTRY_VERIFY(server.hasPendingConnections());
+        const auto accepted = server.nextPendingConnection();
+        client.write("capture"); client.flush();
+        client.disconnectFromServer();
+        // Slow startup can install the handler after the peer has already
+        // closed; there will be no second disconnected signal to wait for.
+        QTRY_COMPARE(accepted->state(), QLocalSocket::UnconnectedState);
+        QStringList requests;
+        receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); });
+        QCOMPARE(requests, QStringList{"capture"});
+    }
+    void invalidDesktopRequestsAreDiscardedAndNextClientWorks_data() {
+        QTest::addColumn<QByteArray>("bytes");
+        QTest::addColumn<bool>("waitForDisconnect");
+        QTest::addColumn<int>("timeoutMs");
+        QTest::newRow("oversized-without-eof") << QByteArray(65537, 'x') << true << 5000;
+        QTest::newRow("idle-without-eof") << QByteArray() << true << 150;
+        QTest::newRow("invalid-utf8") << QByteArray::fromHex("c328") << false << 5000;
+        QTest::newRow("incomplete-utf8") << QByteArray::fromHex("e4b8") << false << 5000;
+    }
+    void invalidDesktopRequestsAreDiscardedAndNextClientWorks() {
+        QFETCH(QByteArray, bytes);
+        QFETCH(bool, waitForDisconnect);
+        QFETCH(int, timeoutMs);
+        QLocalServer server;
+        const auto name = isolatedSocketName();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        QStringList requests;
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            while (const auto accepted = server.nextPendingConnection())
+                receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); }, timeoutMs);
+        });
+        QLocalSocket bad;
+        bad.connectToServer(name);
+        QVERIFY(bad.waitForConnected(1000));
+        if (!bytes.isEmpty()) { bad.write(bytes); bad.flush(); }
+        if (!waitForDisconnect) bad.disconnectFromServer();
+        QTRY_COMPARE_WITH_TIMEOUT(bad.state(), QLocalSocket::UnconnectedState, 1500);
+        QVERIFY(requests.isEmpty());
+        QLocalSocket good;
+        good.connectToServer(name);
+        QVERIFY(good.waitForConnected(1000));
+        good.write("capture"); good.flush();
+        good.disconnectFromServer();
+        QTRY_COMPARE(requests, QStringList{"capture"});
+    }
+    void invalidIpcRequestsDoNotBreakFollowingConnections_data() {
+        QTest::addColumn<QByteArray>("bytes");
+        QTest::newRow("zero-length") << QByteArray::fromHex("00000000");
+        QTest::newRow("oversized") << QByteArray::fromHex("00010001");
+        QTest::newRow("non-object") << QByteArray::fromHex("000000025b5d");
+        QTest::newRow("invalid-json") << QByteArray::fromHex("000000017b");
+        QTest::newRow("unsupported-protocol") << encodeAgentMessage({{"protocol", 2}, {"command", "status"}});
+        const auto status = encodeAgentMessage({{"protocol", 1}, {"command", "status"}});
+        QTest::newRow("multiple-requests") << status + status;
+    }
+    void invalidIpcRequestsDoNotBreakFollowingConnections() {
+        QFETCH(QByteArray, bytes);
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        AgentServer server(controller);
+        const auto name = isolatedSocketName();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        for (const bool invalid : {true, false}) {
+            QLocalSocket socket;
+            socket.connectToServer(name);
+            QVERIFY(socket.waitForConnected(1000));
+            socket.write(invalid ? bytes : encodeAgentMessage({{"protocol", 1}, {"command", "status"}}));
+            socket.flush();
+            QByteArray replyBytes;
+            QJsonObject reply;
+            QString error;
+            AgentFrameState framing = AgentFrameState::Incomplete;
+            QTRY_VERIFY_WITH_TIMEOUT(([&] {
+                // QTRY evaluates its condition again after it first succeeds.
+                // A complete frame has already been consumed from replyBytes.
+                if (framing != AgentFrameState::Incomplete) return true;
+                replyBytes += socket.readAll();
+                framing = takeAgentMessage(replyBytes, reply, error);
+                return framing != AgentFrameState::Incomplete;
+            })(), 1500);
+            QCOMPARE(framing, AgentFrameState::Complete);
+            if (invalid) {
+                QCOMPARE(agentExitCode(reply), 2);
+                QCOMPARE(reply["error"].toObject()["code"].toString(), QString("protocol_error"));
+            } else {
+                QVERIFY(reply["ok"].toBool());
+                QVERIFY(reply["running"].toBool());
+            }
+        }
+    }
     void fragmentedMessagesRequireCompleteFrame() {
         const QJsonObject expected{{"command", "open"}, {"input", "C:/中文 目录/file.png"}};
         const auto frame = encodeAgentMessage(expected);

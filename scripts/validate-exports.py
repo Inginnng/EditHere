@@ -75,6 +75,15 @@ assert {key: value for key, value in embedded.items() if key != "image"} == \
 check_objects(embedded)
 print(f"PASS: current feedback, {len(embedded['objects'])} object(s), with and without the image")
 
+# A full annotation list can coexist with an unannotated moved object. The
+# published schema must accept the same export the application can reopen.
+limit_feedback = export("feedback-limit.json")
+validate("feedback-minimal.schema.json", limit_feedback)
+check_objects(limit_feedback)
+assert len(limit_feedback["objects"]) == 1001
+assert sum(len(item["annotations"]) for item in limit_feedback["objects"]) == 1000
+print("PASS: feedback with 1000 annotations and an additional moved object")
+
 # The tag-less sample is what the importer accepts without annotationSpace, so it cannot be
 # validated against the schema that requires the tag; its structure is asserted instead.
 tagless = export("feedback-notag.json")
