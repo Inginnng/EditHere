@@ -244,12 +244,11 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     imageScroll_->setCanvas(canvas_);
     imageScroll_->viewport()->installEventFilter(this);
     imageScroll_->viewport()->setMouseTracking(true);
-    mediaStack_ = new QStackedWidget(shell);
-    mediaStack_->setObjectName("mediaStack");
-    mediaStack_->addWidget(imageScroll_);
     videoPlayback_ = new VideoPlayback(shell);
-    mediaStack_->addWidget(videoPlayback_->videoWidget());
-    content->addWidget(mediaStack_, 1);
+    videoPlayback_->videoWidget()->setParent(imageScroll_->viewport());
+    videoPlayback_->videoWidget()->hide();
+    canvas_->installEventFilter(this);
+    content->addWidget(imageScroll_, 1);
     notesPanel_ = new QWidget(shell);
     notesPanel_->setObjectName("notesPanel");
     notesPanel_->setFixedWidth(360);
@@ -334,14 +333,21 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(videoPlayback_, &VideoPlayback::playbackStarted, this, [this] {
         if (!video_) return;
         finishNoteEdit(); commitVideoFrame(); resetLayoutTools();
-        mediaStack_->setCurrentWidget(videoPlayback_->videoWidget());
+        syncVideoGeometry();
+        videoPlayback_->videoWidget()->show();
+        videoPlayback_->videoWidget()->raise();
         detailsStack_->setEnabled(false); updateControls();
+    });
+    connect(videoPlayback_, &VideoPlayback::positioningStarted, this, [this] {
+        if (!video_) return;
+        finishNoteEdit(); commitVideoFrame(); updateControls();
     });
     connect(videoPlayback_, &VideoPlayback::metadataChanged, this, [this](qint64 duration) {
         if (video_) { video_->durationMs = duration; updateVideoFrames(); }
     });
     connect(videoPlayback_, &VideoPlayback::reviewRequested, this, &Editor::reviewVideoFrame);
     connect(videoPlayback_, &VideoPlayback::failed, this, [this](const QString &error) {
+        videoPlayback_->videoWidget()->hide();
         toast(error); detailsStack_->setEnabled(true); updateControls();
     });
     connect(videoPlayback_, &VideoPlayback::sourceRelocationRequested, this, [this] {
@@ -621,30 +627,38 @@ void Editor::updateToolLabels() {
 void Editor::setDocument(Document document, const QString &projectPath) {
     dismissGuide();
     finishNoteEdit();
+    const bool preserveView = switchingVideoFrame_ && hasDocument() && doc_.image.size() == document.image.size();
+    const auto previousMode = canvas_->mode();
+    const auto previousOrigin = imageScroll_->imageOrigin();
+    const bool previousFitted = fitted_;
     if (!switchingVideoFrame_) clearVideo();
-    annotationsVisible_ = true;
-    hideAnnotations_->setChecked(false);
-    canvas_->setAnnotationsVisible(true);
+    if (!preserveView) {
+        annotationsVisible_ = true;
+        hideAnnotations_->setChecked(false);
+        canvas_->setAnnotationsVisible(true);
+    }
     resetLayoutTools();
     doc_ = std::move(document);
     if (!switchingVideoFrame_) projectPath_ = projectPath;
-    mediaStack_->setCurrentWidget(imageScroll_);
     detailsStack_->setEnabled(true);
     undoHistory_.clear();
     redoHistory_.clear();
     canvas_->setDocument(&doc_);
-    setMode(static_cast<Canvas::Mode>(preferences_.defaultTool));
-    fitted_ = preferences_.fitImageOnOpen;
+    if (preserveView) canvas_->setMode(previousMode);
+    else setMode(static_cast<Canvas::Mode>(preferences_.defaultTool));
+    fitted_ = preserveView ? previousFitted : preferences_.fitImageOnOpen;
     canvas_->setLayoutPreview(doc_.layout.has_value());
     explosion_->setEnabled(doc_.layout.has_value());
     updateLayoutControls();
-    detailsStack_->show();
+    if (!preserveView) detailsStack_->show();
     detailsStack_->setCurrentWidget(notesPanel_);
     meta_->setText(QString("%1 × %2").arg(doc_.image.width()).arg(doc_.image.height()));
     renderNotes();
-    if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
-    show();
-    configureNativeWindow(this, false);
+    if (!preserveView) {
+        if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
+        show();
+    }
+    if (!preserveView) configureNativeWindow(this, false);
     QRect available = QGuiApplication::screenAt(QCursor::pos())
                           ? QGuiApplication::screenAt(QCursor::pos())->availableGeometry()
                           : QGuiApplication::primaryScreen()->availableGeometry();
@@ -653,7 +667,8 @@ void Editor::setDocument(Document document, const QString &projectPath) {
         move(available.center() - rect().center());
     }
     const int generation = ++generation_;
-    QTimer::singleShot(0, this, [this, generation] {
+    if (preserveView) imageScroll_->setImageOrigin(previousOrigin);
+    else QTimer::singleShot(0, this, [this, generation] {
         if (generation != generation_)
             return;
         if (preferences_.fitImageOnOpen)
@@ -663,6 +678,23 @@ void Editor::setDocument(Document document, const QString &projectPath) {
             imageScroll_->centerImage();
         }
     });
+    // Only analyze a video frame once the user stops stepping through the timeline.
+    if (switchingVideoFrame_) QTimer::singleShot(250, this, [this, generation] { detectCurrentFrame(generation); });
+    else detectCurrentFrame(generation);
+    if (!preserveView) {
+        raise(); activateWindow(); canvas_->setFocus();
+    }
+    syncVideoGeometry();
+    if (videoPlayback_) videoPlayback_->videoWidget()->hide();
+    updateControls();
+    updateEmptyState();
+}
+void Editor::detectCurrentFrame(int generation) {
+    if (generation != generation_) return;
+    if (video_ && (videoPlayback_->playing() || videoPlayback_->positioning())) {
+        QTimer::singleShot(250, this, [this, generation] { detectCurrentFrame(generation); });
+        return;
+    }
     auto watcher = new QFutureWatcher<QVector<Candidate>>(this);
     connect(watcher, &QFutureWatcher<QVector<Candidate>>::finished, this, [this, watcher, generation] {
         if (generation == generation_) {
@@ -672,22 +704,16 @@ void Editor::setDocument(Document document, const QString &projectPath) {
             whole["label"] = QT_TRANSLATE_NOOP("EditHere", "整个图片");
             doc_.candidates.append({QRect(QPoint(0, 0), doc_.image.size()), whole});
             canvas_->refresh();
-            explosion_->setEnabled(true);
+            explosion_->setEnabled(!video_ || (!videoPlayback_->playing() && !videoPlayback_->positioning()));
             updateLayoutControls();
         }
         watcher->deleteLater();
     });
     watcher->setFuture(QtConcurrent::run([image = doc_.image] { return detectBlocks(image); }));
-    raise();
-    activateWindow();
-    canvas_->setFocus();
-    updateControls();
-    updateEmptyState();
 }
 void Editor::clearVideo() {
     video_.reset(); videoFrameUs_ = -1;
-    if (videoPlayback_) { videoPlayback_->clear(); videoPlayback_->hide(); }
-    if (mediaStack_) mediaStack_->setCurrentWidget(imageScroll_);
+    if (videoPlayback_) { videoPlayback_->clear(); videoPlayback_->hide(); videoPlayback_->videoWidget()->hide(); }
     if (detailsStack_) detailsStack_->setEnabled(true);
 }
 void Editor::loadMedia(const QString &path) {
@@ -706,7 +732,7 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
     dismissGuide(); finishNoteEdit(); clearVideo(); resetLayoutTools(); ++generation_;
     video_ = std::move(project); projectPath_ = path;
     doc_ = {}; canvas_->setDocument(nullptr); undoHistory_.clear(); redoHistory_.clear();
-    videoPlayback_->show(); mediaStack_->setCurrentWidget(videoPlayback_->videoWidget());
+    videoPlayback_->show();
     renderNotes(); updateControls(); updateEmptyState();
     show(); configureNativeWindow(this, false); raise(); activateWindow();
     if (!video_->frames.isEmpty()) {
@@ -747,16 +773,16 @@ void Editor::displayVideoFrame(const QImage &image, qint64 timestampUs) {
     if (!video_) return;
     try {
         finishNoteEdit(); commitVideoFrame();
+        // Keep the current draft and undo history when pausing again on the same frame.
+        if (videoFrameUs_ == timestampUs && hasDocument()) {
+            videoPlayback_->videoWidget()->hide(); detailsStack_->setEnabled(true); updateControls(); return;
+        }
         Document next;
         const auto it = std::find_if(video_->frames.cbegin(), video_->frames.cend(), [timestampUs](const VideoFrame &frame) {
             return frame.timestampUs == timestampUs;
         });
         if (it != video_->frames.cend()) next = it->document;
         else next = fromImage(image, "file", tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)));
-        // Pausing twice on the same frame must preserve the active draft and undo.
-        if (videoFrameUs_ == timestampUs && doc_.id == next.id) {
-            mediaStack_->setCurrentWidget(imageScroll_); detailsStack_->setEnabled(true); updateControls(); return;
-        }
         switchingVideoFrame_ = true;
         setDocument(std::move(next));
         switchingVideoFrame_ = false;
@@ -788,6 +814,11 @@ void Editor::updateVideoFrames() {
     QVector<QPair<qint64, int>> frames;
     for (const auto &frame : video_->frames) frames.append({frame.timestampUs, annotationCount(frame.document)});
     videoPlayback_->setAnnotatedFrames(frames);
+}
+void Editor::syncVideoGeometry() {
+    if (!videoPlayback_ || !hasDocument()) return;
+    auto view = videoPlayback_->videoWidget();
+    view->setGeometry(QRect(canvas_->mapTo(imageScroll_->viewport(), QPoint()), canvas_->size()));
 }
 VideoProject Editor::videoProject() {
     finishNoteEdit(); commitVideoFrame();
@@ -971,7 +1002,7 @@ void Editor::setMode(Canvas::Mode mode) {
     updateControls();
 }
 void Editor::updateControls() {
-    const bool playingVideo = video_ && mediaStack_->currentWidget() != imageScroll_;
+    const bool playingVideo = video_ && (videoPlayback_->playing() || videoPlayback_->positioning());
     for (int i = 0; i < modes_.size(); i++)
         modes_[i]->setEnabled(!playingVideo && hasDocument());
     if (auto global = findChild<QPushButton *>("addGlobalNote")) global->setEnabled(!playingVideo && hasDocument());
@@ -1285,6 +1316,13 @@ void Editor::toggleAnnotations() {
 bool Editor::eventFilter(QObject *object, QEvent *event) {
     if (auto owner = qobject_cast<QWidget *>(object); owner && owner->window() != this)
         return QWidget::eventFilter(object, event);
+    if (object == canvas_ && (event->type() == QEvent::Move || event->type() == QEvent::Resize))
+        syncVideoGeometry();
+    if (object == canvas_ && video_ && (videoPlayback_->playing() || videoPlayback_->positioning()) &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
+         event->type() == QEvent::MouseButtonDblClick) &&
+        static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton)
+        return true;
     if (video_ && event->type() == QEvent::KeyPress) {
         auto owner = qobject_cast<QWidget *>(object);
         const auto key = static_cast<QKeyEvent *>(event);

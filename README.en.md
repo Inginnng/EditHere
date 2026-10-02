@@ -4,7 +4,7 @@
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
 <p align="center">改这里</p>
 <p align="center"><strong>Show AI exactly what you want to change.</strong></p>
-<p align="center">Capture a screenshot, add your comments, and rearrange the layout. Give AI your complete visual feedback in one go.</p>
+<p align="center">Capture a screenshot or pause a video, add your comments, and rearrange the layout. Give AI your complete visual feedback in one go.</p>
 <p align="center">Windows · macOS Preview &nbsp; / &nbsp; Local screen capture and image analysis</p>
 <p align="center">
   <a href="#download-and-install">Download</a> ·
@@ -51,16 +51,19 @@ Your AI tool needs permission to use your local terminal and files; a web chat a
 
 Use it for web and app interfaces, game HUDs, charts, and other visuals where you need to show exactly what to change and where.
 
+The current source version is **0.10.0 for local testing**, not yet publicly released, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots. See the [video annotation guide (Chinese)](docs/VIDEO-ANNOTATION.md) and [0.10.0 local test notes (Chinese)](docs/releases/0.10.0.md).
+
 ## Features
 
 | Feature | What you can do |
 | --- | --- |
 | **Capture toolbar** | Start a capture with a global shortcut. Hover to select a region, use the scroll wheel to switch the selection scope, or draw a selection manually. Releasing the mouse settles the region and brings up a toolbar above it and a column of style tools beside it: annotate, recognise text, pin, save, copy or pick a colour, with corner radius and shadow in the style column. |
 | **Pin and recognise** | Pin a region on top of everything else to work against it, and read the text inside a region and copy it line by line. |
+| **Annotate video timestamps** | Open a video, play or seek along the timeline, then pause to annotate the current frame. Save comments and screenshots across timestamps and export them together for AI. |
 | **Connect each comment to its location** | Combine point, rectangle, and global annotations. Write comments in the sidebar and use numbered markers to find the corresponding locations on the image. |
 | **Rearrange the layout directly** | Enable “Explode” (大爆炸) to drag or resize image regions, or enter exact coordinates and dimensions. You can also annotate the regions you have adjusted. |
-| **Hand feedback to AI** | Copy or export JSON. With the companion skill and CLI, AI can open an image, wait for you to explicitly finish annotating, and then receive your feedback to continue editing. |
-| **Save and resume** | Export or copy an annotated image, or save the complete project to continue later. Open, drag in, or paste images in common formats. |
+| **Hand feedback to AI** | Copy or export JSON. With the companion skill and CLI, AI can open an image or video, wait for you to explicitly finish annotating, and then receive your feedback to continue editing. |
+| **Save and resume** | Export or copy an annotated image, or save an image or video project to continue later. Videos reference the source file and store annotated frame screenshots. Open or drop common images and videos, or paste an image. |
 | **Work your way** | Zoom and pan freely, undo and redo, switch between light and dark themes, and customize shortcuts and the toolbar. Image region detection runs locally. |
 
 ### Point to exactly what you mean
@@ -143,6 +146,8 @@ See [AI integration and the command line (Chinese)](docs/AGENT-CLI.md) for full 
 The animation above is a compressed preview; download the [full promo video (MP4)](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-promo.mp4) from Releases, or see [all downloads](https://github.com/Inginnng/EditHere/releases/latest).
 
 ## Download and install
+
+The stable download links below point to GitHub's current public release. Check the release page and the package's `version.txt` for its version; changing the source version or building a local package does not update these links until the matching GitHub Release is published.
 
 | Platform | Download | How to use |
 | --- | --- | --- |

@@ -46,6 +46,14 @@
 | REG-138 | 长截图默认自动滚动、自动结束，用户无法自己选择滚动范围。改为每次默认手动滚动、自动拼接，稳定画面不动时持续等待；点击完成才交付，可勾选自动滚动。手动连续滚动不因等待稳定超时而停止，模式切换废弃过期回调，采样不抢页面焦点 | `ScrollControllerTests::manualCaptureWaitsForUserWithoutScrollingOrCompleting`、`manualContinuousMovementWaitsForPauseWhileCaptureKeepsResponding`、`manualCaptureFinishesWhileRunningAndRejectsLateFrames`、`automaticChoiceCancelsPendingManualFrameAndCanReturnToManual`、`manualCaptureRequiresOriginalWindowAndStopsBeforeCapturingAnother`；原生窗口及浏览器用例由独立滚轮驱动页面，断言控制器自身滚轮次数为 0，最后点击完成 | ✅ |
 | REG-139 | 设置、保存、长截图等图标不直观或彼此相似。设置改为八齿齿轮，保存统一为软盘，长截图改为纵向取景框和长度箭头，打开使用文件夹，文字识别使用取景框内的 T；适应窗口与截图区分，修正智能选择四角和复制图片边界 | `icon_gallery` 渲染全部 39 种图标及真实截图工具栏、手动/自动/停止进度窗，人工检查浅色、深色及 20/24 px。实际预览曾发现齿轮外圈未绘制，修复首点 `moveTo` 后再次确认 | ⚠️ |
 
+## 视频播放交互修复（0.10.0 本地测试版，未公开发布）
+
+浅色、深色两组使用真实视频解码的原生 Windows 用例均已通过。需设置 `EDITHERE_VIDEO_TEST_SOURCE` 才会执行解码断言；未提供视频时会跳过，因此验收需核对两组均为 PASS。macOS/Linux 的原生视频表面仍需各自验证。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-140 | 暂停中点击 `±1s` 时，定位所需的后台解码被显示成用户播放，按钮文字变长使控件移位；播放与暂停使用不同显示区域，留白背景也不一致。区分后台定位与用户播放，固定控件宽度，视频和画布叠放在同一显示区域；定位后暂停供批注，连续步进累计目标时间，同分辨率换帧保留缩放、平移与侧栏状态 | `VideoUiTests::playbackViewportAndSeekRemainStable(light)`、`playbackViewportAndSeekRemainStable(dark)`，注册为 CTest `video-ui`；定位全过程采样按钮、时间轴、视口与画布几何，核对暂停按钮文字、缩放/平移及折叠侧栏不变；播放/暂停留白像素分别为浅色 `#efeff2`、深色 `#18191e`，连续步进累计目标，播放中定位后暂停且空格可继续播放。原生 Windows 两组 PASS 见 `artifacts/video-0100-native-test.log` | ✅ |
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。

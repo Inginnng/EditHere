@@ -132,6 +132,8 @@ class Editor final : public QWidget {
     void displayVideoFrame(const QImage &image, qint64 timestampUs);
     void reviewVideoFrame(qint64 timestampUs);
     void updateVideoFrames();
+    void syncVideoGeometry();
+    void detectCurrentFrame(int generation);
     QByteArray feedbackBytes(bool embed, bool compress = false);
     void undo();
     void redo();
@@ -147,7 +149,6 @@ class Editor final : public QWidget {
     qint64 videoFrameUs_ = -1;
     bool switchingVideoFrame_ = false;
     VideoPlayback *videoPlayback_ = nullptr;
-    QStackedWidget *mediaStack_ = nullptr;
     AppSettings preferences_;
     struct Snapshot {
         QVector<Note> notes;

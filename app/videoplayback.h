@@ -23,11 +23,13 @@ class VideoPlayback final : public QWidget {
     void reviewAt(qint64 timestampUs);
     void setAnnotatedFrames(const QVector<QPair<qint64, int>> &frames);
     bool playing() const;
+    bool positioning() const { return seeking_ || initialSeek_; }
     qint64 positionMs() const;
     qint64 durationMs() const;
     void retranslate();
   signals:
     void playbackStarted();
+    void positioningStarted();
     void framePaused(const QImage &image, qint64 timestampUs);
     void metadataChanged(qint64 durationMs);
     void reviewRequested(qint64 timestampUs);
@@ -46,12 +48,13 @@ class VideoPlayback final : public QWidget {
     QComboBox *frames_;
     QVideoFrame lastFrame_;
     bool freezeNext_ = false;
+    bool playing_ = false;
     bool seeking_ = false;
     qint64 seekTargetMs_ = 0;
     qint64 initialPositionMs_ = 0;
     bool initialSeek_ = false;
     qint64 pausedTimeUs_ = -1;
-    enum class Stage { Idle, Opening, Seeking, Paused, Saved, Error };
+    enum class Stage { Idle, Opening, Seeking, Playing, Paused, Saved, Error };
     Stage stage_ = Stage::Idle;
     QString errorText_;
 };
