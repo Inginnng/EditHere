@@ -53,6 +53,7 @@
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
 | REG-140 | 暂停中点击 `±1s` 时，定位所需的后台解码被显示成用户播放，按钮文字变长使控件移位；播放与暂停使用不同显示区域，留白背景也不一致。区分后台定位与用户播放，固定控件宽度，视频和画布叠放在同一显示区域；定位后暂停供批注，连续步进累计目标时间，同分辨率换帧保留缩放、平移与侧栏状态 | `VideoUiTests::playbackViewportAndSeekRemainStable(light)`、`playbackViewportAndSeekRemainStable(dark)`，注册为 CTest `video-ui`；定位全过程采样按钮、时间轴、视口与画布几何，核对暂停按钮文字、缩放/平移及折叠侧栏不变；播放/暂停留白像素分别为浅色 `#efeff2`、深色 `#18191e`，连续步进累计目标，播放中定位后暂停且空格可继续播放。原生 Windows 两组 PASS 见 `artifacts/video-0100-native-test.log` | ✅ |
+| REG-141 | 普通暂停和定位立即转换为截图画布，单纯查看视频也创建帧，视频表面切换还造成停顿。`0.10.0-pause-update` 改为首帧、暂停和定位只停住视频表面，首次实际点、框或全局批注才保存截图；选择模式、缩放和平移不截图，保存项目/导出 JSON 不创建新帧，选择已有批注帧直接恢复截图 | `VideoUiTests::playbackViewportAndSeekRemainStable(light/dark)`、`firstAnnotationCapturesOnlyOnce(point/rectangle/global/global-shortcut)` 和 `playbackSeekAnnotateAndReopen`；普通暂停/定位截图计数为零，视频持续可见，首次批注只捕获一次且坐标、PTS 与画面匹配，同帧后续批注复用截图，保存和实际 JSON 复制不创建新帧。点选通过 Windows QWindow 命中测试。原生 Windows 共 10 PASS、0 FAIL、0 SKIP，见 `artifacts/video-pause-update-native-test.log`；截图仅证实 Qt 控件渲染，未验证 GPU 桌面合成截图 | ✅ |
 
 ## 本次更新修复（0.9.9）
 

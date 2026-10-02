@@ -329,18 +329,20 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     layout->addLayout(content, 1);
     layout->addWidget(videoPlayback_);
     videoPlayback_->hide();
-    connect(videoPlayback_, &VideoPlayback::framePaused, this, &Editor::displayVideoFrame);
+    connect(videoPlayback_, &VideoPlayback::framePaused, this, &Editor::showVideoPreview);
+    connect(videoPlayback_, &VideoPlayback::frameCaptured, this, &Editor::displayVideoFrame);
+    connect(videoPlayback_, &VideoPlayback::frameCaptureFailed, this, &Editor::toast);
     connect(videoPlayback_, &VideoPlayback::playbackStarted, this, [this] {
         if (!video_) return;
         finishNoteEdit(); commitVideoFrame(); resetLayoutTools();
-        syncVideoGeometry();
-        videoPlayback_->videoWidget()->show();
-        videoPlayback_->videoWidget()->raise();
+        showVideoPreview(videoPlayback_->frameSize(), videoPlayback_->positionMs() * 1000);
         detailsStack_->setEnabled(false); updateControls();
     });
     connect(videoPlayback_, &VideoPlayback::positioningStarted, this, [this] {
         if (!video_) return;
-        finishNoteEdit(); commitVideoFrame(); updateControls();
+        finishNoteEdit(); commitVideoFrame();
+        showVideoPreview(videoPlayback_->frameSize(), videoPlayback_->positionMs() * 1000);
+        updateControls();
     });
     connect(videoPlayback_, &VideoPlayback::metadataChanged, this, [this](qint64 duration) {
         if (video_) { video_->durationMs = duration; updateVideoFrames(); }
@@ -627,7 +629,7 @@ void Editor::updateToolLabels() {
 void Editor::setDocument(Document document, const QString &projectPath) {
     dismissGuide();
     finishNoteEdit();
-    const bool preserveView = switchingVideoFrame_ && hasDocument() && doc_.image.size() == document.image.size();
+    const bool preserveView = switchingVideoFrame_ && canvas_->imageSize() == document.image.size();
     const auto previousMode = canvas_->mode();
     const auto previousOrigin = imageScroll_->imageOrigin();
     const bool previousFitted = fitted_;
@@ -639,6 +641,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     }
     resetLayoutTools();
     doc_ = std::move(document);
+    videoPreview_ = false;
     if (!switchingVideoFrame_) projectPath_ = projectPath;
     detailsStack_->setEnabled(true);
     undoHistory_.clear();
@@ -713,6 +716,8 @@ void Editor::detectCurrentFrame(int generation) {
 }
 void Editor::clearVideo() {
     video_.reset(); videoFrameUs_ = -1;
+    videoPreview_ = false;
+    canvas_->setPreviewSize({});
     if (videoPlayback_) { videoPlayback_->clear(); videoPlayback_->hide(); videoPlayback_->videoWidget()->hide(); }
     if (detailsStack_) detailsStack_->setEnabled(true);
 }
@@ -754,7 +759,6 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
 }
 void Editor::commitVideoFrame() {
     if (!video_ || videoFrameUs_ < 0 || doc_.image.isNull()) return;
-    video_->positionMs = videoFrameUs_ / 1000;
     if (doc_.dirty) video_->dirty = true;
     const bool annotated = !exportFeedback(doc_)["objects"].toArray().isEmpty();
     auto it = std::find_if(video_->frames.begin(), video_->frames.end(), [this](const VideoFrame &frame) {
@@ -768,6 +772,46 @@ void Editor::commitVideoFrame() {
         return a.timestampUs < b.timestampUs;
     });
     updateVideoFrames();
+}
+void Editor::showVideoPreview(const QSize &size, qint64 timestampUs) {
+    if (!video_ || size.isEmpty()) return;
+    const bool preserveView = canvas_->imageSize() == size;
+    const bool changeSurface = !videoPreview_ || !preserveView;
+    const auto previousOrigin = imageScroll_->imageOrigin();
+    if (!videoPreview_) {
+        finishNoteEdit(); commitVideoFrame(); resetLayoutTools();
+        doc_ = {}; videoFrameUs_ = -1; undoHistory_.clear(); redoHistory_.clear();
+        ++generation_; // Invalidate analysis belonging to the previous captured frame.
+        renderNotes();
+    }
+    videoPreview_ = true;
+    if (changeSurface) canvas_->setPreviewSize(size);
+    if (preserveView) imageScroll_->setImageOrigin(previousOrigin);
+    else {
+        fitted_ = preferences_.fitImageOnOpen;
+        if (fitted_) fit();
+        else { canvas_->setZoom(1); imageScroll_->centerImage(); }
+        const int generation = generation_;
+        QTimer::singleShot(0, this, [this, generation] {
+            if (generation == generation_ && videoPreview_ && fitted_) fit();
+        });
+    }
+    video_->positionMs = std::max<qint64>(0, timestampUs / 1000);
+    meta_->setText(tr("%1 × %2 · %3").arg(size.width()).arg(size.height()).arg(videoTimeLabel(video_->positionMs)));
+    syncVideoGeometry();
+    auto view = videoPlayback_->videoWidget();
+    if (!view->isVisible()) { view->show(); view->raise(); }
+    detailsStack_->setEnabled(!videoPlayback_->playing() && !videoPlayback_->positioning());
+    updateControls(); updateEmptyState();
+}
+bool Editor::ensureVideoAnnotationFrame() {
+    if (!video_ || !videoPreview_) return hasDocument();
+    if (videoPlayback_->playing() || videoPlayback_->positioning()) return false;
+    const bool captured = videoPlayback_->captureCurrentFrame();
+    // A pixel readback can succeed while creating its editable document fails.
+    // Leave the video visible and let the next annotation attempt retry.
+    if (!hasDocument()) videoPlayback_->cancelFrameCapture();
+    return captured && hasDocument();
 }
 void Editor::displayVideoFrame(const QImage &image, qint64 timestampUs) {
     if (!video_) return;
@@ -816,13 +860,14 @@ void Editor::updateVideoFrames() {
     videoPlayback_->setAnnotatedFrames(frames);
 }
 void Editor::syncVideoGeometry() {
-    if (!videoPlayback_ || !hasDocument()) return;
+    if (!videoPlayback_ || canvas_->imageSize().isEmpty()) return;
     auto view = videoPlayback_->videoWidget();
     view->setGeometry(QRect(canvas_->mapTo(imageScroll_->viewport(), QPoint()), canvas_->size()));
 }
 VideoProject Editor::videoProject() {
     finishNoteEdit(); commitVideoFrame();
     if (!video_) throw std::runtime_error("No video project is open");
+    if (videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return *video_;
 }
 int Editor::totalAnnotationCount() {
@@ -831,6 +876,7 @@ int Editor::totalAnnotationCount() {
 }
 QByteArray Editor::projectBytes() {
     finishNoteEdit(); commitVideoFrame();
+    if (video_ && videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
 }
 QByteArray Editor::feedbackBytes(bool embed, bool compress) {
@@ -893,7 +939,7 @@ void Editor::changeEvent(QEvent *event) {
         stopViewportPan();
 }
 void Editor::panImage(QPoint delta) {
-    if (!hasDocument() || delta.isNull()) return;
+    if (canvas_->imageSize().isEmpty() || delta.isNull()) return;
     fitted_ = false;
     imageScroll_->setImageOrigin(imageScroll_->imageOrigin() + delta);
 }
@@ -903,12 +949,13 @@ void Editor::stopViewportPan() {
     imageScroll_->viewport()->unsetCursor();
 }
 void Editor::fit() {
-    if (!hasDocument())
+    if (canvas_->imageSize().isEmpty())
         return;
     fitted_ = true;
     QSize area = imageScroll_->viewport()->size() - QSize(36, 36);
-    canvas_->setZoom(std::min({1.0, double(std::max(80, area.width())) / doc_.image.width(),
-                               double(std::max(80, area.height())) / doc_.image.height()}));
+    const auto imageSize = canvas_->imageSize();
+    canvas_->setZoom(std::min({1.0, double(std::max(80, area.width())) / imageSize.width(),
+                               double(std::max(80, area.height())) / imageSize.height()}));
     if (layoutCanvas_)
         layoutCanvas_->setZoom(canvas_->zoom());
     imageScroll_->centerImage();
@@ -919,7 +966,7 @@ void Editor::zoom(double value) {
                           imageScroll_->viewport()->height() / 2.0));
 }
 void Editor::zoomAt(double value, QPointF viewportAnchor) {
-    if (!hasDocument())
+    if (canvas_->imageSize().isEmpty())
         return;
     if (value == 0) {
         fit();
@@ -1003,10 +1050,12 @@ void Editor::setMode(Canvas::Mode mode) {
 }
 void Editor::updateControls() {
     const bool playingVideo = video_ && (videoPlayback_->playing() || videoPlayback_->positioning());
+    const bool canAnnotate = hasDocument() || (videoPreview_ && !canvas_->imageSize().isEmpty());
     for (int i = 0; i < modes_.size(); i++)
-        modes_[i]->setEnabled(!playingVideo && hasDocument());
-    if (auto global = findChild<QPushButton *>("addGlobalNote")) global->setEnabled(!playingVideo && hasDocument());
+        modes_[i]->setEnabled(!playingVideo && canAnnotate);
+    if (auto global = findChild<QPushButton *>("addGlobalNote")) global->setEnabled(!playingVideo && canAnnotate);
     if (playingVideo) explosion_->setEnabled(false);
+    else if (videoPreview_) explosion_->setEnabled(canAnnotate);
     for (int i = 0; i < modes_.size(); i++)
         modes_[i]->setChecked(i == (componentEditing_ ? (layoutCanvas_->drawingMode() ? Canvas::Rectangle : Canvas::Smart) : canvas_->mode()));
     undo_->setEnabled(!undoHistory_.isEmpty());
@@ -1281,7 +1330,7 @@ void Editor::editNote(Note note, bool fresh, QPoint) {
     focusNote(note.id);
 }
 void Editor::addGlobalNote() {
-    if (!hasDocument()) return;
+    if (!ensureVideoAnnotationFrame()) return;
     Note note; note.isGlobal=true;
     editNote(note,true,{});
 }
@@ -1318,6 +1367,12 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
         return QWidget::eventFilter(object, event);
     if (object == canvas_ && (event->type() == QEvent::Move || event->type() == QEvent::Resize))
         syncVideoGeometry();
+    if (object == canvas_ && videoPreview_ && event->type() == QEvent::MouseButtonPress) {
+        const auto mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() == Qt::LeftButton && mouse->buttons() == Qt::LeftButton &&
+            !(mouse->modifiers() & Qt::AltModifier) &&
+            canvas_->mode() != Canvas::Adjust && !ensureVideoAnnotationFrame()) return true;
+    }
     if (object == canvas_ && video_ && (videoPlayback_->playing() || videoPlayback_->positioning()) &&
         (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
          event->type() == QEvent::MouseButtonDblClick) &&
@@ -1359,7 +1414,7 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
         }
         if (event->type() == QEvent::MouseButtonPress) {
             const auto mouse = static_cast<QMouseEvent *>(event);
-            if (hasDocument() && mouse->button() == Qt::MiddleButton &&
+            if (!canvas_->imageSize().isEmpty() && mouse->button() == Qt::MiddleButton &&
                 mouse->buttons() == Qt::MiddleButton) {
                 viewportPanning_ = true;
                 viewportPanPosition_ = mouse->globalPosition().toPoint();
@@ -1407,7 +1462,7 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
             return true;
         }
     }
-    if (object==imageScroll_->viewport() && event->type()==QEvent::Wheel && hasDocument()) {
+    if (object==imageScroll_->viewport() && event->type()==QEvent::Wheel && !canvas_->imageSize().isEmpty()) {
         const auto wheel=static_cast<QWheelEvent *>(event);
         QWidget *active=imageScroll_->widget();
         const auto point=active->mapFrom(imageScroll_->viewport(),wheel->position().toPoint());
@@ -1425,7 +1480,7 @@ void Editor::toast(const QString &message) {
 }
 void Editor::copyJsonText() {
     finishNoteEdit();
-    if (!hasDocument()) return;
+    if (!hasDocument() && !video_) return;
     try {
         QApplication::clipboard()->setText(QString::fromUtf8(feedbackBytes(true, true)));
         toast(tr("JSON 文本已复制，包含完整原图"));
@@ -1449,7 +1504,7 @@ void Editor::showJsonHelp() {
 }
 void Editor::copyJson() {
     finishNoteEdit();
-    if (!hasDocument()) return;
+    if (!hasDocument() && !video_) return;
     try {
         const QByteArray bytes = feedbackBytes(true, true);
         const QString path = writeFeedbackTempFile(bytes, preferences_.feedbackDir);
@@ -1572,6 +1627,7 @@ void Editor::resetLayoutTools() {
     wave_->hide();
 }
 void Editor::setExplosionActive(bool enabled) {
+    if (enabled && !ensureVideoAnnotationFrame()) return;
     if (!hasDocument() || enabled == explosionActive_)
         return;
     if (enabled) {
@@ -1668,7 +1724,7 @@ void Editor::setExplosionActive(bool enabled) {
 }
 void Editor::explode() {
     finishNoteEdit();
-    if (!hasDocument())
+    if (!ensureVideoAnnotationFrame())
         return;
     try {
         setExplosionActive(!explosionActive_);
@@ -1691,6 +1747,7 @@ void Editor::removeSelected() {
 }
 void Editor::copyImage() {
     finishNoteEdit();
+    if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (hasDocument()) {
         QApplication::clipboard()->setImage(previewImage(doc_));
         toast(tr("带批注图片已复制"));
@@ -1868,6 +1925,7 @@ void Editor::pasteImage() {
 }
 void Editor::saveImage(bool annotated) {
     finishNoteEdit();
+    if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (!hasDocument())
         return;
     const bool layoutPreview = !annotated && doc_.layout.has_value();
@@ -1894,7 +1952,7 @@ void Editor::saveImage(bool annotated) {
 }
 void Editor::exportJson() {
     finishNoteEdit();
-    if (!hasDocument())
+    if (!hasDocument() && !video_)
         return;
     QDialog dialog(this);
     dialog.setObjectName("feedbackDialog");

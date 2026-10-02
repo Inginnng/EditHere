@@ -42,7 +42,7 @@ connector/
 
 ### 视频标注反馈
 
-`edithere_open`、`edithere_annotate_start` 和 `edithere_annotate` 接受视频路径及保存的视频项目。为兼容已有客户端，路径参数仍叫 `imagePath`。用户在 EditHere 中播放或拖动时间轴，点击“暂停并标注”后批注当前画面；可以继续定位到其他时间点，最后一次提交全部已标注画面。
+`edithere_open`、`edithere_annotate_start` 和 `edithere_annotate` 接受视频路径及保存的视频项目。为兼容已有客户端，路径参数仍叫 `imagePath`。用户在 EditHere 中播放或拖动时间轴，点击“暂停”后查看当前画面；首次实际点、框或全局批注才保存截图并进入批注画布。选择模式、缩放、平移、保存项目或导出 JSON 不会为仅查看的画面新建截图；可以继续定位到其他时间点，最后一次提交全部已标注画面。
 
 视频导出使用 `schemaVersion: "video-feedback-1"`。`video.source` 引用源视频地址；`frames[n]` 保存帧 ID、相对视频起点的 `timestampMs` / `timestampUs` 和一份现有图片反馈结构 `feedback`。`frames[n].feedback.image` 是该帧的 Base64 截图，`frames[n].imageFile` 如存在则指向 JSON 同目录的外部截图。根 `objects` 是各帧对象的展开索引，每项附 `frameId`、`timestampMs`；这些对象已经出现在对应帧中，AI 应按一份要求执行，避免重复。
 

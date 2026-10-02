@@ -618,6 +618,7 @@ class AgentCliTests : public QObject {
         const auto playback = editor->findChild<VideoPlayback *>();
         QVERIFY(playback);
         QSignalSpy paused(playback, &VideoPlayback::framePaused);
+        QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
 
         QProcess open;
         open.start(videoCli, {"open", source});
@@ -632,8 +633,12 @@ class AgentCliTests : public QObject {
         QVERIFY(accepted["ok"].toBool());
         QVERIFY(accepted["accepted"].toBool());
         QCOMPARE(accepted["command"].toString(), QString("open"));
-        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !editor->document().image.isNull(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !playback->positioning(), 15000);
         QVERIFY(editor->hasVideo());
+        QVERIFY(!editor->hasDocument());
+        QVERIFY(playback->videoWidget()->isVisible());
+        QCOMPARE(captured.size(), 0);
+        QCOMPARE(editor->videoProject().frames.size(), 0);
         QCOMPARE(editor->videoProject().source, QFileInfo(source).absoluteFilePath());
         QVERIFY(playback->durationMs() > 3000);
 
@@ -643,7 +648,9 @@ class AgentCliTests : public QObject {
         annotate.start(videoCli, {"annotate", source, "--output", embeddedPath, "--timeout", "60"});
         QVERIFY2(annotate.waitForStarted(), qPrintable(annotate.errorString()));
         QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
-        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeAnnotate && !editor->document().image.isNull(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeAnnotate && !playback->positioning(), 15000);
+        QVERIFY(!editor->hasDocument());
+        QCOMPARE(captured.size(), 0);
         QCOMPARE(annotate.state(), QProcess::Running);
         QVERIFY(!QFileInfo::exists(embeddedPath));
 
@@ -654,21 +661,37 @@ class AgentCliTests : public QObject {
         playback->seek(firstTarget);
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek &&
                                 qAbs(paused.last()[1].toLongLong() / 1000 - firstTarget) < 1000, 15000);
-        const QPoint samePoint(editor->document().image.width() / 3, editor->document().image.height() / 3);
+        const QSize frameSize = playback->frameSize();
+        QVERIFY(!frameSize.isEmpty());
+        QCOMPARE(editor->canvas()->imageSize(), frameSize);
+        const QPoint samePoint(frameSize.width() / 3, frameSize.height() / 3);
+        QCOMPARE(captured.size(), 0);
+        const qint64 firstPts = paused.last()[1].toLongLong();
         const QString firstComment = "第一个时间点：放大标题文字";
         const QString secondComment = "第二个时间点：将此区域改为蓝色";
         const QString thirdComment = "第二个时间点：缩短这一行说明";
         addVideoPointNote(*editor, samePoint, firstComment);
+        QCOMPARE(captured.size(), 1);
+        QCOMPARE(captured.first()[1].toLongLong(), firstPts);
+        QCOMPARE(editor->document().image.size(), frameSize);
         beforeSeek = paused.size();
         playback->seek(secondTarget);
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek &&
                                 qAbs(paused.last()[1].toLongLong() / 1000 - secondTarget) < 1000, 15000);
+        QVERIFY(!editor->hasDocument());
+        QVERIFY(playback->videoWidget()->isVisible());
+        QCOMPARE(captured.size(), 1);
+        QCOMPARE(editor->videoProject().frames.size(), 1);
+        const qint64 secondPts = paused.last()[1].toLongLong();
         addVideoPointNote(*editor, samePoint, secondComment);
+        QCOMPARE(captured.size(), 2);
+        QCOMPARE(captured.last()[1].toLongLong(), secondPts);
         // Existing annotation badges take a 17-screen-pixel hit radius. Choose
         // a distinct image location that stays outside it at fitted zoom.
         const QPoint thirdPoint(editor->document().image.width() * 2 / 3,
                                 editor->document().image.height() / 2);
         addVideoPointNote(*editor, thirdPoint, thirdComment);
+        QCOMPARE(captured.size(), 2);
         QCOMPARE(editor->totalAnnotationCount(), 3);
         QCOMPARE(editor->videoProject().frames.size(), 2);
 
@@ -704,6 +727,7 @@ class AgentCliTests : public QObject {
         selectFile.start(20);
         saveDeadline.start(5000);
         const bool saved = editor->saveProject();
+        QCOMPARE(captured.size(), 2);
         selectFile.stop();
         saveDeadline.stop();
         QStandardPaths::setTestModeEnabled(oldTestMode);
@@ -722,6 +746,7 @@ class AgentCliTests : public QObject {
         QCOMPARE(result["imageIncluded"].toBool(), true);
         QCOMPARE(result["output"].toString(), embeddedPath);
         const auto embedded = QJsonDocument::fromJson(readFile(embeddedPath)).object();
+        QCOMPARE(captured.size(), 2);
         QCOMPARE(embedded["schemaVersion"].toString(), QString("video-feedback-1"));
         QCOMPARE(embedded["frames"].toArray().size(), 2);
         const auto objects = embedded["objects"].toArray();

@@ -10,6 +10,8 @@ class Canvas final : public QWidget {
     enum Mode { Smart, Point, Rectangle, Adjust };
     explicit Canvas(QWidget *parent = nullptr);
     void setDocument(Document *doc);
+    void setPreviewSize(QSize size);
+    QSize imageSize() const { return doc_ ? doc_->image.size() : previewSize_; }
     void setMode(Mode mode);
     Mode mode() const {
         return mode_;
@@ -70,6 +72,7 @@ class Canvas final : public QWidget {
     void rebuildDisplay();
     void stopMiddlePan(bool suppressMouse = false);
     Document *doc_ = nullptr;
+    QSize previewSize_;
     Mode mode_ = Smart;
     double zoom_ = 1;
     QString selected_;

@@ -76,6 +76,7 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
 }
 void Canvas::setDocument(Document *doc) {
     doc_ = doc;
+    if (doc) previewSize_ = {};
     layoutPreview_ = false;
     layoutImage_ = {};
     selected_.clear();
@@ -88,6 +89,11 @@ void Canvas::setDocument(Document *doc) {
     rebuildDisplay();
     setZoom(zoom_);
 }
+void Canvas::setPreviewSize(QSize size) {
+    setDocument(nullptr);
+    previewSize_ = size;
+    setZoom(zoom_);
+}
 void Canvas::setMode(Mode mode) {
     mode_ = mode;
     drawing_ = moving_ = panning_ = false;
@@ -98,9 +104,10 @@ void Canvas::setMode(Mode mode) {
 }
 void Canvas::setZoom(double value) {
     zoom_ = std::clamp(value, .03, 4.0);
-    if (doc_)
-        setFixedSize(std::max(1, qRound(doc_->image.width() * zoom_)),
-                     std::max(1, qRound(doc_->image.height() * zoom_)));
+    const auto size = imageSize();
+    if (!size.isEmpty())
+        setFixedSize(std::max(1, qRound(size.width() * zoom_)),
+                     std::max(1, qRound(size.height() * zoom_)));
     update();
 }
 void Canvas::select(const QString &id) {
@@ -183,8 +190,9 @@ void Canvas::rebuildDisplay() {
     }
 }
 QPoint Canvas::toImage(QPointF p) const {
-    return {std::clamp(qRound(p.x() / zoom_), 0, doc_->image.width()),
-            std::clamp(qRound(p.y() / zoom_), 0, doc_->image.height())};
+    const auto size = imageSize();
+    return {std::clamp(qRound(p.x() / zoom_), 0, std::max(0, size.width())),
+            std::clamp(qRound(p.y() / zoom_), 0, std::max(0, size.height()))};
 }
 QPointF Canvas::noteAnchor(const Note &note) const {
     for (const auto &movement : movements_)
@@ -345,7 +353,7 @@ void Canvas::stopMiddlePan(bool suppressMouse) {
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
     pointer_=e->position(); pointerInside_=true;
-    if (!doc_)
+    if (!doc_ && previewSize_.isEmpty())
         return;
     if ((suppressMouse_ && e->buttons() == e->button()) ||
         (middlePanning_ && e->button() == Qt::MiddleButton &&
@@ -385,6 +393,14 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         panning_ = true;
         panStart_ = e->globalPosition().toPoint();
         windowStart_ = window()->pos();
+        return;
+    }
+    if (!doc_) {
+        if (mode_ == Adjust) {
+            panning_ = true;
+            panStart_ = e->globalPosition().toPoint();
+            windowStart_ = window()->pos();
+        }
         return;
     }
     QPoint point = toImage(e->position());
@@ -452,8 +468,6 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     pointer_=e->position(); pointerInside_=true; update();
-    if (!doc_)
-        return;
     if (middlePanning_ || suppressMouse_) {
         if (!middlePanning_ || e->buttons() != Qt::MiddleButton)
             stopMiddlePan(e->buttons() != Qt::NoButton);
@@ -473,6 +487,7 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
             window()->move(windowStart_ + e->globalPosition().toPoint() - panStart_);
         return;
     }
+    if (!doc_) return;
     QPoint p = toImage(e->position());
     if (!moving_ && !drawing_)
         updateAnnotationHover(e->position());
@@ -500,12 +515,13 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         e->accept();
         return;
     }
-    if (e->button() != Qt::LeftButton || !doc_)
+    if (e->button() != Qt::LeftButton)
         return;
     if (panning_) {
         panning_ = false;
         return;
     }
+    if (!doc_) return;
     if (moving_) {
         moving_ = false;
         if (original_.point != preview_.point || original_.rect != preview_.rect) {
@@ -561,7 +577,7 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
     }
 }
 void Canvas::wheelEvent(QWheelEvent *e) {
-    if (!doc_ || drawing_ || moving_ || middlePanning_ || suppressMouse_) {
+    if (imageSize().isEmpty() || drawing_ || moving_ || middlePanning_ || suppressMouse_) {
         e->accept();
         return;
     }
@@ -570,7 +586,7 @@ void Canvas::wheelEvent(QWheelEvent *e) {
         e->ignore();
         return;
     }
-    if (mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
+    if (doc_ && mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
         picker_.update(displayCandidates_, toImage(e->position()));
         const QPoint point = toImage(e->position());
         const bool specific = std::any_of(displayCandidates_.cbegin(), displayCandidates_.cend(),

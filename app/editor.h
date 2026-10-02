@@ -130,6 +130,8 @@ class Editor final : public QWidget {
     void clearVideo();
     void commitVideoFrame();
     void displayVideoFrame(const QImage &image, qint64 timestampUs);
+    void showVideoPreview(const QSize &size, qint64 timestampUs);
+    bool ensureVideoAnnotationFrame();
     void reviewVideoFrame(qint64 timestampUs);
     void updateVideoFrames();
     void syncVideoGeometry();
@@ -148,6 +150,7 @@ class Editor final : public QWidget {
     std::optional<VideoProject> video_;
     qint64 videoFrameUs_ = -1;
     bool switchingVideoFrame_ = false;
+    bool videoPreview_ = false;
     VideoPlayback *videoPlayback_ = nullptr;
     AppSettings preferences_;
     struct Snapshot {

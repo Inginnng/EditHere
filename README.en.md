@@ -59,7 +59,7 @@ The current source version is **0.10.0 for local testing**, not yet publicly rel
 | --- | --- |
 | **Capture toolbar** | Start a capture with a global shortcut. Hover to select a region, use the scroll wheel to switch the selection scope, or draw a selection manually. Releasing the mouse settles the region and brings up a toolbar above it and a column of style tools beside it: annotate, recognise text, pin, save, copy or pick a colour, with corner radius and shadow in the style column. |
 | **Pin and recognise** | Pin a region on top of everything else to work against it, and read the text inside a region and copy it line by line. |
-| **Annotate video timestamps** | Open a video, play or seek along the timeline, then pause to annotate the current frame. Save comments and screenshots across timestamps and export them together for AI. |
+| **Annotate video timestamps** | Open a video, play or seek along the timeline, then pause to inspect the frame. A screenshot is saved when you first add an annotation. Save comments and screenshots across timestamps and export them together for AI. |
 | **Connect each comment to its location** | Combine point, rectangle, and global annotations. Write comments in the sidebar and use numbered markers to find the corresponding locations on the image. |
 | **Rearrange the layout directly** | Enable “Explode” (大爆炸) to drag or resize image regions, or enter exact coordinates and dimensions. You can also annotate the regions you have adjusted. |
 | **Hand feedback to AI** | Copy or export JSON. With the companion skill and CLI, AI can open an image or video, wait for you to explicitly finish annotating, and then receive your feedback to continue editing. |

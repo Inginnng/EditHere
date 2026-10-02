@@ -117,7 +117,7 @@ VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
         if (state == QMediaPlayer::LoadedMedia && initialSeek_) {
             initialSeek_ = false;
             seek(initialPositionMs_);
-        } else if (state == QMediaPlayer::EndOfMedia && lastFrame_.isValid()) freeze();
+        } else if (state == QMediaPlayer::EndOfMedia && lastFrame_.isValid()) settlePausedFrame();
     });
     connect(player_, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error, const QString &error) {
         playing_ = false; seeking_ = false; freezeNext_ = false; initialSeek_ = false;
@@ -130,6 +130,12 @@ VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
 }
 QWidget *VideoPlayback::videoWidget() const { return view_; }
 bool VideoPlayback::playing() const { return playing_; }
+QSize VideoPlayback::frameSize() const {
+    if (!lastFrame_.isValid()) return {};
+    auto size = lastFrame_.size();
+    if (int(lastFrame_.rotation()) % 180) size.transpose();
+    return size;
+}
 qint64 VideoPlayback::positionMs() const {
     if (seeking_) return seekTargetMs_;
     return !playing() && !seeking_ && pausedTimeUs_ >= 0 ? pausedTimeUs_ / 1000 : player_->position();
@@ -149,6 +155,7 @@ void VideoPlayback::open(const QString &source, qint64 positionMs) {
 }
 void VideoPlayback::clear() {
     playing_ = false;
+    captured_ = false;
     audio_->setMuted(true);
     player_->stop(); player_->setSource({}); lastFrame_ = {};
     seeking_ = freezeNext_ = initialSeek_ = false;
@@ -164,6 +171,7 @@ void VideoPlayback::toggle() {
     else {
         if (player_->source().isEmpty()) return;
         playing_ = true;
+        captured_ = false;
         stage_ = Stage::Playing;
         freezeNext_ = false; seeking_ = false;
         pausedTimeUs_ = -1;
@@ -175,16 +183,17 @@ void VideoPlayback::pause() {
     playing_ = false;
     audio_->setMuted(true);
     player_->pause();
-    if (!seeking_ && lastFrame_.isValid()) freeze();
+    if (!seeking_ && lastFrame_.isValid()) settlePausedFrame();
     else { freezeNext_ = true; retranslate(); }
 }
 void VideoPlayback::seek(qint64 positionMs) {
     if (player_->source().isEmpty() || !player_->isSeekable()) return;
     // Decoding a seek can require play(), but it is not a user playback action.
-    // Keep the current annotated canvas visible until the target frame is ready.
+    // Transport remains on the same video surface; no screenshot is read back.
     if (playing_) pause();
     seekTargetMs_ = std::clamp<qint64>(positionMs, 0, std::max<qint64>(0, durationMs() - 1));
     seeking_ = true; freezeNext_ = true;
+    captured_ = false;
     audio_->setMuted(true);
     emit positioningStarted();
     stage_ = Stage::Seeking; retranslate();
@@ -193,6 +202,7 @@ void VideoPlayback::seek(qint64 positionMs) {
 }
 void VideoPlayback::reviewAt(qint64 timestampUs) {
     playing_ = false;
+    captured_ = true;
     audio_->setMuted(true);
     freezeNext_ = false; seeking_ = false; initialSeek_ = false;
     pausedTimeUs_ = timestampUs;
@@ -213,25 +223,41 @@ void VideoPlayback::receiveFrame(const QVideoFrame &frame) {
     lastFrame_ = frame;
     if (freezeNext_ && !initialSeek_) {
         seeking_ = false; freezeNext_ = false;
-        player_->pause(); freeze();
+        player_->pause(); settlePausedFrame();
+    } else if (!playing_ && !initialSeek_ && !seeking_ && !captured_ && pts >= 0 && pts != pausedTimeUs_) {
+        // A queued frame can finish presentation after pause(). Keep metadata
+        // paired with that final presented frame without reading pixels back.
+        settlePausedFrame();
     }
 }
-void VideoPlayback::freeze() {
+void VideoPlayback::settlePausedFrame() {
     playing_ = false;
     audio_->setMuted(true);
-    retranslate();
     if (!lastFrame_.isValid()) return;
-    QImage image = lastFrame_.toImage();
-    if (image.isNull()) { emit failed(tr("无法读取当前视频画面")); return; }
-    const int rotation = int(lastFrame_.rotation());
-    if (rotation) image = image.transformed(QTransform().rotate(rotation));
-    if (lastFrame_.mirrored()) image = image.mirrored(true, false);
-    const qint64 pts = lastFrame_.startTime();
-    if (pts < 0) { emit failed(tr("当前视频没有可用的画面时间戳，无法安全关联批注")); return; }
-    pausedTimeUs_ = pts;
+    pausedTimeUs_ = lastFrame_.startTime();
     stage_ = Stage::Paused; retranslate();
-    emit framePaused(image, pts);
+    emit framePaused(frameSize(), pausedTimeUs_);
     updateTime();
+}
+bool VideoPlayback::captureCurrentFrame() {
+    if (playing_ || positioning() || !lastFrame_.isValid()) return false;
+    if (captured_) return true;
+    const QVideoFrame captured = lastFrame_;
+    const qint64 pts = captured.startTime();
+    if (pts < 0) {
+        emit frameCaptureFailed(tr("当前视频没有可用的画面时间戳，无法安全关联批注"));
+        return false;
+    }
+    QImage image = captured.toImage();
+    if (image.isNull()) { emit frameCaptureFailed(tr("无法读取当前视频画面")); return false; }
+    const int rotation = int(captured.rotation());
+    if (rotation) image = image.transformed(QTransform().rotate(rotation));
+    if (captured.mirrored()) image = image.mirrored(true, false);
+    captured_ = true;
+    pausedTimeUs_ = pts;
+    emit frameCaptured(image, pts);
+    updateTime();
+    return true;
 }
 void VideoPlayback::setAnnotatedFrames(const QVector<QPair<qint64, int>> &frames) {
     const QSignalBlocker blocker(frames_);
@@ -259,9 +285,9 @@ void VideoPlayback::updateTime() {
     timeline_->setEnabled(player_->isSeekable());
 }
 void VideoPlayback::retranslate() {
-    play_->setText(playing() ? tr("暂停并标注") : tr("播放"));
+    play_->setText(playing() ? tr("暂停") : tr("播放"));
     // Reserve both labels so neither language nor transport state moves the timeline.
-    const int labelWidth = std::max(fontMetrics().horizontalAdvance(tr("暂停并标注")),
+    const int labelWidth = std::max(fontMetrics().horizontalAdvance(tr("暂停")),
                                    fontMetrics().horizontalAdvance(tr("播放")));
     play_->setFixedWidth(labelWidth + 32);
     play_->setEnabled(!player_->source().isEmpty() && !initialSeek_);
@@ -269,7 +295,7 @@ void VideoPlayback::retranslate() {
     case Stage::Opening: status_->setText(tr("正在打开视频…")); break;
     case Stage::Seeking: status_->setText(tr("正在定位画面…")); break;
     case Stage::Playing: status_->setText(tr("播放中 · 暂停后即可批注")); break;
-    case Stage::Paused: status_->setText(tr("暂停后圈选、点选或写批注；橙色标记是已有批注画面。")); break;
+    case Stage::Paused: status_->setText(tr("已暂停 · 开始批注时保存当前画面")); break;
     case Stage::Saved: status_->setText(tr("已保存画面 · %1").arg(videoTimeLabel(pausedTimeUs_ / 1000))); break;
     case Stage::Error: status_->setText(tr("视频无法播放：%1。已保存的批注画面仍可查看。").arg(errorText_)); break;
     case Stage::Idle: status_->clear(); break;

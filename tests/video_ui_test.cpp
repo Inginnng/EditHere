@@ -11,10 +11,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QImage>
 #include <QLabel>
+#include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
@@ -25,6 +27,8 @@
 #include <QTest>
 #include <QTimer>
 #include <QTranslator>
+#include <QUrl>
+#include <QWindow>
 #include <functional>
 using namespace h2d;
 namespace {
@@ -200,8 +204,14 @@ class VideoUiTests : public QObject {
         auto playback = editor.findChild<VideoPlayback *>();
         QVERIFY(playback);
         QSignalSpy paused(playback, &VideoPlayback::framePaused);
+        QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
         editor.loadMedia(source());
-        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && editor.hasDocument(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !playback->positioning(), 15000);
+        QCOMPARE(paused.last()[0].toSize(), QSize(1920, 1080));
+        QCOMPARE(playback->frameSize(), QSize(1920, 1080));
+        QCOMPARE(editor.canvas()->imageSize(), QSize(1920, 1080));
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 0);
         QTest::qWait(150); // Initial fit and the window's first layout must settle.
         auto well = static_cast<ImageArea *>(editor.findChild<QScrollArea *>("imageWell"));
         auto sidebar = editor.findChild<QWidget *>("detailsStack");
@@ -215,6 +225,7 @@ class VideoUiTests : public QObject {
         auto video = playback->videoWidget();
         auto canvas = editor.canvas();
         QCOMPARE(video->parentWidget(), viewport);
+        QVERIFY(video->isVisible());
 
         // A paused seek must preserve a deliberately non-fitted and panned view,
         // including the user's collapsed sidebar, throughout decoder activity.
@@ -227,13 +238,19 @@ class VideoUiTests : public QObject {
         const double savedZoom = canvas->zoom();
         const QPointF savedOrigin = well->imageOrigin();
         const QString pausedLabel = play->text();
-        const QVector<QWidget *> chrome{play, timeline, well, viewport, sidebar, canvas};
+        const QVector<QWidget *> chrome{play, timeline, well, viewport, sidebar, canvas, video};
+        const auto previewIssue = [&] {
+            if (!video->isVisible()) return QString("Ordinary preview hid the player");
+            if (editor.hasDocument() || !captured.isEmpty()) return QString("Ordinary preview captured a screenshot");
+            return QString();
+        };
         const int beforeSeek = paused.size();
         const qint64 oneSecondTarget = playback->positionMs() + 1000;
         {
             GeometryProbe probe(editor, chrome, sidebar, [&] {
                 if (play->text() != pausedLabel) return QString("Paused seek flashed the play/pause label");
                 if (playback->playing()) return QString("Paused seek exposed decoder activity as user playback");
+                if (const auto issue = previewIssue(); !issue.isEmpty()) return issue;
                 if (canvas->zoom() != savedZoom || well->imageOrigin() != savedOrigin)
                     return QString("Paused seek reset image zoom or origin");
                 return QString();
@@ -271,7 +288,7 @@ class VideoUiTests : public QObject {
         QCOMPARE(marginColour(), expectedWell);
         const int beforePause = paused.size();
         {
-            GeometryProbe probe(editor, chrome, sidebar);
+            GeometryProbe probe(editor, chrome, sidebar, previewIssue);
             QTest::mouseClick(play, Qt::LeftButton);
             QTRY_VERIFY(playback->playing() && video->isVisible());
             QCOMPARE(video->geometry(), canvasBounds);
@@ -283,7 +300,9 @@ class VideoUiTests : public QObject {
             video->setFocus();
             QTest::keyClick(video, Qt::Key_Space);
             QTRY_VERIFY_WITH_TIMEOUT(!playback->playing() && paused.size() > beforePause, 5000);
-            QTRY_VERIFY(!video->isVisible());
+            QTRY_VERIFY(video->isVisible());
+            QVERIFY(!editor.hasDocument());
+            QCOMPARE(captured.size(), 0);
             QCOMPARE(play->text(), pausedLabel);
             QTest::qWait(80);
             QCOMPARE(marginColour(), expectedWell);
@@ -297,8 +316,9 @@ class VideoUiTests : public QObject {
         const int beforeBurst = paused.size();
         {
             GeometryProbe probe(editor, chrome, sidebar, [&] {
-                return play->text() == pausedLabel && !playback->playing()
-                    ? QString() : QString("Rapid seeks changed the user's paused state");
+                if (play->text() != pausedLabel || playback->playing())
+                    return QString("Rapid seeks changed the user's paused state");
+                return previewIssue();
             });
             QTest::mouseClick(forward, Qt::LeftButton);
             QTest::mouseClick(forward, Qt::LeftButton);
@@ -335,6 +355,225 @@ class VideoUiTests : public QObject {
         QCOMPARE(canvas->zoom(), savedZoom);
         QCOMPARE(well->imageOrigin(), savedOrigin);
         QVERIFY(sidebar->isHidden());
+        QVERIFY(video->isVisible());
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 0);
+        // Saving/exporting an ordinary preview must not silently read back a
+        // frame or turn an unannotated video into an exportable screenshot.
+        QCOMPARE(editor.videoProject().frames.size(), 0);
+        const auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(feedback["frames"].toArray().size(), 0);
+        QCOMPARE(feedback["objects"].toArray().size(), 0);
+        QCOMPARE(QJsonDocument::fromJson(editor.projectBytes()).object()["frames"].toArray().size(), 0);
+        QCOMPARE(captured.size(), 0);
+    }
+    void firstAnnotationCapturesOnlyOnce_data() {
+        QTest::addColumn<QString>("kind");
+        QTest::newRow("point") << QString("point");
+        QTest::newRow("rectangle") << QString("rectangle");
+        QTest::newRow("global") << QString("global");
+        QTest::newRow("global-shortcut") << QString("global-shortcut");
+    }
+    void firstAnnotationCapturesOnlyOnce() {
+        if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
+        QFETCH(QString, kind);
+        QTemporaryDir feedbackFiles;
+        QVERIFY(feedbackFiles.isValid());
+        Editor editor;
+        auto settings = defaultSettings(); settings.confirmBeforeDiscard = false;
+        settings.feedbackDir = feedbackFiles.path();
+        if (kind == "global-shortcut")
+            settings.shortcuts["addGlobalNote"] = QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G);
+        editor.setPreferences(settings);
+        editor.setShortcuts(settings.shortcuts);
+        auto playback = editor.findChild<VideoPlayback *>(); QVERIFY(playback);
+        QSignalSpy paused(playback, &VideoPlayback::framePaused);
+        QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
+        editor.loadMedia(source());
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !playback->positioning(), 15000);
+        QTest::qWait(150);
+        auto canvas = editor.canvas();
+        auto video = playback->videoWidget();
+        auto well = static_cast<ImageArea *>(editor.findChild<QScrollArea *>("imageWell"));
+        QVERIFY(well);
+        QCOMPARE(canvas->imageSize(), QSize(1920, 1080));
+        QVERIFY(video->isVisible());
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 0);
+        const int beforeSeek = paused.size();
+        playback->seek(65000);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek && !playback->positioning() &&
+            qAbs(paused.last()[1].toLongLong() / 1000 - 65000) < 150, 15000);
+        QTest::qWait(80); // Let any already queued presentation frame finish settling.
+        QCOMPARE(captured.size(), 0);
+        QVERIFY(!editor.hasDocument());
+        QVERIFY(video->isVisible());
+        QCOMPARE(editor.videoProject().frames.size(), 0);
+        QCOMPARE(QJsonDocument::fromJson(editor.agentFeedback(true)).object()["frames"].toArray().size(), 0);
+        QCOMPARE(QJsonDocument::fromJson(editor.projectBytes()).object()["frames"].toArray().size(), 0);
+        QCOMPARE(captured.size(), 0);
+
+        const qint64 displayedPts = paused.last()[1].toLongLong();
+        const double zoom = canvas->zoom();
+        const QPointF origin = well->imageOrigin();
+        const QRect imageBounds(canvas->mapTo(well->viewport(), QPoint()), canvas->size());
+        const QPoint point(640, 360);
+        const QRect rectangle(765, 800, 355, 90);
+        QRect expectedRectangle;
+        QPoint rectangleStart, rectangleEnd;
+        if (kind == "point" || kind == "rectangle") {
+            auto mode = editor.findChild<QPushButton *>(kind == "point" ? "mode_point" : "mode_rect");
+            QVERIFY(mode && mode->isEnabled());
+            mode->click();
+            QCOMPARE(captured.size(), 0); // Selecting a tool only arms it.
+            QVERIFY(!editor.hasDocument());
+            if (kind == "point") {
+                const QPoint canvasPoint = (QPointF(point) * zoom).toPoint();
+                QTest::mouseClick(canvas, Qt::LeftButton, Qt::AltModifier, canvasPoint);
+                QCOMPARE(captured.size(), 0); // The pan modifier must not begin an annotation.
+                if (QGuiApplication::platformName() == "windows") {
+                    QVERIFY(editor.windowHandle());
+                    // Deliver through the native window's widget hit-testing,
+                    // including the still-visible QVideoWidget overlay.
+                    QTest::mouseClick(editor.windowHandle(), Qt::LeftButton, Qt::NoModifier,
+                                      canvas->mapTo(&editor, canvasPoint));
+                    qInfo("First point annotation delivered through QWindow hit-testing");
+                } else {
+                    QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvasPoint);
+                    qInfo("First point annotation delivered directly to Canvas on non-Windows platform");
+                }
+            } else {
+                rectangleStart = (QPointF(rectangle.topLeft()) * zoom).toPoint();
+                // dragRect uses an exclusive right/bottom boundary. Account
+                // exactly for the integer screen pixels sent to the widget,
+                // instead of widening a tolerance around the nominal image box.
+                rectangleEnd = (QPointF(rectangle.x() + rectangle.width(),
+                                       rectangle.y() + rectangle.height()) * zoom).toPoint();
+                const QPoint imageStart(qRound(rectangleStart.x() / zoom), qRound(rectangleStart.y() / zoom));
+                const QPoint imageEnd(qRound(rectangleEnd.x() / zoom), qRound(rectangleEnd.y() / zoom));
+                expectedRectangle = QRect(imageStart, QSize(imageEnd.x() - imageStart.x(),
+                                                            imageEnd.y() - imageStart.y()));
+                QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, rectangleStart);
+                QCOMPARE(captured.size(), 1); // Read back before passing on the original press.
+                QTest::mouseMove(canvas, rectangleEnd);
+                QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, rectangleEnd);
+            }
+        } else {
+            auto global = editor.findChild<QPushButton *>("addGlobalNote");
+            QVERIFY(global && global->isEnabled());
+            if (kind == "global-shortcut") {
+                canvas->setFocus();
+                QTest::keyClick(canvas, Qt::Key_G, Qt::ControlModifier | Qt::ShiftModifier);
+            } else global->click();
+        }
+        QTRY_COMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(captured.size(), 1);
+        QCOMPARE(captured.first()[1].toLongLong(), displayedPts);
+        QCOMPARE(editor.document().image,
+                 qvariant_cast<QImage>(captured.first()[0]).convertToFormat(editor.document().image.format()));
+        QCOMPARE(editor.document().image.size(), QSize(1920, 1080));
+        QVERIFY(editor.hasDocument());
+        QVERIFY(!video->isVisible());
+        QCOMPARE(canvas->zoom(), zoom);
+        QCOMPARE(well->imageOrigin(), origin);
+        QCOMPARE(QRect(canvas->mapTo(well->viewport(), QPoint()), canvas->size()), imageBounds);
+        const auto note = editor.document().notes.first();
+        if (kind == "point") {
+            QVERIFY(note.isPoint && !note.isGlobal);
+            QVERIFY(qAbs(note.point.x() - point.x()) <= 1 && qAbs(note.point.y() - point.y()) <= 1);
+        } else if (kind == "rectangle") {
+            QVERIFY(!note.isPoint && !note.isGlobal);
+            const QString detail = QString("actual=(%1,%2,%3,%4), expected quantized=(%5,%6,%7,%8), "
+                                           "nominal=(%9,%10,%11,%12), zoom=%13, screen=(%14,%15)->(%16,%17)")
+                .arg(note.rect.x()).arg(note.rect.y()).arg(note.rect.width()).arg(note.rect.height())
+                .arg(expectedRectangle.x()).arg(expectedRectangle.y()).arg(expectedRectangle.width()).arg(expectedRectangle.height())
+                .arg(rectangle.x()).arg(rectangle.y()).arg(rectangle.width()).arg(rectangle.height()).arg(zoom, 0, 'g', 16)
+                .arg(rectangleStart.x()).arg(rectangleStart.y()).arg(rectangleEnd.x()).arg(rectangleEnd.y());
+            QVERIFY2(note.rect == expectedRectangle, qPrintable(detail));
+        } else QVERIFY(note.isGlobal);
+        auto firstEdit = editor.findChild<QPlainTextEdit *>("noteText_" + note.id);
+        QVERIFY(firstEdit); firstEdit->setPlainText("First annotation retains its original press and PTS");
+        const auto firstFeedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(firstFeedback["frames"].toArray().size(), 1);
+        QCOMPARE(firstFeedback["objects"].toArray().size(), 1);
+        QCOMPARE(firstFeedback["frames"].toArray().first().toObject()["timestampUs"].toInteger(), displayedPts);
+        QCOMPARE(firstFeedback["objects"].toArray().first().toObject()["timestampMs"].toInteger(), displayedPts / 1000);
+
+        // A second annotation on the captured frame reuses its image.
+        editor.findChild<QPushButton *>("addGlobalNote")->click();
+        QTRY_COMPARE(editor.document().notes.size(), 2);
+        auto secondEdit = editor.findChild<QPlainTextEdit *>("noteText_" + editor.document().notes.last().id);
+        QVERIFY(secondEdit); secondEdit->setPlainText("Second annotation reuses the frame");
+        const auto savedFeedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(savedFeedback["objects"].toArray().size(), 2);
+        QCOMPARE(captured.size(), 1);
+        const int beforeReplayPause = paused.size();
+        playback->toggle();
+        QTRY_VERIFY(playback->playing() && video->isVisible());
+        QVERIFY(!editor.hasDocument());
+        QTest::qWait(180);
+        playback->pause();
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeReplayPause && !playback->playing(), 5000);
+        QVERIFY(video->isVisible());
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 1);
+        const int beforeSecondSeek = paused.size();
+        playback->seek(105000);
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSecondSeek && !playback->positioning() &&
+            qAbs(paused.last()[1].toLongLong() / 1000 - 105000) < 150, 15000);
+        QVERIFY(video->isVisible());
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 1);
+        const auto unchanged = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(unchanged["frames"], savedFeedback["frames"]);
+        QCOMPARE(unchanged["objects"], savedFeedback["objects"]);
+        QCOMPARE(editor.videoProject().frames.size(), 1);
+        QCOMPARE(QJsonDocument::fromJson(editor.projectBytes()).object()["frames"].toArray().size(), 1);
+        QCOMPARE(captured.size(), 1);
+        if (kind == "point") {
+            // Exercise the actual toolbar exports while preview has no image
+            // document. A hasDocument() guard must not discard saved video notes.
+            auto copyText = editor.findChild<QPushButton *>("copyJsonText");
+            auto copyFile = editor.findChild<QPushButton *>("copyJson");
+            QVERIFY(copyText && copyFile && copyText->isEnabled() && copyFile->isEnabled());
+            QApplication::clipboard()->clear();
+            QTest::qWait(150); // Allow Windows OLE ownership messages to settle.
+            copyText->click();
+            const auto textFeedback = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8()).object();
+            QCOMPARE(textFeedback["schemaVersion"].toString(), QString("video-feedback-1"));
+            QCOMPARE(textFeedback["frames"].toArray().size(), 1);
+            QCOMPARE(textFeedback["objects"], savedFeedback["objects"]);
+            QCOMPARE(captured.size(), 1);
+            QVERIFY(video->isVisible());
+            QVERIFY(!editor.hasDocument());
+
+            QApplication::clipboard()->clear();
+            QTest::qWait(150);
+            QString copiedPath;
+            const QString feedbackPrefix = QDir::cleanPath(feedbackFiles.path()) + '/';
+            // Another application can briefly hold the Windows clipboard OLE
+            // lock (0x800401d0). Retry only this actual toolbar action, with a
+            // short fixed bound; never inspect another application's file URL.
+            for (int attempt = 0; attempt < 5 && copiedPath.isEmpty(); ++attempt) {
+                copyFile->click();
+                QTest::qWait(150);
+                const auto mime = QApplication::clipboard()->mimeData();
+                if (!mime || !mime->hasUrls() || mime->urls().size() != 1 ||
+                    !mime->urls().first().isLocalFile()) continue;
+                const QString candidate = QDir::cleanPath(QFileInfo(mime->urls().first().toLocalFile()).absoluteFilePath());
+                if (candidate.startsWith(feedbackPrefix, Qt::CaseInsensitive)) copiedPath = candidate;
+            }
+            QVERIFY2(!copiedPath.isEmpty(), "Toolbar JSON copy did not provide this test's file URL within five attempts");
+            QFile copiedFile(copiedPath);
+            QVERIFY(copiedFile.open(QIODevice::ReadOnly));
+            const auto fileFeedback = QJsonDocument::fromJson(copiedFile.readAll()).object();
+            QCOMPARE(fileFeedback["schemaVersion"].toString(), QString("video-feedback-1"));
+            QCOMPARE(fileFeedback["frames"].toArray().size(), 1);
+            QCOMPARE(fileFeedback["objects"], savedFeedback["objects"]);
+            QCOMPARE(captured.size(), 1);
+            QVERIFY(video->isVisible());
+            QVERIFY(!editor.hasDocument());
+        }
     }
     void playbackSeekAnnotateAndReopen() {
         if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
@@ -343,9 +582,12 @@ class VideoUiTests : public QObject {
         auto settings = defaultSettings(); settings.confirmBeforeDiscard = false; editor.setPreferences(settings);
         auto playback = editor.findChild<VideoPlayback *>(); QVERIFY(playback);
         QSignalSpy paused(playback, &VideoPlayback::framePaused);
+        QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
         editor.loadMedia(source());
-        QTRY_VERIFY_WITH_TIMEOUT(paused.size() >= 1 && !editor.document().image.isNull(), 15000);
-        QCOMPARE(editor.document().image.size(), QSize(1920, 1080));
+        QTRY_VERIFY_WITH_TIMEOUT(paused.size() >= 1 && !playback->positioning(), 15000);
+        QCOMPARE(playback->frameSize(), QSize(1920, 1080));
+        QVERIFY(!editor.hasDocument());
+        QCOMPARE(captured.size(), 0);
         QVERIFY(playback->durationMs() > 100000);
         QVERIFY(!playback->playing());
         QVERIFY(editor.findChild<QSlider *>("videoTimeline")->isEnabled());
@@ -361,7 +603,12 @@ class VideoUiTests : public QObject {
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > timelineCount, 15000);
         QVERIFY(qAbs(paused.last()[1].toLongLong() / 1000 - 65000) < 300);
         QCOMPARE(playback->positionMs(), paused.last()[1].toLongLong() / 1000);
+        QCOMPARE(captured.size(), 0);
+        const qint64 firstPts = paused.last()[1].toLongLong();
         rectangleNote(editor, {765, 800, 355, 90}, QString::fromUtf8("将底部“只有像素。”这行文字放大 20%，并向上移动 30 像素。"));
+        QCOMPARE(captured.size(), 1);
+        QCOMPARE(captured.first()[1].toLongLong(), firstPts);
+        QCOMPARE(editor.document().image.size(), QSize(1920, 1080));
         const auto firstFrame = editor.videoProject().frames.first();
         const int oldCount = paused.size();
         auto playButton = editor.findChild<QPushButton *>("videoPlayPause");
@@ -370,11 +617,20 @@ class VideoUiTests : public QObject {
         QTest::qWait(200);
         QTest::mouseClick(playButton, Qt::LeftButton);
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > oldCount, 5000);
+        QVERIFY(!editor.hasDocument());
+        QVERIFY(playback->videoWidget()->isVisible());
+        QCOMPARE(captured.size(), 1);
+        QCOMPARE(editor.videoProject().frames.size(), 1);
         const int beforeSeek = paused.size();
         playback->seek(105000);
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeSeek && paused.last()[1].toLongLong() > 104000000, 15000);
+        QCOMPARE(captured.size(), 1);
+        const qint64 secondPts = paused.last()[1].toLongLong();
         pointNote(editor, {1188, 528}, QString::fromUtf8("把红色牛奶盒换成蓝色包装，保留位置和大小。"));
+        QCOMPARE(captured.size(), 2);
+        QCOMPARE(captured.last()[1].toLongLong(), secondPts);
         rectangleNote(editor, {325, 593, 143, 55}, QString::fromUtf8("把左侧“第 3 轮”标签改成“第 3 次修改”，保持原来的灰白色。"));
+        QCOMPARE(captured.size(), 2);
         const auto json = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
         QCOMPARE(json["frames"].toArray().size(), 2);
         QCOMPARE(json["objects"].toArray().size(), 3);

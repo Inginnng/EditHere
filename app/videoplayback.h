@@ -20,6 +20,9 @@ class VideoPlayback final : public QWidget {
     void toggle();
     void pause();
     void seek(qint64 positionMs);
+    bool captureCurrentFrame();
+    void cancelFrameCapture() { captured_ = false; }
+    QSize frameSize() const;
     void reviewAt(qint64 timestampUs);
     void setAnnotatedFrames(const QVector<QPair<qint64, int>> &frames);
     bool playing() const;
@@ -30,14 +33,16 @@ class VideoPlayback final : public QWidget {
   signals:
     void playbackStarted();
     void positioningStarted();
-    void framePaused(const QImage &image, qint64 timestampUs);
+    void framePaused(const QSize &size, qint64 timestampUs);
+    void frameCaptured(const QImage &image, qint64 timestampUs);
+    void frameCaptureFailed(const QString &message);
     void metadataChanged(qint64 durationMs);
     void reviewRequested(qint64 timestampUs);
     void sourceRelocationRequested();
     void failed(const QString &message);
   private:
     void receiveFrame(const QVideoFrame &frame);
-    void freeze();
+    void settlePausedFrame();
     void updateTime();
     QMediaPlayer *player_;
     QAudioOutput *audio_;
@@ -49,6 +54,7 @@ class VideoPlayback final : public QWidget {
     QVideoFrame lastFrame_;
     bool freezeNext_ = false;
     bool playing_ = false;
+    bool captured_ = false;
     bool seeking_ = false;
     qint64 seekTargetMs_ = 0;
     qint64 initialPositionMs_ = 0;
