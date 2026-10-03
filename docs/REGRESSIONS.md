@@ -15,7 +15,7 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
-## 稳定性排查（2026-10-01，未发布）
+## 稳定性排查（0.10.0）
 
 本轮以能复现的运行和数据稳定性缺陷为依据。以下测试在 Windows 本地构建执行；macOS/Linux 的平台专属行为仍需各自 CI 或实机验证。
 
@@ -38,7 +38,7 @@
 | REG-135 | 更新测试在 CTest 中超时，直接写结果文件却已完成；测试刻意启动损坏 EXE 会触发 Windows 加载器行为。改成确认期间移除已验证文件，仍验证真实启动失败 | `UpdateTests::cancellationAndLaunchFailureNeverAnnounceInstallation`；修改前 CTest 两次超时，修改后通过 | ✅ |
 | REG-136 | 取消 OCR 时先删临时目录，辅助进程还在写日志，残留目录且延迟销毁运行中的 QProcess；终止后有限等待，再释放临时文件 | `OcrTests::cancellingAnActiveHelperDoesNotAnswerAnEarlierRequest`（旧回调不再回答，辅助进程和目录均释放） | ✅ |
 
-## 长截图点击修复（2026-10-02，未发布）
+## 长截图点击修复（0.10.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
@@ -46,7 +46,7 @@
 | REG-138 | 长截图默认自动滚动、自动结束，用户无法自己选择滚动范围。改为每次默认手动滚动、自动拼接，稳定画面不动时持续等待；点击完成才交付，可勾选自动滚动。手动连续滚动不因等待稳定超时而停止，模式切换废弃过期回调，采样不抢页面焦点 | `ScrollControllerTests::manualCaptureWaitsForUserWithoutScrollingOrCompleting`、`manualContinuousMovementWaitsForPauseWhileCaptureKeepsResponding`、`manualCaptureFinishesWhileRunningAndRejectsLateFrames`、`automaticChoiceCancelsPendingManualFrameAndCanReturnToManual`、`manualCaptureRequiresOriginalWindowAndStopsBeforeCapturingAnother`；原生窗口及浏览器用例由独立滚轮驱动页面，断言控制器自身滚轮次数为 0，最后点击完成 | ✅ |
 | REG-139 | 设置、保存、长截图等图标不直观或彼此相似。设置改为八齿齿轮，保存统一为软盘，长截图改为纵向取景框和长度箭头，打开使用文件夹，文字识别使用取景框内的 T；适应窗口与截图区分，修正智能选择四角和复制图片边界 | `icon_gallery` 渲染全部 39 种图标及真实截图工具栏、手动/自动/停止进度窗，人工检查浅色、深色及 20/24 px。实际预览曾发现齿轮外圈未绘制，修复首点 `moveTo` 后再次确认 | ⚠️ |
 
-## 视频播放交互修复（0.10.0 本地测试版，未公开发布）
+## 视频播放交互修复（0.10.0）
 
 浅色、深色两组使用真实视频解码的原生 Windows 用例均已通过。需设置 `EDITHERE_VIDEO_TEST_SOURCE` 才会执行解码断言；未提供视频时会跳过，因此验收需核对两组均为 PASS。macOS/Linux 的原生视频表面仍需各自验证。
 
@@ -55,7 +55,7 @@
 | REG-140 | 暂停中点击 `±1s` 时，定位所需的后台解码被显示成用户播放，按钮文字变长使控件移位；播放与暂停使用不同显示区域，留白背景也不一致。区分后台定位与用户播放，固定控件宽度，视频和画布叠放在同一显示区域；定位后暂停供批注，连续步进累计目标时间，同分辨率换帧保留缩放、平移与侧栏状态 | `VideoUiTests::playbackViewportAndSeekRemainStable(light)`、`playbackViewportAndSeekRemainStable(dark)`，注册为 CTest `video-ui`；定位全过程采样按钮、时间轴、视口与画布几何，核对暂停按钮文字、缩放/平移及折叠侧栏不变；播放/暂停留白像素分别为浅色 `#efeff2`、深色 `#18191e`，连续步进累计目标，播放中定位后暂停且空格可继续播放。原生 Windows 两组 PASS 见 `artifacts/video-0100-native-test.log` | ✅ |
 | REG-141 | 普通暂停和定位立即转换为截图画布，单纯查看视频也创建帧，视频表面切换还造成停顿。`0.10.0-pause-update` 改为首帧、暂停和定位只停住视频表面，首次实际点、框或全局批注才保存截图；选择模式、缩放和平移不截图，保存项目/导出 JSON 不创建新帧，选择已有批注帧直接恢复截图 | `VideoUiTests::playbackViewportAndSeekRemainStable(light/dark)`、`firstAnnotationCapturesOnlyOnce(point/rectangle/global/global-shortcut)` 和 `playbackSeekAnnotateAndReopen`；普通暂停/定位截图计数为零，视频持续可见，首次批注只捕获一次且坐标、PTS 与画面匹配，同帧后续批注复用截图，保存和实际 JSON 复制不创建新帧。点选通过 Windows QWindow 命中测试。原生 Windows 共 10 PASS、0 FAIL、0 SKIP，见 `artifacts/video-pause-update-native-test.log`；截图仅证实 Qt 控件渲染，未验证 GPU 桌面合成截图 | ✅ |
 
-## 长截图与视频批注修复（2026-10-02，未发布）
+## 长截图与视频批注修复（0.10.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
