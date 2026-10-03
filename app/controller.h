@@ -12,6 +12,8 @@ class OcrDialog;
 class PinWindow;
 class ScrollCapture;
 class ScrollCaptureProgress;
+class ScrollCaptureRegion;
+class ScrollCaptureShade;
 class Controller final : public QObject {
     Q_OBJECT
   public:
@@ -53,7 +55,14 @@ class Controller final : public QObject {
     void setAutoScrollCapture(bool automatic);
     void readScrollFrame();
     void placeScrollFrame(const QImage &frame);
-    void pauseScrollCapture(const QString &message);
+    void showScrollProgress();
+    void pauseScrollCapture(const QString &message, bool allowEmpty = false);
+    void stopScrollCapture();
+    void resumeScrollCapture();
+    void changeScrollDirection();
+    void changeScrollRegion(const QRect &logicalRegion);
+    QImage scrollResult() const;
+    void exportScrollCapture(int action);
     void finishScrollCapture();
     void abortScrollCapture(const QString &message = {});
     void discardScrollRun();
@@ -68,11 +77,16 @@ class Controller final : public QObject {
         bool initial = true;
         bool paused = false;
         bool automatic = false;
+        bool mismatched = false;
+        Qt::Orientation axis = Qt::Vertical;
+        QString notice;
     };
     ScrollRun scrollRun_;
     quint64 scrollGeneration_ = 0;
     QPointer<Overlay> scrollSource_;
     QPointer<ScrollCaptureProgress> scrollProgress_;
+    QPointer<ScrollCaptureRegion> scrollRegion_;
+    QPointer<ScrollCaptureShade> scrollShade_;
     ScrollCapture *scroller_ = nullptr;
     // The same asynchronous paths are exercised with deterministic frames by the
     // lifecycle tests, including callbacks arriving after cancellation.

@@ -132,6 +132,18 @@ QFrame#noteCard { background:@surface@; border:1px solid @border@; border-radius
 QFrame#noteCard[selected="true"] { background:@cardSelected@; border-color:@focus@; }
 QLabel#noteBadge { background:@accent@; color:white; border-radius:11px; font-weight:600; font-size:11px; }
 QWidget#toolbarSeparator,QWidget#inspectorSeparator { background:@border@; border:0; }
+QWidget#scrollCaptureProgress QPushButton,QWidget#scrollCropMenu QPushButton,QPushButton#scrollRegionHandle { background:transparent; border:1px solid transparent; border-radius:8px; padding:0; min-width:0; min-height:0; }
+QWidget#scrollCaptureProgress QPushButton:hover,QWidget#scrollCropMenu QPushButton:hover,QPushButton#scrollRegionHandle:hover { background:@hover@; }
+QWidget#scrollCaptureProgress QPushButton:pressed,QWidget#scrollCropMenu QPushButton:pressed,QPushButton#scrollRegionHandle:pressed { background:@pressed@; }
+QWidget#scrollCaptureProgress QPushButton:checked { background:@selected@; color:@accent@; }
+QWidget#scrollCaptureProgress QPushButton:disabled,QWidget#scrollCropMenu QPushButton:disabled,QPushButton#scrollRegionHandle:disabled { background:transparent; color:@disabled@; }
+QWidget#scrollCaptureProgress QPushButton:focus,QWidget#scrollCropMenu QPushButton:focus { border-color:@focus@; }
+QWidget#scrollCaptureProgress QPushButton#scrollDirection { background:@button@; font-size:14px; padding:0 12px; }
+QWidget#scrollCaptureProgress QPushButton#scrollDirection:hover { background:@hover@; }
+QWidget#scrollCaptureProgress QPushButton#scrollDirection::menu-indicator { subcontrol-origin:padding; subcontrol-position:center right; right:8px; width:9px; height:9px; }
+QPushButton#scrollRegionHandle { background:@window@; }
+QWidget#scrollCropMenu QCheckBox { font-size:14px; spacing:6px; }
+QWidget#scrollCropMenu QCheckBox::indicator { width:18px; height:18px; }
 QPushButton#foldNote { color:@accent@; background:transparent; border:0; padding:0 3px; min-height:16px; font-size:11px; }
 QPushButton#foldNote:hover { background:@selected@; }
 QLabel#noteCoordinates { font-size:10px; color:@muted@; }
@@ -186,7 +198,13 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
         if (auto button = qobject_cast<QPushButton *>(widget)) {
             const auto name = button->property("glyphName").toString();
             if (!name.isEmpty())
-                button->setIcon(glyph(name,button->property("primary").toBool() || (button->objectName()=="explodeButton" && button->isChecked()) ? QColor(Qt::white) : QColor()));
+                button->setIcon(glyph(name, button->objectName() == "scrollStop" ? tone("#bd252f", "#ff8991") :
+                    button->property("primary").toBool() || (button->objectName()=="explodeButton" && button->isChecked()) ? QColor(Qt::white) : QColor()));
+        }
+        if (auto label = qobject_cast<QLabel *>(widget)) {
+            const auto name = label->property("glyphName").toString();
+            if (!name.isEmpty())
+                label->setPixmap(glyph(name, palette.color(QPalette::PlaceholderText)).pixmap(24, 24));
         }
         if (auto input = qobject_cast<QKeySequenceEdit *>(widget))
             for (auto clear : input->findChildren<QToolButton *>())
@@ -363,6 +381,68 @@ QIcon glyph(const QString &name, QColor color) {
         p.drawLine(18, 5, 18, 19);
         p.drawPolyline(QPolygonF{{15.5, 7.5}, {18, 5}, {20.5, 7.5}});
         p.drawPolyline(QPolygonF{{15.5, 16.5}, {18, 19}, {20.5, 16.5}});
+    } else if (name == "scroll-move-vertical" || name == "scroll-move-horizontal") {
+        if (name.endsWith("horizontal")) {
+            p.translate(12, 12);
+            p.rotate(90);
+            p.translate(-12, -12);
+        }
+        p.drawLine(12, 3, 12, 21);
+        p.drawPolyline(QPolygonF{{8, 7}, {12, 3}, {16, 7}});
+        p.drawPolyline(QPolygonF{{8, 17}, {12, 21}, {16, 17}});
+    } else if (name == "scroll-grip") {
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        for (int x : {8, 15}) for (int y : {5, 12, 19})
+            p.drawEllipse(QPointF(x, y), 1.5, 1.5);
+    } else if (name == "scroll-mouse") {
+        p.drawRoundedRect(QRectF(6, 2, 12, 20), 5, 5);
+        p.drawLine(12, 5, 12, 10);
+        p.drawPolyline(QPolygonF{{9, 15}, {12, 18}, {15, 15}});
+    } else if (name == "scroll-play" || name == "scroll-stop") {
+        p.drawRoundedRect(QRectF(4, 2, 16, 20), 1.5, 1.5);
+        if (name == "scroll-play")
+            p.drawPolygon(QPolygonF{{9, 7}, {16, 12}, {9, 17}});
+        else
+            p.drawRect(QRectF(9, 8, 6, 8));
+    } else if (name == "scroll-scissors" || name.startsWith("scroll-trim-")) {
+        if (name.startsWith("scroll-trim-")) {
+            if (name.endsWith("left") || name.endsWith("right")) {
+                p.translate(12, 12); p.rotate(90); p.translate(-12, -12);
+            }
+            if (name.endsWith("bottom") || name.endsWith("right")) {
+                p.translate(12, 12); p.rotate(180); p.translate(-12, -12);
+            }
+            p.drawPolyline(QPolygonF{{5, 12}, {5, 21}, {19, 21}, {19, 12}});
+            p.drawPolyline(QPolygonF{{6, 20}, {10, 16}, {13, 19}, {16, 16}, {18, 20}});
+            p.drawEllipse(QRectF(5, 3, 4, 4));
+            p.drawEllipse(QRectF(15, 3, 4, 4));
+            p.drawLine(8, 6, 16, 13);
+            p.drawLine(16, 6, 8, 13);
+        } else {
+            p.drawEllipse(QRectF(3, 4, 6, 6));
+            p.drawEllipse(QRectF(3, 14, 6, 6));
+            p.drawLine(8, 8, 21, 19);
+            p.drawLine(8, 16, 21, 5);
+        }
+    } else if (name == "scroll-download") {
+        p.drawLine(12, 3, 12, 16);
+        p.drawPolyline(QPolygonF{{7, 11}, {12, 16}, {17, 11}});
+        p.drawPolyline(QPolygonF{{4, 16}, {4, 21}, {20, 21}, {20, 16}});
+    } else if (name == "scroll-quick-save") {
+        p.drawPolyline(QPolygonF{{8, 3}, {3, 3}, {3, 8}});
+        p.drawPolyline(QPolygonF{{16, 3}, {21, 3}, {21, 8}});
+        p.drawPolyline(QPolygonF{{3, 16}, {3, 21}, {8, 21}});
+        p.drawPolyline(QPolygonF{{21, 16}, {21, 21}, {16, 21}});
+        p.drawPolyline(QPolygonF{{13, 6}, {8, 13}, {13, 13}, {11, 18}, {17, 10}, {12, 10}});
+    } else if (name == "scroll-edit") {
+        p.drawPolyline(QPolygonF{{11, 4}, {4, 4}, {4, 21}, {21, 21}, {21, 14}});
+        p.drawPolygon(QPolygonF{{10, 11}, {18, 3}, {22, 7}, {14, 15}, {9, 16}});
+        p.drawLine(QPointF(16, 5), QPointF(20, 9));
+    } else if (name == "scroll-pin") {
+        p.translate(12, 12); p.rotate(40); p.translate(-12, -12);
+        p.drawPolyline(QPolygonF{{8, 3}, {16, 3}, {15, 9}, {18, 14}, {6, 14}, {9, 9}, {8, 3}});
+        p.drawLine(12, 14, 12, 22);
     } else if (name == "picker") {
         // A dropper leaning towards the bottom left corner.
         p.drawLine(3, 21, 12, 12);

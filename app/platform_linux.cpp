@@ -171,6 +171,7 @@ QVector<Candidate> linuxAccessibleElements(QPoint, qint64);
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excluded) { return linuxAccessibleElements(point, excluded); }
 bool requestAccessibility() { return false; }
 void configureNativeWindow(QWidget *, bool) {}
+bool excludedFromCapture(const QWidget *) { return false; }
 void captureScreens(CaptureCallback callback) {
     if (!wayland()) {
         QVector<ScreenFrame> frames;

@@ -59,7 +59,9 @@ struct Document {
     bool dirty = false;
 };
 QByteArray encodePng(const QImage &image);
-Document fromImage(const QImage &image, const QString &source, const QString &title);
+// Opaque images, such as decoded video frames, trade a little size for speed.
+QByteArray encodeOpaquePng(const QImage &image);
+Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque = false);
 Document loadDocument(const QString &path);
 QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false);
 QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false);

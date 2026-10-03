@@ -38,6 +38,8 @@ void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
 void configureNativeWindow(QWidget *window, bool overlay);
+// Whether screen reads skip this window, so it can stay visible over a capture.
+bool excludedFromCapture(const QWidget *window);
 QString globalShortcutLabel();
 class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT

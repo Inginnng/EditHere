@@ -4,12 +4,13 @@
 #include <QVector>
 class QMediaPlayer;
 class QAudioOutput;
-class QVideoWidget;
+class QVideoSink;
 class QLabel;
 class QPushButton;
 class QComboBox;
 class QSlider;
 namespace h2d {
+class VideoSurface;
 class VideoPlayback final : public QWidget {
     Q_OBJECT
   public:
@@ -46,7 +47,10 @@ class VideoPlayback final : public QWidget {
     void updateTime();
     QMediaPlayer *player_;
     QAudioOutput *audio_;
-    QVideoWidget *view_;
+    QVideoSink *sink_;
+    // Painted like any other widget. A native video window would turn the image
+    // area and canvas into native windows whose annotations stop reaching the screen.
+    VideoSurface *view_;
     QPushButton *play_, *back_, *forward_, *relocate_;
     QLabel *time_, *status_;
     QSlider *timeline_;

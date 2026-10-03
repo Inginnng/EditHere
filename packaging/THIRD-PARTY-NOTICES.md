@@ -1,5 +1,11 @@
 # Third-party components
 
+Long-capture PNG export statically links the unmodified compression-only subset
+of zlib 1.3.2, copyright Jean-loup Gailly and Mark Adler, under the zlib license.
+The license is included in licenses/zlib/LICENSE. The matching source archive is
+https://zlib.net/fossils/zlib-1.3.2.tar.gz; the vendored subset and source checksum
+are recorded in third_party/zlib/README.md in the EditHere source tree.
+
 EditHere uses dynamically linked Qt 6.8 (Qt Core, Gui, Widgets,
 Concurrent, Network, Qt Image Formats and Qt Multimedia), copyright The Qt Company Ltd. and
 contributors, under LGPL version 3 and the components' applicable licenses.

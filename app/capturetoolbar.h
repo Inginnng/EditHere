@@ -2,11 +2,14 @@
 #include "capturesession.h"
 #include "settings.h"
 #include <QSize>
+#include <QLabel>
 #include <QWidget>
+#include <optional>
 class QCheckBox;
 class QLabel;
 class QPushButton;
 class QSlider;
+class QScrollArea;
 namespace h2d {
 // The one popup both the corner tool and the shadow tool open. Two tabs rather than a
 // list of steps, and a slider rather than a set of numbers, because both effects are
@@ -152,6 +155,86 @@ class CaptureToolbar final : public QWidget {
     QString message_;
 };
 
+// A hollow, live frame marks the physical capture region without covering the page.
+// Only its outside edges receive input when stopped; its separate move handle can
+// move along the capture axis while running, and freely while stopped.
+class ScrollCaptureRegion final : public QWidget {
+    Q_OBJECT
+  public:
+    explicit ScrollCaptureRegion(QWidget *parent = nullptr);
+    ~ScrollCaptureRegion() override;
+    void setSelection(const QRect &selection, const QRect &bounds);
+    QRect selection() const { return selection_; }
+    void setState(bool running, Qt::Orientation axis = Qt::Vertical);
+    QWidget *moveHandle() const { return handle_; }
+    void setHandlePosition(QPoint global);
+  signals:
+    void regionChanged(const QRect &selection);
+  protected:
+    void paintEvent(QPaintEvent *) override;
+    void mousePressEvent(QMouseEvent *) override;
+    void mouseMoveEvent(QMouseEvent *) override;
+    void mouseReleaseEvent(QMouseEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
+    bool eventFilter(QObject *, QEvent *) override;
+  private:
+    void placeHandle();
+    void dragTo(QPoint global);
+    QRect selection_, bounds_, dragSelection_;
+    QPoint dragOrigin_;
+    QWidget *handle_ = nullptr;
+    QPoint handleAnchor_;
+    bool anchored_ = false;
+    Qt::Edges dragEdges_;
+    Qt::Orientation axis_ = Qt::Vertical;
+    bool running_ = true, dragging_ = false;
+};
+
+// Dims the screen outside the live capture region. Native exclusion keeps the
+// shade out of sampled pixels while transparent input lets the target scroll.
+class ScrollCaptureShade final : public QWidget {
+  public:
+    explicit ScrollCaptureShade(QWidget *parent = nullptr);
+    void setSelection(const QRect &selection, const QRect &screen);
+  protected:
+    void paintEvent(QPaintEvent *event) override;
+  private:
+    QRect selection_;
+};
+
+class ScrollCapturePreview final : public QLabel {
+    Q_OBJECT
+  public:
+    explicit ScrollCapturePreview(QWidget *parent = nullptr);
+    void setCapture(const QImage &image, QSize fullSize, const QRect &viewport, bool matched,
+                    Qt::Orientation axis, const QRect &imageSource = {});
+    void setVisibleRegion(const QRect &region);
+    QRect croppedRect() const;
+    QRectF imageRect() const;
+    QRectF viewportRect() const;
+    void beginCrop(bool end);
+    void clearCrop();
+    void setAutoCrop(bool enabled);
+  signals:
+    void cropChanged();
+  protected:
+    void paintEvent(QPaintEvent *) override;
+    void mousePressEvent(QMouseEvent *) override;
+    void mouseMoveEvent(QMouseEvent *) override;
+    void mouseReleaseEvent(QMouseEvent *) override;
+  private:
+    void cropAt(QPointF point);
+    QSize fullSize_;
+    QRect viewport_;
+    QRect visibleRegion_, imageSource_;
+    Qt::Orientation axis_ = Qt::Vertical;
+    int cropBegin_ = 0, cropEnd_ = 0, cropEdge_ = -1;
+    bool matched_ = true, cropping_ = false, autoCrop_ = false;
+    int growthDirection_ = 0;
+    int knownGrowthDirection_ = 0;
+};
+
 // A separate window keeps the capture controls live while the frozen screen covers
 // are hidden. It sits outside the captured region whenever there is room.
 class ScrollCaptureProgress final : public QWidget {
@@ -159,24 +242,72 @@ class ScrollCaptureProgress final : public QWidget {
   public:
     explicit ScrollCaptureProgress(QWidget *parent = nullptr);
     void placeBeside(const QRect &selection, const QRect &screen);
-    void setProgress(const QImage &image, int addedFrames);
+    // The image may already be reduced to previewWidth(); size is the full result.
+    void setProgress(const QImage &image, int addedFrames, QSize size = {}, const QRect &viewport = {},
+                     bool matched = true, Qt::Orientation axis = Qt::Vertical, const QRect &imageSource = {});
+    // Keep the cross-axis scale fixed. Long results use a bounded native-pixel
+    // window rather than shrinking the entire thumbnail to the selection height.
+    QRect previewSourceRect(QSize size, const QRect &viewport, Qt::Orientation axis,
+                            std::optional<int> nativeOrigin = {});
+    // Device pixels the live preview is drawn at, so callers can scale only once.
+    int previewWidth() const;
     void setAutomatic(bool automatic);
+    // A recoverable problem: capture continues and the message stays until progress.
+    void setNotice(const QString &message);
     void setStopped(const QString &message);
+    void setRunning(Qt::Orientation axis);
+    void setAxis(Qt::Orientation axis);
+    void setSelectionSize(QSize size);
+    QPoint moveHandlePosition() const;
+    void setAutoCrop(bool enabled);
+    bool autoCrop() const;
+    void beginCrop(bool end);
+    QRect croppedRect() const;
+    void clearCrop();
   signals:
     void stopRequested();
     void finishRequested();
     void cancelRequested();
     void automaticChanged(bool automatic);
+    void autoCropChanged(bool enabled);
+    void resumeRequested();
+    void directionRequested();
+    void cropRequested(bool end);
+    void copyRequested();
+    void saveRequested();
+    void pinRequested();
+    void quickSaveRequested();
+    void positionChanged(QPoint handlePosition);
   protected:
+    void paintEvent(QPaintEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
   private:
-    QLabel *preview_ = nullptr;
+    QScrollArea *previewArea_ = nullptr;
+    ScrollCapturePreview *preview_ = nullptr;
     QLabel *status_ = nullptr;
+    QLabel *size_ = nullptr;
+    QWidget *moveSlot_ = nullptr;
+    QWidget *cropMenu_ = nullptr;
+    QPushButton *cropButton_ = nullptr;
+    QCheckBox *autoCrop_ = nullptr;
     QPushButton *stop_ = nullptr;
     QPushButton *finish_ = nullptr;
     QCheckBox *automatic_ = nullptr;
-    bool hasProgress_ = false;
+    QPushButton *automaticButton_ = nullptr;
+    QPushButton *direction_ = nullptr, *cropBegin_ = nullptr, *cropEnd_ = nullptr;
+    QVector<QPushButton *> outputButtons_;
+    QRect captureSelection_, captureScreen_;
+    int previewMaximumWidth_ = 150;
+    QPointF previewAnchor_;
+    QSize previewLastSize_;
+    QRect previewLastViewport_;
+    std::optional<int> previewLastOrigin_;
+    Qt::Orientation previewAxis_ = Qt::Vertical;
+    bool hasProgress_ = false, stopped_ = false, canEdit_ = true;
 };
 
 // The column of style tools that stands beside a selection, the way a capture tool

@@ -134,6 +134,13 @@ QString validateSettings(const AppSettings &settings) {
         if (info.isFile())
             return tr("反馈临时目录不能指向一个已有文件。");
     }
+    if (settings.scrollAxis != Qt::Vertical && settings.scrollAxis != Qt::Horizontal)
+        return tr("请选择有效的长截图方向。");
+    if (!settings.quickSaveDir.isEmpty()) {
+        const QFileInfo info(settings.quickSaveDir);
+        if (!info.isAbsolute() || info.isFile())
+            return tr("快速保存目录必须是绝对目录路径。");
+    }
     QMap<int, QString> assigned;
     const auto definitions = shortcutDefinitions();
     for (const auto &definition : definitions) {
@@ -206,6 +213,11 @@ AppSettings loadSettings(const QString &filePath) {
     result.embedOriginal = boolean("defaults/embedOriginal", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
+    const QString scrollAxis = source.value("capture/scrollAxis", QStringLiteral("vertical")).toString();
+    result.scrollAxis = scrollAxis == QLatin1String("horizontal") ? Qt::Horizontal : Qt::Vertical;
+    result.scrollAutoCrop = boolean("capture/scrollAutoCrop", false);
+    result.scrollUltraLong = boolean("capture/scrollUltraLong", false);
+    result.quickSaveDir = source.value("capture/quickSaveDir").toString();
     // The capture style arrived after the first settings file did, so a missing key
     // means "the built-in look" rather than "the user turned it off".
     bool numeric = false;
@@ -283,6 +295,10 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("defaults/feedbackDir", settings.feedbackDir);
+    target.setValue("capture/scrollAxis", settings.scrollAxis == Qt::Horizontal ? "horizontal" : "vertical");
+    target.setValue("capture/scrollAutoCrop", settings.scrollAutoCrop);
+    target.setValue("capture/scrollUltraLong", settings.scrollUltraLong);
+    target.setValue("capture/quickSaveDir", settings.quickSaveDir);
     target.setValue("appearance/theme", themeName(settings.theme));
     target.setValue("appearance/language", languageName(settings.language));
     target.setValue("appearance/ocrLanguage", languageName(settings.ocrLanguage));

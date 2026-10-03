@@ -1,8 +1,10 @@
 #include "capturetoolbar.h"
 #include "controller.h"
+#include "platform.h"
 #include "scrollcapture.h"
 #include "ui.h"
 #include <QApplication>
+#include <QAction>
 #include <QCheckBox>
 #include <QDir>
 #include <QElapsedTimer>
@@ -36,13 +38,14 @@ class ScrollControllerTests final : public QObject {
     QPoint targetPoint_;
     QRect capturedRegion_;
 
-    static QImage document() {
-        QImage image(240, 360, QImage::Format_RGB32);
+    static QImage document(int width = 240, int height = 360) {
+        QImage image(width, height, QImage::Format_RGB32);
+        quint32 random = 19;
         for (int y = 0; y < image.height(); ++y)
-            for (int x = 0; x < image.width(); ++x)
-                image.setPixel(x, y, qRgb((x * 37 + y * 19 + y * y * 3) % 251,
-                                          (x * 11 + y * 7 + y * y * 5) % 251,
-                                          (x * 23 + y * 29 + y * y * 7) % 251));
+            for (int x = 0; x < image.width(); ++x) {
+                random = random * 1664525u + 1013904223u;
+                image.setPixel(x, y, qRgb(random >> 24, (random >> 16) & 255, (random >> 8) & 255));
+            }
         return image;
     }
     Overlay *overlay(QRect selected = {40, 60, 240, 180}, ScreenFrame frame = {}) {
@@ -338,6 +341,306 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(!owner_->scrollRun_.automatic);
         QCOMPARE(wheelSteps_, 0);
     }
+    void manualCaptureStartsMidPageAndRevisitsWithoutDuplicateRows() {
+        auto *source = overlay();
+        const QImage whole = document();
+        const auto viewport = [&](int offset) { return whole.copy(0, offset, 240, 180); };
+        begin(source);
+        QVERIFY(reply(viewport(60)));
+        QVERIFY(reply(viewport(60)));
+        QVERIFY(owner_->scrollRegion_ && owner_->scrollRegion_->isVisible());
+        QCOMPARE(owner_->scrollRegion_->selection(), owner_->scrollRun_.logicalRegion);
+        auto *preview = owner_->scrollProgress_->findChild<ScrollCapturePreview *>("scrollPreview");
+        QVERIFY(preview);
+        QVERIFY(reply(viewport(120)));
+        QVERIFY(reply(viewport(120)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(owner_->scroller_->viewportRect(), QRect(0, 60, 240, 180));
+        QCOMPARE(preview->property("captureViewport").toRect(), QRect(0, 60, 240, 180));
+        QVERIFY(reply(viewport(60)));
+        QVERIFY(reply(viewport(60)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(owner_->scroller_->viewportRect(), QRect(0, 0, 240, 180));
+        QCOMPARE(preview->property("captureViewport").toRect(), QRect(0, 0, 240, 180));
+        QVERIFY(preview->property("captureMatched").toBool());
+        QVERIFY(reply(viewport(0)));
+        QVERIFY(reply(viewport(0)));
+        QCOMPARE(owner_->scroller_->frames(), 2);
+        QCOMPARE(owner_->scroller_->size(), QSize(240, 300));
+        QVERIFY(reply(viewport(120)));
+        QVERIFY(reply(viewport(120)));
+        QCOMPARE(owner_->scroller_->frames(), 2);
+        QCOMPARE(owner_->scroller_->viewportRect(), QRect(0, 120, 240, 180));
+        QVERIFY(reply(viewport(180)));
+        QVERIFY(reply(viewport(180)));
+        QCOMPARE(owner_->scroller_->frames(), 3);
+        QVERIFY(owner_->scroller_->matched());
+        QVERIFY(!owner_->scrollRun_.paused);
+        QCOMPARE(wheelSteps_, 0);
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QVERIFY(owner_->editor_.hasDocument());
+        QCOMPARE(owner_->editor_.document().image, whole.convertToFormat(QImage::Format_ARGB32));
+        QCOMPARE(owner_->history_.count(), 1);
+    }
+    void captureFallbackHidesIndependentPreviewAndCropMenu_data() {
+        QTest::addColumn<bool>("toolbarOverlaps");
+        QTest::newRow("toolbar-outside-selection") << false;
+        QTest::newRow("toolbar-also-overlaps") << true;
+    }
+    void captureFallbackHidesIndependentPreviewAndCropMenu() {
+        QFETCH(bool, toolbarOverlaps);
+        if (QGuiApplication::platformName() != "offscreen")
+            QSKIP("Use offscreen windows to exercise unavailable display-affinity fallback without changing platform permissions.");
+        auto *source = overlay();
+        const QImage first = document().copy(0, 0, 240, 180);
+        begin(source);
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        auto *progress = owner_->scrollProgress_.data();
+        QVERIFY(progress && progress->isVisible());
+        auto *preview = progress->findChild<QWidget *>("scrollPreviewArea");
+        auto *cropMenu = progress->findChild<QWidget *>("scrollCropMenu");
+        QVERIFY(preview && preview->isVisible() && cropMenu);
+        if (excludedFromCapture(preview) || excludedFromCapture(progress))
+            QSKIP("This platform excludes the test windows from capture; fallback is not applicable.");
+
+        // Drain the scheduled sample, then start a fresh round with independent
+        // top-level surfaces covering the live selection. The toolbar can stay
+        // outside, so hiding only its parent would leave visible overlay pixels.
+        QTRY_VERIFY(!pending_.isEmpty());
+        pending_.clear();
+        ++owner_->scrollRun_.settleRound;
+        const QRect region = owner_->scrollRun_.logicalRegion;
+        if (toolbarOverlaps) progress->move(region.topLeft() + QPoint(5, 5));
+        QVERIFY(progress->geometry().intersects(region) == toolbarOverlaps);
+        button("scrollCrop")->click();
+        QVERIFY(cropMenu->isVisible());
+        preview->move(region.topLeft() + QPoint(10, 10));
+        cropMenu->move(region.topLeft() + QPoint(20, 20));
+        QVERIFY(preview->geometry().intersects(region));
+        QVERIFY(cropMenu->geometry().intersects(region));
+        QVERIFY(!excludedFromCapture(cropMenu));
+
+        bool grabbed = false;
+        bool previewHidden = false;
+        bool cropHidden = false;
+        bool toolbarHidden = false;
+        owner_->scrollIo_.grab = [&, this](const QRect &captured, ScrollRegionCallback callback) {
+            capturedRegion_ = captured;
+            grabbed = true;
+            previewHidden = !preview->isVisible();
+            cropHidden = !cropMenu->isVisible();
+            toolbarHidden = !progress->isVisible();
+            pending_.append(std::move(callback));
+        };
+        owner_->beginScrollSettle();
+        owner_->readScrollFrame();
+        QVERIFY(!preview->isVisible());
+        QVERIFY(!cropMenu->isVisible());
+        QTRY_VERIFY(grabbed);
+        QVERIFY(previewHidden);
+        QVERIFY(cropHidden);
+        QCOMPARE(toolbarHidden, toolbarOverlaps);
+        QCOMPARE(capturedRegion_, owner_->scrollRun_.nativeRegion);
+        QVERIFY(!pending_.isEmpty());
+        auto callback = pending_.takeFirst();
+        callback(first, {});
+        QVERIFY(progress->isVisible());
+        QVERIFY(preview->isVisible());
+        QVERIFY(cropMenu->isVisible());
+        QVERIFY(!owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scroller_->picture(), first.convertToFormat(QImage::Format_ARGB32));
+        QCOMPARE(owner_->history_.count(), 0);
+        QVERIFY(!owner_->editor_.hasDocument());
+        // Keep callbacks that reference this test's local observation variables
+        // from running after the test has returned.
+        ++owner_->scrollRun_.settleRound;
+        owner_->scrollIo_.grab = [this](const QRect &captured, ScrollRegionCallback callback) {
+            capturedRegion_ = captured;
+            pending_.append(std::move(callback));
+        };
+    }
+    void stopThenStartKeepsRegionAndRejectsPreviousSamplingCallback() {
+        auto *source = overlay();
+        const QImage whole = document();
+        begin(source);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        const auto region = owner_->scrollRegion_;
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(owner_->scrollRun_.paused);
+        QVERIFY(region && region->isVisible());
+        QVERIFY(!owner_->scroller_->running());
+        QCOMPARE(owner_->scroller_->frames(), 0);
+        QVERIFY(!button("scrollFinish")->isEnabled());
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(!owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scrollRegion_, region);
+        stale(whole.copy(0, 180, 240, 180), {});
+        QCOMPARE(owner_->scroller_->frames(), 0);
+        QVERIFY(reply(whole.copy(0, 120, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 120, 240, 180)));
+        QVERIFY(owner_->scroller_->running());
+        QVERIFY(reply(whole.copy(0, 180, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 180, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(owner_->scroller_->picture(), whole.copy(0, 120, 240, 240).convertToFormat(QImage::Format_ARGB32));
+        QCOMPARE(wheelSteps_, 0);
+    }
+    void userCanStopAndRestartFirstViewportWithoutCreatingAResult() {
+        auto *source = overlay();
+        const QImage whole = document();
+        const QImage first = whole.copy(0, 0, 240, 180);
+        begin(source);
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        QVERIFY(!owner_->scrollRun_.initial);
+        QCOMPARE(owner_->scroller_->frames(), 0);
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        auto *region = owner_->scrollRegion_.data();
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(owner_->scrollRun_.paused);
+        QVERIFY(owner_->scrollSource_);
+        QVERIFY(region && region->isVisible());
+        QVERIFY(!source->isVisible());
+        QVERIFY(!button("scrollFinish")->isEnabled());
+        QVERIFY(!owner_->editor_.hasDocument());
+        QCOMPARE(owner_->history_.count(), 0);
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(!owner_->scrollRun_.paused);
+        stale(first, {});
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        QVERIFY(reply(whole.copy(0, 60, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 60, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(owner_->scrollRegion_.data(), region);
+        QVERIFY(button("scrollFinish")->isEnabled());
+        QVERIFY(!owner_->editor_.hasDocument());
+        QCOMPARE(owner_->history_.count(), 0);
+    }
+    void resizingPausedRegionRestartsCaptureWithNativePixelMapping() {
+        ScreenFrame frame;
+        frame.image = QImage(960, 720, QImage::Format_RGB32);
+        frame.image.fill(Qt::white);
+        frame.logicalGeometry = {-1200, 100, 640, 480};
+        frame.nativeGeometry = {-1800, 150, 960, 720};
+        frame.nativePixels = true;
+        auto *source = overlay({60, 90, 360, 270}, frame);
+        const QImage whole = document(360, 540);
+        begin(source);
+        for (int offset : {0, 0, 90, 90})
+            QVERIFY(reply(whole.copy(0, offset, 360, 270)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(owner_->scrollRun_.paused);
+        auto *region = owner_->scrollRegion_.data();
+        QVERIFY(region);
+        const QPoint corner(region->width() - 2, region->height() - 2);
+        QTest::mousePress(region, Qt::LeftButton, Qt::NoModifier, corner);
+        QTest::mouseMove(region, corner + QPoint(20, 20));
+        QTest::mouseRelease(region, Qt::LeftButton, Qt::NoModifier, corner + QPoint(20, 20));
+        QCOMPARE(owner_->scrollRun_.logicalRegion, QRect(-1160, 160, 260, 200));
+        QCOMPARE(owner_->scrollRun_.nativeRegion, QRect(-1740, 240, 390, 300));
+        QVERIFY(owner_->scrollRun_.initial);
+        QVERIFY(owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scroller_->frames(), 0);
+        QVERIFY(!button("scrollFinish")->isEnabled());
+        pending_.clear(); // Every old request belongs to the invalidated generation.
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        const QImage resized = document(390, 600);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(resized.copy(0, offset, 390, 300)));
+        QCOMPARE(capturedRegion_, QRect(-1740, 240, 390, 300));
+        QCOMPARE(owner_->scroller_->size(), QSize(390, 360));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QVERIFY(!owner_->scrollRun_.initial);
+        QVERIFY(!owner_->scrollRun_.paused);
+    }
+    void cropButtonsTrimCapturedPixelsWhileRunning() {
+        auto *source = overlay();
+        const QImage whole = document();
+        begin(source);
+        for (int offset : {0, 0, 60, 60, 120, 120, 60, 60})
+            QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QCOMPARE(owner_->scroller_->size(), QSize(240, 300));
+        QTest::mouseClick(button("scrollCropBegin"), Qt::LeftButton);
+        QVERIFY(!owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scroller_->size(), QSize(240, 240));
+        QTest::mouseClick(button("scrollCropEnd"), Qt::LeftButton);
+        QCOMPARE(owner_->scroller_->size(), QSize(240, 180));
+        QCOMPARE(owner_->scrollResult(), whole.copy(0, 60, 240, 180).convertToFormat(QImage::Format_ARGB32));
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QVERIFY(owner_->editor_.hasDocument());
+        QCOMPARE(owner_->editor_.document().image, whole.copy(0, 60, 240, 180).convertToFormat(QImage::Format_ARGB32));
+    }
+    void horizontalChoiceResetsSamplingAndDisablesAutomaticWheel() {
+        auto *source = overlay();
+        begin(source);
+        const QImage first = document().copy(0, 0, 240, 180);
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        QVERIFY(button("scrollDirection")->isEnabled());
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        owner_->scrollProgress_->findChild<QAction *>("scrollHorizontalAction")->trigger();
+        QCOMPARE(owner_->scrollRun_.axis, Qt::Horizontal);
+        QVERIFY(owner_->scrollRun_.initial);
+        auto *automatic = owner_->scrollProgress_->findChild<QCheckBox *>("scrollAutomatic");
+        QVERIFY(automatic && !automatic->isEnabled() && !automatic->isChecked());
+        owner_->setAutoScrollCapture(true);
+        QVERIFY(!owner_->scrollRun_.automatic);
+        stale(document().copy(0, 0, 240, 180), {});
+        QVERIFY(owner_->scrollRun_.initial);
+        const QImage whole = document(480, 180);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(offset, 0, 240, 180)));
+        QCOMPARE(owner_->scroller_->axis(), Qt::Horizontal);
+        QCOMPARE(owner_->scroller_->size(), QSize(300, 180));
+        QCOMPARE(owner_->scroller_->viewportRect(), QRect(60, 0, 240, 180));
+        QCOMPARE(wheelSteps_, 0);
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QCOMPARE(owner_->editor_.document().image, whole.copy(0, 0, 300, 180).convertToFormat(QImage::Format_ARGB32));
+    }
+    void manualScrollingStitchesInMotionAndRecoversFromAGap() {
+        // A user who keeps turning the wheel never gives two equal samples. Each
+        // sample that continues the stitch exactly is shown at once; a gap that
+        // no longer overlaps waits for the user instead of ending the capture.
+        auto *source = overlay();
+        const QImage whole = document();
+        const QImage first = whole.copy(0, 0, 240, 180);
+        begin(source);
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        QVERIFY(reply(whole.copy(0, 40, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 80, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(owner_->scroller_->size(), QSize(240, 260));
+        auto *preview = owner_->scrollProgress_->findChild<QLabel *>("scrollPreview");
+        QVERIFY(preview && !preview->pixmap().isNull());
+        QVERIFY(button("scrollFinish")->isEnabled());
+        QImage unrelated(first.size(), first.format());
+        unrelated.fill(Qt::black);
+        QVERIFY(reply(unrelated));
+        QVERIFY(reply(unrelated));
+        QVERIFY(owner_->scrollSource_);
+        QVERIFY(!owner_->scrollRun_.paused);
+        auto *status = owner_->scrollProgress_->findChild<QLabel *>("scrollStatus");
+        QVERIFY(status->text().contains(QStringLiteral("往回滚动")));
+        QVERIFY(!preview->property("captureMatched").toBool());
+        QVERIFY(reply(whole.copy(0, 120, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 120, 240, 180)));
+        QVERIFY(!status->text().contains(QStringLiteral("往回滚动")));
+        QVERIFY(preview->property("captureMatched").toBool());
+        QCOMPARE(wheelSteps_, 0);
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QVERIFY(owner_->editor_.hasDocument());
+        QCOMPARE(owner_->editor_.document().image,
+                 whole.copy(0, 0, 240, 300).convertToFormat(QImage::Format_ARGB32));
+    }
     void automaticChoiceCancelsPendingManualFrameAndCanReturnToManual() {
         auto *source = overlay();
         const QImage whole = document();
@@ -467,7 +770,7 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(ready_);
         QVERIFY(!owner_->editor_.hasDocument());
     }
-    void stoppingAfterProgressKeepsPictureAndIgnoresLateCallback() {
+    void stoppingAfterProgressDiscardsThisRunAndIgnoresLateCallback() {
         auto *source = overlay();
         const QImage whole = document();
         const QImage first = whole.copy(0, 0, 240, 180);
@@ -482,18 +785,14 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(owner_->scrollRun_.paused);
         QVERIFY(!owner_->scroller_->running());
         QVERIFY(button("scrollFinish")->isVisible());
-        QVERIFY(button("scrollFinish")->isEnabled());
+        QVERIFY(!button("scrollFinish")->isEnabled());
         QVERIFY(!source->isVisible());
-        const QImage stitched = owner_->scroller_->picture();
+        QVERIFY(owner_->scroller_->picture().isNull());
         auto callback = pending_.takeFirst();
         callback({}, "late failure");
-        QCOMPARE(owner_->scroller_->picture(), stitched);
+        QVERIFY(owner_->scroller_->picture().isNull());
         QCOMPARE(owner_->history_.count(), 0);
         QVERIFY(!owner_->editor_.hasDocument());
-        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
-        QCOMPARE(owner_->editor_.document().image,
-                 whole.copy(0, 0, 240, 240).convertToFormat(QImage::Format_ARGB32));
-        QCOMPARE(owner_->history_.count(), 1);
     }
     void missingCallbackTimesOutAndOffersExistingPicture() {
         auto *source = overlay();
@@ -531,7 +830,8 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(!owner_->scrollProgress_);
         QVERIFY(source->findChild<QLabel *>("captureStatus")->text().contains("unsupported"));
         owner_->scrollIo_.supported = [](QString *) { return true; };
-        owner_->scrollIo_.step = [](const ScrollCaptureTarget &, QPoint, int, QString *error) {
+        owner_->scrollIo_.step = [this](const ScrollCaptureTarget &, QPoint, int, QString *error) {
+            ++wheelSteps_;
             *error = "target changed";
             return false;
         };
@@ -540,8 +840,9 @@ class ScrollControllerTests final : public QObject {
         const QImage first = document().copy(0, 0, 240, 180);
         QVERIFY(reply(first));
         QVERIFY(reply(first));
-        QVERIFY(source->isVisible());
+        QTRY_VERIFY(source->isVisible());
         QVERIFY(!owner_->scrollSource_);
+        QCOMPARE(wheelSteps_, 1);
         QVERIFY(!owner_->editor_.hasDocument());
         QCOMPARE(owner_->history_.count(), 0);
     }

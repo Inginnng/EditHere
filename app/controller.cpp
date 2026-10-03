@@ -29,6 +29,9 @@ namespace {
 // trimmed to twenty anyway.
 constexpr int kHistoryMenuEntries = 5;
 constexpr double kScrollStableDifference = 0.45;
+// Manual scrolling is sampled often enough that consecutive samples overlap even
+// while the user keeps the wheel turning; waiting for a still page alone loses it.
+constexpr int kScrollManualSampleMs = 60;
 } // namespace
 Controller::Controller(QObject *parent, const AppSettings &settings, const QString &settingsFile)
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
@@ -401,6 +404,7 @@ void Controller::startScrollCapture(Overlay *source) {
         return;
     }
     scrollRun_ = {};
+    scrollRun_.axis = settings_.scrollAxis;
     scrollRun_.nativeRegion = area.translated(frame.nativeGeometry.topLeft());
     const double sx = double(frame.logicalGeometry.width()) / frame.image.width();
     const double sy = double(frame.logicalGeometry.height()) / frame.image.height();
@@ -410,30 +414,64 @@ void Controller::startScrollCapture(Overlay *source) {
     scrollSource_ = source;
     if (!scroller_)
         scroller_ = new ScrollCapture(this);
-    scroller_->begin({});
+    scroller_->setUltraLong(settings_.scrollUltraLong);
+    scroller_->begin({}, 1, scrollRun_.axis);
+    scroller_->setAutoCrop(settings_.scrollAutoCrop);
     const quint64 generation = ++scrollGeneration_;
     // A frozen full-screen image cannot remain on top of a scrolling application.
-    // The small, separate progress window is the only UI left up during the run.
+    // Replace it with a hollow live frame and a separate preview/control panel.
     for (auto *overlay : overlays_) {
         overlay->setBusy(true);
         overlay->hide();
     }
+    auto *shade = new ScrollCaptureShade(&editor_);
+    scrollShade_ = shade;
+    shade->setSelection(scrollRun_.logicalRegion, source->frame().logicalGeometry);
+    shade->show();
+    configureNativeWindow(shade, true);
+    auto *region = new ScrollCaptureRegion(&editor_);
+    scrollRegion_ = region;
+    region->setSelection(scrollRun_.logicalRegion, source->frame().logicalGeometry);
+    region->setState(true, scrollRun_.axis);
+    region->moveHandle()->setEnabled(false);
+    region->show();
+    configureNativeWindow(region, true);
+    connect(region, &ScrollCaptureRegion::regionChanged, this, &Controller::changeScrollRegion);
     auto *progress = new ScrollCaptureProgress(&editor_);
     scrollProgress_ = progress;
+    connect(progress, &ScrollCaptureProgress::positionChanged, region,
+            &ScrollCaptureRegion::setHandlePosition);
+    progress->setAxis(scrollRun_.axis);
+    progress->setAutoCrop(settings_.scrollAutoCrop);
     progress->placeBeside(scrollRun_.logicalRegion, source->frame().logicalGeometry);
-    connect(progress, &ScrollCaptureProgress::stopRequested, this, [this] {
-        pauseScrollCapture(scroller_ && scroller_->hasProgress()
-                               ? tr("已停止采集，可以完成已拼接的长截图。")
-                               : tr("已停止长截图，尚未产生可拼接的滚动内容。"));
-    });
+    progress->setSelectionSize(scrollRun_.nativeRegion.size());
+    connect(progress, &ScrollCaptureProgress::stopRequested, this, &Controller::stopScrollCapture);
     connect(progress, &ScrollCaptureProgress::finishRequested, this, &Controller::finishScrollCapture);
     connect(progress, &ScrollCaptureProgress::cancelRequested, this, [this] { abortScrollCapture(); });
     connect(progress, &ScrollCaptureProgress::automaticChanged, this, &Controller::setAutoScrollCapture);
+    connect(progress, &ScrollCaptureProgress::autoCropChanged, this, [this](bool enabled) {
+        if (scroller_) scroller_->setAutoCrop(enabled);
+    });
+    connect(progress, &ScrollCaptureProgress::resumeRequested, this, &Controller::resumeScrollCapture);
+    connect(progress, &ScrollCaptureProgress::directionRequested, this, &Controller::changeScrollDirection);
+    connect(progress, &ScrollCaptureProgress::cropRequested, this, [this](bool end) {
+        if (!scroller_ || !scroller_->hasProgress()) return;
+        const bool trimmed = end ? scroller_->cropAfterViewport() : scroller_->cropBeforeViewport();
+        if (trimmed && scrollProgress_) {
+            scrollProgress_->clearCrop();
+            showScrollProgress();
+        }
+    });
+    connect(progress, &ScrollCaptureProgress::copyRequested, this, [this] { exportScrollCapture(0); });
+    connect(progress, &ScrollCaptureProgress::saveRequested, this, [this] { exportScrollCapture(1); });
+    connect(progress, &ScrollCaptureProgress::pinRequested, this, [this] { exportScrollCapture(2); });
+    connect(progress, &ScrollCaptureProgress::quickSaveRequested, this, [this] { exportScrollCapture(3); });
     // The user scrolls the original application in the default mode. Preview
     // updates must not take keyboard focus away from that application.
     progress->setAttribute(Qt::WA_ShowWithoutActivating);
     progress->show();
     configureNativeWindow(progress, true);
+    region->setHandlePosition(progress->moveHandlePosition());
     beginScrollSettle();
     QPointer<Controller> self(this);
     scrollIo_.prepare(this, [self, generation] {
@@ -441,7 +479,7 @@ void Controller::startScrollCapture(Overlay *source) {
             return;
         // A full-screen selection may leave no room for the controls. Hide them
         // while resolving the original target as well as while reading pixels.
-        const bool overlaps = self->scrollProgress_ &&
+        const bool overlaps = self->scrollProgress_ && !excludedFromCapture(self->scrollProgress_) &&
                               self->scrollProgress_->geometry().intersects(self->scrollRun_.logicalRegion);
         if (overlaps)
             self->scrollProgress_->hide();
@@ -453,6 +491,7 @@ void Controller::startScrollCapture(Overlay *source) {
                 self->abortScrollCapture(tr("找不到选区下可滚动的窗口，请重试。"));
                 return;
             }
+            if (self->scrollRegion_) self->scrollRegion_->moveHandle()->setEnabled(true);
             if (overlaps && self->scrollProgress_)
                 self->scrollProgress_->show();
             self->scrollIo_.focus(self->scrollRun_.target.window);
@@ -500,7 +539,7 @@ void Controller::stepScrollCapture() {
         // Stable, unchanged content is an idle page, not the end of a manual
         // capture. Each sampling round has its own watchdog; waiting for the
         // user to scroll has no deadline.
-        QTimer::singleShot(120, this, [this, generation, round] {
+        QTimer::singleShot(kScrollManualSampleMs, this, [this, generation, round] {
             if (generation == scrollGeneration_ && round == scrollRun_.settleRound)
                 readScrollFrame();
         });
@@ -509,6 +548,7 @@ void Controller::stepScrollCapture() {
     // Chromium re-routes wheel messages through WindowFromPoint even when they
     // were addressed to its child HWND. Controls covering the region must leave
     // before input as well as before capture, or a successful send never scrolls.
+    // Capture exclusion does not help here: the wheel follows window stacking.
     const bool hideProgress = scrollProgress_ && scrollProgress_->isVisible() &&
                               scrollProgress_->geometry().intersects(scrollRun_.logicalRegion);
     if (hideProgress)
@@ -537,6 +577,7 @@ void Controller::stepScrollCapture() {
 }
 
 void Controller::setAutoScrollCapture(bool automatic) {
+    if (scrollRun_.axis == Qt::Horizontal) automatic = false;
     if (!scrollSource_ || scrollRun_.paused || scrollRun_.automatic == automatic)
         return;
     scrollRun_.automatic = automatic;
@@ -544,7 +585,7 @@ void Controller::setAutoScrollCapture(bool automatic) {
     if (scrollProgress_) {
         scrollProgress_->setAutomatic(automatic);
         if (scroller_ && scroller_->running())
-            scrollProgress_->setProgress(scroller_->picture(), scroller_->frames());
+            showScrollProgress();
     }
     // During preparation the first frame still needs to be accepted. Later
     // toggles invalidate any pending frame and wheel timer before starting the
@@ -553,6 +594,8 @@ void Controller::setAutoScrollCapture(bool automatic) {
         ++scrollRun_.settleRound;
         if (scrollProgress_)
             scrollProgress_->show();
+        if (scrollRegion_)
+            scrollRegion_->moveHandle()->show();
         if (!automatic)
             scrollIo_.focus(scrollRun_.target.window);
         stepScrollCapture();
@@ -565,14 +608,28 @@ void Controller::readScrollFrame() {
     const quint64 generation = scrollGeneration_;
     const quint64 round = scrollRun_.settleRound;
     // Display affinity is best effort on older Windows and some graphics drivers.
-    // If the controls overlap the capture, hide them for every read, including the
-    // first; wait one compositor frame before collecting pixels.
+    // If the controls overlap the capture and are not excluded from it, hide them
+    // for every read, including the first; wait one compositor frame first.
     const bool hideProgress = scrollProgress_ && scrollProgress_->isVisible() &&
+                              !excludedFromCapture(scrollProgress_) &&
                               scrollProgress_->geometry().intersects(scrollRun_.logicalRegion);
+    QPointer<QWidget> preview = scrollProgress_ ? scrollProgress_->findChild<QWidget *>("scrollPreviewArea") : nullptr;
+    const bool hidePreview = preview && preview->isVisible() && !excludedFromCapture(preview) &&
+                             preview->geometry().intersects(scrollRun_.logicalRegion);
+    QPointer<QWidget> cropMenu = scrollProgress_ ? scrollProgress_->findChild<QWidget *>("scrollCropMenu") : nullptr;
+    const bool hideCropMenu = cropMenu && cropMenu->isVisible() &&
+                             (hideProgress || (!excludedFromCapture(cropMenu) &&
+                              cropMenu->geometry().intersects(scrollRun_.logicalRegion)));
+    QPointer<QWidget> handle = scrollRegion_ ? scrollRegion_->moveHandle() : nullptr;
+    const bool hideHandle = handle && handle->isVisible() && !excludedFromCapture(handle) &&
+                            handle->geometry().intersects(scrollRun_.logicalRegion);
     if (hideProgress)
         scrollProgress_->hide();
+    if (hidePreview) preview->hide();
+    if (hideCropMenu) cropMenu->hide();
+    if (hideHandle) handle->hide();
     QPointer<Controller> self(this);
-    const auto read = [self, generation, round, hideProgress] {
+    const auto read = [self, generation, round, hideProgress, hidePreview, hideCropMenu, hideHandle, preview, cropMenu, handle] {
         if (!self || generation != self->scrollGeneration_ || round != self->scrollRun_.settleRound ||
             !self->scrollSource_)
             return;
@@ -583,12 +640,15 @@ void Controller::readScrollFrame() {
             return;
         }
         self->scrollIo_.grab(self->scrollRun_.nativeRegion,
-                            [self, generation, round, hideProgress](QImage grabbed, QString error) {
+                            [self, generation, round, hideProgress, hidePreview, hideCropMenu, hideHandle, preview, cropMenu, handle](QImage grabbed, QString error) {
             if (!self || generation != self->scrollGeneration_ || round != self->scrollRun_.settleRound ||
                 !self->scrollSource_)
                 return;
             if (hideProgress && self->scrollProgress_)
                 self->scrollProgress_->show();
+            if (hidePreview && preview) preview->show();
+            if (hideCropMenu && cropMenu) cropMenu->show();
+            if (hideHandle && handle) handle->show();
             if (!error.isEmpty() || grabbed.isNull() || grabbed.size() != self->scrollRun_.nativeRegion.size()) {
                 self->pauseScrollCapture(error.isEmpty() ? tr("屏幕选区采集失败，请重新选择区域。") : error);
                 return;
@@ -609,14 +669,22 @@ void Controller::readScrollFrame() {
                 self->placeScrollFrame(grabbed);
                 return;
             }
+            // While the user keeps scrolling, an exact continuation is appended
+            // at once so the preview follows; a still frame later confirms it.
+            if (!self->scrollRun_.automatic && !self->scrollRun_.initial && !self->scrollRun_.held.isNull() &&
+                self->scroller_ && self->scroller_->takeMoving(grabbed)) {
+                self->scrollRun_.mismatched = false;
+                self->showScrollProgress();
+            }
             self->scrollRun_.held = std::move(grabbed);
-            QTimer::singleShot(100, self.data(), [self, generation, round] {
+            QTimer::singleShot(self->scrollRun_.automatic ? 100 : kScrollManualSampleMs, self.data(),
+                               [self, generation, round] {
                 if (self && generation == self->scrollGeneration_ && round == self->scrollRun_.settleRound)
                     self->readScrollFrame();
             });
         });
     };
-    if (hideProgress)
+    if (hideProgress || hidePreview || hideCropMenu || hideHandle)
         QTimer::singleShot(35, this, read);
     else
         read();
@@ -628,25 +696,26 @@ void Controller::placeScrollFrame(const QImage &frame) {
     ++scrollRun_.settleRound;
     if (scrollRun_.initial) {
         scrollRun_.initial = false;
-        if (!scroller_->begin(frame)) {
+        if (!scroller_->begin(frame, 1, scrollRun_.axis)) {
             abortScrollCapture(tr("长截图选区超过图像上限，请缩小区域后重试。"));
             return;
         }
-        if (scrollProgress_)
-            scrollProgress_->setProgress(scroller_->picture(), scroller_->frames());
+        showScrollProgress();
         stepScrollCapture();
         return;
     }
     const auto outcome = scroller_->take(frame);
     if (outcome == ScrollCapture::Outcome::Added) {
         scrollRun_.unchanged = 0;
-        if (scrollProgress_)
-            scrollProgress_->setProgress(scroller_->picture(), scroller_->frames());
+        scrollRun_.mismatched = false;
+        showScrollProgress();
         if (scroller_->atLimit()) {
             pauseScrollCapture(tr("已达长截图上限，可以完成已拼接的部分。"));
             return;
         }
     } else if (outcome == ScrollCapture::Outcome::Repeat) {
+        scrollRun_.mismatched = false;
+        showScrollProgress();
         if (scrollRun_.automatic && ++scrollRun_.unchanged >= 2) {
             if (scroller_->frames() > 0)
                 finishScrollCapture();
@@ -654,24 +723,44 @@ void Controller::placeScrollFrame(const QImage &frame) {
                 abortScrollCapture(tr("内容没有产生可拼接的滚动，请选择可滚动的内容区域。"));
             return;
         }
-    } else {
+    } else if (scroller_->atLimit() || scrollRun_.automatic) {
         pauseScrollCapture(scroller_->atLimit() ? tr("已达长截图上限，可以完成已拼接的部分。")
                                               : tr("无法匹配相邻画面，采集已停止。可完成已有部分或返回选区重试。"));
         return;
+    } else {
+        // A manual scroll can outrun sampling and leave no shared rows. The user
+        // can scroll back a little; the stitch resumes from the last good frame.
+        scrollRun_.mismatched = true;
+        scrollRun_.notice = tr("滚动过快，新画面与已拼接部分没有重叠。\n请稍微往回滚动，对上后会继续拼接。");
+        if (scrollProgress_)
+            scrollProgress_->setNotice(scrollRun_.notice);
+        showScrollProgress();
     }
     stepScrollCapture();
 }
 
-void Controller::pauseScrollCapture(const QString &message) {
+void Controller::showScrollProgress() {
+    if (!scrollProgress_ || !scroller_)
+        return;
+    const QRect source = scrollProgress_->previewSourceRect(scroller_->size(), scroller_->viewportRect(),
+                                                           scrollRun_.axis, scroller_->originOffset());
+    scrollProgress_->setProgress(scroller_->previewRegion(source, scrollProgress_->previewWidth()), scroller_->frames(),
+                                 scroller_->size(), scroller_->viewportRect(), scroller_->matched(), scrollRun_.axis, source);
+    if (scrollRun_.mismatched)
+        scrollProgress_->setNotice(scrollRun_.notice);
+}
+
+void Controller::pauseScrollCapture(const QString &message, bool allowEmpty) {
     if (!scrollSource_)
         return;
-    if (!scroller_ || scroller_->frames() == 0) {
+    if (!scroller_ || (scroller_->frames() == 0 && (!allowEmpty || scrollRun_.initial))) {
         abortScrollCapture(message);
         return;
     }
     ++scrollGeneration_;
     scrollRun_.paused = true;
     scroller_->pause();
+    if (scrollRegion_) scrollRegion_->setState(false, scrollRun_.axis);
     if (scrollProgress_) {
         scrollProgress_->setStopped(message);
         scrollProgress_->show();
@@ -681,11 +770,181 @@ void Controller::pauseScrollCapture(const QString &message) {
     }
 }
 
+void Controller::stopScrollCapture() {
+    if (!scrollSource_ || !scroller_) return;
+    if (!scrollRun_.target.window) {
+        abortScrollCapture();
+        return;
+    }
+    ++scrollGeneration_;
+    scrollRun_.paused = true;
+    scrollRun_.automatic = false;
+    scrollRun_.initial = true;
+    scrollRun_.mismatched = false;
+    scrollRun_.held = {};
+    scroller_->begin({}, 1, scrollRun_.axis);
+    if (scrollRegion_) scrollRegion_->setState(false, scrollRun_.axis);
+    if (scrollProgress_) {
+        scrollProgress_->setProgress({}, 0, {}, {}, true, scrollRun_.axis);
+        scrollProgress_->setSelectionSize(scrollRun_.nativeRegion.size());
+        scrollProgress_->setStopped(tr("已停止截图，可调整选区后重新开始。"));
+    }
+}
+
+void Controller::resumeScrollCapture() {
+    if (!scrollSource_ || !scroller_ || !scrollRun_.paused) return;
+    ++scrollGeneration_;
+    scrollRun_.paused = false;
+    scrollRun_.automatic = false;
+    scrollRun_.mismatched = false;
+    scrollRun_.unchanged = 0;
+    if (!scrollRun_.initial) scroller_->resume();
+    if (scrollRegion_) scrollRegion_->setState(true, scrollRun_.axis);
+    if (scrollRegion_) scrollRegion_->moveHandle()->show();
+    if (scrollProgress_) scrollProgress_->setRunning(scrollRun_.axis);
+    if (scrollProgress_) scrollProgress_->show();
+    if (!scrollRun_.initial) showScrollProgress();
+    scrollIo_.focus(scrollRun_.target.window);
+    beginScrollSettle();
+    readScrollFrame();
+}
+
+void Controller::changeScrollDirection() {
+    if (!scrollSource_ || !scroller_) return;
+    ++scrollGeneration_;
+    scrollRun_.axis = scrollRun_.axis == Qt::Vertical ? Qt::Horizontal : Qt::Vertical;
+    scrollRun_.automatic = false;
+    scrollRun_.paused = false;
+    scrollRun_.initial = true;
+    scrollRun_.mismatched = false;
+    scrollRun_.unchanged = 0;
+    scroller_->begin({}, 1, scrollRun_.axis);
+    if (scrollRegion_) scrollRegion_->setState(true, scrollRun_.axis);
+    if (scrollRegion_) scrollRegion_->moveHandle()->show();
+    scrollProgress_->setRunning(scrollRun_.axis);
+    scrollProgress_->show();
+    scrollProgress_->setProgress({}, 0, {}, {}, true, scrollRun_.axis);
+    scrollProgress_->setSelectionSize(scrollRun_.nativeRegion.size());
+    scrollProgress_->setNotice(tr("已切换截图方向，从当前画面重新开始。"));
+    beginScrollSettle();
+    readScrollFrame();
+}
+
+void Controller::changeScrollRegion(const QRect &logicalRegion) {
+    if (!scrollSource_ || !scroller_ || logicalRegion.isEmpty()) return;
+    const auto &frame = scrollSource_->frame();
+    const double sx = double(frame.image.width()) / frame.logicalGeometry.width();
+    const double sy = double(frame.image.height()) / frame.logicalGeometry.height();
+    const QPoint local = logicalRegion.topLeft() - frame.logicalGeometry.topLeft();
+    const QRect native(frame.nativeGeometry.topLeft() + QPoint(qRound(local.x() * sx), qRound(local.y() * sy)),
+                       QSize(qRound(logicalRegion.width() * sx), qRound(logicalRegion.height() * sy)));
+    const bool resized = native.size() != scrollRun_.nativeRegion.size();
+    ++scrollGeneration_;
+    scrollRun_.logicalRegion = logicalRegion;
+    scrollRun_.nativeRegion = native;
+    if (scrollShade_) scrollShade_->setSelection(logicalRegion, frame.logicalGeometry);
+    if (scrollProgress_) {
+        scrollProgress_->placeBeside(logicalRegion, frame.logicalGeometry);
+        scrollProgress_->setSelectionSize(native.size());
+        if (scrollRegion_) scrollRegion_->setHandlePosition(scrollProgress_->moveHandlePosition());
+    }
+    scrollRun_.mismatched = false;
+    scrollRun_.unchanged = 0;
+    if (resized) {
+        scroller_->begin({}, 1, scrollRun_.axis);
+        scrollRun_.initial = true;
+        scrollProgress_->setProgress({}, 0, {}, {}, true, scrollRun_.axis);
+        scrollProgress_->setNotice(tr("选区尺寸已调整，点击开始从新选区采集。"));
+    }
+    if (!scrollRun_.paused) {
+        if (scrollRegion_) scrollRegion_->moveHandle()->show();
+        scrollProgress_->show();
+        beginScrollSettle();
+        readScrollFrame();
+    }
+}
+
+QImage Controller::scrollResult() const {
+    if (!scroller_ || !scroller_->hasProgress()) return {};
+    const QImage image = scroller_->picture();
+    const QRect crop = scrollProgress_ ? scrollProgress_->croppedRect().intersected(image.rect()) : image.rect();
+    return crop.isEmpty() || crop == image.rect() ? image : image.copy(crop);
+}
+
+void Controller::exportScrollCapture(int action) {
+    if (!scroller_ || !scroller_->hasProgress() || !scrollSource_) return;
+    if (!scroller_->fitsImageLimits()) {
+        if (action != 1 && action != 3) return;
+        if (!scrollRun_.paused) pauseScrollCapture(tr("采集已暂停，正在保存长截图。"));
+        const QString folder = settings_.quickSaveDir.isEmpty()
+            ? QDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)).filePath(QStringLiteral("EditHere"))
+            : settings_.quickSaveDir;
+        const QString filename = QStringLiteral("EditHere-%1.png")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
+        QString path = QDir(folder).filePath(filename);
+        if (action == 1) {
+            if (scrollShade_) scrollShade_->hide();
+            if (scrollProgress_) scrollProgress_->hide();
+            if (scrollRegion_) scrollRegion_->hide();
+            path = QFileDialog::getSaveFileName(&editor_, tr("保存长截图"), path, tr("PNG 图像 (*.png)"));
+            if (scrollShade_) scrollShade_->show();
+            if (scrollRegion_) scrollRegion_->show();
+            if (scrollProgress_) scrollProgress_->show();
+            if (path.isEmpty()) return;
+            if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".png");
+        }
+        QString error;
+        if (!QDir().mkpath(QFileInfo(path).absolutePath()) || !scroller_->savePng(path, &error)) {
+            if (scrollProgress_) scrollProgress_->setNotice(error.isEmpty() ? tr("无法创建保存目录。") : error);
+            return;
+        }
+        tray_.showMessage(QStringLiteral("EditHere"), tr("已保存 %1").arg(path));
+        clearOverlays();
+        restoreAfterCapture();
+        return;
+    }
+    const QImage picture = scrollResult();
+    if (picture.isNull() || !scrollSource_) return;
+    const QRect selection = scrollRun_.nativeRegion.translated(-scrollSource_->frame().nativeGeometry.topLeft());
+    if (action == 1) {
+        if (!scrollRun_.paused) pauseScrollCapture(tr("采集已暂停，正在保存长截图。"));
+        if (scrollProgress_) scrollProgress_->hide();
+        if (scrollRegion_) scrollRegion_->hide();
+        if (scrollShade_) scrollShade_->hide();
+        const bool saved = saveImage(picture);
+        if (!saved) {
+            if (scrollShade_) scrollShade_->show();
+            if (scrollRegion_) scrollRegion_->show();
+            if (scrollProgress_) scrollProgress_->show();
+            return;
+        }
+    } else if (action == 0) {
+        QApplication::clipboard()->setImage(picture);
+    } else if (action == 2) {
+        pinImage(picture, scrollRun_.logicalRegion);
+    } else {
+        const QString folder = settings_.quickSaveDir.isEmpty()
+            ? QDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation))
+                  .filePath(QStringLiteral("EditHere"))
+            : settings_.quickSaveDir;
+        const QString path = QDir(folder).filePath(QStringLiteral("EditHere-%1.png")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"))));
+        if (!QDir().mkpath(folder) || !picture.save(path)) {
+            if (scrollProgress_) scrollProgress_->setNotice(tr("快速保存失败，请改用保存按钮选择可写目录。"));
+            return;
+        }
+        tray_.showMessage(QStringLiteral("EditHere"), tr("已保存 %1").arg(path));
+    }
+    remember(picture, selection);
+    clearOverlays();
+    restoreAfterCapture();
+}
+
 void Controller::finishScrollCapture() {
     if (!scrollSource_ || !scroller_ || scroller_->frames() == 0)
         return;
-    const QImage picture = scroller_->picture();
-    const QRect selection = scrollSource_->selection();
+    const QImage picture = scrollResult();
+    const QRect selection = scrollRun_.nativeRegion.translated(-scrollSource_->frame().nativeGeometry.topLeft());
     if (picture.isNull())
         return;
     try {
@@ -708,6 +967,16 @@ void Controller::discardScrollRun() {
     // its final image; a paused run alone keeps the extra viewport data alive.
     delete scroller_;
     scroller_ = nullptr;
+    if (scrollRegion_) {
+        scrollRegion_->hide();
+        scrollRegion_->deleteLater();
+        scrollRegion_ = nullptr;
+    }
+    if (scrollShade_) {
+        scrollShade_->hide();
+        scrollShade_->deleteLater();
+        scrollShade_ = nullptr;
+    }
     if (scrollProgress_) {
         scrollProgress_->hide();
         scrollProgress_->deleteLater();

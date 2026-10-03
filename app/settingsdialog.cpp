@@ -222,6 +222,53 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addStretch();
     tabs->addTab(defaults, {});
 
+    auto scrollPage = new QWidget;
+    scrollPage->setObjectName("settingsScrollPage");
+    auto scrollLayout = new QVBoxLayout(scrollPage);
+    scrollLayout->setContentsMargins(20, 22, 20, 20);
+    scrollLayout->setSpacing(14);
+    auto scrollHint = new QLabel(scrollPage);
+    scrollHint->setObjectName("scrollSettingsHint");
+    scrollHint->setWordWrap(true);
+    scrollLayout->addWidget(scrollHint);
+    auto scrollForm = new QFormLayout;
+    scrollAxis_ = new QComboBox(scrollPage);
+    scrollAxis_->setObjectName("scrollDefaultAxis");
+    scrollAxis_->addItem({}, static_cast<int>(Qt::Vertical));
+    scrollAxis_->addItem({}, static_cast<int>(Qt::Horizontal));
+    auto axisLabel = new QLabel(scrollPage);
+    axisLabel->setObjectName("scrollAxisLabel");
+    axisLabel->setBuddy(scrollAxis_);
+    scrollForm->addRow(axisLabel, scrollAxis_);
+    scrollLayout->addLayout(scrollForm);
+    scrollAutoCrop_ = new QCheckBox(scrollPage);
+    scrollAutoCrop_->setObjectName("scrollDefaultAutoCrop");
+    scrollLayout->addWidget(scrollAutoCrop_);
+    scrollUltraLong_ = new QCheckBox(scrollPage);
+    scrollUltraLong_->setObjectName("scrollUltraLong");
+    scrollLayout->addWidget(scrollUltraLong_);
+    auto quickForm = new QFormLayout;
+    quickSaveDir_ = new QLineEdit(scrollPage);
+    quickSaveDir_->setObjectName("scrollQuickSaveDir");
+    auto quickBrowse = new QToolButton(scrollPage);
+    quickBrowse->setText(QStringLiteral("…"));
+    quickBrowse->setObjectName("scrollQuickSaveBrowse");
+    auto quickRow = new QHBoxLayout;
+    quickRow->addWidget(quickSaveDir_, 1);
+    quickRow->addWidget(quickBrowse);
+    auto quickLabel = new QLabel(scrollPage);
+    quickLabel->setObjectName("scrollQuickSaveLabel");
+    quickLabel->setBuddy(quickSaveDir_);
+    quickForm->addRow(quickLabel, quickRow);
+    scrollLayout->addLayout(quickForm);
+    connect(quickBrowse, &QToolButton::clicked, this, [this] {
+        const auto path = QFileDialog::getExistingDirectory(this, tr("选择快速保存目录"),
+                                                           quickSaveDir_->text());
+        if (!path.isEmpty()) quickSaveDir_->setText(QDir::toNativeSeparators(path));
+    });
+    scrollLayout->addStretch();
+    tabs->addTab(scrollPage, {});
+
     auto toolbar = new QWidget;
     toolbar->setObjectName("settingsToolbarPage");
     auto toolbarLayout = new QVBoxLayout(toolbar);
@@ -412,7 +459,8 @@ void SettingsDialog::retranslate() {
         if (auto field = input->findChild<QLineEdit *>())
             field->setPlaceholderText(tr("点击录制快捷键"));
     }
-    const QStringList tabTitles{tr("快捷键"), tr("外观"), tr("默认行为"), tr("工具栏"), tr("关于与更新")};
+    const QStringList tabTitles{tr("快捷键"), tr("外观"), tr("默认行为"), tr("长截图"),
+                                tr("工具栏"), tr("关于与更新")};
     for (int i = 0; i < tabs_->count() && i < tabTitles.size(); ++i)
         tabs_->setTabText(i, tabTitles[i]);
     if (appearanceTitle_)
@@ -459,6 +507,18 @@ void SettingsDialog::retranslate() {
         hint->setText(tr("包含原图的 JSON 可独立还原。保存项目始终包含原图。"));
     if (auto label = findChild<QLabel *>("defaultToolLabel"))
         label->setText(tr("默认标注工具"));
+    if (auto hint = findChild<QLabel *>("scrollSettingsHint"))
+        hint->setText(tr("长截图默认由你滚动页面；截取时仍可切换方向和自动裁剪。"));
+    if (auto label = findChild<QLabel *>("scrollAxisLabel"))
+        label->setText(tr("默认截图方向"));
+    scrollAxis_->setItemText(0, tr("垂直"));
+    scrollAxis_->setItemText(1, tr("水平"));
+    scrollAutoCrop_->setText(tr("反向滚动时自动裁剪"));
+    scrollUltraLong_->setText(tr("超长截图（最长 200 万像素）"));
+    scrollUltraLong_->setToolTip(tr("分块采集并保存 PNG；超过编辑器图像上限时可保存，复制、贴图和编辑受图像大小限制。"));
+    if (auto label = findChild<QLabel *>("scrollQuickSaveLabel"))
+        label->setText(tr("快速保存目录"));
+    quickSaveDir_->setPlaceholderText(tr("默认：图片 / EditHere"));
     defaultTool_->setAccessibleName(tr("默认标注工具"));
     const QStringList tools{tr("智能选块"), tr("点标注"), tr("框选标注"), tr("调整批注")};
     for (int i = 0; i < defaultTool_->count() && i < tools.size(); ++i)
@@ -555,6 +615,10 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
     feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
+    scrollAxis_->setCurrentIndex(scrollAxis_->findData(static_cast<int>(settings.scrollAxis)));
+    scrollAutoCrop_->setChecked(settings.scrollAutoCrop);
+    scrollUltraLong_->setChecked(settings.scrollUltraLong);
+    quickSaveDir_->setText(QDir::toNativeSeparators(settings.quickSaveDir));
     defaultTool_->setCurrentIndex(settings.defaultTool);
 }
 AppSettings SettingsDialog::settings() const {
@@ -567,6 +631,10 @@ AppSettings SettingsDialog::settings() const {
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());
+    result.scrollAxis = static_cast<Qt::Orientation>(scrollAxis_->currentData().toInt());
+    result.scrollAutoCrop = scrollAutoCrop_->isChecked();
+    result.scrollUltraLong = scrollUltraLong_->isChecked();
+    result.quickSaveDir = QDir::fromNativeSeparators(quickSaveDir_->text().trimmed());
     result.defaultTool = defaultTool_->currentIndex();
     result.language = static_cast<LanguageMode>(language_->currentData().toInt());
     result.ocrLanguage = static_cast<OcrLanguageMode>(ocrLanguage_->currentData().toInt());

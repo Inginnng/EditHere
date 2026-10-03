@@ -290,6 +290,10 @@ bool requestAccessibility() {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
+bool excludedFromCapture(const QWidget *) {
+    // Long screenshots are not available on macOS yet; never rely on sharing state.
+    return false;
+}
 void configureNativeWindow(QWidget *widget, bool overlay) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")

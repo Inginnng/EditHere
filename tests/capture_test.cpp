@@ -2,15 +2,23 @@
 #include "capturetoolbar.h"
 #include "model.h"
 #include "pinwindow.h"
+#include "scrollcapture.h"
 #include "ui.h"
+#include <QCheckBox>
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
+#include <QHelpEvent>
 #include <QMenu>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
+#include <QRegion>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QToolTip>
 #include <algorithm>
 #include <memory>
 using namespace h2d;
@@ -47,6 +55,19 @@ class CaptureTests : public QObject {
         }
         return image;
     }
+    static void dragGlobally(QWidget *widget, QPoint press, QPoint delta) {
+        const QPoint start = widget->mapToGlobal(press);
+        QMouseEvent down(QEvent::MouseButtonPress, press, start, Qt::LeftButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &down);
+        const QPoint finish = start + delta;
+        QMouseEvent move(QEvent::MouseMove, widget->mapFromGlobal(finish), finish,
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &move);
+        QMouseEvent up(QEvent::MouseButtonRelease, widget->mapFromGlobal(finish), finish,
+                       Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &up);
+    }
   private slots:
     void initTestCase() {
 #ifdef Q_OS_WIN
@@ -56,6 +77,649 @@ class CaptureTests : public QObject {
             QVERIFY(QFontDatabase::addApplicationFont(fonts + "msyh.ttc") >= 0);
         }
 #endif
+    }
+
+    void longCaptureFitsWholeResultAndTracksCurrentViewport() {
+        ScrollCapturePreview preview;
+        preview.resize(256, 190);
+        const QImage image = stripedImage(100, 600);
+        const QImage original = image.copy();
+        const QSize nativeSize(400, 2400);
+        preview.setCapture(image, nativeSize, QRect(0, 1800, 400, 300), true, Qt::Vertical);
+        preview.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&preview));
+        const QRectF fit = preview.imageRect();
+        QVERIFY(QRectF(preview.rect()).contains(fit));
+        QVERIFY(qAbs(fit.height() - 190.0) < 0.01);
+        QVERIFY(qAbs(fit.width() - 400.0 * 190.0 / 2400.0) < 0.01);
+        const QRectF viewport = preview.viewportRect();
+        QVERIFY(qAbs(viewport.top() - 142.5) < 0.01);
+        QVERIFY(qAbs(viewport.height() - 23.75) < 0.01);
+        QCOMPARE(viewport.left(), fit.left());
+        QCOMPARE(viewport.width(), fit.width());
+        const QImage painted = preview.grab().toImage();
+        const QPoint greenLine(qRound(viewport.center().x()), qRound(viewport.top() + 1));
+        bool hasGreen = false;
+        for (int dy = -2; dy <= 2; ++dy)
+            hasGreen |= painted.pixelColor(greenLine + QPoint(0, dy)) == QColor("#83e54f");
+        QVERIFY2(hasGreen, "the current viewport is not outlined in green");
+
+        // Revisiting an earlier screen moves its locator up without clipping
+        // the already captured result or drawing decorations into its pixels.
+        preview.setCapture(image, nativeSize, QRect(0, 300, 400, 300), true, Qt::Vertical);
+        QCOMPARE(preview.imageRect(), fit);
+        QVERIFY(qAbs(preview.viewportRect().top() - 23.75) < 0.01);
+        QCOMPARE(preview.pixmap().toImage().convertedTo(QImage::Format_ARGB32), original);
+        QCOMPARE(image, original);
+
+        const QSize wideSize(2400, 400);
+        preview.setCapture(image, wideSize, QRect(1800, 0, 300, 400), true, Qt::Horizontal);
+        const QRectF wideFit = preview.imageRect();
+        QVERIFY(QRectF(preview.rect()).contains(wideFit));
+        QCOMPARE(wideFit.width(), 256.0);
+        QVERIFY(qAbs(preview.viewportRect().left() - 192.0) < 0.01);
+        QVERIFY(qAbs(preview.viewportRect().width() - 32.0) < 0.01);
+    }
+
+    void longCaptureTrimUsesNativePixelsAndPreservesSource() {
+        ScrollCapturePreview preview;
+        preview.resize(240, 400);
+        const QImage image = noisyImage(240, 1600, 73);
+        const QImage original = image.copy();
+        preview.setCapture(image.scaled(60, 400), image.size(), QRect(0, 800, 240, 400), true,
+                           Qt::Vertical);
+        QSignalSpy changes(&preview, &ScrollCapturePreview::cropChanged);
+        preview.beginCrop(false);
+        QTest::mouseClick(&preview, Qt::LeftButton, Qt::NoModifier, QPoint(120, 100));
+        QCOMPARE(preview.croppedRect(), QRect(0, 400, 240, 1200));
+        preview.beginCrop(true);
+        QTest::mouseClick(&preview, Qt::LeftButton, Qt::NoModifier, QPoint(120, 300));
+        QCOMPARE(preview.croppedRect(), QRect(0, 400, 240, 800));
+        const QImage cropped = image.copy(preview.croppedRect());
+        QCOMPARE(cropped.pixel(0, 0), original.pixel(0, 400));
+        QCOMPARE(cropped.pixel(239, 799), original.pixel(239, 1199));
+        QCOMPARE(image, original);
+        QVERIFY(changes.count() >= 2);
+        preview.clearCrop();
+        QCOMPARE(preview.croppedRect(), image.rect());
+
+        const QImage horizontal = noisyImage(1600, 240, 91);
+        preview.resize(400, 240);
+        preview.setCapture(horizontal.scaled(400, 60), horizontal.size(), QRect(800, 0, 400, 240),
+                           true, Qt::Horizontal);
+        preview.beginCrop(false);
+        QTest::mouseClick(&preview, Qt::LeftButton, Qt::NoModifier, QPoint(100, 120));
+        preview.beginCrop(true);
+        QTest::mouseClick(&preview, Qt::LeftButton, Qt::NoModifier, QPoint(300, 120));
+        QCOMPARE(preview.croppedRect(), QRect(400, 0, 800, 240));
+        QCOMPARE(horizontal.copy(preview.croppedRect()).pixel(0, 0), horizontal.pixel(400, 0));
+        QCOMPARE(horizontal.copy(preview.croppedRect()).pixel(799, 239), horizontal.pixel(1199, 239));
+        // Dragging either boundary through the other retains one real pixel.
+        preview.beginCrop(false);
+        QTest::mouseClick(&preview, Qt::LeftButton, Qt::NoModifier, QPoint(400, 120));
+        QCOMPARE(preview.croppedRect().width(), 1);
+    }
+
+    void longCaptureAutoCropFollowsReverseScrollAndCanChangeGrowthDirection_data() {
+        QTest::addColumn<Qt::Orientation>("axis");
+        QTest::newRow("vertical") << Qt::Vertical;
+        QTest::newRow("horizontal") << Qt::Horizontal;
+    }
+
+    void longCaptureAutoCropFollowsReverseScrollAndCanChangeGrowthDirection() {
+        QFETCH(Qt::Orientation, axis);
+        ScrollCapturePreview preview;
+        preview.setAutoCrop(true);
+        const auto fullSize = [axis](int length) {
+            return axis == Qt::Vertical ? QSize(240, length) : QSize(length, 240);
+        };
+        const auto nativeRect = [axis](int begin, int length) {
+            return axis == Qt::Vertical ? QRect(0, begin, 240, length) : QRect(begin, 0, length, 240);
+        };
+        const auto sample = [&](int length, int position, bool matched = true) {
+            const QImage image = stripedImage(fullSize(length).width(), fullSize(length).height());
+            preview.setCapture(image.scaled(60, 60, Qt::KeepAspectRatio), fullSize(length),
+                               nativeRect(position, 400), matched, axis);
+        };
+
+        sample(400, 0);
+        sample(600, 200);
+        sample(800, 400);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 800));
+        sample(800, 200);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 600));
+        // A failed match must not shorten the retained image.
+        sample(800, 0, false);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 600));
+        sample(800, 0);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 400));
+        sample(800, 0); // The viewport-size pause permits a new growth direction.
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 400));
+        sample(1000, 0); // New content prepended above/left of the original screen.
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 600));
+        sample(1200, 0);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 800));
+        // Growing upward keeps the bottom/right part previously trimmed away.
+        sample(1200, 200);
+        QCOMPARE(preview.croppedRect(), nativeRect(200, 600));
+        sample(1200, 400);
+        QCOMPARE(preview.croppedRect(), nativeRect(400, 400));
+
+        // A fresh run in the opposite initial direction mirrors the behavior.
+        preview.setCapture({}, {}, {}, true, axis);
+        sample(400, 0);
+        sample(600, 0);
+        sample(800, 0);
+        QCOMPARE(preview.croppedRect(), nativeRect(0, 800));
+        sample(800, 200);
+        QCOMPARE(preview.croppedRect(), nativeRect(200, 600));
+        sample(800, 400);
+        QCOMPARE(preview.croppedRect(), nativeRect(400, 400));
+        sample(800, 400);
+        sample(1000, 600); // New content appended down/right; preserve top/left trim.
+        QCOMPARE(preview.croppedRect(), nativeRect(400, 600));
+        sample(1200, 800);
+        QCOMPARE(preview.croppedRect(), nativeRect(400, 800));
+    }
+
+    void longCaptureAutoCropCanBeEnabledAfterGrowthAndResetForNewSelection() {
+        ScrollCapturePreview preview;
+        const auto sample = [&](int length, int position) {
+            QImage image(60, qMax(1, length / 4), QImage::Format_RGB32);
+            image.fill(Qt::white);
+            preview.setCapture(image, QSize(240, length), QRect(0, position, 240, 400), true,
+                               Qt::Vertical);
+        };
+        // The official PixPin demonstration enables the option after growth.
+        sample(400, 0);
+        sample(800, 400);
+        sample(800, 200); // Off by default: returning does not discard pixels.
+        QCOMPARE(preview.croppedRect(), QRect(0, 0, 240, 800));
+        preview.setAutoCrop(true);
+        sample(800, 100);
+        QCOMPARE(preview.croppedRect(), QRect(0, 0, 240, 500));
+        preview.setCapture({}, {}, {}, true, Qt::Vertical);
+        sample(400, 0);
+        QCOMPARE(preview.croppedRect(), QRect(0, 0, 240, 400));
+
+        sample(800, 0); // This new run initially grows up.
+        preview.setAutoCrop(false);
+        sample(800, 200);
+        QCOMPARE(preview.croppedRect(), QRect(0, 0, 240, 800));
+        preview.setAutoCrop(true);
+        sample(800, 300);
+        QCOMPARE(preview.croppedRect(), QRect(0, 300, 240, 500));
+        preview.setCapture({}, {}, {}, true, Qt::Vertical);
+        sample(400, 0);
+        QCOMPARE(preview.croppedRect(), QRect(0, 0, 240, 400));
+    }
+
+    void longCaptureRegionMovesAlongAxisAndResizesWithinBounds() {
+        ScrollCaptureRegion region;
+        const QRect bounds(100, 100, 500, 450);
+        const QRect selection(170, 200, 200, 180);
+        region.setSelection(selection, bounds);
+        region.setState(true, Qt::Vertical);
+        region.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&region));
+        QVERIFY(region.moveHandle()->isVisible());
+        QVERIFY(!region.mask().contains(region.rect().center()));
+        QSignalSpy changes(&region, &ScrollCaptureRegion::regionChanged);
+        const QPoint grab = region.moveHandle()->rect().center();
+        dragGlobally(region.moveHandle(), grab, QPoint(90, 45));
+        QCOMPARE(region.selection(), selection.translated(0, 45));
+        region.setSelection(selection, bounds);
+        region.setState(true, Qt::Horizontal);
+        dragGlobally(region.moveHandle(), grab, QPoint(90, 45));
+        QCOMPARE(region.selection(), selection.translated(90, 0));
+        region.setSelection(selection, bounds);
+        region.setState(false, Qt::Vertical);
+        dragGlobally(region.moveHandle(), grab, QPoint(40, 35));
+        QCOMPARE(region.selection(), selection.translated(40, 35));
+
+        region.setSelection(selection, bounds);
+        dragGlobally(&region, QPoint(region.width() - 1, region.height() / 2), QPoint(2000, 0));
+        QCOMPARE(region.selection().right(), bounds.right());
+        QVERIFY(bounds.contains(region.selection()));
+        dragGlobally(&region, QPoint(0, region.height() / 2), QPoint(2000, 0));
+        QCOMPARE(region.selection().width(), 64);
+        QVERIFY(bounds.contains(region.selection()));
+        region.setSelection(selection, bounds);
+        dragGlobally(&region, QPoint(region.width() / 2, region.height() - 1), QPoint(0, 2000));
+        QCOMPARE(region.selection().bottom(), bounds.bottom());
+        dragGlobally(&region, QPoint(region.width() / 2, 0), QPoint(0, 2000));
+        QCOMPARE(region.selection().height(), 120);
+        QVERIFY(bounds.contains(region.selection()));
+        QVERIFY(changes.count() >= 7);
+
+        // A valid 64 × 120 native-pixel capture at 150% scale can occupy only
+        // 43 × 80 logical pixels. At the screen origin, its top/left clamps
+        // must remain ordered and must preserve that initial smaller minimum.
+        const QRect highDpiSelection(bounds.topLeft(), QSize(43, 80));
+        region.setSelection(highDpiSelection, bounds);
+        dragGlobally(&region, QPoint(0, region.height() / 2), QPoint(2000, 0));
+        QCOMPARE(region.selection(), highDpiSelection);
+        dragGlobally(&region, QPoint(region.width() / 2, 0), QPoint(0, 2000));
+        QCOMPARE(region.selection(), highDpiSelection);
+        QVERIFY(bounds.contains(region.selection()));
+        dragGlobally(&region, QPoint(region.width() - 1, region.height() / 2), QPoint(2000, 0));
+        dragGlobally(&region, QPoint(region.width() / 2, region.height() - 1), QPoint(0, 2000));
+        QCOMPARE(region.selection(), bounds);
+        dragGlobally(&region, QPoint(0, region.height() / 2), QPoint(2000, 0));
+        dragGlobally(&region, QPoint(region.width() / 2, 0), QPoint(0, 2000));
+        QCOMPARE(region.selection().size(), QSize(64, 120));
+        QVERIFY(bounds.contains(region.selection()));
+        region.hide();
+        QVERIFY(!region.moveHandle()->isVisible());
+    }
+
+    void longCapturePanelKeepsPreviewInsideItsViewport() {
+        if (!qEnvironmentVariable("EDITHERE_UI_ARTIFACT_DIR").isEmpty()) applyTheme(ThemeMode::Light);
+        ScrollCaptureProgress panel;
+        const QRect selection(220, 170, 420, 360);
+        const QRect bounds(0, 0, 980, 720);
+        panel.placeBeside(selection, bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        const QImage image = stripedImage(420, 2400);
+        auto *preview = panel.findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(preview);
+        QVERIFY(area);
+        const auto progress = [&](int length, int position, int frames) {
+            const QSize nativeSize(420, length);
+            const QRect viewport(0, position, 420, 360);
+            const QRect source = panel.previewSourceRect(nativeSize, viewport, Qt::Vertical);
+            const QImage thumbnail = image.copy(source).scaledToWidth(panel.previewWidth(), Qt::SmoothTransformation);
+            panel.setProgress(thumbnail, frames, nativeSize, viewport, true, Qt::Vertical, source);
+            QCoreApplication::processEvents();
+            return source;
+        };
+        int oldHeight = 0;
+        int fixedWidth = 0;
+        double viewportHeight = 0;
+        // The original screen remains equally legible while only the captured
+        // length grows. Reaching the screen edge clips the view, not its scale.
+        for (int length : {360, 720, 1200, 2400}) {
+            const QRect source = progress(length, length - 360, length / 360 + 1);
+            QVERIFY(QRect(QPoint(), QSize(420, length)).contains(source));
+            QVERIFY(source.contains(QRect(0, length - 360, 420, 360)));
+            QVERIFY(bounds.contains(area->geometry()));
+            if (!fixedWidth) {
+                fixedWidth = area->width();
+                viewportHeight = preview->viewportRect().height();
+            }
+            QCOMPARE(area->width(), fixedWidth);
+            QVERIFY(area->height() > oldHeight);
+            oldHeight = area->height();
+            QVERIFY(qAbs(preview->imageRect().width() - 196.0) <= 1.0);
+            QVERIFY(qAbs(preview->viewportRect().height() - viewportHeight) <= 1.0);
+        }
+        QVERIFY(area->height() <= bounds.height() - 12);
+        QCOMPARE(preview->size(), area->viewport()->size());
+        QVERIFY(preview->imageRect().height() > preview->height());
+        QVERIFY(QRectF(preview->rect()).contains(preview->viewportRect()));
+        QVERIFY(bounds.contains(panel.geometry()));
+        QVERIFY(panel.findChild<QPushButton *>("scrollCopy")->isEnabled());
+
+        // Returning to earlier content moves the visible source interval and
+        // locator together; the stitched image keeps its size and scale.
+        const int grownHeight = area->height();
+        const QRect bottomSource = preview->property("captureSourceRect").toRect();
+        const QRect earlierSource = progress(2400, 120, 9);
+        QVERIFY(earlierSource.top() < bottomSource.top());
+        QCOMPARE(area->width(), fixedWidth);
+        QCOMPARE(area->height(), grownHeight);
+        QCOMPARE(preview->property("captureSourceRect").toRect(), earlierSource);
+        const double scale = preview->imageRect().width() / image.width();
+        const QRectF locator = preview->viewportRect();
+        QVERIFY(qAbs(locator.top() - (preview->imageRect().top() + 120 * scale)) <= 1.0);
+        QVERIFY(qAbs(locator.height() - 360 * scale) <= 1.0);
+        const QImage painted = preview->grab().toImage();
+        const QPoint greenLine(qRound(locator.center().x()), qRound(locator.top() + 1));
+        bool hasGreen = false;
+        for (int dy = -2; dy <= 2; ++dy)
+            if (painted.rect().contains(greenLine + QPoint(0, dy)))
+                hasGreen |= painted.pixelColor(greenLine + QPoint(0, dy)) == QColor("#83e54f");
+        QVERIFY2(hasGreen, "the green locator does not follow the earlier native viewport");
+        QCOMPARE(image, stripedImage(420, 2400));
+
+        panel.setStopped(QStringLiteral("已暂停，拖动蓝框调整选区"));
+        panel.beginCrop(false);
+        QVERIFY(panel.findChild<QPushButton *>("scrollStop")->isEnabled());
+        panel.setRunning(Qt::Horizontal);
+        QCOMPARE(panel.croppedRect(), image.rect());
+
+        // Optional visual evidence uses the production widgets' own paint paths.
+        const QString artifactDir = qEnvironmentVariable("EDITHERE_UI_ARTIFACT_DIR");
+        if (!artifactDir.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifactDir));
+            panel.setRunning(Qt::Vertical);
+            progress(2400, 1700, 9);
+            ScrollCaptureRegion region;
+            region.setSelection(selection, bounds);
+            region.setState(true, Qt::Vertical);
+            region.setHandlePosition(panel.moveHandlePosition());
+            region.show();
+            ScrollCaptureShade shade;
+            shade.setSelection(selection, bounds);
+            QImage shadeImage(bounds.size(), QImage::Format_ARGB32_Premultiplied);
+            shadeImage.fill(Qt::transparent);
+            QPainter shadePainter(&shadeImage);
+            shade.render(&shadePainter, shade.pos());
+            shadePainter.end();
+            const auto render = [&](bool showPreview, QWidget *popup = nullptr) {
+                QImage shot(bounds.size(), QImage::Format_ARGB32);
+                shot.fill(QColor("#eef1f6"));
+                QPainter painter(&shot);
+                painter.drawImage(selection, image.copy(0, 1700, 420, 360));
+                painter.drawImage(QPoint(), shadeImage);
+                region.render(&painter, region.pos());
+                if (showPreview) area->render(&painter, area->pos());
+                panel.render(&painter, panel.pos());
+                region.moveHandle()->render(&painter, region.moveHandle()->pos());
+                if (popup) popup->render(&painter, popup->pos());
+                painter.end();
+                return shot;
+            };
+            QVERIFY(render(true).save(QDir(artifactDir).filePath("longcapture-live-panel.png")));
+            panel.findChild<QPushButton *>("scrollCrop")->click();
+            auto *popup = panel.findChild<QWidget *>("scrollCropMenu");
+            QVERIFY(popup && popup->isVisible());
+            QVERIFY(render(true, popup).save(QDir(artifactDir).filePath("longcapture-crop-menu.png")));
+            popup->hide();
+            panel.setProgress({}, 0);
+            panel.setStopped(QStringLiteral("已停止截图，可调整选区后重新开始。"));
+            panel.setSelectionSize(selection.size());
+            region.setState(false, Qt::Vertical);
+            region.setHandlePosition(panel.moveHandlePosition());
+            QVERIFY(!area->isVisible());
+            QVERIFY(render(false).save(QDir(artifactDir).filePath("longcapture-stopped.png")));
+        }
+    }
+
+    void verticalPreviewKeepsItsWidthWhenTheSelectionTouchesBothScreenEdges() {
+        ScrollCaptureProgress panel;
+        const QRect bounds(0, 0, 980, 720);
+        panel.placeBeside(QRect(0, 170, 980, 360), bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        const QSize nativeSize(980, 6000);
+        const QRect viewport(0, 5600, 980, 360);
+        const QRect source = panel.previewSourceRect(nativeSize, viewport, Qt::Vertical);
+        const QImage pixels = stripedImage(source.width(), source.height());
+        panel.setProgress(pixels.scaledToWidth(panel.previewWidth()), 10, nativeSize, viewport,
+                          true, Qt::Vertical, source);
+        QCoreApplication::processEvents();
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(area);
+        QCOMPARE(area->width(), 200);
+        QCOMPARE(area->geometry().right(), bounds.right());
+        QVERIFY(bounds.contains(area->geometry()));
+        QVERIFY(source.contains(viewport));
+    }
+
+    void ultraLongPreviewUsesOnlyTheVisibleNativeWindow() {
+        ScrollCaptureProgress panel;
+        const QRect bounds(0, 0, 980, 720);
+        panel.placeBeside(QRect(220, 170, 420, 360), bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        const QSize nativeSize(640, 2000000);
+        const QRect viewport(0, 1998000, 640, 1000);
+        const QRect source = panel.previewSourceRect(nativeSize, viewport, Qt::Vertical);
+        QVERIFY(QRect(QPoint(), nativeSize).contains(source));
+        QVERIFY(source.contains(viewport));
+        QCOMPARE(source.width(), nativeSize.width());
+        QVERIFY(source.height() < 2400);
+        QVERIFY(source.top() > 0);
+        // Only the requested window is materialized, even at the 2M limit.
+        const QImage pixels = stripedImage(source.width(), source.height());
+        const QImage thumbnail = pixels.scaledToWidth(panel.previewWidth(), Qt::SmoothTransformation);
+        panel.setProgress(thumbnail, 500, nativeSize, viewport, true, Qt::Vertical, source);
+        QCoreApplication::processEvents();
+        auto *preview = panel.findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(preview && area);
+        QCOMPARE(preview->property("captureSourceRect").toRect(), source);
+        QVERIFY(bounds.contains(area->geometry()));
+        QVERIFY(QRectF(preview->rect()).contains(preview->viewportRect()));
+        QVERIFY(qAbs(preview->viewportRect().height() - 1000.0 * 196 / 640) <= 1.0);
+        QVERIFY(qint64(preview->pixmap().width()) * preview->pixmap().height() <=
+                qint64(panel.previewWidth()) * (bounds.height() + 4) * panel.devicePixelRatioF());
+        QVERIFY(preview->imageRect().height() > 500000);
+        QCOMPARE(pixels, stripedImage(source.width(), source.height()));
+    }
+
+    void longCapturePreviewGrowsInBothDirectionsWithoutMovingRetainedPixels() {
+        ScrollCaptureProgress panel;
+        const QRect bounds(0, 0, 2000, 1200);
+        panel.placeBeside(QRect(400, 400, 420, 360), bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        auto *preview = panel.findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(preview && area);
+        const QImage content = stripedImage(420, 1080);
+        const auto progress = [&](const QImage &accumulated, const QRect &viewport, int frames) {
+            const QRect source = panel.previewSourceRect(accumulated.size(), viewport, Qt::Vertical);
+            panel.setProgress(accumulated.copy(source).scaledToWidth(panel.previewWidth()), frames,
+                              accumulated.size(), viewport, true, Qt::Vertical, source);
+            QCoreApplication::processEvents();
+            return preview->mapToGlobal(QPoint()).y() + preview->imageRect().top();
+        };
+        const double firstOrigin = progress(content.copy(0, 360, 420, 360), QRect(0, 0, 420, 360), 1);
+        const int firstTop = area->y();
+        const int fixedWidth = area->width();
+        const double appendedOrigin = progress(content.copy(0, 360, 420, 720), QRect(0, 360, 420, 360), 2);
+        QVERIFY(qAbs(appendedOrigin - firstOrigin) <= 1.0);
+        QCOMPARE(area->y(), firstTop);
+        const int appendedTop = area->y();
+        const int appendedHeight = area->height();
+        const double prependedOrigin = progress(content, QRect(0, 0, 420, 360), 3);
+        const double scale = preview->imageRect().width() / content.width();
+        // The first viewport is now 360 native rows below the new top, but
+        // those already captured pixels remain at the same on-screen location.
+        QVERIFY(qAbs(prependedOrigin + 360 * scale - firstOrigin) <= 1.0);
+        QVERIFY(area->y() < appendedTop);
+        QVERIFY(area->height() > appendedHeight);
+        QCOMPARE(area->width(), fixedWidth);
+        QVERIFY(bounds.contains(area->geometry()));
+    }
+
+    void firstPrependWithFixedNavigationAndPrefixTrimKeepsBodyPosition() {
+        const QImage content = noisyImage(420, 1400, 61);
+        const auto frame = [&](int offset) {
+            QImage result(420, 360, QImage::Format_ARGB32);
+            result.fill(QColor("#2f5b98"));
+            QPainter painter(&result);
+            painter.drawImage(0, 40, content.copy(0, offset, 420, 320));
+            return result;
+        };
+        ScrollCapture capture;
+        QVERIFY(capture.begin(frame(400)));
+        QCOMPARE(capture.originOffset(), 0);
+        ScrollCaptureProgress panel;
+        const QRect bounds(0, 0, 2000, 1200);
+        panel.placeBeside(QRect(400, 400, 420, 360), bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        auto *preview = panel.findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(preview && area);
+        const auto progress = [&] {
+            const QRect source = panel.previewSourceRect(capture.size(), capture.viewportRect(),
+                                                         Qt::Vertical, capture.originOffset());
+            panel.setProgress(capture.previewRegion(source, panel.previewWidth()), capture.frames(),
+                              capture.size(), capture.viewportRect(), true, Qt::Vertical, source);
+            QCoreApplication::processEvents();
+            return preview->mapToGlobal(QPoint()).y() + preview->imageRect().top();
+        };
+        const double initialOrigin = progress();
+        const double scale = preview->imageRect().width() / content.width();
+        const double initialBodyPosition = initialOrigin + 40 * scale;
+        const int firstTop = area->y();
+        QCOMPARE(capture.take(frame(220)), ScrollCapture::Outcome::Added);
+        QCOMPARE(capture.originOffset(), -180);
+        QCOMPARE(capture.viewportRect(), QRect(0, 40, 420, 320));
+        const double prependOrigin = progress();
+        // Fixed navigation is discovered on this first movement. Its new y=40
+        // must not turn an actual upward prepend into a downward append.
+        QVERIFY(qAbs(prependOrigin + 220 * scale - initialBodyPosition) <= 1.0);
+        QVERIFY(area->y() < firstTop);
+
+        QCOMPARE(capture.take(frame(400)), ScrollCapture::Outcome::Repeat);
+        progress();
+        const int removed = capture.viewportRect().top();
+        QCOMPARE(removed, 220);
+        QVERIFY(capture.cropBeforeViewport());
+        QCOMPARE(capture.originOffset(), 40);
+        QCOMPARE(capture.viewportRect(), QRect(0, 0, 420, 320));
+        const double trimmedOrigin = progress();
+        // Removing the prefix and its fixed navigation must move the image
+        // origin forward by every removed native pixel, preserving the body.
+        QVERIFY(qAbs(trimmedOrigin - initialBodyPosition) <= 1.0);
+        QCOMPARE(capture.picture(), content.copy(0, 400, 420, 320));
+        QVERIFY(bounds.contains(area->geometry()));
+    }
+
+    void horizontalLongCaptureKeepsThumbnailHeightAndTracksEarlierColumns() {
+        ScrollCaptureProgress panel;
+        const QRect bounds(0, 0, 2000, 1200);
+        panel.placeBeside(QRect(200, 400, 360, 420), bounds);
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.setRunning(Qt::Horizontal);
+        auto *preview = panel.findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+        QVERIFY(preview && area);
+        const QImage image = noisyImage(4800, 420, 23);
+        const auto progress = [&](int length, int position) {
+            const QSize nativeSize(length, 420);
+            const QRect viewport(position, 0, 360, 420);
+            const QRect source = panel.previewSourceRect(nativeSize, viewport, Qt::Horizontal);
+            const QImage thumbnail = image.copy(source).scaledToHeight(panel.previewWidth(), Qt::SmoothTransformation);
+            panel.setProgress(thumbnail, length / 360 + 1, nativeSize, viewport, true, Qt::Horizontal, source);
+            QCoreApplication::processEvents();
+            return source;
+        };
+        int fixedHeight = 0;
+        int oldWidth = 0;
+        double locatorWidth = 0;
+        for (int length : {360, 720, 1200, 4800}) {
+            const QRect source = progress(length, length - 360);
+            QVERIFY(QRect(QPoint(), QSize(length, 420)).contains(source));
+            QVERIFY2(source.contains(QRect(length - 360, 0, 360, 420)), qPrintable(
+                QStringLiteral("length=%1 source=%2,%3 %4x%5 area=%6x%7 viewport=%8x%9 preview=%10x%11")
+                .arg(length).arg(source.x()).arg(source.y()).arg(source.width()).arg(source.height())
+                .arg(area->width()).arg(area->height()).arg(area->viewport()->width()).arg(area->viewport()->height())
+                .arg(preview->width()).arg(preview->height())));
+            if (!fixedHeight) {
+                fixedHeight = area->height();
+                locatorWidth = preview->viewportRect().width();
+            }
+            QCOMPARE(area->height(), fixedHeight);
+            QVERIFY(area->width() > oldWidth);
+            oldWidth = area->width();
+            QVERIFY(qAbs(preview->imageRect().height() - 196.0) <= 1.0);
+            QVERIFY(qAbs(preview->viewportRect().width() - locatorWidth) <= 1.0);
+            QVERIFY(bounds.contains(area->geometry()));
+        }
+        QVERIFY(preview->imageRect().width() > preview->width());
+        const QRect lastSource = preview->property("captureSourceRect").toRect();
+        const QRect earlier = progress(4800, 120);
+        QVERIFY(earlier.left() < lastSource.left());
+        const double scale = preview->imageRect().height() / image.height();
+        const QRectF locator = preview->viewportRect();
+        QVERIFY(qAbs(locator.left() - (preview->imageRect().left() + 120 * scale)) <= 1.0);
+        QVERIFY(qAbs(locator.width() - 360 * scale) <= 1.0);
+        QVERIFY(QRectF(preview->rect()).contains(locator));
+    }
+
+    void longCaptureMenusFollowTheProjectThemeAndExplainTheirActions() {
+        const QString artifactDir = qEnvironmentVariable("EDITHERE_UI_ARTIFACT_DIR");
+        if (!artifactDir.isEmpty()) QVERIFY(QDir().mkpath(artifactDir));
+        // Keep the same window alive while changing the theme, so both its
+        // paint colors and registered glyphs must respond to the project setting.
+        ScrollCaptureProgress panel;
+        panel.placeBeside(QRect(220, 170, 420, 360), QRect(0, 0, 980, 720));
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        const QList<QPair<QString, QString>> sharedActions{
+            {"scrollFinish", "edit"}, {"scrollPin", "pin"}, {"scrollSave", "image-save"},
+            {"scrollCopy", "copy"}, {"scrollCancel", "close"}, {"scrollCrop", "crop"}};
+        const QImage image = stripedImage(420, 1200);
+        const QRect viewport(0, 840, 420, 360);
+        for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+            applyTheme(mode);
+            const QRect source = panel.previewSourceRect(image.size(), viewport, Qt::Vertical);
+            panel.setProgress(image.copy(source).scaledToWidth(panel.previewWidth()), 4,
+                              image.size(), viewport, true, Qt::Vertical, source);
+            QCoreApplication::processEvents();
+            QVERIFY(panel.testAttribute(Qt::WA_AlwaysShowToolTips));
+            for (const auto &[objectName, glyphName] : sharedActions) {
+                auto *button = panel.findChild<QPushButton *>(objectName);
+                QVERIFY2(button, qPrintable(objectName));
+                QCOMPARE(button->property("glyphName").toString(), glyphName);
+                QCOMPARE(button->icon().pixmap(20, 20).toImage(), glyph(glyphName).pixmap(20, 20).toImage());
+            }
+            for (auto *button : panel.findChildren<QPushButton *>()) {
+                QVERIFY2(!button->toolTip().isEmpty(), qPrintable(button->objectName()));
+                QVERIFY2(!button->accessibleName().isEmpty(), qPrintable(button->objectName()));
+            }
+            auto *autoCrop = panel.findChild<QCheckBox *>("scrollAutoCrop");
+            QVERIFY(autoCrop && !autoCrop->toolTip().isEmpty());
+            panel.findChild<QPushButton *>("scrollCrop")->click();
+            auto *popup = panel.findChild<QWidget *>("scrollCropMenu");
+            QVERIFY(popup && popup->isVisible());
+            QVERIFY(popup->testAttribute(Qt::WA_AlwaysShowToolTips));
+            const QImage panelImage = panel.grab().toImage();
+            const QImage popupImage = popup->grab().toImage();
+            const bool dark = mode == ThemeMode::Dark;
+            QVERIFY(dark ? panelImage.pixelColor(50, 3).lightness() < 100
+                         : panelImage.pixelColor(50, 3).lightness() > 180);
+            QVERIFY(dark ? popupImage.pixelColor(40, 3).lightness() < 100
+                         : popupImage.pixelColor(40, 3).lightness() > 180);
+            if (!artifactDir.isEmpty()) {
+                const QString suffix = dark ? "dark" : "light";
+                QVERIFY(panelImage.save(QDir(artifactDir).filePath("longcapture-toolbar-" + suffix + ".png")));
+                QVERIFY(popupImage.save(QDir(artifactDir).filePath("longcapture-crop-menu-" + suffix + ".png")));
+                auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+                QVERIFY(area->grab().save(QDir(artifactDir).filePath("longcapture-preview-" + suffix + ".png")));
+            }
+            popup->hide();
+            panel.setStopped(QStringLiteral("已停止截图"));
+            QCOMPARE(panel.findChild<QPushButton *>("scrollStop")->property("glyphName").toString(),
+                     QStringLiteral("scroll-play"));
+            panel.setRunning(Qt::Vertical);
+            QCOMPARE(panel.findChild<QPushButton *>("scrollStop")->property("glyphName").toString(),
+                     QStringLiteral("scroll-stop"));
+        }
+        applyTheme(ThemeMode::Light);
+    }
+
+    void ultraLongPanelOffersPngSavingForImagesBeyondTheEditorLimit() {
+        ScrollCaptureProgress panel;
+        QImage preview(16, 200, QImage::Format_RGB32);
+        preview.fill(Qt::white);
+        panel.setProgress(preview, 20, QSize(640, 100000), QRect(0, 99000, 640, 1000));
+        QVERIFY(panel.findChild<QPushButton *>("scrollSave")->isEnabled());
+        QVERIFY(panel.findChild<QPushButton *>("scrollQuickSave")->isEnabled());
+        QVERIFY(!panel.findChild<QPushButton *>("scrollCopy")->isEnabled());
+        QVERIFY(!panel.findChild<QPushButton *>("scrollPin")->isEnabled());
+        QVERIFY(!panel.findChild<QPushButton *>("scrollFinish")->isEnabled());
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        auto *disabledEdit = panel.findChild<QPushButton *>("scrollFinish");
+        QHelpEvent hover(QEvent::ToolTip, disabledEdit->rect().center(),
+                         disabledEdit->mapToGlobal(disabledEdit->rect().center()));
+        QApplication::sendEvent(disabledEdit, &hover);
+        QCOMPARE(QToolTip::text(), disabledEdit->toolTip());
+        QToolTip::hideText();
+        panel.setProgress(preview, 20, QSize(640, 1000), QRect(0, 0, 640, 1000));
+        QVERIFY(panel.findChild<QPushButton *>("scrollCopy")->isEnabled());
+        QVERIFY(panel.findChild<QPushButton *>("scrollPin")->isEnabled());
+        QVERIFY(panel.findChild<QPushButton *>("scrollFinish")->isEnabled());
     }
 
     void ratiosKnowTheirSizeAndName() {

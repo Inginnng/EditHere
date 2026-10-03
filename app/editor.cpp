@@ -826,7 +826,8 @@ void Editor::displayVideoFrame(const QImage &image, qint64 timestampUs) {
             return frame.timestampUs == timestampUs;
         });
         if (it != video_->frames.cend()) next = it->document;
-        else next = fromImage(image, "file", tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)));
+        else next = fromImage(image.convertToFormat(QImage::Format_RGB32), "file",
+                              tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)), true);
         switchingVideoFrame_ = true;
         setDocument(std::move(next));
         switchingVideoFrame_ = false;

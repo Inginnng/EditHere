@@ -55,6 +55,14 @@
 | REG-140 | 暂停中点击 `±1s` 时，定位所需的后台解码被显示成用户播放，按钮文字变长使控件移位；播放与暂停使用不同显示区域，留白背景也不一致。区分后台定位与用户播放，固定控件宽度，视频和画布叠放在同一显示区域；定位后暂停供批注，连续步进累计目标时间，同分辨率换帧保留缩放、平移与侧栏状态 | `VideoUiTests::playbackViewportAndSeekRemainStable(light)`、`playbackViewportAndSeekRemainStable(dark)`，注册为 CTest `video-ui`；定位全过程采样按钮、时间轴、视口与画布几何，核对暂停按钮文字、缩放/平移及折叠侧栏不变；播放/暂停留白像素分别为浅色 `#efeff2`、深色 `#18191e`，连续步进累计目标，播放中定位后暂停且空格可继续播放。原生 Windows 两组 PASS 见 `artifacts/video-0100-native-test.log` | ✅ |
 | REG-141 | 普通暂停和定位立即转换为截图画布，单纯查看视频也创建帧，视频表面切换还造成停顿。`0.10.0-pause-update` 改为首帧、暂停和定位只停住视频表面，首次实际点、框或全局批注才保存截图；选择模式、缩放和平移不截图，保存项目/导出 JSON 不创建新帧，选择已有批注帧直接恢复截图 | `VideoUiTests::playbackViewportAndSeekRemainStable(light/dark)`、`firstAnnotationCapturesOnlyOnce(point/rectangle/global/global-shortcut)` 和 `playbackSeekAnnotateAndReopen`；普通暂停/定位截图计数为零，视频持续可见，首次批注只捕获一次且坐标、PTS 与画面匹配，同帧后续批注复用截图，保存和实际 JSON 复制不创建新帧。点选通过 Windows QWindow 命中测试。原生 Windows 共 10 PASS、0 FAIL、0 SKIP，见 `artifacts/video-pause-update-native-test.log`；截图仅证实 Qt 控件渲染，未验证 GPU 桌面合成截图 | ✅ |
 
+## 长截图与视频批注修复（2026-10-02，未发布）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-142 | 真实网页手动连续滚动时，每 120 ms 只在画面停稳后才采样，相邻样本早已没有重叠，第一次匹配就提示“无法匹配相邻画面”并停止。手动模式改为 60 ms 采样，滚动中的样本只要与已拼接部分精确重叠（误差 ≤ 1）就立即追加，停稳后再确认；仍然断开时不停止，提示稍微往回滚动，对上后继续。进度窗不被采到时不再每次采样都隐藏/显示，预览改为可滚动的整张缩略长图并跟随最新内容 | `ScrollStitchTests::movingSamplesAppendOnlyExactContinuations`、`planDoesNotChangeStitchUntilCommitted`、`livePreviewKeepsWholeResultAtPanelWidth`；`ScrollControllerTests::manualScrollingStitchesInMotionAndRecoversFromAGap`（禁用滚动中拼接后失败）。真实 Edge 长页面在 1 格/300 ms 至 3 格/100 ms 的连续滚轮下拼出完整 14550 px 结果；原 `realBrowserProducesCompleteImage` 连续 3 次通过 | ✅ |
+| REG-143 | 视频暂停后无法批注：`QVideoWidget` 在 Windows 上创建原生子窗口，连带把图像区与画布变成原生窗口，画布绘制的框不再出现在屏幕上（真实鼠标拖框时屏幕像素零变化，数据里却有批注）；视频每帧在主线程转换也让操作卡顿。改用自绘视频表面，帧在工作线程转换并缩放到显示尺寸，新帧覆盖未处理的旧帧；首次批注保存截图改用不透明 PNG 快速编码（1080p 约 114 ms → 63 ms，仍为无损） | `VideoUiTests::playbackSeekAnnotateAndReopen` 断言画布与视频表面均无原生窗口句柄；真实 `SendInput` 鼠标在原生窗口播放、暂停、拖框，拖动中屏幕截图可见虚线框 | ✅ |
+| REG-144 | 时间轴上的橙色（用户称黄色）批注标记只能看不能点。悬停时变为手形并提示时间与批注数，点击直接打开该帧截图与批注，并同步“已标注画面”列表；其余位置仍为定位 | `VideoUiTests::playbackSeekAnnotateAndReopen`：离开批注帧后悬停/点击标记，核对图片、批注文字、列表选中项且不新建截图（禁用标记点击后失败）；真实鼠标点击标记同样回到对应批注 | ✅ |
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。

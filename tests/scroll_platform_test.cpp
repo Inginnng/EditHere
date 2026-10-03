@@ -1,5 +1,7 @@
+#include "capturetoolbar.h"
 #include "platform.h"
 #include <QApplication>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -307,6 +309,114 @@ class ScrollPlatformTests : public QObject {
         QCOMPARE(after.pixelColor(3, 3), header);
         QCOMPARE(after.copy(0, FixedBand, region.width(), region.height() - 2 * FixedBand - 72),
                  before.copy(0, FixedBand + 72, region.width(), region.height() - 2 * FixedBand - 72));
+
+        // The live selection must remain visible without becoming the native
+        // mouse target. In particular, Chromium resolves wheel input using
+        // WindowFromPoint even after it was sent to the render child directly.
+        ScrollCaptureRegion liveRegion;
+        const QRect logicalRegion(qRound(region.x() / scale), qRound(region.y() / scale),
+                                  qRound(region.width() / scale), qRound(region.height() / scale));
+        liveRegion.setSelection(logicalRegion, screen->geometry());
+        liveRegion.setState(true, Qt::Vertical);
+        liveRegion.show();
+        configureNativeWindow(&liveRegion, true);
+        QVERIFY(QTest::qWaitForWindowExposed(&liveRegion));
+        const HWND windowThroughFrame = WindowFromPoint(POINT{nativePoint.x(), nativePoint.y()});
+        QCOMPARE(GetAncestor(windowThroughFrame, GA_ROOT), hwnd);
+        QCOMPARE(scrollCaptureTargetAt(nativePoint).window, target.window);
+        QCOMPARE(scrollCaptureTargetAt(nativePoint).processId, target.processId);
+        QVERIFY(liveRegion.isVisible());
+
+        QImage throughFrame;
+        captureScrollRegion(region, [&](QImage image, QString failure) {
+            throughFrame = image;
+            error = failure;
+        });
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(throughFrame, after);
+        QVERIFY(liveRegion.isVisible());
+
+        // Both wheel signs are meaningful: upward scrolling is delivered to
+        // the same external child and its native pixels return to the origin.
+        GetCursorPos(&cursorBefore);
+        QVERIFY2(scrollCaptureStep(target, nativePoint, -1, &error), qPrintable(error));
+        GetCursorPos(&cursorAfter);
+        QCOMPARE(cursorAfter.x, cursorBefore.x);
+        QCOMPARE(cursorAfter.y, cursorBefore.y);
+        QCOMPARE(SendMessageW(hwnd, QueryOffset, 0, 0), LRESULT(0));
+        QCOMPARE(SendMessageW(hwnd, QueryChildEvents, 0, 0), LRESULT(2));
+        QCOMPARE(SendMessageW(hwnd, QueryRootEvents, 0, 0), LRESULT(0));
+        QImage returned;
+        captureScrollRegion(region, [&](QImage image, QString failure) {
+            returned = image;
+            error = failure;
+        });
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(returned, before);
+
+        // Keep the border inside the fixture's stable painted surface. Sampling
+        // the desktop just outside the fixture would make this check depend on
+        // unrelated windows and DWM's continuously changing background.
+        liveRegion.setSelection(logicalRegion.adjusted(8, 8, -8, -8), screen->geometry());
+        QTest::qWait(40);
+        // A hollow frame does not cover the selected pixels. When Windows
+        // supports display affinity, its painted border must also be absent
+        // from a larger readout crossing the frame itself.
+        DWORD frameAffinity = 0;
+        const bool hasFrameAffinity = GetWindowDisplayAffinity(
+            reinterpret_cast<HWND>(liveRegion.winId()), &frameAffinity);
+        QCOMPARE(excludedFromCapture(&liveRegion), hasFrameAffinity && frameAffinity == 0x00000011);
+        if (excludedFromCapture(&liveRegion)) {
+            const QRect logicalFrame = liveRegion.geometry();
+            const QRect nativeFrame(qRound(logicalFrame.x() * scale), qRound(logicalFrame.y() * scale),
+                                    qRound(logicalFrame.width() * scale), qRound(logicalFrame.height() * scale));
+            QImage visibleFrameRead, hiddenFrameRead;
+            captureScrollRegion(nativeFrame, [&](QImage image, QString failure) {
+                visibleFrameRead = image;
+                error = failure;
+            });
+            QVERIFY2(error.isEmpty(), qPrintable(error));
+            liveRegion.hide();
+            captureScrollRegion(nativeFrame, [&](QImage image, QString failure) {
+                hiddenFrameRead = image;
+                error = failure;
+            });
+            QVERIFY2(error.isEmpty(), qPrintable(error));
+            bool borderContaminated = visibleFrameRead.size() != hiddenFrameRead.size();
+            QPoint firstMismatch;
+            for (int row = 0; !borderContaminated && row < visibleFrameRead.height(); ++row) {
+                for (int column = 0; column < visibleFrameRead.width(); ++column) {
+                    const QColor visible = visibleFrameRead.pixelColor(column, row);
+                    const QColor hidden = hiddenFrameRead.pixelColor(column, row);
+                    if (std::abs(visible.red() - hidden.red()) > 2 ||
+                        std::abs(visible.green() - hidden.green()) > 2 ||
+                        std::abs(visible.blue() - hidden.blue()) > 2) {
+                        borderContaminated = true;
+                        firstMismatch = {column, row};
+                        break;
+                    }
+                }
+            }
+            if (borderContaminated) {
+                const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+                if (!folder.isEmpty()) {
+                    QDir().mkpath(folder);
+                    visibleFrameRead.save(QDir(folder).filePath("scroll-visible-frame.png"));
+                    hiddenFrameRead.save(QDir(folder).filePath("scroll-hidden-frame.png"));
+                }
+                qWarning() << "First exclusion mismatch" << firstMismatch
+                           << visibleFrameRead.pixelColor(firstMismatch)
+                           << hiddenFrameRead.pixelColor(firstMismatch);
+            }
+            QVERIFY2(!borderContaminated, "The live selection border entered the captured pixels.");
+        } else {
+            liveRegion.hide();
+        }
+
+        // Retain the existing invalid-target and occlusion checks at a known
+        // nonzero offset after proving the upward path above.
+        QVERIFY2(scrollCaptureStep(target, nativePoint, 1, &error), qPrintable(error));
+        QCOMPARE(SendMessageW(hwnd, QueryOffset, 0, 0), LRESULT(72));
 
         auto wrongOwner = target;
         ++wrongOwner.processId;

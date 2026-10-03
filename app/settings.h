@@ -35,6 +35,10 @@ struct AppSettings {
     // The corner radius, border and shadow every capture starts from. Set from the
     // capture window's style panel, and only when the user asks for it to be kept.
     CaptureStyle captureStyle;
+    Qt::Orientation scrollAxis = Qt::Vertical;
+    bool scrollAutoCrop = false;
+    bool scrollUltraLong = false;
+    QString quickSaveDir; // Empty = Pictures/EditHere.
     bool operator==(const AppSettings &) const = default;
 };
 struct ShortcutDefinition {

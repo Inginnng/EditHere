@@ -85,6 +85,10 @@ class SettingsTests : public QObject {
         changed.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         changed.shortcuts["point"] = {};
         changed.shortcuts["rectangle"] = QKeySequence("Ctrl+,");
+        changed.scrollAxis = Qt::Horizontal;
+        changed.scrollAutoCrop = true;
+        changed.scrollUltraLong = true;
+        changed.quickSaveDir = directory.path();
         QString error = "old error";
         QVERIFY2(saveSettings(changed, &error, path), qPrintable(error));
         QVERIFY(error.isEmpty());
@@ -96,6 +100,10 @@ class SettingsTests : public QObject {
         QVERIFY(!persisted.value("defaults/confirmBeforeDiscard").toBool());
         QVERIFY(persisted.value("defaults/launchAtLogin").toBool());
         QCOMPARE(persisted.value("shortcuts/capture").toString(), QString("Ctrl+Alt+9"));
+        QCOMPARE(persisted.value("capture/scrollAxis").toString(), QString("horizontal"));
+        QVERIFY(persisted.value("capture/scrollAutoCrop").toBool());
+        QVERIFY(persisted.value("capture/scrollUltraLong").toBool());
+        QCOMPARE(persisted.value("capture/quickSaveDir").toString(), directory.path());
         QVERIFY(persisted.contains("shortcuts/point"));
         QVERIFY(persisted.value("shortcuts/point").toString().isEmpty());
     }

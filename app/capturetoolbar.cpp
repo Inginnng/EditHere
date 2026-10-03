@@ -1,5 +1,6 @@
 #include "capturetoolbar.h"
 #include "ocr.h"
+#include "platform.h"
 #include "ui.h"
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -15,9 +16,14 @@
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QPalette>
+#include <QRegion>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -35,6 +41,32 @@ const QColor kFace(28, 30, 36, 240);
 const QColor kEdge(255, 255, 255, 40);
 const QColor kInk(0xe8, 0xe9, 0xee);
 const QColor kGlyph(0xd4, 0xd5, 0xdd);
+
+class RoundedCropPopup final : public QWidget {
+  public:
+    explicit RoundedCropPopup(QWidget *parent)
+        : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_AlwaysShowToolTips);
+    }
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(QColor(isDarkTheme() ? "#41434d" : "#dddde5"), 1));
+        painter.setBrush(palette().color(QPalette::Window));
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+    }
+};
+
+void setScrollGlyph(QPushButton *button, const QString &name) {
+    button->setProperty("glyphName", name);
+    button->setProperty("tool", true);
+    button->setIcon(glyph(name, button->objectName() == "scrollStop"
+        ? QColor(isDarkTheme() ? "#ff8991" : "#bd252f") : QColor()));
+    button->setIconSize(QSize(20, 20));
+    button->setCursor(Qt::PointingHandCursor);
+}
 
 QString panelStyleSheet() {
     return QStringLiteral(R"(
@@ -480,105 +512,852 @@ void CaptureToolbar::scroll() {
         emit scrollRequested();
 }
 
+ScrollCaptureRegion::ScrollCaptureRegion(QWidget *parent)
+    : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+                          Qt::WindowTransparentForInput | Qt::WindowDoesNotAcceptFocus) {
+    setObjectName(QStringLiteral("scrollCaptureRegion"));
+    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_ShowWithoutActivating);
+    setMouseTracking(true);
+    auto *handle = new QPushButton(this);
+    handle->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+                           Qt::WindowDoesNotAcceptFocus);
+    handle->setObjectName(QStringLiteral("scrollRegionHandle"));
+    handle->setAttribute(Qt::WA_ShowWithoutActivating);
+    handle->setAttribute(Qt::WA_AlwaysShowToolTips);
+    handle->setFocusPolicy(Qt::NoFocus);
+    handle->setFixedSize(25, 30);
+    setScrollGlyph(handle, QStringLiteral("scroll-move-vertical"));
+    handle->setCursor(Qt::SizeVerCursor);
+    handle->installEventFilter(this);
+    handle_ = handle;
+}
+
+ScrollCaptureRegion::~ScrollCaptureRegion() = default;
+
+void ScrollCaptureRegion::setSelection(const QRect &selection, const QRect &bounds) {
+    bounds_ = bounds;
+    selection_ = selection.intersected(bounds);
+    setGeometry(selection_.adjusted(-3, -3, 3, 3));
+    // A native hole, not merely transparent paint: WindowFromPoint and browser
+    // wheel routing must find the page below the center of the capture region.
+    setMask(QRegion(rect()).subtracted(QRegion(rect().adjusted(8, 8, -8, -8))));
+    placeHandle();
+    update();
+}
+
+void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
+    running_ = running;
+    axis_ = axis;
+    setScrollGlyph(static_cast<QPushButton *>(handle_),
+        axis == Qt::Vertical ? QStringLiteral("scroll-move-vertical") : QStringLiteral("scroll-move-horizontal"));
+    if (windowFlags().testFlag(Qt::WindowTransparentForInput) != running) {
+        const bool visible = isVisible();
+        setWindowFlag(Qt::WindowTransparentForInput, running);
+        if (visible) {
+            show();
+            configureNativeWindow(this, true);
+        }
+    }
+    handle_->setCursor(running ? (axis == Qt::Vertical ? Qt::SizeVerCursor : Qt::SizeHorCursor)
+                               : Qt::SizeAllCursor);
+    handle_->setToolTip(running ? tr("拖动以沿截图方向移动选区") : tr("拖动移动选区；拖动蓝框边缘调整大小"));
+    handle_->setAccessibleName(handle_->toolTip());
+    update();
+}
+
+void ScrollCaptureRegion::placeHandle() {
+    if (selection_.isEmpty())
+        return;
+    if (anchored_) {
+        handle_->move(handleAnchor_);
+        return;
+    }
+    int x = selection_.center().x() - handle_->width() / 2;
+    int y = selection_.top() - handle_->height() - 5;
+    if (y < bounds_.top())
+        y = selection_.bottom() + 5;
+    if (y + handle_->height() > bounds_.bottom() + 1)
+        y = selection_.top() + 5;
+    x = std::clamp(x, bounds_.left(), std::max(bounds_.left(), bounds_.right() + 1 - handle_->width()));
+    handle_->move(x, y);
+}
+
+void ScrollCaptureRegion::setHandlePosition(QPoint global) {
+    handleAnchor_ = global;
+    anchored_ = true;
+    handle_->move(global);
+    if (handle_->isVisible()) configureNativeWindow(handle_, true);
+}
+
+void ScrollCaptureRegion::paintEvent(QPaintEvent *) {
+    QPainter painter(this);
+    painter.setPen(QPen(QColor(running_ ? "#ffffff" : "#3489ff"), 1.5));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(QRectF(rect()).adjusted(1, 1, -1, -1));
+    if (!running_) {
+        painter.setBrush(Qt::white);
+        for (const QPointF point : {QPointF(3, 3), QPointF(width() / 2.0, 3), QPointF(width() - 3, 3),
+                QPointF(3, height() / 2.0), QPointF(width() - 3, height() / 2.0),
+                QPointF(3, height() - 3), QPointF(width() / 2.0, height() - 3), QPointF(width() - 3, height() - 3)})
+            painter.drawRect(QRectF(point - QPointF(2, 2), QSizeF(4, 4)));
+    }
+}
+
+void ScrollCaptureRegion::showEvent(QShowEvent *) {
+    handle_->show();
+    configureNativeWindow(handle_, true);
+}
+
+void ScrollCaptureRegion::hideEvent(QHideEvent *) { handle_->hide(); }
+
+bool ScrollCaptureRegion::eventFilter(QObject *object, QEvent *event) {
+    if (object == handle_) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto *mouse = static_cast<QMouseEvent *>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                dragging_ = true;
+                dragEdges_ = {};
+                dragOrigin_ = mouse->globalPosition().toPoint();
+                dragSelection_ = selection_;
+                return true;
+            }
+        } else if (event->type() == QEvent::MouseMove && dragging_) {
+            dragTo(static_cast<QMouseEvent *>(event)->globalPosition().toPoint());
+            return true;
+        } else if (event->type() == QEvent::MouseButtonRelease && dragging_) {
+            dragging_ = false;
+            return true;
+        }
+    }
+    return QWidget::eventFilter(object, event);
+}
+
+void ScrollCaptureRegion::mousePressEvent(QMouseEvent *event) {
+    if (running_ || event->button() != Qt::LeftButton)
+        return;
+    const QPoint at = event->position().toPoint();
+    dragEdges_ = {};
+    if (at.x() < 8) dragEdges_ |= Qt::LeftEdge;
+    if (at.x() >= width() - 8) dragEdges_ |= Qt::RightEdge;
+    if (at.y() < 8) dragEdges_ |= Qt::TopEdge;
+    if (at.y() >= height() - 8) dragEdges_ |= Qt::BottomEdge;
+    dragging_ = true;
+    dragOrigin_ = event->globalPosition().toPoint();
+    dragSelection_ = selection_;
+    event->accept();
+}
+
+void ScrollCaptureRegion::mouseMoveEvent(QMouseEvent *event) {
+    if (dragging_)
+        dragTo(event->globalPosition().toPoint());
+}
+
+void ScrollCaptureRegion::mouseReleaseEvent(QMouseEvent *) { dragging_ = false; }
+
+void ScrollCaptureRegion::dragTo(QPoint global) {
+    QPoint delta = global - dragOrigin_;
+    QRect next = dragSelection_;
+    if (dragEdges_ == Qt::Edges{}) {
+        if (running_)
+            axis_ == Qt::Vertical ? delta.setX(0) : delta.setY(0);
+        next.translate(delta);
+        next.moveLeft(std::clamp(next.left(), bounds_.left(), bounds_.right() + 1 - next.width()));
+        next.moveTop(std::clamp(next.top(), bounds_.top(), bounds_.bottom() + 1 - next.height()));
+    } else {
+        // Valid native-pixel selections can be smaller in logical pixels on a
+        // scaled display. Never make a minimum greater than the starting size.
+        const int minimumWidth = std::min(64, dragSelection_.width());
+        const int minimumHeight = std::min(120, dragSelection_.height());
+        if (dragEdges_.testFlag(Qt::LeftEdge))
+            next.setLeft(std::clamp(next.left() + delta.x(), bounds_.left(), next.right() - minimumWidth + 1));
+        if (dragEdges_.testFlag(Qt::RightEdge))
+            next.setRight(std::clamp(next.right() + delta.x(), next.left() + minimumWidth - 1, bounds_.right()));
+        if (dragEdges_.testFlag(Qt::TopEdge))
+            next.setTop(std::clamp(next.top() + delta.y(), bounds_.top(), next.bottom() - minimumHeight + 1));
+        if (dragEdges_.testFlag(Qt::BottomEdge))
+            next.setBottom(std::clamp(next.bottom() + delta.y(), next.top() + minimumHeight - 1, bounds_.bottom()));
+    }
+    if (next != selection_) {
+        setSelection(next, bounds_);
+        emit regionChanged(selection_);
+    }
+}
+
+ScrollCaptureShade::ScrollCaptureShade(QWidget *parent)
+    : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+                          Qt::WindowTransparentForInput | Qt::WindowDoesNotAcceptFocus) {
+    setObjectName(QStringLiteral("scrollCaptureShade"));
+    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_ShowWithoutActivating);
+}
+
+void ScrollCaptureShade::setSelection(const QRect &selection, const QRect &screen) {
+    setGeometry(screen);
+    selection_ = selection.translated(-screen.topLeft()).intersected(rect());
+    update();
+}
+
+void ScrollCaptureShade::paintEvent(QPaintEvent *) {
+    QPainter painter(this);
+    painter.fillRect(rect(), QColor(0, 0, 0, 105));
+    painter.setCompositionMode(QPainter::CompositionMode_Clear);
+    painter.fillRect(selection_, Qt::transparent);
+}
+
+ScrollCapturePreview::ScrollCapturePreview(QWidget *parent) : QLabel(parent) {
+    setObjectName(QStringLiteral("scrollPreview"));
+    setAlignment(Qt::AlignCenter);
+    setMouseTracking(true);
+}
+
+QRectF ScrollCapturePreview::imageRect() const {
+    if (fullSize_.isEmpty()) return {};
+    if (!visibleRegion_.isEmpty()) {
+        const double scale = axis_ == Qt::Vertical ? double(width()) / fullSize_.width()
+                                                  : double(height()) / fullSize_.height();
+        return QRectF(-visibleRegion_.x() * scale, -visibleRegion_.y() * scale,
+                      fullSize_.width() * scale, fullSize_.height() * scale);
+    }
+    const QSizeF fit = QSizeF(fullSize_).scaled(QSizeF(size()), Qt::KeepAspectRatio);
+    return QRectF(QPointF((width() - fit.width()) / 2, (height() - fit.height()) / 2), fit);
+}
+
+QRectF ScrollCapturePreview::viewportRect() const {
+    const auto area = imageRect();
+    if (area.isEmpty()) return {};
+    return QRectF(area.x() + viewport_.x() * area.width() / fullSize_.width(),
+                  area.y() + viewport_.y() * area.height() / fullSize_.height(),
+                  viewport_.width() * area.width() / fullSize_.width(),
+                  viewport_.height() * area.height() / fullSize_.height())
+        .intersected(area).intersected(QRectF(rect()));
+}
+
+void ScrollCapturePreview::setCapture(const QImage &image, QSize fullSize, const QRect &viewport,
+                                     bool matched, Qt::Orientation axis, const QRect &imageSource) {
+    const bool sameAxis = axis == axis_;
+    const int oldLength = axis == Qt::Vertical ? fullSize_.height() : fullSize_.width();
+    const int oldPosition = axis == Qt::Vertical ? viewport_.y() : viewport_.x();
+    if (fullSize != fullSize_ || axis != axis_) {
+        if (!autoCrop_ || !sameAxis || fullSize.isEmpty()) cropBegin_ = cropEnd_ = 0;
+        cropEdge_ = -1;
+        unsetCursor();
+    }
+    fullSize_ = fullSize;
+    imageSource_ = imageSource.isEmpty() ? QRect(QPoint(), fullSize) : imageSource;
+    viewport_ = viewport.isEmpty() ? QRect(QPoint(), fullSize) : viewport;
+    matched_ = matched;
+    axis_ = axis;
+    const int newLength = axis == Qt::Vertical ? fullSize.height() : fullSize.width();
+    const int newPosition = axis == Qt::Vertical ? viewport_.y() : viewport_.x();
+    if (sameAxis && matched && oldLength > 0 && newLength > oldLength)
+        knownGrowthDirection_ = newPosition == 0 ? -1 : 1;
+    if (autoCrop_ && matched && !fullSize.isEmpty() && sameAxis && oldLength > 0) {
+        const int length = axis == Qt::Vertical ? fullSize.height() : fullSize.width();
+        const int position = axis == Qt::Vertical ? viewport_.y() : viewport_.x();
+        const int viewLength = axis == Qt::Vertical ? viewport_.height() : viewport_.width();
+        int movement = position - oldPosition;
+        // Prepending shifts the origin, so a viewport at zero has still moved up.
+        if (length > oldLength && position == 0) movement = -(length - oldLength);
+        if (!growthDirection_ && movement) growthDirection_ = movement > 0 ? 1 : -1;
+        if (growthDirection_ > 0) cropEnd_ = std::max(0, length - position - viewLength);
+        if (growthDirection_ < 0) cropBegin_ = position;
+        cropBegin_ = std::clamp(cropBegin_, 0, std::max(0, length - 1));
+        cropEnd_ = std::clamp(cropEnd_, 0, std::max(0, length - cropBegin_ - 1));
+        if (length - cropBegin_ - cropEnd_ <= viewLength) growthDirection_ = 0;
+    }
+    if (!sameAxis || fullSize.isEmpty()) growthDirection_ = knownGrowthDirection_ = 0;
+    setProperty("captureViewport", viewport_);
+    setProperty("captureMatched", matched_);
+    setPixmap(QPixmap::fromImage(image));
+    update();
+}
+
+void ScrollCapturePreview::setVisibleRegion(const QRect &region) {
+    visibleRegion_ = region;
+    setProperty("captureSourceRect", region);
+    update();
+}
+
+QRect ScrollCapturePreview::croppedRect() const {
+    return axis_ == Qt::Vertical
+        ? QRect(0, cropBegin_, fullSize_.width(), fullSize_.height() - cropBegin_ - cropEnd_)
+        : QRect(cropBegin_, 0, fullSize_.width() - cropBegin_ - cropEnd_, fullSize_.height());
+}
+
+void ScrollCapturePreview::clearCrop() {
+    cropBegin_ = cropEnd_ = 0;
+    cropEdge_ = -1;
+    growthDirection_ = 0;
+    unsetCursor();
+    update();
+}
+
+void ScrollCapturePreview::setAutoCrop(bool enabled) {
+    autoCrop_ = enabled;
+    clearCrop();
+    if (enabled) growthDirection_ = knownGrowthDirection_;
+    emit cropChanged();
+}
+
+void ScrollCapturePreview::beginCrop(bool end) {
+    cropEdge_ = end ? 1 : 0;
+    setCursor(axis_ == Qt::Vertical ? Qt::SizeVerCursor : Qt::SizeHorCursor);
+    update();
+}
+
+void ScrollCapturePreview::paintEvent(QPaintEvent *) {
+    QPainter painter(this);
+    painter.fillRect(rect(), palette().color(QPalette::Base));
+    const auto area = imageRect();
+    if (area.isEmpty() || pixmap().isNull()) return;
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    const double xScale = area.width() / fullSize_.width();
+    const double yScale = area.height() / fullSize_.height();
+    const QRectF target(area.x() + imageSource_.x() * xScale,
+                        area.y() + imageSource_.y() * yScale,
+                        imageSource_.width() * xScale, imageSource_.height() * yScale);
+    const QRectF visible = target.intersected(QRectF(rect()));
+    if (!visible.isEmpty()) {
+        const QRectF source((visible.x() - target.x()) * pixmap().width() / target.width(),
+                            (visible.y() - target.y()) * pixmap().height() / target.height(),
+                            visible.width() * pixmap().width() / target.width(),
+                            visible.height() * pixmap().height() / target.height());
+        painter.drawPixmap(visible, pixmap(), source);
+    }
+    const int length = axis_ == Qt::Vertical ? fullSize_.height() : fullSize_.width();
+    const double scale = (axis_ == Qt::Vertical ? area.height() : area.width()) / length;
+    QRectF begin = area, end = area;
+    if (axis_ == Qt::Vertical) {
+        begin.setHeight(cropBegin_ * scale);
+        end.setTop(area.bottom() - cropEnd_ * scale);
+    } else {
+        begin.setWidth(cropBegin_ * scale);
+        end.setLeft(area.right() - cropEnd_ * scale);
+    }
+    painter.fillRect(begin, QColor(0, 0, 0, 155));
+    painter.fillRect(end, QColor(0, 0, 0, 155));
+    painter.setBrush(QColor(matched_ ? 131 : 245, matched_ ? 229 : 155, matched_ ? 79 : 35, 35));
+    painter.setPen(QPen(QColor(matched_ ? "#83e54f" : "#f59b23"), 3));
+    painter.drawRect(viewportRect().adjusted(1.5, 1.5, -1.5, -1.5));
+    if (cropBegin_ || cropEnd_ || cropEdge_ >= 0) {
+        painter.setPen(QPen(QColor("#47abff"), 2, Qt::DashLine));
+        if (axis_ == Qt::Vertical) {
+            painter.drawLine(begin.bottomLeft(), begin.bottomRight());
+            painter.drawLine(end.topLeft(), end.topRight());
+        } else {
+            painter.drawLine(begin.topRight(), begin.bottomRight());
+            painter.drawLine(end.topLeft(), end.bottomLeft());
+        }
+    }
+}
+
+void ScrollCapturePreview::cropAt(QPointF point) {
+    const auto area = imageRect();
+    if (area.isEmpty() || cropEdge_ < 0) return;
+    const int length = axis_ == Qt::Vertical ? fullSize_.height() : fullSize_.width();
+    const double fraction = axis_ == Qt::Vertical ? (point.y() - area.y()) / area.height()
+                                                : (point.x() - area.x()) / area.width();
+    const int at = qRound(std::clamp(fraction, 0.0, 1.0) * length);
+    if (cropEdge_ == 0)
+        cropBegin_ = std::clamp(at, 0, std::max(0, length - cropEnd_ - 1));
+    else
+        cropEnd_ = std::clamp(length - at, 0, std::max(0, length - cropBegin_ - 1));
+    update();
+    emit cropChanged();
+}
+
+void ScrollCapturePreview::mousePressEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton && cropEdge_ >= 0) {
+        cropping_ = true;
+        cropAt(event->position());
+        event->accept();
+    }
+}
+void ScrollCapturePreview::mouseMoveEvent(QMouseEvent *event) {
+    if (cropping_) cropAt(event->position());
+}
+void ScrollCapturePreview::mouseReleaseEvent(QMouseEvent *event) {
+    if (cropping_) {
+        cropAt(event->position());
+        cropping_ = false;
+    }
+}
+
 ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint) {
     setObjectName(QStringLiteral("scrollCaptureProgress"));
     setWindowTitle(tr("EditHere · 长截图"));
     setAttribute(Qt::WA_ShowWithoutActivating);
+    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_AlwaysShowToolTips);
     setFocusPolicy(Qt::StrongFocus);
-    setAutoFillBackground(true);
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 12, 12, 12);
+    auto *layout = new QHBoxLayout(this);
+    layout->setContentsMargins(8, 5, 8, 5);
+    layout->setSpacing(3);
     auto *dragBar = new DragBar(this);
     dragBar->setObjectName(QStringLiteral("scrollDragBar"));
-    dragBar->setToolTip(tr("拖动窗口，避开滚动区域。"));
-    auto *heading = new QHBoxLayout(dragBar);
-    heading->setContentsMargins(0, 0, 0, 0);
-    auto *title = new QLabel(tr("长截图"), dragBar);
-    auto *dragHint = mutedLabel(tr("拖动窗口"), dragBar);
-    for (auto *label : {title, dragHint})
-        label->setAttribute(Qt::WA_TransparentForMouseEvents);
-    heading->addWidget(title);
-    heading->addStretch();
-    heading->addWidget(dragHint);
+    dragBar->setToolTip(tr("拖动工具栏"));
+    auto *dots = new QLabel(dragBar);
+    dots->setProperty("glyphName", QStringLiteral("scroll-grip"));
+    dots->setPixmap(glyph("scroll-grip", palette().color(QPalette::PlaceholderText)).pixmap(24, 24));
+    dots->setFixedSize(18, 24);
+    dots->setAlignment(Qt::AlignCenter);
+    dots->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *dragLayout = new QHBoxLayout(dragBar);
+    dragLayout->setContentsMargins(0, 0, 0, 0);
+    dragLayout->addWidget(dots);
+    dragBar->setFixedSize(18, 30);
     layout->addWidget(dragBar);
-    preview_ = new QLabel(this);
-    preview_->setObjectName(QStringLiteral("scrollPreview"));
-    preview_->setFixedSize(232, 190);
-    preview_->setAlignment(Qt::AlignCenter);
-    layout->addWidget(preview_);
-    status_ = new QLabel(tr("正在准备长截图…"), this);
-    status_->setObjectName(QStringLiteral("scrollStatus"));
-    status_->setWordWrap(true);
-    status_->setMinimumHeight(44);
-    layout->addWidget(status_);
-    automatic_ = new QCheckBox(tr("自动滚动"), this);
+    size_ = new QLabel(QStringLiteral("0 × 0"), this);
+    size_->setObjectName(QStringLiteral("scrollSize"));
+    size_->setAlignment(Qt::AlignCenter);
+    size_->setMinimumWidth(76);
+    size_->setProperty("muted", true);
+    QFont sizeFont = size_->font();
+    sizeFont.setPixelSize(14);
+    size_->setFont(sizeFont);
+    size_->setToolTip(tr("已拼接长图的宽度和高度，单位为像素"));
+    layout->addWidget(size_);
+    // The move handle is a separate native window owned by the region; this gap
+    // receives it so dragging the live selection never steals page input.
+    moveSlot_ = new QWidget(this);
+    moveSlot_->setFixedSize(25, 30);
+    layout->addWidget(moveSlot_);
+    auto *separator = new QFrame(this);
+    separator->setFixedSize(1, 18);
+    separator->setObjectName(QStringLiteral("toolbarSeparator"));
+    layout->addWidget(separator, 0, Qt::AlignVCenter);
+    direction_ = new QPushButton(this);
+    direction_->setObjectName(QStringLiteral("scrollDirection"));
+    direction_->setToolTip(tr("切换垂直或水平截图；切换方向会重新开始拼接"));
+    direction_->setAccessibleName(tr("切换截图方向"));
+    direction_->setCursor(Qt::PointingHandCursor);
+    direction_->setFixedSize(96, 26);
+    auto *axisMenu = new QMenu(direction_);
+    direction_->setMenu(axisMenu);
+    for (const auto axis : {Qt::Vertical, Qt::Horizontal}) {
+        auto *action = axisMenu->addAction(axis == Qt::Vertical ? tr("垂直") : tr("水平"));
+        action->setObjectName(axis == Qt::Vertical ? "scrollVerticalAction" : "scrollHorizontalAction");
+        action->setCheckable(true);
+        action->setData(static_cast<int>(axis));
+        connect(action, &QAction::triggered, this, [this, axis] {
+            if (direction_->property("captureAxis").toInt() != static_cast<int>(axis))
+                emit directionRequested();
+        });
+    }
+    layout->addWidget(direction_);
+    automatic_ = new QCheckBox(this);
     automatic_->setObjectName(QStringLiteral("scrollAutomatic"));
-    automatic_->setToolTip(tr("勾选后由程序向下滚动；默认由你手动滚动页面。"));
-    layout->addWidget(automatic_);
-    auto *buttons = new QHBoxLayout;
-    stop_ = new QPushButton(tr("停止"), this);
+    automatic_->setToolTip(tr("自动向下滚动并拼接；再次点击切换为手动滚动"));
+    automatic_->hide();
+    automaticButton_ = new QPushButton(this);
+    automaticButton_->setObjectName(QStringLiteral("scrollAutomaticButton"));
+    setScrollGlyph(automaticButton_, QStringLiteral("scroll-mouse"));
+    automaticButton_->setCheckable(true);
+    automaticButton_->setToolTip(automatic_->toolTip());
+    automaticButton_->setAccessibleName(tr("自动滚动（默认手动滚动）"));
+    automaticButton_->setFixedSize(28, 30);
+    layout->addWidget(automaticButton_);
+    connect(automaticButton_, &QPushButton::clicked, automatic_, &QCheckBox::setChecked);
+    connect(automatic_, &QCheckBox::toggled, automaticButton_, &QPushButton::setChecked);
+    cropButton_ = new QPushButton(this);
+    cropButton_->setObjectName(QStringLiteral("scrollCrop"));
+    setScrollGlyph(cropButton_, QStringLiteral("crop"));
+    cropButton_->setToolTip(tr("裁剪当前可见区域之前或之后的内容，裁剪后可继续截图"));
+    cropButton_->setAccessibleName(tr("裁剪长截图"));
+    cropButton_->setFixedSize(30, 30);
+    layout->addWidget(cropButton_);
+    stop_ = new QPushButton(this);
     stop_->setObjectName(QStringLiteral("scrollStop"));
-    finish_ = textButton(tr("完成长截图"), true, this);
+    setScrollGlyph(stop_, QStringLiteral("scroll-stop"));
+    stop_->setToolTip(tr("停止截图并清空本次结果；可调整选区后重新开始"));
+    stop_->setAccessibleName(tr("停止截图"));
+    stop_->setFixedSize(30, 30);
+    layout->addWidget(stop_);
+    finish_ = new QPushButton(this);
     finish_->setObjectName(QStringLiteral("scrollFinish"));
+    setScrollGlyph(finish_, QStringLiteral("edit"));
+    finish_->setToolTip(tr("完成长截图并进入编辑器（Enter）"));
+    finish_->setAccessibleName(tr("完成并进入编辑器"));
+    finish_->setFixedSize(30, 30);
     finish_->setEnabled(false);
-    buttons->addWidget(stop_);
-    buttons->addWidget(finish_);
-    layout->addLayout(buttons);
-    auto *cancel = new QPushButton(tr("返回选区 (Esc)"), this);
+    layout->addWidget(finish_);
+    const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"),
+                                QStringLiteral("scroll-quick-save"), QStringLiteral("copy")};
+    const QStringList tips = {tr("将完整长图贴在桌面上"), tr("选择位置和格式，保存完整长图"),
+                             tr("将完整长图快速保存到设置的目录"), tr("复制完整长图到剪贴板并关闭长截图")};
+    const QStringList accessibleNames = {tr("贴图"), tr("保存"), tr("快速保存"), tr("复制并关闭")};
+    const QStringList names = {QStringLiteral("scrollPin"), QStringLiteral("scrollSave"),
+                               QStringLiteral("scrollQuickSave"), QStringLiteral("scrollCopy")};
+    for (int i = 0; i < labels.size(); ++i) {
+        auto *button = new QPushButton(this);
+        button->setObjectName(names[i]);
+        setScrollGlyph(button, labels[i]);
+        button->setToolTip(tips[i]);
+        button->setAccessibleName(accessibleNames[i]);
+        button->setFixedSize(29, 30);
+        button->setEnabled(false);
+        layout->addWidget(button);
+        outputButtons_.append(button);
+    }
+    auto *cancel = new QPushButton(this);
     cancel->setObjectName(QStringLiteral("scrollCancel"));
+    setScrollGlyph(cancel, QStringLiteral("close"));
+    cancel->setToolTip(tr("关闭长截图并放弃本次结果（Esc）"));
+    cancel->setAccessibleName(tr("关闭长截图"));
+    cancel->setFixedSize(29, 30);
+    // The close action comes before the last copy action in the reference bar.
+    layout->removeWidget(outputButtons_.last());
     layout->addWidget(cancel);
-    connect(stop_, &QPushButton::clicked, this, &ScrollCaptureProgress::stopRequested);
+    layout->addWidget(outputButtons_.last());
+    setFixedHeight(42);
+    adjustSize();
+    setFixedWidth(std::max(536, sizeHint().width()));
+
+    // The thumbnail is its own top-level surface. It stays to the right of the
+    // capture frame while running and disappears when capture is stopped.
+    previewArea_ = new QScrollArea(this);
+    previewArea_->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+                                 Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
+    previewArea_->setObjectName(QStringLiteral("scrollPreviewArea"));
+    previewArea_->setAttribute(Qt::WA_ShowWithoutActivating);
+    previewArea_->setFixedSize(150, 260);
+    previewArea_->setStyleSheet(QStringLiteral(
+        "QScrollArea#scrollPreviewArea { border: 2px solid palette(highlight); background: palette(base); }"));
+    previewArea_->setFrameShape(QFrame::NoFrame);
+    previewArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    previewArea_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    preview_ = new ScrollCapturePreview;
+    preview_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    previewArea_->setWidget(preview_);
+    previewArea_->setWidgetResizable(true);
+
+    cropMenu_ = new RoundedCropPopup(this);
+    cropMenu_->setObjectName(QStringLiteral("scrollCropMenu"));
+    cropMenu_->setMinimumSize(194, 52);
+    auto *cropLayout = new QHBoxLayout(cropMenu_);
+    cropLayout->setContentsMargins(7, 4, 7, 4);
+    cropLayout->setSpacing(4);
+    cropBegin_ = new QPushButton(cropMenu_);
+    cropBegin_->setObjectName(QStringLiteral("scrollCropBegin"));
+    cropEnd_ = new QPushButton(cropMenu_);
+    cropEnd_->setObjectName(QStringLiteral("scrollCropEnd"));
+    for (auto *button : {cropBegin_, cropEnd_}) button->setFixedSize(28, 28);
+    cropLayout->addWidget(cropBegin_);
+    cropLayout->addWidget(cropEnd_);
+    auto *cropDivider = new QFrame(cropMenu_);
+    cropDivider->setFixedSize(1, 18);
+    cropDivider->setObjectName(QStringLiteral("toolbarSeparator"));
+    cropLayout->addWidget(cropDivider, 0, Qt::AlignVCenter);
+    autoCrop_ = new QCheckBox(tr("自动裁剪"), cropMenu_);
+    autoCrop_->setObjectName(QStringLiteral("scrollAutoCrop"));
+    autoCrop_->setToolTip(tr("反向滚动时，自动裁去当前可见区域之外的长图内容"));
+    autoCrop_->setAccessibleName(tr("自动裁剪"));
+    cropLayout->addWidget(autoCrop_);
+    connect(autoCrop_, &QCheckBox::toggled, this, &ScrollCaptureProgress::autoCropChanged);
+    connect(cropButton_, &QPushButton::clicked, this, [this] {
+        cropMenu_->adjustSize();
+        QPoint position = cropButton_->mapToGlobal(QPoint(cropButton_->width() / 2 -
+            cropMenu_->width() / 2, height() - cropButton_->y() + 4));
+        if (!captureScreen_.isEmpty()) {
+            position.setX(std::clamp(position.x(), captureScreen_.left(),
+                std::max(captureScreen_.left(), captureScreen_.right() + 1 - cropMenu_->width())));
+            if (position.y() + cropMenu_->height() > captureScreen_.bottom() + 1)
+                position.setY(std::max(captureScreen_.top(), y() - cropMenu_->height() - 4));
+        }
+        cropMenu_->move(position);
+        cropMenu_->show();
+        configureNativeWindow(cropMenu_, true);
+    });
+    status_ = new QLabel(this);
+    status_->setObjectName(QStringLiteral("scrollStatus"));
+    status_->hide();
+    setAxis(Qt::Vertical);
+    connect(stop_, &QPushButton::clicked, this, [this] {
+        if (stopped_) emit resumeRequested();
+        else emit stopRequested();
+    });
     connect(finish_, &QPushButton::clicked, this, &ScrollCaptureProgress::finishRequested);
     connect(cancel, &QPushButton::clicked, this, &ScrollCaptureProgress::cancelRequested);
     connect(automatic_, &QCheckBox::toggled, this, &ScrollCaptureProgress::automaticChanged);
-    setFixedWidth(256);
-    adjustSize();
+    connect(cropBegin_, &QPushButton::clicked, this, [this] {
+        cropMenu_->hide();
+        emit cropRequested(false);
+    });
+    connect(cropEnd_, &QPushButton::clicked, this, [this] {
+        cropMenu_->hide();
+        emit cropRequested(true);
+    });
+    connect(preview_, &ScrollCapturePreview::cropChanged, this, [this] {
+        const auto cropped = croppedRect();
+        setSelectionSize(cropped.size());
+    });
+    connect(outputButtons_[0], &QPushButton::clicked, this, &ScrollCaptureProgress::pinRequested);
+    connect(outputButtons_[1], &QPushButton::clicked, this, &ScrollCaptureProgress::saveRequested);
+    connect(outputButtons_[2], &QPushButton::clicked, this, &ScrollCaptureProgress::quickSaveRequested);
+    connect(outputButtons_[3], &QPushButton::clicked, this, &ScrollCaptureProgress::copyRequested);
 }
 
 void ScrollCaptureProgress::placeBeside(const QRect &selection, const QRect &screen) {
-    adjustSize();
-    const int gap = 12;
-    const QVector<QPoint> positions = {
-        {selection.right() + gap, selection.top()},
-        {selection.left() - width() - gap, selection.top()},
-        {selection.left(), selection.top() - height() - gap},
-        {selection.left(), selection.bottom() + gap}};
-    for (const auto &position : positions)
-        if (screen.contains(QRect(position, size()))) {
-            move(position);
-            return;
-        }
-    move(std::clamp(screen.right() - width() - gap, screen.left(),
-                    std::max(screen.left(), screen.right() - width())),
-         std::clamp(screen.top() + gap, screen.top(),
-                    std::max(screen.top(), screen.bottom() - height())));
+    if (!captureSelection_.isEmpty() && !previewLastSize_.isEmpty())
+        previewAnchor_ += selection.topLeft() - captureSelection_.topLeft();
+    captureSelection_ = selection;
+    captureScreen_ = screen;
+    const int gap = 6;
+    const int x = std::clamp(selection.right() + 1 - width(), screen.left(),
+                             std::max(screen.left(), screen.right() + 1 - width()));
+    const int below = selection.bottom() + gap;
+    const int y = below + height() <= screen.bottom() + 1
+        ? below : std::max(screen.top(), selection.top() - height() - gap);
+    move(x, y);
+    previewMaximumWidth_ = 196;
+    if (!previewLastSize_.isEmpty())
+        previewSourceRect(previewLastSize_, previewLastViewport_, previewAxis_);
 }
 
-void ScrollCaptureProgress::setProgress(const QImage &image, int addedFrames) {
+QRect ScrollCaptureProgress::previewSourceRect(QSize nativeSize, const QRect &viewport,
+                                               Qt::Orientation axis, std::optional<int> nativeOrigin) {
+    if (captureSelection_.isEmpty() || captureScreen_.isEmpty() || nativeSize.isEmpty()) return {};
+    const bool vertical = axis == Qt::Vertical;
+    const int cross = vertical ? nativeSize.width() : nativeSize.height();
+    const double scale = double(previewMaximumWidth_) / cross;
+    const int length = vertical ? nativeSize.height() : nativeSize.width();
+    const int position = vertical ? viewport.y() : viewport.x();
+    if (previewLastSize_.isEmpty() || axis != previewAxis_) {
+        previewAnchor_ = QPointF(captureSelection_.right() + 14, captureSelection_.top());
+        previewLastOrigin_ = nativeOrigin;
+    } else if (nativeOrigin && previewLastOrigin_) {
+        // Fixed bars can be discovered on the first movement. The stitch's
+        // native origin distinguishes prepend from append without inferring it
+        // from the viewport, and includes actual prefix removal when cropping.
+        const double movement = (*nativeOrigin - *previewLastOrigin_) * scale;
+        if (vertical) previewAnchor_.ry() += movement;
+        else previewAnchor_.rx() += movement;
+    } else {
+        const int oldLength = vertical ? previewLastSize_.height() : previewLastSize_.width();
+        const int oldPosition = vertical ? previewLastViewport_.y() : previewLastViewport_.x();
+        const int growth = length - oldLength;
+        if ((growth > 0 && position <= oldPosition) || (growth < 0 && position < oldPosition)) {
+            if (vertical) previewAnchor_.ry() -= growth * scale;
+            else previewAnchor_.rx() -= growth * scale;
+        }
+    }
+    if (nativeOrigin) previewLastOrigin_ = nativeOrigin;
+    previewLastSize_ = nativeSize;
+    previewLastViewport_ = viewport;
+    previewAxis_ = axis;
+    const int right = captureSelection_.right() + 14;
+    const int rightSpace = std::max(0, captureScreen_.right() + 1 - right);
+    const int leftSpace = std::max(0, captureSelection_.left() - 14 - captureScreen_.left());
+    const int availableWidth = std::max(6, std::max(rightSpace, leftSpace) - 4);
+    const int availableHeight = std::max(6, captureScreen_.height() - 16);
+    const int viewWidth = vertical ? std::min(previewMaximumWidth_, std::max(1, captureScreen_.width() - 4))
+                                  : std::min(availableWidth, std::max(1, qRound(nativeSize.width() * scale)));
+    const int viewHeight = vertical ? std::min(availableHeight, std::max(1, qRound(length * scale)))
+                                   : std::min(previewMaximumWidth_, availableHeight);
+    previewArea_->setFixedSize(viewWidth + 4, viewHeight + 4);
+    const int x = rightSpace >= previewArea_->width() ? right : leftSpace >= previewArea_->width() ?
+        captureSelection_.left() - 14 - previewArea_->width() :
+        std::clamp(right, captureScreen_.left(), std::max(captureScreen_.left(),
+            captureScreen_.right() + 1 - previewArea_->width()));
+    const int y = std::clamp(qRound(previewAnchor_.y()), captureScreen_.top() + 6,
+        std::max(captureScreen_.top() + 6, captureScreen_.bottom() - previewArea_->height() - 5));
+    previewArea_->move(x, y);
+    preview_->resize(previewArea_->viewport()->size());
+    // QScrollArea can still have its old viewport geometry until its resize
+    // event is delivered. Derive the request from the new display dimensions.
+    const double actualScale = vertical ? double(viewWidth) / nativeSize.width()
+                                        : double(viewHeight) / nativeSize.height();
+    const int visibleLength = std::min(length, std::max(1, int(std::ceil(
+        (vertical ? viewHeight : viewWidth) / actualScale))));
+    const double origin = vertical ? previewAnchor_.y() : previewAnchor_.x();
+    const int windowStart = vertical ? y + 2 : x + 2;
+    int first = std::clamp(qRound((windowStart - origin) / actualScale), 0, length - visibleLength);
+    // Once the image reaches a screen edge, pan the native-pixel window so the
+    // current capture stays visible; its width and scale never shrink.
+    const int viewLength = vertical ? viewport.height() : viewport.width();
+    if (!viewport.isEmpty()) {
+        if (position < first) first = position;
+        if (position + viewLength > first + visibleLength)
+            first = position + viewLength - visibleLength;
+        first = std::clamp(first, 0, length - visibleLength);
+    }
+    const QRect source = vertical ? QRect(0, first, nativeSize.width(), visibleLength)
+                                  : QRect(first, 0, visibleLength, nativeSize.height());
+    preview_->setVisibleRegion(source);
+    previewArea_->setProperty("captureSourceRect", source);
+    return source;
+}
+
+QPoint ScrollCaptureProgress::moveHandlePosition() const {
+    return moveSlot_->mapToGlobal(QPoint());
+}
+
+int ScrollCaptureProgress::previewWidth() const {
+    return qRound(std::max(1, previewArea_->width() - 4) * devicePixelRatioF());
+}
+
+void ScrollCaptureProgress::setProgress(const QImage &image, int addedFrames, QSize size, const QRect &viewport,
+                                      bool matched, Qt::Orientation axis, const QRect &imageSource) {
     hasProgress_ = addedFrames > 0;
-    finish_->setEnabled(hasProgress_);
-    if (!image.isNull())
-        preview_->setPixmap(QPixmap::fromImage(image.scaled(preview_->size(), Qt::KeepAspectRatio,
-                                                          Qt::SmoothTransformation)));
+    direction_->setEnabled(true);
+    const QSize dimensions = size.isEmpty() ? image.size() : size;
+    canEdit_ = std::max(dimensions.width(), dimensions.height()) <= 32767 &&
+               qint64(dimensions.width()) * dimensions.height() <= 32000000;
+    finish_->setEnabled(hasProgress_ && canEdit_);
+    cropBegin_->setEnabled(hasProgress_);
+    cropEnd_->setEnabled(hasProgress_);
+    for (auto *button : outputButtons_) button->setEnabled(hasProgress_);
+    outputButtons_[0]->setEnabled(hasProgress_ && canEdit_);
+    outputButtons_[3]->setEnabled(hasProgress_ && canEdit_);
+    const QString largeNotice = tr("超大长图请使用 PNG 保存；当前尺寸超过复制、贴图和编辑的图像上限。");
+    finish_->setToolTip(canEdit_ ? tr("完成长截图并进入编辑器（Enter）") : largeNotice);
+    outputButtons_[0]->setToolTip(canEdit_ ? tr("将完整长图贴在桌面上") : largeNotice);
+    outputButtons_[3]->setToolTip(canEdit_ ? tr("复制完整长图到剪贴板并关闭长截图") : largeNotice);
+    if (size.isEmpty())
+        size = image.size();
+    if (!image.isNull()) {
+        previewSourceRect(size, viewport, axis);
+        preview_->resize(previewArea_->viewport()->size());
+        preview_->setCapture(image, size, viewport, matched, axis, imageSource);
+        if (!stopped_ && isVisible()) {
+            previewArea_->show();
+            configureNativeWindow(previewArea_, true);
+        }
+    } else {
+        preview_->setCapture({}, {}, {}, matched, axis);
+        preview_->setVisibleRegion({});
+        previewLastSize_ = {};
+        previewLastOrigin_.reset();
+        previewArea_->hide();
+    }
+    if (!preview_->croppedRect().isEmpty()) size = preview_->croppedRect().size();
+    if (!size.isEmpty()) setSelectionSize(size);
     status_->setText((automatic_->isChecked()
                          ? tr("正在自动滚动 · %1 × %2 px\n已追加 %3 帧，随时可停止")
-                         : tr("请在选区内向下滚动页面\n%1 × %2 px · 已追加 %3 帧"))
-                         .arg(image.width()).arg(image.height()).arg(addedFrames));
+                         : (axis == Qt::Vertical
+                            ? tr("请在选区内上下滚动页面\n%1 × %2 px · 已追加 %3 帧")
+                            : tr("请在选区内左右滚动或拖动水平滚动条\n%1 × %2 px · 已追加 %3 帧")))
+                         .arg(size.width()).arg(size.height()).arg(addedFrames));
+    setToolTip(status_->text());
+}
+
+void ScrollCaptureProgress::setNotice(const QString &message) {
+    status_->setText(message);
+    setToolTip(message);
 }
 
 void ScrollCaptureProgress::setAutomatic(bool automatic) {
     const QSignalBlocker blocked(automatic_);
     automatic_->setChecked(automatic);
+    automaticButton_->setChecked(automatic);
 }
 
 void ScrollCaptureProgress::setStopped(const QString &message) {
     status_->setText(message);
     setAutomatic(false);
+    stopped_ = true;
     automatic_->setEnabled(false);
-    stop_->hide();
+    automaticButton_->setEnabled(false);
+    automaticButton_->setToolTip(tr("重新开始截图后可启用自动滚动"));
+    stop_->setText({});
+    setScrollGlyph(stop_, QStringLiteral("scroll-play"));
+    stop_->setToolTip(tr("按当前选区开始新的长截图"));
+    stop_->setAccessibleName(tr("开始截图"));
+    setToolTip(message);
+    previewArea_->hide();
     finish_->show();
-    finish_->setEnabled(hasProgress_);
+    finish_->setEnabled(hasProgress_ && canEdit_);
+}
+
+void ScrollCaptureProgress::setRunning(Qt::Orientation axis) {
+    stopped_ = false;
+    stop_->setText({});
+    setScrollGlyph(stop_, QStringLiteral("scroll-stop"));
+    stop_->setToolTip(tr("停止截图并清空本次结果；可调整选区后重新开始"));
+    stop_->setAccessibleName(tr("停止截图"));
+    automatic_->setEnabled(axis == Qt::Vertical);
+    setAxis(axis);
+    if (isVisible() && !preview_->pixmap().isNull()) {
+        previewArea_->show();
+        configureNativeWindow(previewArea_, true);
+    }
+}
+
+void ScrollCaptureProgress::setAxis(Qt::Orientation axis) {
+    direction_->setProperty("captureAxis", static_cast<int>(axis));
+    direction_->setText(axis == Qt::Vertical ? tr("垂直") : tr("水平"));
+    for (auto *action : direction_->menu()->actions())
+        action->setChecked(action->data().toInt() == static_cast<int>(axis));
+    cropBegin_->setText({});
+    cropEnd_->setText({});
+    setScrollGlyph(cropBegin_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-top") : QStringLiteral("scroll-trim-left"));
+    setScrollGlyph(cropEnd_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-bottom") : QStringLiteral("scroll-trim-right"));
+    cropBegin_->setToolTip(axis == Qt::Vertical ? tr("裁去当前可见区域上方的内容，保留当前区域及其下方")
+                                              : tr("裁去当前可见区域左侧的内容，保留当前区域及其右侧"));
+    cropEnd_->setToolTip(axis == Qt::Vertical ? tr("裁去当前可见区域下方的内容，保留当前区域及其上方")
+                                            : tr("裁去当前可见区域右侧的内容，保留当前区域及其左侧"));
+    cropBegin_->setAccessibleName(axis == Qt::Vertical ? tr("上裁剪") : tr("左裁剪"));
+    cropEnd_->setAccessibleName(axis == Qt::Vertical ? tr("下裁剪") : tr("右裁剪"));
+    automatic_->setEnabled(!stopped_ && axis == Qt::Vertical);
+    automaticButton_->setEnabled(!stopped_ && axis == Qt::Vertical);
+    automaticButton_->setToolTip(stopped_ ? tr("重新开始截图后可启用自动滚动") :
+        axis == Qt::Vertical ? tr("自动向下滚动并拼接；再次点击切换为手动滚动") :
+                              tr("水平截图请手动滚动或拖动水平滚动条"));
+    if (axis == Qt::Horizontal) setAutomatic(false);
+}
+
+void ScrollCaptureProgress::setSelectionSize(QSize size) {
+    size_->setText(QStringLiteral("%1 × %2").arg(size.width()).arg(size.height()));
+    size_->setFixedWidth(std::max(76, size_->fontMetrics().horizontalAdvance(size_->text()) + 10));
+    setFixedWidth(std::max(536, layout()->sizeHint().width()));
+    layout()->activate();
+    if (!captureScreen_.isEmpty())
+        move(std::clamp(x(), captureScreen_.left(), std::max(captureScreen_.left(),
+            captureScreen_.right() + 1 - width())), y());
+    emit positionChanged(moveHandlePosition());
+}
+
+void ScrollCaptureProgress::setAutoCrop(bool enabled) {
+    autoCrop_->setChecked(enabled);
+}
+
+bool ScrollCaptureProgress::autoCrop() const { return autoCrop_->isChecked(); }
+
+void ScrollCaptureProgress::beginCrop(bool end) {
+    preview_->beginCrop(end);
+    status_->setText(tr("在预览中点击并拖动，调整蓝色裁剪线。\n点击另一端裁剪按钮可切换边界。"));
+}
+
+QRect ScrollCaptureProgress::croppedRect() const { return preview_->croppedRect(); }
+void ScrollCaptureProgress::clearCrop() { preview_->clearCrop(); }
+
+void ScrollCaptureProgress::paintEvent(QPaintEvent *) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor(isDarkTheme() ? "#41434d" : "#dddde5"), 1));
+    painter.setBrush(palette().color(QPalette::Window));
+    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+}
+
+void ScrollCaptureProgress::moveEvent(QMoveEvent *event) {
+    QWidget::moveEvent(event);
+    if (moveSlot_) emit positionChanged(moveHandlePosition());
+}
+
+void ScrollCaptureProgress::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    if (!stopped_ && !preview_->pixmap().isNull()) {
+        previewArea_->show();
+        configureNativeWindow(previewArea_, true);
+    }
+}
+
+void ScrollCaptureProgress::hideEvent(QHideEvent *event) {
+    previewArea_->hide();
+    cropMenu_->hide();
+    QWidget::hideEvent(event);
 }
 
 void ScrollCaptureProgress::keyPressEvent(QKeyEvent *event) {
@@ -586,7 +1365,7 @@ void ScrollCaptureProgress::keyPressEvent(QKeyEvent *event) {
         emit cancelRequested();
         event->accept();
     } else if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
-               finish_->isVisible() && hasProgress_) {
+               finish_->isEnabled() && finish_->isVisible() && hasProgress_) {
         emit finishRequested();
         event->accept();
     } else {

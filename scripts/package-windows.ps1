@@ -60,7 +60,9 @@ try {
     if ($CompilerBin) { $env:PATH = $CompilerBin + ";" + $env:PATH }
     $isMsvc = Test-Path -LiteralPath (Join-Path $QtRoot "lib/Qt6Core.lib")
     $compilerRuntimeOption = if ($isMsvc) { "--no-compiler-runtime" } else { "--compiler-runtime" }
-    & (Join-Path $QtRoot "bin/windeployqt.exe") --release $compilerRuntimeOption --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation --include-plugins qwebp,ffmpegmediaplugin (Join-Path $outputPath "EditHere.exe")
+    # The playback surface paints QVideoFrames itself. Keep the full video runtime
+    # even when the linker has no direct MultimediaWidgets import to discover.
+    & (Join-Path $QtRoot "bin/windeployqt.exe") --release $compilerRuntimeOption -multimedia -multimediawidgets --no-translations --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --skip-plugin-types generic,networkinformation --include-plugins qwebp,ffmpegmediaplugin (Join-Path $outputPath "EditHere.exe")
     if ($LASTEXITCODE) { throw "Qt deployment failed." }
     if ($isMsvc) {
         # windeployqt bundles the VC redistributable installer for MSVC. A

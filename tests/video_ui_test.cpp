@@ -17,11 +17,13 @@
 #include <QImage>
 #include <QLabel>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
 #include <QSignalSpy>
 #include <QSlider>
+#include <QStyleOptionSlider>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -32,6 +34,32 @@
 #include <functional>
 using namespace h2d;
 namespace {
+QPointF timelineTagTip(QSlider *timeline, qint64 timestampUs, qint64 durationMs) {
+    QStyleOptionSlider option;
+    option.initFrom(timeline);
+    option.orientation = Qt::Horizontal;
+    option.minimum = timeline->minimum();
+    option.maximum = timeline->maximum();
+    option.sliderPosition = option.sliderValue = qRound(double(timestampUs / 1000) / durationMs * option.maximum);
+    const QRect handle = timeline->style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, timeline);
+    const QRect groove = timeline->style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, timeline);
+    return {handle.left() + handle.width() / 2.0, groove.center().y() - 2.0};
+}
+bool isTimelineTagPixel(QColor color) {
+    return color.green() - color.red() > 45 && color.blue() - color.red() > 45 &&
+           qAbs(color.green() - color.blue()) < 45;
+}
+QImage timelineRender(QSlider *timeline) {
+    return timeline->grab().toImage().scaled(timeline->size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+QRect timelineTagPixels(const QImage &image, QPointF tip) {
+    QRect bounds;
+    const QRect sample = QRect(qRound(tip.x()) - 8, 0, 17, qRound(tip.y()) + 2).intersected(image.rect());
+    for (int y = sample.top(); y <= sample.bottom(); ++y)
+        for (int x = sample.left(); x <= sample.right(); ++x)
+            if (isTimelineTagPixel(image.pixelColor(x, y))) bounds |= QRect(x, y, 1, 1);
+    return bounds;
+}
 // Observe the whole asynchronous transition. A final screenshot alone misses a
 // one-frame label flash or a sidebar/viewport layout that jumps and settles back.
 class GeometryProbe final : public QObject {
@@ -185,6 +213,97 @@ class VideoUiTests : public QObject {
         editor.setDocument(fromImage(image, "file", "ordinary image"));
         QVERIFY(!editor.hasVideo());
         QVERIFY(!QJsonDocument::fromJson(editor.agentFeedback(true)).object().contains("frames"));
+    }
+    void timelineTagsPointAtTrackAndEnlarge_data() {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("light") << false;
+        QTest::newRow("dark") << true;
+    }
+    void timelineTagsPointAtTrackAndEnlarge() {
+        if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
+        QFETCH(bool, dark);
+        struct RestoreTheme { ~RestoreTheme() { applyTheme(ThemeMode::Light); } } restore;
+        applyTheme(dark ? ThemeMode::Dark : ThemeMode::Light);
+        VideoPlayback playback;
+        playback.videoWidget()->setParent(&playback);
+        playback.resize(850, 115);
+        playback.show();
+        QSignalSpy paused(&playback, &VideoPlayback::framePaused);
+        QSignalSpy reviewed(&playback, &VideoPlayback::reviewRequested);
+        playback.open(source());
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !playback.positioning(), 15000);
+        auto timeline = playback.findChild<QSlider *>("videoTimeline");
+        QVERIFY(timeline && timeline->isEnabled());
+        QVERIFY(playback.durationMs() > 100000);
+        const qint64 middlePts = playback.durationMs() / 2 * 1000;
+        const qint64 endPts = (playback.durationMs() - 1) * 1000;
+        playback.setAnnotatedFrames({{0, 1}, {middlePts, 3}, {endPts, 1}});
+        QTest::qWait(100);
+        const QImage normal = timelineRender(timeline);
+        const auto tip = timelineTagTip(timeline, middlePts, playback.durationMs());
+        const QRect tag = timelineTagPixels(normal, tip);
+        QVERIFY2(!tag.isEmpty(), "Annotation marker must render as a cyan tag above the groove");
+        QVERIFY(tag.height() >= 11 && tag.height() <= 15);
+        QVERIFY(tag.width() >= 8 && tag.width() <= 11);
+        QVERIFY(qAbs(tag.center().x() - tip.x()) <= 1);
+        QVERIFY(qAbs(tag.bottom() - tip.y()) <= 2);
+        const auto rowWidth = [](const QImage &image, QRect area, int y) {
+            int width = 0;
+            for (int x = area.left(); x <= area.right(); ++x)
+                if (isTimelineTagPixel(image.pixelColor(x, y))) ++width;
+            return width;
+        };
+        QVERIFY(rowWidth(normal, tag, tag.bottom()) < rowWidth(normal, tag, tag.top() + 3));
+        const QString artifacts = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
+        const QString theme = dark ? "dark" : "light";
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            QVERIFY(playback.grab().save(QDir(artifacts).filePath("timeline-tags-" + theme + "-normal.png")));
+        }
+        const QPointF body = tip - QPointF(0, 7);
+        QMouseEvent hover(QEvent::MouseMove, body, timeline->mapToGlobal(body),
+                          Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(timeline, &hover);
+        QCOMPARE(timeline->cursor().shape(), Qt::PointingHandCursor);
+        QVERIFY(timeline->toolTip().contains(videoTimeLabel(middlePts / 1000)));
+        const QImage enlarged = timelineRender(timeline);
+        const QRect hovered = timelineTagPixels(enlarged, tip);
+        QVERIFY(hovered.width() > tag.width());
+        QVERIFY(hovered.height() > tag.height());
+        QVERIFY(hovered.top() >= 0);
+        QVERIFY(qAbs(hovered.bottom() - tag.bottom()) <= 1);
+        if (!artifacts.isEmpty())
+            QVERIFY(playback.grab().save(QDir(artifacts).filePath("timeline-tags-" + theme + "-hover.png")));
+        QSignalSpy released(timeline, &QSlider::sliderReleased);
+        QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, body.toPoint());
+        QCOMPARE(reviewed.size(), 1);
+        QCOMPARE(reviewed.first().first().toLongLong(), middlePts);
+        QCOMPARE(released.size(), 0);
+        // The groove below the same timestamp remains a seek target.
+        const QPointF track = tip + QPointF(0, 3);
+        QMouseEvent overTrack(QEvent::MouseMove, track, timeline->mapToGlobal(track),
+                              Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(timeline, &overTrack);
+        QCOMPARE(timeline->cursor().shape(), Qt::ArrowCursor);
+        QVERIFY(timeline->toolTip().isEmpty());
+        QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, track.toPoint());
+        QCOMPARE(reviewed.size(), 1);
+        QCOMPARE(released.size(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(!playback.positioning(), 15000);
+        QVERIFY(qAbs(playback.positionMs() - middlePts / 1000) < 300);
+        // Start/end markers fit inside the widget and remain clickable.
+        for (const qint64 pts : {qint64(0), endPts}) {
+            const auto endpoint = timelineTagTip(timeline, pts, playback.durationMs());
+            const QRect pixels = timelineTagPixels(timelineRender(timeline), endpoint);
+            QVERIFY(!pixels.isEmpty());
+            QVERIFY(pixels.left() >= 0 && pixels.right() < timeline->width());
+            QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, (endpoint - QPointF(0, 7)).toPoint());
+            QCOMPARE(reviewed.last().first().toLongLong(), pts);
+        }
+        playback.setAnnotatedFrames({});
+        QVERIFY(timeline->toolTip().isEmpty());
+        QCOMPARE(timeline->cursor().shape(), Qt::ArrowCursor);
+        QVERIFY(timelineTagPixels(timelineRender(timeline), tip).isEmpty());
     }
     void playbackViewportAndSeekRemainStable_data() {
         QTest::addColumn<bool>("dark");
@@ -637,6 +756,31 @@ class VideoUiTests : public QObject {
         QVERIFY(json["objects"].toArray()[0].toObject()["timestampMs"].toInteger() < json["objects"].toArray()[1].toObject()["timestampMs"].toInteger());
         auto choices = editor.findChild<QComboBox *>("videoAnnotatedFrames");
         QCOMPARE(choices->count(), 3);
+        {
+            // The cyan timeline tags open their annotated frame. Leave the
+            // second frame first so the click demonstrably returns somewhere.
+            const int beforeLeave = paused.size();
+            playback->seek(30000);
+            QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeLeave && !playback->positioning(), 15000);
+            QVERIFY(!editor.hasDocument());
+            const QPointF marker = timelineTagTip(timeline, firstPts, playback->durationMs()) - QPointF(0, 7);
+            QMouseEvent hover(QEvent::MouseMove, marker, timeline->mapToGlobal(marker),
+                              Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(timeline, &hover);
+            QCOMPARE(timeline->cursor().shape(), Qt::PointingHandCursor);
+            QVERIFY(timeline->toolTip().contains(videoTimeLabel(firstPts / 1000)));
+            QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, marker.toPoint());
+            QTRY_VERIFY(editor.hasDocument());
+            QCOMPARE(editor.document().image, firstFrame.document.image);
+            QCOMPARE(editor.document().notes.first().comment, firstFrame.document.notes.first().comment);
+            QCOMPARE(choices->currentData().toLongLong(), firstPts);
+            QVERIFY(!playback->videoWidget()->isVisible());
+            QCOMPARE(captured.size(), 2);
+            // Annotations must stay ordinary child widgets of the editor window;
+            // a native video surface would hide every mark drawn on the canvas.
+            QCOMPARE(editor.canvas()->internalWinId(), WId(0));
+            QCOMPARE(playback->videoWidget()->internalWinId(), WId(0));
+        }
         QTemporaryDir bundle;
         QByteArray copied;
         bool bundleSaved = false;

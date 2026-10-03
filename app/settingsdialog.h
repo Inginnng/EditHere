@@ -40,14 +40,14 @@ class SettingsDialog final : public QDialog {
     void retranslate();
     void applyLanguage(LanguageMode mode);
     void save();
-    QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_;
+    QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.
     LanguageMode appliedLanguage_ = LanguageMode::System;
     QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_,
-        *confirmBeforeDiscard_, *checkUpdatesOnStartup_;
-    QLineEdit *feedbackDir_;
+        *confirmBeforeDiscard_, *checkUpdatesOnStartup_, *scrollAutoCrop_, *scrollUltraLong_;
+    QLineEdit *feedbackDir_, *quickSaveDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
     QLabel *error_, *launchAtLoginNotice_;

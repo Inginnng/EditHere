@@ -10,58 +10,196 @@
 #include <QMediaPlayer>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QStyleOptionSlider>
 #include <QTimer>
 #include <QTransform>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVideoSink>
-#include <QVideoWidget>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 #include <algorithm>
+#include <cmath>
+#include <functional>
 namespace h2d {
 namespace {
 constexpr int TimelineSteps = 1000000;
+QImage frameImage(const QVideoFrame &frame) {
+    QImage image = frame.toImage();
+    if (image.isNull()) return image;
+    const int rotation = int(frame.rotation());
+    if (rotation) image = image.transformed(QTransform().rotate(rotation));
+    if (frame.mirrored()) image = image.mirrored(true, false);
+    return image;
+}
 class VideoTimeline final : public QSlider {
   public:
     explicit VideoTimeline(QWidget *parent) : QSlider(Qt::Horizontal, parent) {
         setRange(0, TimelineSteps);
         setMinimumWidth(140);
+        // Keep room above the groove for a hovered tag without moving its tip.
+        setMinimumHeight(42);
+        setMouseTracking(true);
     }
-    QVector<int> markers;
+    struct Marker { int value; qint64 timestampUs; QString label; };
+    QVector<Marker> markers;
+    std::function<void(qint64)> markerClicked;
+    void setMarkers(QVector<Marker> next) {
+        markers = std::move(next);
+        hovered_ = -1;
+        unsetCursor();
+        setToolTip({});
+        update();
+    }
   protected:
     void paintEvent(QPaintEvent *event) override {
         QSlider::paintEvent(event);
         QPainter painter(this);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor("#f69d46"));
-        for (int value : markers) {
-            const double x = 9.0 + double(value) / TimelineSteps * std::max(1, width() - 18);
-            painter.drawEllipse(QPointF(x, height() - 4.0), 2.5, 2.5);
-        }
+        painter.setRenderHint(QPainter::Antialiasing);
+        const auto drawMarker = [&](int index) {
+            const bool hovered = index == hovered_;
+            painter.setPen(QPen(QColor(hovered ? "#188c97" : "#249ba5"), 0.8));
+            painter.setBrush(QColor(hovered ? "#40cbd2" : "#2bbac3"));
+            painter.drawPath(markerPath(markers[index].value, hovered));
+        };
+        for (int index = 0; index < markers.size(); ++index)
+            if (index != hovered_) drawMarker(index);
+        if (hovered_ >= 0 && hovered_ < markers.size()) drawMarker(hovered_);
     }
     void mousePressEvent(QMouseEvent *event) override {
         if (event->button() != Qt::LeftButton) { QSlider::mousePressEvent(event); return; }
+        // An annotated frame opens its saved screenshot; elsewhere the click seeks.
+        if (const int marker = markerAt(event->position()); marker >= 0) {
+            if (markerClicked) markerClicked(markers[marker].timestampUs);
+            event->accept();
+            return;
+        }
         setSliderDown(true);
         setValue(at(event));
         event->accept();
     }
     void mouseMoveEvent(QMouseEvent *event) override {
-        if (isSliderDown()) { setValue(at(event)); event->accept(); }
-        else QSlider::mouseMoveEvent(event);
+        if (isSliderDown()) { setValue(at(event)); event->accept(); return; }
+        const int marker = markerAt(event->position());
+        if (marker != hovered_) {
+            hovered_ = marker;
+            setCursor(marker >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            setToolTip(marker >= 0 ? markers[marker].label : QString());
+            update();
+        }
+        QSlider::mouseMoveEvent(event);
     }
     void mouseReleaseEvent(QMouseEvent *event) override {
         if (event->button() == Qt::LeftButton && isSliderDown()) {
             setValue(at(event)); setSliderDown(false); event->accept();
         } else QSlider::mouseReleaseEvent(event);
     }
-  private:
-    int at(QMouseEvent *event) const {
-        return qRound(std::clamp((event->position().x() - 9.0) / std::max(1, width() - 18), 0.0, 1.0) * TimelineSteps);
+    void leaveEvent(QEvent *event) override {
+        if (hovered_ >= 0) { hovered_ = -1; unsetCursor(); setToolTip({}); update(); }
+        QSlider::leaveEvent(event);
     }
+  private:
+    double markerX(int value) const {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        option.sliderPosition = option.sliderValue = std::clamp(value, minimum(), maximum());
+        const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
+        return handle.left() + handle.width() / 2.0;
+    }
+    double markerTipY() const {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect groove = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
+        return groove.center().y() - 2.0;
+    }
+    QPainterPath markerPath(int value, bool hovered) const {
+        const double x = markerX(value), tip = markerTipY();
+        const double halfWidth = hovered ? 6.0 : 4.5;
+        const double height = hovered ? 17.0 : 13.0;
+        const double shoulder = tip - (hovered ? 5.0 : 4.0);
+        const double top = tip - height, radius = 1.4;
+        QPainterPath path;
+        path.moveTo(x - halfWidth + radius, top);
+        path.lineTo(x + halfWidth - radius, top);
+        path.quadTo(x + halfWidth, top, x + halfWidth, top + radius);
+        path.lineTo(x + halfWidth, shoulder);
+        path.lineTo(x, tip);
+        path.lineTo(x - halfWidth, shoulder);
+        path.lineTo(x - halfWidth, top + radius);
+        path.quadTo(x - halfWidth, top, x - halfWidth + radius, top);
+        path.closeSubpath();
+        return path;
+    }
+    int markerAt(QPointF position) const {
+        int nearest = -1;
+        double distance = 8.0;
+        for (int index = 0; index < markers.size(); ++index) {
+            QRectF hit = markerPath(markers[index].value, index == hovered_).boundingRect().adjusted(-2, -2, 2, 1);
+            // A click on the groove still seeks, even directly below a tag.
+            if (!hit.contains(position)) continue;
+            const double offset = std::abs(position.x() - markerX(markers[index].value));
+            if (offset <= distance) { distance = offset; nearest = index; }
+        }
+        return nearest;
+    }
+    int at(QMouseEvent *event) const {
+        const double first = markerX(minimum()), last = markerX(maximum());
+        const double fraction = std::clamp((event->position().x() - first) / std::max(1.0, last - first), 0.0, 1.0);
+        return qRound(fraction * TimelineSteps);
+    }
+    int hovered_ = -1;
 };
 }
+class VideoSurface final : public QWidget {
+  public:
+    explicit VideoSurface(QWidget *parent = nullptr) : QWidget(parent) {
+        setAttribute(Qt::WA_OpaquePaintEvent);
+        connect(&watcher_, &QFutureWatcher<QImage>::finished, this, [this] {
+            image_ = watcher_.result();
+            update();
+            if (pending_.isValid()) convert();
+        });
+    }
+    void setFrame(const QVideoFrame &frame) {
+        pending_ = frame;
+        if (!frame.isValid()) image_ = {};
+        if (frame.isValid() && isVisible() && !watcher_.isRunning()) convert();
+        else if (!frame.isValid()) update();
+    }
+    void clear() { setFrame({}); }
+  protected:
+    void showEvent(QShowEvent *event) override {
+        QWidget::showEvent(event);
+        if (pending_.isValid() && !watcher_.isRunning()) convert();
+    }
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        if (image_.isNull()) { painter.fillRect(rect(), Qt::black); return; }
+        painter.drawImage(rect(), image_);
+    }
+  private:
+    // Colour conversion and scaling run off the UI thread, one frame at a time.
+    // Frames arriving meanwhile replace each other, so the newest one is shown
+    // next and playback never queues work on the window that takes annotations.
+    void convert() {
+        const QVideoFrame frame = pending_;
+        pending_ = {};
+        const QSize target = (QSizeF(size()) * devicePixelRatioF()).toSize();
+        watcher_.setFuture(QtConcurrent::run([frame, target] {
+            QImage image = frameImage(frame);
+            if (!image.isNull() && target.isValid() && target.width() < image.width())
+                image = image.scaled(target, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            return image;
+        }));
+    }
+    QVideoFrame pending_;
+    QImage image_;
+    QFutureWatcher<QImage> watcher_;
+};
 VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
     setObjectName("videoControls");
     player_ = new QMediaPlayer(this);
@@ -69,12 +207,13 @@ VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
     audio_->setVolume(0.6);
     audio_->setMuted(true);
     player_->setAudioOutput(audio_);
-    view_ = new QVideoWidget;
+    sink_ = new QVideoSink(this);
+    view_ = new VideoSurface;
     view_->setObjectName("videoView");
     view_->setAttribute(Qt::WA_TransparentForMouseEvents);
     view_->setFocusPolicy(Qt::NoFocus);
     view_->hide();
-    player_->setVideoOutput(view_);
+    player_->setVideoSink(sink_);
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(14, 8, 14, 6);
     layout->setSpacing(5);
@@ -103,6 +242,10 @@ VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
     connect(frames_, &QComboBox::activated, this, [this](int index) {
         if (index > 0) emit reviewRequested(frames_->itemData(index).toLongLong());
     });
+    static_cast<VideoTimeline *>(timeline_)->markerClicked = [this](qint64 timestampUs) {
+        if (const int index = frames_->findData(timestampUs); index > 0) frames_->setCurrentIndex(index);
+        emit reviewRequested(timestampUs);
+    };
     connect(timeline_, &QSlider::sliderReleased, this, [this] {
         seek(qint64(double(timeline_->value()) / TimelineSteps * durationMs()));
     });
@@ -125,7 +268,7 @@ VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
         stage_ = Stage::Error; errorText_ = error; retranslate();
         emit failed(status_->text());
     });
-    connect(view_->videoSink(), &QVideoSink::videoFrameChanged, this, &VideoPlayback::receiveFrame);
+    connect(sink_, &QVideoSink::videoFrameChanged, this, &VideoPlayback::receiveFrame);
     retranslate();
 }
 QWidget *VideoPlayback::videoWidget() const { return view_; }
@@ -157,12 +300,12 @@ void VideoPlayback::clear() {
     playing_ = false;
     captured_ = false;
     audio_->setMuted(true);
-    player_->stop(); player_->setSource({}); lastFrame_ = {};
+    player_->stop(); player_->setSource({}); lastFrame_ = {}; view_->clear();
     seeking_ = freezeNext_ = initialSeek_ = false;
     pausedTimeUs_ = -1;
     stage_ = Stage::Idle; errorText_.clear();
     frames_->clear(); timeline_->setValue(0);
-    static_cast<VideoTimeline *>(timeline_)->markers.clear();
+    static_cast<VideoTimeline *>(timeline_)->setMarkers({});
     retranslate();
 }
 void VideoPlayback::toggle() {
@@ -221,6 +364,7 @@ void VideoPlayback::receiveFrame(const QVideoFrame &frame) {
         if (pts > target + 200000 || end < target - 100000) return;
     }
     lastFrame_ = frame;
+    view_->setFrame(frame);
     if (freezeNext_ && !initialSeek_) {
         seeking_ = false; freezeNext_ = false;
         player_->pause(); settlePausedFrame();
@@ -248,11 +392,8 @@ bool VideoPlayback::captureCurrentFrame() {
         emit frameCaptureFailed(tr("当前视频没有可用的画面时间戳，无法安全关联批注"));
         return false;
     }
-    QImage image = captured.toImage();
+    const QImage image = frameImage(captured);
     if (image.isNull()) { emit frameCaptureFailed(tr("无法读取当前视频画面")); return false; }
-    const int rotation = int(captured.rotation());
-    if (rotation) image = image.transformed(QTransform().rotate(rotation));
-    if (captured.mirrored()) image = image.mirrored(true, false);
     captured_ = true;
     pausedTimeUs_ = pts;
     emit frameCaptured(image, pts);
@@ -264,13 +405,16 @@ void VideoPlayback::setAnnotatedFrames(const QVector<QPair<qint64, int>> &frames
     const auto selected = frames_->currentData();
     frames_->clear(); frames_->addItem(tr("已标注画面 %1 个").arg(frames.size()));
     auto timeline = static_cast<VideoTimeline *>(timeline_);
-    timeline->markers.clear();
+    QVector<VideoTimeline::Marker> markers;
     for (const auto &[pts, count] : frames) {
-        frames_->addItem(tr("%1 · %2 条批注").arg(videoTimeLabel(pts / 1000)).arg(count), pts);
-        if (durationMs() > 0) timeline->markers.append(qRound(double(pts / 1000) / durationMs() * TimelineSteps));
+        const QString label = tr("%1 · %2 条批注").arg(videoTimeLabel(pts / 1000)).arg(count);
+        frames_->addItem(label, pts);
+        if (durationMs() > 0)
+            markers.append({qRound(double(pts / 1000) / durationMs() * TimelineSteps), pts,
+                                      tr("%1 · 点击查看批注").arg(label)});
     }
     if (selected.isValid()) { int index = frames_->findData(selected); if (index >= 0) frames_->setCurrentIndex(index); }
-    timeline->update();
+    timeline->setMarkers(std::move(markers));
 }
 void VideoPlayback::updateTime() {
     const QString duration = videoTimeLabel(durationMs());

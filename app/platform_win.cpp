@@ -428,6 +428,12 @@ void configureNativeWindow(QWidget *window, bool overlay) {
     if (overlay)
         SetWindowDisplayAffinity(hwnd, 0x00000011);
 }
+bool excludedFromCapture(const QWidget *window) {
+    DWORD affinity = 0;
+    return window && window->internalWinId() &&
+           GetWindowDisplayAffinity(reinterpret_cast<HWND>(window->internalWinId()), &affinity) &&
+           affinity == 0x00000011;
+}
 QString globalShortcutLabel() {
     return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
 }

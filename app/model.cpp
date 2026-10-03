@@ -106,14 +106,24 @@ QByteArray encodePng(const QImage &image) {
         fail(tr("无法编码图片"));
     return png;
 }
-Document fromImage(const QImage &image, const QString &source, const QString &title) {
+QByteArray encodeOpaquePng(const QImage &image) {
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    // Dropping the alpha channel and using a lighter deflate level halves the
+    // time for a Full HD frame; the file stays a lossless PNG of the same pixels.
+    if (!image.convertToFormat(QImage::Format_RGB32).save(&buffer, "PNG", 50))
+        fail(tr("无法编码图片"));
+    return png;
+}
+Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque) {
     if (image.isNull() || qint64(image.width()) * image.height() > MaxPixels || image.width() > 32767 ||
         image.height() > 32767)
         fail(tr("图片过大或无法读取，最多支持 3200 万像素"));
     Document doc;
     doc.image = image.convertToFormat(QImage::Format_ARGB32);
     doc.image.setDevicePixelRatio(1);
-    doc.png = encodePng(doc.image);
+    doc.png = opaque ? encodeOpaquePng(doc.image) : encodePng(doc.image);
     doc.source = source;
     doc.title = title;
     doc.imageFile = "capture-" + doc.id.left(8) + ".png";
