@@ -8,11 +8,16 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / ".tools" / "linuxdeploy"
 # Updated deliberately, rather than trusting a mutable continuous release.
+# The upstream continuous builds are replaced in place, so a pinned digest
+# eventually stops matching and this script fails on purpose: read the new
+# asset, confirm it is the one you meant to take, then move the pin here.
 ASSETS = [
     ("AppImage/type2-runtime", "runtime-x86_64",
      "156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074"),
+    # Bumped 2026-10-04: linuxdeploy rebuilt its continuous asset on
+    # 2026-08-01 and the previous pin no longer matched.
     ("linuxdeploy/linuxdeploy", "linuxdeploy-x86_64.AppImage",
-     "36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62"),
+     "8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1"),
     ("linuxdeploy/linuxdeploy-plugin-qt", "linuxdeploy-plugin-qt-x86_64.AppImage",
      "cfc1055b2b9dbc08412b579f20990b7b41a17b61beaa5847dc9477c96c9e9617"),
 ]
