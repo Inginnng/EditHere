@@ -173,21 +173,27 @@ jobs:
           version = os.environ["VERSION"]
           translated = pathlib.Path("docs/releases/%s.en.md" % version)
 
+          sw = "**简体中文** · [English](#english)"
+          en_heading = "## English"
+
           def bilingual(chinese: str) -> str:
               """Fold the English notes into the Chinese body.
 
               GitHub and Gitee publish one Markdown body per release and neither
-              has a language switch, so the English copy travels inside the same
-              page as a collapsed section instead of replacing the Chinese one.
-              Keeping that shape in one function means both note sources (the
-              curated draft and the CHANGELOG section) stay bilingual for free.
+              has a language switch, so both languages share this page. The
+              switcher sits at the top because the page opens on the Chinese
+              section, and the English half is a real heading rather than a
+              collapsed block: a link into a closed <details> would not expand
+              it, so the switcher would land on nothing. Keeping the shape in
+              one function means both note sources (the curated draft and the
+              CHANGELOG section) stay bilingual for free.
               """
               if not translated.is_file():
                   print("::warning::%s is missing; the release page will be Chinese only." % translated)
                   return chinese.strip() + "\n"
               english = translated.read_text(encoding="utf-8").strip()
-              return "%s\n\n---\n\n<details>\n<summary>English</summary>\n\n%s\n</details>\n" % (
-                  chinese.strip(), english)
+              return "%s\n\n%s\n\n---\n\n%s\n\n%s\n" % (
+                  sw, chinese.strip(), en_heading, english)
 
           # A curated draft in docs/releases/<version>.md wins: the CHANGELOG
           # records history, the release page carries the user-facing summary.

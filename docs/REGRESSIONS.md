@@ -83,8 +83,8 @@
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
 | REG-151 | 中英文文档之间没有互相指向的入口，英文页即使存在也无从到达；两份文件各加一行语言切换，`README.en.md` 不再把英文文档标成 `(Chinese)`，且必须链接到每一份英文页 | `check-packaging.py` 的 `translated_docs`：逐对检查文件存在、双向链接，并核对 `README.en.md` 的链接 | 🆕 |
-| REG-152 | 发布说明只有中文，英文读者在发布页看不到本版变化；新增 `docs/releases/<版本>.en.md`，由 `release.yml` 折叠进同一个发布正文 | 同上 `translated_docs` 检查当前版本的中英两份发布说明是否都在 | 🆕 |
-| REG-153 | `release.yml` 的发布正文可能退回单语而无人发现（发布页是外部可见的最终产物） | `check-packaging.py` 的 `release_notes`：要求工作流仍读取 `docs/releases/%s.en.md` 并写出 `<summary>English</summary>` 折叠段 | 🆕 |
+| REG-152 | 发布说明只有中文，英文读者在发布页看不到本版变化；新增 `docs/releases/<版本>.en.md`，由 `release.yml` 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」 | 同上 `translated_docs` 检查当前版本的中英两份发布说明是否都在；`release_notes` 检查工作流里仍有切换行与英文标题 | 🆕 |
+| REG-153 | `release.yml` 的发布正文可能退回单语、或英文改回折叠块导致顶部锚点点不开，两种都不会被任何测试发现（发布页是外部可见的最终产物） | `check-packaging.py` 的 `release_notes`：要求工作流仍读取 `docs/releases/%s.en.md`、写出 `[English](#english)` 切换行与 `## English` 标题 | 🆕 |
 | REG-154 | 长截图在英文界面里有两个名字：工具栏、托盘菜单、设置页与进度窗标题写 "Scrolling capture"，另有 3 条提示写 "long capture"；统一为 "Scrolling capture"（`超长截图` 的 "Ultra-long capture" 是另一个功能，不受影响） | `check-packaging.py` 的 `english_names`：逐条检查含 `长截图` 且不含 `超长` 的源串，其译文不得只写 "long capture"；并要求 `README.en.md` 保留 "Scrolling capture" | 🆕 |
 | REG-155 | 「完成并返回 AI」的英文在界面里是 "Done, back to AI"，`README.en.md` 引用同一个按钮却写 "Finish and return to AI"；统一为 "Finish and return to AI" | `check-packaging.py` 的 `english_names`：核对 `完成并返回 AI` 的译文与 `README.en.md` 引用的按钮名一致 | 🆕 |
 | REG-156 | 中英两份文档互相链接，多份页面还直接链到别的页面里的某个标题；标题改了措辞或文件名写错，读者的语言切换入口就断了，而没有任何测试会报错（本次就出现两处：改标题为 "Recognition and platform limits" 而引用方指向 `…-boundaries`，以及 `AI-SETUP` 指向 `#windows-agent-desktop-access` 而标题实为 "Desktop access for Windows agents"） | `check-packaging.py` 的 `doc_links`：解析全仓 `*.md` 的相对链接与锚点，锚点必须能在目标页的标题里找到，链接目标必须存在（构建产物与 `artifacts/` 下的再生证据除外） | 🆕 |

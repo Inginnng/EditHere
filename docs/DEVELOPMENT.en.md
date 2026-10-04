@@ -23,7 +23,7 @@ Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`: the Windows, ma
 - **A release must ship complete packages.** Before publishing, the release job checks that `EditHere-win-x64-setup.exe`, `EditHere-win-x64.zip`, `EditHere-macos-universal.dmg` and `EditHere-linux-x86_64.AppImage` all exist and are non-empty; if any is missing, the workflow fails. A failed build job never produces a source-only release.
 - Asset names contain no version number (the docs and the update check use `/releases/latest/download/<stable name>`), and each package ships with `SHA256SUMS.txt` and a per-file `.sha256`.
 - Release notes are taken first from `docs/releases/<version>.md` (a hand-written, user-facing description); when that file is missing, it falls back to the matching section of `CHANGELOG.md`. When preparing the notes, write a draft for the user to confirm before tagging.
-- The notes are maintained in both languages, `docs/releases/<version>.md` and `docs/releases/<version>.en.md`, and release.yml folds the English page into the same release body, because a release page is one field with no language switch. `check-packaging.py` fails when only the Chinese page exists.
+- The notes are maintained in both languages, `docs/releases/<version>.md` and `docs/releases/<version>.en.md`, and release.yml assembles them into one body: a language switcher at the top, the Chinese notes, then the English notes under `## English`. A release page is a single field with no language switch, and the English half is a real heading rather than a collapsed block, because an anchor pointing into a closed block lands on nothing. `check-packaging.py` fails when only the Chinese page exists.
 
 ## Documentation languages
 

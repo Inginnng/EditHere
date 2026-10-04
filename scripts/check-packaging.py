@@ -319,10 +319,16 @@ def check_release_notes() -> list[Problem]:
     # REG-153  A release page is one Markdown body with no language switch, so the
     # English notes have to be folded into the Chinese body rather than replacing
     # or trailing it. Losing that splice silently ships a Chinese-only release.
-    if "docs/releases/%s.en.md" not in workflow or "<summary>English</summary>" not in workflow:
+    if "docs/releases/%s.en.md" not in workflow or "[English](#english)" not in workflow:
         problems.append(
             "release.yml: the release notes are no longer assembled from the Chinese page and "
-            "the English page, so a tag would publish a Chinese-only release body."
+            "the English page with a switcher at the top, so a tag would publish a "
+            "Chinese-only release body."
+        )
+    if "## English" not in workflow:
+        problems.append(
+            "release.yml: the English half of the release notes is no longer a heading, so the "
+            "[English](#english) switcher above it would land on nothing."
         )
     return problems
 
@@ -808,6 +814,10 @@ def check_translated_docs(version: str) -> list[Problem]:
 
 
 DOC_LINK = re.compile(r"\]\((?!https?:|mailto:)(?P<target>[^)\s#]*)(?P<anchor>#[^)\s]*)?\)")
+# A link written inside backticks or a fenced block is documentation about link
+# syntax rather than a link, so those spans are masked out before matching.
+FENCE = re.compile(r"^```.*?^```", re.S | re.M)
+CODE_SPAN = re.compile(r"`[^`\n]*`")
 
 
 def github_slug(heading: str) -> set[str]:
@@ -856,7 +866,8 @@ def check_doc_links() -> list[Problem]:
         headings[page.resolve()] = found
     for page in pages:
         name = page.relative_to(ROOT).as_posix()
-        for match in DOC_LINK.finditer(read(page)):
+        body = CODE_SPAN.sub(" ", FENCE.sub(" ", read(page)))
+        for match in DOC_LINK.finditer(body):
             target, anchor = match.group("target"), match.group("anchor")
             if target and not target.endswith(".md"):
                 continue
