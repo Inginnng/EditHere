@@ -51,7 +51,7 @@ Your AI tool needs permission to use your local terminal and files; a web chat a
 
 Use it for web and app interfaces, game HUDs, charts, and other visuals where you need to show exactly what to change and where.
 
-The current source version is **0.10.0**, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots, plus scrolling capture with a mask, a live preview and bidirectional stitching. See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md), the [scrolling capture reference](docs/LONG-CAPTURE.en.md) and the [0.10.0 release notes](docs/releases/0.10.0.en.md).
+The current source version is **0.10.1**, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots, plus scrolling capture with a mask, a live preview and bidirectional stitching. See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md), the [scrolling capture reference](docs/LONG-CAPTURE.en.md) and the [0.10.1 release notes](docs/releases/0.10.1.en.md).
 
 ## Features
 
