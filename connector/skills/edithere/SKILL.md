@@ -23,26 +23,30 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 2. 若用户已安装但不在默认位置，让其设置环境变量 `EDITHERE_CLI` 指向 CLI 绝对路径（Windows 默认 `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`，macOS 默认 `/Applications/EditHere.app/Contents/MacOS/edithere-cli`）；
 3. **不要**自行下载、解压或安装程序；也不要换成内核里另一份同名可执行文件。
 
+## 版本检查
+
+先跑一次 `edithere_status`：响应里的 `connector` 给出连接器版本、实际使用的 CLI 路径与来源，`version` 是 EditHere 程序自身的版本。需要独立核对时用该路径运行 `--version`，输出一行 `EditHere <版本>`，不连接桌面。本 skill 按 **0.10.0** 描述能力：只做图片与 `.edithere` 项目标注时 0.9.8 及以上即可，涉及视频时必须 0.10.0 及以上。低于所需版本时告知用户升级（<https://github.com/Inginnng/EditHere/releases/latest>），不要改用另一份同名程序，也不要改动全局环境。
+
 ## 工具一览
 
 | 工具 | 用途 | 响应速度 |
 | --- | --- | --- |
 | `edithere_status` | 查询程序与文档状态，不启动界面。**每次标注前先调用** | 立即 |
-| `edithere_open` | 打开图片或 `.edithere` 项目，仅受理请求 | 立即 |
+| `edithere_open` | 打开图片、视频或 `.edithere` 项目（含视频项目），仅受理请求 | 立即 |
 | `edithere_capture` | 唤起截图，仅受理请求 | 立即 |
-| `edithere_annotate_start` | **推荐**。发起标注会话后立即返回会话 ID | 立即 |
+| `edithere_annotate_start` | **推荐**。发起标注会话后立即返回会话 ID（视频请用户先暂停到目标画面） | 立即 |
 | `edithere_annotate_poll` | 查询会话是否完成，完成后返回反馈摘要 | 立即 |
-| `edithere_annotate` | 阻塞等待用户提交（最长 1800 秒）。仅在客户端支持长任务且不需要并发时使用 | 阻塞 |
-| `edithere_export` | 离线把已保存项目/图片/反馈 JSON 转为反馈 JSON，不等待用户 | 视文件大小 |
+| `edithere_annotate` | 阻塞等待用户提交（最长 1800 秒）。仅在客户端支持长任务且不需要并发时使用；视频反馈含每帧时间戳 | 阻塞 |
+| `edithere_export` | 离线把已保存项目（含视频项目）、图片或反馈 JSON 转为反馈 JSON，不等待用户 | 视文件大小 |
 
 ## 推荐调用流程
 
 1. **确认可用**：`edithere_status`。返回 `running:false` 或报错时先按上面的前置条件处理，不要直接发起标注。
 2. **准备图像**：用绝对路径。已有图片无需再截屏——`edithere_capture` 只唤起截图，不会返回反馈。保持原始像素尺寸。
-3. **发起会话**：`edithere_annotate_start`，传 `imagePath`。可选 `timeoutSeconds`（默认 1800）、`noImage`、`outputDir`。
-4. **告知用户**：明确请用户在 EditHere 中批注或调整组件，完成后点击顶部 **"完成并返回 AI"**。**不要替用户点击完成按钮。**
+3. **发起会话**：`edithere_annotate_start`，传 `imagePath`（图片、视频或 `.edithere` 项目）。可选 `timeoutSeconds`（默认 1800）、`noImage`、`outputDir`。
+4. **告知用户**：明确请用户在 EditHere 中批注或调整组件（视频先暂停到目标画面），完成后点击顶部 **"完成并返回 AI"**。**不要替用户点击完成按钮。**
 5. **轮询**：用返回的 `sessionId` 调 `edithere_annotate_poll`。仍在等待时会返回已等待秒数；等待期间可以处理其他独立任务，**不要重复发起标注**。
-6. **取用反馈**：会话完成后返回批注摘要。需要原图时用文件工具读取反馈 JSON 路径；发起时传 `includeImage: true` 可让原图直接出现在工具结果里。
+6. **取用反馈**：会话完成后返回批注摘要。需要原图时用文件工具读取反馈 JSON 路径；发起时传 `includeImage: true` 可让原图直接出现在工具结果里，视频最多 8 张帧截图并标明对应时间。摘要有条数与字符上限，出现「请按 `frames[n]` 逐帧读取」时需回到反馈 JSON 逐帧读取。
 
 同一时刻只支持一个标注会话。已有会话进行中时，再次发起会提示先处理该会话（对应退出码 4 `busy`）。
 
@@ -74,6 +78,9 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 
 - `image` 是**调整前**原图的 data URL，不是调整后的预览。缺少 `image` 时需自行关联本次输入原图。
 - `annotationSpace` 固定为 `result`：批注位置对应**调整后**的画面。坐标原点在图像左上角，单位是**图像像素**，独立于窗口位置与缩放——**不能**直接当作屏幕坐标或网页 CSS 像素。
+- 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。
+- **同一批批注不要执行两遍**：`frames[n].feedback.objects` 与根 `objects` 指同一批修改，按帧读取一次即可。
+- Agent 工具在附图与摘要上都有限额（连接器最多附 8 张帧截图，摘要另有条数与字符上限）。看到「请按 `frames[n]` 逐帧读取」时，索引范围是 `0` 到「帧数减 1」，摘要不等于全部修改要求，需回到反馈 JSON 逐帧读取。
 - 新版格式用 `objects`：每个对象含 `source`（原图区域；`null` 表示全局意见，点批注是零面积区域 `x1 == x2 && y1 == y2`，要按点处理而不是丢弃）、`movements`（移动到的位置）、`annotations`（修改意见文本）。旧版格式用 `annotations` + `changes`：`annotations[].text` 是意见，`point` 定位一点、`rectangle` 定位区域、仅 `text` 为全局意见、`change` 是 `changes` 的**零基索引**。
 - 矩形用 `x1/y1/x2/y2`，右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`，可含小数。
 - 需要重建画面时：先从原图提取每个对象的 `source`（旧格式为 `changes[].from`）并清空这些原位置，再按数组顺序绘制到 `movements[].to`（旧格式为 `changes[].to`），最后解释结果画面上的批注。留空处透明，**不推测被遮挡的内容**。

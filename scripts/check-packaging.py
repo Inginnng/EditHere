@@ -660,6 +660,15 @@ FEEDBACK_DOCS = (
     ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
 )
 FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movements", "annotations")
+# The three skills are the copies an agent actually loads; the release that added video
+# projects is what a version check has to be able to compare against. This stays 0.10.0
+# after later releases: it is the first version with the feature, not the current one.
+SKILL_FILES = tuple(path for path in FEEDBACK_DOCS if path.name == "SKILL.md")
+VIDEO_VERSION = "0.10.0"
+# What the app writes and what the skills promise, pinned as whole literals: a
+# substring test passes on the reader, the validator and the version table alone.
+VIDEO_WRITE = '{"schemaVersion", "video-feedback-1"}'
+VIDEO_MINIMUM = "涉及视频时必须 %s 及以上" % VIDEO_VERSION
 
 
 def check_feedback_docs() -> list[Problem]:
@@ -704,6 +713,58 @@ def check_feedback_docs() -> list[Problem]:
 
 
 LAYOUT_SCHEMAS = ("project-v3.schema.json", "feedback-v2.schema.json")
+
+
+def check_video_docs() -> list[Problem]:
+    """REG-158  Video projects exist, so the pages explaining a feedback have to name them.
+
+    0.10.0 taught the CLI and the connector to open a video, wait for the user to annotate
+    paused pictures and export video-feedback-1, while the three skills and docs/AGENT-CLI.md
+    kept describing the input as an image or a project. Nothing failed: every earlier check
+    only looked for the image keys, which are still present, so an agent following those pages
+    reads a video feedback as an image feedback with no notes at all. The producer is checked
+    first, because if EditHere stops writing the schema this page has nothing left to assert.
+    """
+    problems = []
+    # The exact write, not just the token: the same file also reads the version back and
+    # mentions it in the validator, so a substring test would pass on those alone.
+    producer = read(ROOT / "app" / "videoproject.cpp")
+    if VIDEO_WRITE not in producer:
+        problems.append(
+            "app/videoproject.cpp: no longer writes " + VIDEO_WRITE + ", so the video rules "
+            "in the skills and docs/AGENT-CLI.md describe a format the app does not emit."
+        )
+    for path in FEEDBACK_DOCS:
+        name = path.relative_to(ROOT).as_posix()
+        text = read(path)
+        for token, why in (
+            ("video-feedback-1", "the video feedback schema"),
+            ("frameId", "the link from an object back to its frame"),
+        ):
+            if token not in text:
+                problems.append(
+                    f"{name}: never mentions {token} ({why}), so a video project reads as an "
+                    f"image feedback with no notes."
+                )
+        if "<image-or-project>" in text:
+            problems.append(
+                f"{name}: still describes the input as <image-or-project>; the CLI has accepted "
+                f"videos since {VIDEO_VERSION}, so a reader skips the video path entirely."
+            )
+    # Each skill tells the agent to look before it leaps. Without a version to compare
+    # against, an agent on a 0.9.9 install reports the video path as a broken skill instead of
+    # an old install.
+    for path in SKILL_FILES:
+        name = path.relative_to(ROOT).as_posix()
+        text = read(path)
+        if "--version" not in text:
+            problems.append(f"{name}: no longer tells the agent to read the CLI version.")
+        elif VIDEO_MINIMUM not in text:
+            problems.append(
+                f"{name}: no longer states that video needs {VIDEO_VERSION}, so the agent "
+                f"cannot tell which capabilities the installed CLI has."
+            )
+    return problems
 
 
 def check_layout_schema() -> list[Problem]:
@@ -916,6 +977,7 @@ CHECKS = [
     ("ci_toolchain", check_ci_toolchain),
     ("ocr_bridge", check_ocr_bridge),
     ("feedback_docs", check_feedback_docs),
+    ("video_docs", check_video_docs),
     ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
     ("doc_links", check_doc_links),

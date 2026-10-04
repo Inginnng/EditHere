@@ -46,6 +46,19 @@ macOS 使用已记录的完整路径、`EDITHERE_CLI`、PATH 中的 `edithere-cl
 
 Windows 安装器默认提供加入 PATH 的选项，安装后新终端和 Agent 才能读取更新的环境；当前会话和免安装版可一直使用完整路径。保留同目录的 GUI、DLL 与插件。先确认当前版本的 `--help`；找不到时报告检查过的位置，不将旧版 GUI 可执行文件当作 CLI。用户请求安装或配置时，按[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)补齐程序与 skill；普通标注任务不默认重新安装程序。
 
+## 版本检查
+
+确定 CLI 路径后先运行一次 `& $EditHereCli --version`：它输出一行 `EditHere <版本>`，不连接桌面，也不受沙箱限制。本 skill 按 **0.10.0** 描述能力，按实际版本取舍：
+
+| 版本 | 可用能力 |
+| --- | --- |
+| 0.10.0 及以上 | 图片、`.edithere` 项目与视频项目（导出 `video-feedback-1`） |
+| 0.9.8 – 0.9.9 | 仅图片与 `.edithere` 项目；输入视频以 `io_error` 失败 |
+| 0.9.6 – 0.9.7 | 通信端点名与桌面程序不一致，见「选择桌面执行环境」 |
+| 0.9.0 及以上 | 反馈使用 `objects` 结构；更早版本用 `annotations` + `changes` |
+
+只做图片与项目标注时 0.9.8 及以上即可，涉及视频时必须 0.10.0 及以上。`status` 响应里的 `version` 是 EditHere 程序自身的版本，与 `--version` 不一致时按**较低**的一方判断可用能力——两者来自同一个包，出现差异通常说明 PATH 或默认安装目录里还有另一份旧程序。版本不足时告知用户升级（<https://github.com/Inginnng/EditHere/releases/latest>），不要改用另一份同名程序，也不要改动全局环境。
+
 ## 选择桌面执行环境
 
 Windows 的 `status`、`open`、`capture`、`annotate` 需要连接当前登录用户的桌面程序。已知当前 Agent 使用受限沙箱时，从第一次调用就选择工具提供、允许访问该桌面的执行方式，避免先在沙箱内启动一个用户看不到的窗口。Codex 的 `exec_command` 若提供 `sandbox_permissions`，可对这次具体桌面命令使用 `require_escalated` 并说明用途；仍遵守工具实际审批，用户要求标注不等于审批一定通过。其他 Agent 使用其对应的受控桌面入口。不要改全局沙箱设置或让应用自行提权。`--help`、`--version`、离线 `export` 不需要桌面连接。
@@ -56,7 +69,7 @@ Windows 的 `status`、`open`、`capture`、`annotate` 需要连接当前登录�
 
 ## 收集一次反馈
 
-1. 取得本次任务对应的截图或设计图，保持原始像素尺寸，并使用绝对路径。已有图片无需再截屏；CLI `capture` 只唤起截图，不等待用户反馈。
+1. 取得本次任务对应的截图、设计图或视频，保持原始像素尺寸，并使用绝对路径。已有图片或视频无需再截屏；CLI `capture` 只唤起截图，不等待用户反馈。
 2. 为本次会话创建独立输出目录或唯一文件名。**输出文件必须尚不存在，父目录必须存在**；保留用户已有文件。示例：
 
    ```powershell
@@ -76,20 +89,25 @@ Windows 的 `status`、`open`、`capture`、`annotate` 需要连接当前登录�
 
 ```text
 edithere-cli status
-edithere-cli open <image-or-project>
+edithere-cli open <image-video-or-project>
 edithere-cli capture
-edithere-cli export <image-or-project> --output <new-feedback.json> [--no-image]
-edithere-cli annotate <image-or-project> --output <new-feedback.json> [--no-image] [--timeout <seconds>]
+edithere-cli export <image-video-project-or-feedback> --output <new-feedback.json> [--no-image]
+edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--no-image] [--timeout <seconds>]
 ```
 
 `status` 不启动 GUI。0.8.21 起仅在两个桌面接口都明确不存在时返回 `ok:true,running:false`。`desktop_access_required`（退出码 8）表示桌面访问受限；`connection_error` 表示其他连接异常，两者的 `running:null` 均表示未知，不能当作 false。若首次调用的执行环境不合适，且请求尚未受理，可通过获准的桌面入口重试同一次请求；没有该入口或审批被拒绝时，说明具体限制并停止依赖操作。`startup_failed` / `startup_timeout` 才表示启动动作失败 / 接口未及时就绪，结合 `connection` 诊断处理，不循环重启。
 
 `open` / `capture` 成功仅表示请求被受理，不能替代等待用户完成的 `annotate`。已有 `.edithere` 项目、图片或有效反馈 JSON 可直接 `export`，无需发起新的标注会话。成功的 `annotate` / `export` 响应含 `command`、绝对路径 `output`、批注数量 `annotations` 和 `imageIncluded`；它是结果回执，反馈正文在输出文件中。默认反馈包含原图；仅在能保证读取方同时拿到对应原图时使用 `--no-image`。
 
+`open` 与 `annotate` 接受图片（PNG/JPEG/WebP/BMP）、视频（MP4/MOV/WebM 等）和 `.edithere` 项目（含视频项目）。视频在 EditHere 中播放，用户暂停到目标画面后批注；同一个位置在不同时间点的意见分别保留，不会合并。视频项目的 `export` 回执还含帧数 `frames` 与 `schemaVersion`（`video-feedback-1`），`annotations` 是所有帧的批注总数。
+
 ## 解释反馈并实施
 
 - `image` 是**调整前**原图的 PNG/JPEG data URL，不是调整后的预览。缺少 `image` 时需保留并关联本次输入原图；独立重新导入反馈通常需要同名 PNG。
 - `annotationSpace` 固定为 `result`：所有批注位置对应调整后的画面。坐标原点在图像左上，单位是图像像素，独立于窗口位置与缩放；不能直接当作屏幕坐标或网页 CSS 像素。
+- 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。
+- **同一批批注不要执行两遍**：`frames[n].feedback.objects` 与根 `objects` 指同一批修改，按帧读取一次即可。
+- Agent 工具在附图与摘要上都有限额（连接器最多附 8 张帧截图，摘要另有条数与字符上限）。看到「请按 `frames[n]` 逐帧读取」时，索引范围是 `0` 到「帧数减 1」，摘要不等于全部修改要求，需回到反馈 JSON 逐帧读取。
 - 反馈有两种格式（schema/feedback-minimal.schema.json 的 `oneOf`）：
   - **面向对象格式（0.9.0 起，`objects` 键）**：每个对象统一记录 `source`（原图区域，`null` 表示全局意见，点批注是零面积区域 `x1 == x2`、`y1 == y2`，按点处理而不是丢弃）、`movements`（数组，`to` 为移动后的区域）和 `annotations`（修改意见文字数组）。同一对象的批注与移动天然关联。
   - **旧版动作格式（`annotations` + `changes` 键）**：`annotations` 的 `text` 是修改意见；`point` 定位一点，`rectangle` 定位区域，仅有 `text` 表示全局意见，`change` 是 `changes` 数组的**零基索引**。

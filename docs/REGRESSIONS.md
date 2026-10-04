@@ -207,6 +207,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | REG-055 | 分片到达的消息被当成完整帧处理 | 0.8.20 | 未按长度前缀切帧 | `tests/agent_cli_test.cpp::fragmentedMessagesRequireCompleteFrame` | ✅ |
 | REG-113 | **命令行完全连不上桌面程序**：桌面程序明明在运行，`status` 仍返回 `running:false`，`open`、`capture`、`annotate` 全部报 `startup_timeout`（退出码 3）；`--help`、`--version`、离线 `export` 正常 | 0.9.0 → 0.9.8 | `8740ff1` 统一标识时删掉了 `agentServerName()` 里那 6 行"临时把应用名覆盖成桌面程序身份"的代码，此后两端按各自的应用名算 `AppLocalDataLocation`（GUI `…/Local/EditHere/EditHere`，CLI `…/Local/edithere-cli`），派生出的 `EditHere-agent-v1-*` 与 `EditHere-native-*` 两个名字都不同，CLI 找的管道从来不存在；测试都在同一进程里跑，两侧名字天然相同，所以一直没暴露 | `tests/agent_cli_test.cpp::endpointNamesIgnoreTheCallerIdentity`（同一进程先按 GUI 身份、再按 CLI 身份各算一次名字，两者必须相等；反向验证：去掉身份覆盖即失败，报出 `df9b5574…` 与 `31bef8d2…`）。真机复核：装 0.9.6 时 `status` 报未运行、`open` 超时；新构建的 GUI + CLI 连接正常 | 🆕 |
 | REG-111 | **AI 与命令行文档、skill 按旧的 `annotations` / `changes` 描述反馈**，程序导出的却是 `objects`；照它解析的读取方拿到空批注，把"用户提了意见"误判成"没有意见" | 0.9.0 → 0.9.7 | `0.9.0` 的 `614661b` 把精简反馈改成 `objects` 对象结构，`docs/AGENT-CLI.md`、三份 `skills/edithere/SKILL.md` 与 `docs/DEVELOPMENT.md` 仍按 `0.8.21` 的并行数组写；"当前反馈"的 schema 名为 `feedback-minimal.schema.json`，看不出是当前格式（同目录 `feedback-v1` / `v1.1` / `v2` 描述的是早期**项目文档**），打包护栏还在断言 `feedback-v0.7` | `check-packaging.py::feedback_docs`（`exportFeedback` 必须写 `annotationSpace` / `objects` / `movements` / `annotations`；四份文档必须写明 `objects` 结构；`AGENT-CLI.md` 保留三行字段说明，且其中链接的 schema 都要存在） | 🆕 |
+| REG-158 | **0.10.0 加了视频项目，讲反馈的页面却没说**：命令行与连接器都能打开视频、让用户暂停到目标画面批注并导出 `video-feedback-1`，而三份 `skills/edithere/SKILL.md` 与 `docs/AGENT-CLI.md` 仍把输入写成"图片或项目"，也没有任何版本提示——照这些页面走的 Agent 会把视频反馈当成"没有批注的图片反馈"，也分不清 0.9.9 的安装缺的是能力还是页面过时 | 0.10.0 | 视频能力只落在 `app/cli.cpp`（`--help` 与 `export` 回执）和 `connector/mcp-server.mjs` 的工具描述里，文档侧没有人改；`feedback_docs` 只断言图片字段仍在，视频漂移不触发任何检查 | `check-packaging.py::video_docs`（`app/videoproject.cpp` 必须写出 `{"schemaVersion", "video-feedback-1"}`；五份讲反馈的页面都要提到 `video-feedback-1` 与 `frameId`，且不得残留 `<image-or-project>`；三份 skill 必须让 Agent 读 `--version` 并写明"涉及视频时必须 0.10.0 及以上"）。反向验证 6 例，改掉任一条即失败 | 🆕 |
 
 ## 八、版本与仓库材料
 
@@ -299,7 +300,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/151/152/153/154/155/156/157 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
