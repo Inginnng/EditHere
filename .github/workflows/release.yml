@@ -125,14 +125,17 @@ jobs:
           for f in EditHere-*-win-x64.zip; do mv -f "$f" EditHere-win-x64.zip; done
           for f in EditHere-*-macos-universal.dmg; do mv -f "$f" EditHere-macos-universal.dmg; done
           rm -f *.sha256 SHA256SUMS.txt
-          # upload-artifact strips only the common ancestor of the patterns it
-          # matched, so the Linux package can arrive either flat or under
-          # dist/linux-<version>/. Collect it both ways rather than fail a
-          # release over the archive layout.
-          if [[ -d dist ]]; then
-            mv -f dist/linux-*/* . 2>/dev/null || true
-            rm -rf dist
-          fi
+          # upload-artifact keeps only the path after the fixed prefix that
+          # precedes the first wildcard, so dist/linux-*/<file> arrives under
+          # linux-<version>/ and not under dist/. Collect the Linux files by
+          # name instead of predicting that depth: a wrong guess is only
+          # discovered after all three builds have run (REG-157).
+          find . -mindepth 2 -type f \
+            \( -name 'EditHere-linux-x86_64.AppImage' \
+               -o -name 'EditHere-linux-x86_64.AppImage.sha256' \
+               -o -name 'edithere-cli' \) \
+            -exec mv -f {} . \;
+          find . -mindepth 1 -type d -empty -delete
           [[ -s EditHere-linux-x86_64.AppImage ]] || {
             echo "::error::expected the Linux package at EditHere-linux-x86_64.AppImage"
             exit 1

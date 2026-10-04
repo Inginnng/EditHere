@@ -290,6 +290,16 @@ def check_linux_release_package(release_workflow: str) -> list[Problem]:
     ):
         if wanted not in linux_lines:
             problems.append(f"{linux_name}: {why}.")
+    # Collecting the AppImage has to be name-based. A job that predicts the
+    # extracted directory is guessing: upload-artifact keeps only the path
+    # after the fixed prefix that precedes the first wildcard, so
+    # dist/linux-*/<file> lands under linux-<version>/ (REG-157).
+    if "-mindepth 2" not in release_workflow or f"-name '{LINUX_APPIMAGE}'" not in release_workflow:
+        problems.append(
+            "release.yml: the Linux package is no longer collected by name, so the "
+            "release job is guessing the directory upload-artifact will use; "
+            "dist/linux-*/<file> arrives under linux-<version>/ (REG-157)."
+        )
     required = [line for line in release_lines if line.startswith("packages=")]
     if not required or LINUX_APPIMAGE not in required[0]:
         problems.append(

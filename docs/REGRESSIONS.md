@@ -89,6 +89,14 @@
 | REG-155 | 「完成并返回 AI」的英文在界面里是 "Done, back to AI"，`README.en.md` 引用同一个按钮却写 "Finish and return to AI"；统一为 "Finish and return to AI" | `check-packaging.py` 的 `english_names`：核对 `完成并返回 AI` 的译文与 `README.en.md` 引用的按钮名一致 | 🆕 |
 | REG-156 | 中英两份文档互相链接，多份页面还直接链到别的页面里的某个标题；标题改了措辞或文件名写错，读者的语言切换入口就断了，而没有任何测试会报错（本次就出现两处：改标题为 "Recognition and platform limits" 而引用方指向 `…-boundaries`，以及 `AI-SETUP` 指向 `#windows-agent-desktop-access` 而标题实为 "Desktop access for Windows agents"） | `check-packaging.py` 的 `doc_links`：解析全仓 `*.md` 的相对链接与锚点，锚点必须能在目标页的标题里找到，链接目标必须存在（构建产物与 `artifacts/` 下的再生证据除外） | 🆕 |
 
+## 发布资产收集（0.10.0）
+
+把 Linux 构建接进发布链路的那次改动（`0312f77`）一直没有被执行过：0.9.9 的标签打在它之前，`v0.10.0` 是 `release.yml` 第一次真的走到收集 Linux 包这一步。三个平台的构建都成功，卡在最后十秒的搬运上。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-157 | `v0.10.0` 的 Windows、macOS、Linux 三个构建全部成功，发布任务却在「Publish assets under version-less names」报 `expected the Linux package at EditHere-linux-x86_64.AppImage`：脚本按 `dist/linux-<版本>/` 去搬 AppImage，而 `upload-artifact` 只保留第一个通配符之前那段固定前缀之后的路径——`dist/linux-*/<文件>` 于是落在 `linux-<版本>/`，文件实际在 `artifacts/linux-0.10.0/` 下，目录判断为假、搬运被跳过、断言随即失败。改为按文件名在任意深度查找并搬到归档根目录，同时说明为什么不再预测解压目录 | `check-packaging.py` 的 `release_assets` → `check_linux_release_package`：要求 `release.yml` 仍以 `find . -mindepth 2 … -name '<AppImage>'` 按名字收集，而不是预测 `upload-artifact` 的解压目录 | 🆕 |
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。
@@ -291,7 +299,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/151/152/153/154/155/156 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/151/152/153/154/155/156/157 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
@@ -301,7 +309,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
-| 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包任一缺失即失败 | REG-109/122 |
+| 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包任一缺失即失败 | REG-109/122/157 |
 
 旧长截图的做法对照过两个开源实现（**该段描述 `feature/long-capture` 的历史方案，当前实现见 [LONG-CAPTURE.md](LONG-CAPTURE.md)**），取舍记在这里：ShareX 的 `ScrollingCaptureManager` 用 `ScrollDelay` 等页面停稳、用 `ScrollMethod`（滚轮/方向键/PageDown/`WM_VSCROLL`）适配不同窗口、并保留"历史最佳匹配"把部分成功标成黄色；deepin-screen-recorder 的 `PixMergeThread` 用 `getTopFixedHigh()`/`getBottomFixedHigh()` 先把固定的顶底栏裁掉再拼接，并用 `cv::matchTemplate` + 0.8 阈值匹配。EditHere 采纳了**固定顶底栏检测**、**抓到帧先确认页面已停稳**、**一次没新内容再补一轮**和**容差阶梯**（等价于 ShareX 的部分成功，用 `partial()` 报告），没有采纳自动回到顶部（`AutoScrollTop` 默认为假，且会把"从这里往下截"变成"从整页开头截"）与多滚动方式（需要平台侧新增按键注入，暂不在范围里）。
 
