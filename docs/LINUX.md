@@ -22,7 +22,8 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 | 能力 | 推荐复用与实现 | 验收重点 |
 | --- | --- | --- |
-| 截图 | X11 使用 Qt QScreen；Wayland 使用 Screenshot portal | Wayland 先由系统授权/选区，再在应用中审阅；Portal 不返回桌面坐标，不关联原生元素。X11 混合缩放时禁用原生坐标探测，保留图片检测 |
+| 截图 | X11 使用 Qt QScreen；Wayland 优先使用 ScreenCast Portal/PipeWire | Wayland 先授权一个显示器，再由 EditHere 框选；按 Portal 几何信息对应所选屏幕，不关联原生元素。缺少 PipeWire 或 ScreenCast 显示器能力时回退 Screenshot Portal 的系统选区，仅支持普通截图 |
+| 长截图 | X11 使用 XGetImage/XTest；Wayland 复用授权的 PipeWire 屏幕流 | 共用菜单、固定比例预览与纵向/横向手动拼接。X11 自动纵向滚动需要 XTEST 和可验证的原窗口进程；Wayland 当前仅手动滚动，显示器无法唯一对应时拒绝开始 |
 | 全局快捷键 | Wayland 使用 GlobalShortcuts portal；X11 使用 Xlib 和 Qt 事件通知 | 桌面管理实际快捷键授权；不支持时在系统快捷键中绑定程序完整路径加 `--capture`。X11 检查冲突并兼容 Caps/Num Lock |
 | 系统元素识别 | AT-SPI，沿用隔离探测子进程 | 依赖目标应用提供可访问性信息，限定遍历数量、深度与超时；不可用时回退图片检测 |
 | 开机启动 | XDG Autostart `.desktop` 文件，Qt QStandardPaths 定位用户配置目录 | 路径转义、移动程序后修复、禁用仅删除本程序登记 |
@@ -31,7 +32,7 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 ## 构建与打包
 
-依赖 GCC、CMake、Ninja、Qt 6.8.3 gcc_64、X11 和 AT-SPI 开发库。完整依赖清单见 `.github/workflows/native-linux.yml`；Qt Wayland 随基础 SDK 提供，不是 aqt 的可选模块。
+依赖 GCC、CMake、Ninja、Qt 6.8.3 gcc_64、X11、XTest 和 AT-SPI 开发库。Wayland 长截图还需要可选的 PipeWire 1.0.4 及以上开发库；缺少时构建保留普通截图。启用 PipeWire 的 AppImage 会携带匹配版本的客户端主库、模块、SPA 插件与配置，打包环境须提供 `libpipewire-0.3-modules`、`libspa-0.2-modules` 和 `pipewire-bin`。完整依赖清单见 `.github/workflows/native-linux.yml`；Qt Wayland 随基础 SDK 提供，不是 aqt 的可选模块。
 
 ```bash
 export QT_ROOT=/path/to/Qt/6.8.3/gcc_64
@@ -46,4 +47,4 @@ dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linu
 
 默认打包到 `dist/linux-<版本>/`，已有目录时拒绝覆盖；可用 `EDITHERE_PACKAGE_DIR` 指定新目录。Linux 构建随发布标签与相关 PR 触发：打标签时由发布工作流一并产出 AppImage，与其他平台的包一同挂到发布页。专项测试在独立 DBus 会话模拟 Portal，真实 X11 通过 Xvfb 验证，不替代 GNOME/KDE 会话验收。开机启动登记原始 AppImage 路径，不使用临时挂载路径；移动后保存设置可刷新。
 
-官方接口资料：[Qt QScreen](https://doc.qt.io/qt-6.8/qscreen.html)、[Screenshot portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html)、[GlobalShortcuts portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)。
+官方接口资料：[Qt QScreen](https://doc.qt.io/qt-6.8/qscreen.html)、[ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)、[Screenshot Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html)、[GlobalShortcuts Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)。
