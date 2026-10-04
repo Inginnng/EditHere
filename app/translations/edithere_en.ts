@@ -871,7 +871,7 @@
     <message>
         <location filename="../platform_mac.mm" line="311"/>
         <source>长截图需要在 macOS 桌面会话中运行。</source>
-        <translation>Long capture requires a macOS desktop session.</translation>
+        <translation>Scrolling capture requires a macOS desktop session.</translation>
     </message>
     <message>
         <location filename="../platform_mac.mm" line="325"/>
@@ -898,7 +898,7 @@
     <message>
         <location filename="../platform_mac.mm" line="464"/>
         <source>无法从长截图中排除 EditHere 窗口，请重新截图。</source>
-        <translation>Unable to exclude EditHere windows from long capture. Take a new screenshot.</translation>
+        <translation>Unable to exclude EditHere windows from scrolling capture. Take a new screenshot.</translation>
     </message>
     <message>
         <location filename="../platform_mac.mm" line="522"/>
@@ -1171,7 +1171,7 @@
         <location filename="../platform_linux.cpp" line="152"/>
         <location filename="../platform_linux.cpp" line="345"/>
         <source>屏幕布局或缩放已改变，请重新开始长截图。</source>
-        <translation>The display layout or scale changed. Start a new long capture.</translation>
+        <translation>The display layout or scale changed. Start a new scrolling capture.</translation>
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="292"/>
@@ -1202,7 +1202,7 @@
     <message>
         <location filename="../scroll_wayland.cpp" line="37"/>
         <source>Wayland 长截图使用已授权的屏幕共享流。请手动滚动；自动滚动需要额外的远程桌面输入授权，此版本未启用。</source>
-        <translation>Wayland long capture uses an authorized screen-sharing stream. Scroll manually; automatic scrolling requires additional Remote Desktop input permission, which this version does not request.</translation>
+        <translation>Wayland scrolling capture uses an authorized screen-sharing stream. Scroll manually; automatic scrolling requires additional Remote Desktop input permission, which this version does not request.</translation>
     </message>
     <message>
         <location filename="../scroll_wayland.cpp" line="74"/>
@@ -1334,7 +1334,7 @@
     <message>
         <location filename="../scroll_wayland.cpp" line="617"/>
         <source>长截图需要正在共享的显示器。请重新截图并在系统授权窗口中选择一个屏幕。</source>
-        <translation>Long capture requires an active shared monitor. Take a new screenshot and select one monitor in the system authorization dialog.</translation>
+        <translation>Scrolling capture requires an active shared monitor. Take a new screenshot and select one monitor in the system authorization dialog.</translation>
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="393"/>
@@ -2407,7 +2407,7 @@ Scroll back a little; stitching continues once it lines up.</translation>
     <message>
         <location filename="../editor.cpp" line="548"/>
         <source>完成并返回 AI</source>
-        <translation>Done, back to AI</translation>
+        <translation>Finish and return to AI</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="549"/>
