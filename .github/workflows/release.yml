@@ -171,12 +171,30 @@ jobs:
           import os, re, pathlib
 
           version = os.environ["VERSION"]
+          translated = pathlib.Path("docs/releases/%s.en.md" % version)
+
+          def bilingual(chinese: str) -> str:
+              """Fold the English notes into the Chinese body.
+
+              GitHub and Gitee publish one Markdown body per release and neither
+              has a language switch, so the English copy travels inside the same
+              page as a collapsed section instead of replacing the Chinese one.
+              Keeping that shape in one function means both note sources (the
+              curated draft and the CHANGELOG section) stay bilingual for free.
+              """
+              if not translated.is_file():
+                  print("::warning::%s is missing; the release page will be Chinese only." % translated)
+                  return chinese.strip() + "\n"
+              english = translated.read_text(encoding="utf-8").strip()
+              return "%s\n\n---\n\n<details>\n<summary>English</summary>\n\n%s\n</details>\n" % (
+                  chinese.strip(), english)
 
           # A curated draft in docs/releases/<version>.md wins: the CHANGELOG
           # records history, the release page carries the user-facing summary.
           curated = pathlib.Path("docs/releases/%s.md" % version)
           if curated.is_file():
-              pathlib.Path("release-notes.md").write_text(curated.read_text(encoding="utf-8"), encoding="utf-8")
+              pathlib.Path("release-notes.md").write_text(
+                  bilingual(curated.read_text(encoding="utf-8")), encoding="utf-8")
               print("::notice::Using curated notes from %s" % curated)
               raise SystemExit(0)
 
@@ -195,7 +213,7 @@ jobs:
               section.pop()
           if not section:
               print("::warning::No CHANGELOG section found for %s; falling back to generated notes." % version)
-          pathlib.Path("release-notes.md").write_text("\n".join(section) + "\n", encoding="utf-8")
+          pathlib.Path("release-notes.md").write_text(bilingual("\n".join(section)), encoding="utf-8")
           PY
           cat release-notes.md
 

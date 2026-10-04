@@ -124,10 +124,10 @@ foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTIC
     Copy-Item -LiteralPath (Join-Path $projectRoot $notice) -Destination $outputPath
 }
 $packagedGuide = Join-Path $outputPath "AGENT-CLI.md"
-$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md")
+$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md").Replace("AGENT-CLI.en.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/AGENT-CLI.en.md")
 [IO.File]::WriteAllText($packagedGuide, $guideText, [Text.UTF8Encoding]::new($false))
 $packagedVideoGuide = Join-Path $outputPath "VIDEO-ANNOTATION.md"
-$videoGuideText = [IO.File]::ReadAllText($packagedVideoGuide).Replace("../schema/", "schema/")
+$videoGuideText = [IO.File]::ReadAllText($packagedVideoGuide).Replace("../schema/", "schema/").Replace("VIDEO-ANNOTATION.en.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/VIDEO-ANNOTATION.en.md")
 if ($ValidationDirectory) {
     $videoGuideText = $videoGuideText.Replace("../artifacts/video-acceptance/video-acceptance.json", "validation/video-acceptance.json").Replace("../artifacts/video-acceptance/connector-acceptance.json", "validation/connector-acceptance.json").Replace("../artifacts/video-independent-reader/report.md", "validation/independent-ai/report.md").Replace("../artifacts/video-independent-reader/result.json", "validation/independent-ai/result.json")
 }

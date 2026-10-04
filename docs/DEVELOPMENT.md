@@ -1,5 +1,7 @@
 # EditHere · 改这里：开发说明
 
+**简体中文** · [English](DEVELOPMENT.en.md)
+
 [返回产品介绍](../README.md) · [使用指南](USER-GUIDE.md) · [AI 与命令行](AGENT-CLI.md) · [更新记录](../CHANGELOG.md)
 
 以下命令均在仓库根目录执行，文件路径也相对于仓库根目录。
@@ -21,6 +23,18 @@
 - **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 四者均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。
 - 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`。
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
+- 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 把英文折叠进同一个发布正文（发布页是单字段，没有语言切换）。只写中文时 `check-packaging.py` 的检查会失败。
+
+## 文档语言
+
+界面文案走 Qt 翻译（见[多语言与翻译](i18n.md)）；**仓库里的说明文档不走翻译，中英各存一份文件**，文件名加 `.en` 后缀：
+
+- 面向使用者的七份文档各有英文版：`USER-GUIDE`、`LONG-CAPTURE`、`VIDEO-ANNOTATION`、`AGENT-CLI`、`AI-SETUP`、`LINUX`、`DEVELOPMENT`。两份文件各自在标题下放一行语言切换互相指向，`README.en.md` 也要链接到每一份英文页；这三件事都由 `check-packaging.py` 的 `translated_docs` 检查，新增中文文档时要在 `TRANSLATED_DOCS` 里登记。
+- `CHANGELOG.md` 保持中文单语，它是历史的唯一来源——同一段历史维护两份必然漂移。对外可见的「本版变了什么」由发布页承担，即上一条的双语发布说明。
+- `docs/releases/*.md` 只是发布页正文片段，没有标题也没有语言切换行：相对链接在发布页上会按发布地址解析，所以语言切换靠 release.yml 拼接完成，`translated_docs` 负责两侧都在。
+- 英文文档里的 JSON 字段名、命令、路径与平台标识保持原样；源视频或截图里实际显示的中文（例如演示动画的字幕）也保持中文，不译。
+- 只维护中文：`i18n.md`、`REGRESSIONS.md`、`PRERELEASE-0.9.9.md` 这类维护者记录，以及 `docs/releases/0.9.x.md` 等历史发布页。
+- Windows 免安装包随包附带的仍只有中文版 `AGENT-CLI.md` 与 `VIDEO-ANNOTATION.md`；`package-windows.ps1` 会把它们里面的相对链接改写成仓库地址，语言切换行也在改写范围内。
 
 ## 构建与验证
 

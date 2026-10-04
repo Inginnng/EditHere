@@ -76,6 +76,19 @@
 
 日志核心为 `app/diagnostics.h/.cpp`，独立 QtCore 静态库；界面为 `app/diagnosticspage.h/.cpp`。`diagnostics_tests` 覆盖并发完整性、文件轮换、Qt handler 恢复、脱敏、原子导出、写入失败、实际报告大小及活跃/强制退出进程；固定修改时间的 999/1000/1001 分片验证稳定的数值排序，避免平台文件时间精度导致结束标记和清理顺序错误。`SettingsTests::diagnosticsAreAccessibleWithoutChangingSettings` 从设置导出报告，`i18n_tests` 验证中英文切换。日志只收集诊断信息；未实现原生崩溃转储，未正常结束的会话标记不能替代崩溃栈。完整证据见 `artifacts/diagnostics-audit/README.md`。
 
+## 英文文档与发布页（0.10.0）
+
+英文材料此前只有 `README.en.md` 一份：更新记录、使用说明与发布页均只有中文，英文 README 指向它们时还要标 `(Chinese)`。本次为面向使用者的七份文档补出英文版，并让发布页在同一个页面同时给出两种语言。英文文档不参与构建，缺了不会有任何编译或测试报错，因此每一条都由静态检查盯着。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-151 | 中英文文档之间没有互相指向的入口，英文页即使存在也无从到达；两份文件各加一行语言切换，`README.en.md` 不再把英文文档标成 `(Chinese)`，且必须链接到每一份英文页 | `check-packaging.py` 的 `translated_docs`：逐对检查文件存在、双向链接，并核对 `README.en.md` 的链接 | 🆕 |
+| REG-152 | 发布说明只有中文，英文读者在发布页看不到本版变化；新增 `docs/releases/<版本>.en.md`，由 `release.yml` 折叠进同一个发布正文 | 同上 `translated_docs` 检查当前版本的中英两份发布说明是否都在 | 🆕 |
+| REG-153 | `release.yml` 的发布正文可能退回单语而无人发现（发布页是外部可见的最终产物） | `check-packaging.py` 的 `release_notes`：要求工作流仍读取 `docs/releases/%s.en.md` 并写出 `<summary>English</summary>` 折叠段 | 🆕 |
+| REG-154 | 长截图在英文界面里有两个名字：工具栏、托盘菜单、设置页与进度窗标题写 "Scrolling capture"，另有 3 条提示写 "long capture"；统一为 "Scrolling capture"（`超长截图` 的 "Ultra-long capture" 是另一个功能，不受影响） | `check-packaging.py` 的 `english_names`：逐条检查含 `长截图` 且不含 `超长` 的源串，其译文不得只写 "long capture"；并要求 `README.en.md` 保留 "Scrolling capture" | 🆕 |
+| REG-155 | 「完成并返回 AI」的英文在界面里是 "Done, back to AI"，`README.en.md` 引用同一个按钮却写 "Finish and return to AI"；统一为 "Finish and return to AI" | `check-packaging.py` 的 `english_names`：核对 `完成并返回 AI` 的译文与 `README.en.md` 引用的按钮名一致 | 🆕 |
+| REG-156 | 中英两份文档互相链接，多份页面还直接链到别的页面里的某个标题；标题改了措辞或文件名写错，读者的语言切换入口就断了，而没有任何测试会报错（本次就出现两处：改标题为 "Recognition and platform limits" 而引用方指向 `…-boundaries`，以及 `AI-SETUP` 指向 `#windows-agent-desktop-access` 而标题实为 "Desktop access for Windows agents"） | `check-packaging.py` 的 `doc_links`：解析全仓 `*.md` 的相对链接与锚点，锚点必须能在目标页的标题里找到，链接目标必须存在（构建产物与 `artifacts/` 下的再生证据除外） | 🆕 |
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。
@@ -278,7 +291,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/151/152/153/154/155/156 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |

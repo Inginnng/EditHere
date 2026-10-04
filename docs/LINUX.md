@@ -1,5 +1,7 @@
 # Linux 预览版
 
+**简体中文** · [English](LINUX.en.md)
+
 目标环境为 Ubuntu 24.04 x86_64、Qt 6.8.3。已接入 Linux 构建、系统接口和 AppImage 打包；GNOME/KDE 的实际 Wayland 授权与多屏交互仍需实机验收。
 
 编辑器、批注、布局调整、项目保存、复制导出和 CLI 沿用现有 Qt 实现。Linux 自动更新通过发布页手动下载。

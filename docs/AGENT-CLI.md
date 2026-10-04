@@ -1,5 +1,7 @@
 # EditHere · 改这里：AI 与命令行
 
+**简体中文** · [English](AGENT-CLI.en.md)
+
 [返回产品介绍](../README.md) · [让 AI 帮你安装](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md) · [使用指南](USER-GUIDE.md) · [配套 AI skill](../skills/edithere/SKILL.md)
 
 EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可以写修改意见、移动或缩放组件，点击“完成并返回 AI”后，命令行才将本轮反馈交给 AI。图片、批注和导出均在本机处理；后续是否发送给某个 AI 服务，由使用该文件的工具决定。

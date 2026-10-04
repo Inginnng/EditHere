@@ -1,5 +1,7 @@
 # 让 AI 帮你配置 EditHere
 
+**简体中文** · [English](AI-SETUP.en.md)
+
 [返回产品介绍](../README.md) · [命令行说明](AGENT-CLI.md) · [配套 skill](../skills/edithere/SKILL.md)
 
 **免安装版也可以配合 skill 使用，不必运行安装器或加入 PATH。** 程序负责截图和标注，skill 负责指导 AI 找到程序、等待你提交，再读取反馈；两者需要分别准备。

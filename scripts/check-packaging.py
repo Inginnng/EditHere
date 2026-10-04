@@ -316,6 +316,14 @@ def check_release_notes() -> list[Problem]:
         problems.append(
             "release.yml: the step that extracts the changelog section for this version is gone."
         )
+    # REG-153  A release page is one Markdown body with no language switch, so the
+    # English notes have to be folded into the Chinese body rather than replacing
+    # or trailing it. Losing that splice silently ships a Chinese-only release.
+    if "docs/releases/%s.en.md" not in workflow or "<summary>English</summary>" not in workflow:
+        problems.append(
+            "release.yml: the release notes are no longer assembled from the Chinese page and "
+            "the English page, so a tag would publish a Chinese-only release body."
+        )
     return problems
 
 
@@ -526,6 +534,45 @@ def check_english_names() -> list[Problem]:
             )
     if "Explode" not in read(ROOT / "README.en.md"):
         problems.append("README.en.md: the public English name 'Explode' disappeared.")
+    # REG-154  长截图 reads "Scrolling capture" on the toolbar button, in the tray
+    # menu, on the settings page and in the progress window title. Three strings
+    # said "long capture" instead, so the same feature was named two ways
+    # depending on which message you happened to hit. 超长截图 is a different
+    # feature and keeps "Ultra-long capture".
+    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
+        for context in ET.parse(ts).getroot().findall("context"):
+            for message in context.findall("message"):
+                source = message.findtext("source") or ""
+                if "长截图" not in source or "超长" in source:
+                    continue
+                node = message.find("translation")
+                translation = "" if node is None else (node.text or "")
+                lowered = translation.lower()
+                if "long capture" in lowered and "scrolling capture" not in lowered:
+                    problems.append(
+                        f"{ts.name}: {source!r} is translated as {translation!r}; 长截图 is "
+                        f"'Scrolling capture' everywhere else. Give the feature one English name."
+                    )
+    if "scrolling capture" not in read(ROOT / "README.en.md").lower():
+        problems.append("README.en.md: the public English name 'Scrolling capture' disappeared.")
+    # REG-155  README.en.md quotes this button as the reader will look for it on
+    # screen, but the catalogue shipped "Done, back to AI" while the README
+    # advertised "Finish and return to AI": one button under two English names.
+    wanted = "Finish and return to AI"
+    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
+        for context in ET.parse(ts).getroot().findall("context"):
+            for message in context.findall("message"):
+                if (message.findtext("source") or "") != "完成并返回 AI":
+                    continue
+                node = message.find("translation")
+                translation = "" if node is None else (node.text or "")
+                if translation != wanted:
+                    problems.append(
+                        f"{ts.name}: 完成并返回 AI is translated as {translation!r}, but "
+                        f"README.en.md quotes this button as {wanted!r}."
+                    )
+    if wanted not in read(ROOT / "README.en.md"):
+        problems.append(f"README.en.md: no longer quotes the interface button {wanted!r}.")
     return problems
 
 
@@ -591,6 +638,7 @@ def check_ocr_bridge() -> list[Problem]:
 # --------------------------------------------------------------------------- #
 FEEDBACK_DOCS = (
     ROOT / "docs" / "AGENT-CLI.md",
+    ROOT / "docs" / "AGENT-CLI.en.md",
     ROOT / "skills" / "edithere" / "SKILL.md",
     ROOT / "connector" / "skills" / "edithere" / "SKILL.md",
     ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
@@ -695,6 +743,143 @@ def check_build_recipe() -> list[Problem]:
     return problems
 
 
+# --------------------------------------------------------------------------- #
+# Translated documentation
+# --------------------------------------------------------------------------- #
+# Every one of these pages is published in English beside its Chinese original.
+# docs/releases/<version>.md is handled separately: it is a fragment assembled by
+# release.yml, not a standalone page with a switcher.
+TRANSLATED_DOCS = (
+    "docs/USER-GUIDE.md",
+    "docs/LONG-CAPTURE.md",
+    "docs/VIDEO-ANNOTATION.md",
+    "docs/AGENT-CLI.md",
+    "docs/AI-SETUP.md",
+    "docs/LINUX.md",
+    "docs/DEVELOPMENT.md",
+)
+
+
+def check_translated_docs(version: str) -> list[Problem]:
+    """REG-151/152  The English documentation set stays complete and reachable.
+
+    Nothing in the build consumes these pages, so without a check they rot
+    silently in two directions: a new Chinese page ships with no translation, or
+    an English page exists but nothing links to it, which for a reader is the
+    same as not having been translated. The switchover itself is guarded because
+    a page pair with no visible link between the two halves is undiscoverable.
+    """
+    problems: list[Problem] = []
+    for chinese in TRANSLATED_DOCS:
+        english = chinese[:-3] + ".en.md"
+        if not (ROOT / english).is_file():
+            problems.append(
+                f"{english}: missing. {chinese} is published in English as well; without the "
+                f"translation an English reader reaches a dead end."
+            )
+            continue
+        if Path(chinese).name not in read(ROOT / english):
+            problems.append(
+                f"{english}: no link back to {Path(chinese).name}. The two "
+                f"language variants are only discoverable through that switcher."
+            )
+        if Path(english).name not in read(ROOT / chinese):
+            problems.append(
+                f"{chinese}: no link to {Path(english).name}; a reader of the "
+                f"Chinese page cannot find the English one."
+            )
+    # The release notes for the shipped version are bilingual too.
+    for name in ("docs/releases/%s.md" % version, "docs/releases/%s.en.md" % version):
+        if not (ROOT / name).is_file():
+            problems.append(
+                f"{name}: missing. Every release publishes its notes in both languages, and "
+                f"release.yml folds the English page into the Chinese body."
+            )
+    # An English page that no English page links to is a file, not a translation.
+    readme = read(ROOT / "README.en.md")
+    for chinese in TRANSLATED_DOCS:
+        english = Path(chinese).name[:-3] + ".en.md"
+        if english not in readme:
+            problems.append(
+                f"README.en.md: never links {english}, so that English page cannot be reached "
+                f"from the English entry point."
+            )
+    return problems
+
+
+DOC_LINK = re.compile(r"\]\((?!https?:|mailto:)(?P<target>[^)\s#]*)(?P<anchor>#[^)\s]*)?\)")
+
+
+def github_slug(heading: str) -> set[str]:
+    """Every slug GitHub may produce for a heading.
+
+    Two forms are accepted because reproducing GitHub's rule for CJK punctuation
+    exactly is not worth it: one keeps every non-ASCII character, the other keeps
+    only letters and digits. An anchor written from the real heading matches one
+    of the two, while a genuinely different word ("limits" for "boundaries")
+    matches neither.
+    """
+    text = re.sub(r"`([^`]*)`", r"\1", heading.strip().lower())
+    forms: set[str] = set()
+    for keep_punctuation in (True, False):
+        characters: list[str] = []
+        for character in text:
+            if character.isalnum() or character in "-_":
+                characters.append(character)
+            elif ord(character) > 0x2FFF and keep_punctuation:
+                characters.append(character)
+            elif character.isspace():
+                characters.append("-")
+        forms.add("".join(characters))
+    return forms
+
+
+def check_doc_links() -> list[Problem]:
+    """REG-156  A documentation link has to land on something.
+
+    The English pages and the Chinese originals point at each other, and several
+    pages link straight into a heading of another page. Nothing consumes Markdown
+    at build time, so a reworded heading or a mistyped file name cuts a reader's
+    only route to the other language while every test stays green. Targets under
+    build output or regenerated evidence are exempt: those files exist only after
+    a run, so not finding them here is not a broken link.
+    """
+    problems: list[Problem] = []
+    pages = tracked("*.md")
+    headings: dict[Path, set[str]] = {}
+    for page in pages:
+        found: set[str] = set()
+        for line in read(page).splitlines():
+            heading = re.match(r"^#{1,6}\s+(.*?)\s*$", line)
+            if heading:
+                found |= github_slug(heading.group(1))
+        headings[page.resolve()] = found
+    for page in pages:
+        name = page.relative_to(ROOT).as_posix()
+        for match in DOC_LINK.finditer(read(page)):
+            target, anchor = match.group("target"), match.group("anchor")
+            if target and not target.endswith(".md"):
+                continue
+            if not target and not anchor:
+                continue
+            destination = (page.parent / target).resolve() if target else page.resolve()
+            relative = destination.relative_to(ROOT) if destination.is_relative_to(ROOT) else None
+            regenerated = relative is not None and any(part in SKIP_DIRS for part in relative.parts)
+            if regenerated:
+                continue
+            if not destination.is_file():
+                problems.append(f"{name}: links to {target}, which does not exist.")
+                continue
+            if not anchor:
+                continue
+            if anchor[1:].lower() not in headings.get(destination, set()):
+                problems.append(
+                    f"{name}: {anchor} is not a heading in {target}; a reader following the "
+                    f"link lands at the top of the page instead."
+                )
+    return problems
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -712,6 +897,7 @@ CHECKS = [
     ("feedback_docs", check_feedback_docs),
     ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
+    ("doc_links", check_doc_links),
 ]
 
 
@@ -741,6 +927,7 @@ def main() -> int:
     for name, found in (
         ("version_consistency", check_version_consistency(version)),
         ("quit_capability_pair", check_quit_capability_pair(version)),
+        ("translated_docs", check_translated_docs(version)),
     ):
         problems += [f"[{name}] {problem}" for problem in found]
         if args.verbose:
@@ -760,7 +947,7 @@ def main() -> int:
         for problem in problems:
             print(f"  - {problem}")
         return 1
-    print(f"packaging OK: {len(CHECKS) + 2} check(s) passed for version {version}")
+    print(f"packaging OK: {len(CHECKS) + 3} check(s) passed for version {version}")
     return 0
 
 

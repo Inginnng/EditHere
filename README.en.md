@@ -11,9 +11,9 @@
   <a href="#set-up-with-ai">Set up with AI</a> ·
   <a href="#features">Features</a> ·
   <a href="#demo-video">Demo video</a> ·
-  <a href="docs/AGENT-CLI.md">AI integration (Chinese)</a> ·
-  <a href="docs/USER-GUIDE.md">User guide (Chinese)</a> ·
-  <a href="CHANGELOG.md">Changelog (Chinese)</a> ·
+  <a href="docs/AGENT-CLI.en.md">AI integration and CLI</a> ·
+  <a href="docs/USER-GUIDE.en.md">User guide</a> ·
+  <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a> ·
   <a href="#acknowledgements">Acknowledgements</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
@@ -29,19 +29,19 @@
 Copy the entire prompt below into an AI tool with access to your local terminal and files, such as Codex or Claude Code. GitHub provides a copy button in the top-right corner of the code block.
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
 ```
 
 <details>
 <summary>Prefer to use EditHere without installing it? Copy this prompt</summary>
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md to set up EditHere for Windows without running an installer and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
+Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere for Windows without running an installer and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
 ```
 
 </details>
 
-Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The source repository and release packages are public, so the AI tool can read the official guide and download the app. See the [AI setup guide (Chinese)](docs/AI-SETUP.md) for the full procedure.
+Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The source repository and release packages are public, so the AI tool can read the official guide and download the app. See the [AI setup guide](docs/AI-SETUP.en.md) for the full procedure.
 
 ## Why EditHere?
 
@@ -51,7 +51,7 @@ Your AI tool needs permission to use your local terminal and files; a web chat a
 
 Use it for web and app interfaces, game HUDs, charts, and other visuals where you need to show exactly what to change and where.
 
-The current source version is **0.10.0**, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots, plus scrolling capture with a mask, a live preview and bidirectional stitching. See the [video annotation guide (Chinese)](docs/VIDEO-ANNOTATION.md) and [0.10.0 release notes (Chinese)](docs/releases/0.10.0.md).
+The current source version is **0.10.0**, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots, plus scrolling capture with a mask, a live preview and bidirectional stitching. See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md), the [scrolling capture reference](docs/LONG-CAPTURE.en.md) and the [0.10.0 release notes](docs/releases/0.10.0.en.md).
 
 ## Features
 
@@ -109,7 +109,7 @@ The screenshots and demo show the Chinese UI. Chinese button and feature names a
 
 <p align="center"><img src="assets/readme/game-annotating.png" width="720" alt="Game interface: annotating in EditHere"></p>
 
-See the [user guide (Chinese)](docs/USER-GUIDE.md) for more actions, shortcuts, and examples.
+See the [user guide](docs/USER-GUIDE.en.md) for more actions, shortcuts, and examples.
 
 4. **Send the feedback to AI**
 
@@ -135,7 +135,7 @@ After installing EditHere or fully extracting the ZIP package, copy [`skills/edi
 
 AI opens the image with `edithere-cli annotate` and waits for you to decide when you are finished. Cancellation or a timeout does not turn unsubmitted edits into change requests. The CLI can also export feedback from existing projects for your own scripts or agents.
 
-See [AI integration and the command line (Chinese)](docs/AGENT-CLI.md) for full setup instructions, commands, and examples.
+See [AI integration and the command line](docs/AGENT-CLI.en.md) for full setup instructions, commands, and examples.
 
 ## Demo video
 
@@ -154,7 +154,7 @@ The stable download links below point to GitHub's current public release. Check 
 | **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
 | **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
 | **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
-| **Linux x86_64 · Preview** | [Download the AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it directly. The same release page carries the SHA-256 checksums and the `edithere-cli` launcher. Targets Ubuntu 24.04 x86_64; see the [Linux guide (Chinese)](docs/LINUX.md). |
+| **Linux x86_64 · Preview** | [Download the AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it directly. The same release page carries the SHA-256 checksums and the `edithere-cli` launcher. Targets Ubuntu 24.04 x86_64; see the [Linux guide](docs/LINUX.en.md). |
 
 The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the components page, you can choose whether to launch at login, add the CLI to PATH, and create a desktop shortcut. Launch at login and PATH are selected by default on a new installation; upgrades preserve the existing startup registration state. Reopen your terminal and AI tools after installation so they can pick up the updated PATH. Uninstalling preserves your settings and projects.
 
@@ -162,7 +162,7 @@ The Windows installer is **not yet code-signed**. Download it from this reposito
 
 The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and **remains a preview without acceptance testing on a physical Mac or Apple notarization**. The new scrolling-capture backend has not yet been compiled or tested on a Mac.
 
-The Linux package is a preview targeting Ubuntu 24.04 x86_64. Under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture. Without PipeWire or ScreenCast monitor support, the app falls back to system region selection for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide (Chinese)](docs/LINUX.md) for running the AppImage, the OCR dependencies, and X11/Wayland behaviour.
+The Linux package is a preview targeting Ubuntu 24.04 x86_64. Under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture. Without PipeWire or ScreenCast monitor support, the app falls back to system region selection for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md) for running the AppImage, the OCR dependencies, and X11/Wayland behaviour.
 
 The source repository and release packages are public and available to browse and download. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
 
@@ -208,9 +208,10 @@ The EditHere name and marks are not licensed under the MIT License; see the [tra
 
 ## Documentation and feedback
 
-The following documents are currently in Chinese:
+The user guide, the scrolling capture reference, the video annotation guide, the
+command-line reference and the build instructions are available in English:
 
-[User guide](docs/USER-GUIDE.md) · [AI integration and CLI](docs/AGENT-CLI.md) · [Build and development](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md)
+[User guide](docs/USER-GUIDE.en.md) · [Scrolling capture](docs/LONG-CAPTURE.en.md) · [Video annotation](docs/VIDEO-ANNOTATION.en.md) · [AI integration and CLI](docs/AGENT-CLI.en.md) · [Build and development](docs/DEVELOPMENT.en.md) · [Release notes](https://github.com/Inginnng/EditHere/releases) · [Full changelog (Chinese)](CHANGELOG.md)
 
 [Report a problem or suggest an improvement](https://github.com/Inginnng/EditHere/issues). Please include your operating system and app versions, steps to reproduce the issue, and a screenshot or sample project you are comfortable sharing.
 
