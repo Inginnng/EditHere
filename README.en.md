@@ -160,7 +160,7 @@ The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the com
 
 The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
 
-The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and **remains a preview without acceptance testing on a physical Mac or Apple notarization**. The new scrolling-capture backend has not yet been compiled or tested on a Mac.
+The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and **remains a preview without acceptance testing on a physical Mac or Apple notarization**. The new scrolling-capture backend compiles in the macOS build.
 
 The Linux package is a preview targeting Ubuntu 24.04 x86_64. Under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture. Without PipeWire or ScreenCast monitor support, the app falls back to system region selection for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md) for running the AppImage, the OCR dependencies, and X11/Wayland behaviour.
 

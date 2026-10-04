@@ -130,7 +130,7 @@ Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，�
 
 Linux x86_64 为预览版本，目标环境为 Ubuntu 24.04；Wayland 优先授权显示器，再由 EditHere 框选并进行手动长截图。缺少 PipeWire 或 ScreenCast 显示器能力时回退系统选区，仅支持普通截图。X11 支持手动采集与自动纵向滚动。运行方式、OCR 依赖与 X11/Wayland 行为见 [Linux 说明](docs/LINUX.md)。
 
-Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，**仍处于预览阶段，尚未实机验收和 Apple 公证**；本轮新增长截图后端尚未在 Mac 主机编译和验证。
+Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，**仍处于预览阶段，尚未实机验收和 Apple 公证**；本轮新增长截图后端已在 macOS 构建中编译通过。
 
 源码与发布包已公开，可直接查看代码和下载。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
 
