@@ -1,4 +1,5 @@
 #include "ocrdialog.h"
+#include "diagnostics.h"
 #include "ui.h"
 #include <QApplication>
 #include <QClipboard>
@@ -166,6 +167,8 @@ void OcrDialog::setResult(const OcrResult &result) {
     result_ = result.lines;
     refreshPreview();
     if (!result.ok) {
+        diagnostics::write(diagnostics::Level::Error, "ocr.recognize", result.message,
+                           {{"width", image_.width()}, {"height", image_.height()}, {"language", result.engineLanguage}});
         // A failure is shown here rather than in a message box, so the picture the
         // user was working on stays on screen next to the reason.
         status_->setText(result.message);

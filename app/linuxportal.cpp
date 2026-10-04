@@ -4,6 +4,7 @@
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QPointer>
 #include <QTimer>
 #include <QUuid>
 QDBusArgument &operator<<(QDBusArgument &arg, const PortalShortcut &value) {
@@ -55,7 +56,10 @@ void LinuxPortalRequest::complete(uint code, QVariantMap results) {
                                             this, SLOT(response(uint,QVariantMap)));
     auto callback = std::move(callback_);
     callback_ = {};
+    // A completion callback can synchronously cancel its capture and destroy
+    // this request's parent session. Do not access a deleted request afterward.
+    QPointer<LinuxPortalRequest> alive(this);
     callback(code, std::move(results));
-    deleteLater();
+    if (alive) alive->deleteLater();
 }
 }

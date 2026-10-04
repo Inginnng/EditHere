@@ -704,7 +704,7 @@ class CaptureTests : public QObject {
         preview.fill(Qt::white);
         panel.setProgress(preview, 20, QSize(640, 100000), QRect(0, 99000, 640, 1000));
         QVERIFY(panel.findChild<QPushButton *>("scrollSave")->isEnabled());
-        QVERIFY(panel.findChild<QPushButton *>("scrollQuickSave")->isEnabled());
+        QVERIFY(!panel.findChild<QPushButton *>("scrollQuickSave"));
         QVERIFY(!panel.findChild<QPushButton *>("scrollCopy")->isEnabled());
         QVERIFY(!panel.findChild<QPushButton *>("scrollPin")->isEnabled());
         QVERIFY(!panel.findChild<QPushButton *>("scrollFinish")->isEnabled());
@@ -717,9 +717,17 @@ class CaptureTests : public QObject {
         QCOMPARE(QToolTip::text(), disabledEdit->toolTip());
         QToolTip::hideText();
         panel.setProgress(preview, 20, QSize(640, 1000), QRect(0, 0, 640, 1000));
+        QVERIFY(panel.findChild<QPushButton *>("scrollSave")->isEnabled());
         QVERIFY(panel.findChild<QPushButton *>("scrollCopy")->isEnabled());
         QVERIFY(panel.findChild<QPushButton *>("scrollPin")->isEnabled());
         QVERIFY(panel.findChild<QPushButton *>("scrollFinish")->isEnabled());
+        QVERIFY(!panel.findChild<QPushButton *>("scrollQuickSave"));
+        QSignalSpy saved(&panel, &ScrollCaptureProgress::saveRequested);
+        QSignalSpy copied(&panel, &ScrollCaptureProgress::copyRequested);
+        QTest::mouseClick(panel.findChild<QPushButton *>("scrollSave"), Qt::LeftButton);
+        QTest::mouseClick(panel.findChild<QPushButton *>("scrollCopy"), Qt::LeftButton);
+        QCOMPARE(saved.count(), 1);
+        QCOMPARE(copied.count(), 1);
     }
 
     void ratiosKnowTheirSizeAndName() {

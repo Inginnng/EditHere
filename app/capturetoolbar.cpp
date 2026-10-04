@@ -561,7 +561,7 @@ void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
     }
     handle_->setCursor(running ? (axis == Qt::Vertical ? Qt::SizeVerCursor : Qt::SizeHorCursor)
                                : Qt::SizeAllCursor);
-    handle_->setToolTip(running ? tr("拖动以沿截图方向移动选区") : tr("拖动移动选区；拖动蓝框边缘调整大小"));
+    handle_->setToolTip(running ? tr("拖动沿截图方向移动选区，保留已截取内容并继续追加") : tr("拖动移动选区；拖动蓝框边缘调整大小"));
     handle_->setAccessibleName(handle_->toolTip());
     update();
 }
@@ -620,13 +620,18 @@ bool ScrollCaptureRegion::eventFilter(QObject *object, QEvent *event) {
                 dragEdges_ = {};
                 dragOrigin_ = mouse->globalPosition().toPoint();
                 dragSelection_ = selection_;
+                emit dragStarted();
+                handle_->grabMouse();
                 return true;
             }
         } else if (event->type() == QEvent::MouseMove && dragging_) {
             dragTo(static_cast<QMouseEvent *>(event)->globalPosition().toPoint());
             return true;
         } else if (event->type() == QEvent::MouseButtonRelease && dragging_) {
+            dragTo(static_cast<QMouseEvent *>(event)->globalPosition().toPoint());
             dragging_ = false;
+            handle_->releaseMouse();
+            emit dragFinished();
             return true;
         }
     }
@@ -645,6 +650,7 @@ void ScrollCaptureRegion::mousePressEvent(QMouseEvent *event) {
     dragging_ = true;
     dragOrigin_ = event->globalPosition().toPoint();
     dragSelection_ = selection_;
+    emit dragStarted();
     event->accept();
 }
 
@@ -653,7 +659,12 @@ void ScrollCaptureRegion::mouseMoveEvent(QMouseEvent *event) {
         dragTo(event->globalPosition().toPoint());
 }
 
-void ScrollCaptureRegion::mouseReleaseEvent(QMouseEvent *) { dragging_ = false; }
+void ScrollCaptureRegion::mouseReleaseEvent(QMouseEvent *event) {
+    if (!dragging_ || event->button() != Qt::LeftButton) return;
+    dragTo(event->globalPosition().toPoint());
+    dragging_ = false;
+    emit dragFinished();
+}
 
 void ScrollCaptureRegion::dragTo(QPoint global) {
     QPoint delta = global - dragOrigin_;
@@ -983,13 +994,12 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     finish_->setFixedSize(30, 30);
     finish_->setEnabled(false);
     layout->addWidget(finish_);
-    const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"),
-                                QStringLiteral("scroll-quick-save"), QStringLiteral("copy")};
+    const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"), QStringLiteral("copy")};
     const QStringList tips = {tr("将完整长图贴在桌面上"), tr("选择位置和格式，保存完整长图"),
-                             tr("将完整长图快速保存到设置的目录"), tr("复制完整长图到剪贴板并关闭长截图")};
-    const QStringList accessibleNames = {tr("贴图"), tr("保存"), tr("快速保存"), tr("复制并关闭")};
+                             tr("复制完整长图到剪贴板并关闭长截图")};
+    const QStringList accessibleNames = {tr("贴图"), tr("保存"), tr("复制并关闭")};
     const QStringList names = {QStringLiteral("scrollPin"), QStringLiteral("scrollSave"),
-                               QStringLiteral("scrollQuickSave"), QStringLiteral("scrollCopy")};
+                               QStringLiteral("scrollCopy")};
     for (int i = 0; i < labels.size(); ++i) {
         auto *button = new QPushButton(this);
         button->setObjectName(names[i]);
@@ -1095,8 +1105,7 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     });
     connect(outputButtons_[0], &QPushButton::clicked, this, &ScrollCaptureProgress::pinRequested);
     connect(outputButtons_[1], &QPushButton::clicked, this, &ScrollCaptureProgress::saveRequested);
-    connect(outputButtons_[2], &QPushButton::clicked, this, &ScrollCaptureProgress::quickSaveRequested);
-    connect(outputButtons_[3], &QPushButton::clicked, this, &ScrollCaptureProgress::copyRequested);
+    connect(outputButtons_[2], &QPushButton::clicked, this, &ScrollCaptureProgress::copyRequested);
 }
 
 void ScrollCaptureProgress::placeBeside(const QRect &selection, const QRect &screen) {
@@ -1210,11 +1219,11 @@ void ScrollCaptureProgress::setProgress(const QImage &image, int addedFrames, QS
     cropEnd_->setEnabled(hasProgress_);
     for (auto *button : outputButtons_) button->setEnabled(hasProgress_);
     outputButtons_[0]->setEnabled(hasProgress_ && canEdit_);
-    outputButtons_[3]->setEnabled(hasProgress_ && canEdit_);
+    outputButtons_[2]->setEnabled(hasProgress_ && canEdit_);
     const QString largeNotice = tr("超大长图请使用 PNG 保存；当前尺寸超过复制、贴图和编辑的图像上限。");
     finish_->setToolTip(canEdit_ ? tr("完成长截图并进入编辑器（Enter）") : largeNotice);
     outputButtons_[0]->setToolTip(canEdit_ ? tr("将完整长图贴在桌面上") : largeNotice);
-    outputButtons_[3]->setToolTip(canEdit_ ? tr("复制完整长图到剪贴板并关闭长截图") : largeNotice);
+    outputButtons_[2]->setToolTip(canEdit_ ? tr("复制完整长图到剪贴板并关闭长截图") : largeNotice);
     if (size.isEmpty())
         size = image.size();
     if (!image.isNull()) {
@@ -1252,6 +1261,13 @@ void ScrollCaptureProgress::setAutomatic(bool automatic) {
     const QSignalBlocker blocked(automatic_);
     automatic_->setChecked(automatic);
     automaticButton_->setChecked(automatic);
+}
+void ScrollCaptureProgress::setAutomaticSupport(bool available, const QString &reason) {
+    automaticSupported_ = available;
+    automaticUnavailableReason_ = reason;
+    if (!available) setAutomatic(false);
+    const auto current = direction_->property("captureAxis");
+    setAxis(current.isValid() ? static_cast<Qt::Orientation>(current.toInt()) : Qt::Vertical);
 }
 
 void ScrollCaptureProgress::setStopped(const QString &message) {
@@ -1300,11 +1316,13 @@ void ScrollCaptureProgress::setAxis(Qt::Orientation axis) {
                                             : tr("裁去当前可见区域右侧的内容，保留当前区域及其左侧"));
     cropBegin_->setAccessibleName(axis == Qt::Vertical ? tr("上裁剪") : tr("左裁剪"));
     cropEnd_->setAccessibleName(axis == Qt::Vertical ? tr("下裁剪") : tr("右裁剪"));
-    automatic_->setEnabled(!stopped_ && axis == Qt::Vertical);
-    automaticButton_->setEnabled(!stopped_ && axis == Qt::Vertical);
+    automatic_->setEnabled(!stopped_ && automaticSupported_ && axis == Qt::Vertical);
+    automaticButton_->setEnabled(!stopped_ && automaticSupported_ && axis == Qt::Vertical);
     automaticButton_->setToolTip(stopped_ ? tr("重新开始截图后可启用自动滚动") :
+        !automaticSupported_ ? automaticUnavailableReason_ :
         axis == Qt::Vertical ? tr("自动向下滚动并拼接；再次点击切换为手动滚动") :
                               tr("水平截图请手动滚动或拖动水平滚动条"));
+    automatic_->setToolTip(automaticButton_->toolTip());
     if (axis == Qt::Horizontal) setAutomatic(false);
 }
 

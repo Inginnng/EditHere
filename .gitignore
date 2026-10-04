@@ -17,6 +17,9 @@ out/
 .cache/
 build-*/
 
+# Python bytecode caches left by the build and packaging scripts.
+__pycache__/
+
 # Private capture sources and a separately managed promotion-site checkout.
 /PixPin_*.mp4
 /promotion-site/

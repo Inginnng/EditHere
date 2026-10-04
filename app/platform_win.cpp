@@ -128,6 +128,22 @@ bool supportsScrollingCapture(QString *reason) {
         reason->clear();
     return true;
 }
+bool beginScrollingCapture(const ScreenFrame &, const QRect &, QString *error) {
+    if (error) error->clear();
+    return true;
+}
+void endScrollingCapture(bool) {}
+bool supportsAutomaticScrollInput(QString *reason) {
+    if (reason) reason->clear();
+    return true;
+}
+void prepareScrollFrameRead() {}
+void focusScrollingCaptureTarget(const ScrollCaptureTarget &target) {
+    DWORD pid = 0;
+    const auto window = reinterpret_cast<HWND>(target.window);
+    if (window && GetWindowThreadProcessId(window, &pid) && pid == target.processId)
+        restoreCaptureForegroundWindow(target.window);
+}
 ScrollCaptureTarget scrollCaptureTargetAt(QPoint nativePoint) {
     HWND root = scrollRootAt(nativePoint);
     DWORD pid = 0;

@@ -17,7 +17,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libatspi2.0-dev libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-x11-0 libxcb-shape0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra fonts-noto-cjk xvfb dbus-x11 desktop-file-utils
+          sudo apt-get install -y libx11-dev libxtst-dev libpipewire-0.3-dev libpipewire-0.3-modules libspa-0.2-modules pipewire-bin libpulse0 libatspi2.0-dev libgl1-mesa-dev libegl1-mesa-dev libxkbcommon-x11-0 libxcb-shape0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra fonts-noto-cjk xvfb dbus-x11 desktop-file-utils
           python3 -m venv .tools/python
           .tools/python/bin/pip install aqtinstall==3.3.0 ninja
           .tools/python/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --modules qtimageformats qtmultimedia --outputdir .tools/qt
@@ -28,6 +28,8 @@ jobs:
           export PATH="$PWD/.tools/python/bin:$PATH"
           dbus-run-session -- bash scripts/build-linux.sh
           dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          QT_SCALE_FACTOR=2 dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1280x1024x24 -extension XTEST' build-linux/linux_platform_tests x11CaptureReturnsPixels x11ManualCaptureDoesNotRequireInputInjection -platform xcb
           desktop-file-validate packaging/linux/com.edithere.capture.desktop
       - name: Package AppImage
         env:

@@ -47,7 +47,7 @@ class SettingsDialog final : public QDialog {
     LanguageMode appliedLanguage_ = LanguageMode::System;
     QCheckBox *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *embedOriginal_,
         *confirmBeforeDiscard_, *checkUpdatesOnStartup_, *scrollAutoCrop_, *scrollUltraLong_;
-    QLineEdit *feedbackDir_, *quickSaveDir_;
+    QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
     QLabel *error_, *launchAtLoginNotice_;

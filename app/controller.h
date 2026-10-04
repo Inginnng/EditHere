@@ -35,6 +35,11 @@ class Controller final : public QObject {
     void beginCapture(bool fromTray);
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
+    quint64 captureGeneration_ = 0;
+    struct CaptureIo {
+        std::function<void(QObject *, std::function<void()>, bool)> prepare = prepareScreenCapture;
+        std::function<void(CaptureCallback)> grab = captureScreens;
+    } captureIo_;
     void finishAgentSession();
     // Rebuilds the tray menu and tooltip; called on startup and on a language change.
     void retranslate();
@@ -65,7 +70,7 @@ class Controller final : public QObject {
     void exportScrollCapture(int action);
     void finishScrollCapture();
     void abortScrollCapture(const QString &message = {});
-    void discardScrollRun();
+    void discardScrollRun(bool retainScreenSession = false);
     struct ScrollRun {
         QRect nativeRegion;
         QRect logicalRegion;
@@ -78,6 +83,7 @@ class Controller final : public QObject {
         bool paused = false;
         bool automatic = false;
         bool mismatched = false;
+        bool dragging = false;
         Qt::Orientation axis = Qt::Vertical;
         QString notice;
     };
@@ -96,8 +102,12 @@ class Controller final : public QObject {
                 prepareScreenCapture(context, std::move(ready));
             };
         std::function<bool(QString *)> supported = supportsScrollingCapture;
+        std::function<bool(const ScreenFrame &, const QRect &, QString *)> begin = beginScrollingCapture;
+        std::function<void(bool)> end = endScrollingCapture;
+        std::function<void()> prepareFrame = prepareScrollFrameRead;
+        std::function<bool(QString *)> automaticSupported = supportsAutomaticScrollInput;
         std::function<ScrollCaptureTarget(QPoint)> targetAt = scrollCaptureTargetAt;
-        std::function<void(quintptr)> focus = restoreCaptureForegroundWindow;
+        std::function<void(const ScrollCaptureTarget &)> focus = focusScrollingCaptureTarget;
         std::function<bool(const ScrollCaptureTarget &, QPoint, int, QString *)> step = scrollCaptureStep;
         std::function<void(const QRect &, std::function<void(QImage, QString)>)> grab = captureScrollRegion;
         int settleTimeoutMs = 2200;

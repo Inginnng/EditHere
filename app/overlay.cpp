@@ -1110,13 +1110,15 @@ void Overlay::closeEvent(QCloseEvent *e) {
     emit cancelled();
 }
 void Overlay::requestProbe() {
-    if (probe_ || !selected_.isEmpty() || drawing_ || finished_ || frame_.nativeGeometry.isEmpty())
+    if (probe_ || !selected_.isEmpty() || drawing_ || finished_ || frame_.nativeGeometry.isEmpty() ||
+        !frame_.elementProbingAllowed)
         return;
     QPoint pixel = cursor_;
-    QPoint native(frame_.nativeGeometry.x() +
-                      qRound(double(pixel.x()) * frame_.nativeGeometry.width() / frame_.image.width()),
-                  frame_.nativeGeometry.y() +
-                      qRound(double(pixel.y()) * frame_.nativeGeometry.height() / frame_.image.height()));
+    const QRect elementGeometry = frame_.elementGeometry.isEmpty() ? frame_.nativeGeometry : frame_.elementGeometry;
+    QPoint native(elementGeometry.x() +
+                      qRound(double(pixel.x()) * elementGeometry.width() / frame_.image.width()),
+                  elementGeometry.y() +
+                      qRound(double(pixel.y()) * elementGeometry.height() / frame_.image.height()));
     probe_ = new QProcess(this);
     QProcess *process = probe_;
 #ifdef Q_OS_WIN
@@ -1135,14 +1137,15 @@ void Overlay::requestProbe() {
                         try {
                             auto object = item.toObject();
                             QRect native = jsonRect(object["bounds"].toObject());
-                            double sx = double(frame_.image.width()) / frame_.nativeGeometry.width(),
-                                   sy = double(frame_.image.height()) / frame_.nativeGeometry.height();
-                            int x = int(std::floor((native.x() - frame_.nativeGeometry.x()) * sx)),
-                                y = int(std::floor((native.y() - frame_.nativeGeometry.y()) * sy));
-                            int xx = int(std::ceil((native.x() + native.width() - frame_.nativeGeometry.x()) *
+                            const QRect elementGeometry = frame_.elementGeometry.isEmpty() ? frame_.nativeGeometry : frame_.elementGeometry;
+                            double sx = double(frame_.image.width()) / elementGeometry.width(),
+                                   sy = double(frame_.image.height()) / elementGeometry.height();
+                            int x = int(std::floor((native.x() - elementGeometry.x()) * sx)),
+                                y = int(std::floor((native.y() - elementGeometry.y()) * sy));
+                            int xx = int(std::ceil((native.x() + native.width() - elementGeometry.x()) *
                                                    sx)),
                                 yy = int(std::ceil(
-                                    (native.y() + native.height() - frame_.nativeGeometry.y()) * sy));
+                                    (native.y() + native.height() - elementGeometry.y()) * sy));
                             QRect uncut(x, y, xx - x, yy - y),
                                 bounds = uncut.intersected(QRect(QPoint(0, 0), frame_.image.size()));
                             if (bounds.isEmpty())

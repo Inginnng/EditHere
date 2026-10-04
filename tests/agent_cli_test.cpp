@@ -456,6 +456,45 @@ class AgentCliTests : public QObject {
         QVERIFY(!QFileInfo::exists(directory.filePath("result.json")));
         editor->hide();
     }
+    void statusRetainsVideoDirtyStateWhilePreviewHasNoDocument() {
+        QTemporaryDir directory;
+        const auto input = inputProject(directory);
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        const auto editor = editorOf(controller);
+        const auto document = loadDocument(input);
+        VideoProject project;
+        project.source = directory.filePath("missing-video.mp4");
+        project.durationMs = 20000;
+        project.frames.append({1000000, document});
+        editor->setVideoProject(project, directory.filePath("saved-video.edithere"));
+        QVERIFY(editor->hasDocument());
+        QVERIFY(!controller.handleAgentRequest({{"command", "status"}})["dirty"].toBool());
+
+        const auto note = editor->findChild<QPlainTextEdit *>("noteText_" + document.notes.first().id);
+        QVERIFY(note);
+        // Begin editing through the same focus boundary as typing in the UI.
+        // Changing an unfocused editor programmatically would make selecting
+        // its card re-render the old model text before this write is committed.
+        note->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY(note->hasFocus());
+        note->setPlainText("Changed video annotation");
+        QVERIFY(editor->document().dirty);
+        QCOMPARE(editor->document().notes.first().comment, QString("Changed video annotation"));
+        QVERIFY(editor->videoProject().dirty);
+        const auto playback = editor->findChild<VideoPlayback *>();
+        QVERIFY(playback);
+        // The decoder's paused-frame notification moves the editor from its
+        // editable screenshot to the lightweight video preview.
+        playback->framePaused(document.image.size(), 2000000);
+        QVERIFY(!editor->hasDocument());
+        QVERIFY(!editor->document().dirty);
+        const auto status = controller.handleAgentRequest({{"command", "status"}});
+        QVERIFY(!status["hasDocument"].toBool());
+        QVERIFY(status["dirty"].toBool());
+        QVERIFY(editor->videoProject().dirty);
+        QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", "open"}, {"input", input}})), 4);
+        editor->hide();
+    }
     void unsavedCapturesAndClipboardImagesRejectAgentReplacement() {
         QTemporaryDir directory;
         const auto input = inputProject(directory);

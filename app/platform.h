@@ -14,6 +14,10 @@ struct ScreenFrame {
     bool nativePixels = false;
     bool windowScopeAvailable = false;
     QVector<Candidate> frontWindows; // Front-to-back snapshot, in image pixels.
+    // Accessibility APIs can use logical screen coordinates while capture uses
+    // native pixels. Empty means use nativeGeometry, as on Windows and X11.
+    QRect elementGeometry;
+    bool elementProbingAllowed = true;
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 // A scrolling session keeps the original window and its owner, rather than
@@ -21,11 +25,24 @@ using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 struct ScrollCaptureTarget {
     quintptr window = 0;
     quint32 processId = 0;
+    // Portal capture identifies an authorized monitor stream, not a window.
+    quint64 captureSession = 0;
 };
 using ScrollRegionCallback = std::function<void(QImage, QString)>;
 bool supportsScrollingCapture(QString *reason = nullptr);
+bool beginScrollingCapture(const ScreenFrame &frame, const QRect &nativeRegion, QString *error = nullptr);
+// Returning to the frozen selection can retain an authorized monitor stream;
+// cancelling the whole capture or delivering a result releases it.
+void endScrollingCapture(bool retainScreenSession = false);
+bool supportsAutomaticScrollInput(QString *reason = nullptr);
+void focusScrollingCaptureTarget(const ScrollCaptureTarget &target);
+// Called immediately after transient controls are hidden, before the compositor
+// settling delay. Event-driven screen streams can then accept this round's
+// clean frame even when a static desktop does not produce another frame later.
+void prepareScrollFrameRead();
 ScrollCaptureTarget scrollCaptureTargetAt(QPoint nativePoint);
-// Positive wheelSteps move down. Coordinates are physical desktop pixels.
+// Positive wheelSteps move down. Coordinates use the selected ScreenFrame's
+// nativeGeometry; portal streams have their own native pixel origin.
 // A successful send does not imply movement; the caller compares stable frames.
 bool scrollCaptureStep(const ScrollCaptureTarget &target, QPoint nativePoint, int wheelSteps,
                        QString *error = nullptr);

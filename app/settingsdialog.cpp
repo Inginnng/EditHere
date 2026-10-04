@@ -1,4 +1,6 @@
 #include "settingsdialog.h"
+#include "diagnosticspage.h"
+#include "diagnostics.h"
 #include "i18n.h"
 #include "ocr.h"
 #include "ui.h"
@@ -247,25 +249,6 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     scrollUltraLong_ = new QCheckBox(scrollPage);
     scrollUltraLong_->setObjectName("scrollUltraLong");
     scrollLayout->addWidget(scrollUltraLong_);
-    auto quickForm = new QFormLayout;
-    quickSaveDir_ = new QLineEdit(scrollPage);
-    quickSaveDir_->setObjectName("scrollQuickSaveDir");
-    auto quickBrowse = new QToolButton(scrollPage);
-    quickBrowse->setText(QStringLiteral("…"));
-    quickBrowse->setObjectName("scrollQuickSaveBrowse");
-    auto quickRow = new QHBoxLayout;
-    quickRow->addWidget(quickSaveDir_, 1);
-    quickRow->addWidget(quickBrowse);
-    auto quickLabel = new QLabel(scrollPage);
-    quickLabel->setObjectName("scrollQuickSaveLabel");
-    quickLabel->setBuddy(quickSaveDir_);
-    quickForm->addRow(quickLabel, quickRow);
-    scrollLayout->addLayout(quickForm);
-    connect(quickBrowse, &QToolButton::clicked, this, [this] {
-        const auto path = QFileDialog::getExistingDirectory(this, tr("选择快速保存目录"),
-                                                           quickSaveDir_->text());
-        if (!path.isEmpty()) quickSaveDir_->setText(QDir::toNativeSeparators(path));
-    });
     scrollLayout->addStretch();
     tabs->addTab(scrollPage, {});
 
@@ -334,6 +317,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     aboutLayout->addWidget(feedback);
     aboutLayout->addStretch();
     tabs->addTab(about, {});
+    tabs->addTab(new DiagnosticsPage(tabs), {});
     updater_ = new UpdateChecker(this);
     connect(check, &QPushButton::clicked, this, [this, status, check] {
         if (updater_->downloading()) return;
@@ -460,7 +444,7 @@ void SettingsDialog::retranslate() {
             field->setPlaceholderText(tr("点击录制快捷键"));
     }
     const QStringList tabTitles{tr("快捷键"), tr("外观"), tr("默认行为"), tr("长截图"),
-                                tr("工具栏"), tr("关于与更新")};
+                                tr("工具栏"), tr("关于与更新"), tr("诊断日志")};
     for (int i = 0; i < tabs_->count() && i < tabTitles.size(); ++i)
         tabs_->setTabText(i, tabTitles[i]);
     if (appearanceTitle_)
@@ -516,9 +500,6 @@ void SettingsDialog::retranslate() {
     scrollAutoCrop_->setText(tr("反向滚动时自动裁剪"));
     scrollUltraLong_->setText(tr("超长截图（最长 200 万像素）"));
     scrollUltraLong_->setToolTip(tr("分块采集并保存 PNG；超过编辑器图像上限时可保存，复制、贴图和编辑受图像大小限制。"));
-    if (auto label = findChild<QLabel *>("scrollQuickSaveLabel"))
-        label->setText(tr("快速保存目录"));
-    quickSaveDir_->setPlaceholderText(tr("默认：图片 / EditHere"));
     defaultTool_->setAccessibleName(tr("默认标注工具"));
     const QStringList tools{tr("智能选块"), tr("点标注"), tr("框选标注"), tr("调整批注")};
     for (int i = 0; i < defaultTool_->count() && i < tools.size(); ++i)
@@ -569,6 +550,7 @@ void SettingsDialog::applyLanguage(LanguageMode mode) {
     if (mode == appliedLanguage_)
         return;
     if (!installLanguage(mode)) {
+        diagnostics::write(diagnostics::Level::Error, "settings.language", "Interface translation could not be loaded");
         error_->setText(tr("界面语言加载失败，请重新安装 EditHere。"));
         error_->show();
         QSignalBlocker blocker(language_);
@@ -618,7 +600,6 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     scrollAxis_->setCurrentIndex(scrollAxis_->findData(static_cast<int>(settings.scrollAxis)));
     scrollAutoCrop_->setChecked(settings.scrollAutoCrop);
     scrollUltraLong_->setChecked(settings.scrollUltraLong);
-    quickSaveDir_->setText(QDir::toNativeSeparators(settings.quickSaveDir));
     defaultTool_->setCurrentIndex(settings.defaultTool);
 }
 AppSettings SettingsDialog::settings() const {
@@ -634,7 +615,6 @@ AppSettings SettingsDialog::settings() const {
     result.scrollAxis = static_cast<Qt::Orientation>(scrollAxis_->currentData().toInt());
     result.scrollAutoCrop = scrollAutoCrop_->isChecked();
     result.scrollUltraLong = scrollUltraLong_->isChecked();
-    result.quickSaveDir = QDir::fromNativeSeparators(quickSaveDir_->text().trimmed());
     result.defaultTool = defaultTool_->currentIndex();
     result.language = static_cast<LanguageMode>(language_->currentData().toInt());
     result.ocrLanguage = static_cast<OcrLanguageMode>(ocrLanguage_->currentData().toInt());
@@ -659,6 +639,7 @@ void SettingsDialog::save() {
     if (error.isEmpty() && apply_)
         error = apply_(draft);
     if (!error.isEmpty()) {
+        diagnostics::write(diagnostics::Level::Error, "settings.apply", error);
         error_->setText(error);
         error_->show();
         return;

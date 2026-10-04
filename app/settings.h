@@ -38,7 +38,6 @@ struct AppSettings {
     Qt::Orientation scrollAxis = Qt::Vertical;
     bool scrollAutoCrop = false;
     bool scrollUltraLong = false;
-    QString quickSaveDir; // Empty = Pictures/EditHere.
     bool operator==(const AppSettings &) const = default;
 };
 struct ShortcutDefinition {

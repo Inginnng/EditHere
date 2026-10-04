@@ -63,6 +63,19 @@
 | REG-143 | 视频暂停后无法批注：`QVideoWidget` 在 Windows 上创建原生子窗口，连带把图像区与画布变成原生窗口，画布绘制的框不再出现在屏幕上（真实鼠标拖框时屏幕像素零变化，数据里却有批注）；视频每帧在主线程转换也让操作卡顿。改用自绘视频表面，帧在工作线程转换并缩放到显示尺寸，新帧覆盖未处理的旧帧；首次批注保存截图改用不透明 PNG 快速编码（1080p 约 114 ms → 63 ms，仍为无损） | `VideoUiTests::playbackSeekAnnotateAndReopen` 断言画布与视频表面均无原生窗口句柄；真实 `SendInput` 鼠标在原生窗口播放、暂停、拖框，拖动中屏幕截图可见虚线框 | ✅ |
 | REG-144 | 时间轴上的橙色（用户称黄色）批注标记只能看不能点。悬停时变为手形并提示时间与批注数，点击直接打开该帧截图与批注，并同步“已标注画面”列表；其余位置仍为定位 | `VideoUiTests::playbackSeekAnnotateAndReopen`：离开批注帧后悬停/点击标记，核对图片、批注文字、列表选中项且不新建截图（禁用标记点击后失败）；真实鼠标点击标记同样回到对应批注 | ✅ |
 
+## 状态冲突排查与诊断日志（0.10.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-145 | 长截图准备回调未返回时切换方向会废弃当前准备会话；准备期间仅更新方向，取得目标窗口后再采样 | `ScrollControllerTests::directionChangedDuringPreparationKeepsThePendingSession` | ✅ |
+| REG-146 | 普通截图取消后重开，仅检查 capturing 无法区分旧回调；用会话代次及弱引用拒绝旧 prepare/read 结果 | `cancelledScreenPreparationCannotStartTheNextCapturesRead`、`cancelledScreenReadCannotPopulateTheNextCapturesOverlays` | ✅ |
+| REG-147 | 贴图的批注直接替换编辑器，覆盖未保存内容或 AI 会话；统一检查捕获、模态及 allowReplace | `pinnedAnnotationHonorsCancelAndDiscardOfUnsavedChanges`、`pinnedAnnotationCannotReplaceAnActiveAgentDocument`、`pinnedAnnotationCannotReplaceDuringCaptureOrAnotherDialog` | ✅ |
+| REG-148 | 视频表面 clear 后后台转换仍把旧图写回；转换结果只在代次一致时显示 | `VideoUiTests::clearingVideoDoesNotRestoreAnInFlightPreview` | ✅ |
+| REG-149 | 视频进入预览后 doc 为空，status 仅检查 doc dirty 会漏报工程修改；改用 hasUnsavedChanges | `AgentCliTests::statusRetainsVideoDirtyStateWhilePreviewHasNoDocument` | ✅ |
+| REG-150 | 拖入空图或超限图片未捕获 fromImage 异常；与打开、粘贴入口一致，显示错误并保留当前文档 | `UiTests::droppingAnInvalidImagePreservesTheExistingDocument`（空图、超限边长） | ✅ |
+
+日志核心为 `app/diagnostics.h/.cpp`，独立 QtCore 静态库；界面为 `app/diagnosticspage.h/.cpp`。`diagnostics_tests` 覆盖并发完整性、文件轮换、Qt handler 恢复、脱敏、原子导出、写入失败、实际报告大小及活跃/强制退出进程；固定修改时间的 999/1000/1001 分片验证稳定的数值排序，避免平台文件时间精度导致结束标记和清理顺序错误。`SettingsTests::diagnosticsAreAccessibleWithoutChangingSettings` 从设置导出报告，`i18n_tests` 验证中英文切换。日志只收集诊断信息；未实现原生崩溃转储，未正常结束的会话标记不能替代崩溃栈。完整证据见 `artifacts/diagnostics-audit/README.md`。
+
 ## 本次更新修复（0.9.9）
 
 Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动路径转义、Portal 截图成功/取消/无效 URI、快捷键注册/激活/取消/缺失服务；Xvfb 下覆盖 X11 截图及快捷键冲突与真实按键。`OcrTests::tesseractLinesKeepBandCoordinates` 覆盖 TSV 行合并、坐标还原和无效结果，已有 OCR 运行用例验证真实 Tesseract。实际 GNOME/KDE 授权与托盘仍需实机验收。
@@ -187,7 +200,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 截图不再"松手即批注"：松开鼠标只把选定的区域定下来，选区上方的工具条（批注、识别、贴图、保存、复制）与它右侧的样式列（圆角、阴影/边框、贴图、重置）才是动作的入口。本节记录实现这套流程时踩到的问题。
 
-**长截图实现更新（开发版）**：旧实现于 2026-09-29 移到 `feature/long-capture`。本轮重新加入 Windows 纵向长截图，默认手动滚动，采用独立进度窗、稳定帧采样与置信度拼接；明确勾选自动滚动后才向锁定目标投递滚轮。下表 **REG-081、REG-101、REG-102、REG-103、REG-104** 保留旧实现的事故记录和历史测试名；当前对应检查集中于 `scrollstitch_tests`、`scroll_controller_tests`、`scroll_platform_tests`，实现参考见 [LONG-CAPTURE.md](LONG-CAPTURE.md)。旧横向拖框及全屏遮罩方案没有恢复。
+**长截图实现更新（开发版）**：旧实现于 2026-09-29 移到 `feature/long-capture`。当前 Windows、macOS 和 Linux 后端共用纵向/横向手动采集、选区外遮罩、固定比例预览和原图拼接；Windows、macOS 与 X11 可选自动纵向滚动，Wayland 目前仅手动滚动。稳定帧采样与置信度复核负责匹配，明确勾选自动滚动后才向可验证的锁定目标投递滚轮。下表 **REG-081、REG-101、REG-102、REG-103、REG-104** 保留旧实现的事故记录和历史测试名；当前检查集中于 `scrollstitch_tests`、`scroll_controller_tests`、Windows `scroll_platform_tests`、Linux `linux_platform_tests` 和 `scroll_wayland_tests`，平台条件及尚未完成的实机验收见 [LONG-CAPTURE.md](LONG-CAPTURE.md)。
 
 | 编号 | 现象 | 首现 → 修复 | 根因 | 回归检查 | 状态 |
 | --- | --- | --- | --- | --- | --- |

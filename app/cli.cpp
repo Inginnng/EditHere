@@ -1,5 +1,6 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
+#include "diagnostics.h"
 #include "model.h"
 #include "videoproject.h"
 #include <QCoreApplication>
@@ -13,6 +14,16 @@
 using namespace h2d;
 namespace {
 int printResult(const QJsonObject &result) {
+    if (!result["ok"].toBool()) {
+        diagnostics::Options options;
+        options.directory = QDir(agentStateLocation()).filePath("logs");
+        if (diagnostics::start(options)) {
+            const auto error = result["error"].toObject();
+            diagnostics::write(diagnostics::Level::Error, "cli.request", error["message"].toString(),
+                               {{"code", error["code"]}, {"connection", result["connection"]}});
+            diagnostics::stop();
+        }
+    }
     const auto json = QJsonDocument(result).toJson(QJsonDocument::Compact) + '\n';
     std::fwrite(json.constData(), 1, size_t(json.size()), stdout);
     std::fflush(stdout);

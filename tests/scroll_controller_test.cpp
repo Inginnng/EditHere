@@ -1,6 +1,7 @@
 #include "capturetoolbar.h"
 #include "controller.h"
 #include "platform.h"
+#include "pinwindow.h"
 #include "scrollcapture.h"
 #include "ui.h"
 #include <QApplication>
@@ -11,6 +12,7 @@
 #include <QJsonDocument>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
 #include <QScreen>
@@ -35,6 +37,11 @@ class ScrollControllerTests final : public QObject {
     int wheelSteps_ = 0;
     int targetQueries_ = 0;
     int focusRestores_ = 0;
+    int sessionBegins_ = 0, sessionEnds_ = 0;
+    bool retainedScreenSession_ = false;
+    bool sessionActive_ = false;
+    ScreenFrame begunFrame_;
+    QRect begunRegion_;
     QPoint targetPoint_;
     QRect capturedRegion_;
 
@@ -110,6 +117,11 @@ class ScrollControllerTests final : public QObject {
         owner_->capturing_ = true;
         wheelSteps_ = targetQueries_ = 0;
         focusRestores_ = 0;
+        sessionBegins_ = sessionEnds_ = 0;
+        retainedScreenSession_ = false;
+        sessionActive_ = false;
+        begunFrame_ = {};
+        begunRegion_ = {};
         ready_ = {};
         pending_.clear();
         capturedRegion_ = {};
@@ -117,13 +129,28 @@ class ScrollControllerTests final : public QObject {
             ready_ = std::move(callback);
         };
         owner_->scrollIo_.supported = [](QString *) { return true; };
+        owner_->scrollIo_.begin = [this](const ScreenFrame &frame, const QRect &region, QString *) {
+            ++sessionBegins_;
+            begunFrame_ = frame;
+            begunRegion_ = region;
+            sessionActive_ = true;
+            return true;
+        };
+        owner_->scrollIo_.end = [this](bool retainScreenSession) {
+            retainedScreenSession_ = retainScreenSession;
+            ++sessionEnds_;
+            sessionActive_ = false;
+        };
+        owner_->scrollIo_.automaticSupported = [](QString *) { return true; };
+        owner_->scrollIo_.prepareFrame = [] {};
         owner_->scrollIo_.targetAt = [this](QPoint at) {
             ++targetQueries_;
             targetPoint_ = at;
             return ScrollCaptureTarget{42, 7};
         };
-        owner_->scrollIo_.focus = [this](quintptr target) {
-            QCOMPARE(target, quintptr(42));
+        owner_->scrollIo_.focus = [this](const ScrollCaptureTarget &target) {
+            QCOMPARE(target.window, quintptr(42));
+            QCOMPARE(target.processId, quint32(7));
             ++focusRestores_;
         };
         owner_->scrollIo_.step = [this](const ScrollCaptureTarget &target, QPoint at, int steps, QString *) {
@@ -138,8 +165,12 @@ class ScrollControllerTests final : public QObject {
         };
     }
     void cleanup() {
-        if (owner_)
+        if (owner_) {
             owner_->clearOverlays();
+            const auto pins = owner_->pins_;
+            for (auto *pin : pins)
+                pin->close();
+        }
         owner_.reset();
         // A deferred close belongs to the finished run, not the next test.
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -410,6 +441,12 @@ class ScrollControllerTests final : public QObject {
         QTRY_VERIFY(!pending_.isEmpty());
         pending_.clear();
         ++owner_->scrollRun_.settleRound;
+        auto *liveRegion = owner_->scrollRegion_.data();
+        auto *shade = owner_->scrollShade_.data();
+        QVERIFY(liveRegion && shade);
+        liveRegion->show();
+        liveRegion->moveHandle()->show();
+        shade->show();
         const QRect region = owner_->scrollRun_.logicalRegion;
         if (toolbarOverlaps) progress->move(region.topLeft() + QPoint(5, 5));
         QVERIFY(progress->geometry().intersects(region) == toolbarOverlaps);
@@ -425,12 +462,18 @@ class ScrollControllerTests final : public QObject {
         bool previewHidden = false;
         bool cropHidden = false;
         bool toolbarHidden = false;
+        bool regionHidden = false;
+        bool shadeHidden = false;
+        bool handleHidden = false;
         owner_->scrollIo_.grab = [&, this](const QRect &captured, ScrollRegionCallback callback) {
             capturedRegion_ = captured;
             grabbed = true;
             previewHidden = !preview->isVisible();
             cropHidden = !cropMenu->isVisible();
             toolbarHidden = !progress->isVisible();
+            regionHidden = !liveRegion->isVisible();
+            shadeHidden = !shade->isVisible();
+            handleHidden = !liveRegion->moveHandle()->isVisible();
             pending_.append(std::move(callback));
         };
         owner_->beginScrollSettle();
@@ -440,6 +483,9 @@ class ScrollControllerTests final : public QObject {
         QTRY_VERIFY(grabbed);
         QVERIFY(previewHidden);
         QVERIFY(cropHidden);
+        QVERIFY(regionHidden);
+        QVERIFY(shadeHidden);
+        QVERIFY(handleHidden);
         QCOMPARE(toolbarHidden, toolbarOverlaps);
         QCOMPARE(capturedRegion_, owner_->scrollRun_.nativeRegion);
         QVERIFY(!pending_.isEmpty());
@@ -448,6 +494,9 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(progress->isVisible());
         QVERIFY(preview->isVisible());
         QVERIFY(cropMenu->isVisible());
+        QVERIFY(liveRegion->isVisible());
+        QVERIFY(shade->isVisible());
+        QVERIFY(liveRegion->moveHandle()->isVisible());
         QVERIFY(!owner_->scrollRun_.paused);
         QCOMPARE(owner_->scroller_->picture(), first.convertToFormat(QImage::Format_ARGB32));
         QCOMPARE(owner_->history_.count(), 0);
@@ -459,6 +508,50 @@ class ScrollControllerTests final : public QObject {
             capturedRegion_ = captured;
             pending_.append(std::move(callback));
         };
+    }
+    void fallbackSamplingPauseAndDirectionChangeRestoreLiveSelection() {
+        if (QGuiApplication::platformName() != "offscreen")
+            QSKIP("Use offscreen windows to exercise the platform-exclusion fallback.");
+        auto *source = overlay();
+        const QImage whole = document();
+        const QImage first = whole.copy(0, 0, 240, 180);
+        begin(source);
+        QVERIFY(reply(first));
+        QVERIFY(reply(first));
+        QVERIFY(reply(whole.copy(0, 60, 240, 180)));
+        QVERIFY(reply(whole.copy(0, 60, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        auto *region = owner_->scrollRegion_.data();
+        auto *shade = owner_->scrollShade_.data();
+        QVERIFY(region && shade);
+        QTRY_VERIFY(!pending_.isEmpty());
+        QVERIFY(!region->isVisible());
+        QVERIFY(!shade->isVisible());
+        auto stale = pending_.takeFirst();
+        owner_->pauseScrollCapture(QStringLiteral("采样时暂停"));
+        QVERIFY(owner_->scrollRun_.paused);
+        QVERIFY(region->isVisible());
+        QVERIFY(shade->isVisible());
+        QVERIFY(region->moveHandle()->isVisible());
+        stale(first, {});
+        QVERIFY(region->isVisible());
+        QVERIFY(shade->isVisible());
+        owner_->changeScrollDirection();
+        QCOMPARE(owner_->scrollRun_.axis, Qt::Horizontal);
+        QVERIFY(!owner_->scrollRun_.paused);
+        QTRY_VERIFY(!pending_.isEmpty());
+        QVERIFY(!region->isVisible());
+        QVERIFY(!shade->isVisible());
+        auto current = pending_.takeFirst();
+        current(first, {});
+        QVERIFY(region->isVisible());
+        QVERIFY(shade->isVisible());
+        QVERIFY(region->moveHandle()->isVisible());
+        owner_->stopScrollCapture();
+        QVERIFY(owner_->scrollRun_.paused);
+        QVERIFY(region->isVisible());
+        QVERIFY(shade->isVisible());
+        QVERIFY(region->moveHandle()->isVisible());
     }
     void stopThenStartKeepsRegionAndRejectsPreviousSamplingCallback() {
         auto *source = overlay();
@@ -522,6 +615,301 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(!owner_->editor_.hasDocument());
         QCOMPARE(owner_->history_.count(), 0);
     }
+    void directionChangedDuringPreparationKeepsThePendingSession() {
+        auto *source = overlay();
+        QTest::keyClick(source, Qt::Key_L);
+        QVERIFY(ready_);
+        QVERIFY(pending_.isEmpty());
+        QVERIFY(button("scrollDirection")->isEnabled());
+        owner_->scrollProgress_->findChild<QAction *>("scrollHorizontalAction")->trigger();
+        QCOMPARE(owner_->scrollRun_.axis, Qt::Horizontal);
+        QCOMPARE(owner_->scrollSource_.data(), source);
+        QVERIFY(owner_->scrollProgress_ && owner_->scrollProgress_->isVisible());
+        QCOMPARE(targetQueries_, 0);
+        QVERIFY(pending_.isEmpty());
+        auto ready = std::move(ready_);
+        ready();
+        const QImage whole = document(480, 180);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(offset, 0, 240, 180)));
+        QCOMPARE(owner_->scroller_->axis(), Qt::Horizontal);
+        QCOMPARE(owner_->scroller_->size(), QSize(300, 180));
+        QCOMPARE(owner_->scrollSource_.data(), source);
+        QCOMPARE(sessionEnds_, 0);
+        QCOMPARE(wheelSteps_, 0);
+    }
+    void cancelledScreenPreparationCannotStartTheNextCapturesRead() {
+        owner_->capturing_ = false;
+        QList<std::function<void()>> preparations;
+        int reads = 0;
+        owner_->captureIo_.prepare = [&](QObject *, std::function<void()> ready, bool) {
+            preparations.append(std::move(ready));
+        };
+        owner_->captureIo_.grab = [&](CaptureCallback) { ++reads; };
+        owner_->capture();
+        QCOMPARE(preparations.size(), 1);
+        owner_->cancelCapture();
+        owner_->capture();
+        QCOMPARE(preparations.size(), 2);
+        preparations.takeFirst()();
+        QCOMPARE(reads, 0);
+        QVERIFY(owner_->capturing_);
+        preparations.takeFirst()();
+        QCOMPARE(reads, 1);
+    }
+    void cancelledScreenReadCannotPopulateTheNextCapturesOverlays() {
+        owner_->capturing_ = false;
+        QList<CaptureCallback> captures;
+        owner_->captureIo_.prepare = [](QObject *, std::function<void()> ready, bool) { ready(); };
+        owner_->captureIo_.grab = [&](CaptureCallback callback) { captures.append(std::move(callback)); };
+        owner_->capture();
+        QCOMPARE(captures.size(), 1);
+        owner_->cancelCapture();
+        owner_->capture();
+        QCOMPARE(captures.size(), 2);
+        ScreenFrame oldFrame;
+        oldFrame.name = QStringLiteral("cancelled-screen");
+        oldFrame.image = document(640, 480);
+        oldFrame.logicalGeometry = oldFrame.nativeGeometry = {0, 0, 640, 480};
+        oldFrame.nativePixels = true;
+        captures.takeFirst()({oldFrame}, {});
+        QVERIFY(owner_->overlays_.isEmpty());
+        QVERIFY(owner_->capturing_);
+        auto currentFrame = oldFrame;
+        currentFrame.name = QStringLiteral("current-screen");
+        captures.takeFirst()({currentFrame}, {});
+        QCOMPARE(owner_->overlays_.size(), 1);
+        QCOMPARE(owner_->overlays_.first()->frame().name, currentFrame.name);
+        QVERIFY(owner_->capturing_);
+    }
+    void pinnedAnnotationHonorsCancelAndDiscardOfUnsavedChanges() {
+        owner_->capturing_ = false;
+        const QImage existing = document(240, 180);
+        auto original = fromImage(existing, "existing", QStringLiteral("unsaved annotation"));
+        original.dirty = true;
+        owner_->editor_.setDocument(original);
+        const QImage replacement = document(280, 160);
+        auto *pin = owner_->pinImage(replacement);
+        QVERIFY(pin);
+        bool asked = false;
+        QTimer::singleShot(0, owner_.get(), [&] {
+            auto *question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            asked = question != nullptr;
+            if (question) question->button(QMessageBox::Cancel)->click();
+        });
+        pin->annotateRequested(replacement);
+        QVERIFY(asked);
+        QCOMPARE(owner_->editor_.document().image, original.image);
+        QCOMPARE(owner_->editor_.document().id, original.id);
+        QVERIFY(owner_->editor_.document().dirty);
+        QVERIFY(pin->isVisible());
+        asked = false;
+        QTimer::singleShot(0, owner_.get(), [&] {
+            auto *question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            asked = question != nullptr;
+            if (question) question->button(QMessageBox::Discard)->click();
+        });
+        pin->annotateRequested(replacement);
+        QVERIFY(asked);
+        QCOMPARE(owner_->editor_.document().image, replacement.convertToFormat(original.image.format()));
+        QVERIFY(owner_->editor_.document().id != original.id);
+        QVERIFY(pin->isVisible());
+    }
+    void pinnedAnnotationCannotReplaceAnActiveAgentDocument() {
+        owner_->capturing_ = false;
+        const QImage existing = document(240, 180);
+        auto original = fromImage(existing, "existing", QStringLiteral("agent annotation"));
+        owner_->editor_.setDocument(original);
+        owner_->editor_.setAgentSession(true);
+        const QImage replacement = document(280, 160);
+        auto *pin = owner_->pinImage(replacement);
+        QVERIFY(pin);
+        pin->annotateRequested(replacement);
+        QCOMPARE(owner_->editor_.document().image, original.image);
+        QCOMPARE(owner_->editor_.document().id, original.id);
+        owner_->editor_.setAgentSession(false);
+    }
+    void pinnedAnnotationCannotReplaceDuringCaptureOrAnotherDialog() {
+        const QImage existing = document(240, 180);
+        auto original = fromImage(existing, "existing", QStringLiteral("current document"));
+        owner_->editor_.setDocument(original);
+        const QImage replacement = document(280, 160);
+        auto *pin = owner_->pinImage(replacement);
+        QVERIFY(pin);
+        QVERIFY(owner_->capturing_);
+        pin->annotateRequested(replacement);
+        QCOMPARE(owner_->editor_.document().id, original.id);
+        owner_->capturing_ = false;
+        QDialog modal;
+        modal.setWindowModality(Qt::ApplicationModal);
+        modal.show();
+        QVERIFY(QApplication::activeModalWidget());
+        pin->annotateRequested(replacement);
+        QCOMPARE(owner_->editor_.document().id, original.id);
+        modal.hide();
+        pin->annotateRequested(replacement);
+        QCOMPARE(owner_->editor_.document().image, replacement.convertToFormat(original.image.format()));
+    }
+    void platformSessionReceivesSelectedFrameBeforeResolvingTargetAndEndsOnCancel() {
+        ScreenFrame frame;
+        frame.name = QStringLiteral("retina-display-2");
+        frame.logicalGeometry = {-1280, -160, 640, 480};
+        frame.nativeGeometry = {-1280, -160, 1280, 960};
+        frame.image = QImage(frame.nativeGeometry.size(), QImage::Format_RGB32);
+        frame.image.fill(Qt::white);
+        frame.nativePixels = true;
+        frame.elementGeometry = frame.logicalGeometry;
+        const QRect selection(120, 180, 360, 270);
+        auto *source = overlay(selection, frame);
+        begin(source);
+        QTRY_VERIFY(!pending_.isEmpty());
+        QCOMPARE(sessionBegins_, 1);
+        QVERIFY(sessionActive_);
+        QCOMPARE(begunFrame_.name, frame.name);
+        QCOMPARE(begunFrame_.logicalGeometry, frame.logicalGeometry);
+        QCOMPARE(begunFrame_.nativeGeometry, frame.nativeGeometry);
+        QCOMPARE(begunFrame_.elementGeometry, frame.logicalGeometry);
+        QCOMPARE(begunFrame_.image, frame.image);
+        QCOMPARE(begunRegion_, selection.translated(frame.nativeGeometry.topLeft()));
+        QCOMPARE(capturedRegion_, begunRegion_);
+        QVERIFY(targetQueries_ >= 1);
+        auto stale = pending_.takeFirst();
+        QTest::keyClick(owner_->scrollProgress_, Qt::Key_Escape);
+        QVERIFY(!sessionActive_);
+        QCOMPARE(sessionEnds_, 1);
+        QVERIFY(retainedScreenSession_);
+        QVERIFY(source->isVisible());
+        QVERIFY(!owner_->scrollSource_);
+        stale(frame.image.copy(selection), {});
+        QVERIFY(!sessionActive_);
+        QVERIFY(!owner_->editor_.hasDocument());
+    }
+    void returningToSelectionCanReusePortalStreamAndWholeCancellationReleasesIt() {
+        auto *source = overlay();
+        owner_->scrollIo_.targetAt = [](QPoint) { return ScrollCaptureTarget{0, 0, 19}; };
+        begin(source);
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        QTest::keyClick(owner_->scrollProgress_, Qt::Key_Escape);
+        QVERIFY(source->isVisible());
+        QVERIFY(retainedScreenSession_);
+        QCOMPARE(sessionEnds_, 1);
+        stale(document().copy(0, 0, 240, 180), {});
+        begin(source);
+        QTRY_VERIFY(!pending_.isEmpty());
+        QCOMPARE(sessionBegins_, 2);
+        QCOMPARE(owner_->scrollRun_.target.captureSession, quint64(19));
+        owner_->cancelCapture();
+        QVERIFY(!retainedScreenSession_);
+        QCOMPARE(sessionEnds_, 2);
+        QVERIFY(!owner_->capturing_);
+        QVERIFY(!owner_->scrollSource_);
+        QVERIFY(owner_->overlays_.isEmpty());
+    }
+    void failedPlatformSessionLeavesCaptureOverlayAndDoesNotResolveOrRead() {
+        auto *source = overlay();
+        const QRect selected = source->selection();
+        const QString failure = QStringLiteral("授权的屏幕流已结束，请重新选择屏幕。");
+        owner_->scrollIo_.begin = [this, failure](const ScreenFrame &, const QRect &, QString *error) {
+            ++sessionBegins_;
+            if (error) *error = failure;
+            return false;
+        };
+        begin(source);
+        QCOMPARE(sessionBegins_, 1);
+        QVERIFY(!sessionActive_);
+        QCOMPARE(sessionEnds_, 0);
+        QCOMPARE(targetQueries_, 0);
+        QVERIFY(pending_.isEmpty());
+        QVERIFY(!ready_);
+        QVERIFY(source->isVisible());
+        QCOMPARE(source->selection(), selected);
+        QVERIFY(!owner_->scrollSource_);
+        QVERIFY(!owner_->scrollProgress_);
+        QCOMPARE(source->findChild<QLabel *>("captureStatus")->text(), failure);
+        QVERIFY(!owner_->editor_.hasDocument());
+    }
+    void portalSessionOnlyTargetCanStopResumeAndRejectsAChangedStream() {
+        auto *source = overlay();
+        const QImage whole = document();
+        quint64 activeStream = 17;
+        owner_->scrollIo_.targetAt = [this, &activeStream](QPoint at) {
+            ++targetQueries_;
+            targetPoint_ = at;
+            return ScrollCaptureTarget{0, 0, activeStream};
+        };
+        owner_->scrollIo_.automaticSupported = [](QString *reason) {
+            if (reason) *reason = QStringLiteral("屏幕流只允许手动滚动。");
+            return false;
+        };
+        begin(source);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(focusRestores_, 0);
+        QCOMPARE(wheelSteps_, 0);
+        QVERIFY(sessionActive_);
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        const auto region = owner_->scrollRegion_;
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scrollRun_.target.captureSession, quint64(17));
+        QVERIFY(owner_->scrollSource_);
+        QVERIFY(region && region->isVisible());
+        QVERIFY(owner_->scrollShade_ && owner_->scrollShade_->isVisible());
+        QVERIFY(sessionActive_);
+        QCOMPARE(sessionEnds_, 0);
+        QTest::mouseClick(button("scrollStop"), Qt::LeftButton);
+        QVERIFY(!owner_->scrollRun_.paused);
+        stale(whole.copy(0, 180, 240, 180), {});
+        QCOMPARE(owner_->scroller_->frames(), 0);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        activeStream = 18;
+        QTRY_VERIFY(owner_->scrollRun_.paused);
+        QVERIFY(pending_.isEmpty());
+        QVERIFY(region->isVisible());
+        QVERIFY(owner_->scrollShade_->isVisible());
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QCOMPARE(owner_->editor_.document().image,
+                 whole.copy(0, 0, 240, 240).convertToFormat(QImage::Format_ARGB32));
+        QVERIFY(!sessionActive_);
+        QCOMPARE(sessionEnds_, 1);
+        QCOMPARE(wheelSteps_, 0);
+        // The sampling lambda cannot retain a reference to this test's stream.
+        owner_->scrollIo_.targetAt = [](QPoint) { return ScrollCaptureTarget{42, 7}; };
+    }
+    void deniedAutomaticInputStillAllowsCompleteManualCapture() {
+        const QString reason = QStringLiteral("自动滚动需要辅助功能权限；可继续手动滚动。");
+        owner_->scrollIo_.automaticSupported = [reason](QString *problem) {
+            if (problem) *problem = reason;
+            return false;
+        };
+        auto *source = overlay();
+        const QImage whole = document();
+        begin(source);
+        auto *automatic = owner_->scrollProgress_->findChild<QCheckBox *>("scrollAutomatic");
+        auto *automaticButton = button("scrollAutomaticButton");
+        QVERIFY(automatic && automaticButton);
+        QVERIFY(!automatic->isEnabled());
+        QVERIFY(!automaticButton->isEnabled());
+        QCOMPARE(automaticButton->toolTip(), reason);
+        QCOMPARE(automatic->toolTip(), reason);
+        owner_->setAutoScrollCapture(true);
+        QVERIFY(!owner_->scrollRun_.automatic);
+        for (int offset : {0, 0, 60, 60})
+            QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        QCOMPARE(wheelSteps_, 0);
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QVERIFY(owner_->editor_.hasDocument());
+        QCOMPARE(owner_->editor_.document().image,
+                 whole.copy(0, 0, 240, 240).convertToFormat(QImage::Format_ARGB32));
+        QVERIFY(!sessionActive_);
+        QCOMPARE(sessionEnds_, 1);
+    }
     void resizingPausedRegionRestartsCaptureWithNativePixelMapping() {
         ScreenFrame frame;
         frame.image = QImage(960, 720, QImage::Format_RGB32);
@@ -558,6 +946,290 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(owner_->scroller_->size(), QSize(390, 360));
         QCOMPARE(owner_->scroller_->frames(), 1);
         QVERIFY(!owner_->scrollRun_.initial);
+        QVERIFY(!owner_->scrollRun_.paused);
+    }
+    void movingRunningHandleKeepsTheWholeCaptureAndAppendsAfterRelease_data() {
+        QTest::addColumn<bool>("horizontal");
+        QTest::addColumn<bool>("highDpi");
+        QTest::addColumn<bool>("reverse");
+        QTest::newRow("vertical") << false << false << false;
+        QTest::newRow("horizontal") << true << false << false;
+        QTest::newRow("vertical-150-percent-odd-native-pixels") << false << true << false;
+        QTest::newRow("horizontal-150-percent-odd-native-pixels") << true << true << false;
+        QTest::newRow("vertical-prepend") << false << false << true;
+        QTest::newRow("horizontal-prepend") << true << false << true;
+        QTest::newRow("vertical-prepend-150-percent-odd-native-pixels") << false << true << true;
+        QTest::newRow("horizontal-prepend-150-percent-odd-native-pixels") << true << true << true;
+    }
+    void movingRunningHandleKeepsTheWholeCaptureAndAppendsAfterRelease() {
+        QFETCH(bool, horizontal);
+        QFETCH(bool, highDpi);
+        QFETCH(bool, reverse);
+        const Qt::Orientation axis = horizontal ? Qt::Horizontal : Qt::Vertical;
+        owner_->settings_.scrollAxis = axis;
+        const QSize viewport = highDpi ? QSize(241, 181) : QSize(240, 180);
+        ScreenFrame frame;
+        frame.name = QStringLiteral("move-handle-display");
+        frame.image = QImage(highDpi ? QSize(960, 720) : QSize(640, 480), QImage::Format_RGB32);
+        frame.image.fill(Qt::white);
+        frame.logicalGeometry = QRect(0, 0, 640, 480);
+        frame.nativeGeometry = QRect(QPoint(), frame.image.size());
+        frame.nativePixels = true;
+        const QRect selected(highDpi ? QPoint(60, 90) : QPoint(40, 60), viewport);
+        auto *source = overlay(selected, frame);
+        const QImage whole = horizontal ? document(viewport.width() + 360, viewport.height())
+                                        : document(viewport.width(), viewport.height() + 360);
+        const auto view = [&](int offset) {
+            return whole.copy(QRect(horizontal ? QPoint(offset, 0) : QPoint(0, offset), viewport));
+        };
+        begin(source);
+        const int firstOffset = reverse ? 120 : 0;
+        for (int offset : {firstOffset, firstOffset, firstOffset + 60, firstOffset + 60})
+            QVERIFY(reply(view(offset)));
+        auto *capture = owner_->scroller_;
+        const QImage kept = capture->picture();
+        const QSize keptSize = capture->size();
+        QCOMPARE(capture->frames(), 1);
+        QCOMPARE(keptSize, horizontal ? QSize(viewport.width() + 60, viewport.height())
+                                    : QSize(viewport.width(), viewport.height() + 60));
+        auto *preview = owner_->scrollProgress_->findChild<ScrollCapturePreview *>("scrollPreview");
+        auto *sizeLabel = owner_->scrollProgress_->findChild<QLabel *>("scrollSize");
+        QVERIFY(preview && sizeLabel);
+        QCOMPARE(preview->croppedRect().size(), keptSize);
+        const QString keptSizeText = sizeLabel->text();
+        const QRect logicalBefore = owner_->scrollRun_.logicalRegion;
+        if (highDpi) QCOMPARE(logicalBefore.size(), QSize(161, 121));
+
+        // A native read can already be in flight when the handle press is
+        // delivered. Its later result must not append to the moved selection.
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        auto *region = owner_->scrollRegion_.data();
+        QVERIFY(region);
+        owner_->scrollProgress_->show();
+        region->show();
+        region->moveHandle()->show();
+        auto *handle = region->moveHandle();
+        QSignalSpy started(region, &ScrollCaptureRegion::dragStarted);
+        QSignalSpy finished(region, &ScrollCaptureRegion::dragFinished);
+        const QPoint press = handle->rect().center();
+        const QPoint globalStart = handle->mapToGlobal(press);
+        const quint64 generationBefore = owner_->scrollGeneration_;
+        QTest::mousePress(handle, Qt::LeftButton, Qt::NoModifier, press);
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(owner_->scrollGeneration_ > generationBefore);
+        QVERIFY(!owner_->scrollRun_.paused);
+        stale(view(180), {});
+        QCOMPARE(capture->picture(), kept);
+        QCOMPARE(capture->frames(), 1);
+        const QPoint movement = (horizontal ? QPoint(20, 35) : QPoint(35, 20)) * (reverse ? -1 : 1);
+        const QPoint halfway = globalStart + movement / 2;
+        QMouseEvent firstMove(QEvent::MouseMove, handle->mapFromGlobal(halfway), halfway,
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &firstMove);
+        const QPoint globalEnd = globalStart + movement;
+        QMouseEvent secondMove(QEvent::MouseMove, handle->mapFromGlobal(globalEnd), globalEnd,
+                              Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &secondMove);
+        const QPoint permittedMove = (horizontal ? QPoint(20, 0) : QPoint(0, 20)) * (reverse ? -1 : 1);
+        QCOMPARE(owner_->scrollRun_.logicalRegion, logicalBefore.translated(permittedMove));
+        QCOMPARE(owner_->scrollRun_.nativeRegion.size(), viewport);
+        QCOMPARE(owner_->scrollRun_.nativeRegion.topLeft(), selected.topLeft() +
+                 (highDpi ? permittedMove * 3 / 2 : permittedMove));
+        QCOMPARE(owner_->scroller_, capture);
+        QCOMPARE(capture->picture(), kept);
+        QCOMPARE(capture->frames(), 1);
+        QCOMPARE(preview->croppedRect().size(), keptSize);
+        QCOMPARE(sizeLabel->text(), keptSizeText);
+        QVERIFY(button("scrollFinish")->isEnabled());
+        QVERIFY(button("scrollCopy")->isEnabled());
+        QTest::qWait(180); // Outlast queued sample timers while still holding.
+        QVERIFY(pending_.isEmpty());
+        QCOMPARE(wheelSteps_, 0);
+        QCOMPARE(finished.count(), 0);
+        QMouseEvent release(QEvent::MouseButtonRelease, handle->mapFromGlobal(globalEnd), globalEnd,
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &release);
+        QCOMPARE(finished.count(), 1);
+        QVERIFY(!owner_->scrollRun_.paused);
+        QVERIFY(!owner_->scrollRun_.initial);
+        QCOMPARE(capture->picture(), kept);
+        const int nextOffset = reverse ? 60 : 120;
+        for (int offset : {nextOffset, nextOffset}) QVERIFY(reply(view(offset)));
+        QCOMPARE(capturedRegion_, owner_->scrollRun_.nativeRegion);
+        QCOMPARE(capture->frames(), 2);
+        const QSize finalSize = horizontal ? QSize(viewport.width() + 120, viewport.height())
+                                           : QSize(viewport.width(), viewport.height() + 120);
+        const QPoint finalOrigin = reverse ? (horizontal ? QPoint(60, 0) : QPoint(0, 60)) : QPoint();
+        const QImage expected = whole.copy(QRect(finalOrigin, finalSize)).convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(capture->size(), finalSize);
+        QCOMPARE(capture->picture(), expected);
+        QCOMPARE(preview->croppedRect().size(), finalSize);
+        QCOMPARE(sessionBegins_, 1);
+        QCOMPARE(sessionEnds_, 0);
+        QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
+        QCOMPARE(owner_->editor_.document().image, expected);
+    }
+    void nativeHandleMouseGrabKeepsCaptureAndReleasesAfterMoving_data() {
+        QTest::addColumn<bool>("horizontal");
+        QTest::newRow("vertical") << false;
+        QTest::newRow("horizontal") << true;
+    }
+    void nativeHandleMouseGrabKeepsCaptureAndReleasesAfterMoving() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != QStringLiteral("windows"))
+            QSKIP("Native mouse-grab validation requires the Windows desktop platform.");
+        if ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON) |
+             GetAsyncKeyState(VK_MBUTTON)) & 0x8000)
+            QSKIP("A physical mouse button is held; do not interfere with the user's input.");
+        QFETCH(bool, horizontal);
+        QScreen *screen = QGuiApplication::primaryScreen();
+        QVERIFY(screen);
+        const double scale = screen->devicePixelRatio();
+        ScreenFrame frame;
+        frame.name = screen->name();
+        frame.logicalGeometry = screen->geometry();
+        frame.image = QImage(QSize(qRound(frame.logicalGeometry.width() * scale),
+                                   qRound(frame.logicalGeometry.height() * scale)), QImage::Format_RGB32);
+        frame.image.fill(Qt::white);
+        frame.nativeGeometry = QRect(frame.logicalGeometry.topLeft(), frame.image.size());
+        frame.nativePixels = true;
+        const QSize viewport(240, 180);
+        owner_->settings_.scrollAxis = horizontal ? Qt::Horizontal : Qt::Vertical;
+        auto *source = overlay(QRect(QPoint(qRound(96 * scale), qRound(96 * scale)), viewport), frame);
+        const QImage whole = horizontal ? document(480, 180) : document(240, 420);
+        const auto view = [&](int offset) {
+            return whole.copy(QRect(horizontal ? QPoint(offset, 0) : QPoint(0, offset), viewport));
+        };
+        begin(source);
+        for (int offset : {0, 0, 60, 60}) QVERIFY(reply(view(offset)));
+        const QImage kept = owner_->scroller_->picture();
+        const QRect logicalBefore = owner_->scrollRun_.logicalRegion;
+        QTRY_VERIFY(!pending_.isEmpty());
+        auto stale = pending_.takeFirst();
+        auto *region = owner_->scrollRegion_.data();
+        QVERIFY(region);
+        auto *handle = region->moveHandle();
+        owner_->scrollProgress_->show();
+        region->show();
+        handle->show();
+        handle->raise();
+        QTRY_VERIFY(handle->isVisible() && handle->isEnabled());
+        const HWND handleWindow = reinterpret_cast<HWND>(handle->winId());
+        DWORD process = 0;
+        QVERIFY(GetWindowThreadProcessId(handleWindow, &process));
+        QCOMPARE(process, GetCurrentProcessId());
+        RECT client;
+        QVERIFY(GetClientRect(handleWindow, &client));
+        POINT pressPoint{(client.left + client.right) / 2, (client.top + client.bottom) / 2};
+        QVERIFY(ClientToScreen(handleWindow, &pressPoint));
+        // Refuse to send a button press unless Windows itself identifies this
+        // test's exact handle window underneath the physical cursor position.
+        QCOMPARE(WindowFromPoint(pressPoint), handleWindow);
+        struct NativeMouseRestore {
+            POINT saved{};
+            bool savedPosition = false;
+            bool buttonDown = false;
+            ~NativeMouseRestore() {
+                if (buttonDown) {
+                    INPUT release{};
+                    release.type = INPUT_MOUSE;
+                    release.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                    SendInput(1, &release, sizeof(INPUT));
+                }
+                if (savedPosition) SetCursorPos(saved.x, saved.y);
+            }
+        } restore;
+        QVERIFY(GetCursorPos(&restore.saved));
+        restore.savedPosition = true;
+        QVERIFY(SetCursorPos(pressPoint.x, pressPoint.y));
+        QCOMPARE(WindowFromPoint(pressPoint), handleWindow);
+        QSignalSpy started(region, &ScrollCaptureRegion::dragStarted);
+        QSignalSpy finished(region, &ScrollCaptureRegion::dragFinished);
+        INPUT press{};
+        press.type = INPUT_MOUSE;
+        press.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+        restore.buttonDown = true;
+        QCOMPARE(SendInput(1, &press, sizeof(INPUT)), UINT(1));
+        QTRY_COMPARE(started.count(), 1);
+        QCOMPARE(QWidget::mouseGrabber(), handle);
+        QCOMPARE(GetCapture(), handleWindow);
+        stale(view(180), {});
+        QCOMPARE(owner_->scroller_->picture(), kept);
+        const QPoint permittedMove = horizontal ? QPoint(20, 0) : QPoint(0, 20);
+        POINT endPoint{pressPoint.x + qRound(permittedMove.x() * scale),
+                       pressPoint.y + qRound(permittedMove.y() * scale)};
+        const int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        const int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        QVERIFY(virtualWidth > 0 && virtualHeight > 0);
+        INPUT move{};
+        move.type = INPUT_MOUSE;
+        move.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+        // Use the middle of each physical pixel's normalized interval.
+        move.mi.dx = LONG((qint64(endPoint.x - virtualLeft) * 2 + 1) * 65536 / (2 * virtualWidth));
+        move.mi.dy = LONG((qint64(endPoint.y - virtualTop) * 2 + 1) * 65536 / (2 * virtualHeight));
+        QCOMPARE(SendInput(1, &move, sizeof(INPUT)), UINT(1));
+        QTRY_COMPARE(owner_->scrollRun_.logicalRegion, logicalBefore.translated(permittedMove));
+        QCOMPARE(QWidget::mouseGrabber(), handle);
+        QCOMPARE(GetCapture(), handleWindow);
+        QCOMPARE(finished.count(), 0);
+        QTest::qWait(180);
+        QVERIFY(pending_.isEmpty());
+        QCOMPARE(owner_->scroller_->picture(), kept);
+        QCOMPARE(owner_->scroller_->frames(), 1);
+        INPUT release{};
+        release.type = INPUT_MOUSE;
+        release.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+        QCOMPARE(SendInput(1, &release, sizeof(INPUT)), UINT(1));
+        restore.buttonDown = false;
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(QWidget::mouseGrabber() != handle);
+        QVERIFY(!owner_->scrollRun_.dragging);
+        QCOMPARE(owner_->scroller_->picture(), kept);
+        for (int offset : {120, 120}) QVERIFY(reply(view(offset)));
+        QCOMPARE(owner_->scroller_->frames(), 2);
+        const QSize finalSize = horizontal ? QSize(360, 180) : QSize(240, 300);
+        QCOMPARE(owner_->scroller_->size(), finalSize);
+        QCOMPARE(owner_->scroller_->picture(), whole.copy(QRect(QPoint(), finalSize)).convertToFormat(QImage::Format_ARGB32));
+#else
+        QSKIP("Native mouse-grab validation requires Windows; shared drag tests cover other platforms.");
+#endif
+    }
+    void movingHandleSuspendsAutomaticInputUntilRelease() {
+        auto *source = overlay();
+        const QImage whole = document(240, 420);
+        begin(source);
+        for (int offset : {0, 0, 60, 60}) QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        const QImage kept = owner_->scroller_->picture();
+        owner_->setAutoScrollCapture(true);
+        QTRY_COMPARE(wheelSteps_, 1);
+        auto *region = owner_->scrollRegion_.data();
+        QVERIFY(region);
+        owner_->scrollProgress_->show(); region->show(); region->moveHandle()->show();
+        auto *handle = region->moveHandle();
+        const QPoint press = handle->rect().center();
+        const QPoint globalStart = handle->mapToGlobal(press);
+        QTest::mousePress(handle, Qt::LeftButton, Qt::NoModifier, press);
+        const QPoint globalEnd = globalStart + QPoint(0, 30);
+        QMouseEvent move(QEvent::MouseMove, handle->mapFromGlobal(globalEnd), globalEnd,
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &move);
+        QTest::qWait(250); // The previous wheel's delayed read would fire here.
+        QCOMPARE(wheelSteps_, 1);
+        QVERIFY(pending_.isEmpty());
+        QVERIFY(owner_->scrollRun_.automatic);
+        QVERIFY(!owner_->scrollRun_.paused);
+        QCOMPARE(owner_->scroller_->picture(), kept);
+        QMouseEvent release(QEvent::MouseButtonRelease, handle->mapFromGlobal(globalEnd), globalEnd,
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &release);
+        for (int offset : {120, 120}) QVERIFY(reply(whole.copy(0, offset, 240, 180)));
+        QTRY_COMPARE(wheelSteps_, 2);
+        QCOMPARE(owner_->scroller_->frames(), 2);
+        QCOMPARE(owner_->scroller_->picture(), whole.copy(0, 0, 240, 300).convertToFormat(QImage::Format_ARGB32));
         QVERIFY(!owner_->scrollRun_.paused);
     }
     void cropButtonsTrimCapturedPixelsWhileRunning() {
@@ -971,7 +1643,7 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(QDir().mkpath(artifactDirectory));
         QVERIFY(result.save(QDir(artifactDirectory).filePath("scroll-native-complete.png")));
 #else
-        QSKIP("The native scrolling backend is currently Windows only.");
+        QSKIP("This external window fixture is Windows-specific; Linux uses linux_platform_tests.");
 #endif
     }
     void realBrowserProducesCompleteImage() {
@@ -1105,7 +1777,7 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(QDir().mkpath(artifacts));
         QVERIFY(result.save(QDir(artifacts).filePath("scroll-browser-complete.png")));
 #else
-        QSKIP("The native scrolling backend is currently Windows only.");
+        QSKIP("This browser fixture is Windows-specific; Linux uses linux_platform_tests.");
 #endif
     }
 };

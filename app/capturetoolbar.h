@@ -170,6 +170,8 @@ class ScrollCaptureRegion final : public QWidget {
     void setHandlePosition(QPoint global);
   signals:
     void regionChanged(const QRect &selection);
+    void dragStarted();
+    void dragFinished();
   protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
@@ -252,6 +254,7 @@ class ScrollCaptureProgress final : public QWidget {
     // Device pixels the live preview is drawn at, so callers can scale only once.
     int previewWidth() const;
     void setAutomatic(bool automatic);
+    void setAutomaticSupport(bool available, const QString &reason = {});
     // A recoverable problem: capture continues and the message stays until progress.
     void setNotice(const QString &message);
     void setStopped(const QString &message);
@@ -276,7 +279,6 @@ class ScrollCaptureProgress final : public QWidget {
     void copyRequested();
     void saveRequested();
     void pinRequested();
-    void quickSaveRequested();
     void positionChanged(QPoint handlePosition);
   protected:
     void paintEvent(QPaintEvent *event) override;
@@ -308,6 +310,8 @@ class ScrollCaptureProgress final : public QWidget {
     std::optional<int> previewLastOrigin_;
     Qt::Orientation previewAxis_ = Qt::Vertical;
     bool hasProgress_ = false, stopped_ = false, canEdit_ = true;
+    bool automaticSupported_ = true;
+    QString automaticUnavailableReason_;
 };
 
 // The column of style tools that stands beside a selection, the way a capture tool

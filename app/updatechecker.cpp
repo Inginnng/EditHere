@@ -1,4 +1,5 @@
 #include "updatechecker.h"
+#include "diagnostics.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -226,6 +227,8 @@ void UpdateChecker::requestPublic() {
 void UpdateChecker::finish(Result result) {
     if (!busy_)
         return;
+    if (result.status == Failed)
+        diagnostics::write(diagnostics::Level::Warning, "updates.check", result.message);
     busy_ = false;
     timeout_.stop();
     cliTimeout_.stop();
@@ -332,6 +335,7 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     });
 }
 void UpdateChecker::failInstall(const QString &message) {
+    diagnostics::write(diagnostics::Level::Error, "updates.install", message);
     for (auto *pointer : {&downloadReply_, &hashReply_}) {
         if (*pointer) {
             auto reply = pointer->data();

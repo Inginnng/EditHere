@@ -429,12 +429,6 @@ QIcon glyph(const QString &name, QColor color) {
         p.drawLine(12, 3, 12, 16);
         p.drawPolyline(QPolygonF{{7, 11}, {12, 16}, {17, 11}});
         p.drawPolyline(QPolygonF{{4, 16}, {4, 21}, {20, 21}, {20, 16}});
-    } else if (name == "scroll-quick-save") {
-        p.drawPolyline(QPolygonF{{8, 3}, {3, 3}, {3, 8}});
-        p.drawPolyline(QPolygonF{{16, 3}, {21, 3}, {21, 8}});
-        p.drawPolyline(QPolygonF{{3, 16}, {3, 21}, {8, 21}});
-        p.drawPolyline(QPolygonF{{21, 16}, {21, 21}, {16, 21}});
-        p.drawPolyline(QPolygonF{{13, 6}, {8, 13}, {13, 13}, {11, 18}, {17, 10}, {12, 10}});
     } else if (name == "scroll-edit") {
         p.drawPolyline(QPolygonF{{11, 4}, {4, 4}, {4, 21}, {21, 21}, {21, 14}});
         p.drawPolygon(QPolygonF{{10, 11}, {18, 3}, {22, 7}, {14, 15}, {9, 16}});

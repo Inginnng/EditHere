@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "diagnostics.h"
 #include "videoplayback.h"
 #include "imagearea.h"
 #include "guide.h"
@@ -349,6 +350,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     });
     connect(videoPlayback_, &VideoPlayback::reviewRequested, this, &Editor::reviewVideoFrame);
     connect(videoPlayback_, &VideoPlayback::failed, this, [this](const QString &error) {
+        diagnostics::write(diagnostics::Level::Error, "video.playback", error);
         videoPlayback_->videoWidget()->hide();
         toast(error); detailsStack_->setEnabled(true); updateControls();
     });
@@ -750,7 +752,14 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
         videoPlayback_->reviewAt(frame.timestampUs);
     }
     const QUrl source(video_->source);
-    const bool local = QFileInfo(video_->source).isAbsolute() || source.scheme().isEmpty() || source.isLocalFile();
+    // A saved project can move from Windows to another OS. QFileInfo there
+    // treats C:/... as relative while QUrl treats C as a protocol; retain it as
+    // a missing local source rather than asking the media backend to open it.
+    const bool windowsPath = video_->source.size() >= 3 && video_->source[0].isLetter() &&
+                             video_->source[1] == ':' &&
+                             (video_->source[2] == '/' || video_->source[2] == '\\');
+    const bool local = windowsPath || QFileInfo(video_->source).isAbsolute() ||
+                       source.scheme().isEmpty() || source.isLocalFile();
     const QString localPath = source.isLocalFile() ? source.toLocalFile() : video_->source;
     if (!local || QFileInfo(localPath).isFile())
         videoPlayback_->open(video_->source, video_->positionMs);
@@ -1755,7 +1764,8 @@ void Editor::copyImage() {
     }
 }
 void Editor::showError(const QString &text) {
-    qWarning() << "EditHere showError:" << text; // 临时诊断：捕获保存失败的真实原因
+    diagnostics::write(diagnostics::Level::Error, "editor.operation", text,
+        {{"media", video_ ? "video" : "image"}, {"width", doc_.image.width()}, {"height", doc_.image.height()}});
     QMessageBox::warning(this, "EditHere", text);
 }
 bool Editor::saveProject() {
@@ -1778,6 +1788,10 @@ bool Editor::saveProject() {
         QString associationError;
         if (!QStandardPaths::isTestModeEnabled())
             registerProjectFileAssociation(&associationError);
+        if (!associationError.isEmpty())
+            diagnostics::write(diagnostics::Level::Warning, "project.file_association", associationError);
+        diagnostics::write(diagnostics::Level::Info, "project.save", "Project saved",
+                           {{"media", video_ ? "video" : "image"}, {"bytes", double(bytes.size())}});
         toast(associationError.isEmpty() ? tr("项目已保存，可双击继续编辑") : tr("项目已保存，可从 EditHere 导入继续编辑"));
         return true;
     } catch (const std::exception &e) {
@@ -2053,6 +2067,7 @@ void Editor::exportJson() {
                                 .arg(QString::fromUtf8(exportBytes).size()));
         } catch (const std::exception &error) {
             exportBytes.clear();
+            diagnostics::write(diagnostics::Level::Error, "editor.feedback_preview", QString::fromUtf8(error.what()));
             json->clear();
             copyText->setEnabled(false);
             copy->setEnabled(false);
@@ -2076,6 +2091,7 @@ void Editor::exportJson() {
             status->setText(embed->isChecked() ? tr("JSON 文件已复制，包含完整原图") : tr("JSON 文件已复制，未包含原图"));
         } catch (const std::exception &error) {
             status->setText(QString::fromUtf8(error.what()));
+            diagnostics::write(diagnostics::Level::Error, "editor.feedback_copy", QString::fromUtf8(error.what()));
         }
     };
     auto copyJsonText = [&] {
@@ -2198,8 +2214,14 @@ void Editor::dropEvent(QDropEvent *e) {
         }
         if (!allowReplace())
             return;
-        setDocument(fromImage(qvariant_cast<QImage>(e->mimeData()->imageData()), "drop",
-                              tr("拖入的图片")));
+        try {
+            setDocument(fromImage(qvariant_cast<QImage>(e->mimeData()->imageData()), "drop",
+                                  tr("拖入的图片")));
+            e->acceptProposedAction();
+        } catch (const std::exception &error) {
+            e->ignore();
+            showError(QString::fromUtf8(error.what()));
+        }
         return;
     }
     const auto urls = e->mimeData()->urls();

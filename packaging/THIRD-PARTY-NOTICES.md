@@ -68,6 +68,14 @@ installed version can be obtained through `apt-get source at-spi2-core` and
 `apt-cache policy libatspi2.0-0`. Libraries are dynamically linked and can be
 replaced in an extracted AppImage. No modified third-party library is distributed.
 
+Builds with Wayland long capture additionally dynamically link PipeWire's client
+library (MIT/Expat), copyright Wim Taymans and contributors. PipeWire source and
+component license details are available at https://gitlab.freedesktop.org/pipewire/pipewire
+and https://github.com/PipeWire/pipewire/blob/master/COPYING. Bundled PipeWire
+libraries and their dependencies retain the distribution's component notices
+under licenses/linux. The desktop Portal and PipeWire server are supplied by the
+operating system; they are not included in EditHere's application code.
+
 Linux OCR invokes the separately installed Tesseract executable (Apache-2.0),
 https://github.com/tesseract-ocr/tesseract ; language data is installed by the
 user's package manager and is not bundled. linuxdeploy and its Qt plugin are

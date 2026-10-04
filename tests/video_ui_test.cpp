@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QImage>
 #include <QLabel>
+#include <QMediaPlayer>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
@@ -28,8 +29,10 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QThreadPool>
 #include <QTranslator>
 #include <QUrl>
+#include <QVideoSink>
 #include <QWindow>
 #include <functional>
 using namespace h2d;
@@ -188,14 +191,57 @@ class VideoUiTests : public QObject {
         QApplication::setApplicationName("EditHereVideoTests");
         applyTheme(ThemeMode::Light);
     }
+    void clearingVideoDoesNotRestoreAnInFlightPreview() {
+        VideoPlayback playback;
+        const auto view = playback.videoWidget();
+        view->setParent(&playback);
+        view->resize(128, 72);
+        playback.show();
+        view->show();
+        const auto sink = playback.findChild<QVideoSink *>();
+        QVERIFY(sink);
+
+        QImage image(128, 72, QImage::Format_RGB32);
+        image.fill(Qt::red);
+        QVideoFrame frame(image);
+        frame.setStartTime(1000000);
+        sink->setVideoFrame(frame);
+        // Do not process UI events until after clearing. Even a worker that
+        // completes immediately still has an undelivered completion callback.
+        playback.clear();
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QCoreApplication::processEvents();
+        QCOMPARE(view->grab().toImage().pixelColor(64, 36), QColor(Qt::black));
+
+        image.fill(Qt::blue);
+        frame = QVideoFrame(image);
+        frame.setStartTime(2000000);
+        sink->setVideoFrame(frame);
+        QTRY_COMPARE(view->grab().toImage().pixelColor(64, 36), QColor(Qt::blue));
+    }
+    void sourceMissingStillRestoresScreenshots_data() {
+        QTest::addColumn<bool>("windowsPath");
+        QTest::newRow("native-missing-file") << false;
+        QTest::newRow("missing-windows-drive") << true;
+    }
     void sourceMissingStillRestoresScreenshots() {
+        QFETCH(bool, windowsPath);
+        QTemporaryDir missingSource;
+        QVERIFY(missingSource.isValid());
         QImage image(320, 180, QImage::Format_RGB32); image.fill(Qt::white);
         auto doc = fromImage(image, "file", "saved frame");
         Note note; note.point = {50, 40}; note.comment = "Keep this label"; doc.notes.append(note);
-        VideoProject project; project.source = "Z:/does-not-exist/video.mp4"; project.durationMs = 20000;
+        VideoProject project;
+        project.source = windowsPath ? QStringLiteral("Z:/does-not-exist/video.mp4")
+                                     : missingSource.filePath(QStringLiteral("missing-video.mp4"));
+        project.durationMs = 20000;
         project.frames.append({12540000, doc});
         Editor editor; editor.setVideoProject(project);
         QVERIFY(editor.hasVideo()); QCOMPARE(editor.document().image, doc.image);
+        // Missing local sources must not start an asynchronous media open that
+        // later replaces the already restored screenshot's review state.
+        QVERIFY(editor.findChild<QMediaPlayer *>());
+        QVERIFY(editor.findChild<QMediaPlayer *>()->source().isEmpty());
         QCOMPARE(editor.totalAnnotationCount(), 1);
         QVERIFY(editor.findChild<QComboBox *>("videoAnnotatedFrames")->count() == 2);
         QTranslator english;

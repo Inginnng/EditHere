@@ -159,14 +159,18 @@ class VideoSurface final : public QWidget {
     explicit VideoSurface(QWidget *parent = nullptr) : QWidget(parent) {
         setAttribute(Qt::WA_OpaquePaintEvent);
         connect(&watcher_, &QFutureWatcher<QImage>::finished, this, [this] {
-            image_ = watcher_.result();
-            update();
+            // clear() can run while the previous source is still converting.
+            // Its completion must not put that old picture back on the surface.
+            if (conversionGeneration_ == generation_) {
+                image_ = watcher_.result();
+                update();
+            }
             if (pending_.isValid()) convert();
         });
     }
     void setFrame(const QVideoFrame &frame) {
         pending_ = frame;
-        if (!frame.isValid()) image_ = {};
+        if (!frame.isValid()) { ++generation_; image_ = {}; }
         if (frame.isValid() && isVisible() && !watcher_.isRunning()) convert();
         else if (!frame.isValid()) update();
     }
@@ -188,6 +192,7 @@ class VideoSurface final : public QWidget {
     void convert() {
         const QVideoFrame frame = pending_;
         pending_ = {};
+        conversionGeneration_ = generation_;
         const QSize target = (QSizeF(size()) * devicePixelRatioF()).toSize();
         watcher_.setFuture(QtConcurrent::run([frame, target] {
             QImage image = frameImage(frame);
@@ -199,6 +204,7 @@ class VideoSurface final : public QWidget {
     QVideoFrame pending_;
     QImage image_;
     QFutureWatcher<QImage> watcher_;
+    quint64 generation_ = 0, conversionGeneration_ = 0;
 };
 VideoPlayback::VideoPlayback(QWidget *parent) : QWidget(parent) {
     setObjectName("videoControls");

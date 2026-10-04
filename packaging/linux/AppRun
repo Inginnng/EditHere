@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 appdir="${APPDIR:-$(cd "$(dirname "$0")" && pwd)}"
-export LD_LIBRARY_PATH="$appdir/usr/lib:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$appdir/usr/lib:$appdir/usr/lib/pipewire-0.3:${LD_LIBRARY_PATH:-}"
 export QT_PLUGIN_PATH="$appdir/usr/plugins"
+if [[ -d "$appdir/usr/lib/pipewire-0.3" ]]; then
+  export PIPEWIRE_MODULE_DIR="$appdir/usr/lib/pipewire-0.3"
+  export SPA_PLUGIN_DIR="$appdir/usr/lib/spa-0.2"
+  export PIPEWIRE_CONFIG_DIR="$appdir/usr/share/pipewire"
+fi
 if [[ "${1:-}" == '--cli' ]]; then
   shift
   exec "$appdir/usr/bin/edithere-cli" "$@"

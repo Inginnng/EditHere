@@ -8,6 +8,7 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPushButton>
 #include <QLibraryInfo>
 #include <QTemporaryDir>
 #include <QTest>
@@ -80,6 +81,7 @@ class I18nTests : public QObject {
         // "h2d::SettingsDialog": long-lived chrome rebuilt on QEvent::LanguageChange.
         SettingsDialog dialog(defaultSettings());
         QCOMPARE(dialog.windowTitle(), QString("EditHere Settings"));
+        QCOMPARE(dialog.findChild<QPushButton *>("exportDiagnostics")->text(), QString("Export diagnostics…"));
 
         // Back to the source language: Simplified Chinese needs no application .qm at all.
         QVERIFY(installLanguage(LanguageMode::SimplifiedChinese));
@@ -91,6 +93,7 @@ class I18nTests : public QObject {
         // the side effect of installing one.
         QTest::qWait(1);
         QCOMPARE(dialog.windowTitle(), QString::fromUtf8("EditHere 设置"));
+        QCOMPARE(dialog.findChild<QPushButton *>("exportDiagnostics")->text(), QString::fromUtf8("导出诊断日志…"));
     }
     void brokenProjectMessagesStayOneString() {
         // Two messages used to be assembled as "prefix" + variable, which read badly in

@@ -1,9 +1,15 @@
 #include "settings.h"
 #include "settingsdialog.h"
+#include "diagnostics.h"
+#include "ui.h"
 #include <QComboBox>
 #include <QCheckBox>
 #include <QTabWidget>
 #include <QFile>
+#include <QDir>
+#include <QFileDialog>
+#include <QFontDatabase>
+#include <QLineEdit>
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -16,6 +22,74 @@ using namespace h2d;
 class SettingsTests : public QObject {
     Q_OBJECT
   private slots:
+    void initTestCase() {
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == "offscreen") {
+            const auto fonts = qEnvironmentVariable("WINDIR") + "/Fonts/";
+            QFontDatabase::addApplicationFont(fonts + "segoeui.ttf");
+            QFontDatabase::addApplicationFont(fonts + "msyh.ttc");
+        }
+#endif
+        applyTheme(ThemeMode::Light);
+    }
+    void diagnosticsAreAccessibleWithoutChangingSettings() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        diagnostics::Options options;
+        options.directory = directory.path();
+        QVERIFY(diagnostics::start(options));
+        struct StopLog { ~StopLog() { diagnostics::stop(); } } stop;
+        diagnostics::write(diagnostics::Level::Error, "test.save", "Synthetic save failure");
+        auto original = defaultSettings();
+        SettingsDialog dialog(original);
+        auto page = dialog.findChild<QWidget *>("settingsDiagnosticsPage");
+        auto tabs = dialog.findChild<QTabWidget *>("settingsTabs");
+        QVERIFY(page && tabs);
+        tabs->setCurrentWidget(page);
+        dialog.show();
+        QTest::qWait(10);
+        auto exportButton = page->findChild<QPushButton *>("exportDiagnostics");
+        auto folderButton = page->findChild<QPushButton *>("openDiagnosticsFolder");
+        QVERIFY(exportButton && exportButton->isEnabled());
+        QVERIFY(folderButton && folderButton->isEnabled());
+        QCOMPARE(page->findChild<QLabel *>("diagnosticsPath")->text(), QDir::toNativeSeparators(directory.path()));
+        QVERIFY(dialog.settings() == original);
+        const auto reportPath = directory.filePath("user-feedback.txt");
+        bool selected = false;
+        QTimer chooser;
+        connect(&chooser, &QTimer::timeout, &dialog, [&] {
+            if (auto fileDialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); fileDialog && !selected) {
+                selected = true;
+                auto filename = fileDialog->findChild<QLineEdit *>("fileNameEdit");
+                QVERIFY(filename);
+                filename->setText(reportPath);
+                QMetaObject::invokeMethod(fileDialog, "accept", Qt::DirectConnection);
+            }
+        });
+        chooser.start(10);
+        exportButton->click();
+        chooser.stop();
+        QVERIFY(selected);
+        QFile report(reportPath);
+        QVERIFY(report.open(QIODevice::ReadOnly));
+        const auto contents = report.readAll();
+        QVERIFY(contents.contains("Synthetic save failure"));
+        QVERIFY(contents.contains("Environment:"));
+        QVERIFY(page->findChild<QLabel *>("diagnosticsStatus")->text().contains("日志已导出"));
+        const auto artifact = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!artifact.isEmpty()) {
+            QDir().mkpath(artifact);
+            for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+                applyTheme(mode);
+                QTest::qWait(10);
+                QVERIFY(dialog.grab().save(QDir(artifact).filePath(mode == ThemeMode::Light ? "diagnostics-light.png" : "diagnostics-dark.png")));
+            }
+            applyTheme(ThemeMode::Light);
+        }
+        dialog.reject();
+        QVERIFY(dialog.settings() == original);
+    }
     void captureStyleColoursSurviveRestart() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -88,7 +162,6 @@ class SettingsTests : public QObject {
         changed.scrollAxis = Qt::Horizontal;
         changed.scrollAutoCrop = true;
         changed.scrollUltraLong = true;
-        changed.quickSaveDir = directory.path();
         QString error = "old error";
         QVERIFY2(saveSettings(changed, &error, path), qPrintable(error));
         QVERIFY(error.isEmpty());
@@ -103,7 +176,6 @@ class SettingsTests : public QObject {
         QCOMPARE(persisted.value("capture/scrollAxis").toString(), QString("horizontal"));
         QVERIFY(persisted.value("capture/scrollAutoCrop").toBool());
         QVERIFY(persisted.value("capture/scrollUltraLong").toBool());
-        QCOMPARE(persisted.value("capture/quickSaveDir").toString(), directory.path());
         QVERIFY(persisted.contains("shortcuts/point"));
         QVERIFY(persisted.value("shortcuts/point").toString().isEmpty());
     }

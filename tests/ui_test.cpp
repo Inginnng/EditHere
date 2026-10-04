@@ -391,6 +391,42 @@ class UiTests : public QObject {
         QVERIFY2(editor.hasDocument(), "a picture dropped on the empty window lands in it");
         editor.hide();
     }
+    void droppingAnInvalidImagePreservesTheExistingDocument_data() {
+        QTest::addColumn<QImage>("image");
+        QTest::newRow("empty") << QImage();
+        QImage wide(32768, 1, QImage::Format_ARGB32);
+        wide.fill(Qt::white);
+        QTest::newRow("dimension-limit") << wide;
+    }
+    void droppingAnInvalidImagePreservesTheExistingDocument() {
+        QFETCH(QImage, image);
+        Editor editor;
+        editor.setPreferences(defaultSettings());
+        editor.setDocument(gridDocument());
+        editor.show();
+        const auto original = editor.document().image;
+        bool reported = false;
+        QTimer dismiss;
+        connect(&dismiss, &QTimer::timeout, &editor, [&] {
+            if (auto box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                reported = true;
+                box->accept();
+            }
+        });
+        dismiss.start(10);
+        QMimeData data;
+        data.setImageData(image);
+        QDragEnterEvent enter(editor.rect().center(), Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&editor, &enter);
+        QDropEvent drop(editor.rect().center(), Qt::CopyAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&editor, &drop);
+        dismiss.stop();
+        QVERIFY(reported);
+        QVERIFY(!drop.isAccepted());
+        QCOMPARE(editor.document().image, original);
+        QVERIFY(!editor.hasUnsavedChanges());
+        editor.hide();
+    }
     // A family asked for by name can be missing on a slimmed-down Windows install,
     // and the digits then fall back into a symbol font (REG-108). Every family the
     // app ends up using has to be one the machine actually has, or none at all.
