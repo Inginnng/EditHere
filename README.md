@@ -2,31 +2,139 @@
   <img src="assets/icons/edithere-256.png" width="104" alt="EditHere 图标">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
-<p align="center">改这里</p>
-<p align="center"><strong>让 AI 看懂，你想怎么改。</strong></p>
-<p align="center">截图或暂停视频、写下意见、直接调整布局，把修改意图一次交给 AI。</p>
-<p align="center">Windows · macOS / Linux 预览版   /   本地截图与图像识别</p>
-<p align="center">
-  <a href="#下载与安装">下载</a> ·
-  <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
-  <a href="#功能介绍">功能介绍</a> ·
-  <a href="#演示视频">演示视频</a> ·
-  <a href="docs/AGENT-CLI.md">接入 AI</a> ·
-  <a href="docs/USER-GUIDE.md">使用指南</a> ·
-  <a href="CHANGELOG.md">更新日志</a> ·
-  <a href="#致谢">致谢</a>
-</p>
-<p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
+<p align="center"><b>改这里</b> —— 让 AI 看懂，你想怎么改。</p>
+<p align="center">截图、圈画、拖动组件，或者暂停视频写下意见。<br>EditHere 把「改哪里、怎么改」整理成一份 AI 能直接执行的结构化反馈。</p>
 
 <p align="center">
-  <a href="#演示视频">
-    <img src="assets/readme/overview.jpg" width="960" alt="EditHere 产品演示：截图批注、调整布局，再将反馈交给 AI">
-  </a>
+  <a href="https://github.com/Inginnng/EditHere/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/Inginnng/EditHere?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2f75f0"></a>
+  <a href="https://github.com/Inginnng/EditHere/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/Inginnng/EditHere/total?label=%E4%B8%8B%E8%BD%BD&color=2f75f0"></a>
+  <img alt="平台" src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-2f75f0">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2f75f0"></a>
+  <a href="https://github.com/Inginnng/EditHere/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Inginnng/EditHere?style=social"></a>
 </p>
+
+<p align="center">
+  <a href="#下载与安装"><b>下载</b></a> ·
+  <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
+  <a href="#功能一览">功能一览</a> ·
+  <a href="docs/AGENT-CLI.md">接入 AI</a> ·
+  <a href="docs/USER-GUIDE.md">使用指南</a> ·
+  <a href="CHANGELOG.md">更新日志</a>
+</p>
+<p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
+
+<p align="center">
+  <img src="assets/readme/hero-zh.gif" width="960" alt="EditHere 与 AI 协作：AI 发起标注，你在 EditHere 中圈出位置、写下意见，点击「完成并返回 AI」后 AI 按反馈修改界面">
+</p>
+<p align="center"><sub>↑ AI 发起标注 → 你在 EditHere 里写意见 → 「完成并返回 AI」→ AI 读取反馈并修改</sub></p>
+
+## 为什么需要 EditHere？
+
+「右上角那个按钮再往左一点」「这张卡片大一些」「这里颜色不对」——和 AI 一起改界面时，想法很清楚，却要花大量文字描述**位置和范围**，AI 还常常改错地方。
+
+**EditHere 把意见直接放回画面里。** 你圈出区域、写下意见，或者直接把组件拖到想要的位置；EditHere 把原图、批注坐标和布局变化打包成一份 JSON，交给 Codex、Claude Code、WorkBuddy、Qcode 等任何 AI 工具。
+
+|                    | 只用文字描述                 | 用 EditHere                                         |
+| ------------------ | ---------------------------- | --------------------------------------------------- |
+| **指出位置**       | 「右上角偏下那个按钮」       | 点一下，精确到像素坐标                              |
+| **描述布局调整**   | 「往左挪一点，大概大 20%」   | 直接拖动、缩放，记录前后的真实坐标                  |
+| **多处修改**       | 一长段话，容易遗漏           | 每条意见一个编号，与画面位置一一对应                |
+| **视频 / 动画问题** | 「大概第 3 秒那里」          | 暂停到那一帧批注，自动带时间戳与帧截图              |
+| **交给 AI**        | 复制截图 + 粘贴文字          | AI 调用 CLI 打开画面，等你点「完成」后直接拿到反馈  |
+
+适合网页与应用界面、游戏 HUD、数据图表、设计稿走查等一切需要说清「改哪里、怎么改」的场景。
+
+## 功能一览
+
+### 🖼️ 截图 · 智能选块 · 贴图
+
+全局快捷键冻结屏幕，**悬停即识别界面元素**，滚轮切换更大或更小的范围，也可以手动拖框。选区定下后上方出现工具条：批注、文字识别、长截图、贴图、保存、复制；右侧样式列可调圆角、阴影与边框，所见即所得，支持置顶，可以同时置顶多张。
+
+<p align="center"><img src="assets/readme/capture-zh.gif" width="860" alt="截图：悬停选块、调整圆角、贴图并拖动"></p>
+
+<details>
+<summary>放大镜、取色、截图历史等更多细节</summary>
+
+- 拖动选区时指针旁有**放大镜**，附带像素坐标与 `RGB` / `HEX` / `HSV` / `HSL` 读数；按 `C` 进入取色并复制颜色值。
+- 方向键逐像素移动指针，`Shift` / `Ctrl` + 方向键收缩或扩展选区 1 像素。
+- 固定比例（1:1、4:3、16:9、9:16、自定义）；点击尺寸可键入精确宽高。
+- 最近 20 张截图与 10 个选区跨会话保留，`<` / `>` 翻看历史，`R` 恢复上次选区。
+- 贴图支持缩放、旋转、翻转、透明度、阴影开关，右键第一项「批注」直接送进编辑器。
+
+完整快捷键见 [使用指南 · 截图](docs/USER-GUIDE.md#截图)。
+</details>
+
+### 🔤 文字识别（OCR）
+
+框选区域即可识别文字，结果**逐行**列出，点一行就在原图上高亮对应位置，可复制全部或单行。使用系统自带引擎（Windows OCR / macOS Vision），**不联网、不上传、不新增依赖**。
+
+<p align="center"><img src="assets/readme/ocr-zh.gif" width="860" alt="文字识别：框选区域、逐行列出识别结果并在原图高亮"></p>
+
+### 📜 长截图
+
+框选滚动区域后点击「长截图」，边滚动边拼接，右侧缩略预览随内容延伸，固定的顶栏只保留一次。支持上下双向采集、自动滚动、一键裁剪，完成后直接进入批注。
+
+<p align="center"><img src="assets/readme/scrolling-zh.gif" width="860" alt="长截图：选择区域后滚动页面，预览随内容延伸"></p>
+
+### ✍️ 批注：点、框、全局意见
+
+**智能选块**点中识别出的元素即可写意见；**点批注**精确指向某个像素；**框批注**拖出任意范围；**全局意见**针对整个画面。每条意见带编号，与画面位置一一对应，最后一键导出 JSON。
+
+<p align="center"><img src="assets/readme/annotate-zh.gif" width="860" alt="批注：智能选块、点批注、框批注、全局意见，最后查看 JSON"></p>
+
+### 💥 大爆炸：直接拖出你想要的布局
+
+一键把画面拆成可移动的组件，**拖动、等比缩放、输入精确坐标**。每次移动自动记为一条批注，记录移动前后的真实区域；原位置留空，交给 AI 补上应有的内容。比「往左挪一点」精确一百倍。
+
+<p align="center"><img src="assets/readme/explode-zh.gif" width="860" alt="大爆炸：把画面拆成组件，拖动导出按钮、放大卡片"></p>
+
+### 🎬 视频按时间点批注
+
+打开视频，播放或拖动时间轴，**暂停在需要修改的那一帧**直接批注；继续播放，在另一个时间点再批注。点击时间轴上的标签随时回到已批注画面。导出的 JSON 每条意见都带时间戳与帧截图，适合动画、游戏、交互流程的走查。
+
+<p align="center"><img src="assets/readme/video-zh.gif" width="760" alt="视频标注：在两个时间点暂停批注，通过时间轴标签回看，导出带时间戳的 JSON"></p>
+
+格式说明见 [视频标注说明](docs/VIDEO-ANNOTATION.md)。
+
+### 🤖 一键交给 AI
+
+EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
+
+- **手动**：复制 JSON 内容 / JSON 文件 / 带批注图片，粘贴给任意 AI。
+- **自动**：配合仓库内的 [`edithere` skill](skills/edithere/SKILL.md) 和 `edithere-cli`，AI 执行 `edithere-cli annotate` 打开画面并等待；你点击 **「完成并返回 AI」** 后，AI 立即收到反馈继续修改。取消或超时不会把未提交的编辑当成修改要求。
+
+一份反馈 JSON 同时包含：
+
+```jsonc
+{
+  "image": "data:image/png;base64,…",          // 可选：修改前的原图
+  "annotationSpace": "result",
+  "objects": [
+    { "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},   // 框批注
+      "movements": [], "annotations": ["转化率下降要更醒目，改成红色标签"] },
+    { "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},    // 大爆炸移动
+      "movements": [{"to": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}}],
+      "annotations": ["导出按钮挪到标题旁边"] },
+    { "source": null, "movements": [], "annotations": ["整体留白再大一些"] }  // 全局意见
+  ]
+}
+```
+
+完整字段见 [使用指南 · 反馈 JSON](docs/USER-GUIDE.md#反馈-json)，命令与示例见 [AI 与命令行](docs/AGENT-CLI.md)。
+
+### 还有这些
+
+| | |
+| --- | --- |
+| 💾 **项目保存** | `.edithere` 项目内嵌原图、批注与编辑状态，随时重新打开接着改；视频项目引用源文件并保存已标注帧。 |
+| 📥 **多种输入** | 截图、打开、拖入或粘贴 PNG / JPEG / WebP / BMP，以及 MP4 / MOV / WebM 等视频。 |
+| 🎨 **外观与快捷键** | 浅色 / 深色主题，简体中文 / English 界面，21 项快捷键与底部工具栏均可自定义。 |
+| 🔒 **本地优先** | 截图、元素识别、OCR、编辑全部在本机完成，EditHere 不会上传你的画面。 |
+| 🖥️ **跨平台** | Windows 10 1809+ 正式支持；macOS 14+ 与 Linux（Ubuntu 24.04）为预览版。 |
 
 ## 让 AI 帮你安装
 
-在支持本机终端与文件操作的 AI 工具中（如 Codex、Claude Code），复制下面整段提示词即可开始配置。GitHub 代码块右上角提供复制按钮。
+在能操作本机终端与文件的 AI 工具中（如 Codex、Claude Code），复制下面整段提示词即可完成配置：
 
 ```text
 请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。优先复用已安装或已完整解压的程序；如果没有，再按我的操作系统安装。完成后验证 CLI 可以调用、skill 已放到当前 AI 工具能识别的位置，并告诉我如何发起第一次标注。需要我完成的系统授权请明确提示。
@@ -41,137 +149,104 @@
 
 </details>
 
-这需要 AI 工具拥有本机终端和文件操作权限；仅有网页聊天窗口无法直接安装本机程序。系统权限提示由你确认。源码与发布包已公开，AI 可从官方仓库读取指南并下载。详细步骤见 [AI 安装指南](docs/AI-SETUP.md)。
+配置完成后，在你的项目里说一句：
 
-## 为什么用 EditHere？
+> 用 EditHere 让我标注一下首页，等我完成后按我的意见修改。
 
-“右上角那个按钮再往左一点”“这个卡片大一些”“这里的颜色不对”——和 AI 一起改界面时，想法很清楚，却常常要花很多文字解释位置与范围。
-
-**EditHere 把这些话直接放回画面里。** 你可以圈出区域、写下意见，也可以把图像里的组件拖到想要的位置、调整到合适的大小。最后，把原图、批注以及位置和尺寸变化一起交给 AI，让它结合你的项目继续修改。
-
-它适合网页与应用界面、游戏 HUD、数据图表等需要具体指出“改哪里、怎么改”的场景。
-
-当前源码版本为 **0.10.1**，支持在视频的多个时间点批注并导出带时间戳和帧截图的 JSON，长截图提供选区遮罩、缩略预览与双向采集。操作与格式见 [视频标注说明](docs/VIDEO-ANNOTATION.md)，本版变更见 [0.10.1 更新说明](docs/releases/0.10.1.md)。
-
-## 功能介绍
-
-| 功能                   | 你可以怎么用                                                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------- |
-| **截图工具条**         | 全局快捷键呼出截图；悬停选块、滚轮切换范围，也可手动画框。松开鼠标后选区定下来，上方出现工具条、右侧出现样式列：先批注、识别、贴图、保存或复制，圆角与阴影边框在样式列里调；颜色读数常驻在放大镜旁。 |
-| **置顶与识别**         | 把选区**贴回它原来所在的位置**钉在屏幕最上层对照着改；一键识别选区里的文字并逐行复制。 |
-| **视频按时间批注**     | 打开视频，播放或拖动时间轴，暂停查看画面；首次实际批注才保存截图，各时间点的意见与截图一同保存，给 AI 的 JSON 带时间戳。 |
-| **位置与意见一一对应** | 点选、框选和全局批注配合使用；在侧栏直接写意见，通过编号定位到画面中的具体位置。                   |
-| **直接调整布局**       | 开启“大爆炸”，拖动或缩放图像区域，精确输入坐标与尺寸；调整后的区域仍可添加批注。                   |
-| **一键交给 AI**        | 复制或导出 JSON；也可通过配套 skill 和 CLI，让 AI 打开图片或视频，等你明确完成批注后接收反馈并继续修改。 |
-| **保存下来，继续修改** | 导出或复制带批注图片；保存图片或视频项目，之后重新打开接着编辑。视频引用源文件，保存已标注帧截图。支持打开、拖入常用图片与视频，也可粘贴图片。 |
-
-## 快速开始
-
-1. **安装 EditHere**：让你的 AI Agent 帮你安装 EditHere，提示词见[让 AI 帮你安装](#让-ai-帮你安装)。
-
-2. **截取画面**：在你的项目中说“用 EditHere 帮我标注主页面”，或者用 EditHere 的全局快捷键截取画面。
-
-<p align="center"><img src="assets/readme/game-before.png" width="720" alt="游戏界面：修改前的画面"></p>
-
-3. **进行批注**在 EditHere 中进行批注：
-
-- **点批注**：为一个小点进行批注
-- **框批注**：自动识别矩形元素，直接点击识别的矩形批注，也可以手动画框
-- **全局意见**：针对项目全局的需求批注
-- **大爆炸**：直接将识别的元素全部切分，可以移动元素，移动将会记录移动前后的位置，提供给 AI 参考，移动后原位置会留空，但你的 AI 会补上此处原本该有的内容。
-
-<p align="center"><img src="assets/readme/game-annotating.png" width="720" alt="游戏界面：在 EditHere 中批注"></p>
-
-更多操作、快捷键和示例见 [使用指南](docs/USER-GUIDE.md)。
-
-4. **反馈 AI**
-
-一份 JSON 同时包含：
-- **原图**：提供修改前的画面，可选择内嵌到 JSON。
-- **批注**：具体位置、范围和文字意见。
-- **布局变化**：实际发生的移动与缩放，记录调整前后的区域。
-
-EditHere 负责整理反馈，你可以手动发送给 AI，也可以通过配套 skill 和命令行接入：AI 打开待修改的图片，你在 EditHere 中标注，点击 **“完成并返回 AI”**，AI 再结合项目执行修改。EditHere 本身不调用模型或修改代码。
-
-<p align="center"><img src="assets/readme/game-after.png" width="720" alt="游戏界面：按批注修改后的画面"></p>
-
-### 在 AI 工作流中使用
-
-安装或完整解压免安装版后，将仓库中的 [`skills/edithere`](skills/edithere/SKILL.md) 复制到 Codex 或 Claude Code 的技能目录，并让 AI 知道 CLI 的位置，就可以这样发起协作。也可以用上面的 [AI 安装提示词](#让-ai-帮你安装) 完成配置：
-
-> 用 EditHere 让我标注这张界面。
-
-AI 通过 `edithere-cli annotate` 打开图片并等待，你决定何时完成。取消或超时不会把未提交的编辑当成修改要求。已有项目也能通过 CLI 导出反馈，供自己的脚本或 Agent 使用。
-
-完整安装方法、命令和示例见 [AI 与命令行](docs/AGENT-CLI.md)。
-
-## 演示视频
-
-下面这段演示完整走了一遍流程：截取画面、添加批注、调整布局，以及让 AI 发起标注并接收反馈。视频配有中文旁白与字幕，界面为中文。
-
-<p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere 演示：截图、批注、调整布局，再把反馈交给 AI"></p>
-
-上面是压缩后的动图预览。完整宣传视频（MP4，约 250 MB）可在 [Releases](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-promo.mp4) 下载，其他版本见 [全部发布](https://github.com/Inginnng/EditHere/releases)。
+这需要 AI 工具拥有本机终端和文件权限；仅有网页聊天窗口无法安装本机程序。详细步骤见 [AI 安装指南](docs/AI-SETUP.md)。
 
 ## 下载与安装
 
-下方固定下载入口指向 GitHub 当前正式发行版；具体版本以发布页和包内 `version.txt` 为准。修改源码版本或生成本地包后，还需发布对应的 GitHub Release 才会更新这些入口。
+| 平台 | 下载 | 说明 |
+| --- | --- | --- |
+| **Windows x64 · 推荐** | [安装器 EXE](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。 |
+| **Windows x64 · 免安装** | [ZIP 压缩包](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。 |
+| **macOS · Apple Silicon / Intel** | [通用版 DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | 将 `EditHere.app` 拖入 Applications；首次截图需授予屏幕录制权限。 |
+| **Linux x86_64 · 预览** | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后直接运行，目标环境 Ubuntu 24.04；详见 [Linux 说明](docs/LINUX.md)。 |
 
-| 平台                              | 下载                                                                                                                 | 使用方式                                                                              |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| **Windows x64 · 推荐**            | [下载安装器 EXE](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe)   | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。                  |
-| **Windows x64 · 免安装版**        | [下载免安装版 ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip)       | 完整解压后运行`EditHere.exe`，保留同目录的 DLL 和插件文件夹。                         |
-| **macOS · Apple Silicon / Intel** | [下载通用版 DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | 打开 DMG，将`EditHere.app` 拖到其中的“Applications”入口。首次截图需授予屏幕录制权限。 |
-| **Linux x86_64 · 预览**           | [下载 AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后直接运行；同一发布页提供 SHA-256 校验文件与 `edithere-cli` 启动脚本。目标环境 Ubuntu 24.04 x86_64，详见 [Linux 说明](docs/LINUX.md)。 |
-
-Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后重新打开终端和 AI 工具，才能读取新的 PATH。卸载保留用户设置与项目。
-
-Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
-
-Linux x86_64 为预览版本，目标环境为 Ubuntu 24.04；Wayland 优先授权显示器，再由 EditHere 框选并进行手动长截图。缺少 PipeWire 或 ScreenCast 显示器能力时回退系统选区，仅支持普通截图。X11 支持手动采集与自动纵向滚动。运行方式、OCR 依赖与 X11/Wayland 行为见 [Linux 说明](docs/LINUX.md)。
-
-Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版压缩包无需另行安装 Qt、Python、Node 或 .NET。macOS 要求 14+，**仍处于预览阶段，尚未实机验收和 Apple 公证**；本轮新增长截图后端已在 macOS 构建中编译通过。
-
-源码与发布包已公开，可直接查看代码和下载。完整版本列表见 [Releases](https://github.com/Inginnng/EditHere/releases)。
+下载入口始终指向最新正式版，具体版本以 [Releases](https://github.com/Inginnng/EditHere/releases) 页面和包内 `version.txt` 为准。
 
 <details>
-<summary>从旧版本升级</summary>
+<summary>安装细节、平台说明与旧版升级</summary>
 
-退出旧版后，运行安装器或完整解压新免安装版压缩包。如果开机启动提示旧路径，保持自启勾选并保存即可刷新路径；如果被 Windows 系统禁用，请在系统的启动应用设置中手动恢复。在新程序中保存一次项目可登记 `.edithere` 文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
+- Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后需重新打开终端和 AI 工具才能读取新的 PATH。卸载会保留用户设置与项目。
+- Windows 安装包**尚未代码签名**，请从本仓库 Releases 下载，并核对 [SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
+- Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版无需另装 Qt、Python、Node 或 .NET。
+- macOS 要求 14+，**仍处于预览阶段，尚未 Apple 公证**；长截图后端已在 macOS 构建中编译通过。
+- Linux 预览版：Wayland 下先授权显示器，再由 EditHere 框选并手动长截图；缺少 PipeWire 或 ScreenCast 时回退系统选区，仅支持普通截图。X11 支持手动采集与自动纵向滚动。详见 [Linux 说明](docs/LINUX.md)。
+- **从旧版升级**：退出旧版后运行安装器或完整解压新版。若开机启动提示旧路径，保持自启勾选并保存即可刷新；在新程序中保存一次项目可登记 `.edithere` 文件关联。旧版自动更新可能不识别新仓库地址，首次更名升级请使用上面的下载入口。
 
 </details>
 
+## 快速上手
+
+1. **安装**：让 AI 按[上面的提示词](#让-ai-帮你安装)帮你装好，或手动下载。
+2. **截取画面**：按全局快捷键 `Alt + Shift + 2`，或对 AI 说「用 EditHere 帮我标注主页面」。
+3. **写下意见**：点、框、全局意见、大爆炸，怎么说得清楚就怎么来。
+4. **交给 AI**：点「完成并返回 AI」，或复制 JSON 发给任意 AI。
+
+更多操作、快捷键和示例见 [使用指南](docs/USER-GUIDE.md)。
+
 ## 常见问题
 
-**能识别所有控件和图像内容吗？** 不能。程序结合系统公开的元素边界与本地图像分析寻找候选区域，这不是 OCR 或语义识别；没有选准时，可以手动画框补充。程序另外提供「文字识别」：它只读取你选中的那块画面里的文字，与候选区域的判断互不相干。
+<details>
+<summary><b>能识别所有控件和图像内容吗？</b></summary>
 
-**截图会自动上传吗？** 截图、图像识别和编辑在本机完成，不会由更新检查上传。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具的工作方式；手动或开启启动检查更新时，EditHere 会访问 GitHub。
+不能。程序结合系统公开的元素边界与本地图像分析寻找候选区域，这不是语义识别；没有选准时可以手动画框补充。「文字识别」是另一项功能，只读取你选中区域里的文字。
+</details>
 
-**换一个 AI 工具还能用吗？** 反馈以 JSON 和图片交付，不绑定模型服务。Codex、Claude Code 可使用配套 skill，其他工具也可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
+<details>
+<summary><b>截图会自动上传吗？</b></summary>
 
-**不用安装器，免安装版也能使用 skill 吗？** 可以。完整解压 Windows ZIP，保留程序、CLI、DLL 和插件文件夹，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可。不必运行安装器，也不必加入 PATH；配置后可用“用 EditHere 让我标注这张图”发起协作。
+不会。截图、图像识别和编辑都在本机完成。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动或开启启动检查更新时，EditHere 只会访问 GitHub。
+</details>
 
-**能保存下次继续改吗？** 可以。保存 `.edithere` 项目可保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
+<details>
+<summary><b>只能配合 Codex / Claude Code 使用吗？</b></summary>
 
-## 致谢
+不是。反馈以 JSON 和图片交付，不绑定任何模型服务。Codex、Claude Code 可使用配套 skill，其他工具可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
+</details>
+
+<details>
+<summary><b>免安装版也能使用 skill 吗？</b></summary>
+
+可以。完整解压 Windows ZIP，将 `edithere` skill 放到 AI 工具能识别的技能目录，并告诉 AI `edithere-cli.exe` 的绝对路径即可，不必运行安装器或加入 PATH。
+</details>
+
+<details>
+<summary><b>能保存下次继续改吗？</b></summary>
+
+可以。`.edithere` 项目保留原图、批注与编辑状态；复制给 AI 的 JSON 则用于传达本次修改意见。
+</details>
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [使用指南](docs/USER-GUIDE.md) | 截图、批注、大爆炸、导出、设置与快捷键的完整说明 |
+| [AI 与命令行](docs/AGENT-CLI.md) | `edithere-cli` 命令、skill 配置与 Agent 接入 |
+| [AI 安装指南](docs/AI-SETUP.md) | 让 AI 自动完成安装与配置 |
+| [视频标注说明](docs/VIDEO-ANNOTATION.md) | 视频反馈格式与使用方式 |
+| [长截图实现参考](docs/LONG-CAPTURE.md) | 长截图的设计与验证 |
+| [Linux 说明](docs/LINUX.md) | AppImage、OCR 依赖与 X11 / Wayland 行为 |
+| [构建与开发](docs/DEVELOPMENT.md) | 从源码构建、测试与打包 |
+| [更新日志](CHANGELOG.md) | 每个版本的变化 |
+
+## 参与与反馈
+
+- [报告问题或提出建议](https://github.com/Inginnng/EditHere/issues)：请附上系统版本、程序版本、复现步骤，以及方便分享的截图或示例项目。
+- QQ 群 **1018416966**（反馈专用），加群时请说明来自 GitHub。
+- 参与开发见 [贡献指南](CONTRIBUTING.md)。
 
 感谢 [linux.do](https://linux.do/) 论坛各位的建议与反馈。
 
-## 使用许可与商业合作
+## 许可与商业合作
 
-原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）
+原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）。
 
 许可之外的商业授权（品牌、白标、优先支持、企业部署、赔偿承诺）与定制开发，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业授权与合作](COMMERCIAL-LICENSE.md)。这些**不是**使用本软件的前提。
 
-EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。参与开发见 [贡献指南](CONTRIBUTING.md)。
-
-## 文档与反馈
-
-[使用指南](docs/USER-GUIDE.md) · [AI 与命令行](docs/AGENT-CLI.md) · [构建与开发](docs/DEVELOPMENT.md) · [更新日志](CHANGELOG.md) · [报告问题或建议](https://github.com/Inginnng/EditHere/issues)
-
-反馈问题时，请附上系统版本、程序版本、复现步骤，以及方便分享的截图或示例项目。
-
-也可以加入 QQ 群 **1018416966**（反馈信息专用）；加群时请说明来自 GitHub。
+EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
 
 ## Star History
 

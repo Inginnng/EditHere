@@ -32,6 +32,8 @@ class Controller final : public QObject {
 
   private:
     friend class ScrollControllerTests;
+    // tools/readme-demo/recorder.cpp feeds synthetic screens through the same seams.
+    friend class ReadmeRecorder;
     void beginCapture(bool fromTray);
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;

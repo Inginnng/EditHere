@@ -2,38 +2,146 @@
   <img src="assets/icons/edithere-256.png" width="104" alt="EditHere icon">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
-<p align="center">改这里</p>
-<p align="center"><strong>Show AI exactly what you want to change.</strong></p>
-<p align="center">Capture a screenshot or pause a video, add your comments, and rearrange the layout. Give AI your complete visual feedback in one go.</p>
-<p align="center">Windows · macOS Preview &nbsp; / &nbsp; Local screen capture and image analysis</p>
-<p align="center">
-  <a href="#download-and-install">Download</a> ·
-  <a href="#set-up-with-ai">Set up with AI</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#demo-video">Demo video</a> ·
-  <a href="docs/AGENT-CLI.en.md">AI integration and CLI</a> ·
-  <a href="docs/USER-GUIDE.en.md">User guide</a> ·
-  <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a> ·
-  <a href="#acknowledgements">Acknowledgements</a>
-</p>
-<p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
+<p align="center"><b>EditHere</b> — show your AI exactly what to change.</p>
+<p align="center">Capture the screen, mark it up, drag parts into place, or pause a video and leave your notes.<br>EditHere turns “change <i>this</i>, <i>here</i>” into structured feedback your AI can act on directly.</p>
 
 <p align="center">
-  <a href="#demo-video">
-    <img src="assets/readme/overview.jpg" width="960" alt="EditHere demo: annotate a screenshot, rearrange its layout, and send the feedback to AI">
-  </a>
+  <a href="https://github.com/Inginnng/EditHere/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Inginnng/EditHere?color=2f75f0"></a>
+  <a href="https://github.com/Inginnng/EditHere/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Inginnng/EditHere/total?color=2f75f0"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-runs%20locally-2f75f0">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2f75f0"></a>
+  <a href="https://github.com/Inginnng/EditHere/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Inginnng/EditHere?style=social"></a>
 </p>
+
+<p align="center">
+  <a href="#download-and-install"><b>Download</b></a> ·
+  <a href="#set-up-with-ai">Set up with AI</a> ·
+  <a href="#features">Features</a> ·
+  <a href="docs/AGENT-CLI.en.md">AI integration</a> ·
+  <a href="docs/USER-GUIDE.en.md">User guide</a> ·
+  <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
+</p>
+<p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
+
+<p align="center">
+  <img src="assets/readme/hero-en.gif" width="960" alt="EditHere with an AI agent: the agent opens a review, you mark up the dashboard, click Finish and return to AI, and the agent applies the changes">
+</p>
+<p align="center"><sub>↑ The agent starts a review → you leave your notes in EditHere → “Finish and return to AI” → the agent reads the feedback and makes the changes</sub></p>
+
+## Why EditHere?
+
+“Move the button in the top-right a bit to the left.” “Make that card bigger.” “This colour is off.” When you iterate on an interface with AI, you know exactly what you want — yet you spend paragraphs describing **where** and **how much**, and the AI still edits the wrong thing.
+
+**EditHere puts your feedback on the picture itself.** Mark a region, write a note, or drag a part to where it belongs. EditHere packs the original image, the coordinates of every note and every layout change into one JSON file for Codex, Claude Code, WorkBuddy, Qcode or any other AI tool.
+
+|                         | Describing it in text                  | With EditHere                                                  |
+| ----------------------- | -------------------------------------- | -------------------------------------------------------------- |
+| **Point at something**  | “the button near the top right”        | One click, exact pixel coordinates                             |
+| **Change the layout**   | “move it left a bit, ~20% bigger”      | Drag and resize; real before/after coordinates are recorded    |
+| **Many changes at once**| One long message, easy to miss things  | Every note is numbered and tied to its spot on the image       |
+| **Video / animation**   | “around second 3”                      | Pause on the frame; each note carries a timestamp and the frame |
+| **Hand it to AI**       | Paste a screenshot, then type          | The AI opens the image via the CLI and receives your feedback when you click Finish |
+
+Use it for web and app interfaces, game HUDs, charts, design reviews — anything where you need to say exactly what to change and where.
+
+## Features
+
+### 🖼️ Capture · Smart select · Pin
+
+Press the global shortcut to freeze the screen. **Hover to detect interface elements**, scroll the wheel to widen or narrow the selection, or drag your own box. Once the region is settled, a toolbar appears above it — annotate, text recognition, scrolling capture, pin, save, copy — with corners, shadow and border in the style column beside it. Changes show up immediately, pins stay on top, and you can pin as many as you like.
+
+<p align="center"><img src="assets/readme/capture-en.gif" width="860" alt="Capture: hover to select a block, round the corners, pin it and move the pin"></p>
+
+<details>
+<summary>Magnifier, colour picker, capture history and more</summary>
+
+- While dragging, a **magnifier** follows the pointer with pixel coordinates and `RGB` / `HEX` / `HSV` / `HSL` readouts; press `C` to pick and copy a colour.
+- Arrow keys move the pointer one pixel at a time; `Shift` / `Ctrl` + arrows shrink or grow the region by one pixel.
+- Fixed ratios (1:1, 4:3, 16:9, 9:16, custom); click the size to type an exact width and height.
+- The last 20 captures and 10 selections persist across sessions: `<` / `>` browse history, `R` restores the last selection.
+- Pins can be resized, rotated, flipped, made translucent, and sent straight to the editor from their context menu.
+
+See [User guide · Capture](docs/USER-GUIDE.en.md#capture) for every shortcut.
+</details>
+
+### 🔤 Text recognition (OCR)
+
+Select a region to read its text. Results are listed **line by line**; pick a line to highlight it on the image, then copy one line or all of them. It uses the system's own engine (Windows OCR / macOS Vision): **offline, nothing uploaded, no extra dependencies**.
+
+<p align="center"><img src="assets/readme/ocr-en.gif" width="860" alt="Text recognition: select a region, list the lines and highlight one on the image"></p>
+
+### 📜 Scrolling capture
+
+Select a scrolling area and choose **Scrolling capture**. EditHere stitches while you scroll, the preview beside the region grows with the page, and sticky headers are kept only once. It captures in both directions, can scroll for you, trims with one click, and finishes straight into annotation.
+
+<p align="center"><img src="assets/readme/scrolling-en.gif" width="860" alt="Scrolling capture: select an area, scroll the page and watch the preview grow"></p>
+
+### ✍️ Annotate: points, boxes and global notes
+
+**Smart select** a detected element and write your note; drop a **point** on an exact pixel; drag a **box** around any area; add a **global note** about the whole picture. Each note is numbered and tied to its location, and the whole set exports as JSON in one click.
+
+<p align="center"><img src="assets/readme/annotate-en.gif" width="860" alt="Annotate: smart select, a point, a box and a global note, then view the JSON"></p>
+
+### 💥 Explode: drag the layout you want
+
+**Explode** splits the picture into movable parts. **Drag them, resize them in proportion, or type exact coordinates.** Every move becomes a note that records the region before and after; the old spot is left empty for your AI to fill. A hundred times more precise than “move it left a bit”.
+
+<p align="center"><img src="assets/readme/explode-en.gif" width="860" alt="Explode: split the picture into parts, move the Export button and enlarge a card"></p>
+
+### 🎬 Annotate video by timestamp
+
+Open a video, play or scrub the timeline, and **pause on the frame you want to change** to annotate it; play on and annotate another moment. Tags on the timeline bring annotated frames back at any time. In the exported JSON every note carries its timestamp and frame screenshot — ideal for reviewing animations, games and interaction flows.
+
+<p align="center"><img src="assets/readme/video-en.gif" width="760" alt="Video annotation: pause at two moments, annotate, revisit via timeline tags and export timestamped JSON"></p>
+
+See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md) for the format.
+
+### 🤖 Hand it to your AI
+
+EditHere **never calls a model**; its job is to make the feedback unambiguous:
+
+- **Manually:** copy the JSON text, the JSON file or the annotated image and paste it into any AI.
+- **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
+
+One feedback file contains everything:
+
+```jsonc
+{
+  "image": "data:image/png;base64,…",          // optional: the picture before any change
+  "annotationSpace": "result",
+  "objects": [
+    { "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},   // a box note
+      "movements": [], "annotations": ["Make the conversion drop stand out with a red tag"] },
+    { "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},    // a part moved with Explode
+      "movements": [{"to": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}}],
+      "annotations": ["Move Export next to the title"] },
+    { "source": null, "movements": [], "annotations": ["More breathing room overall"] }  // a global note
+  ]
+}
+```
+
+Field reference: [User guide · Feedback JSON](docs/USER-GUIDE.en.md#feedback-json). Commands and examples: [AI integration and CLI](docs/AGENT-CLI.en.md).
+
+### And also
+
+| | |
+| --- | --- |
+| 💾 **Projects** | `.edithere` projects embed the image, notes and editing state so you can pick up where you left off; video projects reference the source file and keep annotated frames. |
+| 📥 **Any input** | Capture, open, drop or paste PNG / JPEG / WebP / BMP, and MP4 / MOV / WebM videos. |
+| 🎨 **Your way** | Light and dark themes, English and Simplified Chinese interface, 21 configurable shortcuts and a customisable toolbar. |
+| 🔒 **Local first** | Capture, element detection, OCR and editing all run on your machine; EditHere never uploads your screen. |
+| 🖥️ **Cross-platform** | Windows 10 1809+ is fully supported; macOS 14+ and Linux (Ubuntu 24.04) are previews. |
 
 ## Set up with AI
 
-Copy the entire prompt below into an AI tool with access to your local terminal and files, such as Codex or Claude Code. GitHub provides a copy button in the top-right corner of the code block.
+Paste this prompt into an AI tool that can use your local terminal and files, such as Codex or Claude Code:
 
 ```text
 Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me. Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system. Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session. Tell me when a system permission prompt requires my action.
 ```
 
 <details>
-<summary>Prefer to use EditHere without installing it? Copy this prompt</summary>
+<summary>Prefer not to install? Use this prompt for the portable ZIP</summary>
 
 ```text
 Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere for Windows without running an installer and the edithere skill for me. Check for an existing fully extracted package first; I can provide its location if needed. Otherwise, download the official Windows ZIP and extract the entire archive into a suitable user directory. Do not run the installer or change startup settings or PATH. Configure the skill to use the absolute path to edithere-cli.exe, and verify the CLI and skill configuration for my current AI tool. Tell me when a system permission prompt requires my action.
@@ -41,181 +149,104 @@ Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.m
 
 </details>
 
-Your AI tool needs permission to use your local terminal and files; a web chat alone cannot install software on your computer. You handle system permission prompts. The source repository and release packages are public, so the AI tool can read the official guide and download the app. See the [AI setup guide](docs/AI-SETUP.en.md) for the full procedure.
+Then, inside your project, just say:
 
-## Why EditHere?
+> Let me mark up the home page in EditHere, and apply my notes when I'm done.
 
-“Move the button in the top-right corner a little to the left.” “Make this card bigger.” “This color is wrong.” When working on an interface with AI, you may know exactly what you want, yet spend a lot of words explaining where a change belongs and how much it should affect.
-
-**EditHere puts that feedback directly on the image.** Mark a region and leave a comment, or drag and resize parts of the image to show the layout you have in mind. Then give AI the original image, annotations, and position and size changes so it can continue editing your project with that context.
-
-Use it for web and app interfaces, game HUDs, charts, and other visuals where you need to show exactly what to change and where.
-
-The current source version is **0.10.1**, with annotations at multiple video timestamps and JSON feedback that includes frame screenshots, plus scrolling capture with a mask, a live preview and bidirectional stitching. See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md), the [scrolling capture reference](docs/LONG-CAPTURE.en.md) and the [0.10.1 release notes](docs/releases/0.10.1.en.md).
-
-## Features
-
-| Feature | What you can do |
-| --- | --- |
-| **Capture toolbar** | Start a capture with a global shortcut. Hover to select a region, use the scroll wheel to switch the selection scope, or draw a selection manually. Releasing the mouse settles the region and brings up a toolbar above it and a column of style tools beside it: annotate, recognise text, pin, save, copy or pick a colour, with corner radius and shadow in the style column. |
-| **Pin and recognise** | Pin a region on top of everything else to work against it, and read the text inside a region and copy it line by line. |
-| **Annotate video timestamps** | Open a video, play or seek along the timeline, then pause to inspect the frame. A screenshot is saved when you first add an annotation. Save comments and screenshots across timestamps and export them together for AI. |
-| **Connect each comment to its location** | Combine point, rectangle, and global annotations. Write comments in the sidebar and use numbered markers to find the corresponding locations on the image. |
-| **Rearrange the layout directly** | Enable “Explode” (大爆炸) to drag or resize image regions, or enter exact coordinates and dimensions. You can also annotate the regions you have adjusted. |
-| **Hand feedback to AI** | Copy or export JSON. With the companion skill and CLI, AI can open an image or video, wait for you to explicitly finish annotating, and then receive your feedback to continue editing. |
-| **Save and resume** | Export or copy an annotated image, or save an image or video project to continue later. Videos reference the source file and store annotated frame screenshots. Open or drop common images and videos, or paste an image. |
-| **Work your way** | Zoom and pan freely, undo and redo, switch between light and dark themes, and customize shortcuts and the toolbar. Image region detection runs locally. |
-
-### Point to exactly what you mean
-
-Use a point for a detail, a rectangle for a region, and a global annotation for overall style. Comments and the image stay together, so you do not have to keep searching between chat messages and screenshots.
-
-<img src="assets/readme/annotations.jpg" width="960" alt="Game interface example: mark locations and record feedback in the same editor window">
-
-### Show the layout you want
-
-Use “Explode” (大爆炸) to select and adjust image regions: move a legend out of the way, enlarge a card, or set an exact position and size. Movement records stay alongside annotations, so the feedback conveys both the original location and the intended destination.
-
-<img src="assets/readme/layout.jpg" width="960" alt="Chart example: move a legend while keeping its annotations and position changes">
-
-These adjustments affect regions of the screenshot. Moving a region leaves its original position empty. EditHere does not directly edit webpage source code or automatically fill in the background.
-
-### Give your AI the context it needs
-
-A feedback package contains:
-
-- **The original image:** shows the interface before editing and can optionally be embedded in the JSON.
-- **Annotations:** locations, regions, and written comments.
-- **Layout changes:** the actual moves and resizes, with the regions recorded before and after each adjustment.
-
-EditHere prepares the feedback. You can send it to AI manually or use the companion skill and command line: AI opens the image, you annotate it in EditHere, and you click **“Finish and return to AI” (完成并返回 AI)**. AI then uses the feedback and your project context to make the changes. EditHere itself does not call a model or modify code.
-
-## Quick start
-
-The screenshots and demo show the Chinese UI. Chinese button and feature names are included below to help you follow along.
-
-1. **Install EditHere:** let your AI agent install EditHere for you, using the prompt in [Set up with AI](#set-up-with-ai).
-
-2. **Capture the screen:** say “Use EditHere to annotate the main page for me” in your project, or capture the screen with EditHere's global shortcut.
-
-<p align="center"><img src="assets/readme/game-before.png" width="720" alt="Game interface: the screen before any change"></p>
-
-3. **Annotate** in EditHere:
-
-- **Point annotation:** annotate a single point.
-- **Rectangle annotation:** detected rectangles are highlighted; click one to annotate it, or draw a region manually.
-- **Global comment:** requirements that apply to the whole project.
-- **Explode (大爆炸):** split every detected element, then move or resize them. EditHere records the position before and after each move so AI can see both; the original position is left empty, and your AI fills in what belongs there.
-
-<p align="center"><img src="assets/readme/game-annotating.png" width="720" alt="Game interface: annotating in EditHere"></p>
-
-See the [user guide](docs/USER-GUIDE.en.md) for more actions, shortcuts, and examples.
-
-4. **Send the feedback to AI**
-
-A single JSON contains:
-
-- **The original image:** shows the interface before editing and can optionally be embedded in the JSON.
-- **Annotations:** locations, regions, and written comments.
-- **Layout changes:** the actual moves and resizes, with the regions recorded before and after each adjustment.
-
-EditHere prepares the feedback. You can send it to AI manually or use the companion skill and command line: AI opens the image, you annotate it in EditHere, and you click **“Finish and return to AI” (完成并返回 AI)**. AI then uses the feedback and your project context to make the changes. EditHere itself does not call a model or modify code.
-
-For example, attach your exported feedback to this prompt:
-
-> Update the current project using this EditHere feedback. Use the original image to understand the interface, address each item in annotations, and adjust the layout using the positions and dimensions in changes. Only modify what is explicitly requested. Explain any ambiguity before proceeding.
-
-<p align="center"><img src="assets/readme/game-after.png" width="720" alt="Game interface: the screen after the annotated changes"></p>
-
-### Use it in an AI workflow
-
-After installing EditHere or fully extracting the ZIP package, copy [`skills/edithere`](skills/edithere/SKILL.md) from this repository into the skills directory used by Codex or Claude Code, and tell the AI where to find the CLI. You can also use the [AI setup prompt](#set-up-with-ai) above to configure it. The skill instructions are currently in Chinese. You can then start a session with a request like this:
-
-> Use EditHere to let me annotate this interface. Wait until I finish, then update the current project based on my feedback.
-
-AI opens the image with `edithere-cli annotate` and waits for you to decide when you are finished. Cancellation or a timeout does not turn unsubmitted edits into change requests. The CLI can also export feedback from existing projects for your own scripts or agents.
-
-See [AI integration and the command line](docs/AGENT-CLI.en.md) for full setup instructions, commands, and examples.
-
-## Demo video
-
-**The clip below walks through the whole flow: screen capture, annotations, layout adjustments, and an agent starting an annotation session and receiving feedback.** It features original instrumental music and **Mandarin narration**, with the Chinese UI shown on screen.
-
-<p align="center"><img src="assets/readme/demo.gif" width="640" alt="EditHere demo: capture, annotate, rearrange the layout, and hand the feedback to AI"></p>
-
-The animation above is a compressed preview; download the [full promo video (MP4)](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-promo.mp4) from Releases, or see [all downloads](https://github.com/Inginnng/EditHere/releases/latest).
+Your AI tool needs access to your local terminal and files; a web chat alone cannot install software on your computer. See the [AI setup guide](docs/AI-SETUP.en.md) for the full procedure.
 
 ## Download and install
 
-The stable download links below point to GitHub's current public release. Check the release page and the package's `version.txt` for its version; changing the source version or building a local package does not update these links until the matching GitHub Release is published.
-
-| Platform | Download | How to use |
+| Platform | Download | Notes |
 | --- | --- | --- |
-| **Windows x64 · Recommended** | [Download the EXE installer](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | Installs for the current user without administrator privileges. Includes a Start menu entry, an uninstaller, and project file associations. |
-| **Windows x64 · No installation required** | [Download ZIP — no installation required](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the entire archive and run `EditHere.exe`. Keep the DLLs and plugin folders alongside it. |
-| **macOS · Apple Silicon / Intel** | [Download the universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Open the DMG and drag `EditHere.app` to the “Applications” shortcut inside. Grant Screen Recording permission before taking your first screenshot. |
-| **Linux x86_64 · Preview** | [Download the AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it directly. The same release page carries the SHA-256 checksums and the `edithere-cli` launcher. Targets Ubuntu 24.04 x86_64; see the [Linux guide](docs/LINUX.en.md). |
+| **Windows x64 · Recommended** | [EXE installer](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | Per-user install, no administrator rights; Start menu entry, uninstaller and project file association. |
+| **Windows x64 · Portable** | [ZIP archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the whole archive and run `EditHere.exe`; keep the DLLs and plugin folders beside it. |
+| **macOS · Apple Silicon / Intel** | [Universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Drag `EditHere.app` into Applications; grant Screen Recording before the first capture. |
+| **Linux x86_64 · Preview** | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it; targets Ubuntu 24.04. See the [Linux guide](docs/LINUX.en.md). |
 
-The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. On the components page, you can choose whether to launch at login, add the CLI to PATH, and create a desktop shortcut. Launch at login and PATH are selected by default on a new installation; upgrades preserve the existing startup registration state. Reopen your terminal and AI tools after installation so they can pick up the updated PATH. Uninstalling preserves your settings and projects.
-
-The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [application package SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
-
-The minimum Windows build target is Windows 10 1809+; development and testing take place on Windows 11. The ZIP package does not require a separate installation of Qt, Python, Node, or .NET. macOS requires **14+** and **remains a preview without acceptance testing on a physical Mac or Apple notarization**. The new scrolling-capture backend compiles in the macOS build.
-
-The Linux package is a preview targeting Ubuntu 24.04 x86_64. Under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture. Without PipeWire or ScreenCast monitor support, the app falls back to system region selection for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md) for running the AppImage, the OCR dependencies, and X11/Wayland behaviour.
-
-The source repository and release packages are public and available to browse and download. See [Releases](https://github.com/Inginnng/EditHere/releases) for all versions.
+These links always point to the latest public release; check the [Releases](https://github.com/Inginnng/EditHere/releases) page and the package's `version.txt` for its version.
 
 <details>
-<summary>Upgrading from an older version</summary>
+<summary>Installation details, platform notes and upgrading</summary>
 
-Quit the old version, then run the installer or fully extract the new ZIP package. Projects now use the `.edithere` extension and no longer support legacy `.helpdesign` projects; export old projects as JSON feedback in the previous version before upgrading if needed. If launch at login reports an old path, keep the startup option selected and save the settings to refresh the path. If Windows has disabled the startup entry, re-enable it in the system's Startup Apps settings. Saving a project once in the new app registers the `.edithere` file association. Older versions' automatic update checks may not recognize the new repository URL; use the download links above for your first upgrade after the rename.
+- The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. Its components page offers launch at login, adding the CLI to PATH and a desktop shortcut; launch at login and PATH are selected on a new install, and upgrades keep the existing startup registration. Reopen your terminal and AI tools afterwards so they pick up the new PATH. Uninstalling keeps your settings and projects.
+- The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
+- The minimum Windows target is Windows 10 1809+, developed and tested on Windows 11. The portable ZIP needs no separate Qt, Python, Node or .NET.
+- macOS requires 14+ and **is still a preview, without acceptance testing on a physical Mac or Apple notarization**; the scrolling capture backend compiles in the macOS build.
+- Linux preview: under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture; without PipeWire or ScreenCast support it falls back to the system region picker for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md).
+- **Upgrading:** quit the old version, then run the installer or extract the new ZIP. If launch at login reports an old path, keep the option selected and save to refresh it; saving a project once registers the `.edithere` file association. Older versions' update checks may not recognise the renamed repository, so use the links above for your first upgrade.
 
 </details>
 
+## Quick start
+
+1. **Install** — let your AI do it with the [prompt above](#set-up-with-ai), or download manually.
+2. **Capture** — press the global shortcut `Alt + Shift + 2`, or ask your AI to “let me mark up the main page in EditHere”.
+3. **Annotate** — points, boxes, global notes, Explode; whatever makes your intent clear.
+4. **Hand off** — click “Finish and return to AI”, or copy the JSON into any AI tool.
+
+More actions, shortcuts and examples are in the [user guide](docs/USER-GUIDE.en.md).
+
 ## FAQ
 
-**Can it detect every control and all image content?** No. It combines element boundaries exposed by the system with local image analysis to find candidate regions. This is not OCR or semantic recognition. Draw a selection manually when the suggested region does not fit. Text recognition is a separate action: it reads the characters inside the region you selected, and candidate regions are found without it.
+<details>
+<summary><b>Can it detect every control and all image content?</b></summary>
 
-**Are screenshots uploaded automatically?** Screen capture, image analysis, and editing happen locally. Update checks do not upload your screenshots. If you send feedback yourself or let an integrated AI tool read it, any upload depends on how that tool operates. EditHere connects to GitHub when you check for updates manually or enable update checks at startup.
+No. It combines element boundaries exposed by the system with local image analysis to find candidate regions; this is not semantic recognition. When a suggestion doesn't fit, draw the box yourself. Text recognition is a separate action that reads only the region you selected.
+</details>
 
-**Can I use a different AI tool?** Feedback is delivered as JSON and images, without being tied to a model provider. Codex and Claude Code can use the companion skill; other tools can receive feedback through the CLI or manual import. EditHere does not include model calls or model credits.
+<details>
+<summary><b>Are screenshots uploaded?</b></summary>
 
-**Can I use the skill without installing EditHere?** Yes. Fully extract the Windows ZIP, keep the app, CLI, DLLs, and plugin folders together, put the `edithere` skill in a directory recognized by your AI tool, and give the AI the absolute path to `edithere-cli.exe`. You do not need to run the installer or add anything to PATH. Once configured, start with a request such as “Use EditHere to let me annotate this image.”
+No. Capture, detection and editing happen locally. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. EditHere only contacts GitHub when you check for updates manually or enable update checks at startup.
+</details>
 
-**Can I save my work and continue later?** Yes. A `.edithere` project preserves the original image, annotations, and editing state. The JSON you copy for AI communicates the change requests from the current session.
+<details>
+<summary><b>Does it only work with Codex or Claude Code?</b></summary>
 
-## Acknowledgements
+No. Feedback is plain JSON plus images, tied to no model provider. Codex and Claude Code can use the companion skill; other tools can use the CLI or a manual import. EditHere includes no model calls and no model credits.
+</details>
+
+<details>
+<summary><b>Can I use the skill with the portable ZIP?</b></summary>
+
+Yes. Extract the whole Windows ZIP, put the `edithere` skill where your AI tool finds skills, and give the AI the absolute path to `edithere-cli.exe`. No installer and no PATH change needed.
+</details>
+
+<details>
+<summary><b>Can I save my work and continue later?</b></summary>
+
+Yes. A `.edithere` project keeps the original image, notes and editing state; the JSON you hand to AI carries the change requests of the current session.
+</details>
+
+## Documentation
+
+| Document | What's inside |
+| --- | --- |
+| [User guide](docs/USER-GUIDE.en.md) | Capture, annotation, Explode, export, settings and shortcuts |
+| [AI integration and CLI](docs/AGENT-CLI.en.md) | `edithere-cli` commands, skill setup and agent integration |
+| [AI setup guide](docs/AI-SETUP.en.md) | Let an AI install and configure EditHere for you |
+| [Video annotation](docs/VIDEO-ANNOTATION.en.md) | The video feedback format and workflow |
+| [Scrolling capture](docs/LONG-CAPTURE.en.md) | Design and verification of scrolling capture |
+| [Linux guide](docs/LINUX.en.md) | AppImage, OCR dependencies and X11 / Wayland behaviour |
+| [Build and development](docs/DEVELOPMENT.en.md) | Building from source, tests and packaging |
+| [Full changelog (Chinese)](CHANGELOG.md) | Every change, version by version |
+
+## Contributing and feedback
+
+- [Report a problem or suggest an improvement](https://github.com/Inginnng/EditHere/issues). Please include your OS and app versions, steps to reproduce, and a screenshot or sample project you're comfortable sharing.
+- QQ group **1018416966** (feedback only); mention you came from GitHub when joining.
+- To contribute code, see the [contributing guide (Chinese)](CONTRIBUTING.md).
 
 Thanks to everyone on the [linux.do](https://linux.do/) forum for their suggestions and feedback.
 
-The project also stands on the shoulders of these projects and people:
-
-- **[Qt 6](https://www.qt.io/)** (The Qt Company and the Qt Project contributors) — the UI, networking and image handling are built on Qt, dynamically linked under the LGPL. Without it, a cross-platform native app would not have come together this quickly.
-- **[MinGW-w64](https://www.mingw-w64.org/) and the GCC runtime** — the toolchain behind the Windows build and the runtime components shipped with it.
-- **[NSIS](https://nsis.sourceforge.io/) and [aqtinstall](https://github.com/miurahr/aqtinstall)** — the Windows installer and the Qt deployment step in CI; both would have cost far more time to build from scratch.
-- **Everyone who reports a problem or suggests an improvement** — most of the fixes in the installer, the annotation flow and the update flow came from your descriptions. Keep them coming via [Issues](https://github.com/Inginnng/EditHere/issues) or email.
-
-License and copyright notices for third-party components live in the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md): that page is what the licences require, this section is simply thanks.
-
 ## License and commercial collaboration
 
-The original software is licensed under the [MIT License](LICENSE) (SPDX: `MIT`). Provided that the copyright notice and license text are retained, you are free to use, copy, modify, merge, publish, distribute, sublicense, and sell the software — including for commercial purposes, inside closed-source products, and when invoking it from your AI tools and agents. See [licensing details (Chinese)](LICENSING.md).
+The original software is licensed under the [MIT License](LICENSE) (SPDX: `MIT`).
 
-Beyond the license, commercial licensing (branding, white-label, priority support, enterprise deployment, indemnification) and custom development are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md). These are **not** a prerequisite for using the software.
+Commercial licensing beyond MIT (branding, white-label, priority support, enterprise deployment, indemnification) and custom development are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md). These are **not** required to use the software.
 
-The EditHere name and marks are not licensed under the MIT License; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Third-party components such as Qt and MinGW remain subject to their own licenses; see [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md). To contribute, see the [contributing guide (Chinese)](CONTRIBUTING.md).
-
-## Documentation and feedback
-
-The user guide, the scrolling capture reference, the video annotation guide, the
-command-line reference and the build instructions are available in English:
-
-[User guide](docs/USER-GUIDE.en.md) · [Scrolling capture](docs/LONG-CAPTURE.en.md) · [Video annotation](docs/VIDEO-ANNOTATION.en.md) · [AI integration and CLI](docs/AGENT-CLI.en.md) · [Build and development](docs/DEVELOPMENT.en.md) · [Release notes](https://github.com/Inginnng/EditHere/releases) · [Full changelog (Chinese)](CHANGELOG.md)
-
-[Report a problem or suggest an improvement](https://github.com/Inginnng/EditHere/issues). Please include your operating system and app versions, steps to reproduce the issue, and a screenshot or sample project you are comfortable sharing.
-
-Feedback is also welcome in the QQ group **1018416966**, which is dedicated to feedback; please mention that you came from GitHub when joining.
+The EditHere name and marks are not licensed under MIT; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Qt, MinGW and other third-party components are covered by their own licences; see the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
 
 ## Star History
 

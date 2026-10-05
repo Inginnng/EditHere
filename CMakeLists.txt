@@ -239,6 +239,18 @@ set_target_properties(scrollstitch_tests scroll_controller_tests PROPERTIES
   WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 add_test(NAME scroll-controller COMMAND scroll_controller_tests -platform offscreen)
 set_tests_properties(scrollstitch scroll-controller PROPERTIES TIMEOUT 60)
+# Records the README's animated demonstrations from the real widgets; see
+# tools/readme-demo/render.py. Off by default: it is a documentation tool.
+option(EDITHERE_README_RECORDER "Build the README demonstration recorder" OFF)
+if(EDITHERE_README_RECORDER)
+  qt_add_executable(readme_recorder tools/readme-demo/recorder.cpp)
+  target_link_libraries(readme_recorder PRIVATE h2d_ui Qt6::Test)
+  set_target_properties(readme_recorder PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+  qt_add_resources(readme_recorder readme_recorder_translations
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+    FILES app/translations/built/edithere_en.qm)
+endif()
 qt_add_executable(icon_gallery tests/icon_gallery.cpp)
 target_link_libraries(icon_gallery PRIVATE h2d_ui)
 set_target_properties(icon_gallery PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
