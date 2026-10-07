@@ -128,7 +128,7 @@ Field reference: [User guide · Feedback JSON](docs/USER-GUIDE.en.md#feedback-js
 | --- | --- |
 | 💾 **Projects** | `.edithere` projects embed the image, notes and editing state so you can pick up where you left off; video projects reference the source file and keep annotated frames. |
 | 📥 **Any input** | Capture, open, drop or paste PNG / JPEG / WebP / BMP, and MP4 / MOV / WebM videos. |
-| 🎨 **Your way** | Light and dark themes, English and Simplified Chinese interface, 21 configurable shortcuts and a customisable toolbar. |
+| 🎨 **Your way** | Light and dark themes, English and Simplified Chinese interface, 22 configurable shortcuts and a customisable toolbar. |
 | 🔒 **Local first** | Capture, element detection, OCR and editing all run on your machine; EditHere never uploads your screen. |
 | 🖥️ **Cross-platform** | Windows 10 1809+ is fully supported; macOS 14+ and Linux (Ubuntu 24.04) are previews. |
 

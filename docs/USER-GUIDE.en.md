@@ -4,7 +4,7 @@
 
 [Back to the product overview](../README.en.md) · [AI and the command line](AGENT-CLI.en.md) · [Changelog](../CHANGELOG.md) · [Development notes](DEVELOPMENT.en.md)
 
-This page covers **0.10.1** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
+This page covers **0.10.2** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
 
 ## Contents
 
@@ -49,7 +49,7 @@ Older clients may not recognize the new download address after the rename, so fo
 
 The first manual launch shows the guide; after you finish or skip it, it no longer appears automatically. Afterwards press **Alt + Shift + 2** or click the tray icon to capture. A shortcut capture does not simulate key presses or activate a temporary window; the tray entry closes menus and pop-ups first, then captures the screen. After you cancel, copy or save the capture, the original window is restored. Existing shortcut settings are unchanged and can be restored to defaults in Settings. Only the capture mask stays on top; the editor window is an ordinary application window.
 
-The tray menu, in order, is: **Capture** (showing the current global shortcut on the right), **New annotation (empty window)**, **Open image or project**, a separator, **Settings…**, **Check for updates…**, a separator and **Quit**. On macOS there is also an extra **Grant Accessibility permission** entry for reading system element boundaries; image detection still works without it.
+The tray menu, in order, is: **Capture**, **New annotation (empty window)** (both show the current global shortcut on the right), **Open image or project**, a separator, **Settings…**, **Check for updates…**, a separator and **Quit**. On macOS there is also an extra **Grant Accessibility permission** entry for reading system element boundaries; image detection still works without it.
 
 The default shortcuts are listed below; you can change the corresponding key actions in [Settings](#settings).
 
@@ -96,7 +96,7 @@ The default shortcuts are listed below; you can change the corresponding key act
 
 ### Opening an empty annotation window directly
 
-An image already on disk does not have to be captured again: **“New annotation (empty window)”** in the tray menu opens the annotation window directly, with “drop or paste an image here” in the middle and an **“Import image or project”** button below. **Drop an image into the window** to start annotating; pasting with `Ctrl + V` works too, and the button lets you choose an image or a project from a file dialog.
+An image already on disk does not have to be captured again: press the global shortcut **Alt + Shift + 1**, or choose **“New annotation (empty window)”** in the tray menu, to open the annotation window directly, with “drop or paste an image here” in the middle and an **“Import image or project”** button below. The shortcut also works in other applications; change it or clear it to disable it in **Settings → Shortcuts**. **Drop an image into the window** to start annotating; pasting with `Ctrl + V` works too, and the button lets you choose an image or a project from a file dialog.
 
 If there are unsaved changes when you close the annotation window, it asks “Save the project first?”. This dialog has **“Do not ask again; change this in Settings”**: once ticked, later closes discard unsaved changes directly with no prompt. To change it back, tick “Ask about saving when the annotation window closes” in **Settings → Default behavior**.
 
@@ -127,7 +127,7 @@ Click the scissors icon and choose the up/down crop button (left/right in horizo
 - Closing the current capture prompts you to save unsaved changes, then releases the capture and slice caches; the app stays in the tray.
 - The **eye** button at the top hides the marks on the image and keeps the annotation text on the right, to view the original or export a clean comparison image.
 
-Mac editing shortcuts use Command, redo is Command + Shift + Z, and capture is Command + Shift + 2. Mac has not yet been verified on a real machine.
+Mac editing shortcuts use Command and redo is Command + Shift + Z; global capture uses Option + Shift + 2, and new annotation uses Option + Shift + 1. Mac has not yet been verified on a real machine.
 
 ## Video annotation
 
@@ -241,13 +241,14 @@ Right-click the EditHere tray icon at the bottom-right of the taskbar and choose
 
 ### Shortcuts
 
-There are 21 configurable shortcuts: capture is a global shortcut and also works in other applications; the rest are used in the EditHere editor window. Click a field and press a new combination, or clear it to disable that shortcut. “Restore defaults” resets the current settings draft and still needs saving to take effect. Duplicate assignments, system conflicts or a failed save show the reason and keep the existing configuration.
+There are 22 configurable shortcuts: capture and new annotation (empty window) are global shortcuts and also work in other applications; the rest are used in the EditHere editor window. Click a field and press a new combination, or clear it to disable that shortcut. “Restore defaults” resets the current settings draft and still needs saving to take effect. Duplicate assignments, system conflicts or a failed save show the reason and keep the existing configuration.
 
 The following are the Windows defaults; common Mac editing combinations use Command, redo is Command + Shift + Z, and real-machine verification is still pending.
 
 | Scope | Action | Default shortcut |
 | --- | --- | --- |
 | Global | Capture | Alt + Shift + 2 |
+| Global | New annotation (empty window) | Alt + Shift + 1 |
 | In-app | Open image or project | Ctrl + O |
 | In-app | Paste image | Ctrl + V |
 | In-app | Save project | Ctrl + S |
