@@ -478,7 +478,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     if (handle_ && sequence == sequence_)
         return true;
     if (sequence.count() != 1) {
-        lastError_ = tr("全局截图快捷键只支持一组按键，不能使用连续组合。");
+        lastError_ = tr("全局快捷键只支持一组按键，不能使用连续组合。");
         return false;
     }
     const auto combination = sequence[0];

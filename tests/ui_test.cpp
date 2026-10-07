@@ -272,6 +272,7 @@ class UiTests : public QObject {
     void settingsAreAvailableFromTrayWithoutAScreenshot() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         Controller controller(nullptr, settings);
         controller.start(false);
@@ -774,6 +775,7 @@ class UiTests : public QObject {
         const QString settingsFile = temporary.filePath("settings.json");
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         settings.checkUpdatesOnStartup = false;
         Controller controller(nullptr, settings, settingsFile);
@@ -1185,6 +1187,7 @@ class UiTests : public QObject {
     void controllerActivationRestoresMinimizedDocument() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         settings.checkUpdatesOnStartup = false;
         Controller controller(nullptr, settings);

@@ -35,6 +35,7 @@ class Controller final : public QObject {
     // tools/readme-demo/recorder.cpp feeds synthetic screens through the same seams.
     friend class ReadmeRecorder;
     void beginCapture(bool fromTray);
+    void openAnnotation();
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
     quint64 captureGeneration_ = 0;
@@ -151,6 +152,7 @@ class Controller final : public QObject {
     Editor editor_;
     QSystemTrayIcon tray_;
     GlobalShortcut shortcut_;
+    GlobalShortcut annotateShortcut_;
     QVector<Overlay *> overlays_;
     QString agentSessionId_, agentOutput_;
     bool agentEmbed_ = true;

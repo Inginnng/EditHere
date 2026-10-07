@@ -278,6 +278,7 @@ class ReadmeRecorder {
         settings.ocrLanguage = zh_ ? OcrLanguageMode::SimplifiedChinese : OcrLanguageMode::English;
         settings.theme = ThemeMode::Light;
         settings.shortcuts["capture"] = {}; // Never register a real global hotkey.
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         settings.checkUpdatesOnStartup = false;
         settings.confirmBeforeDiscard = false;

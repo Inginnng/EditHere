@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 新建批注快捷键（0.10.2）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-159 | 新建批注（空窗口）只有托盘入口，无法从其他应用通过快捷键打开；新增全局 `annotate` 操作，默认 Alt + Shift + 1，可修改或清空停用。打开时沿用未保存内容、AI 会话、模态窗口和截图状态的保护；旧配置中该键位已分配给其他操作时仅停用新快捷键，明确清空的键位在重启后仍保持停用 | `StartupFlowTests::annotationShortcutOpensEmptyWindow`、`annotationShortcutRespectsDiscardDecision`、`annotationShortcutPreservesActiveAgentSession`、`annotationShortcutDoesNotInterruptModalOrCapture`、`annotationShortcutSettingsApplyIsTransactional`（Windows 实际触发及取消恢复；已有自启项时跳过保存/回滚场景）；`SettingsTests::legacyAnnotateShortcutMigrationAndDisabling`、`defaultsAndPortablePersistence`、`conflictAndGlobalRules`、`saveValidatesBeforeApplyingAndKeepsErrorsVisible`；`LinuxPlatformTests::portalShortcutsHaveIndependentSessionsAndActions`、`x11ShortcutHandlesConflictsAndActivation` | 🆕 |
+
 ## 稳定性排查（0.10.0）
 
 本轮以能复现的运行和数据稳定性缺陷为依据。以下测试在 Windows 本地构建执行；macOS/Linux 的平台专属行为仍需各自 CI 或实机验证。

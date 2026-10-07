@@ -63,6 +63,10 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   public:
     explicit GlobalShortcut(QObject *parent = nullptr);
     ~GlobalShortcut() override;
+    void setAction(const QString &id, const QString &description) {
+        actionId_ = id;
+        description_ = description;
+    }
     bool start(const QKeySequence &sequence = QKeySequence("Alt+Shift+2", QKeySequence::PortableText));
     void stop();
     QKeySequence sequence() const {
@@ -78,6 +82,8 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   private:
     QKeySequence sequence_;
     QString lastError_;
+    QString actionId_ = "capture";
+    QString description_;
     quint32 shortcutId_ = 0;
     void *handle_ = nullptr;
     void *handler_ = nullptr;

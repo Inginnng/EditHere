@@ -37,6 +37,7 @@ class AgentCliTests : public QObject {
     static AppSettings quietSettings() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         settings.checkUpdatesOnStartup = false;
         return settings;

@@ -18,6 +18,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <algorithm>
 using namespace h2d;
 class SettingsTests : public QObject {
     Q_OBJECT
@@ -144,6 +145,12 @@ class SettingsTests : public QObject {
         const auto defaults = defaultSettings();
         QVERIFY(validateSettings(defaults).isEmpty());
         QCOMPARE(defaults.shortcuts.value("capture"), QKeySequence("Alt+Shift+2"));
+        QCOMPARE(defaults.shortcuts.value("annotate"), QKeySequence("Alt+Shift+1"));
+        const auto definitions = shortcutDefinitions();
+        const auto annotate = std::find_if(definitions.cbegin(), definitions.cend(),
+                                          [](const auto &definition) { return definition.id == "annotate"; });
+        QVERIFY(annotate != definitions.cend());
+        QVERIFY(annotate->global);
         QVERIFY(!defaults.launchAtLogin);
         QVERIFY(loadSettings(path) == defaults);
         auto changed = defaults;
@@ -157,6 +164,7 @@ class SettingsTests : public QObject {
         changed.defaultTool = 2;
         changed.toolbarActions = {"saveProject", "copyJson"};
         changed.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
+        changed.shortcuts["annotate"] = QKeySequence("Ctrl+Alt+8");
         changed.shortcuts["point"] = {};
         changed.shortcuts["rectangle"] = QKeySequence("Ctrl+,");
         changed.scrollAxis = Qt::Horizontal;
@@ -173,6 +181,7 @@ class SettingsTests : public QObject {
         QVERIFY(!persisted.value("defaults/confirmBeforeDiscard").toBool());
         QVERIFY(persisted.value("defaults/launchAtLogin").toBool());
         QCOMPARE(persisted.value("shortcuts/capture").toString(), QString("Ctrl+Alt+9"));
+        QCOMPARE(persisted.value("shortcuts/annotate").toString(), QString("Ctrl+Alt+8"));
         QCOMPARE(persisted.value("capture/scrollAxis").toString(), QString("horizontal"));
         QVERIFY(persisted.value("capture/scrollAutoCrop").toBool());
         QVERIFY(persisted.value("capture/scrollUltraLong").toBool());
@@ -224,17 +233,26 @@ class SettingsTests : public QObject {
         QVERIFY(conflict.contains("框选标注"));
         settings.shortcuts["point"] = {};
         QVERIFY(validateSettings(settings).isEmpty());
-        for (const auto &invalid : {QKeySequence("A"), QKeySequence("Shift+A"),
-                                    QKeySequence("Ctrl+A, Ctrl+B"), QKeySequence(Qt::Key_Control)}) {
-            settings.shortcuts["capture"] = invalid;
-            QVERIFY2(!validateSettings(settings).isEmpty(), qPrintable(invalid.toString()));
-        }
-        for (const auto &valid :
-             {QKeySequence("Ctrl+Alt+9"), QKeySequence("F12"), QKeySequence(Qt::Key_Print), QKeySequence()}) {
-            settings.shortcuts["capture"] = valid;
-            QVERIFY2(validateSettings(settings).isEmpty(), qPrintable(valid.toString()));
+        for (const auto &id : {"capture", "annotate"}) {
+            for (const auto &invalid : {QKeySequence("A"), QKeySequence("Shift+A"),
+                                        QKeySequence("Ctrl+A, Ctrl+B"), QKeySequence(Qt::Key_Control)}) {
+                settings.shortcuts[id] = invalid;
+                QVERIFY2(!validateSettings(settings).isEmpty(), qPrintable(invalid.toString()));
+            }
+            for (const auto &valid :
+                 {QKeySequence("Ctrl+Alt+9"), QKeySequence("F12"), QKeySequence(Qt::Key_Print), QKeySequence()}) {
+                settings.shortcuts[id] = valid;
+                QVERIFY2(validateSettings(settings).isEmpty(), qPrintable(valid.toString()));
+            }
         }
         settings.shortcuts["capture"] = settings.shortcuts["save"];
+        QVERIFY(!validateSettings(settings).isEmpty());
+        settings = defaultSettings();
+        settings.shortcuts["annotate"] = settings.shortcuts["capture"];
+        const auto globalConflict = validateSettings(settings);
+        QVERIFY(globalConflict.contains("截图"));
+        QVERIFY(globalConflict.contains("新建批注"));
+        settings.shortcuts["annotate"] = settings.shortcuts["save"];
         QVERIFY(!validateSettings(settings).isEmpty());
     }
     void legacyAndMalformedNewPreferences() {
@@ -249,6 +267,7 @@ class SettingsTests : public QObject {
         expected.theme = ThemeMode::Dark;
         expected.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
         QVERIFY(loadSettings(path) == expected);
+        QCOMPARE(loadSettings(path).shortcuts.value("annotate"), QKeySequence("Alt+Shift+1"));
         QVERIFY(!loadSettings(path).launchAtLogin);
         source.setValue("defaults/launchAtLogin", "invalid");
         source.setValue("defaults/tool", "nonsense");
@@ -258,6 +277,50 @@ class SettingsTests : public QObject {
         QVERIFY(loadSettings(path) == expected);
         expected.defaultTool = 4;
         QVERIFY(!validateSettings(expected).isEmpty());
+    }
+    void legacyAnnotateShortcutMigrationAndDisabling_data() {
+        QTest::addColumn<QString>("conflictingId");
+        QTest::newRow("existing-global-shortcut") << QString("capture");
+        QTest::newRow("existing-editor-shortcut") << QString("point");
+    }
+    void legacyAnnotateShortcutMigrationAndDisabling() {
+        QFETCH(QString, conflictingId);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("settings.ini");
+        QSettings source(path, QSettings::IniFormat);
+        source.setValue("version", 1);
+        source.setValue("appearance/theme", "dark");
+        source.setValue("defaults/tool", 1);
+        source.setValue("shortcuts/" + conflictingId, "Alt+Shift+1");
+        source.sync();
+        auto expected = defaultSettings();
+        expected.theme = ThemeMode::Dark;
+        expected.defaultTool = 1;
+        expected.shortcuts[conflictingId] = QKeySequence("Alt+Shift+1");
+        expected.shortcuts["annotate"] = {};
+        QVERIFY(loadSettings(path) == expected);
+        QVERIFY(validateSettings(expected).isEmpty());
+        QString error;
+        QVERIFY2(saveSettings(expected, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path) == expected);
+        source.sync();
+        QVERIFY(source.contains("shortcuts/annotate"));
+        QVERIFY(source.value("shortcuts/annotate").toString().isEmpty());
+
+        // An explicit empty binding stays disabled even after the old conflict is removed.
+        expected.shortcuts[conflictingId] = defaultSettings().shortcuts.value(conflictingId);
+        QVERIFY2(saveSettings(expected, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path) == expected);
+        source.sync();
+        source.remove("shortcuts/annotate");
+        source.sync();
+        expected.shortcuts["annotate"] = QKeySequence("Alt+Shift+1");
+        QVERIFY(loadSettings(path) == expected);
+
+        // Explicitly saved conflicts still fail validation rather than using migration.
+        expected.shortcuts[conflictingId] = expected.shortcuts["annotate"];
+        QVERIFY(!validateSettings(expected).isEmpty());
+        QVERIFY(!saveSettings(expected, &error, path));
     }
     void toolbarValidationPersistenceAndMigration() {
         QTemporaryDir directory;
@@ -359,6 +422,7 @@ class SettingsTests : public QObject {
         original.defaultTool = 1;
         original.toolbarActions = {"copyImage"};
         original.shortcuts["capture"] = QKeySequence("Ctrl+Alt+9");
+        original.shortcuts["annotate"] = QKeySequence("Ctrl+Alt+8");
         SettingsDialog dialog(original);
         int applyCount = 0;
         dialog.setApplyHandler([&](const AppSettings &) {
@@ -524,13 +588,18 @@ class SettingsTests : public QObject {
         SettingsDialog dialog(defaultSettings());
         auto point = dialog.findChild<QKeySequenceEdit *>("shortcut_point");
         auto rectangle = dialog.findChild<QKeySequenceEdit *>("shortcut_rectangle");
+        auto annotate = dialog.findChild<QKeySequenceEdit *>("shortcut_annotate");
+        auto capture = dialog.findChild<QKeySequenceEdit *>("shortcut_capture");
         auto save = dialog.findChild<QPushButton *>("settingsSave");
         auto error = dialog.findChild<QLabel *>("errorLabel");
         auto theme = dialog.findChild<QComboBox *>("themeMode");
         auto login = dialog.findChild<QCheckBox *>("launchAtLogin");
-        QVERIFY(point && rectangle && save && error && theme && login);
+        QVERIFY(point && rectangle && annotate && capture && save && error && theme && login);
         QCOMPARE(point->maximumSequenceLength(), 1);
         QVERIFY(point->isClearButtonEnabled());
+        QCOMPARE(annotate->maximumSequenceLength(), 1);
+        QVERIFY(annotate->isClearButtonEnabled());
+        QCOMPARE(annotate->keySequence(), QKeySequence("Alt+Shift+1"));
         int applyCount = 0;
         dialog.setApplyHandler([&](const AppSettings &) {
             ++applyCount;
@@ -544,6 +613,12 @@ class SettingsTests : public QObject {
         QVERIFY(error->isVisible());
         QVERIFY(dialog.isVisible());
         point->clear();
+        annotate->setKeySequence(capture->keySequence());
+        QTest::mouseClick(save, Qt::LeftButton);
+        QCOMPARE(applyCount, 0);
+        QVERIFY(error->isVisible());
+        QVERIFY(error->text().contains("新建批注"));
+        annotate->clear();
         login->setChecked(true);
         theme->setCurrentIndex(theme->findData(static_cast<int>(ThemeMode::Light)));
         QTest::mouseClick(save, Qt::LeftButton);
@@ -564,6 +639,7 @@ class SettingsTests : public QObject {
         QCOMPARE(applied.theme, ThemeMode::Light);
         QVERIFY(applied.launchAtLogin);
         QVERIFY(applied.shortcuts["point"].isEmpty());
+        QVERIFY(applied.shortcuts["annotate"].isEmpty());
     }
 };
 QTEST_MAIN(SettingsTests)

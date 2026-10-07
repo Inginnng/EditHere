@@ -943,192 +943,197 @@
     </message>
     <message>
         <location filename="../settings.cpp" line="83"/>
+        <source>新建批注（空窗口）</source>
+        <translation>New annotation (empty window)</translation>
+    </message>
+    <message>
+        <location filename="../settings.cpp" line="84"/>
         <source>打开图片或项目</source>
         <translation>Open image or project</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="84"/>
+        <location filename="../settings.cpp" line="85"/>
         <source>粘贴图片</source>
         <translation>Paste image</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="85"/>
-        <location filename="../settings.cpp" line="105"/>
+        <location filename="../settings.cpp" line="86"/>
+        <location filename="../settings.cpp" line="106"/>
         <source>保存项目</source>
         <translation>Save project</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="86"/>
-        <location filename="../settings.cpp" line="107"/>
+        <location filename="../settings.cpp" line="87"/>
+        <location filename="../settings.cpp" line="108"/>
         <source>查看 JSON</source>
         <translation>View JSON</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="87"/>
-        <location filename="../settings.cpp" line="110"/>
+        <location filename="../settings.cpp" line="88"/>
+        <location filename="../settings.cpp" line="111"/>
         <source>复制带批注图片</source>
         <translation>Copy annotated image</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="88"/>
-        <location filename="../settings.cpp" line="109"/>
+        <location filename="../settings.cpp" line="89"/>
+        <location filename="../settings.cpp" line="110"/>
         <source>复制 JSON 文件</source>
         <translation>Copy JSON file</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="89"/>
-        <location filename="../settings.cpp" line="106"/>
+        <location filename="../settings.cpp" line="90"/>
+        <location filename="../settings.cpp" line="107"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="90"/>
+        <location filename="../settings.cpp" line="91"/>
         <source>隐藏 / 显示批注标记</source>
         <translation>Hide / show annotation marks</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="91"/>
+        <location filename="../settings.cpp" line="92"/>
         <source>添加全局批注</source>
         <translation>Add global annotation</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="92"/>
+        <location filename="../settings.cpp" line="93"/>
         <source>撤销</source>
         <translation>Undo</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="93"/>
+        <location filename="../settings.cpp" line="94"/>
         <source>重做</source>
         <translation>Redo</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="94"/>
+        <location filename="../settings.cpp" line="95"/>
         <source>适应窗口</source>
         <translation>Fit to window</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="95"/>
+        <location filename="../settings.cpp" line="96"/>
         <source>删除所选批注</source>
         <translation>Delete selected annotation</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="96"/>
+        <location filename="../settings.cpp" line="97"/>
         <source>取消操作 / 关闭截图</source>
         <translation>Cancel / close screenshot</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="97"/>
+        <location filename="../settings.cpp" line="98"/>
         <source>智能选块</source>
         <translation>Smart select</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="98"/>
+        <location filename="../settings.cpp" line="99"/>
         <source>点标注</source>
         <translation>Point</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="99"/>
+        <location filename="../settings.cpp" line="100"/>
         <source>框选标注</source>
         <translation>Box</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="100"/>
+        <location filename="../settings.cpp" line="101"/>
         <source>调整批注</source>
         <translation>Adjust</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="101"/>
+        <location filename="../settings.cpp" line="102"/>
         <source>切换大爆炸</source>
         <translation>Toggle Explode</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="102"/>
+        <location filename="../settings.cpp" line="103"/>
         <source>调整组件</source>
         <translation>Adjust components</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="108"/>
+        <location filename="../settings.cpp" line="109"/>
         <source>复制 JSON 内容</source>
         <translation>Copy JSON content</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="111"/>
+        <location filename="../settings.cpp" line="112"/>
         <source>重新截图</source>
         <translation>Retake screenshot</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="112"/>
+        <location filename="../settings.cpp" line="113"/>
         <source>适应图片</source>
         <translation>Fit image</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="122"/>
+        <location filename="../settings.cpp" line="123"/>
         <source>请选择有效的外观模式。</source>
         <translation>Choose a valid appearance mode.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="124"/>
+        <location filename="../settings.cpp" line="125"/>
         <source>请选择有效的界面语言。</source>
         <translation>Choose a valid interface language.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="126"/>
+        <location filename="../settings.cpp" line="127"/>
         <source>请选择有效的默认标注工具。</source>
         <translation>Choose a valid default annotation tool.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="133"/>
+        <location filename="../settings.cpp" line="134"/>
         <source>反馈临时目录必须是绝对路径。</source>
         <translation>The feedback temporary folder must be an absolute path.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="135"/>
+        <location filename="../settings.cpp" line="136"/>
         <source>反馈临时目录不能指向一个已有文件。</source>
         <translation>The feedback temporary folder cannot point to an existing file.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="138"/>
+        <location filename="../settings.cpp" line="139"/>
         <source>请选择有效的长截图方向。</source>
         <translation>Choose a valid scrolling capture direction.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="143"/>
+        <location filename="../settings.cpp" line="144"/>
         <source>快捷键配置不完整，请恢复默认后重试。</source>
         <translation>The shortcut configuration is incomplete. Restore the defaults and retry.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="148"/>
+        <location filename="../settings.cpp" line="149"/>
         <source>“%1”只支持一个有效的组合键。</source>
         <translation>“%1” supports only one key combination.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="154"/>
-        <source>截图快捷键需要包含 Ctrl、Alt 或 Command / Win，或使用 F1–F24、Print Screen。</source>
-        <translation>The screenshot shortcut must include Ctrl, Alt or Command / Win, or use F1–F24 or Print Screen.</translation>
+        <location filename="../settings.cpp" line="155"/>
+        <source>“%1”快捷键需要包含 Ctrl、Alt 或 Command / Win，或使用 F1–F24、Print Screen。</source>
+        <translation>The “%1” shortcut must include Ctrl, Alt or Command / Win, or use F1–F24 or Print Screen.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="157"/>
+        <location filename="../settings.cpp" line="159"/>
         <source>“%1”和“%2”使用了相同的快捷键 %3。</source>
         <translation>“%1” and “%2” use the same shortcut %3.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="162"/>
+        <location filename="../settings.cpp" line="164"/>
         <source>包含无法识别的快捷键配置。</source>
         <translation>Contains an unrecognized shortcut configuration.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="278"/>
-        <location filename="../settings.cpp" line="334"/>
+        <location filename="../settings.cpp" line="291"/>
+        <location filename="../settings.cpp" line="347"/>
         <source>无法创建设置目录。</source>
         <translation>Could not create the settings folder.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="318"/>
+        <location filename="../settings.cpp" line="331"/>
         <source>无法保存设置，请检查配置文件的访问权限。</source>
         <translation>Could not save the settings. Check the access permissions of the configuration file.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="343"/>
+        <location filename="../settings.cpp" line="356"/>
         <source>无法保存引导状态，请检查配置文件的访问权限。</source>
         <translation>Could not save the guide state. Check the access permissions of the configuration file.</translation>
     </message>
@@ -1163,39 +1168,34 @@
         <translation>Shortcut authorization was cancelled.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="44"/>
-        <source>桌面不支持快捷键授权。请在系统快捷键设置中绑定 EditHere --capture。</source>
-        <translation>The desktop does not support shortcut authorization. Bind EditHere --capture in the system shortcut settings.</translation>
-    </message>
-    <message>
         <location filename="../platform_linux.cpp" line="152"/>
-        <location filename="../platform_linux.cpp" line="345"/>
+        <location filename="../platform_linux.cpp" line="355"/>
         <source>屏幕布局或缩放已改变，请重新开始长截图。</source>
         <translation>The display layout or scale changed. Start a new scrolling capture.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="292"/>
+        <location filename="../platform_linux.cpp" line="302"/>
         <source>截图快捷键（由桌面授权管理）</source>
         <translation>Screenshot shortcut (managed by desktop authorization)</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="292"/>
+        <location filename="../platform_linux.cpp" line="302"/>
         <source>截图快捷键</source>
         <translation>Screenshot shortcut</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="388"/>
+        <location filename="../platform_linux.cpp" line="398"/>
         <source>无法确认滚动窗口所属进程，请使用手动滚动。</source>
         <translation>The scrolling window’s owner could not be verified. Scroll manually.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="473"/>
+        <location filename="../platform_linux.cpp" line="483"/>
         <location filename="../scroll_wayland.cpp" line="284"/>
         <source>无法读取屏幕图像。</source>
         <translation>Could not read the screen image.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="485"/>
+        <location filename="../platform_linux.cpp" line="495"/>
         <source>没有可截图的屏幕。</source>
         <translation>No screen is available for capture.</translation>
     </message>
@@ -1337,7 +1337,7 @@
         <translation>Scrolling capture requires an active shared monitor. Take a new screenshot and select one monitor in the system authorization dialog.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="393"/>
+        <location filename="../platform_linux.cpp" line="403"/>
         <location filename="../platform_mac.mm" line="395"/>
         <location filename="../platform_win.cpp" line="168"/>
         <location filename="../platform_win.cpp" line="183"/>
@@ -1345,7 +1345,7 @@
         <translation>The original scrolling window is closed or hidden. Capture has stopped.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="410"/>
+        <location filename="../platform_linux.cpp" line="420"/>
         <location filename="../platform_mac.mm" line="399"/>
         <location filename="../platform_win.cpp" line="170"/>
         <source>滚动区域被其他窗口遮挡，长截图已停止。</source>
@@ -1357,7 +1357,7 @@
         <translation>The scrolling window cannot receive input. Close its dialog first.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="383"/>
+        <location filename="../platform_linux.cpp" line="393"/>
         <location filename="../platform_mac.mm" line="393"/>
         <location filename="../platform_win.cpp" line="178"/>
         <source>滚动步长或屏幕坐标无效。</source>
@@ -1369,15 +1369,15 @@
         <translation>Windows blocked scrolling input to an application with higher privileges. Run both applications with the same privileges.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="422"/>
+        <location filename="../platform_linux.cpp" line="432"/>
         <location filename="../platform_win.cpp" line="193"/>
         <source>滚动窗口未响应输入，长截图已停止。</source>
         <translation>The scrolling window did not respond. Capture has stopped.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="341"/>
         <location filename="../platform_linux.cpp" line="351"/>
-        <location filename="../platform_linux.cpp" line="431"/>
+        <location filename="../platform_linux.cpp" line="361"/>
+        <location filename="../platform_linux.cpp" line="441"/>
         <location filename="../platform_mac.mm" line="338"/>
         <location filename="../platform_mac.mm" line="429"/>
         <location filename="../platform_win.cpp" line="202"/>
@@ -1385,30 +1385,35 @@
         <translation>The scrolling capture region is invalid or too large.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="300"/>
+        <location filename="../platform_linux.cpp" line="44"/>
+        <source>桌面不支持快捷键授权，请在托盘菜单中使用相应操作。</source>
+        <translation>The desktop does not support shortcut authorization. Use the corresponding action in the tray menu.</translation>
+    </message>
+    <message>
+        <location filename="../platform_linux.cpp" line="310"/>
         <source>当前显示环境不支持持续屏幕采集。</source>
         <translation>The current display session does not support continuous screen capture.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="305"/>
-        <location filename="../platform_linux.cpp" line="314"/>
-        <location filename="../platform_linux.cpp" line="347"/>
+        <location filename="../platform_linux.cpp" line="315"/>
+        <location filename="../platform_linux.cpp" line="324"/>
+        <location filename="../platform_linux.cpp" line="357"/>
         <source>无法连接 X11 显示服务。</source>
         <translation>Unable to connect to the X11 display server.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="317"/>
-        <location filename="../platform_linux.cpp" line="396"/>
+        <location filename="../platform_linux.cpp" line="327"/>
+        <location filename="../platform_linux.cpp" line="406"/>
         <source>X11 显示服务没有启用 XTest，请使用手动滚动。</source>
         <translation>The X11 display server has no XTEST extension. Scroll manually.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="411"/>
+        <location filename="../platform_linux.cpp" line="421"/>
         <source>请先松开修饰键和鼠标按键，再使用自动滚动。</source>
         <translation>Release modifier keys and mouse buttons before using automatic scrolling.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="440"/>
+        <location filename="../platform_linux.cpp" line="450"/>
         <location filename="../platform_mac.mm" line="217"/>
         <location filename="../platform_win.cpp" line="237"/>
         <source>无法读取长截图区域，请检查屏幕采集权限。</source>
@@ -1919,316 +1924,345 @@
 <context>
     <name>h2d::Controller</name>
     <message>
-        <location filename="../controller.cpp" line="64"/>
+        <location filename="../controller.cpp" line="62"/>
         <source>已启用系统元素识别</source>
         <translation>System element recognition is on</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="66"/>
+        <location filename="../controller.cpp" line="64"/>
         <source>请在系统设置中授予辅助功能权限，图片识别仍可直接使用。</source>
         <translation>Grant Accessibility permission in System Settings. Image recognition still works without it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="97"/>
+        <location filename="../controller.cpp" line="96"/>
         <source>无法记录引导状态，下次启动时可能再次显示。
 </source>
         <translation>Could not save the guide state; it may show again on the next launch.
 </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="110"/>
+        <location filename="../controller.cpp" line="109"/>
         <source>设置未能保存：</source>
         <translation>The settings could not be saved: </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="115"/>
+        <location filename="../controller.cpp" line="114"/>
         <source>截图快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>The screenshot shortcut could not be registered. Right-click the tray icon to open Settings and change it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="119"/>
+        <location filename="../controller.cpp" line="124"/>
         <source>打开图片或项目</source>
         <translation>Open image or project</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="120"/>
+        <location filename="../controller.cpp" line="123"/>
+        <location filename="../controller.cpp" line="135"/>
+        <location filename="../controller.cpp" line="136"/>
         <source>新建批注（空窗口）</source>
         <translation>New annotation (empty window)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="121"/>
+        <location filename="../controller.cpp" line="125"/>
         <source>启用系统元素识别</source>
         <translation>Enable system element recognition</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="122"/>
+        <location filename="../controller.cpp" line="126"/>
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="123"/>
+        <location filename="../controller.cpp" line="127"/>
         <source>检查更新…</source>
         <translation>Check for updates…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="124"/>
+        <location filename="../controller.cpp" line="128"/>
         <source>退出</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="129"/>
+        <location filename="../controller.cpp" line="122"/>
+        <location filename="../controller.cpp" line="133"/>
         <source>截图</source>
         <translation>Screenshot</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="130"/>
+        <location filename="../controller.cpp" line="137"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="168"/>
+        <location filename="../controller.cpp" line="184"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>Could not load the interface language. Please reinstall EditHere.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="175"/>
+        <location filename="../controller.cpp" line="203"/>
         <source>截图快捷键无法注册，请更换组合键。</source>
         <translation>The screenshot shortcut cannot be registered. Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="181"/>
-        <location filename="../controller.cpp" line="192"/>
+        <location filename="../controller.cpp" line="197"/>
         <source>
 原快捷键未能恢复，请重新设置截图快捷键。</source>
         <translation>
 The original shortcut could not be restored. Set the screenshot shortcut again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="190"/>
+        <location filename="../controller.cpp" line="224"/>
         <source>
 开机自启未能恢复：</source>
         <translation>
 Launch at login could not be restored: </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="211"/>
+        <location filename="../controller.cpp" line="244"/>
         <source>截图快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>The screenshot shortcut could not be restored. Choose a different combination in Settings.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="214"/>
+        <location filename="../controller.cpp" line="250"/>
         <source>EditHere 开机自启</source>
         <translation>EditHere launch at login</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="241"/>
+        <location filename="../controller.cpp" line="277"/>
         <source>示例产品页面</source>
         <translation>Sample product page</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="256"/>
+        <location filename="../controller.cpp" line="292"/>
         <source>EditHere 更新</source>
         <translation>EditHere update</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="256"/>
+        <location filename="../controller.cpp" line="292"/>
         <source>
 右键托盘选择检查更新。</source>
         <translation>
 Right-click the tray icon to check for updates.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="318"/>
-        <location filename="../controller.cpp" line="1393"/>
+        <location filename="../controller.cpp" line="354"/>
+        <location filename="../controller.cpp" line="1429"/>
         <source>截图未完成</source>
         <translation>Screenshot not completed</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="410"/>
+        <location filename="../controller.cpp" line="446"/>
         <source>只能对当前屏幕选区进行长截图，请重新截取屏幕。</source>
         <translation>Scrolling capture requires a selection from the current screen. Take a new screenshot.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="414"/>
+        <location filename="../controller.cpp" line="450"/>
         <source>长截图选区过小，请选择至少 64 × 120 px 的内容区域。</source>
         <translation>The selection is too small. Select a content region of at least 64 × 120 px.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="804"/>
+        <location filename="../controller.cpp" line="840"/>
         <source>无法匹配相邻画面，采集已停止。可完成已有部分或返回选区重试。</source>
         <translation>Cannot match adjacent frames. Capture has stopped. Finish the captured part or return to the selection.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="534"/>
+        <location filename="../controller.cpp" line="570"/>
         <source>找不到选区下可滚动的窗口，请重试。</source>
         <translation>Cannot find a scrolling window beneath the selection. Try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="541"/>
-        <location filename="../controller.cpp" line="636"/>
+        <location filename="../controller.cpp" line="118"/>
+        <source>新建批注快捷键未能注册，请右键托盘打开设置修改。</source>
+        <translation>The new annotation shortcut could not be registered. Right-click the tray icon to open Settings and change it.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="199"/>
+        <source>
+原快捷键未能恢复，请重新设置新建批注快捷键。</source>
+        <translation>
+The previous shortcut could not be restored. Please set the new annotation shortcut again.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="209"/>
+        <source>新建批注快捷键无法注册，请更换组合键。</source>
+        <translation>The new annotation shortcut could not be registered. Please choose another key combination.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="210"/>
+        <source>新建批注（空窗口）：</source>
+        <translation>New annotation (empty window): </translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="246"/>
+        <source>新建批注快捷键未能恢复，请在设置中更换组合键。</source>
+        <translation>The new annotation shortcut could not be restored. Choose another key combination in Settings.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="577"/>
+        <location filename="../controller.cpp" line="672"/>
         <source>无法确认滚动窗口所属进程，请使用手动滚动。</source>
         <translation>The scrolling window’s owner could not be verified. Scroll manually.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="574"/>
-        <location filename="../controller.cpp" line="734"/>
+        <location filename="../controller.cpp" line="610"/>
+        <location filename="../controller.cpp" line="770"/>
         <source>页面一直在变化，等待稳定画面超时。请暂停动画后重试。</source>
         <translation>Timed out waiting for the page to settle. Pause animations and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="575"/>
-        <location filename="../controller.cpp" line="735"/>
+        <location filename="../controller.cpp" line="611"/>
+        <location filename="../controller.cpp" line="771"/>
         <source>画面采集超时，请返回选区重试。</source>
         <translation>Screen capture timed out. Return to the selection and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="615"/>
+        <location filename="../controller.cpp" line="651"/>
         <source>目标窗口无法继续滚动。</source>
         <translation>The selected window cannot scroll further.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="713"/>
+        <location filename="../controller.cpp" line="749"/>
         <source>原滚动窗口已关闭、移动或被遮挡，请返回选区重试。</source>
         <translation>The original window was closed, moved, or covered. Return to the selection and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="729"/>
+        <location filename="../controller.cpp" line="765"/>
         <source>屏幕选区采集失败，请重新选择区域。</source>
         <translation>Cannot capture the screen selection. Select the region again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="776"/>
+        <location filename="../controller.cpp" line="812"/>
         <source>长截图选区超过图像上限，请缩小区域后重试。</source>
         <translation>The selection exceeds the image limit. Select a smaller region and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="789"/>
-        <location filename="../controller.cpp" line="803"/>
+        <location filename="../controller.cpp" line="825"/>
+        <location filename="../controller.cpp" line="839"/>
         <source>已达长截图上限，可以完成已拼接的部分。</source>
         <translation>The capture limit has been reached. You can finish the stitched portion.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="799"/>
+        <location filename="../controller.cpp" line="835"/>
         <source>内容没有产生可拼接的滚动，请选择可滚动的内容区域。</source>
         <translation>No new scrolling content could be stitched. Select a scrollable content region.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="812"/>
+        <location filename="../controller.cpp" line="848"/>
         <source>滚动过快，新画面与已拼接部分没有重叠。
 请稍微往回滚动，对上后会继续拼接。</source>
         <translation>Scrolled too fast: the new view no longer overlaps the stitched part.
 Scroll back a little; stitching continues once it lines up.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="881"/>
+        <location filename="../controller.cpp" line="917"/>
         <source>已停止截图，可调整选区后重新开始。</source>
         <translation>Capture cancelled. Adjust the selection and start again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="932"/>
+        <location filename="../controller.cpp" line="968"/>
         <source>已切换截图方向，从当前画面重新开始。</source>
         <translation>Capture direction changed. Starting again from the current view.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="999"/>
-        <location filename="../controller.cpp" line="1028"/>
+        <location filename="../controller.cpp" line="1035"/>
+        <location filename="../controller.cpp" line="1064"/>
         <source>采集已暂停，正在保存长截图。</source>
         <translation>Capture paused. Saving the scrolling screenshot.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1007"/>
+        <location filename="../controller.cpp" line="1043"/>
         <source>保存长截图</source>
         <translation>Save scrolling capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1007"/>
+        <location filename="../controller.cpp" line="1043"/>
         <source>PNG 图像 (*.png)</source>
         <translation>PNG images (*.png)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1016"/>
+        <location filename="../controller.cpp" line="1052"/>
         <source>无法创建保存目录。</source>
         <translation>Cannot create the destination folder.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1057"/>
+        <location filename="../controller.cpp" line="1093"/>
         <source>长截图</source>
         <translation>Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1132"/>
+        <location filename="../controller.cpp" line="1168"/>
         <source>第 %1 张 · 已不在缓存里</source>
         <translation>No. %1 · no longer in the cache</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1133"/>
+        <location filename="../controller.cpp" line="1169"/>
         <source>第 %1 张 · %2 × %3</source>
         <translation>No. %1 · %2 × %3</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1154"/>
-        <location filename="../controller.cpp" line="1178"/>
+        <location filename="../controller.cpp" line="1190"/>
+        <location filename="../controller.cpp" line="1214"/>
         <source>这张截图已经不在缓存里了。</source>
         <translation>That capture is no longer in the cache.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1173"/>
+        <location filename="../controller.cpp" line="1209"/>
         <source>已记住这个样式，以后每次截图都从这里开始。</source>
         <translation>Style remembered: every capture from now on starts from it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1183"/>
+        <location filename="../controller.cpp" line="1219"/>
         <source>历史截图</source>
         <translation>Earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1187"/>
+        <location filename="../controller.cpp" line="1223"/>
         <source>无法打开历史截图</source>
         <translation>Could not open the earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1288"/>
+        <location filename="../controller.cpp" line="1324"/>
         <source>置顶图片</source>
         <translation>Pinned picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1292"/>
+        <location filename="../controller.cpp" line="1328"/>
         <source>无法打开这张图片</source>
         <translation>Could not open this picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1307"/>
+        <location filename="../controller.cpp" line="1343"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1308"/>
+        <location filename="../controller.cpp" line="1344"/>
         <source>PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*)</source>
         <translation>PNG image (*.png);;JPEG image (*.jpg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1019"/>
-        <location filename="../controller.cpp" line="1312"/>
+        <location filename="../controller.cpp" line="1055"/>
+        <location filename="../controller.cpp" line="1348"/>
         <source>已保存 %1</source>
         <translation>Saved %1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="978"/>
+        <location filename="../controller.cpp" line="1014"/>
         <source>选区尺寸已调整，点击开始从新选区采集。</source>
         <translation>Selection resized. Click Start to capture the new region.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1317"/>
+        <location filename="../controller.cpp" line="1353"/>
         <source>保存失败</source>
         <translation>Could not save</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1317"/>
+        <location filename="../controller.cpp" line="1353"/>
         <source>无法写入 %1，请检查目录是否存在以及是否可写。</source>
         <translation>Could not write %1. Check that the folder exists and is writable.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1376"/>
+        <location filename="../controller.cpp" line="1412"/>
         <source>屏幕截图</source>
         <translation>Screen capture</translation>
     </message>
@@ -2894,8 +2928,8 @@ Scroll back a little; stitching continues once it lines up.</translation>
     <message>
         <location filename="../platform_mac.mm" line="700"/>
         <location filename="../platform_win.cpp" line="481"/>
-        <source>全局截图快捷键只支持一组按键，不能使用连续组合。</source>
-        <translation>The global screenshot shortcut supports only one key combination; key sequences are not allowed.</translation>
+        <source>全局快捷键只支持一组按键，不能使用连续组合。</source>
+        <translation>The global shortcut supports only one key combination, not a sequence.</translation>
     </message>
     <message>
         <location filename="../platform_mac.mm" line="708"/>
@@ -2933,37 +2967,37 @@ Scroll back a little; stitching continues once it lines up.</translation>
         <translation>The system could not register this shortcut (error %1). Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="218"/>
+        <location filename="../platform_linux.cpp" line="222"/>
         <source>请选择单个快捷键组合。</source>
         <translation>Choose a single shortcut combination.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="238"/>
+        <location filename="../platform_linux.cpp" line="243"/>
         <source>截图</source>
         <translation>Screenshot</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="243"/>
-        <source>截图快捷键未能注册。</source>
-        <translation>Could not register the screenshot shortcut.</translation>
+        <location filename="../platform_linux.cpp" line="249"/>
+        <source>全局快捷键未能注册。</source>
+        <translation>The global shortcut could not be registered.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="247"/>
+        <location filename="../platform_linux.cpp" line="253"/>
         <source>当前显示环境不支持全局快捷键。</source>
         <translation>The current display environment does not support global shortcuts.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="249"/>
+        <location filename="../platform_linux.cpp" line="255"/>
         <source>无法连接 X11 显示服务。</source>
         <translation>Unable to connect to the X11 display server.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="257"/>
+        <location filename="../platform_linux.cpp" line="263"/>
         <source>此按键无法注册为全局快捷键。</source>
         <translation>This key cannot be registered as a global shortcut.</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="278"/>
+        <location filename="../platform_linux.cpp" line="284"/>
         <source>快捷键已被其他程序占用。</source>
         <translation>The shortcut is already used by another application.</translation>
     </message>

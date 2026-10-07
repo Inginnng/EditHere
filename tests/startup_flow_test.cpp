@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "autostart.h"
 #include "overlay.h"
 #include "guide.h"
 #include "settingsdialog.h"
@@ -6,13 +7,25 @@
 #include <QApplication>
 #include <QDir>
 #include <QCheckBox>
+#include <QDialog>
+#include <QFileInfo>
 #include <QFontDatabase>
+#include <QKeySequenceEdit>
+#include <QLabel>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#ifdef Q_OS_WIN
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 using namespace h2d;
 
 class StartupFlowTests : public QObject {
@@ -20,6 +33,7 @@ class StartupFlowTests : public QObject {
     static AppSettings quietSettings() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
+        settings.shortcuts["annotate"] = {};
         settings.captureOnStartup = false;
         settings.checkUpdatesOnStartup = false;
         return settings;
@@ -238,6 +252,236 @@ class StartupFlowTests : public QObject {
         editor->dismissGuide();
         QVERIFY(hasSeenGuide(stateFile));
         editor->hide();
+    }
+    void annotationShortcutOpensEmptyWindow() {
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        auto shortcut = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        auto trayAction = editor ? editor->findChild<QAction *>("trayAnnotate") : nullptr;
+        QVERIFY(editor && shortcut && trayAction);
+        QVERIFY(!editor->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(editor->isVisible());
+        QVERIFY(!editor->hasDocument());
+        QVERIFY(editor->findChild<QWidget *>("emptyWell")->isVisible());
+
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        editor->setDocument(fromImage(picture, "file", "现有图片"));
+        editor->hide();
+        trayAction->trigger();
+        QVERIFY(editor->isVisible());
+        QVERIFY(!editor->hasDocument());
+        editor->hide();
+    }
+    void annotationShortcutRespectsDiscardDecision_data() {
+        QTest::addColumn<bool>("discard");
+        QTest::newRow("cancel-keeps-edits") << false;
+        QTest::newRow("discard-opens-empty") << true;
+    }
+    void annotationShortcutRespectsDiscardDecision() {
+        QFETCH(bool, discard);
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        auto shortcut = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        QVERIFY(editor && shortcut);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        auto document = fromImage(picture, "file", "尚未保存的批注");
+        Note note;
+        note.isGlobal = true;
+        note.comment = "保留这条批注";
+        document.notes.append(note);
+        document.dirty = true;
+        editor->setDocument(document);
+        bool prompted = false;
+        QTimer::singleShot(0, [&] {
+            auto question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(question);
+            prompted = true;
+            question->button(discard ? QMessageBox::Discard : QMessageBox::Cancel)->click();
+        });
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(prompted);
+        if (discard) {
+            QVERIFY(editor->isVisible());
+            QVERIFY(!editor->hasDocument());
+            QVERIFY(editor->findChild<QWidget *>("emptyWell")->isVisible());
+        } else {
+            QVERIFY(editor->hasDocument());
+            QCOMPARE(editor->document().id, document.id);
+            QCOMPARE(editor->document().png, document.png);
+            QVERIFY(editor->document().notes == document.notes);
+            QVERIFY(editor->document().dirty);
+        }
+        editor->hide();
+    }
+    void annotationShortcutPreservesActiveAgentSession() {
+        QTemporaryDir directory;
+        const auto input = directory.filePath("input.png");
+        const auto output = directory.filePath("feedback.json");
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        QVERIFY(picture.save(input));
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        auto shortcut = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        QVERIFY(editor && shortcut);
+        const auto response = controller.handleAgentRequest({{"command", "annotate"}, {"input", input},
+                                                              {"output", output}, {"timeout", 60}});
+        QVERIFY(response.value("pending").toBool());
+        const auto id = editor->document().id;
+        QSignalSpy finished(&controller, &Controller::agentSessionFinished);
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(editor->hasDocument());
+        QCOMPARE(editor->document().id, id);
+        QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("agentSession").toBool());
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(!QFileInfo::exists(output));
+        controller.cancelAgentSession(response.value("session").toString(), "cancelled", "Test cleanup");
+        editor->hide();
+    }
+    void annotationShortcutDoesNotInterruptModalOrCapture() {
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        auto shortcut = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        QVERIFY(editor && shortcut);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        const auto document = fromImage(picture, "file", "正在使用的图片");
+        editor->setDocument(document);
+        editor->hide();
+        QDialog modal(editor);
+        modal.setModal(true);
+        modal.show();
+        QTRY_COMPARE(QApplication::activeModalWidget(), &modal);
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QCOMPARE(editor->document().id, document.id);
+        QVERIFY(!editor->isVisible());
+        modal.reject();
+        QTRY_VERIFY(!QApplication::activeModalWidget());
+
+        // Trigger while the capture preparation is queued; no screen read is needed.
+        controller.capture();
+        QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QCOMPARE(editor->document().id, document.id);
+        QVERIFY(!editor->isVisible());
+    }
+    void annotationShortcutSettingsApplyIsTransactional_data() {
+        QTest::addColumn<bool>("saveChanges");
+        QTest::newRow("native-and-cancel") << false;
+        QTest::newRow("save-rollback-disable") << true;
+    }
+    void annotationShortcutSettingsApplyIsTransactional() {
+        QFETCH(bool, saveChanges);
+#ifdef Q_OS_WIN
+        QString startupError;
+        const bool hasLoginItem = launchAtLoginEnabled(&startupError);
+        if (saveChanges && (!startupError.isEmpty() || hasLoginItem))
+            QSKIP("Settings save integration requires no existing login item to preserve the user's registration.");
+        QTemporaryDir directory;
+        const auto settingsFile = directory.filePath("settings.ini");
+        const QKeySequence originalCapture("Ctrl+Alt+Shift+F17", QKeySequence::PortableText);
+        const QKeySequence originalAnnotate("Ctrl+Alt+Shift+F18", QKeySequence::PortableText);
+        const QKeySequence occupied("Ctrl+Alt+Shift+F19", QKeySequence::PortableText);
+        const QKeySequence replacement("Ctrl+Alt+Shift+F20", QKeySequence::PortableText);
+        auto settings = quietSettings();
+        settings.language = LanguageMode::SimplifiedChinese;
+        settings.shortcuts["capture"] = originalCapture;
+        settings.shortcuts["annotate"] = originalAnnotate;
+        QVERIFY(saveSettings(settings, nullptr, settingsFile));
+        Controller controller(nullptr, settings, settingsFile);
+        auto editor = editorOf(controller);
+        auto capture = controller.findChild<GlobalShortcut *>("captureShortcut");
+        auto annotate = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        auto trayAction = editor ? editor->findChild<QAction *>("trayAnnotate") : nullptr;
+        QVERIFY(editor && capture && annotate && trayAction);
+        QCOMPARE(capture->sequence(), originalCapture);
+        QCOMPARE(annotate->sequence(), originalAnnotate);
+        auto press = [](WORD key) {
+            const WORD keys[] = {VK_CONTROL, VK_MENU, VK_SHIFT, key};
+            INPUT inputs[8]{};
+            for (int index = 0; index < 4; ++index) {
+                inputs[index].type = INPUT_KEYBOARD;
+                inputs[index].ki.wVk = keys[index];
+                inputs[index + 4].type = INPUT_KEYBOARD;
+                inputs[index + 4].ki.wVk = keys[3 - index];
+                inputs[index + 4].ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            return SendInput(8, inputs, sizeof(INPUT));
+        };
+        QCOMPARE(press(VK_F18), UINT(8));
+        QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible(), 1500);
+        QVERIFY(!editor->hasDocument());
+
+        auto editBindings = [&](const QKeySequence &captureKey, const QKeySequence &annotateKey,
+                                bool save, bool expectConflict = false) {
+            QTimer::singleShot(0, [&] {
+                auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+                QVERIFY(dialog);
+                QTimer::singleShot(1500, dialog, &QDialog::reject);
+                QVERIFY(capture->sequence().isEmpty());
+                QVERIFY(annotate->sequence().isEmpty());
+                dialog->findChild<QKeySequenceEdit *>("shortcut_capture")->setKeySequence(captureKey);
+                dialog->findChild<QKeySequenceEdit *>("shortcut_annotate")->setKeySequence(annotateKey);
+                if (save) {
+                    dialog->findChild<QPushButton *>("settingsSave")->click();
+                    if (expectConflict) {
+                        QVERIFY(dialog->isVisible());
+                        auto error = dialog->findChild<QLabel *>("errorLabel");
+                        QVERIFY(error && error->isVisible());
+                        QVERIFY(!error->text().isEmpty());
+                        dialog->reject();
+                    }
+                } else {
+                    dialog->reject();
+                }
+            });
+            controller.openSettings();
+        };
+        editBindings(replacement, occupied, false);
+        QCOMPARE(capture->sequence(), originalCapture);
+        QCOMPARE(annotate->sequence(), originalAnnotate);
+        QCOMPARE(loadSettings(settingsFile).shortcuts, settings.shortcuts);
+        if (!saveChanges) {
+            editor->hide();
+            return;
+        }
+
+        // Both registrations must be released before saving a swap.
+        editBindings(originalAnnotate, originalCapture, true);
+        QCOMPARE(capture->sequence(), originalAnnotate);
+        QCOMPARE(annotate->sequence(), originalCapture);
+        const auto saved = loadSettings(settingsFile);
+        QCOMPARE(saved.shortcuts.value("capture"), originalAnnotate);
+        QCOMPARE(saved.shortcuts.value("annotate"), originalCapture);
+        QVERIFY(trayAction->text().contains(originalCapture.toString(QKeySequence::NativeText)));
+
+        GlobalShortcut blocker;
+        QVERIFY2(blocker.start(occupied), qPrintable(blocker.lastError()));
+        editBindings(replacement, occupied, true, true);
+        QCOMPARE(capture->sequence(), originalAnnotate);
+        QCOMPARE(annotate->sequence(), originalCapture);
+        QVERIFY(loadSettings(settingsFile) == saved);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        editor->setDocument(fromImage(picture, "file", "注册恢复后打开空窗口"));
+        editor->hide();
+        QCOMPARE(press(VK_F17), UINT(8));
+        QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible() && !editor->hasDocument(), 1500);
+
+        editBindings(originalAnnotate, {}, true);
+        QVERIFY(annotate->sequence().isEmpty());
+        QVERIFY(loadSettings(settingsFile).shortcuts.value("annotate").isEmpty());
+        QVERIFY(!trayAction->text().contains(originalCapture.toString(QKeySequence::NativeText)));
+        GlobalShortcut released;
+        QVERIFY2(released.start(originalCapture), qPrintable(released.lastError()));
+        editor->hide();
+#endif
     }
 };
 QTEST_MAIN(StartupFlowTests)

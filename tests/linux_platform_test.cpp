@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QPainter>
 #include <QProcess>
 #include <QSignalSpy>
@@ -107,6 +108,7 @@ class MockShortcuts : public QObject, protected QDBusContext {
     QString session;
     uint result = 0;
     QString preferred;
+    QMap<QString, PortalShortcuts> bindings;
     QDBusObjectPath request(const QVariantMap &options, const QVariantMap &values) {
         QString sender = message().service().mid(1); sender.replace('.', '_');
         const auto path = "/org/freedesktop/portal/desktop/request/" + sender + "/" + options.value("handle_token").toString();
@@ -120,8 +122,9 @@ class MockShortcuts : public QObject, protected QDBusContext {
         session = "/org/freedesktop/portal/desktop/session/test/" + options.value("session_handle_token").toString();
         return request(options, {{"session_handle", session}});
     }
-    QDBusObjectPath BindShortcuts(const QDBusObjectPath &, const PortalShortcuts &shortcuts,
+    QDBusObjectPath BindShortcuts(const QDBusObjectPath &path, const PortalShortcuts &shortcuts,
                                  const QString &, const QVariantMap &options) {
+        bindings.insert(path.path(), shortcuts);
         if (!shortcuts.isEmpty()) preferred = shortcuts.first().properties.value("preferred_trigger").toString();
         return request(options, {{"shortcuts", QVariant::fromValue(shortcuts)}});
     }
@@ -204,18 +207,85 @@ class LinuxPlatformTests : public QObject {
         bus.unregisterObject("/org/freedesktop/portal/desktop");
         bus.unregisterService("org.freedesktop.portal.Desktop");
     }
+    void portalShortcutsHaveIndependentSessionsAndActions() {
+        auto bus = QDBusConnection::sessionBus();
+        QVERIFY(bus.registerService("org.freedesktop.portal.Desktop"));
+        MockShortcuts mock;
+        QVERIFY(bus.registerObject("/org/freedesktop/portal/desktop", &mock,
+                                   QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals));
+        const auto previous = qgetenv("XDG_SESSION_TYPE"); qputenv("XDG_SESSION_TYPE", "wayland");
+        GlobalShortcut capture, annotate;
+        capture.setAction("capture", "截图");
+        annotate.setAction("annotate", "新建批注（空窗口）");
+        QSignalSpy captured(&capture, &GlobalShortcut::triggered);
+        QSignalSpy annotated(&annotate, &GlobalShortcut::triggered);
+        QVERIFY(annotate.start({}));
+        QVERIFY(annotate.sequence().isEmpty());
+        QVERIFY(mock.bindings.isEmpty());
+
+        const QKeySequence captureKey("Ctrl+Shift+F8"), annotateKey("Ctrl+Shift+F9");
+        QVERIFY2(capture.start(captureKey), qPrintable(capture.lastError()));
+        const auto captureSession = mock.session;
+        QVERIFY2(annotate.start(annotateKey), qPrintable(annotate.lastError()));
+        const auto annotateSession = mock.session;
+        QVERIFY(captureSession != annotateSession);
+        QCOMPARE(mock.bindings.size(), 2);
+        const auto captureBinding = mock.bindings.value(captureSession);
+        const auto annotateBinding = mock.bindings.value(annotateSession);
+        QCOMPARE(captureBinding.size(), 1);
+        QCOMPARE(annotateBinding.size(), 1);
+        QCOMPARE(captureBinding.first().id, QString("capture"));
+        QCOMPARE(captureBinding.first().properties.value("description").toString(), QString("截图"));
+        QCOMPARE(annotateBinding.first().id, QString("annotate"));
+        QCOMPARE(annotateBinding.first().properties.value("description").toString(), QString("新建批注（空窗口）"));
+        QCOMPARE(annotateBinding.first().properties.value("preferred_trigger").toString(), QString("CTRL+SHIFT+F9"));
+        QVERIFY(capture.start(captureKey));
+        QCOMPARE(mock.bindings.size(), 2);
+        QCOMPARE(capture.sequence(), captureKey);
+        QCOMPARE(annotate.sequence(), annotateKey);
+
+        emit mock.Activated(QDBusObjectPath(captureSession), "annotate", 1, {});
+        emit mock.Activated(QDBusObjectPath(captureSession), "capture", 2, {});
+        QTRY_COMPARE(captured.size(), 1);
+        QCOMPARE(annotated.size(), 0);
+        emit mock.Activated(QDBusObjectPath(annotateSession), "capture", 3, {});
+        emit mock.Activated(QDBusObjectPath(annotateSession), "annotate", 4, {});
+        QTRY_COMPARE(annotated.size(), 1);
+        QCOMPARE(captured.size(), 1);
+
+        QVERIFY(annotate.start({}));
+        QVERIFY(annotate.sequence().isEmpty());
+        QVERIFY(annotate.lastError().isEmpty());
+        emit mock.Activated(QDBusObjectPath(annotateSession), "annotate", 5, {});
+        emit mock.Activated(QDBusObjectPath(captureSession), "capture", 6, {});
+        QTRY_COMPARE(captured.size(), 2);
+        QCOMPARE(annotated.size(), 1);
+        capture.stop();
+        QVERIFY(capture.sequence().isEmpty());
+        qputenv("XDG_SESSION_TYPE", previous);
+        bus.unregisterObject("/org/freedesktop/portal/desktop");
+        bus.unregisterService("org.freedesktop.portal.Desktop");
+    }
     void x11ShortcutHandlesConflictsAndActivation() {
         if (QGuiApplication::platformName() != "xcb") QSKIP("Needs X11; run with xvfb-run -platform xcb");
         const auto previous = qgetenv("XDG_SESSION_TYPE"); qputenv("XDG_SESSION_TYPE", "x11");
-        GlobalShortcut first, second;
+        GlobalShortcut first, second, independent;
         QSignalSpy triggered(&first, &GlobalShortcut::triggered);
+        QSignalSpy independentTriggered(&independent, &GlobalShortcut::triggered);
         QVERIFY(first.start(QKeySequence("Ctrl+Shift+F8")));
         QVERIFY(!second.start(QKeySequence("Ctrl+Shift+F8")));
         QVERIFY(!second.lastError().isEmpty());
+        QVERIFY(independent.start(QKeySequence("Ctrl+Shift+F9")));
         auto *display = XOpenDisplay(nullptr); QVERIFY(display);
         for (auto key : {XK_Control_L, XK_Shift_L, XK_F8}) XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), True, 0);
         for (auto key : {XK_F8, XK_Shift_L, XK_Control_L}) XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), False, 0);
-        XFlush(display); QTRY_COMPARE(triggered.size(), 1); XCloseDisplay(display);
+        XFlush(display); QTRY_COMPARE(triggered.size(), 1);
+        QCOMPARE(independentTriggered.size(), 0);
+        for (auto key : {XK_Control_L, XK_Shift_L, XK_F9}) XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), True, 0);
+        for (auto key : {XK_F9, XK_Shift_L, XK_Control_L}) XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), False, 0);
+        XFlush(display); QTRY_COMPARE(independentTriggered.size(), 1);
+        QCOMPARE(triggered.size(), 1);
+        XCloseDisplay(display);
         first.stop(); QVERIFY(second.start(QKeySequence("Ctrl+Shift+F8")));
         qputenv("XDG_SESSION_TYPE", previous);
     }

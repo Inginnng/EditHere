@@ -25,7 +25,7 @@ int main(int argc,char **argv) {
     QDir().mkpath(out+"/native");
     for (const auto &font : {"segoeui.ttf", "msyh.ttc"}) QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR")+"/Fonts/"+font);
     applyTheme(ThemeMode::Light);
-    auto settings=defaultSettings(); settings.shortcuts["capture"]={}; settings.captureOnStartup=false; settings.checkUpdatesOnStartup=false;
+    auto settings=defaultSettings(); settings.shortcuts["capture"]={}; settings.shortcuts["annotate"]={}; settings.captureOnStartup=false; settings.checkUpdatesOnStartup=false;
     Controller controller(nullptr,settings,out+"/isolated-settings.ini");
     auto tray=controller.findChild<QSystemTrayIcon *>("edithereTray");
     auto editor=qobject_cast<Editor *>(tray->contextMenu()->parentWidget()); require(editor,"no editor");

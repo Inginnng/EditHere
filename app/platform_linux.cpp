@@ -41,7 +41,7 @@ QVariantMap portalCall(const QString &method, QList<QVariant> args, QVariantMap 
     request->start(shortcutInterface, method, args, options, [&](uint code, QVariantMap values) {
         if (code == 0) result = values;
         else *error = code == 1 ? tr("快捷键授权已取消。") :
-            tr("桌面不支持快捷键授权。请在系统快捷键设置中绑定 EditHere --capture。") + "\n" + values.value("error").toString();
+            tr("桌面不支持快捷键授权，请在托盘菜单中使用相应操作。") + "\n" + values.value("error").toString();
         loop.quit();
     });
     loop.exec();
@@ -203,9 +203,10 @@ class LinuxShortcut final : public QObject {
     GlobalShortcut *owner;
     Display *display = nullptr;
     QString session;
+    QString actionId;
   public slots:
     void activated(const QDBusObjectPath &path, const QString &id, qulonglong, const QVariantMap &options) {
-        if (path.path() != session || id != "capture") return;
+        if (path.path() != session || id != actionId) return;
         const auto token = options.value("activation_token").toString();
         if (!token.isEmpty()) qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
         emit owner->triggered();
@@ -214,9 +215,13 @@ class LinuxShortcut final : public QObject {
 GlobalShortcut::GlobalShortcut(QObject *parent) : QObject(parent) {}
 GlobalShortcut::~GlobalShortcut() { stop(); }
 bool GlobalShortcut::start(const QKeySequence &sequence) {
-    stop(); lastError_.clear(); sequence_ = {};
+    lastError_.clear();
+    if (sequence.isEmpty()) { stop(); return true; }
+    if (handle_ && sequence == sequence_) return true;
+    stop();
     if (sequence.count() != 1) { lastError_ = tr("请选择单个快捷键组合。"); return false; }
     auto *state = new LinuxShortcut(this);
+    state->actionId = actionId_;
     handle_ = state;
     if (wayland()) {
         qDBusRegisterMetaType<PortalShortcut>();
@@ -235,12 +240,13 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
         preferred += QKeySequence(combo.key()).toString(QKeySequence::PortableText);
         QDBusConnection::sessionBus().connect(service, "/org/freedesktop/portal/desktop", shortcutInterface,
             "Activated", state, SLOT(activated(QDBusObjectPath,QString,qulonglong,QVariantMap)));
-        PortalShortcuts shortcuts{{"capture", {{"description", tr("截图")}, {"preferred_trigger", preferred}}}};
+        PortalShortcuts shortcuts{{state->actionId, {{"description", description_.isEmpty() ? tr("截图") : description_},
+                                                    {"preferred_trigger", preferred}}}};
         const auto bound = portalCall("BindShortcuts", {QVariant::fromValue(QDBusObjectPath(state->session)),
             QVariant::fromValue(shortcuts), QString()}, {}, &lastError_);
         const auto registered = qdbus_cast<PortalShortcuts>(bound.value("shortcuts"));
         if (registered.isEmpty()) {
-            if (lastError_.isEmpty()) lastError_ = tr("截图快捷键未能注册。");
+            if (lastError_.isEmpty()) lastError_ = tr("全局快捷键未能注册。");
             stop(); return false;
         }
     } else {
@@ -287,7 +293,11 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
     sequence_ = sequence;
     return true;
 }
-void GlobalShortcut::stop() { delete static_cast<LinuxShortcut *>(handle_); handle_ = nullptr; }
+void GlobalShortcut::stop() {
+    delete static_cast<LinuxShortcut *>(handle_);
+    handle_ = nullptr;
+    sequence_ = {};
+}
 bool GlobalShortcut::nativeEventFilter(const QByteArray &, void *, qintptr *) { return false; }
 QString globalShortcutLabel() { return wayland() ? tr("截图快捷键（由桌面授权管理）") : tr("截图快捷键"); }
 void prepareScreenCapture(QObject *context, std::function<void()> ready, bool) {

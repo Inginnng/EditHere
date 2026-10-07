@@ -80,6 +80,7 @@ bool validCombination(QKeyCombination combination) {
 } // namespace
 QVector<ShortcutDefinition> shortcutDefinitions() {
     return {{"capture", tr("截图"), true, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_2)},
+            {"annotate", tr("新建批注（空窗口）"), true, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_1)},
             {"open", tr("打开图片或项目"), false, QKeySequence(QKeySequence::Open)},
             {"paste", tr("粘贴图片"), false, QKeySequence(QKeySequence::Paste)},
             {"save", tr("保存项目"), false, QKeySequence(QKeySequence::Save)},
@@ -151,7 +152,8 @@ QString validateSettings(const AppSettings &settings) {
         const auto modifiers = combination.keyboardModifiers();
         if (definition.global && !(modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) &&
             !(key >= Qt::Key_F1 && key <= Qt::Key_F24) && key != Qt::Key_Print)
-            return tr("截图快捷键需要包含 Ctrl、Alt 或 Command / Win，或使用 F1–F24、Print Screen。");
+            return tr("“%1”快捷键需要包含 Ctrl、Alt 或 Command / Win，或使用 F1–F24、Print Screen。")
+                .arg(definition.label);
         const auto code = combination.toCombined();
         if (assigned.contains(code))
             return tr("“%1”和“%2”使用了相同的快捷键 %3。")
@@ -260,6 +262,17 @@ AppSettings loadSettings(const QString &filePath) {
         if (!text.isEmpty() && sequence.isEmpty())
             return defaultSettings();
         result.shortcuts[definition.id] = sequence;
+    }
+    // An upgrade must not replace the user's settings if an existing shortcut
+    // already uses the new annotation default. They can choose another key later.
+    if (!source.contains("shortcuts/annotate")) {
+        const auto annotationKey = result.shortcuts.value("annotate");
+        for (auto it = result.shortcuts.cbegin(); it != result.shortcuts.cend(); ++it) {
+            if (it.key() != "annotate" && it.value() == annotationKey) {
+                result.shortcuts["annotate"] = {};
+                break;
+            }
+        }
     }
     if (source.status() != QSettings::NoError || !validateSettings(result).isEmpty())
         return defaultSettings();

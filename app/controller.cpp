@@ -37,7 +37,9 @@ constexpr int kScrollManualSampleMs = 60;
 Controller::Controller(QObject *parent, const AppSettings &settings, const QString &settingsFile)
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
       tray_(QApplication::windowIcon().isNull() ? glyph("capture", accent()) : QApplication::windowIcon(), this),
-      shortcut_(this) {
+      shortcut_(this), annotateShortcut_(this) {
+    shortcut_.setObjectName("captureShortcut");
+    annotateShortcut_.setObjectName("annotateShortcut");
     connect(&editor_, &Editor::agentFinishRequested, this, &Controller::finishAgentSession);
     connect(&editor_, &Editor::agentCancelRequested, this, [this] {
         cancelAgentSession(agentSessionId_, "cancelled", "User cancelled. Edits remain in EditHere.");
@@ -48,11 +50,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     auto menu = new QMenu(&editor_);
     captureAction_ = menu->addAction(QString(), this, [this] { beginCapture(true); });
     captureAction_->setObjectName("trayCapture");
-    annotateAction_ = menu->addAction(QString(), this, [this] {
-        if (auto menu = tray_.contextMenu())
-            menu->close();
-        editor_.openEmpty();
-    });
+    annotateAction_ = menu->addAction(QString(), this, &Controller::openAnnotation);
     annotateAction_->setObjectName("trayAnnotate");
     openAction_ = menu->addAction(QString(), &editor_, [this] {
         editor_.openFile();
@@ -88,6 +86,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
             beginCapture(true);
     });
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
+    connect(&annotateShortcut_, &GlobalShortcut::triggered, this, &Controller::openAnnotation);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
     connect(&editor_, &Editor::guideDismissed, this, [this] {
         guidePending_ = false;
@@ -114,10 +113,15 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         diagnostics::write(diagnostics::Level::Warning, "shortcuts.register", shortcut_.lastError());
         tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));
     }
+    if (!annotateShortcut_.start(settings_.shortcuts.value("annotate"))) {
+        diagnostics::write(diagnostics::Level::Warning, "shortcuts.annotate.register", annotateShortcut_.lastError());
+        tray_.showMessage("EditHere", tr("新建批注快捷键未能注册，请右键托盘打开设置修改。"));
+    }
 }
 void Controller::retranslate() {
+    shortcut_.setAction("capture", tr("截图"));
+    annotateShortcut_.setAction("annotate", tr("新建批注（空窗口）"));
     if (openAction_) openAction_->setText(tr("打开图片或项目"));
-    if (annotateAction_) annotateAction_->setText(tr("新建批注（空窗口）"));
     if (accessibilityAction_) accessibilityAction_->setText(tr("启用系统元素识别"));
     if (settingsAction_) settingsAction_->setText(tr("设置…"));
     if (updatesAction_) updatesAction_->setText(tr("检查更新…"));
@@ -127,8 +131,18 @@ void Controller::retranslate() {
 void Controller::updateTrayShortcut() {
     const auto label = settings_.shortcuts.value("capture").toString(QKeySequence::NativeText);
     captureAction_->setText(label.isEmpty() ? tr("截图") : tr("截图") + "    " + label);
+    const auto annotateLabel = settings_.shortcuts.value("annotate").toString(QKeySequence::NativeText);
+    annotateAction_->setText(annotateLabel.isEmpty() ? tr("新建批注（空窗口）")
+                                                  : tr("新建批注（空窗口）") + "    " + annotateLabel);
     const auto brand = tr("EditHere · 改这里");
     tray_.setToolTip(label.isEmpty() ? brand : brand + " · " + label);
+}
+void Controller::openAnnotation() {
+    if (capturing_ || QApplication::activeModalWidget())
+        return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
+    editor_.openEmpty();
 }
 void Controller::openSettings(bool updates, bool toolbar) {
     if (capturing_ || QApplication::activeModalWidget())
@@ -136,7 +150,9 @@ void Controller::openSettings(bool updates, bool toolbar) {
     if (auto menu = tray_.contextMenu())
         menu->close();
     const auto activeShortcut = shortcut_.sequence();
+    const auto activeAnnotateShortcut = annotateShortcut_.sequence();
     shortcut_.stop();
+    annotateShortcut_.stop();
     auto draft = settings_;
     QString startupReadError;
     const bool registered = launchAtLoginEnabled(&startupReadError);
@@ -171,15 +187,33 @@ void Controller::openSettings(bool updates, bool toolbar) {
         if (!startupError.isEmpty())
             return startupError;
         const auto oldShortcut = shortcut_.sequence();
-        if (!shortcut_.start(next.shortcuts.value("capture")))
-            return shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
-                                                   : shortcut_.lastError();
+        const auto oldAnnotateShortcut = annotateShortcut_.sequence();
+        auto restoreShortcuts = [&] {
+            // Release both first so restoring swapped assignments cannot conflict.
+            shortcut_.stop();
+            annotateShortcut_.stop();
+            QString error;
+            if (!shortcut_.start(oldShortcut))
+                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
+            if (!annotateShortcut_.start(oldAnnotateShortcut))
+                error += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
+            return error;
+        };
+        if (!shortcut_.start(next.shortcuts.value("capture"))) {
+            const auto error = shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
+                                                              : shortcut_.lastError();
+            return error + restoreShortcuts();
+        }
+        if (!annotateShortcut_.start(next.shortcuts.value("annotate"))) {
+            const auto error = annotateShortcut_.lastError().isEmpty()
+                                   ? tr("新建批注快捷键无法注册，请更换组合键。")
+                                   : tr("新建批注（空窗口）：") + annotateShortcut_.lastError();
+            return error + restoreShortcuts();
+        }
         QString error;
         const bool startupChanged = wasRegistered != next.launchAtLogin;
         if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
-            if (!shortcut_.start(oldShortcut))
-                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
-            return error;
+            return error + restoreShortcuts();
         }
         if (!saveSettings(next, &error, settingsFile_)) {
             // Nothing was written, so the live language preview has to go back too.
@@ -188,9 +222,7 @@ void Controller::openSettings(bool updates, bool toolbar) {
             QString rollbackError;
             if (startupChanged && !setLaunchAtLoginEnabled(wasRegistered, &rollbackError))
                 error += tr("\n开机自启未能恢复：") + rollbackError;
-            if (!shortcut_.start(oldShortcut))
-                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
-            return error;
+            return error + restoreShortcuts();
         }
         settings_ = next;
         editor_.setPreferences(settings_);
@@ -207,8 +239,12 @@ void Controller::openSettings(bool updates, bool toolbar) {
         QCoreApplication::exit(0);
         return;
     }
-    if (!accepted && !shortcut_.start(activeShortcut))
-        tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
+    if (!accepted) {
+        if (!shortcut_.start(activeShortcut))
+            tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
+        if (!annotateShortcut_.start(activeAnnotateShortcut))
+            tray_.showMessage("EditHere", tr("新建批注快捷键未能恢复，请在设置中更换组合键。"));
+    }
     if (accepted) {
         const auto notice = launchAtLoginNotice();
         if (!notice.isEmpty()) tray_.showMessage(tr("EditHere 开机自启"), notice);
