@@ -51,9 +51,9 @@ QString ocrLanguageLabel(OcrLanguageMode mode);
 // engine stays below it and splits anything taller. Exposed for tests.
 int ocrMaxImageDimension();
 
-// Shrinks an image whose width is beyond what the recogniser accepts, keeping the
-// aspect ratio. Because the scaling is uniform, the boxes reported for the small
-// copy remain valid fractions of the original picture.
+// Enlarges small images so tightly cropped text remains readable, and shrinks
+// images wider than the recogniser accepts. The aspect ratio is preserved, so
+// recognised boxes remain valid fractions of the original picture.
 QImage scaleForOcr(const QImage &image, int maxDimension);
 
 // Splits an image taller than the recogniser accepts into overlapping bands, so a

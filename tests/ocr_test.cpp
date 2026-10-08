@@ -173,7 +173,7 @@ class OcrTests : public QObject {
         QCOMPARE(bands.first(), QRect(0, 0, 640, 480));
         QVERIFY(ocrBands(QSize(), ocrMaxImageDimension()).isEmpty());
     }
-    void onlyWidePicturesAreScaledAndTheAspectRatioSurvives() {
+    void ordinaryPicturesStayUntouchedAndWidePicturesFit() {
         // A small limit is used so the test does not have to allocate a picture the
         // size of a wall to exercise the same branch.
         const QImage wide(2000, 400, QImage::Format_ARGB32);
@@ -185,6 +185,45 @@ class OcrTests : public QObject {
         const QImage small(640, 480, QImage::Format_ARGB32);
         QCOMPARE(scaleForOcr(small, 800).size(), small.size());
         QVERIFY(scaleForOcr(QImage(), 800).isNull());
+    }
+    void narrowCropsAreEnlargedWithoutMovingRelativeBoxes() {
+        QImage small(380, 19, QImage::Format_ARGB32);
+        small.fill(Qt::white);
+        small.setDevicePixelRatio(2);
+        const auto scaled = scaleForOcr(small, ocrMaxImageDimension());
+        QVERIFY(scaled.height() >= 64);
+        QCOMPARE(scaled.width() / scaled.height(), 20);
+        QCOMPARE(scaled.devicePixelRatio(), small.devicePixelRatio());
+        const QRectF originalBox(10, 3, 350, 12);
+        const qreal scale = qreal(scaled.width()) / small.width();
+        const QRectF scaledBox(originalBox.x() * scale, originalBox.y() * scale,
+                               originalBox.width() * scale, originalBox.height() * scale);
+        const auto originalRelative = ocrBandBoxToImage(originalBox, small.rect(), small.size());
+        const auto scaledRelative = ocrBandBoxToImage(scaledBox, scaled.rect(), scaled.size());
+        QVERIFY(qAbs(originalRelative.x() - scaledRelative.x()) < 0.000001);
+        QVERIFY(qAbs(originalRelative.y() - scaledRelative.y()) < 0.000001);
+        QVERIFY(qAbs(originalRelative.width() - scaledRelative.width()) < 0.000001);
+        QVERIFY(qAbs(originalRelative.height() - scaledRelative.height()) < 0.000001);
+    }
+    void enlargingSmallPicturesRespectsTheEngineAndMemoryLimits() {
+        const QImage narrow(380, 19, QImage::Format_ARGB32);
+        const auto limited = scaleForOcr(narrow, 800);
+        QCOMPARE(limited.width(), 800);
+        QCOMPARE(limited.height(), 40);
+        const QImage tiny(8, 4, QImage::Format_ARGB32);
+        const auto enlarged = scaleForOcr(tiny, ocrMaxImageDimension());
+        QVERIFY(enlarged.width() <= tiny.width() * 4);
+        QVERIFY(enlarged.height() <= tiny.height() * 4);
+        QCOMPARE(scaleForOcr(narrow, 0).size(), narrow.size());
+        const QImage tall(19, 4000, QImage::Format_ARGB32);
+        const auto enlargedTall = scaleForOcr(tall, ocrMaxImageDimension());
+        const auto bands = ocrBands(enlargedTall.size(), ocrMaxImageDimension());
+        QVERIFY(bands.size() > 1);
+        QCOMPARE(bands.last().bottom() + 1, enlargedTall.height());
+        for (const auto &band : bands) {
+            QVERIFY(band.width() <= ocrMaxImageDimension());
+            QVERIFY(band.height() <= ocrMaxImageDimension());
+        }
     }
     void boxesOfABandLandOnTheWholePicture() {
         const QSize size(1000, 4000);
@@ -391,6 +430,40 @@ class OcrTests : public QObject {
         QVERIFY(box.center().y() > 0.2 && box.center().y() < 0.8);
         QVERIFY(box.width() > 0.0 && box.width() <= 1.0);
         QVERIFY(box.height() > 0.0 && box.height() <= 1.0);
+    }
+    void aNineteenPixelHighUrlIsReadBack_data() {
+        QTest::addColumn<int>("languageMode");
+        QTest::newRow("english") << int(OcrLanguageMode::English);
+        QTest::newRow("system") << int(OcrLanguageMode::System);
+        QTest::newRow("simplified-chinese") << int(OcrLanguageMode::SimplifiedChinese);
+    }
+    void aNineteenPixelHighUrlIsReadBack() {
+#ifndef Q_OS_WIN
+        QSKIP("this regression uses the Windows recogniser");
+#else
+        const QImage small(QStringLiteral(":/ocr-tests/ocr-small-url.png"));
+        QCOMPARE(small.size(), QSize(380, 19));
+        QFETCH(int, languageMode);
+        const auto language = OcrLanguageMode(languageMode);
+        const auto installed = OcrEngine::availableLanguages();
+        const QString requestedTag = ocrLanguageTag(language);
+        if (installed.isEmpty() || (!requestedTag.isEmpty() &&
+                                   !installed.contains(requestedTag, Qt::CaseInsensitive)))
+            QSKIP("the requested recogniser language is not installed for this session");
+        OcrEngine engine;
+        bool answered = false;
+        const auto result = recognizeAndWait(engine, small, language, &answered);
+        QVERIFY2(answered, "the recogniser never answered");
+        QVERIFY2(result.ok, qPrintable(result.message));
+        QCOMPARE(result.text().trimmed(),
+                 QStringLiteral("https://tianchi.aliyun.com/competition/entrance/532500"));
+        QVERIFY(!engine.busy());
+        for (const auto &line : result.lines) {
+            QVERIFY(QRectF(0, 0, 1, 1).contains(line.box));
+            QVERIFY(line.box.width() > 0.8);
+            QVERIFY(line.box.height() > 0.3);
+        }
+#endif
     }
     void aPictureWithNoTextReadsEmpty() {
         if (!OcrEngine::supported())

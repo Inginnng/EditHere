@@ -226,6 +226,10 @@ target_link_libraries(update_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME updates COMMAND update_tests)
 qt_add_executable(ocr_tests tests/ocr_test.cpp)
 target_link_libraries(ocr_tests PRIVATE h2d_ui Qt6::Test)
+qt_add_resources(ocr_tests small_ocr_fixture
+  PREFIX "/ocr-tests"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+  FILES tests/fixtures/ocr-small-url.png)
 add_test(NAME ocr COMMAND ocr_tests -platform offscreen)
 qt_add_executable(capture_tests tests/capture_test.cpp)
 target_link_libraries(capture_tests PRIVATE h2d_ui Qt6::Test)

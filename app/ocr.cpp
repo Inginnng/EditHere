@@ -137,9 +137,22 @@ int ocrMaxImageDimension() {
 }
 
 QImage scaleForOcr(const QImage &image, int maxDimension) {
-    if (image.isNull() || maxDimension <= 0 || image.width() <= maxDimension)
+    if (image.isNull() || maxDimension <= 0)
         return image;
-    return image.scaledToWidth(maxDimension, Qt::SmoothTransformation);
+    if (image.width() > maxDimension)
+        return image.scaledToWidth(maxDimension, Qt::SmoothTransformation);
+    // A narrow crop can contain perfectly legible text yet produce no lines at
+    // its native size (for example a 380 x 19 URL). Give small glyphs more pixels
+    // without resampling ordinary screenshots or enlarging tiny inputs without
+    // a bound. Tall images are still handled by ocrBands after this step.
+    constexpr int minimumShortEdge = 64;
+    constexpr qreal maximumUpscale = 4.0;
+    const qreal scale = std::min({maximumUpscale,
+                                 qreal(minimumShortEdge) / std::min(image.width(), image.height()),
+                                 qreal(maxDimension) / image.width()});
+    if (scale <= 1.0)
+        return image;
+    return image.scaledToWidth(qRound(image.width() * scale), Qt::SmoothTransformation);
 }
 
 QVector<QRect> ocrBands(const QSize &size, int maxDimension, int overlap) {
