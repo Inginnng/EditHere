@@ -18,7 +18,7 @@
 
 ## 发布流程
 
-打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；`/releases/latest` 与应用内更新依 GitHub 正式 Release 元数据决定。
+打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新同时检查 `Inginnng/EditHere` 的 GitHub 正式发行版与 [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) 的正式发行版，选择最高版本；同版本优先选择兼容程序包与对应 SHA-256 文件齐全的来源。一个来源失败时保留另一来源的结果并提示检查未完成，两边均失败时汇总错误。程序包与校验文件保持同一来源；现有 GitHub 发布工作流不会自动向 Gitee 发布。
 
 - **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 四者均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。
 - 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`。

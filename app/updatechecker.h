@@ -10,12 +10,14 @@
 #include <QTemporaryDir>
 #include <functional>
 #include <memory>
+#include <optional>
 namespace h2d {
 class UpdateCheckerTestAccess;
 class UpdateChecker final : public QObject {
     Q_OBJECT
   public:
     enum Status { Current, Available, NewerLocal, Failed };
+    enum Source { GitHub, Gitee };
     struct Asset {
         QString name;
         QUrl url;
@@ -34,8 +36,12 @@ class UpdateChecker final : public QObject {
     };
     explicit UpdateChecker(QObject *parent = nullptr);
     ~UpdateChecker() override;
-    static QUrl releasesUrl();
-    static Result parseRelease(const QByteArray &bytes, const QString &currentVersion);
+    static QUrl releasesUrl(Source source = GitHub);
+    static Result parseRelease(const QByteArray &bytes, const QString &currentVersion,
+                               Source source = GitHub);
+    static Result parseReleases(const QByteArray &bytes, const QString &currentVersion,
+                                Source source = Gitee);
+    static Result selectRelease(const Result &github, const Result &gitee);
     // Resolves the temporary path a package is downloaded to and drops whatever
     // is already there. The writer appends, so a leftover file from a previous
     // attempt would be concatenated with the new package and fail the SHA256
@@ -64,17 +70,26 @@ class UpdateChecker final : public QObject {
   private:
     friend class UpdateCheckerTestAccess;
     void requestPublic();
+    void requestGitee();
+    void requestSource(Source source);
+    void collectSource(Source source, Result result);
+    void completeCheck();
     void finish(Result result);
     void verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller);
     void failInstall(const QString &message);
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
+    QPointer<QNetworkReply> giteeReply_;
     QPointer<QNetworkReply> downloadReply_;
     QPointer<QNetworkReply> hashReply_;
     QProcess process_;
     QTimer timeout_;
     QTimer cliTimeout_;
     QByteArray output_;
+    QByteArray giteeOutput_;
+    std::optional<Result> githubResult_, giteeResult_;
+    std::optional<Result> giteeCandidate_;
+    int giteePage_ = 1;
     QString downloadPath_;
     QString downloadFileName_;
     bool busy_ = false;

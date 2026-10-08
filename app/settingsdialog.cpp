@@ -342,7 +342,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
             const bool isInstaller = installedCopy();
             if (!UpdateChecker::canAutoInstall(result, isInstaller, windowsUpdates)) {
                 if (!QDesktopServices::openUrl(result.url))
-                    status->setText(tr("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。"));
+                    status->setText(tr("无法打开浏览器，请访问：%1").arg(result.url.toString()));
                 return;
             }
             status->setText(tr("正在下载安装器…"));
@@ -354,8 +354,9 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
             updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
-            if (!QDesktopServices::openUrl(url.isEmpty() ? UpdateChecker::releasesUrl() : url))
-                status->setText(tr("无法打开浏览器，请访问 github.com/Inginnng/EditHere/releases。"));
+            const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
+            if (!QDesktopServices::openUrl(releaseUrl))
+                status->setText(tr("无法打开浏览器，请访问：%1").arg(releaseUrl.toString()));
         }
     });
     connect(updater_, &UpdateChecker::downloadProgress, this,

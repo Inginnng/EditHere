@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## GitHub 与 Gitee 双源更新（0.10.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-162 | 更新检查只查询 GitHub，访问失败时无法采用 Gitee 的正式发行版；同时查询 GitHub `Inginnng/EditHere` 与 Gitee `InnGing/EditHere`，等待双方结果后按数字版本选择较新正式版。Gitee 列表从所有结果中选择最高正式版本，不依赖返回顺序；同版本优先采用程序包与 SHA-256 文件齐全的来源，禁止跨来源拼接包与校验文件。单源失败或超时保留另一来源结果并提示检查未完成，不能误报全局最新版；忽略已完成检查的重复或迟到回调 | `UpdateTests::parsesGiteePublicReleaseWithoutGithubOnlyFields`、`rejectsInvalidGiteeReleaseFlagsAndUrls`、`rejectsGiteeAssetsFromOtherRepositoriesOrHosts`（真实公开接口形状及来源验证）；`giteeReleaseListSelectsHighestStableVersionRegardlessOfOrder`、`giteeReleaseListWithoutStableReleaseFails`（列表排序与正式版过滤）；`selectsNewestReleaseAcrossBothSources`、`sameVersionKeepsPackageAndHashFromOneCompleteSource`（数字版本、包及校验来源）；`partialFailurePreservesSuccessfulResultWithoutClaimingGlobalLatest`、`collectionWaitsForBothSourcesAndEmitsOnlyOnce`、`deadlinePreservesCompletedSourceAndIgnoresLateResults`、`failedSourceStillWaitsForRemainingSource`（单源/双源失败、顺序、超时与重复完成） | 🆕 |
+
 ## 小图 OCR 与截图缩放光标（0.10.3）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

@@ -198,7 +198,7 @@ No. It combines element boundaries exposed by the system with local image analys
 <details>
 <summary><b>Are screenshots uploaded?</b></summary>
 
-No. Capture, detection and editing happen locally. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. EditHere only contacts GitHub when you check for updates manually or enable update checks at startup.
+No. Capture, detection and editing happen locally. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. When you check for updates manually or enable update checks at startup, EditHere queries stable releases on GitHub and [Gitee](https://gitee.com/InnGing/EditHere) and chooses the newer version.
 </details>
 
 <details>

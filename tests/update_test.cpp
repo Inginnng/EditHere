@@ -10,6 +10,7 @@
 #include <QSslSocket>
 #include <QTemporaryDir>
 #include <QTest>
+#include <utility>
 using namespace h2d;
 namespace h2d {
 // Exercise the real verification/confirmation/launcher boundary without network
@@ -19,6 +20,22 @@ class UpdateCheckerTestAccess {
     static void install(UpdateChecker &checker, const QString &path, const QString &hash) {
         checker.installing_ = true;
         checker.verifyAndInstall(path, hash, true);
+    }
+    static void beginCheck(UpdateChecker &checker) {
+        checker.githubResult_.reset();
+        checker.giteeResult_.reset();
+        checker.busy_ = true;
+        checker.timeout_.start();
+    }
+    static void collect(UpdateChecker &checker, UpdateChecker::Source source, UpdateChecker::Result result) {
+        checker.collectSource(source, std::move(result));
+    }
+    static void expireCheck(UpdateChecker &checker) {
+        checker.completeCheck();
+    }
+    static const std::optional<UpdateChecker::Result> &sourceResult(const UpdateChecker &checker,
+                                                                   UpdateChecker::Source source) {
+        return source == UpdateChecker::GitHub ? checker.githubResult_ : checker.giteeResult_;
     }
 };
 }
@@ -48,6 +65,24 @@ class UpdateTests : public QObject {
         auto object = QJsonDocument::fromJson(release(version)).object();
         object["assets"] = QJsonArray{asset(installer), asset(installer + ".sha256"), asset(portable),
                                       asset(portable + ".sha256")};
+        return QJsonDocument(object).toJson();
+    }
+    static QJsonObject giteeAsset(const QString &name, const QString &version) {
+        return QJsonObject{{"name", name},
+                           {"browser_download_url",
+                            "https://gitee.com/InnGing/EditHere/releases/download/" + version + "/" + name}};
+    }
+    // Gitee's public latest endpoint omits draft, html_url and asset size.
+    QByteArray giteeRelease(const QString &version, bool withAssets = false, bool versioned = false) {
+        QJsonObject object{{"tag_name", version}, {"prerelease", false}};
+        if (withAssets) {
+            const QString ver = version.startsWith("v") ? version.mid(1) : version;
+            const QString suffix = versioned ? "-" + ver : QString();
+            const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
+            const QString portable = "EditHere" + suffix + "-win-x64.zip";
+            object["assets"] = QJsonArray{giteeAsset(installer, version), giteeAsset(installer + ".sha256", version),
+                                          giteeAsset(portable, version), giteeAsset(portable + ".sha256", version)};
+        }
         return QJsonDocument(object).toJson();
     }
   private slots:
@@ -189,6 +224,290 @@ class UpdateTests : public QObject {
         QVERIFY(bare.installer.name.isEmpty());
         QVERIFY(bare.portable.url.isEmpty());
     }
+    void parsesGiteePublicReleaseWithoutGithubOnlyFields() {
+        for (const bool versioned : {false, true}) {
+            const auto result = UpdateChecker::parseRelease(giteeRelease("v0.10.2", true, versioned),
+                                                            "0.10.1", UpdateChecker::Gitee);
+            QCOMPARE(result.status, UpdateChecker::Available);
+            QCOMPARE(result.tagName, QString("v0.10.2"));
+            QCOMPARE(result.url.host(), QString("gitee.com"));
+            QVERIFY(result.url.path().startsWith("/InnGing/EditHere/releases/"));
+            QVERIFY(result.url.path().endsWith("v0.10.2"));
+            const QString installer = versioned ? "EditHere-0.10.2-win-x64-setup.exe"
+                                               : "EditHere-win-x64-setup.exe";
+            QCOMPARE(result.installer.name, installer);
+            QCOMPARE(result.installerHash.name, installer + ".sha256");
+            QCOMPARE(result.installer.url.host(), QString("gitee.com"));
+            QCOMPARE(result.installer.size, qint64(0));
+            QVERIFY(!result.portable.url.isEmpty());
+            QVERIFY(!result.portableHash.url.isEmpty());
+            QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+        }
+        QCOMPARE(UpdateChecker::releasesUrl(UpdateChecker::Gitee),
+                 QUrl("https://gitee.com/InnGing/EditHere/releases"));
+    }
+    void rejectsInvalidGiteeReleaseFlagsAndUrls() {
+        const auto base = QJsonDocument::fromJson(giteeRelease("v0.10.2")).object();
+        for (const auto &key : {"draft", "prerelease"}) {
+            for (const QJsonValue value : {QJsonValue(true), QJsonValue(QStringLiteral("false")), QJsonValue(0)}) {
+                auto changed = base;
+                changed[key] = value;
+                QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                                      UpdateChecker::Gitee).status, UpdateChecker::Failed);
+            }
+        }
+        auto changed = base;
+        changed.remove("prerelease");
+        QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                              UpdateChecker::Gitee).status, UpdateChecker::Failed);
+        changed = base;
+        changed["draft"] = false;
+        const auto valid = UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                                        UpdateChecker::Gitee);
+        QCOMPARE(valid.status, UpdateChecker::Available);
+        changed["html_url"] = valid.url.toString();
+        QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                              UpdateChecker::Gitee).status, UpdateChecker::Available);
+        for (const auto &url : {"http://gitee.com/InnGing/EditHere/releases/tag/v0.10.2",
+                                "https://gitee.com/elsewhere/other/releases/tag/v0.10.2",
+                                "https://gitee.com/InnGing/EditHereElse/releases/tag/v0.10.2",
+                                "https://github.com/Inginnng/EditHere/releases/tag/v0.10.2",
+                                "https://user@gitee.com/InnGing/EditHere/releases/tag/v0.10.2",
+                                "https://gitee.com:443/InnGing/EditHere/releases/tag/v0.10.2"}) {
+            changed = base;
+            changed["html_url"] = url;
+            QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                                  UpdateChecker::Gitee).status, UpdateChecker::Failed);
+        }
+        for (const auto &suffix : {"?x=1", "#other"}) {
+            changed = base;
+            changed["html_url"] = valid.url.toString() + suffix;
+            QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(changed).toJson(), "0.10.1",
+                                                  UpdateChecker::Gitee).status, UpdateChecker::Failed);
+        }
+        for (const auto &version : {"v0.10.2-beta.1", "0.10", "unknown"})
+            QCOMPARE(UpdateChecker::parseRelease(giteeRelease(version), "0.10.1", UpdateChecker::Gitee).status,
+                     UpdateChecker::Failed);
+    }
+    void rejectsGiteeAssetsFromOtherRepositoriesOrHosts() {
+        const QString name = "EditHere-win-x64-setup.exe";
+        for (const auto &prefix : {"https://gitee.com/elsewhere/other/releases/download/v0.10.2/",
+                                   "https://gitee.com/InnGing/EditHereElse/releases/download/v0.10.2/",
+                                   "https://github.com/Inginnng/EditHere/releases/download/v0.10.2/",
+                                   "http://gitee.com/InnGing/EditHere/releases/download/v0.10.2/",
+                                   "https://example.com/InnGing/EditHere/releases/download/v0.10.2/"}) {
+            auto object = QJsonDocument::fromJson(giteeRelease("v0.10.2")).object();
+            auto package = giteeAsset(name, "v0.10.2");
+            auto hash = giteeAsset(name + ".sha256", "v0.10.2");
+            package["browser_download_url"] = QString(prefix) + name;
+            hash["browser_download_url"] = QString(prefix) + name + ".sha256";
+            object["assets"] = QJsonArray{package, hash};
+            const auto result = UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.10.1",
+                                                            UpdateChecker::Gitee);
+            QCOMPARE(result.status, UpdateChecker::Available);
+            QVERIFY(result.installer.url.isEmpty());
+            QVERIFY(result.installerHash.url.isEmpty());
+            QVERIFY(!UpdateChecker::canAutoInstall(result, true, true));
+        }
+    }
+    void giteeReleaseListSelectsHighestStableVersionRegardlessOfOrder() {
+        const auto releaseObject = [this](const QString &version) {
+            return QJsonDocument::fromJson(giteeRelease(version, true)).object();
+        };
+        auto prerelease = releaseObject("v0.10.99");
+        prerelease["prerelease"] = true;
+        auto draft = releaseObject("v1.0.0");
+        draft["draft"] = true;
+        auto wrongRepository = releaseObject("v9.0.0");
+        wrongRepository["html_url"] = "https://gitee.com/elsewhere/other/releases/tag/v9.0.0";
+        const QJsonArray releases{releaseObject("v0.10.9"), prerelease, releaseObject("v0.10.3"),
+                                  QJsonObject{{"message", "Not Found"}}, draft, wrongRepository,
+                                  releaseObject("v0.10.10"), releaseObject("v0.10.2")};
+        const auto bytes = QJsonDocument(releases).toJson();
+        const auto available = UpdateChecker::parseReleases(bytes, "0.10.1", UpdateChecker::Gitee);
+        QCOMPARE(available.status, UpdateChecker::Available);
+        QCOMPARE(available.tagName, QString("v0.10.10"));
+        QCOMPARE(available.url.host(), QString("gitee.com"));
+        QVERIFY(UpdateChecker::canAutoInstall(available, false, true));
+        QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.10", UpdateChecker::Gitee).status,
+                 UpdateChecker::Current);
+        QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.11", UpdateChecker::Gitee).status,
+                 UpdateChecker::NewerLocal);
+    }
+    void giteeReleaseListWithoutStableReleaseFails() {
+        auto prerelease = QJsonDocument::fromJson(giteeRelease("v0.10.4")).object();
+        prerelease["prerelease"] = true;
+        auto draft = QJsonDocument::fromJson(giteeRelease("v0.10.5")).object();
+        draft["draft"] = true;
+        const auto unstable = QJsonDocument(QJsonArray{prerelease, draft,
+            QJsonDocument::fromJson(giteeRelease("v0.10.6-beta.1")).object()}).toJson();
+        for (const auto &bytes : {QByteArray("[]"), QByteArray("{}"), QByteArray("<html>error</html>"),
+                                  QByteArray(), QByteArray(1024 * 1024 + 1, ' '), unstable}) {
+            const auto result = UpdateChecker::parseReleases(bytes, "0.10.3", UpdateChecker::Gitee);
+            QCOMPARE(result.status, UpdateChecker::Failed);
+            QCOMPARE(result.url, UpdateChecker::releasesUrl(UpdateChecker::Gitee));
+        }
+    }
+    void selectsNewestReleaseAcrossBothSources_data() {
+        QTest::addColumn<QString>("githubVersion");
+        QTest::addColumn<QString>("giteeVersion");
+        QTest::addColumn<QString>("expectedVersion");
+        QTest::addColumn<QString>("expectedHost");
+        QTest::newRow("github-newer") << "v0.10.3" << "v0.10.2" << "v0.10.3" << "github.com";
+        QTest::newRow("gitee-newer") << "v0.10.2" << "v0.10.3" << "v0.10.3" << "gitee.com";
+        QTest::newRow("numeric-patch") << "v0.10.9" << "v0.10.10" << "v0.10.10" << "gitee.com";
+        QTest::newRow("numeric-minor") << "v0.11.0" << "v0.10.99" << "v0.11.0" << "github.com";
+        QTest::newRow("same-complete-prefer-gitee") << "v0.10.3" << "v0.10.3" << "v0.10.3" << "gitee.com";
+    }
+    void selectsNewestReleaseAcrossBothSources() {
+        QFETCH(QString, githubVersion);
+        QFETCH(QString, giteeVersion);
+        QFETCH(QString, expectedVersion);
+        QFETCH(QString, expectedHost);
+        const auto github = UpdateChecker::parseRelease(releaseWithAssets(githubVersion, false), "0.10.1");
+        const auto gitee = UpdateChecker::parseRelease(giteeRelease(giteeVersion, true), "0.10.1",
+                                                      UpdateChecker::Gitee);
+        const auto result = UpdateChecker::selectRelease(github, gitee);
+        QCOMPARE(result.status, UpdateChecker::Available);
+        QCOMPARE(result.tagName, expectedVersion);
+        QCOMPARE(result.url.host(), expectedHost);
+        QCOMPARE(result.installer.url.host(), expectedHost);
+        QCOMPARE(result.installerHash.url.host(), expectedHost);
+        QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+    }
+    void sameVersionKeepsPackageAndHashFromOneCompleteSource() {
+        auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.10.3", false), "0.10.1");
+        auto gitee = UpdateChecker::parseRelease(giteeRelease("v0.10.3", true), "0.10.1",
+                                                 UpdateChecker::Gitee);
+        const auto completeGithub = github;
+        const auto completeGitee = gitee;
+        gitee.installerHash = {};
+        auto result = UpdateChecker::selectRelease(github, gitee);
+        QCOMPARE(result.url.host(), QString("github.com"));
+        QCOMPARE(result.installer.url, github.installer.url);
+        QCOMPARE(result.installerHash.url, github.installerHash.url);
+        github.installerHash = {};
+        result = UpdateChecker::selectRelease(github, completeGitee);
+        QCOMPARE(result.url.host(), QString("gitee.com"));
+        QCOMPARE(result.installer.url, completeGitee.installer.url);
+        QCOMPARE(result.installerHash.url, completeGitee.installerHash.url);
+
+        // Equal tags do not prove the binaries are identical: never borrow the
+        // hash from one host for the package published on the other host.
+        gitee = completeGitee;
+        gitee.installer = {};
+        result = UpdateChecker::selectRelease(github, gitee);
+        QVERIFY(!UpdateChecker::canAutoInstall(result, true, true));
+        QVERIFY(result.installer.url.isEmpty() || result.installerHash.url.isEmpty());
+
+        // A newer release must remain selected even when only the older source
+        // has an installer; its assets cannot be used for the newer version.
+        const auto newerBare = UpdateChecker::parseRelease(giteeRelease("v0.10.4"), "0.10.1",
+                                                           UpdateChecker::Gitee);
+        result = UpdateChecker::selectRelease(completeGithub, newerBare);
+        QCOMPARE(result.tagName, QString("v0.10.4"));
+        QVERIFY(result.installer.url.isEmpty());
+        QVERIFY(result.installerHash.url.isEmpty());
+    }
+    void partialFailurePreservesSuccessfulResultWithoutClaimingGlobalLatest() {
+        const auto githubFailed = UpdateChecker::parseRelease("{}", "0.10.3");
+        const auto giteeFailed = UpdateChecker::parseRelease("{}", "0.10.3", UpdateChecker::Gitee);
+        for (const QString version : {QString("v0.10.4"), QString("v0.10.3"), QString("v0.10.2")}) {
+            const auto github = UpdateChecker::parseRelease(releaseWithAssets(version, false), "0.10.3");
+            const auto gitee = UpdateChecker::parseRelease(giteeRelease(version, true), "0.10.3",
+                                                          UpdateChecker::Gitee);
+            for (const auto &result : {UpdateChecker::selectRelease(github, giteeFailed),
+                                       UpdateChecker::selectRelease(githubFailed, gitee)}) {
+                QCOMPARE(result.status, github.status);
+                QCOMPARE(result.tagName, version);
+                if (result.status == UpdateChecker::Available) {
+                    QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+                    QCOMPARE(result.installer.url.host(), result.url.host());
+                    QCOMPARE(result.installerHash.url.host(), result.url.host());
+                } else {
+                    QVERIFY(!result.message.contains(QStringLiteral("已是最新")));
+                    QVERIFY(result.message.contains(QStringLiteral("无法确认")));
+                }
+            }
+        }
+        QCOMPARE(UpdateChecker::selectRelease(githubFailed, giteeFailed).status, UpdateChecker::Failed);
+    }
+    void collectionWaitsForBothSourcesAndEmitsOnlyOnce() {
+        const auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.10.3", false), "0.10.1");
+        const auto gitee = UpdateChecker::parseRelease(giteeRelease("v0.10.4", true), "0.10.1",
+                                                      UpdateChecker::Gitee);
+        for (const bool githubFirst : {true, false}) {
+            UpdateChecker checker;
+            QSignalSpy finished(&checker, &UpdateChecker::finished);
+            UpdateCheckerTestAccess::beginCheck(checker);
+            const auto firstSource = githubFirst ? UpdateChecker::GitHub : UpdateChecker::Gitee;
+            const auto secondSource = githubFirst ? UpdateChecker::Gitee : UpdateChecker::GitHub;
+            const auto firstResult = githubFirst ? github : gitee;
+            const auto secondResult = githubFirst ? gitee : github;
+            UpdateCheckerTestAccess::collect(checker, firstSource, firstResult);
+            QVERIFY(checker.busy());
+            QCOMPARE(finished.size(), 0);
+            UpdateCheckerTestAccess::collect(checker, firstSource, firstResult);
+            QVERIFY(checker.busy());
+            QCOMPARE(finished.size(), 0);
+            UpdateCheckerTestAccess::collect(checker, secondSource, secondResult);
+            QVERIFY(!checker.busy());
+            QCOMPARE(finished.size(), 1);
+            QCOMPARE(checker.lastResult().tagName, QString("v0.10.4"));
+            QCOMPARE(checker.lastResult().installer.url, gitee.installer.url);
+            UpdateCheckerTestAccess::collect(checker, secondSource, secondResult);
+            UpdateCheckerTestAccess::expireCheck(checker);
+            QCOMPARE(finished.size(), 1);
+        }
+    }
+    void deadlinePreservesCompletedSourceAndIgnoresLateResults() {
+        for (const auto source : {UpdateChecker::GitHub, UpdateChecker::Gitee}) {
+            const auto successful = source == UpdateChecker::GitHub
+                ? UpdateChecker::parseRelease(releaseWithAssets("v0.10.4", false), "0.10.3")
+                : UpdateChecker::parseRelease(giteeRelease("v0.10.4", true), "0.10.3", source);
+            UpdateChecker checker;
+            QSignalSpy finished(&checker, &UpdateChecker::finished);
+            UpdateCheckerTestAccess::beginCheck(checker);
+            UpdateCheckerTestAccess::collect(checker, source, successful);
+            UpdateCheckerTestAccess::expireCheck(checker);
+            QCOMPARE(finished.size(), 1);
+            QVERIFY(!checker.busy());
+            QCOMPARE(checker.lastResult().status, UpdateChecker::Available);
+            QCOMPARE(checker.lastResult().installer.url, successful.installer.url);
+            const auto lateSource = source == UpdateChecker::GitHub ? UpdateChecker::Gitee : UpdateChecker::GitHub;
+            UpdateCheckerTestAccess::collect(checker, lateSource, successful);
+            QCOMPARE(finished.size(), 1);
+            QCOMPARE(checker.lastResult().url, successful.url);
+        }
+        UpdateChecker checker;
+        QSignalSpy finished(&checker, &UpdateChecker::finished);
+        UpdateCheckerTestAccess::beginCheck(checker);
+        UpdateCheckerTestAccess::expireCheck(checker);
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(checker.lastResult().status, UpdateChecker::Failed);
+        QVERIFY(!checker.busy());
+    }
+    void failedSourceStillWaitsForRemainingSource() {
+        for (const auto failedSource : {UpdateChecker::GitHub, UpdateChecker::Gitee}) {
+            UpdateChecker checker;
+            QSignalSpy finished(&checker, &UpdateChecker::finished);
+            UpdateCheckerTestAccess::beginCheck(checker);
+            const auto failed = UpdateChecker::parseRelease("{}", "0.10.3", failedSource);
+            UpdateCheckerTestAccess::collect(checker, failedSource, failed);
+            QVERIFY(checker.busy());
+            QCOMPARE(finished.size(), 0);
+            const auto successfulSource = failedSource == UpdateChecker::GitHub
+                ? UpdateChecker::Gitee : UpdateChecker::GitHub;
+            const auto successful = successfulSource == UpdateChecker::GitHub
+                ? UpdateChecker::parseRelease(releaseWithAssets("v0.10.4", false), "0.10.3")
+                : UpdateChecker::parseRelease(giteeRelease("v0.10.4", true), "0.10.3", successfulSource);
+            UpdateCheckerTestAccess::collect(checker, successfulSource, successful);
+            QVERIFY(!checker.busy());
+            QCOMPARE(finished.size(), 1);
+            QCOMPARE(checker.lastResult().status, UpdateChecker::Available);
+            QCOMPARE(checker.lastResult().installer.url, successful.installer.url);
+        }
+    }
     void staleDownloadIsDroppedBeforeAppending() {
         // Two attempts at the same version used to share one append-only temporary
         // file: the second download landed behind the first package and the check
@@ -239,7 +558,7 @@ class UpdateTests : public QObject {
     }
     void liveReleaseCheck() {
         if (!qEnvironmentVariableIsSet("H2D_LIVE_UPDATES"))
-            QSKIP("Opt-in real GitHub release integration check");
+            QSKIP("Opt-in real GitHub+Gitee release integration check");
         UpdateChecker checker;
         QSignalSpy result(&checker, &UpdateChecker::finished);
         checker.check();
@@ -249,6 +568,15 @@ class UpdateTests : public QObject {
         QVERIFY(!checker.busy());
         qInfo().noquote() << result.first()[1].toString();
         QVERIFY(result.first()[0].value<UpdateChecker::Status>() != UpdateChecker::Failed);
+        for (const auto source : {UpdateChecker::GitHub, UpdateChecker::Gitee}) {
+            const QString sourceName = source == UpdateChecker::GitHub ? "GitHub" : "Gitee";
+            const auto &sourceResult = UpdateCheckerTestAccess::sourceResult(checker, source);
+            QVERIFY2(sourceResult.has_value(), qPrintable(sourceName + " did not complete before the deadline"));
+            QVERIFY2(sourceResult->status != UpdateChecker::Failed, qPrintable(sourceResult->message));
+            QCOMPARE(sourceResult->url.host(), source == UpdateChecker::GitHub
+                         ? QString("github.com") : QString("gitee.com"));
+            qInfo().noquote() << sourceName << sourceResult->tagName << sourceResult->url.host();
+        }
     }
 };
 QTEST_GUILESS_MAIN(UpdateTests)
