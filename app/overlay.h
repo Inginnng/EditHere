@@ -149,6 +149,9 @@ class Overlay final : public QWidget {
     QColor colourAt(QPoint pixel) const;
     // The corner the pointer is on, or -1; the region is resized by dragging one.
     int handleAt(QPoint pixel) const;
+    // Hover and dragging use the same hit area, so the cursor advertises what a
+    // press at this point will do before the button is held.
+    void updateCursor();
     ScreenFrame frame_;
     // The screen this window was handed, kept because browsing the history replaces the
     // picture and something has to hand the screen back afterwards.

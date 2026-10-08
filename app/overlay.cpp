@@ -147,6 +147,7 @@ void Overlay::showEvent(QShowEvent *event) {
     if (rect().contains(local)) {
         pointer_ = local;
         cursor_ = pixelPoint(local);
+        updateCursor();
         magnifierVisible_ = true; update();
     }
 }
@@ -281,7 +282,14 @@ void Overlay::paintEvent(QPaintEvent *) {
     if (!finished_ && (!ready_ || picking_ || overSettledRegion)) {
         QPointF at(double(cursor_.x()) * width() / frame_.image.width(),
                    double(cursor_.y()) * height() / frame_.image.height());
-        for (const auto &pen : {QPen(Qt::white, 0)}) {
+        const Qt::CursorShape shape = cursor().shape();
+        const bool adjusting = shape == Qt::SizeFDiagCursor || shape == Qt::SizeBDiagCursor ||
+                               shape == Qt::SizeAllCursor;
+        // The native resize/move cursor is the aim during a selection adjustment.
+        // Painting our crosshair beneath it would still make a handle look like a
+        // place to draw a new selection.
+        if (!adjusting) {
+            const QPen pen(Qt::white, 0);
             p.setPen(pen);
             p.drawLine(at + QPointF(-9,0), at + QPointF(9,0));
             p.drawLine(at + QPointF(0,-9), at + QPointF(0,9));
@@ -458,10 +466,10 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
         return;
     const QPoint pixel = pixelPoint(e->position());
     pointer_ = e->position().toPoint();
+    cursor_ = pixel;
     if (picking_) {
         // The colour under the pointer is what the window is for at this moment, and
         // the region is left exactly where it was.
-        cursor_ = pixel;
         copyColour();
         leavePicking();
         return;
@@ -473,14 +481,16 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
         if (handle_ >= 0) {
             dragOrigin_ = selected_;
             dragStart_ = pixel;
-            setCursor(handle_ == 0 || handle_ == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
+            updateCursor();
+            update();
             return;
         }
         if (selected_.contains(pixel)) {
             handle_ = kMoving;
             dragOrigin_ = selected_;
             dragStart_ = pixel;
-            setCursor(Qt::SizeAllCursor);
+            updateCursor();
+            update();
             return;
         }
         ready_ = false;
@@ -524,6 +534,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
         return;
     const QPoint pixel = pixelPoint(local);
     if (handle_ == kMoving) {
+        cursor_ = pixel;
         const QPoint shift = pixel - dragStart_;
         if (shift != QPoint()) {
             applySelection(dragOrigin_.translated(shift), true);
@@ -532,6 +543,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
         return;
     }
     if (handle_ >= 0) {
+        cursor_ = pixel;
         // The opposite corner is what stays put while a corner is dragged.
         QRect resized = dragOrigin_;
         if (handle_ == 0 || handle_ == 2)
@@ -558,6 +570,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
         picker_.update(candidates(), cursor_);
         debounce_.start();
     }
+    updateCursor();
     update();
 }
 void Overlay::mouseReleaseEvent(QMouseEvent *e) {
@@ -565,7 +578,10 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
         return;
     if (handle_ != -1) {
         handle_ = -1;
-        setCursor(Qt::CrossCursor);
+        pointer_ = e->position().toPoint();
+        cursor_ = pixelPoint(e->position());
+        updateCursor();
+        update();
         return;
     }
     if (!drawing_)
@@ -576,6 +592,7 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
     QPoint end = pixelPoint(e->position()) + keyboardOffset_;
     end.setX(std::clamp(end.x(),0,frame_.image.width()));
     end.setY(std::clamp(end.y(),0,frame_.image.height()));
+    cursor_ = end;
     if (!nudged_ && QLineF(QPointF(start_), QPointF(end)).length() * width() / frame_.image.width() < 5 &&
         picker_.current())
         selected_ = picker_.current()->bounds;
@@ -821,6 +838,7 @@ QRect Overlay::placementFor(QSize picture) const {
 
 void Overlay::setBusy(bool busy, const QString &message) {
     busy_ = busy;
+    updateCursor();
     if (bar_ != nullptr) {
         bar_->setBusy(busy, message);
         if (busy)
@@ -963,6 +981,7 @@ void Overlay::applySelection(QRect area, bool move) {
         captureNotice_->hide();
     selected_ = area;
     ready_ = true;
+    updateCursor();
     showBar();
     update();
 }
@@ -1013,6 +1032,7 @@ void Overlay::movePointer(int dx, int dy) {
                       std::clamp(base.y() + dy, 0, height() - 1));
     QCursor::setPos(mapToGlobal(pointer_));
     cursor_ = pixelPoint(pointer_);
+    updateCursor();
     // Before anything has been taken the readout is up wherever the pointer is; after
     // that it is up over the picture that was taken and nowhere else.
     magnifierVisible_ = selected_.isEmpty() || selected_.contains(cursor_);
@@ -1086,8 +1106,24 @@ void Overlay::leavePicking() {
     colourCopied_ = false;
     copyNote_.stop();
     magnifierVisible_ = false;
-    setCursor(Qt::CrossCursor);
+    updateCursor();
     update();
+}
+
+void Overlay::updateCursor() {
+    Qt::CursorShape shape = Qt::CrossCursor;
+    if (!busy_ && !finished_ && !picking_) {
+        if (drawing_)
+            shape = Qt::BlankCursor;
+        else if (handle_ == kMoving)
+            shape = Qt::SizeAllCursor;
+        else {
+            const int handle = handle_ >= 0 ? handle_ : handleAt(cursor_);
+            if (handle >= 0)
+                shape = handle == 0 || handle == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+        }
+    }
+    setCursor(shape);
 }
 
 int Overlay::handleAt(QPoint pixel) const {

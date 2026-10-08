@@ -2897,6 +2897,111 @@ class UiTests : public QObject {
         QCOMPARE(accepted.count(), 1);
         overlay.hide();
     }
+    void selectionResizeCursorMatchesHitArea_data() {
+        QTest::addColumn<double>("scale");
+        QTest::newRow("100-percent") << 1.0;
+        QTest::newRow("125-percent") << 1.25;
+        QTest::newRow("200-percent") << 2.0;
+    }
+    void selectionResizeCursorMatchesHitArea() {
+        QFETCH(double, scale);
+        QImage image(qRound(800 * scale), qRound(600 * scale), QImage::Format_ARGB32);
+        image.fill(QColor(32, 36, 42));
+        ScreenFrame frame{"resize-cursor", {0, 0, 800, 600}, image.rect(), image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        const QRect area(qRound(200 * scale), qRound(180 * scale), qRound(400 * scale),
+                         qRound(240 * scale));
+        overlay.setSelections({area});
+        QTest::keyClick(&overlay, Qt::Key_R);
+        QCOMPARE(overlay.selection(), area);
+        const QVector<QPoint> corners{area.topLeft(), area.topRight(), area.bottomLeft(),
+                                      area.bottomRight()};
+        const QVector<QPoint> inward{{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+        for (int index = 0; index < corners.size(); ++index) {
+            QTest::keyClick(&overlay, Qt::Key_R);
+            const QPoint corner(qRound(corners[index].x() / scale),
+                                qRound(corners[index].y() / scale));
+            const Qt::CursorShape resizeCursor = index == 0 || index == 3
+                                                     ? Qt::SizeFDiagCursor
+                                                     : Qt::SizeBDiagCursor;
+            movePointerTo(overlay, corner);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+            // The visible handle is four pixels across, but its seven-pixel reach
+            // must advertise resizing too, including at fractional display scales.
+            const QPoint near = corner + inward[index] * 6;
+            movePointerTo(overlay, near);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+            movePointerTo(overlay, corner + inward[index] * 9);
+            QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+
+            // A second, painted crosshair used to remain over the native cursor.
+            // Its right arm is away from the round handle and the blue frame here.
+            const QPoint inside = corner + inward[index] * 4;
+            movePointerTo(overlay, inside);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+            const QImage shot = overlay.grab().toImage();
+            const QPoint probe(qRound((inside.x() + 8) * double(shot.width()) / overlay.width()),
+                               qRound(inside.y() * double(shot.height()) / overlay.height()));
+            const QColor colour = shot.pixelColor(probe);
+            QVERIFY2(colour.red() < 230 || colour.green() < 230 || colour.blue() < 230,
+                     "a resize handle must not retain the painted white crosshair");
+
+            // The same near-corner point really resizes. The cursor is already
+            // correct before pressing, remains correct during the drag, and stays
+            // correct over the new corner after releasing.
+            QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, near);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+            const QPoint end = near + inward[index] * 10;
+            QTest::mouseMove(&overlay, end);
+            QVERIFY(overlay.selection() != area);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+            QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, end);
+            QCOMPARE(overlay.cursor().shape(), resizeCursor);
+        }
+        overlay.hide();
+    }
+    void selectionResizeCursorFollowsSelectionModes() {
+        QImage image(800, 600, QImage::Format_ARGB32);
+        image.fill(QColor(32, 36, 42));
+        ScreenFrame frame{"resize-modes", {0, 0, 800, 600}, image.rect(), image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        const QRect area(200, 180, 400, 240);
+        overlay.setSelections({area});
+        QTest::keyClick(&overlay, Qt::Key_R);
+        movePointerTo(overlay, area.topLeft() + QPoint(8, 8));
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        QTest::keyClick(&overlay, Qt::Key_Left);
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        QTest::keyClick(&overlay, Qt::Key_Up);
+        QCOMPARE(overlay.cursor().shape(), Qt::SizeFDiagCursor);
+
+        QTest::keyClick(&overlay, Qt::Key_C);
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        QTest::mouseClick(&overlay, Qt::RightButton, Qt::NoModifier, area.topLeft());
+        QCOMPARE(overlay.cursor().shape(), Qt::SizeFDiagCursor);
+        QCOMPARE(overlay.selection(), area);
+        overlay.setBusy(true);
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        overlay.setBusy(false);
+        QCOMPARE(overlay.cursor().shape(), Qt::SizeFDiagCursor);
+
+        movePointerTo(overlay, area.center());
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, area.center());
+        QCOMPARE(overlay.cursor().shape(), Qt::SizeAllCursor);
+        QTest::mouseMove(&overlay, area.center() + QPoint(12, 10));
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, area.center() + QPoint(12, 10));
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        overlay.resetSelection();
+        QCOMPARE(overlay.cursor().shape(), Qt::CrossCursor);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {50, 50});
+        QCOMPARE(overlay.cursor().shape(), Qt::BlankCursor);
+        overlay.hide();
+    }
     // REG-068: the region a capture came from was forgotten the moment the picture was
     // made, so pinning it dropped it in the middle of the screen. The window has to be
     // able to say where its region is on screen, in the units the window manager uses
