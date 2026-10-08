@@ -15,6 +15,13 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 小图 OCR 与截图缩放光标（0.10.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-160 | 380×19 像素的网址截图在原尺寸下 OCR 返回空文字，放大后才能识别；`scaleForOcr()` 在识别前按短边 64 像素放大，最多 4 倍且宽度不超过引擎上限，普通截图不放大，长图继续分带；行框按识别图片归一化，仍对应原图位置 | `OcrTests::aNineteenPixelHighUrlIsReadBack`（嵌入 380×19 原始样本，英语、系统、简体中文三种模式完整读回网址并验证行框；仅 Windows，未安装对应识别语言时跳过）；`narrowCropsAreEnlargedWithoutMovingRelativeBoxes`、`enlargingSmallPicturesRespectsTheEngineAndMemoryLimits`（跨平台验证放大、坐标和上限） | 🆕 |
+| REG-161 | 蓝色截图选区四角的实际可缩放命中范围比可见控制点大，悬停在该范围内仍显示十字；`updateCursor()` 与拖动共用 `handleAt()` 命中判断，并在缩放光标下隐藏自绘十字，键盘移动及取色、忙碌等模式切换后同步更新光标 | `UiTests::selectionResizeCursorMatchesHitArea`（100%、125%、200% 显示缩放，四角的控制点内外命中边界、拖动前后光标及渲染像素）；`selectionResizeCursorFollowsSelectionModes`（键盘移动、取色取消、忙碌、移动选区与重新框选） | 🆕 |
+
 ## 新建批注快捷键（0.10.2）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -312,8 +319,10 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
 | `canvas_feedback_tests::layoutGuidesStayVisibleForUnselectedComponents` | `tests/canvas_feedback_test.cpp` | REG-037 |
 | `ocr_tests`（14 例） | `tests/ocr_test.cpp`，CTest 名 `ocr` | REG-061/062 |
+| 小图 OCR 与放大边界 | `tests/ocr_test.cpp` 的 `aNineteenPixelHighUrlIsReadBack`、`narrowCropsAreEnlargedWithoutMovingRelativeBoxes`、`enlargingSmallPicturesRespectsTheEngineAndMemoryLimits`，CTest 名 `ocr` | REG-160 |
 | `capture_tests`（29 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079/105/106 |
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
+| 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
 | 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包任一缺失即失败 | REG-109/122/157 |

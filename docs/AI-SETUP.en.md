@@ -43,7 +43,7 @@ Download only when there is no usable app on the machine or an upgrade is genuin
 
 The app package is verified with `SHA256SUMS.txt`; `SHA256SUMS-A1.txt` covers the promotional video and brand assets and cannot replace the app-package verification. A checksum confirms file integrity; it is not the same as a publisher's digital signature.
 
-The current source version is **0.10.2**; when downloading from GitHub, go by the actual version and assets of the official release. The Windows installer is unsigned; the macOS build is not yet notarised, and acceptance on a real Mac has not been completed. If the system blocks it, explain the actual prompt and leave the decision to the user; do not turn off Gatekeeper, SIP or system security protections to complete the setup.
+The current source version is **0.10.3**; when downloading from GitHub, go by the actual version and assets of the official release. The Windows installer is unsigned; the macOS build is not yet notarised, and acceptance on a real Mac has not been completed. If the system blocks it, explain the actual prompt and leave the decision to the user; do not turn off Gatekeeper, SIP or system security protections to complete the setup.
 
 ## 3. Prepare the app according to the user's choice
 
