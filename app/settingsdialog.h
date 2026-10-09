@@ -1,5 +1,6 @@
 #pragma once
 #include "settings.h"
+#include "updatechecker.h"
 #include <QDialog>
 #include <functional>
 class QComboBox;
@@ -15,6 +16,7 @@ class SettingsDialog final : public QDialog {
     explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr);
     AppSettings settings() const;
     void showUpdates(bool checkNow = false);
+    void offerUpdate(const UpdateChecker::Result &result, bool installNow = false);
     void showToolbar();
     void setLaunchAtLoginNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
@@ -50,6 +52,7 @@ class SettingsDialog final : public QDialog {
     QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
+    UpdateChecker::Result updateResult_{UpdateChecker::Failed, {}, {}, {}, {}, {}, {}, {}};
     QLabel *error_, *launchAtLoginNotice_;
     // Labels styled through the "settingsSection" object name cannot carry a unique
     // object name of their own, so they are kept as members to stay retranslatable.

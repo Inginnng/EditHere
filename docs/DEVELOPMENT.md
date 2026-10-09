@@ -14,7 +14,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前为 **0.10.3**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式由 `feedback-minimal.schema.json` 定义（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前为 **0.10.4**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式由 `feedback-minimal.schema.json` 定义（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
@@ -84,9 +84,9 @@ Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 
 
 请将示例中的 NSIS 路径换为实际位置。0.8.21 的安装器输出为 `dist/EditHere-0.8.21-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
 
-应用内 Windows 更新复用 NSIS 的 Unicode 文件操作，安装版和便携版共用安装包。便携更新参数为 `/S /UPDATE /PORTABLE /D=<原目录>`，`/D=` 必须最后且不加引号；该协议从 0.9.9 起支持，旧发行版仅打开发布页。先准备同级暂存目录，再移动旧目录、切换新目录，切换失败时恢复旧目录；成功后保留备份及 `update-backup.txt`。便携模式跳过系统集成。下载使用 Qt 的独立临时目录和原子写入，并强制校验同名 SHA-256 文件。macOS 当前仅提供手动下载入口。
+应用内 Windows 更新与手动安装共用 NSIS 载荷及 `maintain.ps1` 维护事务。便携更新参数为 `/S /UPDATE /PORTABLE /D=<原目录>`，`/D=` 必须最后且不加引号；旧版调用方式仍兼容。原安装包直接执行，暂存载荷后按清单逐文件备份和发布，目标根目录与未知文件保持原位。维护进程统一处理目标锁、清单及哈希校验、空间预检、系统集成快照、运行版本验证与中断恢复；便携模式跳过系统集成。0.10.4 程序内更新增加带令牌的 READY/ACK 交接，准备就绪前不退出应用。schema2 文件事务保留 schema1 历史恢复入口。最终结果与日志位于安装目标之外，旧文件仅在可证实安全时回收。完整约定见 [Windows 安装与维护](INSTALLATION.md)。下载仍使用 Qt 独立临时目录、原子写入和同名 SHA-256 校验。macOS 当前仅提供手动下载入口。
 
-选择沿用现有开源 NSIS，避免额外维护 cmd/tar 更新脚本；WinSparkle 需要新增 appcast 与签名发布链，Qt Installer Framework 需要迁移安装器及更新仓库，不适合作为本次修复的必要依赖。`tests/installer_transaction_test.py` 使用真实 NSIS 和无副作用的测试程序，在隔离目录验证成功替换、复制失败、目录锁定和切换失败回滚；需要设置 `NSIS_MAKENSIS` 与 `EDITHERE_UPDATE_STUB`，缺失时跳过。
+保留 Qt 与 NSIS，并将文件及登记变更收敛到一个维护进程。`tests/installer_transaction_test.py` 验证真实 NSIS 的原地执行、目录、参数及隔离 HKCU 系统集成，需要 `NSIS_MAKENSIS` 与 `EDITHERE_UPDATE_STUB`；`tests/maintenance_test.py` 使用真实文件操作及 JSON 系统集成替身验证恢复、并发和卸载。`tests/installer_ui_flow_test.py` 在独立隐藏 Windows 桌面上操作真实安装页，验证首次安装与重复安装的页面顺序和标题。`tests/installer_shell_notification_test.py` 在含原生 NSIS System.dll 的工作目录执行生产通知逻辑，验证 .NET 引用解析及非致命警告。无害程序桩显式跳过运行版本检查。测试作用域必须有隔离标记，不能改写开发者真实 PATH、关联或快捷方式。以上检查在 Windows 发行工作流中执行。`tests/installer_package_acceptance.py` 通过 `EDITHERE_ACCEPT_PACKAGE` 和 `EDITHERE_ACCEPT_OLD_PACKAGE` 接收完整的新旧 Windows 包，在真实 NSIS/隔离 HKCU 下验收，并启用实际 CLI 运行版本检查；隔离验收与干净系统成品验收分别记录。
 
 Mac 构建（尚未实机验收）：
 

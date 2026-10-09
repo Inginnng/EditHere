@@ -33,6 +33,24 @@ jobs:
       - name: Install NSIS
         run: choco install nsis -y --no-progress
 
+      - name: Verify startup updates and installer transactions
+        run: |
+          $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
+          $qtBin = (Resolve-Path ".tools/qt/6.8.3/mingw_64/bin").Path
+          $env:PATH = "$qtBin;$mingwBin;$env:PATH"
+          ctest --test-dir build --output-on-failure -R '^(settings|startup-flow|updates)$'
+          if ($LASTEXITCODE) { throw 'Startup and update tests failed.' }
+          $env:NSIS_MAKENSIS = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          $env:EDITHERE_UPDATE_STUB = (Resolve-Path 'build/update_installer_stub.exe').Path
+          python tests/installer_transaction_test.py
+          if ($LASTEXITCODE) { throw 'Installer transaction tests failed.' }
+          python tests/maintenance_test.py
+          if ($LASTEXITCODE) { throw 'Installer maintenance tests failed.' }
+          python tests/installer_shell_notification_test.py
+          if ($LASTEXITCODE) { throw 'Native shell notification tests failed.' }
+          python tests/installer_ui_flow_test.py
+          if ($LASTEXITCODE) { throw 'Installer page flow tests failed.' }
+
       - name: Package portable ZIP
         run: |
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path

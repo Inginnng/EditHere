@@ -198,7 +198,7 @@ EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 <details>
 <summary><b>截图会自动上传吗？</b></summary>
 
-不会。截图、图像识别和编辑都在本机完成。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动或开启启动检查更新时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。
+不会。截图、图像识别和编辑都在本机完成。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动检查更新或默认开启的启动检查时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。可在设置中关闭启动检查。
 </details>
 
 <details>

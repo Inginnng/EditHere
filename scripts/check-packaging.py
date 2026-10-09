@@ -90,6 +90,7 @@ def check_ps1_utf8_bom() -> list[Problem]:
 
 NSI = ROOT / "packaging" / "windows" / "edithere.nsi"
 INTEGRATE = ROOT / "packaging" / "windows" / "integrate.ps1"
+MAINTAIN = ROOT / "packaging" / "windows" / "maintain.ps1"
 
 
 def check_nsi_source() -> list[Problem]:
@@ -110,25 +111,25 @@ def check_nsi_source() -> list[Problem]:
 
 
 def check_installer_wait() -> list[Problem]:
-    """REG-004/005  The installer waits instead of aborting, and restores the app."""
+    """REG-004/005/164  The maintenance worker waits and restores failed updates."""
     problems = []
     source = read(NSI)
-    if "!macro EnsureEditHereClosed" not in source:
-        problems.append("edithere.nsi: the EnsureEditHereClosed macro is gone.")
-    if "-Mode Close" not in source:
+    worker = read(MAINTAIN)
+    if "-Mode Install $WorkerArguments" not in source or "-Mode Uninstall $WorkerArguments" not in source:
+        problems.append("edithere.nsi: install and uninstall must delegate to the maintenance worker.")
+    if "Integrate 'Close'" not in worker:
         problems.append(
-            "edithere.nsi: nothing asks the running instance to exit (-Mode Close); "
-            "the installer would go back to demanding a manual exit."
+            "maintain.ps1: nothing asks the running instance to exit normally."
         )
-    # The silent path must wait long enough and must not leave the user with a
-    # closed application when the update cannot be applied (REG-004).
-    if "StrCpy $2 90" not in source:
-        problems.append("edithere.nsi: the silent install no longer waits 90 seconds.")
-    if 'Exec \'"$INSTDIR\\EditHere.exe" --autostart\'' not in source:
+    if "Wait-Handoff" not in worker or "AddSeconds(120)" not in worker:
+        problems.append("maintain.ps1: the bounded READY/ACK wait is missing.")
+    if "$WorkerReturn != 3" not in source or 'Exec \'"$INSTDIR\\EditHere.exe" --autostart\'' not in source:
         problems.append(
-            "edithere.nsi: a failed in-app update no longer relaunches the application, "
-            "leaving the user with nothing running."
+            "edithere.nsi: a failed acknowledged update no longer relaunches the restored application."
         )
+    for script in ("integrate.ps1", "maintain.ps1"):
+        if f'packaging/windows/{script}' not in read(ROOT / "scripts/package-windows.ps1"):
+            problems.append(f"package-windows.ps1: {script} must be included in the portable payload.")
     return problems
 
 
@@ -159,6 +160,7 @@ def compile_installer(version: str, verbose: bool) -> tuple[list[Problem], str]:
         (package / relative).write_bytes(b"")
     (package / "version.txt").write_text(version + "\n", encoding="utf-8")
     shutil.copyfile(INTEGRATE, package / "integrate.ps1")
+    shutil.copyfile(MAINTAIN, package / "maintain.ps1")
     (package / "skills" / "edithere").mkdir(parents=True)
     (package / "skills" / "edithere" / "SKILL.md").write_text("# stub\n", encoding="utf-8")
     remove_include = package.parent / "remove-files.nsh"

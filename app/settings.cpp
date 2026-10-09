@@ -209,7 +209,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
-    result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", false);
+    result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
     const QString scrollAxis = source.value("capture/scrollAxis", QStringLiteral("vertical")).toString();
     result.scrollAxis = scrollAxis == QLatin1String("horizontal") ? Qt::Horizontal : Qt::Vertical;
     result.scrollAutoCrop = boolean("capture/scrollAutoCrop", false);

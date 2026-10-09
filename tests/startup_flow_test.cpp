@@ -9,6 +9,9 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
+#include <QSettings>
 #include <QFontDatabase>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -27,6 +30,23 @@
 #include <windows.h>
 #endif
 using namespace h2d;
+namespace h2d {
+class StartupFlowTestAccess {
+  public:
+    static void deliver(Controller &controller, const UpdateChecker::Result &result) {
+        controller.startupUpdateFinished(result);
+    }
+    static bool pending(const Controller &controller) { return controller.pendingStartupUpdate_.has_value(); }
+    static void present(Controller &controller) { controller.presentStartupUpdate(); }
+    static void setCapture(Controller &controller, bool value) { controller.capturing_ = value; }
+    static void setAgentSession(Controller &controller, bool value) {
+        controller.agentSessionId_ = value ? QStringLiteral("test-session") : QString();
+    }
+    static void receipt(Controller &controller) { controller.readInstallationReceipt(); }
+    static void presentReceipt(Controller &controller) { controller.presentInstallationReceipt(); }
+    static bool pendingReceipt(Controller &controller) { return !controller.pendingInstallationReceipt_.isEmpty(); }
+};
+}
 
 class StartupFlowTests : public QObject {
     Q_OBJECT
@@ -42,6 +62,13 @@ class StartupFlowTests : public QObject {
         auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         return tray && tray->contextMenu() ? qobject_cast<Editor *>(tray->contextMenu()->parentWidget()) : nullptr;
     }
+    static UpdateChecker::Result offeredRelease(UpdateChecker::Status status = UpdateChecker::Available) {
+        const QString name = QStringLiteral("EditHere-win-x64-setup.exe");
+        const QUrl url(QStringLiteral("https://gitee.com/InnGing/EditHere/releases/download/v0.11.0/") + name);
+        return {status, QStringLiteral("发现新版本 v0.11.0。"),
+                QUrl("https://gitee.com/InnGing/EditHere/releases/tag/v0.11.0"), QStringLiteral("v0.11.0"),
+                {name, url, 100}, {name + ".sha256", QUrl(url.toString() + ".sha256"), 64}, {}, {}, true};
+    }
   private slots:
     void initTestCase() {
 #ifdef Q_OS_WIN
@@ -52,6 +79,240 @@ class StartupFlowTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void startupUpdateDefaultPreservesExplicitOptOut() {
+        QTemporaryDir directory;
+        const auto settingsFile = directory.filePath("settings.ini");
+        QVERIFY(defaultSettings().checkUpdatesOnStartup);
+        QVERIFY(loadSettings(settingsFile).checkUpdatesOnStartup);
+        auto settings = quietSettings();
+        QVERIFY(saveSettings(settings, nullptr, settingsFile));
+        QVERIFY(!loadSettings(settingsFile).checkUpdatesOnStartup);
+        Controller controller(nullptr, loadSettings(settingsFile), settingsFile);
+        controller.start(false);
+        QVERIFY(!controller.findChild<UpdateChecker *>("startupUpdateChecker"));
+    }
+    void failedInstallationReceiptIsShownOnceWithoutDiscardingWorkOrEnablingUpdates() {
+        QTemporaryDir directory;
+        const auto settingsFile = directory.filePath("settings.ini");
+        const auto resultsPath = directory.filePath("installer-results");
+        QVERIFY(QDir().mkpath(resultsPath));
+        const QJsonObject receipt{{"id", "isolated-failed-installation"}, {"status", "failed"},
+                                  {"version", "0.11.0"}, {"target", QCoreApplication::applicationDirPath()},
+                                  {"message", "Update rolled back; recoverable files remain in the backup directory."},
+                                  {"log", directory.filePath("maintenance.log")},
+                                  {"journal", directory.filePath("journal.json")},
+                                  {"recovery", directory.filePath("backup")}};
+        QFile file(QDir(resultsPath).filePath("last.json"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write(QJsonDocument(receipt).toJson()) > 0);
+        file.close();
+        auto settings = quietSettings();
+        QVERIFY(saveSettings(settings, nullptr, settingsFile));
+        Controller controller(nullptr, settings, settingsFile);
+        auto editor = editorOf(controller);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        auto document = fromImage(picture, "file", "安装提醒时保留的工作");
+        document.dirty = true;
+        editor->setDocument(document);
+        controller.start(false, {}, true);
+        QVERIFY(!QApplication::activeModalWidget());
+        StartupFlowTestAccess::setCapture(controller, true);
+        StartupFlowTestAccess::receipt(controller);
+        QVERIFY(StartupFlowTestAccess::pendingReceipt(controller));
+        QVERIFY(!QApplication::activeModalWidget());
+        StartupFlowTestAccess::setCapture(controller, false);
+        bool prompted = false;
+        QTimer::singleShot(0, [&] {
+            auto prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(prompt && prompt->objectName() == "installationResultPrompt");
+            QCOMPARE(prompt->text(), receipt.value("message").toString());
+            QVERIFY(prompt->detailedText().contains(receipt.value("recovery").toString()));
+            prompted = true;
+            prompt->accept();
+        });
+        StartupFlowTestAccess::presentReceipt(controller);
+        QVERIFY(prompted);
+        QVERIFY(!StartupFlowTestAccess::pendingReceipt(controller));
+        QCOMPARE(editor->document().id, document.id);
+        QVERIFY(editor->document().dirty);
+        QVERIFY(!controller.findChild<UpdateChecker *>("startupUpdateChecker"));
+        QVERIFY(!loadSettings(settingsFile).checkUpdatesOnStartup);
+        QSettings persisted(settingsFile, QSettings::IniFormat);
+        QCOMPARE(persisted.value("updates/seenInstallerResult").toString(), receipt.value("id").toString());
+        StartupFlowTestAccess::receipt(controller);
+        QVERIFY(!StartupFlowTestAccess::pendingReceipt(controller));
+        Controller nextLaunch(nullptr, settings, settingsFile);
+        StartupFlowTestAccess::receipt(nextLaunch);
+        QVERIFY(!StartupFlowTestAccess::pendingReceipt(nextLaunch));
+        QVERIFY(!QApplication::activeModalWidget());
+        editor->hide();
+    }
+    void startupUpdateWaitsForFirstUserInteractionAndSchedulesOnce() {
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.checkUpdatesOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        controller.start(false, {}, true);
+        QVERIFY(!controller.findChild<UpdateChecker *>("startupUpdateChecker"));
+        auto shortcut = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        QVERIFY(shortcut);
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        auto checker = controller.findChild<UpdateChecker *>("startupUpdateChecker");
+        QVERIFY(checker);
+        QVERIFY(!checker->busy()); // Check runs after the startup delay, not in the user action.
+        controller.activate();
+        controller.start(false);
+        QCOMPARE(controller.findChildren<UpdateChecker *>("startupUpdateChecker").size(), 1);
+        editorOf(controller)->hide();
+    }
+    void startupUpdateDoesNotPromptWithoutANewerRelease_data() {
+        QTest::addColumn<int>("status");
+        QTest::newRow("current") << int(UpdateChecker::Current);
+        QTest::newRow("failed") << int(UpdateChecker::Failed);
+        QTest::newRow("newer-local") << int(UpdateChecker::NewerLocal);
+    }
+    void startupUpdateDoesNotPromptWithoutANewerRelease() {
+        QFETCH(int, status);
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.checkUpdatesOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        StartupFlowTestAccess::deliver(controller, offeredRelease(static_cast<UpdateChecker::Status>(status)));
+        QVERIFY(!StartupFlowTestAccess::pending(controller));
+        QVERIFY(!QApplication::activeModalWidget());
+    }
+    void skippingStartupUpdatePreservesUnsavedWork_data() {
+        QTest::addColumn<bool>("closeWindow");
+        QTest::newRow("skip") << false;
+        QTest::newRow("close") << true;
+    }
+    void skippingStartupUpdatePreservesUnsavedWork() {
+        QFETCH(bool, closeWindow);
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.checkUpdatesOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        QVERIFY(editor);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        auto document = fromImage(picture, "file", "尚未保存的批注");
+        Note note;
+        note.isGlobal = true;
+        note.comment = "保留这条批注";
+        document.notes.append(note);
+        document.dirty = true;
+        editor->setDocument(document);
+        controller.start(false);
+        bool prompted = false;
+        QTimer::singleShot(0, [&] {
+            auto prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(prompt && prompt->objectName() == "startupUpdatePrompt");
+            prompted = true;
+            const auto artifacts = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+            if (!artifacts.isEmpty() && !closeWindow) {
+                QDir().mkpath(artifacts);
+                QVERIFY(prompt->grab().save(QDir(artifacts).filePath("startup-update-prompt.png")));
+            }
+            if (closeWindow)
+                prompt->close();
+            else
+                for (auto button : prompt->buttons())
+                    if (prompt->buttonRole(button) == QMessageBox::RejectRole) button->click();
+        });
+        StartupFlowTestAccess::deliver(controller, offeredRelease());
+        QVERIFY(prompted);
+        QVERIFY(!StartupFlowTestAccess::pending(controller));
+        QCOMPARE(editor->document().id, document.id);
+        QVERIFY(editor->document().notes == document.notes);
+        QVERIFY(editor->document().dirty);
+        controller.start(false);
+        StartupFlowTestAccess::present(controller);
+        QCOMPARE(controller.findChildren<UpdateChecker *>("startupUpdateChecker").size(), 1);
+        QVERIFY(!QApplication::activeModalWidget());
+        editor->hide();
+    }
+    void startupUpdateDefersDuringActiveWork_data() {
+        QTest::addColumn<QString>("activity");
+        QTest::newRow("capture") << QStringLiteral("capture");
+        QTest::newRow("agent") << QStringLiteral("agent");
+        QTest::newRow("modal") << QStringLiteral("modal");
+        QTest::newRow("guide") << QStringLiteral("guide");
+    }
+    void startupUpdateDefersDuringActiveWork() {
+        QFETCH(QString, activity);
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.checkUpdatesOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        QVERIFY(editor);
+        QDialog modal(editor);
+        if (activity == "capture") StartupFlowTestAccess::setCapture(controller, true);
+        if (activity == "agent") StartupFlowTestAccess::setAgentSession(controller, true);
+        if (activity == "modal") {
+            modal.setModal(true);
+            modal.show();
+            QTRY_COMPARE(QApplication::activeModalWidget(), &modal);
+        }
+        if (activity == "guide") editor->showGuide();
+        StartupFlowTestAccess::deliver(controller, offeredRelease());
+        QVERIFY(StartupFlowTestAccess::pending(controller));
+        QVERIFY(!QApplication::activeModalWidget() || QApplication::activeModalWidget() == &modal);
+        if (activity == "capture") StartupFlowTestAccess::setCapture(controller, false);
+        if (activity == "agent") StartupFlowTestAccess::setAgentSession(controller, false);
+        if (activity == "modal") modal.reject();
+        if (activity == "guide") editor->dismissGuide();
+        bool prompted = false;
+        QTimer::singleShot(0, [&] {
+            auto prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(prompt && prompt->objectName() == "startupUpdatePrompt");
+            prompted = true;
+            prompt->reject();
+        });
+        StartupFlowTestAccess::present(controller);
+        QVERIFY(prompted);
+        QVERIFY(!StartupFlowTestAccess::pending(controller));
+        editor->hide();
+    }
+    void acceptingStartupUpdateUsesCheckedReleaseAndCanCancel() {
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.checkUpdatesOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        QVERIFY(editor);
+        QImage picture(120, 80, QImage::Format_RGB32);
+        picture.fill(Qt::blue);
+        auto document = fromImage(picture, "file", "仍需保留的工作");
+        document.dirty = true;
+        editor->setDocument(document);
+        bool offered = false;
+        QTimer::singleShot(0, [&] {
+            auto prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(prompt);
+            // Inspect and cancel before the queued download starts: no network or
+            // real installer is needed to verify the startup-to-settings handoff.
+            QTimer::singleShot(0, [&] {
+                auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+                QVERIFY(dialog);
+                QCOMPARE(dialog->findChild<QLabel *>("updateStatus")->text(), offeredRelease().message);
+                QVERIFY(dialog->findChild<QPushButton *>("openReleases")->property("updateAvailable").toBool());
+                auto updater = dialog->findChild<UpdateChecker *>();
+                QVERIFY(updater && !updater->busy() && !updater->downloading());
+                offered = true;
+                dialog->findChild<QPushButton *>("settingsCancel")->click();
+            });
+            for (auto button : prompt->buttons())
+                if (prompt->buttonRole(button) == QMessageBox::AcceptRole) button->click();
+        });
+        StartupFlowTestAccess::deliver(controller, offeredRelease());
+        QVERIFY(offered);
+        QCOMPARE(editor->document().id, document.id);
+        QVERIFY(editor->document().dirty);
+        editor->hide();
     }
     void magnifierRemainsVisibleWithoutDelay() {
         ScreenFrame frame;

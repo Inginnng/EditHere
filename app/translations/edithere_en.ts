@@ -1621,6 +1621,26 @@
         <translation>A video project can only contain frames with annotations or movements</translation>
     </message>
     <message>
+        <location filename="../main.cpp" line="96"/>
+        <source>无法创建程序数据目录，请检查当前用户的目录权限。</source>
+        <translation>Could not create the app data folder. Check the current user’s folder permissions.</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="156"/>
+        <source>无法创建程序锁，请检查程序数据目录的权限。</source>
+        <translation>Could not create the instance lock. Check the app data folder permissions.</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="172"/>
+        <source>无法连接正在运行的 EditHere，请退出后重试。</source>
+        <translation>Could not connect to the running EditHere instance. Quit it and try again.</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="182"/>
+        <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
+        <translation>Could not start the app communication service. Quit other EditHere instances and try again.</translation>
+    </message>
+    <message>
         <location filename="../autostart_mac.mm" line="33"/>
         <source>已申请开机自启，但 macOS 尚未允许。请在“系统设置 → 通用 → 登录项与扩展”中允许 EditHere，然后重新打开设置确认。</source>
         <translation>Launch at login was requested but macOS has not approved it. Allow EditHere in System Settings → General → Login Items &amp; Extensions, then reopen settings to confirm.</translation>
@@ -1654,26 +1674,6 @@
         <location filename="../autostart_mac.mm" line="96"/>
         <source>macOS 尚未完成更新登录项，请稍后重新打开设置确认。</source>
         <translation>macOS has not finished updating the login item. Reopen settings later to confirm.</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="96"/>
-        <source>无法创建程序数据目录，请检查当前用户的目录权限。</source>
-        <translation>Could not create the app data folder. Check the current user’s folder permissions.</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="156"/>
-        <source>无法创建程序锁，请检查程序数据目录的权限。</source>
-        <translation>Could not create the instance lock. Check the app data folder permissions.</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="172"/>
-        <source>无法连接正在运行的 EditHere，请退出后重试。</source>
-        <translation>Could not connect to the running EditHere instance. Quit it and try again.</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="182"/>
-        <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
-        <translation>Could not start the app communication service. Quit other EditHere instances and try again.</translation>
     </message>
 </context>
 <context>
@@ -1924,345 +1924,378 @@
 <context>
     <name>h2d::Controller</name>
     <message>
-        <location filename="../controller.cpp" line="62"/>
+        <location filename="../controller.cpp" line="67"/>
         <source>已启用系统元素识别</source>
         <translation>System element recognition is on</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="64"/>
+        <location filename="../controller.cpp" line="69"/>
         <source>请在系统设置中授予辅助功能权限，图片识别仍可直接使用。</source>
         <translation>Grant Accessibility permission in System Settings. Image recognition still works without it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="96"/>
+        <location filename="../controller.cpp" line="101"/>
         <source>无法记录引导状态，下次启动时可能再次显示。
 </source>
         <translation>Could not save the guide state; it may show again on the next launch.
 </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="109"/>
+        <location filename="../controller.cpp" line="114"/>
         <source>设置未能保存：</source>
         <translation>The settings could not be saved: </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="114"/>
+        <location filename="../controller.cpp" line="119"/>
         <source>截图快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>The screenshot shortcut could not be registered. Right-click the tray icon to open Settings and change it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="124"/>
+        <location filename="../controller.cpp" line="129"/>
         <source>打开图片或项目</source>
         <translation>Open image or project</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="123"/>
-        <location filename="../controller.cpp" line="135"/>
-        <location filename="../controller.cpp" line="136"/>
+        <location filename="../controller.cpp" line="128"/>
+        <location filename="../controller.cpp" line="140"/>
+        <location filename="../controller.cpp" line="141"/>
         <source>新建批注（空窗口）</source>
         <translation>New annotation (empty window)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="125"/>
+        <location filename="../controller.cpp" line="130"/>
         <source>启用系统元素识别</source>
         <translation>Enable system element recognition</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="126"/>
+        <location filename="../controller.cpp" line="131"/>
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="127"/>
+        <location filename="../controller.cpp" line="132"/>
         <source>检查更新…</source>
         <translation>Check for updates…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="128"/>
+        <location filename="../controller.cpp" line="133"/>
         <source>退出</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="122"/>
-        <location filename="../controller.cpp" line="133"/>
+        <location filename="../controller.cpp" line="127"/>
+        <location filename="../controller.cpp" line="138"/>
         <source>截图</source>
         <translation>Screenshot</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="137"/>
+        <location filename="../controller.cpp" line="142"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="184"/>
+        <location filename="../controller.cpp" line="196"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>Could not load the interface language. Please reinstall EditHere.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="203"/>
+        <location filename="../controller.cpp" line="215"/>
         <source>截图快捷键无法注册，请更换组合键。</source>
         <translation>The screenshot shortcut cannot be registered. Choose a different combination.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="197"/>
+        <location filename="../controller.cpp" line="209"/>
         <source>
 原快捷键未能恢复，请重新设置截图快捷键。</source>
         <translation>
 The original shortcut could not be restored. Set the screenshot shortcut again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="224"/>
+        <location filename="../controller.cpp" line="236"/>
         <source>
 开机自启未能恢复：</source>
         <translation>
 Launch at login could not be restored: </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="244"/>
+        <location filename="../controller.cpp" line="257"/>
         <source>截图快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>The screenshot shortcut could not be restored. Choose a different combination in Settings.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="250"/>
+        <location filename="../controller.cpp" line="263"/>
         <source>EditHere 开机自启</source>
         <translation>EditHere launch at login</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="277"/>
+        <location filename="../controller.cpp" line="292"/>
         <source>示例产品页面</source>
         <translation>Sample product page</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="292"/>
+        <location filename="../controller.cpp" line="338"/>
         <source>EditHere 更新</source>
         <translation>EditHere update</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="292"/>
-        <source>
-右键托盘选择检查更新。</source>
-        <translation>
-Right-click the tray icon to check for updates.</translation>
-    </message>
-    <message>
-        <location filename="../controller.cpp" line="354"/>
-        <location filename="../controller.cpp" line="1429"/>
+        <location filename="../controller.cpp" line="467"/>
+        <location filename="../controller.cpp" line="1542"/>
         <source>截图未完成</source>
         <translation>Screenshot not completed</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="446"/>
+        <location filename="../controller.cpp" line="559"/>
         <source>只能对当前屏幕选区进行长截图，请重新截取屏幕。</source>
         <translation>Scrolling capture requires a selection from the current screen. Take a new screenshot.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="450"/>
+        <location filename="../controller.cpp" line="563"/>
         <source>长截图选区过小，请选择至少 64 × 120 px 的内容区域。</source>
         <translation>The selection is too small. Select a content region of at least 64 × 120 px.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="840"/>
+        <location filename="../controller.cpp" line="953"/>
         <source>无法匹配相邻画面，采集已停止。可完成已有部分或返回选区重试。</source>
         <translation>Cannot match adjacent frames. Capture has stopped. Finish the captured part or return to the selection.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="570"/>
+        <location filename="../controller.cpp" line="683"/>
         <source>找不到选区下可滚动的窗口，请重试。</source>
         <translation>Cannot find a scrolling window beneath the selection. Try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="118"/>
+        <location filename="../controller.cpp" line="123"/>
         <source>新建批注快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>The new annotation shortcut could not be registered. Right-click the tray icon to open Settings and change it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="199"/>
+        <location filename="../controller.cpp" line="211"/>
         <source>
 原快捷键未能恢复，请重新设置新建批注快捷键。</source>
         <translation>
 The previous shortcut could not be restored. Please set the new annotation shortcut again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="209"/>
+        <location filename="../controller.cpp" line="221"/>
         <source>新建批注快捷键无法注册，请更换组合键。</source>
         <translation>The new annotation shortcut could not be registered. Please choose another key combination.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="210"/>
+        <location filename="../controller.cpp" line="222"/>
         <source>新建批注（空窗口）：</source>
         <translation>New annotation (empty window): </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="246"/>
+        <location filename="../controller.cpp" line="259"/>
         <source>新建批注快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>The new annotation shortcut could not be restored. Choose another key combination in Settings.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="577"/>
-        <location filename="../controller.cpp" line="672"/>
+        <location filename="../controller.cpp" line="339"/>
+        <source>发现新版本 %1。</source>
+        <translation>A new version, %1, is available.</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="341"/>
+        <source>立即更新</source>
+        <translation>Update now</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="342"/>
+        <source>跳过</source>
+        <translation>Skip</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="385"/>
+        <source>EditHere 安装结果</source>
+        <translation>EditHere installation result</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="389"/>
+        <source>安装日志：%1</source>
+        <translation>Installation log: %1</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="391"/>
+        <source>事务记录：%1</source>
+        <translation>Transaction record: %1</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="393"/>
+        <source>恢复目录：%1</source>
+        <translation>Recovery directory: %1</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="395"/>
+        <source>暂存目录：%1</source>
+        <translation>Staging directory: %1</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="690"/>
+        <location filename="../controller.cpp" line="785"/>
         <source>无法确认滚动窗口所属进程，请使用手动滚动。</source>
         <translation>The scrolling window’s owner could not be verified. Scroll manually.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="610"/>
-        <location filename="../controller.cpp" line="770"/>
+        <location filename="../controller.cpp" line="723"/>
+        <location filename="../controller.cpp" line="883"/>
         <source>页面一直在变化，等待稳定画面超时。请暂停动画后重试。</source>
         <translation>Timed out waiting for the page to settle. Pause animations and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="611"/>
-        <location filename="../controller.cpp" line="771"/>
+        <location filename="../controller.cpp" line="724"/>
+        <location filename="../controller.cpp" line="884"/>
         <source>画面采集超时，请返回选区重试。</source>
         <translation>Screen capture timed out. Return to the selection and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="651"/>
+        <location filename="../controller.cpp" line="764"/>
         <source>目标窗口无法继续滚动。</source>
         <translation>The selected window cannot scroll further.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="749"/>
+        <location filename="../controller.cpp" line="862"/>
         <source>原滚动窗口已关闭、移动或被遮挡，请返回选区重试。</source>
         <translation>The original window was closed, moved, or covered. Return to the selection and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="765"/>
+        <location filename="../controller.cpp" line="878"/>
         <source>屏幕选区采集失败，请重新选择区域。</source>
         <translation>Cannot capture the screen selection. Select the region again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="812"/>
+        <location filename="../controller.cpp" line="925"/>
         <source>长截图选区超过图像上限，请缩小区域后重试。</source>
         <translation>The selection exceeds the image limit. Select a smaller region and try again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="825"/>
-        <location filename="../controller.cpp" line="839"/>
+        <location filename="../controller.cpp" line="938"/>
+        <location filename="../controller.cpp" line="952"/>
         <source>已达长截图上限，可以完成已拼接的部分。</source>
         <translation>The capture limit has been reached. You can finish the stitched portion.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="835"/>
+        <location filename="../controller.cpp" line="948"/>
         <source>内容没有产生可拼接的滚动，请选择可滚动的内容区域。</source>
         <translation>No new scrolling content could be stitched. Select a scrollable content region.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="848"/>
+        <location filename="../controller.cpp" line="961"/>
         <source>滚动过快，新画面与已拼接部分没有重叠。
 请稍微往回滚动，对上后会继续拼接。</source>
         <translation>Scrolled too fast: the new view no longer overlaps the stitched part.
 Scroll back a little; stitching continues once it lines up.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="917"/>
+        <location filename="../controller.cpp" line="1030"/>
         <source>已停止截图，可调整选区后重新开始。</source>
         <translation>Capture cancelled. Adjust the selection and start again.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="968"/>
+        <location filename="../controller.cpp" line="1081"/>
         <source>已切换截图方向，从当前画面重新开始。</source>
         <translation>Capture direction changed. Starting again from the current view.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1035"/>
-        <location filename="../controller.cpp" line="1064"/>
+        <location filename="../controller.cpp" line="1148"/>
+        <location filename="../controller.cpp" line="1177"/>
         <source>采集已暂停，正在保存长截图。</source>
         <translation>Capture paused. Saving the scrolling screenshot.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1043"/>
+        <location filename="../controller.cpp" line="1156"/>
         <source>保存长截图</source>
         <translation>Save scrolling capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1043"/>
+        <location filename="../controller.cpp" line="1156"/>
         <source>PNG 图像 (*.png)</source>
         <translation>PNG images (*.png)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1052"/>
+        <location filename="../controller.cpp" line="1165"/>
         <source>无法创建保存目录。</source>
         <translation>Cannot create the destination folder.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1093"/>
+        <location filename="../controller.cpp" line="1206"/>
         <source>长截图</source>
         <translation>Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1168"/>
+        <location filename="../controller.cpp" line="1281"/>
         <source>第 %1 张 · 已不在缓存里</source>
         <translation>No. %1 · no longer in the cache</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1169"/>
+        <location filename="../controller.cpp" line="1282"/>
         <source>第 %1 张 · %2 × %3</source>
         <translation>No. %1 · %2 × %3</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1190"/>
-        <location filename="../controller.cpp" line="1214"/>
+        <location filename="../controller.cpp" line="1303"/>
+        <location filename="../controller.cpp" line="1327"/>
         <source>这张截图已经不在缓存里了。</source>
         <translation>That capture is no longer in the cache.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1209"/>
+        <location filename="../controller.cpp" line="1322"/>
         <source>已记住这个样式，以后每次截图都从这里开始。</source>
         <translation>Style remembered: every capture from now on starts from it.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1219"/>
+        <location filename="../controller.cpp" line="1332"/>
         <source>历史截图</source>
         <translation>Earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1223"/>
+        <location filename="../controller.cpp" line="1336"/>
         <source>无法打开历史截图</source>
         <translation>Could not open the earlier capture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1324"/>
+        <location filename="../controller.cpp" line="1437"/>
         <source>置顶图片</source>
         <translation>Pinned picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1328"/>
+        <location filename="../controller.cpp" line="1441"/>
         <source>无法打开这张图片</source>
         <translation>Could not open this picture</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1343"/>
+        <location filename="../controller.cpp" line="1456"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1344"/>
+        <location filename="../controller.cpp" line="1457"/>
         <source>PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*)</source>
         <translation>PNG image (*.png);;JPEG image (*.jpg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1055"/>
-        <location filename="../controller.cpp" line="1348"/>
+        <location filename="../controller.cpp" line="1168"/>
+        <location filename="../controller.cpp" line="1461"/>
         <source>已保存 %1</source>
         <translation>Saved %1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1014"/>
+        <location filename="../controller.cpp" line="1127"/>
         <source>选区尺寸已调整，点击开始从新选区采集。</source>
         <translation>Selection resized. Click Start to capture the new region.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1353"/>
+        <location filename="../controller.cpp" line="1466"/>
         <source>保存失败</source>
         <translation>Could not save</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1353"/>
+        <location filename="../controller.cpp" line="1466"/>
         <source>无法写入 %1，请检查目录是否存在以及是否可写。</source>
         <translation>Could not write %1. Check that the folder exists and is writable.</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1412"/>
+        <location filename="../controller.cpp" line="1525"/>
         <source>屏幕截图</source>
         <translation>Screen capture</translation>
     </message>
@@ -3765,372 +3798,378 @@ Click the other crop button to adjust the opposite edge.</translation>
     <name>h2d::SettingsDialog</name>
     <message>
         <location filename="../settingsdialog.cpp" line="198"/>
-        <location filename="../settingsdialog.cpp" line="490"/>
+        <location filename="../settingsdialog.cpp" line="491"/>
         <source>选择反馈临时目录</source>
         <translation>Choose the feedback temporary folder</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="324"/>
+        <location filename="../settingsdialog.cpp" line="329"/>
         <source>正在检查更新…</source>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="337"/>
-        <location filename="../settingsdialog.cpp" line="536"/>
+        <location filename="../settingsdialog.cpp" line="537"/>
+        <location filename="../settingsdialog.cpp" line="592"/>
         <source>立即更新</source>
         <translation>Update now</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="337"/>
-        <location filename="../settingsdialog.cpp" line="536"/>
+        <location filename="../settingsdialog.cpp" line="537"/>
+        <location filename="../settingsdialog.cpp" line="592"/>
         <source>打开发布页</source>
         <translation>Open the releases page</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="345"/>
-        <location filename="../settingsdialog.cpp" line="359"/>
+        <location filename="../settingsdialog.cpp" line="340"/>
+        <location filename="../settingsdialog.cpp" line="355"/>
         <source>无法打开浏览器，请访问：%1</source>
         <translation>Could not open the browser. Please visit: %1</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="348"/>
+        <location filename="../settingsdialog.cpp" line="343"/>
         <source>正在下载安装器…</source>
         <translation>Downloading the installer…</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="428"/>
+        <location filename="../settingsdialog.cpp" line="364"/>
+        <source>正在检查安装条件并准备更新，当前工作将保留到安装器就绪。</source>
+        <translation>Checking installation requirements and preparing the update. Your current work will remain open until the installer is ready.</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="429"/>
         <source>EditHere 设置</source>
         <translation>EditHere Settings</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="430"/>
+        <location filename="../settingsdialog.cpp" line="431"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="432"/>
+        <location filename="../settingsdialog.cpp" line="433"/>
         <source>全局快捷键</source>
         <translation>Global shortcuts</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="434"/>
+        <location filename="../settingsdialog.cpp" line="435"/>
         <source>应用内快捷键</source>
         <translation>In-app shortcuts</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="441"/>
-        <location filename="../settingsdialog.cpp" line="447"/>
+        <location filename="../settingsdialog.cpp" line="442"/>
+        <location filename="../settingsdialog.cpp" line="448"/>
         <source>快捷键</source>
         <translation>Shortcuts</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="442"/>
+        <location filename="../settingsdialog.cpp" line="443"/>
         <source>在其他应用中也可使用；清空则停用。</source>
         <translation>Also works in other apps; clear it to disable.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="443"/>
+        <location filename="../settingsdialog.cpp" line="444"/>
         <source>在 EditHere 编辑窗口中使用；清空则停用。</source>
         <translation>Used in the EditHere editor window; clear it to disable.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="445"/>
+        <location filename="../settingsdialog.cpp" line="446"/>
         <source>点击录制快捷键</source>
         <translation>Click to record a shortcut</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="447"/>
+        <location filename="../settingsdialog.cpp" line="448"/>
         <source>外观</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="447"/>
+        <location filename="../settingsdialog.cpp" line="448"/>
         <source>默认行为</source>
         <translation>Default behavior</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="447"/>
+        <location filename="../settingsdialog.cpp" line="448"/>
         <source>长截图</source>
         <translation>Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="448"/>
+        <location filename="../settingsdialog.cpp" line="449"/>
         <source>工具栏</source>
         <translation>Toolbar</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="448"/>
+        <location filename="../settingsdialog.cpp" line="449"/>
         <source>关于与更新</source>
         <translation>About and updates</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="452"/>
-        <location filename="../settingsdialog.cpp" line="455"/>
+        <location filename="../settingsdialog.cpp" line="453"/>
+        <location filename="../settingsdialog.cpp" line="456"/>
         <source>外观模式</source>
         <translation>Appearance mode</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="454"/>
+        <location filename="../settingsdialog.cpp" line="455"/>
         <source>选择适合你的界面。跟随系统会随系统外观自动切换。</source>
         <translation>Pick the interface that suits you. Follow system switches with your system appearance.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="456"/>
-        <location filename="../settingsdialog.cpp" line="464"/>
-        <location filename="../settingsdialog.cpp" line="472"/>
+        <location filename="../settingsdialog.cpp" line="457"/>
+        <location filename="../settingsdialog.cpp" line="465"/>
+        <location filename="../settingsdialog.cpp" line="473"/>
         <source>跟随系统</source>
         <translation>Follow system</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="457"/>
+        <location filename="../settingsdialog.cpp" line="458"/>
         <source>亮色</source>
         <translation>Light</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="458"/>
+        <location filename="../settingsdialog.cpp" line="459"/>
         <source>暗色</source>
         <translation>Dark</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="460"/>
-        <location filename="../settingsdialog.cpp" line="463"/>
+        <location filename="../settingsdialog.cpp" line="461"/>
+        <location filename="../settingsdialog.cpp" line="464"/>
         <source>界面语言</source>
         <translation>Interface language</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="462"/>
+        <location filename="../settingsdialog.cpp" line="463"/>
         <source>切换后立即预览；保存后生效，取消则回到原来的语言。</source>
         <translation>Previews immediately; applies once you save, and Cancel restores the previous language.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="468"/>
-        <location filename="../settingsdialog.cpp" line="471"/>
+        <location filename="../settingsdialog.cpp" line="469"/>
+        <location filename="../settingsdialog.cpp" line="472"/>
         <source>文字识别语言</source>
         <translation>Recognition language</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="470"/>
+        <location filename="../settingsdialog.cpp" line="471"/>
         <source>截图后点击文字识别或按 T 时使用的语言。跟随系统由系统已安装的识别语言决定。</source>
         <translation>The language used when text recognition is chosen or T is pressed. “System” follows the languages installed on the computer.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="475"/>
+        <location filename="../settingsdialog.cpp" line="476"/>
         <source>启动后立即截图</source>
         <translation>Screenshot right after launch</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="476"/>
+        <location filename="../settingsdialog.cpp" line="477"/>
         <source>关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。</source>
         <translation>When off, EditHere only stays in the tray on launch; click the tray icon or press the global shortcut to start capturing.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="477"/>
+        <location filename="../settingsdialog.cpp" line="478"/>
         <source>开机时启动 EditHere</source>
         <translation>Start EditHere at login</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="478"/>
+        <location filename="../settingsdialog.cpp" line="479"/>
         <source>请保留程序所在文件夹；移动后需重新设置。</source>
         <translation>Keep the application folder where it is; you will have to set this up again after moving it.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="479"/>
+        <location filename="../settingsdialog.cpp" line="480"/>
         <source>打开图片时自动适应窗口</source>
         <translation>Fit to window when opening an image</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="480"/>
+        <location filename="../settingsdialog.cpp" line="481"/>
         <source>关闭后以 100% 显示，仍可随时缩放或使用适应窗口。</source>
         <translation>When off, images open at 100%; you can still zoom or fit to window at any time.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="481"/>
+        <location filename="../settingsdialog.cpp" line="482"/>
         <source>导出 JSON 默认包含原图</source>
         <translation>Include the source image in exported JSON by default</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="482"/>
+        <location filename="../settingsdialog.cpp" line="483"/>
         <source>关闭批注窗口时询问是否保存</source>
         <translation>Ask about saving when the annotation window closes</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="484"/>
+        <location filename="../settingsdialog.cpp" line="485"/>
         <source>关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。</source>
         <translation>When this is off, closing no longer asks whether to save: unsaved notes are simply discarded. Ticking &amp;quot;Do not ask again&amp;quot; in the annotation window turns this off.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="486"/>
+        <location filename="../settingsdialog.cpp" line="487"/>
         <source>反馈临时目录</source>
         <translation>Feedback temporary folder</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="487"/>
+        <location filename="../settingsdialog.cpp" line="488"/>
         <source>默认：缓存目录下的 feedback</source>
         <translation>Default: feedback under the cache directory</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="488"/>
+        <location filename="../settingsdialog.cpp" line="489"/>
         <source>自定义反馈 JSON 临时文件的保存位置。留空使用默认缓存目录。</source>
         <translation>Where to store temporary feedback JSON files. Leave empty to use the default cache directory.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="492"/>
+        <location filename="../settingsdialog.cpp" line="493"/>
         <source>包含原图的 JSON 可独立还原。保存项目始终包含原图。</source>
         <translation>JSON that includes the source image is fully self-contained. Saving a project always includes the source image.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="494"/>
-        <location filename="../settingsdialog.cpp" line="504"/>
+        <location filename="../settingsdialog.cpp" line="495"/>
+        <location filename="../settingsdialog.cpp" line="505"/>
         <source>默认标注工具</source>
         <translation>Default annotation tool</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="496"/>
+        <location filename="../settingsdialog.cpp" line="497"/>
         <source>长截图默认由你滚动页面；截取时仍可切换方向和自动裁剪。</source>
         <translation>Scroll the page manually by default. You can change direction and auto-crop while capturing.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="498"/>
+        <location filename="../settingsdialog.cpp" line="499"/>
         <source>默认截图方向</source>
         <translation>Default capture direction</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="499"/>
+        <location filename="../settingsdialog.cpp" line="500"/>
         <source>垂直</source>
         <translation>Vertical</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="500"/>
+        <location filename="../settingsdialog.cpp" line="501"/>
         <source>水平</source>
         <translation>Horizontal</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="501"/>
+        <location filename="../settingsdialog.cpp" line="502"/>
         <source>反向滚动时自动裁剪</source>
         <translation>Auto-crop when scrolling back</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="502"/>
+        <location filename="../settingsdialog.cpp" line="503"/>
         <source>超长截图（最长 200 万像素）</source>
         <translation>Ultra-long capture (up to 2 million pixels)</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="503"/>
+        <location filename="../settingsdialog.cpp" line="504"/>
         <source>分块采集并保存 PNG；超过编辑器图像上限时可保存，复制、贴图和编辑受图像大小限制。</source>
         <translation>Capture in chunks and save as PNG. Large captures can be saved beyond the editor&apos;s image limit; copying, pinning and editing remain subject to image size limits.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="505"/>
+        <location filename="../settingsdialog.cpp" line="506"/>
         <source>智能选块</source>
         <translation>Smart select</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="505"/>
+        <location filename="../settingsdialog.cpp" line="506"/>
         <source>点标注</source>
         <translation>Point</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="505"/>
+        <location filename="../settingsdialog.cpp" line="506"/>
         <source>框选标注</source>
         <translation>Box</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="505"/>
+        <location filename="../settingsdialog.cpp" line="506"/>
         <source>调整批注</source>
         <translation>Adjust</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="509"/>
+        <location filename="../settingsdialog.cpp" line="510"/>
         <source>显示在底部工具栏</source>
         <translation>Shown in the bottom toolbar</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="515"/>
+        <location filename="../settingsdialog.cpp" line="516"/>
         <source>在工具栏显示</source>
         <translation>Show in the toolbar</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="517"/>
+        <location filename="../settingsdialog.cpp" line="518"/>
         <source>保存包含批注和布局调整的图片。</source>
         <translation>Save an image with the annotations and layout adjustments.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="519"/>
+        <location filename="../settingsdialog.cpp" line="520"/>
         <source>打开 JSON 预览，可查看、复制或保存文件。</source>
         <translation>Open the JSON preview to view, copy, or save the file.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="521"/>
+        <location filename="../settingsdialog.cpp" line="522"/>
         <source>将 JSON 直接复制到剪贴板。</source>
         <translation>Copy the JSON straight to the clipboard.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="524"/>
+        <location filename="../settingsdialog.cpp" line="525"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="526"/>
+        <location filename="../settingsdialog.cpp" line="527"/>
         <source>截图、批注与布局调整，让设计修改意见更清楚。</source>
         <translation>Screenshots, annotations, and layout adjustments that make design feedback clearer.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="528"/>
+        <location filename="../settingsdialog.cpp" line="529"/>
         <source>以 MIT License 发布：可免费商用、修改与分发，保留版权声明即可。&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;查看许可说明&lt;/a&gt;</source>
         <translation>Released under the MIT License: free for commercial use, modification, and distribution, as long as you keep the copyright notice.&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;Read the license&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="530"/>
+        <location filename="../settingsdialog.cpp" line="531"/>
         <source>启动时检查更新</source>
         <translation>Check for updates on launch</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="532"/>
+        <location filename="../settingsdialog.cpp" line="533"/>
         <source>尚未检查更新。</source>
         <translation>Not checked for updates yet.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="534"/>
+        <location filename="../settingsdialog.cpp" line="535"/>
         <source>检查更新</source>
         <translation>Check for updates</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="538"/>
+        <location filename="../settingsdialog.cpp" line="541"/>
         <source>也可以加入 QQ 群 1018416966（反馈信息专用）；加群时请说明来自 GitHub。</source>
         <translation>You can also join the QQ group 1018416966 (feedback only); mention that you came from GitHub when joining.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="540"/>
+        <location filename="../settingsdialog.cpp" line="543"/>
         <source>恢复默认</source>
         <translation>Restore defaults</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="542"/>
+        <location filename="../settingsdialog.cpp" line="545"/>
         <source>使用引导</source>
         <translation>Open the guide</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="543"/>
+        <location filename="../settingsdialog.cpp" line="546"/>
         <source>关闭设置并打开使用引导；未保存的设置将不会保存。</source>
         <translation>Closes Settings and opens the guide; unsaved settings will not be saved.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="546"/>
+        <location filename="../settingsdialog.cpp" line="539"/>
+        <location filename="../settingsdialog.cpp" line="549"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="548"/>
+        <location filename="../settingsdialog.cpp" line="551"/>
         <source>保存</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="555"/>
+        <location filename="../settingsdialog.cpp" line="558"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>Could not load the interface language. Please reinstall EditHere.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="448"/>
+        <location filename="../settingsdialog.cpp" line="449"/>
         <source>诊断日志</source>
         <translation>Diagnostics</translation>
     </message>
@@ -4192,122 +4231,174 @@ Click the other crop button to adjust the opposite edge.</translation>
 <context>
     <name>h2d::UpdateChecker</name>
     <message>
-        <location filename="../updatechecker.cpp" line="46"/>
-        <location filename="../updatechecker.cpp" line="117"/>
-        <location filename="../updatechecker.cpp" line="296"/>
+        <location filename="../updatechecker.cpp" line="47"/>
+        <location filename="../updatechecker.cpp" line="118"/>
+        <location filename="../updatechecker.cpp" line="300"/>
         <source>更新信息过大，请稍后重试。</source>
         <translation>The update information is too large. Try again later.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="50"/>
-        <location filename="../updatechecker.cpp" line="120"/>
-        <location filename="../updatechecker.cpp" line="315"/>
+        <location filename="../updatechecker.cpp" line="51"/>
+        <location filename="../updatechecker.cpp" line="121"/>
+        <location filename="../updatechecker.cpp" line="319"/>
         <source>无法读取更新信息，请稍后重试。</source>
         <translation>Could not read the update information. Try again later.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="69"/>
-        <location filename="../updatechecker.cpp" line="131"/>
+        <location filename="../updatechecker.cpp" line="70"/>
+        <location filename="../updatechecker.cpp" line="132"/>
         <source>发行信息不是有效的 EditHere 正式版本，请到发布页查看。</source>
         <translation>The release information is not a valid stable EditHere release. Check the releases page.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="73"/>
+        <location filename="../updatechecker.cpp" line="74"/>
         <source>版本号无法比较，请到发布页查看。</source>
         <translation>The version numbers cannot be compared. Check the releases page.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="109"/>
+        <location filename="../updatechecker.cpp" line="110"/>
         <source>当前版本高于已发布的正式版 %1。</source>
         <translation>Your version is newer than the published stable release %1.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="111"/>
+        <location filename="../updatechecker.cpp" line="112"/>
         <source>已是最新正式版 %1。</source>
         <translation>You are on the latest stable release %1.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="137"/>
+        <location filename="../updatechecker.cpp" line="138"/>
         <source>GitHub 和 Gitee 均无法检查更新，请检查网络后重试。</source>
         <translation>Could not check GitHub or Gitee for updates. Check your connection and try again.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="143"/>
+        <location filename="../updatechecker.cpp" line="144"/>
         <source>%1 未能完成检查，以上结果来自 %2。</source>
         <translation>Could not finish checking %1. The result above is from %2.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="145"/>
+        <location filename="../updatechecker.cpp" line="146"/>
         <source>已检查 %1，正式版为 %2；%3 未能完成检查，暂时无法确认最新版本。</source>
         <translation>Checked %1: its stable release is %2. Could not finish checking %3, so the latest version cannot be confirmed yet.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="362"/>
+        <location filename="../updatechecker.cpp" line="366"/>
         <source>检查超时，请检查网络后重试。</source>
         <translation>The check timed out. Check your connection and try again.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="304"/>
+        <location filename="../updatechecker.cpp" line="308"/>
         <source>网络连接失败，暂时无法判断是否有更新。请稍后重试。</source>
         <translation>The network connection failed, so we cannot tell yet whether an update is available. Try again later.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="396"/>
-        <location filename="../updatechecker.cpp" line="546"/>
+        <location filename="../updatechecker.cpp" line="401"/>
+        <location filename="../updatechecker.cpp" line="689"/>
         <source>未找到适合当前系统的更新包，请前往发布页手动下载。</source>
         <translation>No update package matches this system. Download it manually from the releases page.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="416"/>
-        <location filename="../updatechecker.cpp" line="430"/>
-        <location filename="../updatechecker.cpp" line="446"/>
+        <location filename="../updatechecker.cpp" line="422"/>
+        <location filename="../updatechecker.cpp" line="436"/>
+        <location filename="../updatechecker.cpp" line="452"/>
         <source>无法写入更新文件：%1</source>
         <translation>Could not write the update file: %1</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="440"/>
+        <location filename="../updatechecker.cpp" line="446"/>
         <source>下载失败，请检查网络后重试。</source>
         <translation>The download failed. Check your connection and try again.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="526"/>
+        <location filename="../updatechecker.cpp" line="502"/>
+        <location filename="../updatechecker.cpp" line="659"/>
         <source>已取消更新，当前工作保持不变。</source>
         <translation>Update cancelled. Your current work is unchanged.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="539"/>
+        <location filename="../updatechecker.cpp" line="511"/>
+        <source>无法准备更新请求：安装目录或版本信息无效。</source>
+        <translation>Cannot prepare the update request: the installation directory or version is invalid.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="523"/>
+        <source>无法写入更新请求：%1</source>
+        <translation>Cannot write the update request: %1</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="549"/>
+        <source>安装器准备超时，更新已取消，当前工作保持不变。</source>
+        <translation>Installer preparation timed out. The update was cancelled and your current work is unchanged.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="556"/>
+        <source>无法读取安装器状态，更新已取消。</source>
+        <translation>Cannot read the installer status. The update was cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="564"/>
+        <location filename="../updatechecker.cpp" line="587"/>
+        <source>安装器状态无效，更新已取消。</source>
+        <translation>The installer status is invalid. The update was cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="573"/>
+        <source>安装器状态与本次更新不一致，更新已取消。</source>
+        <translation>The installer status does not match this update. The update was cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="583"/>
+        <source>安装器准备失败，当前工作保持不变。</source>
+        <translation>Installer preparation failed. Your current work is unchanged.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="591"/>
+        <source>无法确认安装器已就绪，更新已取消。</source>
+        <translation>Cannot confirm that the installer is ready. The update was cancelled.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="621"/>
+        <source>上次安装未完成。请检查安装日志和恢复信息。</source>
+        <translation>The previous installation did not finish. Check the installation log and recovery information.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="623"/>
+        <source>安装文件已切换，但当前运行版本与预期版本 %1 不一致。请检查启动路径。</source>
+        <translation>The installation files were replaced, but the running version does not match the expected version %1. Check the launch path.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="679"/>
         <source>无法启动更新安装器。</source>
         <translation>Could not start the update installer.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="403"/>
+        <location filename="../updatechecker.cpp" line="408"/>
         <source>未找到校验文件，无法验证安装包完整性。</source>
         <translation>The checksum file was not found, so the installer integrity cannot be verified.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="466"/>
+        <location filename="../updatechecker.cpp" line="472"/>
         <source>无法下载校验文件，请检查网络后重试。</source>
         <translation>Could not download the checksum file. Check your connection and try again.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="508"/>
+        <location filename="../updatechecker.cpp" line="641"/>
         <source>无法读取已下载的文件。</source>
         <translation>Could not read the downloaded file.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="105"/>
+        <location filename="../updatechecker.cpp" line="106"/>
         <source>发现新版本 %1。</source>
         <translation>A new version %1 is available.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="511"/>
+        <location filename="../updatechecker.cpp" line="644"/>
         <source>校验文件失败。</source>
         <translation>The checksum file check failed.</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="457"/>
-        <location filename="../updatechecker.cpp" line="505"/>
-        <location filename="../updatechecker.cpp" line="514"/>
+        <location filename="../updatechecker.cpp" line="463"/>
+        <location filename="../updatechecker.cpp" line="638"/>
+        <location filename="../updatechecker.cpp" line="647"/>
         <source>校验失败：安装包已损坏或不完整。</source>
         <translation>Verification failed: the installer is corrupt or incomplete.</translation>
     </message>

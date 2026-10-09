@@ -11,6 +11,9 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
+#include <QSettings>
 #include <QStandardPaths>
 #include "autostart.h"
 #include "settingsdialog.h"
@@ -20,6 +23,7 @@
 #include <QClipboard>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QScreen>
 #include <QTimer>
 #include <algorithm>
@@ -53,6 +57,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     annotateAction_ = menu->addAction(QString(), this, &Controller::openAnnotation);
     annotateAction_->setObjectName("trayAnnotate");
     openAction_ = menu->addAction(QString(), &editor_, [this] {
+        scheduleStartupUpdate();
         editor_.openFile();
         if (guidePending_ && editor_.hasDocument()) showGuide();
     });
@@ -140,13 +145,18 @@ void Controller::updateTrayShortcut() {
 void Controller::openAnnotation() {
     if (capturing_ || QApplication::activeModalWidget())
         return;
+    scheduleStartupUpdate();
     if (auto menu = tray_.contextMenu())
         menu->close();
     editor_.openEmpty();
 }
 void Controller::openSettings(bool updates, bool toolbar) {
+    openSettingsDialog(updates, toolbar);
+}
+void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release) {
     if (capturing_ || QApplication::activeModalWidget())
         return;
+    scheduleStartupUpdate();
     if (auto menu = tray_.contextMenu())
         menu->close();
     const auto activeShortcut = shortcut_.sequence();
@@ -172,7 +182,9 @@ void Controller::openSettings(bool updates, bool toolbar) {
     connect(&dialog, &SettingsDialog::languageApplied, this, &Controller::retranslate);
     bool guideRequested = false;
     connect(&dialog, &SettingsDialog::guideRequested, &dialog, [&] { guideRequested = true; });
-    if (updates)
+    if (release)
+        dialog.offerUpdate(*release, true);
+    else if (updates)
         dialog.showUpdates(true);
     else if (toolbar)
         dialog.showToolbar();
@@ -234,7 +246,8 @@ void Controller::openSettings(bool updates, bool toolbar) {
     const bool accepted = dialog.exec() == QDialog::Accepted;
     if (updateStarted) {
         tray_.hide();
-        // The user has already confirmed and the installer has actually started.
+        // The user has confirmed, and the maintenance worker has validated and
+        // prepared the update. Its ACK allows it to wait for this process to exit.
         // Do not run the close-to-tray path or ask the same question a second time.
         QCoreApplication::exit(0);
         return;
@@ -261,6 +274,8 @@ void Controller::showGuide() {
     editor_.showGuide();
 }
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
+    if (!background)
+        scheduleStartupUpdate();
 #ifdef Q_OS_LINUX
     // GNOME may have no tray host. Keep a visible entry point in that case.
     if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)
@@ -282,20 +297,112 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
         else if (path.isEmpty() && !demo && settings_.captureOnStartup)
             capture();
     }
-    if (!startupUpdateChecked_) {
-        startupUpdateChecked_ = true;
-        if (settings_.checkUpdatesOnStartup) {
-            auto checker = new UpdateChecker(this);
-            connect(checker, &UpdateChecker::finished, this,
-                    [this, checker](UpdateChecker::Status status, const QString &message, const QUrl &) {
-                        if (status == UpdateChecker::Available)
-                            tray_.showMessage(tr("EditHere 更新"), message + tr("\n右键托盘选择检查更新。"),
-                                              QSystemTrayIcon::Information);
-                        checker->deleteLater();
-                    });
-            QTimer::singleShot(3000, checker, &UpdateChecker::check);
-        }
+}
+void Controller::scheduleStartupUpdate() {
+    if (!agentSessionId_.isEmpty())
+        return;
+    if (!installationReceiptChecked_) {
+        installationReceiptChecked_ = true;
+        QTimer::singleShot(3000, this, &Controller::readInstallationReceipt);
     }
+    if (startupUpdateChecked_ || !settings_.checkUpdatesOnStartup)
+        return;
+    startupUpdateChecked_ = true;
+    auto checker = new UpdateChecker(this);
+    checker->setObjectName("startupUpdateChecker");
+    connect(checker, &UpdateChecker::finished, this, [this, checker] {
+        startupUpdateFinished(checker->lastResult());
+        checker->deleteLater();
+    });
+    QTimer::singleShot(3000, checker, &UpdateChecker::check);
+}
+void Controller::startupUpdateFinished(const UpdateChecker::Result &result) {
+    if (result.status != UpdateChecker::Available || !settings_.checkUpdatesOnStartup)
+        return;
+    pendingStartupUpdate_ = result;
+    presentStartupUpdate();
+}
+void Controller::presentStartupUpdate() {
+    if (!pendingStartupUpdate_)
+        return;
+    if (!settings_.checkUpdatesOnStartup) {
+        pendingStartupUpdate_.reset();
+        return;
+    }
+    if (capturing_ || !agentSessionId_.isEmpty() || QApplication::activeModalWidget() || editor_.guideActive()) {
+        QTimer::singleShot(500, this, &Controller::presentStartupUpdate);
+        return;
+    }
+    const auto release = std::move(*pendingStartupUpdate_);
+    pendingStartupUpdate_.reset();
+    QMessageBox prompt(QMessageBox::Information, tr("EditHere 更新"),
+                       tr("发现新版本 %1。").arg(release.tagName), QMessageBox::NoButton, &editor_);
+    prompt.setObjectName("startupUpdatePrompt");
+    auto update = prompt.addButton(tr("立即更新"), QMessageBox::AcceptRole);
+    auto skip = prompt.addButton(tr("跳过"), QMessageBox::RejectRole);
+    prompt.setDefaultButton(skip);
+    prompt.setEscapeButton(skip);
+    prompt.exec();
+    if (prompt.clickedButton() == update)
+        openSettingsDialog(true, false, &release);
+}
+void Controller::readInstallationReceipt() {
+    // An explicit settings file keeps test/development instances isolated from
+    // the normal application's persistent installer result.
+    const auto path = settingsFile_.isEmpty()
+                          ? UpdateChecker::installationResultPath()
+                          : QDir(QFileInfo(settingsFile_).absolutePath()).filePath("installer-results/last.json");
+    QFile file(path);
+    if (path.isEmpty() || !file.open(QIODevice::ReadOnly) || file.size() > 65536)
+        return;
+    const auto document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject())
+        return;
+    const auto receipt = document.object();
+    if (UpdateChecker::installationResultMessage(receipt, QCoreApplication::applicationDirPath(),
+                                                  QCoreApplication::applicationVersion()).isEmpty())
+        return;
+    const auto settingsPath = settingsFile_.isEmpty()
+                                  ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+                                        .filePath("settings.ini") : settingsFile_;
+    QSettings persisted(settingsPath, QSettings::IniFormat);
+    if (persisted.value("updates/seenInstallerResult").toString() == receipt.value("id").toString())
+        return;
+    pendingInstallationReceipt_ = receipt;
+    presentInstallationReceipt();
+}
+void Controller::presentInstallationReceipt() {
+    if (pendingInstallationReceipt_.isEmpty())
+        return;
+    if (capturing_ || !agentSessionId_.isEmpty() || QApplication::activeModalWidget() || editor_.guideActive()) {
+        QTimer::singleShot(500, this, &Controller::presentInstallationReceipt);
+        return;
+    }
+    const auto receipt = std::move(pendingInstallationReceipt_);
+    pendingInstallationReceipt_ = {};
+    const auto message = UpdateChecker::installationResultMessage(receipt, QCoreApplication::applicationDirPath(),
+                                                                  QCoreApplication::applicationVersion());
+    QMessageBox prompt(QMessageBox::Warning, tr("EditHere 安装结果"), message, QMessageBox::Ok, &editor_);
+    prompt.setObjectName("installationResultPrompt");
+    QStringList details;
+    if (const auto value = receipt.value("log").toString(); !value.isEmpty())
+        details.append(tr("安装日志：%1").arg(value));
+    if (const auto value = receipt.value("journal").toString(); !value.isEmpty())
+        details.append(tr("事务记录：%1").arg(value));
+    if (const auto value = receipt.value("recovery").toString(); !value.isEmpty())
+        details.append(tr("恢复目录：%1").arg(value));
+    if (const auto value = receipt.value("stage").toString(); !value.isEmpty())
+        details.append(tr("暂存目录：%1").arg(value));
+    if (!details.isEmpty()) prompt.setDetailedText(details.join('\n'));
+    prompt.exec();
+    const auto settingsPath = settingsFile_.isEmpty()
+                                  ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+                                        .filePath("settings.ini") : settingsFile_;
+    QSettings persisted(settingsPath, QSettings::IniFormat);
+    persisted.setValue("updates/seenInstallerResult", receipt.value("id").toString());
+    persisted.sync();
+    if (persisted.status() != QSettings::NoError)
+        diagnostics::write(diagnostics::Level::Warning, "updates.receipt", "Could not persist installer result acknowledgement.");
 }
 void Controller::raiseEditor() {
     if (!editor_.hasDocument())
@@ -307,6 +414,7 @@ void Controller::raiseEditor() {
     editor_.activateWindow();
 }
 void Controller::activate() {
+    scheduleStartupUpdate();
     if (guidePending_) {
         showGuide();
         return;
@@ -316,8 +424,13 @@ void Controller::activate() {
     else
         capture();
 }
-void Controller::capture() { beginCapture(false); }
+void Controller::capture() {
+    scheduleStartupUpdate();
+    beginCapture(false);
+}
 void Controller::beginCapture(bool fromTray) {
+    if (fromTray)
+        scheduleStartupUpdate();
     if (!agentSessionId_.isEmpty()) { activate(); return; }
     if (capturing_ || QApplication::activeModalWidget())
         return;
@@ -411,7 +524,7 @@ void Controller::restoreAfterCapture() {
             editor_.show();
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
         } else {
-            activate();
+            raiseEditor();
         }
     }
     restoreCaptureForegroundWindow(captureForeground_);
@@ -1463,7 +1576,8 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
         return agentError("busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
     if (command == "capture") {
         guidePending_ = false;
-        capture();
+        // An Agent capture is not the user's first interactive desktop launch.
+        beginCapture(false);
         return {{"ok", true}, {"command", command}, {"accepted", true}};
     }
     const auto input = request["input"].toString();

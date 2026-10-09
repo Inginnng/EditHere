@@ -300,9 +300,13 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     check->setObjectName("checkUpdates");
     auto releases = textButton({}, false, about);
     releases->setObjectName("openReleases");
+    auto cancelUpdate = textButton({}, false, about);
+    cancelUpdate->setObjectName("cancelUpdate");
+    cancelUpdate->hide();
     auto updateActions = new QHBoxLayout;
     updateActions->addWidget(check);
     updateActions->addWidget(releases);
+    updateActions->addWidget(cancelUpdate);
     updateActions->addStretch();
     aboutLayout->addLayout(updateActions);
     auto progressBar = new QProgressBar(about);
@@ -319,26 +323,17 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     tabs->addTab(about, {});
     tabs->addTab(new DiagnosticsPage(tabs), {});
     updater_ = new UpdateChecker(this);
+    connect(cancelUpdate, &QPushButton::clicked, updater_, &UpdateChecker::cancelDownload);
     connect(check, &QPushButton::clicked, this, [this, status, check] {
         if (updater_->downloading()) return;
         status->setText(tr("正在检查更新…"));
         check->setEnabled(false);
         updater_->check();
     });
-    connect(updater_, &UpdateChecker::finished, this,
-            [this, status, check, releases](UpdateChecker::Status state, const QString &message, const QUrl &url) {
-                status->setText(message);
-                check->setEnabled(true);
-                releases->setProperty("updateAvailable", state == UpdateChecker::Available);
-                releases->setProperty("releaseUrl", url);
-                const bool automatic = UpdateChecker::canAutoInstall(updater_->lastResult(), installedCopy(), windowsUpdates);
-                releases->setProperty("automaticUpdate", automatic);
-                // The button label depends on the availability, so refresh it here.
-                releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
-            });
-    connect(releases, &QPushButton::clicked, this, [this, releases, status, progressBar] {
+    connect(updater_, &UpdateChecker::finished, this, [this] { offerUpdate(updater_->lastResult()); });
+    connect(releases, &QPushButton::clicked, this, [this, releases, status, progressBar, cancelUpdate] {
         if (releases->property("updateAvailable").toBool()) {
-            const auto &result = updater_->lastResult();
+            const auto &result = updateResult_;
             const bool isInstaller = installedCopy();
             if (!UpdateChecker::canAutoInstall(result, isInstaller, windowsUpdates)) {
                 if (!QDesktopServices::openUrl(result.url))
@@ -351,7 +346,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
             progressBar->setVisible(true);
             progressBar->setRange(0, 100);
             progressBar->setValue(0);
-            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller);
+            cancelUpdate->show();
+            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
             const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
@@ -364,6 +360,10 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
                 if (total > 0)
                     progressBar->setValue(static_cast<int>(received * 100 / total));
             });
+    connect(updater_, &UpdateChecker::installerPreparing, this, [this, status, progressBar] {
+        status->setText(tr("正在检查安装条件并准备更新，当前工作将保留到安装器就绪。"));
+        progressBar->setRange(0, 0);
+    });
     connect(updater_, &UpdateChecker::installStarted, this, [this] {
         // Updating is not saving the settings draft. Restore the live preview,
         // and let the controller own the already-confirmed application exit.
@@ -371,11 +371,12 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         emit updateInstallStarted();
     });
     connect(updater_, &UpdateChecker::installFailed, this,
-            [this, status, releases, progressBar](const QString &message) {
+            [this, status, releases, progressBar, cancelUpdate](const QString &message) {
                 status->setText(message);
                 releases->setEnabled(true);
                 findChild<QPushButton *>("checkUpdates")->setEnabled(true);
                 progressBar->setVisible(false);
+                cancelUpdate->hide();
             });
     error_ = new QLabel(this);
     error_->setObjectName("errorLabel");
@@ -534,6 +535,8 @@ void SettingsDialog::retranslate() {
         check->setText(tr("检查更新"));
     if (auto releases = findChild<QPushButton *>("openReleases"))
         releases->setText(releases->property("automaticUpdate").toBool() ? tr("立即更新") : tr("打开发布页"));
+    if (auto cancelUpdate = findChild<QPushButton *>("cancelUpdate"))
+        cancelUpdate->setText(tr("取消"));
     if (auto feedback = findChild<QLabel *>("aboutFeedback"))
         feedback->setText(tr("也可以加入 QQ 群 1018416966（反馈信息专用）；加群时请说明来自 GitHub。"));
     if (auto reset = findChild<QPushButton *>("settingsReset"))
@@ -566,6 +569,7 @@ void SettingsDialog::applyLanguage(LanguageMode mode) {
     retranslate();
 }
 void SettingsDialog::reject() {
+    updater_->cancelDownload();
     // Cancelling undoes the live language preview along with every other edit.
     applyLanguage(languageOnEntry_);
     QDialog::reject();
@@ -574,6 +578,22 @@ void SettingsDialog::showUpdates(bool checkNow) {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsAboutPage"));
     if (checkNow)
         QTimer::singleShot(0, findChild<QPushButton *>("checkUpdates"), &QPushButton::click);
+}
+void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool installNow) {
+    updateResult_ = result;
+    showUpdates();
+    findChild<QLabel *>("updateStatus")->setText(result.message);
+    findChild<QPushButton *>("checkUpdates")->setEnabled(true);
+    auto releases = findChild<QPushButton *>("openReleases");
+    releases->setProperty("updateAvailable", result.status == UpdateChecker::Available);
+    releases->setProperty("releaseUrl", result.url);
+    const bool automatic = UpdateChecker::canAutoInstall(result, installedCopy(), windowsUpdates);
+    releases->setProperty("automaticUpdate", automatic);
+    releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
+    // Use the release already checked at startup, including its matched package
+    // and checksum; do not start a second GitHub/Gitee query.
+    if (installNow && result.status == UpdateChecker::Available)
+        QTimer::singleShot(0, releases, &QPushButton::click);
 }
 void SettingsDialog::showToolbar() {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsToolbarPage"));

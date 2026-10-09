@@ -17,9 +17,57 @@ namespace h2d {
 // traffic or ever running an installer against the developer's application.
 class UpdateCheckerTestAccess {
   public:
+    static QString prepareInstall(UpdateChecker &checker, const QString &directory,
+                                  std::function<bool(QProcess &)> launcher) {
+        checker.downloadDirectory_ = std::make_unique<QTemporaryDir>(QDir(directory).filePath("EditHere-update-XXXXXX"));
+        checker.expectedInstallVersion_ = "0.11.0";
+        checker.launchInstaller_ = std::move(launcher);
+        const auto path = checker.downloadDirectory_->filePath("package.exe");
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write("payload") != 7)
+            return {};
+        return path;
+    }
+    static QJsonObject request(const QString &package) {
+        QFile file(QDir(QFileInfo(package).absolutePath()).filePath("request.json"));
+        if (!file.open(QIODevice::ReadOnly)) return {};
+        return QJsonDocument::fromJson(file.readAll()).object();
+    }
+    static bool status(UpdateChecker &checker, const QString &package, QString state,
+                       const QString &changedKey = {}, const QString &changedValue = {}) {
+        auto object = request(package);
+        object["status"] = state;
+        object["message"] = "Maintenance preparation failed: target is not writable.";
+        if (!changedKey.isEmpty()) object[changedKey] = changedValue;
+        QSaveFile file(QDir(QFileInfo(package).absolutePath()).filePath("status.json"));
+        const auto bytes = QJsonDocument(object).toJson();
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+            return false;
+        checker.pollHandoff();
+        return true;
+    }
+    static QJsonObject action(const QString &package) {
+        QFile file(QDir(QFileInfo(package).absolutePath()).filePath("ack.json"));
+        if (!file.open(QIODevice::ReadOnly)) return {};
+        return QJsonDocument::fromJson(file.readAll()).object();
+    }
+    static void expire(UpdateChecker &checker) {
+        checker.handoffTimeoutMs_ = 0;
+        checker.pollHandoff();
+    }
     static void install(UpdateChecker &checker, const QString &path, const QString &hash) {
         checker.installing_ = true;
         checker.verifyAndInstall(path, hash, true);
+    }
+    static QString beginDownload(UpdateChecker &checker, const QString &directory) {
+        checker.installing_ = true;
+        checker.downloadDirectory_ = std::make_unique<QTemporaryDir>(QDir(directory).filePath("download-XXXXXX"));
+        checker.downloadPath_ = checker.downloadDirectory_->filePath("package.exe");
+        checker.downloadFile_ = std::make_unique<QSaveFile>(checker.downloadPath_);
+        if (!checker.downloadFile_->open(QIODevice::WriteOnly))
+            return {};
+        checker.downloadFile_->write("partial package");
+        return checker.downloadDirectory_->path();
     }
     static void beginCheck(UpdateChecker &checker) {
         checker.githubResult_.reset();
@@ -41,6 +89,9 @@ class UpdateCheckerTestAccess {
 }
 class UpdateTests : public QObject {
     Q_OBJECT
+    static QString payloadHash() {
+        return QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex());
+    }
     QByteArray release(const QString &version) {
         return QJsonDocument(QJsonObject{{"tag_name", version},
                                          {"draft", false},
@@ -86,38 +137,212 @@ class UpdateTests : public QObject {
         return QJsonDocument(object).toJson();
     }
   private slots:
+    void cancellingDownloadRemovesPartialFilesWithoutConfirmingOrLaunching() {
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        int confirmations = 0;
+        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        const auto download = UpdateCheckerTestAccess::beginDownload(checker, directory.path());
+        QVERIFY(!download.isEmpty());
+        QVERIFY(QFileInfo::exists(download));
+        QVERIFY(checker.downloading());
+        checker.cancelDownload();
+        QVERIFY(!checker.downloading());
+        QVERIFY(!QFileInfo::exists(download));
+        QCOMPARE(confirmations, 0);
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        checker.cancelDownload();
+        QCOMPARE(failed.size(), 1);
+    }
     void cancellationAndLaunchFailureNeverAnnounceInstallation() {
         QTemporaryDir directory;
-        const QString path = directory.filePath("not-an-executable.exe");
-        QFile file(path);
-        QVERIFY(file.open(QIODevice::WriteOnly));
-        file.write("payload");
-        file.close();
-        const auto hash = QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex());
         UpdateChecker checker;
         QSignalSpy started(&checker, &UpdateChecker::installStarted);
         QSignalSpy failed(&checker, &UpdateChecker::installFailed);
         int confirmations = 0;
         checker.setInstallConfirmation([&] { ++confirmations; return false; });
+        int launches = 0;
+        auto prepare = [&] {
+            return UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [&](QProcess &) {
+                ++launches;
+                return false;
+            });
+        };
+        auto path = prepare();
+        QVERIFY(!path.isEmpty());
         UpdateCheckerTestAccess::install(checker, path, QString());
         QCOMPARE(confirmations, 0);
-        UpdateCheckerTestAccess::install(checker, path, hash);
+        path = prepare();
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
         QCOMPARE(confirmations, 1);
         QCOMPARE(started.size(), 0);
         QVERIFY(!checker.downloading());
-        // Remove the verified payload during confirmation to force a launch
-        // failure without Windows trying to load a deliberately corrupt EXE.
-        // Its loader/error-reporting UI can outlive the test and retain CTest's
-        // output handles, making an otherwise completed run wait indefinitely.
-        checker.setInstallConfirmation([&] {
-            ++confirmations;
-            return QFile::remove(path);
-        });
-        UpdateCheckerTestAccess::install(checker, path, hash);
+        path = prepare();
+        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
         QCOMPARE(confirmations, 2);
+#ifdef Q_OS_WIN
+        QCOMPARE(launches, 1);
+#else
+        QCOMPARE(launches, 0);
+#endif
         QCOMPARE(started.size(), 0);
         QCOMPARE(failed.size(), 3);
         QVERIFY(!checker.downloading());
+    }
+    void detachedCreationWaitsForAuthenticatedReadyBeforeAnnouncingInstallation() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy preparing(&checker, &UpdateChecker::installerPreparing);
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        QStringList arguments;
+        QString nativeArguments;
+        const auto path = UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [&](QProcess &process) {
+            arguments = process.arguments();
+#ifdef Q_OS_WIN
+            nativeArguments = process.nativeArguments();
+#endif
+            return true;
+        });
+        QVERIFY(!path.isEmpty());
+        checker.setInstallConfirmation([] { return true; });
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
+        QCOMPARE(preparing.size(), 1);
+        QCOMPARE(started.size(), 0);
+        QVERIFY(checker.downloading());
+        const auto request = UpdateCheckerTestAccess::request(path);
+        QVERIFY(!request.value("token").toString().isEmpty());
+        QCOMPARE(request.value("version").toString(), QString("0.11.0"));
+        QCOMPARE(request.value("sha256").toString(), payloadHash());
+        QCOMPARE(request.value("processId").toInteger(), QCoreApplication::applicationPid());
+        QVERIFY(arguments.contains("/HANDOFF=" + request.value("id").toString()));
+        QCOMPARE(nativeArguments, "/D=" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
+        QVERIFY(UpdateCheckerTestAccess::action(path).isEmpty());
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready"));
+        QCOMPARE(started.size(), 1);
+        QVERIFY(!checker.downloading());
+        const auto ack = UpdateCheckerTestAccess::action(path);
+        QCOMPARE(ack.value("action").toString(), QString("ack"));
+        QCOMPARE(ack.value("token"), request.value("token"));
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready"));
+        QCOMPARE(started.size(), 1);
+        QCOMPARE(failed.size(), 0);
+    }
+    void failedPreparationKeepsApplicationRunningAndReclaimsDownload() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        const auto path = UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [](QProcess &) { return true; });
+        checker.setInstallConfirmation([] { return true; });
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "failed"));
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().first().toString(), QString("Maintenance preparation failed: target is not writable."));
+        QVERIFY(!QFileInfo::exists(QFileInfo(path).absolutePath()));
+        QVERIFY(!checker.downloading());
+    }
+    void unwritableAcknowledgementNeverAnnouncesInstallation() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        const auto path = UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [](QProcess &) { return true; });
+        checker.setInstallConfirmation([] { return true; });
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
+        QVERIFY(QDir().mkpath(QDir(QFileInfo(path).absolutePath()).filePath("ack.json")));
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready"));
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(UpdateCheckerTestAccess::action(path).isEmpty());
+        QVERIFY(!checker.downloading());
+    }
+    void mismatchedReadyNeverAcknowledgesOrExits_data() {
+        QTest::addColumn<QString>("key");
+        QTest::addColumn<QString>("value");
+        QTest::newRow("token") << "token" << "other-request";
+        QTest::newRow("target") << "target" << "C:/unrelated-installation";
+        QTest::newRow("version") << "version" << "9.0.0";
+        QTest::newRow("state") << "status" << "committed";
+    }
+    void mismatchedReadyNeverAcknowledgesOrExits() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QFETCH(QString, key);
+        QFETCH(QString, value);
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        const auto path = UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [](QProcess &) { return true; });
+        checker.setInstallConfirmation([] { return true; });
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready", key, value));
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(UpdateCheckerTestAccess::action(path).value("action").toString(), QString("cancel"));
+        QVERIFY(!checker.downloading());
+    }
+    void pendingHandoffCancelsOnUserCancellationTimeoutOrDestruction_data() {
+        QTest::addColumn<QString>("action");
+        QTest::newRow("cancel") << "cancel";
+        QTest::newRow("timeout") << "timeout";
+        QTest::newRow("close-dialog") << "destroy";
+    }
+    void pendingHandoffCancelsOnUserCancellationTimeoutOrDestruction() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QFETCH(QString, action);
+        QTemporaryDir directory;
+        auto checker = std::make_unique<UpdateChecker>();
+        QSignalSpy started(checker.get(), &UpdateChecker::installStarted);
+        const auto path = UpdateCheckerTestAccess::prepareInstall(*checker, directory.path(), [](QProcess &) { return true; });
+        checker->setInstallConfirmation([] { return true; });
+        UpdateCheckerTestAccess::install(*checker, path, payloadHash());
+        if (action == "cancel") checker->cancelDownload();
+        if (action == "timeout") UpdateCheckerTestAccess::expire(*checker);
+        if (action == "destroy") checker.reset();
+        QCOMPARE(UpdateCheckerTestAccess::action(path).value("action").toString(), QString("cancel"));
+        QCOMPARE(started.size(), 0);
+        // The worker must still be able to observe cancellation after the dialog
+        // has gone away. It reclaims these exact files after reaching terminal state.
+        QVERIFY(QFileInfo::exists(path));
+        if (checker) {
+            QVERIFY(UpdateCheckerTestAccess::status(*checker, path, "ready"));
+            QCOMPARE(started.size(), 0);
+            QVERIFY(!checker->downloading());
+        }
+    }
+    void installationReceiptsMatchTargetAndExpectedRunningVersion() {
+        const QString target = QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
+        QJsonObject receipt{{"id", "receipt-a"}, {"target", target}, {"version", "0.11.0"},
+                             {"status", "failed"}, {"message", "Rollback completed; see the maintenance log."}};
+        QCOMPARE(UpdateChecker::installationResultMessage(receipt, target, "0.10.4"), receipt.value("message").toString());
+        QVERIFY(UpdateChecker::installationResultMessage(receipt, "C:/unrelated", "0.10.4").isEmpty());
+        receipt["status"] = "committed";
+        QVERIFY(UpdateChecker::installationResultMessage(receipt, target, "0.11.0").isEmpty());
+        QVERIFY(!UpdateChecker::installationResultMessage(receipt, target, "0.10.4").isEmpty());
+        receipt["status"] = "cancelled";
+        QVERIFY(UpdateChecker::installationResultMessage(receipt, target, "0.10.4").isEmpty());
+        receipt["status"] = "failed";
+        receipt["version"] = "unknown";
+        QVERIFY(UpdateChecker::installationResultMessage(receipt, target, "0.10.4").isEmpty());
     }
     void hashMustBePresentWellFormedAndMatch() {
         QTemporaryDir directory;

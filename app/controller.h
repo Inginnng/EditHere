@@ -4,6 +4,7 @@
 #include "ocr.h"
 #include "overlay.h"
 #include "settings.h"
+#include "updatechecker.h"
 #include <QPointer>
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
@@ -31,6 +32,7 @@ class Controller final : public QObject {
     void agentSessionFinished(const QString &id, const QJsonObject &result);
 
   private:
+    friend class StartupFlowTestAccess;
     friend class ScrollControllerTests;
     // tools/readme-demo/recorder.cpp feeds synthetic screens through the same seams.
     friend class ReadmeRecorder;
@@ -51,6 +53,12 @@ class Controller final : public QObject {
     void raiseEditor();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
     void updateTrayShortcut();
+    void scheduleStartupUpdate();
+    void startupUpdateFinished(const UpdateChecker::Result &result);
+    void presentStartupUpdate();
+    void readInstallationReceipt();
+    void presentInstallationReceipt();
+    void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr);
     // What the toolbar beside a finished region can do with it.
     void copyRegion(Overlay *source);
     void pinRegion(Overlay *source);
@@ -157,6 +165,9 @@ class Controller final : public QObject {
     QString agentSessionId_, agentOutput_;
     bool agentEmbed_ = true;
     bool startupUpdateChecked_ = false;
+    std::optional<UpdateChecker::Result> pendingStartupUpdate_;
+    bool installationReceiptChecked_ = false;
+    QJsonObject pendingInstallationReceipt_;
     bool capturing_ = false, wasVisible_ = false;
     CaptureHistory history_;
     // Which earlier capture the capture windows are showing, or -1 for the screen.

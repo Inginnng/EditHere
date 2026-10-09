@@ -8,6 +8,8 @@
 #include <QUrl>
 #include <QSaveFile>
 #include <QTemporaryDir>
+#include <QElapsedTimer>
+#include <QJsonObject>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -60,12 +62,18 @@ class UpdateChecker final : public QObject {
     const Result & lastResult() const {
         return lastResult_;
     }
-    void downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller);
+    void downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller,
+                            const QString &expectedVersion = {});
+    void cancelDownload();
+    static QString installationResultPath();
+    static QString installationResultMessage(const QJsonObject &receipt, const QString &target,
+                                             const QString &currentVersion);
   signals:
     void finished(h2d::UpdateChecker::Status status, QString message, QUrl url);
     void downloadProgress(qint64 received, qint64 total);
     void installStarted();
     void installFailed(QString message);
+    void installerPreparing();
 
   private:
     friend class UpdateCheckerTestAccess;
@@ -77,6 +85,10 @@ class UpdateChecker final : public QObject {
     void finish(Result result);
     void verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller);
     void failInstall(const QString &message);
+    bool prepareHandoff(const QString &filePath, const QString &expectedHash, QString *error);
+    bool writeHandoffAction(const QString &action);
+    void pollHandoff();
+    void cancelHandoff();
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QPointer<QNetworkReply> giteeReply_;
@@ -85,6 +97,11 @@ class UpdateChecker final : public QObject {
     QProcess process_;
     QTimer timeout_;
     QTimer cliTimeout_;
+    QTimer handoffTimer_;
+    QElapsedTimer handoffDeadline_;
+    int handoffTimeoutMs_ = 120000;
+    bool awaitingHandoff_ = false;
+    QString expectedInstallVersion_, handoffToken_, handoffTarget_, handoffId_;
     QByteArray output_;
     QByteArray giteeOutput_;
     std::optional<Result> githubResult_, giteeResult_;
@@ -99,6 +116,7 @@ class UpdateChecker final : public QObject {
     std::unique_ptr<QTemporaryDir> downloadDirectory_;
     std::unique_ptr<QSaveFile> downloadFile_;
     std::function<bool()> confirmInstall_;
+    std::function<bool(QProcess &)> launchInstaller_;
     Result lastResult_;
 };
 } // namespace h2d

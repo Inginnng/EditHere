@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <QTemporaryFile>
 #include <QVersionNumber>
+#include <QUuid>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -156,6 +157,8 @@ UpdateChecker::Result UpdateChecker::selectRelease(const Result &github, const R
     return githubComplete && !giteeComplete ? github : gitee;
 }
 UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
+    handoffTimer_.setInterval(250);
+    connect(&handoffTimer_, &QTimer::timeout, this, &UpdateChecker::pollHandoff);
     timeout_.setSingleShot(true);
     timeout_.setInterval(15000);
     cliTimeout_.setSingleShot(true);
@@ -200,6 +203,7 @@ UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
             });
 }
 UpdateChecker::~UpdateChecker() {
+    cancelHandoff();
     busy_ = false;
     process_.disconnect(this);
     for (auto *pointer : {&reply_, &giteeReply_, &downloadReply_, &hashReply_}) {
@@ -389,7 +393,8 @@ QString UpdateChecker::prepareDownloadTarget(const QString &directory, const QSt
     QFile::remove(path);
     return path;
 }
-void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller) {
+void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller,
+                                       const QString &expectedVersion) {
     if (busy_ || installing_)
         return;
 #ifndef Q_OS_WIN
@@ -406,6 +411,7 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     installing_ = true;
     isInstallerUpdate_ = isInstaller;
     downloadFileName_ = package.name;
+    expectedInstallVersion_ = expectedVersion.startsWith('v') ? expectedVersion.mid(1) : expectedVersion;
     // Qt supplies unique paths and atomic writes; retries cannot concatenate an
     // earlier download or overwrite another running installer's payload.
     downloadDirectory_ = std::make_unique<QTemporaryDir>(
@@ -475,6 +481,7 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     });
 }
 void UpdateChecker::failInstall(const QString &message) {
+    cancelHandoff();
     diagnostics::write(diagnostics::Level::Error, "updates.install", message);
     for (auto *pointer : {&downloadReply_, &hashReply_}) {
         if (*pointer) {
@@ -489,6 +496,132 @@ void UpdateChecker::failInstall(const QString &message) {
     downloadDirectory_.reset();
     installing_ = false;
     emit installFailed(message);
+}
+void UpdateChecker::cancelDownload() {
+    if (installing_)
+        failInstall(tr("已取消更新，当前工作保持不变。"));
+}
+bool UpdateChecker::prepareHandoff(const QString &filePath, const QString &expectedHash, QString *error) {
+    static const QRegularExpression idPattern("^EditHere-update-[A-Za-z0-9]+$");
+    static const QRegularExpression versionPattern("^[0-9]+\\.[0-9]+\\.[0-9]+$");
+    handoffTarget_ = QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
+    handoffId_ = downloadDirectory_ ? QFileInfo(downloadDirectory_->path()).fileName() : QString();
+    if (!downloadDirectory_ || !downloadDirectory_->isValid() || !idPattern.match(handoffId_).hasMatch() ||
+        !versionPattern.match(expectedInstallVersion_).hasMatch()) {
+        if (error) *error = tr("无法准备更新请求：安装目录或版本信息无效。");
+        return false;
+    }
+    handoffToken_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QJsonObject request{{"id", handoffId_}, {"target", handoffTarget_},
+                              {"version", expectedInstallVersion_}, {"token", handoffToken_},
+                              {"processId", QCoreApplication::applicationPid()},
+                              {"package", QFileInfo(filePath).fileName()}, {"sha256", expectedHash}};
+    QSaveFile file(downloadDirectory_->filePath("request.json"));
+    const auto bytes = QJsonDocument(request).toJson(QJsonDocument::Compact);
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() ||
+        !file.commit()) {
+        if (error) *error = tr("无法写入更新请求：%1").arg(file.errorString());
+        return false;
+    }
+    return true;
+}
+bool UpdateChecker::writeHandoffAction(const QString &action) {
+    if (!downloadDirectory_)
+        return false;
+    QSaveFile file(downloadDirectory_->filePath("ack.json"));
+    const auto bytes = QJsonDocument(QJsonObject{{"action", action}, {"token", handoffToken_}})
+                           .toJson(QJsonDocument::Compact);
+    return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
+}
+void UpdateChecker::cancelHandoff() {
+    handoffTimer_.stop();
+    if (!awaitingHandoff_)
+        return;
+    // Keep the cancellation marker until the worker observes it. The worker owns
+    // cleanup after it acknowledges cancellation, including when this dialog dies.
+    writeHandoffAction("cancel");
+    awaitingHandoff_ = false;
+}
+void UpdateChecker::pollHandoff() {
+    if (!awaitingHandoff_ || !downloadDirectory_)
+        return;
+    if (handoffDeadline_.elapsed() >= handoffTimeoutMs_) {
+        failInstall(tr("安装器准备超时，更新已取消，当前工作保持不变。"));
+        return;
+    }
+    QFile file(downloadDirectory_->filePath("status.json"));
+    if (!file.exists())
+        return;
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 65536) {
+        failInstall(tr("无法读取安装器状态，更新已取消。"));
+        return;
+    }
+    QJsonParseError error;
+    const auto bytes = file.readAll();
+    file.close(); // Release the Windows handle before reclaiming a failed handoff.
+    const auto document = QJsonDocument::fromJson(bytes, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        failInstall(tr("安装器状态无效，更新已取消。"));
+        return;
+    }
+    const auto status = document.object();
+    const QString target = QDir::cleanPath(QDir::fromNativeSeparators(status.value("target").toString()));
+    const QString expectedTarget = QDir::cleanPath(QDir::fromNativeSeparators(handoffTarget_));
+    if (status.value("token").toString() != handoffToken_ ||
+        status.value("version").toString() != expectedInstallVersion_ ||
+        target.compare(expectedTarget, Qt::CaseInsensitive) != 0) {
+        failInstall(tr("安装器状态与本次更新不一致，更新已取消。"));
+        return;
+    }
+    const auto state = status.value("status").toString();
+    if (state == "failed" || state == "cancelled") {
+        // The worker is terminal before ACK, so Qt can reclaim the request and package.
+        awaitingHandoff_ = false;
+        handoffTimer_.stop();
+        downloadDirectory_->setAutoRemove(true);
+        failInstall(status.value("message").toString().isEmpty()
+                        ? tr("安装器准备失败，当前工作保持不变。") : status.value("message").toString());
+        return;
+    }
+    if (state != "ready") {
+        failInstall(tr("安装器状态无效，更新已取消。"));
+        return;
+    }
+    if (!writeHandoffAction("ack")) {
+        failInstall(tr("无法确认安装器已就绪，更新已取消。"));
+        return;
+    }
+    // READY means validation and preparation succeeded. ACK permits the worker
+    // to wait for this application to exit before it touches the installation.
+    awaitingHandoff_ = false;
+    handoffTimer_.stop();
+    installing_ = false;
+    emit installStarted();
+}
+QString UpdateChecker::installationResultPath() {
+#ifdef Q_OS_WIN
+    const auto local = qEnvironmentVariable("LOCALAPPDATA");
+    return local.isEmpty() ? QString() : QDir(local).filePath("EditHere/Installer/Results/last.json");
+#else
+    return {};
+#endif
+}
+QString UpdateChecker::installationResultMessage(const QJsonObject &receipt, const QString &target,
+                                                  const QString &currentVersion) {
+    const auto receiptTarget = QDir::cleanPath(QDir::fromNativeSeparators(receipt.value("target").toString()));
+    const auto expectedTarget = QDir::cleanPath(QDir::fromNativeSeparators(target));
+    static const QRegularExpression versionPattern("^[0-9]+\\.[0-9]+\\.[0-9]+$");
+    const auto version = receipt.value("version").toString();
+    if (receipt.value("id").toString().isEmpty() || !versionPattern.match(version).hasMatch() ||
+        receiptTarget.compare(expectedTarget, Qt::CaseInsensitive) != 0)
+        return {};
+    const auto status = receipt.value("status").toString();
+    if (status == "failed")
+        return receipt.value("message").toString().isEmpty()
+                   ? tr("上次安装未完成。请检查安装日志和恢复信息。") : receipt.value("message").toString();
+    if (status == "committed" && version != currentVersion)
+        return tr("安装文件已切换，但当前运行版本与预期版本 %1 不一致。请检查启动路径。").arg(version);
+    return {};
 }
 bool UpdateChecker::canAutoInstall(const Result &result, bool installed, bool windows) {
     return windows && result.status == Available && (installed || result.portableInstallerSupported) &&
@@ -527,21 +660,31 @@ void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &exp
         return;
     }
 #ifdef Q_OS_WIN
+    if (!prepareHandoff(filePath, expectedHash, &error)) {
+        failInstall(error);
+        return;
+    }
     QProcess installer;
     installer.setProgram(filePath);
     installer.setArguments(isInstaller ? QStringList{"/S", "/UPDATE"}
                                        : QStringList{"/S", "/UPDATE", "/PORTABLE"});
+    auto arguments = installer.arguments();
+    arguments.append("/HANDOFF=" + handoffId_);
+    installer.setArguments(arguments);
     // NSIS requires /D= last and unquoted even with spaces. No command shell is
     // involved, so &, %, Unicode, and parentheses are ordinary path characters.
     installer.setNativeArguments("/D=" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
     installer.setWorkingDirectory(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
-    if (!installer.startDetached()) {
+    if (!(launchInstaller_ ? launchInstaller_(installer) : installer.startDetached())) {
         failInstall(tr("无法启动更新安装器。") + "\n" + installer.errorString());
         return;
     }
     // The detached NSIS process still needs this file after our QObject dies.
     downloadDirectory_->setAutoRemove(false);
-    emit installStarted();
+    awaitingHandoff_ = true;
+    handoffDeadline_.start();
+    handoffTimer_.start();
+    emit installerPreparing();
 #else
     failInstall(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
 #endif

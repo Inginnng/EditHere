@@ -29,7 +29,7 @@ struct AppSettings {
     // throws the changes away instead of stopping to ask. It is a preference rather
     // than a one-off so that it can be turned back on in the settings.
     bool confirmBeforeDiscard = true;
-    bool checkUpdatesOnStartup = false;
+    bool checkUpdatesOnStartup = true;
     QString feedbackDir; // Empty = default CacheLocation/feedback.
     int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.
     // The corner radius, border and shadow every capture starts from. Set from the

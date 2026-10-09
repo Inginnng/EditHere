@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.10.3 LANGUAGES C CXX)
+project(EditHere VERSION 0.10.4 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -283,6 +283,11 @@ if(Python3_Interpreter_FOUND)
   if(WIN32)
     add_executable(update_installer_stub WIN32 tests/fixtures/update_stub.cpp)
     set_target_properties(update_installer_stub PROPERTIES AUTOMOC OFF AUTOUIC OFF)
+    add_test(NAME installer-maintenance
+      COMMAND "${CMAKE_COMMAND}" -E env
+        "EDITHERE_UPDATE_STUB=$<TARGET_FILE:update_installer_stub>"
+        "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/maintenance_test.py")
+    set_tests_properties(installer-maintenance PROPERTIES TIMEOUT 240)
     find_program(NSIS_EXECUTABLE makensis HINTS "C:/Program Files (x86)/NSIS" "C:/Program Files/NSIS")
     if(NSIS_EXECUTABLE)
       add_test(NAME installer-transaction
@@ -290,6 +295,15 @@ if(Python3_Interpreter_FOUND)
           "EDITHERE_UPDATE_STUB=$<TARGET_FILE:update_installer_stub>"
           "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/installer_transaction_test.py")
       set_tests_properties(installer-transaction PROPERTIES TIMEOUT 150)
+      add_test(NAME installer-shell-notification
+        COMMAND "${CMAKE_COMMAND}" -E env "NSIS_MAKENSIS=${NSIS_EXECUTABLE}"
+          "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/installer_shell_notification_test.py")
+      set_tests_properties(installer-shell-notification PROPERTIES TIMEOUT 60)
+      add_test(NAME installer-ui-flow
+        COMMAND "${CMAKE_COMMAND}" -E env "NSIS_MAKENSIS=${NSIS_EXECUTABLE}"
+          "EDITHERE_UPDATE_STUB=$<TARGET_FILE:update_installer_stub>"
+          "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/installer_ui_flow_test.py")
+      set_tests_properties(installer-ui-flow PROPERTIES TIMEOUT 180)
     endif()
   endif()
   add_test(NAME packaging
