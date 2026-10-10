@@ -17,6 +17,9 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+# See installer_transaction_test.py: 8.3 short names and long names are the same
+# directory but different strings, and only some Windows APIs expand them.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
 
 
 def main():

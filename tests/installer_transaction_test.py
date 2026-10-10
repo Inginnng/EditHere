@@ -24,6 +24,35 @@ if sys.platform == "win32":
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# A Windows 8.3 short name (C:\Users\RUNNER~1\...) and its long form
+# (C:\Users\runneradmin\...) name the same directory but never compare equal as
+# strings. Only some APIs expand the short form: [IO.Path]::GetFullPath, used by
+# maintain.ps1, does, while NSIS passes /D= through verbatim. Canonicalizing the
+# temp root once keeps every derived path, receipt and registry value spelled the
+# same way, so the run does not depend on the length of the runner's user name.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
+
+
+def canonical_path(path):
+    """Compare paths by directory identity rather than by 8.3 spelling."""
+    return os.path.normcase(os.path.realpath(str(path)))
+
+
+def read_receipt(path, attempts=20):
+    """Parse a receipt the maintenance worker publishes with [IO.File]::Replace.
+
+    File.Replace briefly denies readers the destination, and an NSIS uninstaller
+    keeps working after it returns, so a poll loop must treat a sharing violation
+    as "not published yet" instead of as a failure.
+    """
+    for attempt in range(attempts):
+        try:
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+        except (FileNotFoundError, PermissionError):
+            if attempt + 1 == attempts:
+                raise
+            time.sleep(0.05)
+
 
 @unittest.skipUnless(sys.platform == "win32" and os.environ.get("NSIS_MAKENSIS")
                      and os.environ.get("EDITHERE_UPDATE_STUB"), "needs NSIS and the harmless Windows update stub")
@@ -170,7 +199,7 @@ FunctionEnd
             if self.result_file.is_file():
                 content = self.result_file.read_text(encoding="utf-16-le").splitlines()
                 if len(content) >= 9:
-                    receipt = json.loads(receipt_file.read_text(encoding="utf-8-sig")) if receipt_file.is_file() else None
+                    receipt = read_receipt(receipt_file) if receipt_file.is_file() else None
                     self.last_result = {"exit_code": int(content[0]), "installer_image": content[1],
                                         "target": content[3],
                                         "startup": content[4], "add_to_path": content[5],
@@ -182,7 +211,8 @@ FunctionEnd
                     if content[8] == "0":
                         self.assertIsNotNone(receipt, "NSIS zero must have a durable worker receipt")
                         self.assertEqual(receipt["status"], "committed")
-                        self.assertEqual(Path(receipt["target"]), Path(self.last_result["target"]))
+                        self.assertEqual(canonical_path(receipt["target"]),
+                                         canonical_path(self.last_result["target"]))
                     self.assertEqual(result.returncode, self.last_result["exit_code"],
                                      "the original setup process must report the actual outcome")
                     return self.last_result["exit_code"]
@@ -487,7 +517,7 @@ FunctionEnd
         receipt_file = self.data / "Results/last.json"
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
-            receipt = json.loads(receipt_file.read_text(encoding="utf-8-sig"))
+            receipt = read_receipt(receipt_file)
             if receipt["id"] != old_id:
                 self.assertEqual(receipt["operation"], "Uninstall")
                 self.assertEqual(receipt["status"], "committed")

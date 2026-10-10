@@ -13,6 +13,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# See installer_transaction_test.py: 8.3 short names and long names are the same
+# directory but different strings, and only some Windows APIs expand them.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
 POWERSHELL = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
 LEGACY_NOTIFY = r'''Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class EditHereShell { [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r); [DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr a, IntPtr b); }'
 Write-Output 'LEGACY_UNEXPECTED_SUCCESS'
