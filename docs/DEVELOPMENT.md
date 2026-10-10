@@ -54,6 +54,8 @@ Windows PowerShell 7，CMake 在 PATH 中：
 
 除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符、`.ts` 与预编译 `.qm` 的逐条对应，以及 AI 与命令行文档、skill 里的反馈结构与导出字段的一致性；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
 
+贡献者授权由 `.github/workflows/cla.yml` 核验，实现见 `scripts/cla-check.cjs`、配置见 `.github/cla/config.json`：工作流只检出可信基线、绝不执行 PR 中的代码，确认账号必须是贡献者本人，记录协议版本与 `cla/v2.md` 的 SHA-256 摘要到独立的 `cla-signatures` 分支。改动 CLA 相关文件后本地跑 `node --test tests/cla_check_test.cjs`；只读的 `.github/workflows/cla-tests.yml` 在 PR 中自动运行同一测试。协议内容与启用步骤见[贡献者许可协议](../CLA.md)。
+
 ## 截图流程与文字识别
 
 截图不再"松手即批注"。`Overlay`（每屏一个无边框置顶窗口）负责选区与交互，选区定下来后由它内部的 `CaptureToolbar` 提供动作，再由 `Controller` 分别处理；只有「批注」会走 `completeCapture` 进入 `Editor`。
