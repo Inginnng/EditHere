@@ -2,11 +2,11 @@
 
 EditHere 的原创软件代码与随附原创图标采用 **PolyForm Noncommercial License 1.0.0**，许可原文见 [LICENSE](LICENSE)。SPDX 标识为 `PolyForm-Noncommercial-1.0.0`。
 
-这是一份**源码可用（source-available）**许可，**不是开源许可**：它把"用途"作为授权的边界——非商业用途免费，商业用途不在授权范围内。
+这是一份**源码可用（source-available）**&#x8BB8;可，**不是开源许可**：它把"用途"作为授权的边界——非商业用途免费，商业用途不在授权范围内。
 
 ## 你可以做什么
 
-在保留许可文本与 `Required Notice` 的前提下，用于**许可目的（permitted purpose）**时，你可以免费：
+在保留许可文本与 `Required Notice` 的前提下，用于**许可目的（permitted purpose）**&#x65F6;，你可以免费：
 
 - **个人使用**：研究、实验、为公共知识做测试、个人学习、私人娱乐、爱好项目、业余爱好、宗教活动；
 - 使用、复制、修改软件，或基于它创作新作品；
@@ -26,7 +26,7 @@ EditHere 的原创软件代码与随附原创图标采用 **PolyForm Noncommerci
 - 把它打包、内置或随附于你对外销售、订阅或收费的产品与服务；
 - 以它提供付费服务、技术支持或托管服务。
 
-需要商业用途时，请见 [商业授权与合作](COMMERCIAL-LICENSE.md)，联系 **[inginnng@163.com](mailto:inginnng@163.com)**。
+需要商业用途时，请见 [商业授权与合作](COMMERCIAL-LICENSE.md)，联系 **<inginnng@163.com>**。
 
 ## 不随许可授予的权利
 
@@ -38,16 +38,6 @@ EditHere 的原创软件代码与随附原创图标采用 **PolyForm Noncommerci
 ## 违规与补救
 
 第一次收到书面违规通知后，若你在 **32 天内**完全合规并采取实际步骤纠正过往违规，你的授权可以继续；否则所有授权立即终止。
-
-## 历史版本说明
-
-| 版本区间 | 随附许可 | SPDX 标识 |
-| --- | --- | --- |
-| `0.9.2` 及更早 | PolyForm Noncommercial License 1.0.0 | `PolyForm-Noncommercial-1.0.0` |
-| `0.9.3` – `0.10.3` | MIT License | `MIT` |
-| `0.10.4` 起 | PolyForm Noncommercial License 1.0.0 | `PolyForm-Noncommercial-1.0.0` |
-
-**已发布版本按其当时随附的许可继续有效，许可变更不追溯。** 具体地说：`0.9.3` 至 `0.10.3` 的每个副本，在获得副本的那一刻就已经按 MIT 授权给获得者——**那份授权无法撤回**，获得过这些版本的人（以及当时的 fork）仍可继续按 MIT 使用它们。本次收窄只对 `0.10.4` 及之后的版本生效，也不会影响任何人依照旧版许可已经取得的权利。
 
 ## 第三方组件
 

@@ -246,8 +246,6 @@ The original software is licensed under the [PolyForm Noncommercial License 1.0.
 
 Personal, educational, research, charitable and government **noncommercial** use is free — just keep the licence text and the `Required Notice`. **Commercial use requires a written licence from the author**, including internal deployment inside a for-profit company and embedding EditHere in a product or service you sell or charge for. See [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md) or write to **[inginnng@163.com](mailto:inginnng@163.com)**.
 
-Versions `0.9.3` through `0.10.3` were released under MIT; those copies keep the licence they shipped with. See the [licensing notes (Chinese)](LICENSING.md) for the version history.
-
 The EditHere name and marks are not licensed under these terms; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Qt, MinGW and other third-party components are covered by their own licences; see the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
 
 ## Star History
