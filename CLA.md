@@ -1,51 +1,35 @@
 # EditHere 贡献者许可协议（CLA）
 
-> **当前状态：自 `0.10.4` 起启用。** EditHere 采用 PolyForm Noncommercial License 1.0.0，作者需要保留对本项目**统一行使权利**的能力——包括以商业授权方式再许可、改用其他许可、或提供知识产权赔偿承诺。全部版权人都在同一份 CLA 之下，这些才可行。
-> CLA **只对签署之后的贡献生效**，不追溯已合并的提交。历史上的提交均为作者本人，仓库此前没有外部贡献者。
+当前协议为 **v2**，完整条款与中文说明见 **[固定版本协议：cla/v2.md](cla/v2.md)**。确认记录关联该文件的版本与 SHA-256 摘要；发布后不能在原版本内改变条款，条款变更需要新版本和新的确认。
 
-## 中文说明
+你保留贡献的著作权，并授权项目作者将贡献用于项目发布、商业授权及其他许可发布。普通用户取得的权限以作者实际提供的许可证为准；贡献协议不会自动给所有接收者商业使用权。
 
-这份协议的实质是：你保留自己代码的权利，同时给作者一份**足够宽的许可**，让作者能把你的贡献和项目其余部分一起按当时的项目许可发布，也能在需要时以其他许可（包括商业授权）再许可。
+## 如何确认
 
-- 你**保留**自己贡献的著作权，协议不转让所有权；
-- 你授予作者永久、全球、免费、不可撤销、可转授的许可，用于复制、修改、分发、再许可、出售你的贡献；
-- 你确认自己有权提交这些内容，且内容不侵犯他人权利；
-- 你按"现状"提供贡献，不提供担保。
+1. 首次提交 PR 时，阅读完整协议，在 PR 模板中由**你本人**勾选“我已阅读并同意……”后提交；也可以提交后自行编辑 PR 描述勾选。
+2. 工作流核对操作账号与 PR 作者一致，记录协议版本、文件摘要、GitHub 账号 ID、PR、时间与确认来源。
+3. **同一账号对同一版本只需确认一次**；后续 PR 自动复用记录，无需另发签署评论。
 
-## How to sign（如何签署）
+如果 PR 有其他作者，他们需要用自己的 GitHub 账号在该 PR 评论中提交下面的勾选确认。普通 PR 提交者不能代替其他作者确认；企业授权按下方流程处理。
 
-**不需要发邮件，也不用手写声明。** 在本仓库提交 Pull Request 后，CLA 助手会自动在该 PR 里留言；你在 PR 下方回复下面这一句即可完成签署：
+```markdown
+- [x] 我已阅读并同意 [EditHere 贡献者许可协议 v2](https://github.com/Inginnng/EditHere/blob/codex/native/cla/v2.md)，确认有权提交这些贡献，并授权项目作者按协议进行商业授权及其他许可发布。
+```
 
-> I have read the CLA Document and I hereby sign the CLA
+确认记录自动保存到本仓库独立的 `cla-signatures` 分支，路径为 `signatures/v2/<GitHub数字账号ID>.json`。该分支用于授权留档，初始化时继承默认分支基线，不能配置成禁止工作流写入的保护分支；公开记录不收集电子邮箱、证件或住址。不要修改记录来代替贡献者确认。
 
-机器人随即把你的 GitHub 账号、时间与 PR 编号记入仓库的 `signatures/version1/cla.json` 公开留档。**同一账号只需签署一次**，此后提交的贡献无需重复签署；若签署状态未及时更新，可在 PR 里回复 `recheck` 让机器人重新检查。企业贡献者见下方 Entity 表格。
+未确认的作者、无法识别的提交作者或无法完整核验的 PR 会保持 `CLA` 检查失败。含 `Co-authored-by` 共同作者声明或超过接口可完整列举范围的 PR 需要维护者人工核验，机器人不会用邮箱猜测账号。每位实际贡献者都应分别确认；维护者仍须核对第三方内容与权利归属，Git 提交身份不能单独证明著作权。账号改名不要求重新确认，因为记录使用数字账号 ID。旧 v1 记录不会被伪装成 v2 确认，旧协议已经授出的权利也不会因此自动撤销。
 
-## Individual Contributor License Agreement
+## 企业贡献
 
-Between you ("Contributor") and the author of EditHere ("Project"), for contributions submitted to the EditHere repository.
+如果贡献的权利归雇主或其他组织所有，个人勾选不能替代该组织的授权。由有权代表组织的人向维护者提供 [v2 协议](cla/v2.md) 中要求的组织授权声明和覆盖的贡献者账号，维护者核验后安排合并；机器人不会把一个代表的勾选自动扩展到所有员工。
 
-1. **Definitions.** "Contribution" means any code, documentation, asset, or other work that you intentionally submit for inclusion in the Project, including the original version and any subsequent modifications.
+## 维护者配置
 
-2. **Copyright license.** You grant the Project and its recipients a perpetual, worldwide, non-exclusive, royalty-free, irrevocable, sublicensable, and transferable license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your Contribution and such derivative works, in any form and under any license, including proprietary and commercial licenses.
+实现位于 [CLA 工作流](.github/workflows/cla.yml) 和 [配置](.github/cla/config.json)。工作流仅执行仓库可信基线代码，不检出或执行 PR 中的代码，不自动锁定合并后的讨论。
 
-3. **Patent license.** You grant a perpetual, worldwide, non-exclusive, royalty-free, irrevocable patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer your Contribution, where such license applies only to those patent claims licensable by you that are necessarily infringed by your Contribution alone or by combination of your Contribution with the Project.
+启用后应将提交状态 **`CLA`** 设置为合并所需检查。工作流文件必须存在于 GitHub 默认分支，评论确认事件才能运行。分支保护和 Actions 权限需要在 GitHub 仓库设置中核实；仅修改本地文件不会自动启用远程合并限制。
 
-4. **You retain ownership.** Nothing in this agreement transfers ownership of your Contribution to the Project.
+发生 API 查询或状态写入故障时，工作流会失败；若评论事件无法查询 PR 的 head，或 GitHub 拒绝写状态，就不能保证覆盖该 head 上已有的成功状态。此时维护者应排除故障并重新运行检查，不能把旧绿色状态当作本次核验已完成。
 
-5. **Representations.** You represent that you are legally entitled to grant the above licenses, that each Contribution is your original creation or is otherwise properly licensed to you, and that your Contribution does not knowingly include code subject to license terms incompatible with those of the Project. If you are not the sole author, you have the necessary authority from all other authors.
-
-6. **No obligation.** You are not obligated to provide any support, warranty, indemnity, or liability for your Contribution.
-
-7. **Disclaimer.** Your Contribution is provided "as is", without warranties or conditions of any kind, express or implied, including without limitation any warranties of title, non-infringement, merchantability, or fitness for a particular purpose.
-
-## Entity Contributor License Agreement
-
-An authorized representative of the contributing entity signs on its behalf, and the entity makes the same grants and representations in Sections 2 through 7 above for all Contributions submitted by its employees and contractors, and warrants that it has the authority to bind them to these terms.
-
-**How to sign:** the authorized representative replies on the pull request with both of the following in one comment —
-
-> On behalf of [entity name], I confirm that the entity has read the CLA in CLA.md and agrees to license its contributions under its terms.
-
-> I have read the CLA Document and I hereby sign the CLA
-
-followed by the signer's name, title, entity and date. The second line is the exact phrase the bot records, so the signature is stored automatically while the entity declaration stays visible in the pull request.
+本地验证：`node --test tests/cla_check_test.cjs`。只读的 [测试工作流](.github/workflows/cla-tests.yml) 验证授权边界；它可以测试 PR 代码，但不会取得签署留档的写权限。

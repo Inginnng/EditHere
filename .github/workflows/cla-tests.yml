@@ -1,0 +1,33 @@
+name: CLA workflow tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/cla/**'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/cla*.yml'
+      - 'cla/**'
+      - 'scripts/cla-check.cjs'
+      - 'tests/cla_check_test.cjs'
+  push:
+    branches: [codex/native]
+    paths:
+      - '.github/cla/**'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/cla*.yml'
+      - 'cla/**'
+      - 'scripts/cla-check.cjs'
+      - 'tests/cla_check_test.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test tests/cla_check_test.cjs

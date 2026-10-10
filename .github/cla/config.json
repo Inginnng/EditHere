@@ -1,0 +1,9 @@
+{
+  "version": "2",
+  "documentPath": "cla/v2.md",
+  "signatureBranch": "cla-signatures",
+  "signatureDirectory": "signatures/v2",
+  "statusContext": "CLA",
+  "exemptAccounts": ["Inginnng", "dependabot[bot]", "github-actions[bot]", "web-flow"],
+  "checkboxText": "我已阅读并同意 [EditHere 贡献者许可协议 v2](https://github.com/Inginnng/EditHere/blob/codex/native/cla/v2.md)，确认有权提交这些贡献，并授权项目作者按协议进行商业授权及其他许可发布。"
+}

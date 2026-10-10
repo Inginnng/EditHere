@@ -1,48 +1,33 @@
 name: CLA Assistant
 
 on:
-  issue_comment:
-    types: [created]
   pull_request_target:
-    types: [opened, closed, synchronize]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited]
 
-# 显式声明权限：仓库设置的默认 GITHUB_TOKEN 权限若为只读，机器人无法提交签名文件。
+# Execute trusted base-repository code, never the pull request head.
 permissions:
-  actions: write
-  contents: write # 签名文件存放在本仓库；若改用远程仓库存放可降为 read
+  contents: write
   pull-requests: write
   statuses: write
 
 jobs:
   CLAAssistant:
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     steps:
-      - name: CLA Assistant
-        # 触发条件必须与本文件下方 custom-notsigned-prcomment 中给出的签署句完全一致
-        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 本项目签名存放在同一仓库，因此无需 PERSONAL_ACCESS_TOKEN；
-          # 仅当把签名改存到远程仓库/组织时才需要该 Secret（需 repo scope）。
+      - name: Check out trusted workflow code
+        uses: actions/checkout@v4
         with:
-          path-to-signatures: "signatures/version1/cla.json"
-          path-to-document: "https://github.com/Inginnng/EditHere/blob/codex/native/CLA.md"
-          branch: "codex/native"
-          allowlist: "Inginnng,bot*,*[bot]"
-          # 注意：v2.6.1 只会替换 $you 这一个占位符（README 里写的 $pathToCLADocument / $signature
-          # 并不会被替换），所以这里的链接与签署句必须写死。
-          # 签署句放进代码块 → GitHub 渲染出「复制」按钮，贡献者点一下即可。
-          # 机器人随后还会在两条横线之间再输出一次同一句纯文本；那块由 Action 强制追加、
-          # 无法关闭，内容与本代码块完全一致（判定时两侧都会 trim，复制任一处都能通过）。
-          custom-notsigned-prcomment: |
-            <br/>感谢你的贡献！合并之前需要你先签署 [CLA（贡献者许可协议）](https://github.com/Inginnng/EditHere/blob/codex/native/CLA.md)。
-
-            **签署只需一步**：点下面代码块右上角的「复制」，粘贴到本 PR 的评论框发送即可。同一账号只需签署一次；签署前本 PR 的检查保持失败，签署后自动通过。
-
-            ```
-            I have read the CLA Document and I hereby sign the CLA
-            ```
-          custom-allsigned-prcomment: "所有贡献者均已签署 CLA，感谢！"
-          # 合并后锁定 PR 会话，避免贡献者事后删除签署评论（官方建议保持默认 true）
-          lock-pullrequest-aftermerge: true
+          repository: ${{ github.repository }}
+          # PR events use the base commit; comment events use the default
+          # branch commit. Never replace this with a PR head SHA or ref.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check contributor consent
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { run } = require('./scripts/cla-check.cjs');
+            await run({ github, context, core });
