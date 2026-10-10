@@ -32,10 +32,17 @@ jobs:
           allowlist: "Inginnng,bot*,*[bot]"
           # 注意：v2.6.1 只会替换 $you 这一个占位符（README 里写的 $pathToCLADocument / $signature
           # 并不会被替换），所以这里的链接与签署句必须写死。
+          # 签署句放进代码块 → GitHub 渲染出「复制」按钮，贡献者点一下即可。
+          # 机器人随后还会在两条横线之间再输出一次同一句纯文本；那块由 Action 强制追加、
+          # 无法关闭，内容与本代码块完全一致（判定时两侧都会 trim，复制任一处都能通过）。
           custom-notsigned-prcomment: |
-            <br/>感谢你的贡献！在合并之前，需要你先签署 [CLA（贡献者许可协议）](https://github.com/Inginnng/EditHere/blob/codex/native/CLA.md)。
+            <br/>感谢你的贡献！合并之前需要你先签署 [CLA（贡献者许可协议）](https://github.com/Inginnng/EditHere/blob/codex/native/CLA.md)。
 
-            **签署只需一步**：在本 PR 下方回复下面这句话（直接复制粘贴即可，无需发邮件）。同一账号只需签署一次；签署前本 PR 的检查会保持失败，签署后自动通过。
+            **签署只需一步**：点下面代码块右上角的「复制」，粘贴到本 PR 的评论框发送即可。同一账号只需签署一次；签署前本 PR 的检查保持失败，签署后自动通过。
+
+            ```
+            I have read the CLA Document and I hereby sign the CLA
+            ```
           custom-allsigned-prcomment: "所有贡献者均已签署 CLA，感谢！"
           # 合并后锁定 PR 会话，避免贡献者事后删除签署评论（官方建议保持默认 true）
           lock-pullrequest-aftermerge: true
