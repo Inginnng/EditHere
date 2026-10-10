@@ -127,7 +127,7 @@ node connector/mcp-server.mjs
 
 ## 许可
 
-本连接器与 EditHere 本体一同采用 **MIT License**（见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）：在保留版权声明与许可文本的前提下，可免费使用、修改、分发、再许可和出售，包括用于商业目的。EditHere 本体同样以 MIT 发布。EditHere 的名称与标识不随 MIT 许可授予。
+本连接器与 EditHere 本体一同采用 **PolyForm Noncommercial License 1.0.0**（见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）：在保留许可文本与 `Required Notice` 的前提下，可免费使用、修改和分发，**限于非商业用途**；商业用途需另行取得授权，见 [商业授权与合作](../COMMERCIAL-LICENSE.md)。EditHere 的名称与标识不随本许可授予。
 
 ## 版本
 

@@ -9,7 +9,7 @@
   <a href="https://github.com/Inginnng/EditHere/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/Inginnng/EditHere?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2f75f0"></a>
   <a href="https://github.com/Inginnng/EditHere/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/Inginnng/EditHere/total?label=%E4%B8%8B%E8%BD%BD&color=2f75f0"></a>
   <img alt="平台" src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-2f75f0">
-  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2f75f0"></a>
+  <a href="LICENSE"><img alt="PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2f75f0"></a>
   <a href="https://github.com/Inginnng/EditHere/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Inginnng/EditHere?style=social"></a>
 </p>
 
@@ -242,11 +242,13 @@ EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 
 ## 许可与商业合作
 
-原创软件采用 [MIT License](LICENSE)（SPDX: `MIT`）。
+原创软件采用 [PolyForm Noncommercial License 1.0.0](LICENSE)（SPDX: `PolyForm-Noncommercial-1.0.0`）。
 
-许可之外的商业授权（品牌、白标、优先支持、企业部署、赔偿承诺）与定制开发，欢迎联系 **[inginnng@163.com](mailto:inginnng@163.com)**，详见 [商业授权与合作](COMMERCIAL-LICENSE.md)。这些**不是**使用本软件的前提。
+个人、教育、研究、慈善、政府等**非商业用途**可以免费使用、修改和分发，只需保留许可文本与 `Required Notice`。**商业用途需要作者的书面授权**——包括营利性企业的内部部署，以及把 EditHere 内置进对外销售或收费的产品与服务。详见 [商业授权与合作](COMMERCIAL-LICENSE.md)，联系 **[inginnng@163.com](mailto:inginnng@163.com)**。
 
-EditHere 的名称与标识不随 MIT 许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
+`0.9.3` 至 `0.10.3` 的旧版本曾以 MIT 发布，那些副本按其当时随附的许可继续有效。详见 [许可说明](LICENSING.md) 的历史版本说明。
+
+EditHere 的名称与标识不随本许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
 
 ## Star History
 

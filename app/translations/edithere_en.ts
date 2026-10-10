@@ -4114,8 +4114,8 @@ Click the other crop button to adjust the opposite edge.</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="529"/>
-        <source>以 MIT License 发布：可免费商用、修改与分发，保留版权声明即可。&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;查看许可说明&lt;/a&gt;</source>
-        <translation>Released under the MIT License: free for commercial use, modification, and distribution, as long as you keep the copyright notice.&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;Read the license&lt;/a&gt;</translation>
+        <source>以 PolyForm Noncommercial 1.0.0 发布：非商业用途可免费使用、修改与分发，商业用途需另行授权。&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;查看许可说明&lt;/a&gt;</source>
+        <translation>Released under the PolyForm Noncommercial License 1.0.0: free for noncommercial use, modification and distribution; commercial use requires a separate license.&lt;br&gt;&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;Read the license&lt;/a&gt;</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="531"/>

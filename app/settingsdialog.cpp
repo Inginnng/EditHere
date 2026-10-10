@@ -526,7 +526,7 @@ void SettingsDialog::retranslate() {
     if (auto description = findChild<QLabel *>("aboutDescription"))
         description->setText(tr("截图、批注与布局调整，让设计修改意见更清楚。"));
     if (auto license = findChild<QLabel *>("aboutLicense"))
-        license->setText(tr("以 MIT License 发布：可免费商用、修改与分发，保留版权声明即可。"
+        license->setText(tr("以 PolyForm Noncommercial 1.0.0 发布：非商业用途可免费使用、修改与分发，商业用途需另行授权。"
                             R"(<br><a href="https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md">查看许可说明</a>)"));
     checkUpdatesOnStartup_->setText(tr("启动时检查更新"));
     if (auto status = findChild<QLabel *>("updateStatus"); status && status->text().isEmpty())

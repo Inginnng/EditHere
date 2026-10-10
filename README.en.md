@@ -9,7 +9,7 @@
   <a href="https://github.com/Inginnng/EditHere/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Inginnng/EditHere?color=2f75f0"></a>
   <a href="https://github.com/Inginnng/EditHere/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Inginnng/EditHere/total?color=2f75f0"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-runs%20locally-2f75f0">
-  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2f75f0"></a>
+  <a href="LICENSE"><img alt="PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2f75f0"></a>
   <a href="https://github.com/Inginnng/EditHere/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Inginnng/EditHere?style=social"></a>
 </p>
 
@@ -242,11 +242,13 @@ Thanks to everyone on the [linux.do](https://linux.do/) forum for their suggesti
 
 ## License and commercial collaboration
 
-The original software is licensed under the [MIT License](LICENSE) (SPDX: `MIT`).
+The original software is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) (SPDX: `PolyForm-Noncommercial-1.0.0`).
 
-Commercial licensing beyond MIT (branding, white-label, priority support, enterprise deployment, indemnification) and custom development are available from **[inginnng@163.com](mailto:inginnng@163.com)**; see [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md). These are **not** required to use the software.
+Personal, educational, research, charitable and government **noncommercial** use is free — just keep the licence text and the `Required Notice`. **Commercial use requires a written licence from the author**, including internal deployment inside a for-profit company and embedding EditHere in a product or service you sell or charge for. See [commercial licensing (Chinese)](COMMERCIAL-LICENSE.md) or write to **[inginnng@163.com](mailto:inginnng@163.com)**.
 
-The EditHere name and marks are not licensed under MIT; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Qt, MinGW and other third-party components are covered by their own licences; see the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
+Versions `0.9.3` through `0.10.3` were released under MIT; those copies keep the licence they shipped with. See the [licensing notes (Chinese)](LICENSING.md) for the version history.
+
+The EditHere name and marks are not licensed under these terms; see the [trademark policy (Chinese)](TRADEMARK-POLICY.md). Qt, MinGW and other third-party components are covered by their own licences; see the [third-party notices (Chinese)](packaging/THIRD-PARTY-NOTICES.md).
 
 ## Star History
 
