@@ -12,13 +12,13 @@
 - 你确认自己有权提交这些内容，且内容不侵犯他人权利；
 - 你按"现状"提供贡献，不提供担保。
 
-## How to sign
+## How to sign（如何签署）
 
-Reply on your pull request with:
+**不需要发邮件，也不用手写声明。** 在本仓库提交 Pull Request 后，CLA 助手会自动在该 PR 里留言；你在 PR 下方回复下面这一句即可完成签署：
 
-> I have read the CLA in CLA.md and agree to license my contributions under its terms.
+> I have read the CLA Document and I hereby sign the CLA
 
-Or send the same statement with your name, GitHub account, and the PR number to **inginnng@163.com**. Corporate contributors should sign the entity form below.
+机器人随即把你的 GitHub 账号、时间与 PR 编号记入仓库的 `signatures/version1/cla.json` 公开留档。**同一账号只需签署一次**，此后提交的贡献无需重复签署；若签署状态未及时更新，可在 PR 里回复 `recheck` 让机器人重新检查。企业贡献者见下方 Entity 表格。
 
 ## Individual Contributor License Agreement
 
@@ -42,8 +42,10 @@ Between you ("Contributor") and the author of EditHere ("Project"), for contribu
 
 An authorized representative of the contributing entity signs on its behalf, and the entity makes the same grants and representations in Sections 2 through 7 above for all Contributions submitted by its employees and contractors, and warrants that it has the authority to bind them to these terms.
 
-Sign by adding to the pull request or by email:
+**How to sign:** the authorized representative replies on the pull request with both of the following in one comment —
 
 > On behalf of [entity name], I confirm that the entity has read the CLA in CLA.md and agrees to license its contributions under its terms.
 
-Signed by: name, title, entity, date.
+> I have read the CLA Document and I hereby sign the CLA
+
+followed by the signer's name, title, entity and date. The second line is the exact phrase the bot records, so the signature is stored automatically while the entity declaration stays visible in the pull request.

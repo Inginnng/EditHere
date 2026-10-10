@@ -18,7 +18,13 @@
 
 签署 [CLA](CLA.md) 后提交，即表示你同意自己的贡献按仓库当前许可（[PolyForm Noncommercial License 1.0.0](LICENSE)）一并发布，并保留原作者的版权声明与 `Required Notice`。
 
-自 `0.10.4` 起，**外部贡献需要先签署 [CLA](CLA.md)**。原因是作者需要保留统一行使权利的能力——例如变更许可、提供商业授权、或作出知识产权赔偿承诺——而这些只有在全部版权人授权的前提下才可行；一次未签 CLA 的合并会永久堵住这条路。CLA 只对签署之后的贡献生效，不追溯已合并的提交。签署方式见 [CLA.md](CLA.md)。
+自 `0.10.4` 起，**外部贡献需要先签署 [CLA](CLA.md)**。原因是作者需要保留统一行使权利的能力——例如变更许可、提供商业授权、或作出知识产权赔偿承诺——而这些只有在全部版权人授权的前提下才可行；一次未签 CLA 的合并会永久堵住这条路。CLA 只对签署之后的贡献生效，不追溯已合并的提交。
+
+**签署只有一步，无需发邮件**：提交 PR 后，CLA 助手（[`.github/workflows/cla.yml`](.github/workflows/cla.yml)）会自动在 PR 里留言，你在该 PR 下回复下面这一句即完成签署：
+
+> I have read the CLA Document and I hereby sign the CLA
+
+机器人会把你的 GitHub 账号、时间与 PR 编号记入仓库的 `signatures/version1/cla.json` 公开留档。**同一账号只需签署一次**；未签署前该 PR 的检查保持失败状态，签署后自动通过。企业贡献者见 [CLA.md](CLA.md) 的 Entity 表格。
 
 ## 名称与品牌
 
