@@ -234,7 +234,7 @@ class MaintenanceTests(unittest.TestCase):
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 files = list((self.data / "Transactions").glob("*/journal.json")) if (self.data / "Transactions").exists() else []
-                if files and json.loads(files[0].read_text())["state"] == "Prepared":
+                if files and json.loads(files[0].read_text(encoding="utf-8-sig"))["state"] == "Prepared":
                     break
                 time.sleep(0.1)
             else:
@@ -298,7 +298,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual((old_backup / "obsolete.dll").read_bytes(), b"unique modification after commit")
         histories = list((self.data / "Transactions").glob("*/history-*.json"))
         self.assertTrue(histories)
-        history = json.loads(histories[-1].read_text())
+        history = json.loads(histories[-1].read_text(encoding="utf-8-sig"))
         self.assertTrue(history["cleanupPending"])
         self.assertEqual(Path(history["backup"]), old_backup)
         self.assertEqual(self.receipt()["status"], "committed")
@@ -309,7 +309,7 @@ class MaintenanceTests(unittest.TestCase):
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 files = list((self.data / "Transactions").glob("*/journal.json")) if (self.data / "Transactions").exists() else []
-                if files and json.loads(files[0].read_text())["state"] == "Prepared":
+                if files and json.loads(files[0].read_text(encoding="utf-8-sig"))["state"] == "Prepared":
                     break
                 time.sleep(0.1)
             else:
