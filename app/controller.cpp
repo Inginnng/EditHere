@@ -1604,6 +1604,8 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     agentEmbed_ = request["embed"].toBool(true);
     editor_.setAgentSession(true);
     const auto id = agentSessionId_;
+    diagnostics::write(diagnostics::Level::Info, "agent.session_start", "Annotation session started",
+                       {{"session", id}, {"timeoutSeconds", timeout}, {"imageIncluded", agentEmbed_}});
     QTimer::singleShot(timeout * 1000, this, [this, id] {
         cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
     });
@@ -1612,7 +1614,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
 void Controller::cancelAgentSession(const QString &id, const QString &code, const QString &message) {
     if (id.isEmpty() || id != agentSessionId_) return;
     diagnostics::write(code == "io_error" ? diagnostics::Level::Error : diagnostics::Level::Info,
-                       "agent.session_end", message, {{"code", code}});
+                       "agent.session_end", message, {{"session", id}, {"code", code}});
     const auto finishedId = agentSessionId_;
     agentSessionId_.clear();
     agentOutput_.clear();
@@ -1625,6 +1627,8 @@ void Controller::finishAgentSession() {
     const auto output = agentOutput_;
     try {
         writeNewFeedback(output, editor_.agentFeedback(agentEmbed_));
+        diagnostics::write(diagnostics::Level::Info, "agent.feedback_written", "Feedback file committed",
+                           {{"session", id}, {"bytes", QFileInfo(output).size()}});
     } catch (const std::exception &error) {
         cancelAgentSession(id, "io_error", QString::fromUtf8(error.what()));
         return;
@@ -1634,6 +1638,8 @@ void Controller::finishAgentSession() {
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);
+    diagnostics::write(diagnostics::Level::Info, "agent.session_end", "Annotation completed; returning feedback",
+                       {{"session", id}, {"code", "success"}, {"annotationCount", result["annotations"]}});
     emit agentSessionFinished(id, result);
 }
 } // namespace h2d

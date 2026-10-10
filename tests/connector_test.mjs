@@ -36,13 +36,13 @@ function videoFeedback(frameCount = 2) {
   };
 }
 
-function feedbackResult(feedback, options = {}, files = {}) {
+function feedbackResult(feedback, options = {}, files = {}, cliResult = { exitCode: 0, json: { ok: true } }) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-feedback-test-'));
   const filename = path.join(directory, 'feedback.json');
   try {
     fs.writeFileSync(filename, JSON.stringify(feedback));
     for (const [name, bytes] of Object.entries(files)) fs.writeFileSync(path.join(directory, name), bytes);
-    return annotateResultToContent({ exitCode: 0, json: { ok: true } }, filename, options);
+    return annotateResultToContent(cliResult, filename, options);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -205,6 +205,142 @@ test('original object and legacy image feedback return unchanged text and a sing
   assert.equal(resultText(objectResult).includes('video-feedback-1'), false);
 });
 
+test('annotation recovers committed feedback when the real CLI exits without its receipt', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-lost-receipt-'));
+  const filename = path.join(directory, 'feedback.json');
+  const feedback = {
+    annotationSpace: 'result',
+    objects: [{ source: null, movements: [], annotations: ['已保存的意见'] }],
+    image: `data:image/png;base64,${Buffer.from('saved-image').toString('base64')}`,
+  };
+  try {
+    const result = await runCli(['-e', `require('fs').writeFileSync(${JSON.stringify(filename)}, ${JSON.stringify(JSON.stringify(feedback))}); process.exit(9)`]);
+    assert.equal(result.json, null);
+    assert.equal(annotateResultToContent(result, filename, {}).isError, true, 'export and non-annotation callers must still require a successful receipt');
+    const recovered = annotateResultToContent(result, filename, { recoverCompletedFeedback: true, includeImage: true });
+    assert.equal(recovered.isError, false);
+    assert.match(resultText(recovered), /CLI 完成回执中断/);
+    assert.match(resultText(recovered), /已保存的意见/);
+    assert.match(resultText(recovered), /不代表桌面程序仍在运行/);
+    assert.equal(recovered.content.filter((item) => item.type === 'image').length, 1);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('lost response recovery preserves legacy image and video feedback rules', () => {
+  const lostResponse = { exitCode: 3, json: { ok: false, error: { code: 'connection_error' }, connection: { phase: 'response' } } };
+  const options = { recoverCompletedFeedback: true, includeImage: true };
+  const legacy = feedbackResult({ annotations: [{ point: { x: 10, y: 20 }, text: '旧版意见' }], changes: [] }, options, {}, lostResponse);
+  assert.equal(legacy.isError, false);
+  assert.match(resultText(legacy), /旧版意见/);
+  const video = videoFeedback(11);
+  const recovered = feedbackResult(video, options, {}, lostResponse);
+  assert.equal(recovered.isError, false);
+  assert.equal(recovered.content.filter((item) => item.type === 'image').length, 8);
+  assert.match(resultText(recovered), /3 张截图未在此次工具结果附上/);
+  video.frames[0].feedback.objects[0].source = {};
+  assert.equal(feedbackResult(video, options, {}, lostResponse).isError, true);
+  assert.equal(feedbackResult({ annotationSpace: 'result', objects: [] }, options, {}, lostResponse).isError, false, 'an explicit empty submission is valid');
+});
+
+test('recovery refuses malformed, truncated and structurally incomplete output', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-incomplete-receipt-'));
+  const filename = path.join(directory, 'feedback.json');
+  const lostReceipt = { exitCode: 9, json: null };
+  const options = { recoverCompletedFeedback: true };
+  try {
+    for (const bytes of [
+      '{"annotationSpace":"result","objects":[',
+      '{}', 'null',
+      JSON.stringify({ annotationSpace: 'result', objects: [{}] }),
+      JSON.stringify({ annotationSpace: 'result', objects: [], image: 'data:image/png;base64,broken!' }),
+      JSON.stringify({ annotations: [{ change: 0, text: 'missing movement' }], changes: [] }),
+      JSON.stringify({ annotationSpace: 'result', objects: [{ source: null, movements: [{ to: { x1: 0, y1: 0, x2: -1, y2: 2 } }], annotations: [] }] }),
+    ]) {
+      fs.writeFileSync(filename, bytes);
+      const result = annotateResultToContent(lostReceipt, filename, options);
+      assert.equal(result.isError, true, bytes);
+      assert.match(resultText(result), /未能从反馈文件恢复/);
+      assert.equal(resultText(result).includes('已从本轮输出路径'), false);
+    }
+    fs.unlinkSync(filename);
+    assert.equal(annotateResultToContent(lostReceipt, filename, options).isError, true);
+    assert.equal(annotateResultToContent(lostReceipt, directory, options).isError, true);
+    const oversized = fs.openSync(filename, 'w');
+    fs.ftruncateSync(oversized, 512 * 1024 * 1024 + 1);
+    fs.closeSync(oversized);
+    assert.match(resultText(annotateResultToContent(lostReceipt, filename, options)), /512 MiB/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing feedback never converts explicit cancellation, timeout or rejected commands into success', () => {
+  const feedback = { annotationSpace: 'result', objects: [] };
+  const failures = [
+    { exitCode: 9, json: null, timedOut: true },
+    { exitCode: 6, json: null },
+    { exitCode: 7, json: null },
+    { exitCode: 3, json: { ok: false, error: { code: 'cancelled' } } },
+    { exitCode: 3, json: { ok: false, error: { code: 'timeout' } } },
+    { exitCode: 5, json: { ok: false, error: { code: 'io_error' } } },
+    { exitCode: 4, json: { ok: false, error: { code: 'busy' } } },
+    { exitCode: 2, json: { ok: false, error: { code: 'protocol_error' } } },
+    { exitCode: 3, json: { ok: false, error: { code: 'connection_error' }, connection: { phase: 'connect' } } },
+    { exitCode: -1, json: null, error: { code: 'spawn_failed' } },
+    { exitCode: -1, json: null, error: { code: 'output_limit' } },
+  ];
+  for (const failure of failures) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true }, {}, failure);
+    assert.equal(result.isError, true, JSON.stringify(failure));
+    assert.equal(resultText(result).includes('已从本轮输出路径'), false);
+  }
+});
+
+test('recovery rejects impossible movement geometry and excessive aggregate counts', () => {
+  const area = { x1: 0, y1: 0, x2: 10, y2: 10 };
+  const point = { x1: 2, y1: 2, x2: 2, y2: 2 };
+  const line = { x1: 2, y1: 2, x2: 2, y2: 8 };
+  const tiny = { x1: 0, y1: 0, x2: 1e-8, y2: 10 };
+  const object = (source, to) => ({ source, movements: to ? [{ to }] : [], annotations: ['意见'] });
+  const current = (...objects) => ({ annotationSpace: 'result', objects });
+  const malformed = [
+    current(object(area, point)), current(object(area, line)), current(object(area, tiny)),
+    current(object(null, area)), current(object(point, area)),
+    current(object(line)), current(object(tiny)),
+    { annotations: [], changes: [{ from: point, to: area }] },
+    { annotations: [], changes: [{ from: area, to: line }] },
+    current(...Array.from({ length: 2 }, () => ({ source: null, movements: [], annotations: Array(501).fill('意见') }))),
+    current(...Array.from({ length: 2 }, () => ({ source: area, movements: Array.from({ length: 4353 }, () => ({ to: area })), annotations: [] }))),
+  ];
+  const lostReceipt = { exitCode: 9, json: null };
+  const options = { recoverCompletedFeedback: true };
+  for (const feedback of malformed) {
+    assert.equal(feedbackResult(feedback, options, {}, lostReceipt).isError, true);
+  }
+  assert.equal(feedbackResult(current(object(point)), options, {}, lostReceipt).isError, false);
+  assert.equal(feedbackResult(current(object(area, area)), options, {}, lostReceipt).isError, false);
+});
+
+test('abnormal exit after a success receipt can only recover the matching requested output', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-output-receipt-'));
+  const filename = path.join(directory, 'feedback.json');
+  try {
+    fs.writeFileSync(filename, JSON.stringify({ annotationSpace: 'result', objects: [] }));
+    const options = { recoverCompletedFeedback: true };
+    const matching = { exitCode: 9, json: { ok: true, command: 'annotate', output: filename } };
+    assert.equal(annotateResultToContent(matching, filename, options).isError, false);
+    const mismatch = { ...matching, json: { ...matching.json, output: path.join(directory, 'other.json') } };
+    assert.equal(annotateResultToContent(mismatch, filename, options).isError, true);
+    assert.equal(annotateResultToContent({ exitCode: 9, json: { ok: true } }, filename, options).isError, true);
+    fs.writeFileSync(filename, '{}');
+    assert.equal(annotateResultToContent(matching, filename, options).isError, true);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('CLI output preserves a multibyte character split between stream chunks', async () => {
   const script = `
     const bytes = Buffer.from(JSON.stringify({ok: true, message: '中文路径'}) + '\\n');
@@ -289,6 +425,27 @@ test('MCP reports malformed JSON and remains available for the next request', { 
     assert.deepEqual(replies.map((reply) => reply.id), [null, 7]);
     assert.equal(replies[0].error.code, -32700);
     assert.deepEqual(replies[1].result, {});
+  } finally {
+    server.kill('SIGKILL');
+  }
+});
+
+test('a missing MCP session directs callers to their earlier feedback path before starting again', { timeout: 5000 }, async () => {
+  const server = spawn(process.execPath, [fileURLToPath(connectorUrl)], { stdio: ['pipe', 'pipe', 'pipe'] });
+  server.stdout.setEncoding('utf8');
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  try {
+    server.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'edithere_annotate_poll', arguments: { sessionId: 'lost-session' } } }) + '\n');
+    const started = Date.now();
+    while (!output.includes('"id":8') && Date.now() - started < 2000) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const response = output.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)).find((reply) => reply.id === 8);
+    assert.ok(response);
+    assert.equal(response.result.isError, true);
+    assert.match(resultText(response.result), /先用文件工具读取.*“反馈文件”路径/);
+    assert.match(resultText(response.result), /不要立即重新发起标注/);
   } finally {
     server.kill('SIGKILL');
   }

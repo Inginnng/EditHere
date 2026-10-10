@@ -2,6 +2,7 @@
 #include "agentconnection.h"
 #include "agentserver.h"
 #include "controller.h"
+#include "diagnostics.h"
 #include "videoplayback.h"
 #include "ui.h"
 #include <QApplication>
@@ -549,6 +550,69 @@ class AgentCliTests : public QObject {
         QVERIFY(!feedback["image"].toString().isEmpty());
         QVERIFY(!editor->findChild<QWidget *>("agentSessionBanner")->isVisible());
         QVERIFY(editor->hasDocument());
+        editor->hide();
+    }
+    void cliCompletionKeepsFocusedEditsAndDesktopAlive() {
+        struct TestPaths {
+            bool previous = QStandardPaths::isTestModeEnabled();
+            TestPaths() { QStandardPaths::setTestModeEnabled(true); }
+            ~TestPaths() { QStandardPaths::setTestModeEnabled(previous); }
+        } isolatedPaths;
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QVERIFY(diagnostics::start({directory.filePath("logs")}));
+        struct LogLifetime { ~LogLifetime() { diagnostics::stop(); } } logLifetime;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        AgentServer server(controller);
+        QVERIFY2(server.listen(agentServerName()), qPrintable(server.errorString()));
+        QSignalSpy finished(&controller, &Controller::agentSessionFinished);
+        QSignalSpy quitting(qApp, &QCoreApplication::aboutToQuit);
+        const auto output = directory.filePath("feedback.json");
+#ifdef Q_OS_WIN
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test.exe");
+#else
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
+#endif
+        QProcess cli;
+        cli.start(executable, {"annotate", inputProject(directory), "--output", output, "--timeout", "60"});
+        QVERIFY2(cli.waitForStarted(), qPrintable(cli.errorString()));
+        QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
+        const auto documentId = editor->document().id;
+        auto edit = editor->findChild<QPlainTextEdit *>("noteText_" + editor->document().notes.first().id);
+        QVERIFY(edit);
+        edit->setFocus();
+        const QString comment = QString::fromUtf8("Focused draft: 对齐这个组件");
+        edit->setPlainText(comment);
+        QVERIFY(!QFileInfo::exists(output));
+        editor->findChild<QPushButton *>("agentFinish")->click();
+        QTRY_COMPARE_WITH_TIMEOUT(cli.state(), QProcess::NotRunning, 15000);
+        QCOMPARE(cli.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(cli.exitCode(), 0);
+        const auto receipt = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
+        QVERIFY(receipt["ok"].toBool());
+        const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
+        QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toString(), comment);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QTest::qWait(50);
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(quitting.size(), 0);
+        QVERIFY(editor->isVisible());
+        QCOMPARE(editor->document().id, documentId);
+        QCOMPARE(editor->document().notes.first().comment, comment);
+        QVERIFY(!controller.handleAgentRequest({{"command", "status"}})["agentSession"].toBool());
+        // The same desktop must still answer a subsequent real CLI request.
+        cli.start(executable, {"status"});
+        QVERIFY(cli.waitForStarted());
+        QTRY_COMPARE_WITH_TIMEOUT(cli.state(), QProcess::NotRunning, 15000);
+        QCOMPARE(cli.exitCode(), 0);
+        QVERIFY(QJsonDocument::fromJson(cli.readAllStandardOutput()).object()["running"].toBool());
+        QByteArray logs;
+        for (const auto &path : diagnostics::logFiles()) logs += readFile(path);
+        QVERIFY(logs.contains("agent.session_start"));
+        QVERIFY(logs.contains("agent.feedback_written"));
+        QVERIFY(logs.contains("Annotation completed; returning feedback"));
+        QVERIFY(!logs.contains(comment.toUtf8()));
         editor->hide();
     }
     void cancellationAndTimeoutKeepDocumentWithoutOutput() {

@@ -1,5 +1,6 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
+#include "agentlaunch.h"
 #include "diagnostics.h"
 #include "model.h"
 #include "videoproject.h"
@@ -9,7 +10,6 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QLocalSocket>
-#include <QProcess>
 #include <cstdio>
 using namespace h2d;
 namespace {
@@ -123,12 +123,7 @@ int main(int argc, char **argv) {
             const auto executable = guiExecutable();
             if (!QFileInfo(executable).isFile())
                 return QString("Cannot find EditHere next to this CLI. Install or unpack the complete application.");
-            QProcess process;
-            process.setProgram(executable);
-            process.setArguments({"--agent-start"});
-            if (!process.startDetached())
-                return QString("The OS could not start EditHere: ") + process.errorString();
-            return QString();
+            return launchAgentDesktop(executable);
         });
     if (!connection.isEmpty()) return printResult(connection);
     QJsonObject request{{"protocol", 1}, {"command", command}};

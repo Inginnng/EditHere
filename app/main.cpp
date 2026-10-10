@@ -106,9 +106,22 @@ int main(int argc, char **argv) {
     for (auto screen : QGuiApplication::screens())
         screens.append(QJsonObject{{"width", screen->geometry().width()}, {"height", screen->geometry().height()},
                                    {"scale", screen->devicePixelRatio()}});
-    diagnostics::write(diagnostics::Level::Info, "startup.runtime", "Desktop runtime initialized",
-        {{"platform", QGuiApplication::platformName()}, {"screens", screens},
-         {"background", background}, {"agentStart", agentStart}});
+    QJsonObject runtime{{"platform", QGuiApplication::platformName()}, {"screens", screens},
+                        {"background", background}, {"agentStart", agentStart}};
+#ifdef Q_OS_WIN
+    BOOL inJob = FALSE;
+    if (IsProcessInJob(GetCurrentProcess(), nullptr, &inJob)) {
+        runtime["inJob"] = bool(inJob);
+        if (inJob) {
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+            if (QueryInformationJobObject(nullptr, JobObjectExtendedLimitInformation, &limits, sizeof(limits), nullptr))
+                runtime["jobLimitFlags"] = int(limits.BasicLimitInformation.LimitFlags);
+        }
+    } else {
+        runtime["jobQueryError"] = int(GetLastError());
+    }
+#endif
+    diagnostics::write(diagnostics::Level::Info, "startup.runtime", "Desktop runtime initialized", runtime);
     QString path;
     for (int i = 1; i < args.size(); i++)
         if (!args[i].startsWith("--")) {
@@ -200,5 +213,7 @@ int main(int argc, char **argv) {
         controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide());
         if (args.contains("--capture")) controller.capture();
     });
-    return app.exec();
+    const int exitCode = app.exec();
+    diagnostics::write(diagnostics::Level::Info, "startup.exit", "Desktop event loop exited", {{"exitCode", exitCode}});
+    return exitCode;
 }

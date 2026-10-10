@@ -4,7 +4,7 @@
 
 [Back to the product overview](../README.en.md) · [AI and the command line](AGENT-CLI.en.md) · [Changelog](../CHANGELOG.md) · [Development notes](DEVELOPMENT.en.md)
 
-This page covers **0.10.4** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
+This page covers **0.10.5** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
 
 ## Contents
 

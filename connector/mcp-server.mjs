@@ -265,6 +265,93 @@ function validateVideoObject(object, location) {
   }
 }
 
+// Recovery has no successful CLI receipt to vouch for the file. Require a
+// complete feedback shape rather than treating arbitrary JSON (even {}) as an
+// empty submission. Keep the legacy image format usable too.
+function validateImageRecoveryFeedback(feedback) {
+  const keys = (value, allowed, location) => {
+    if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
+      throw new Error(`${location} 包含不支持的字段或不是对象。`);
+    }
+  };
+  const rectangle = (value, location, integer = false, allowPoint = false) => {
+    keys(value, ['x1', 'y1', 'x2', 'y2'], location);
+    validateRectangle(value, location);
+    if (Object.values(value).some((coordinate) => coordinate > 32767 || (integer && !Number.isInteger(coordinate)))) {
+      throw new Error(`${location} 超过像素坐标范围。`);
+    }
+    const width = value.x2 - value.x1;
+    const height = value.y2 - value.y1;
+    const point = width === 0 && height === 0;
+    if (!(allowPoint && point) && (width <= 1e-7 || height <= 1e-7)) {
+      throw new Error(`${location} 的区域尺寸不正确。`);
+    }
+    return point;
+  };
+  const text = (value, location) => {
+    if (typeof value !== 'string' || !value.trim() || value.length > 10000) {
+      throw new Error(`${location} 必须是有效的非空批注文字。`);
+    }
+  };
+  if (feedback.image !== undefined && !dataUrlToImageContent(feedback.image)) {
+    throw new Error('image 不是有效的 PNG/JPEG Base64 data URL。');
+  }
+  if (feedback.objects !== undefined) {
+    keys(feedback, ['annotationSpace', 'objects', 'image'], '反馈');
+    if (feedback.annotationSpace !== 'result' || !Array.isArray(feedback.objects) || feedback.objects.length > 9704) {
+      throw new Error('反馈必须包含 annotationSpace=result 和有效的 objects 数组。');
+    }
+    let noteCount = 0;
+    let movementCount = 0;
+    feedback.objects.forEach((object, index) => {
+      const location = `objects[${index}]`;
+      keys(object, ['source', 'movements', 'annotations'], location);
+      validateVideoObject(object, location);
+      const locatedPoint = object.source !== null && rectangle(object.source, `${location}.source`, false, true);
+      if ((object.source === null || locatedPoint) && object.movements.length) {
+        throw new Error(`${location} 的全局或点批注不能关联移动。`);
+      }
+      noteCount += object.annotations.length;
+      movementCount += object.movements.length;
+      if (noteCount > 1000 || movementCount > 8704) throw new Error('反馈的批注或移动总数量超过支持范围。');
+      object.movements.forEach((movement, movementIndex) => {
+        keys(movement, ['to'], `${location}.movements[${movementIndex}]`);
+        rectangle(movement.to, `${location}.movements[${movementIndex}].to`);
+      });
+      object.annotations.forEach((annotation, noteIndex) => text(annotation, `${location}.annotations[${noteIndex}]`));
+    });
+    return;
+  }
+  keys(feedback, ['annotationSpace', 'annotations', 'changes', 'image'], '反馈');
+  if ((feedback.annotationSpace !== undefined && feedback.annotationSpace !== 'result')
+      || !Array.isArray(feedback.annotations) || feedback.annotations.length > 1000
+      || !Array.isArray(feedback.changes) || feedback.changes.length > 8192) {
+    throw new Error('旧版反馈必须包含有效的 annotations 和 changes 数组。');
+  }
+  feedback.changes.forEach((change, index) => {
+    keys(change, ['from', 'to'], `changes[${index}]`);
+    rectangle(change.from, `changes[${index}].from`);
+    rectangle(change.to, `changes[${index}].to`);
+  });
+  feedback.annotations.forEach((annotation, index) => {
+    const location = `annotations[${index}]`;
+    keys(annotation, ['text', 'point', 'rectangle', 'change'], location);
+    text(annotation.text, `${location}.text`);
+    const locations = ['point', 'rectangle', 'change'].filter((key) => annotation[key] !== undefined);
+    if (locations.length > 1) throw new Error(`${location} 包含多个位置。`);
+    if (annotation.point !== undefined) {
+      keys(annotation.point, ['x', 'y'], `${location}.point`);
+      if (!['x', 'y'].every((key) => Number.isInteger(annotation.point[key]) && annotation.point[key] >= 0 && annotation.point[key] <= 32766)) {
+        throw new Error(`${location}.point 不是有效的像素点。`);
+      }
+    }
+    if (annotation.rectangle !== undefined) rectangle(annotation.rectangle, `${location}.rectangle`, true);
+    if (annotation.change !== undefined && (!Number.isInteger(annotation.change) || annotation.change < 0 || annotation.change >= feedback.changes.length)) {
+      throw new Error(`${location}.change 没有对应的布局变化。`);
+    }
+  });
+}
+
 function objectIndexKey(object) {
   return JSON.stringify([object.source, object.movements, object.annotations]);
 }
@@ -629,7 +716,7 @@ function finishSessionContent(session) {
       timedOut: session.timedOut,
       error: session.error,
     };
-    const body = annotateResultToContent(r, session.outputPath, { includeImage: session.includeImage });
+    const body = annotateResultToContent(r, session.outputPath, { includeImage: session.includeImage, recoverCompletedFeedback: true });
     const prefix = { type: 'text', text: `会话 ${session.id} 已结束。` };
     session.resultContent = { content: [prefix, ...body.content], isError: body.isError };
   }
@@ -697,7 +784,7 @@ const TOOLS = [
   },
   {
     name: 'edithere_annotate_poll',
-    description: `查询 edithere_annotate_start 发起的标注会话。会话仍在等待用户提交时返回已等待秒数；用户已点击"完成并返回 AI"时返回结构化反馈摘要（批注文字、坐标、布局变化），与 edithere_annotate 的返回格式一致。省略 sessionId 时查询当前进行中的会话。连接器进程重启后旧会话 ID 失效，此时需重新发起。${FEEDBACK_NOTE}`,
+    description: `查询 edithere_annotate_start 发起的标注会话。会话仍在等待用户提交时返回已等待秒数；用户已点击"完成并返回 AI"时返回结构化反馈摘要（批注文字、坐标、布局变化），与 edithere_annotate 的返回格式一致。省略 sessionId 时查询当前进行中的会话。连接器进程重启后旧会话 ID 失效，此时先读取发起时返回的反馈文件路径，确认没有完整反馈后再考虑重新发起。${FEEDBACK_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -792,7 +879,7 @@ async function toolCall(name, args, notifyProgress) {
         timeoutMs: (timeoutSeconds + 60) * 1000,
         onWaiting: () => notifyProgress?.('仍在等待用户在 EditHere 中点击"完成并返回 AI"…'),
       });
-      return annotateResultToContent(r, output, p);
+      return annotateResultToContent(r, output, { ...p, recoverCompletedFeedback: true });
     }
     case 'edithere_annotate_start': {
       const invalid = requirePathArg(p);
@@ -835,7 +922,7 @@ async function toolCall(name, args, notifyProgress) {
         return {
           content: [{
             type: 'text',
-            text: `找不到会话 ${id}：连接器进程可能已重启，会话状态不再保留。请用 edithere_status 确认程序可用后重新发起 edithere_annotate_start。`,
+            text: `找不到会话 ${id}：连接器进程可能已重启，会话状态不再保留。反馈文件可能已完整写出；请先用文件工具读取 edithere_annotate_start 或之前 poll 返回的“反馈文件”路径，核对完整 JSON 并恢复本轮结果。不要立即重新发起标注。若文件不存在或不完整，再用 edithere_status 检查程序和用户保留的编辑内容后决定下一步。`,
           }],
           isError: true,
         };
@@ -850,7 +937,7 @@ async function toolCall(name, args, notifyProgress) {
       const cliArgs = ['export', p.imagePath, '--output', output];
       if (p.noImage) cliArgs.push('--no-image');
       const r = await runCli(cliArgs, { timeoutMs: 120_000 });
-      return annotateResultToContent(r, output, p);
+      return annotateResultToContent(r, output, { includeImage: p.includeImage });
     }
     default:
       throw new McpError(-32602, `未知工具: ${name}`);
@@ -910,26 +997,48 @@ function cliResultToContent(r) {
 // annotate/export 结果 → 反馈摘要（+可选原图）
 function annotateResultToContent(r, outputPath, p) {
   const ok = cliSucceeded(r);
-  if (!ok) return cliResultToContent(r);
+  // Only annotation callers opt into recovery. Rejections, cancellation and
+  // timeouts must retain their original meaning even if a file happens to exist.
+  const rejectedExit = [2, 4, 5, 6, 7, 8].includes(r.exitCode);
+  const rejectedResult = ['cancelled', 'timeout'].includes(r.json?.error?.code);
+  const responseLost = r.json?.ok === false && r.json.error?.code === 'connection_error'
+    && r.json.connection?.phase === 'response';
+  const sameOutput = typeof r.json?.output === 'string'
+    && (process.platform === 'win32'
+      ? path.resolve(r.json.output).toLowerCase() === path.resolve(outputPath).toLowerCase()
+      : path.resolve(r.json.output) === path.resolve(outputPath));
+  const recover = !ok && p.recoverCompletedFeedback && !r.timedOut && !r.error && !rejectedExit && !rejectedResult
+    && (!r.json || responseLost || (r.json.ok === true && sameOutput));
+  if (!ok && !recover) return cliResultToContent(r);
 
   const content = [];
   let feedback = null;
   try {
-    if (fs.statSync(outputPath).size > MAX_FEEDBACK_FILE_BYTES) {
+    const file = recover ? fs.lstatSync(outputPath) : fs.statSync(outputPath);
+    if (!file.isFile()) throw new Error('反馈路径不是普通文件。');
+    if (file.size > MAX_FEEDBACK_FILE_BYTES) {
       throw new Error('反馈文件超过 512 MiB 的连接器读取上限。请拆分标注项目或压缩帧截图。');
     }
     feedback = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
     if (!isRecord(feedback)) throw new Error('反馈 JSON 顶层必须是对象。');
-    if (isVideoFeedback(feedback)) validateVideoFeedback(feedback);
-    else if (feedback.video !== undefined || feedback.frames !== undefined) {
+    if (isVideoFeedback(feedback)) {
+      validateVideoFeedback(feedback);
+      if (recover) feedback.frames.forEach((frame) => validateImageRecoveryFeedback(frame.feedback));
+    } else if (feedback.video !== undefined || feedback.frames !== undefined) {
       throw new Error(`不支持的视频反馈版本: ${String(feedback.schemaVersion || '未指定')}；需要 video-feedback-1。`);
-    }
+    } else if (recover) validateImageRecoveryFeedback(feedback);
   } catch (error) {
+    if (recover) {
+      const failure = cliResultToContent(r);
+      failure.content.push({ type: 'text', text: `未能从反馈文件恢复本轮结果: ${outputPath}\n${String(error?.message || error)}\n请保留 EditHere 中的编辑内容，确认文件状态后再决定下一步。` });
+      return failure;
+    }
     return {
       content: [{ type: 'text', text: `命令回执成功但反馈文件无法读取或解析: ${outputPath}\n${String(error?.message || error)}` }],
       isError: true,
     };
   }
+  if (recover) content.push({ type: 'text', text: 'CLI 完成回执中断；已从本轮输出路径的完整有效反馈文件恢复结果。该结果仅确认反馈文件已保存，不代表桌面程序仍在运行。' });
   content.push({ type: 'text', text: summarizeFeedback(feedback, outputPath) });
   if (p.includeImage) {
     if (isVideoFeedback(feedback)) content.push(...videoImageContents(feedback, outputPath));
