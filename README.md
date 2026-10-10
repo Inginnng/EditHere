@@ -244,7 +244,7 @@ EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 
 原创软件采用 [PolyForm Noncommercial License 1.0.0](LICENSE)（SPDX: `PolyForm-Noncommercial-1.0.0`）。
 
-个人、教育、研究、慈善、政府等**非商业用途**可以免费使用、修改和分发，只需保留许可文本与 `Required Notice`。**商业用途需要作者的书面授权**——包括营利性企业的内部部署，以及把 EditHere 内置进对外销售或收费的产品与服务。详见 [商业授权与合作](COMMERCIAL-LICENSE.md)，联系 **[inginnng@163.com](mailto:inginnng@163.com)**。
+个人、教育、研究、慈善、政府等**非商业用途**可以免费使用、修改和分发，只需保留许可文本与 `Required Notice`。**商业用途需要作者的书面授权**——包括把 EditHere 内置进对外销售或收费的产品与服务。详见 [商业授权与合作](COMMERCIAL-LICENSE.md)，联系 **[inginnng@163.com](mailto:inginnng@163.com)**。
 
 EditHere 的名称与标识不随本许可授予，使用规范见 [商标与品牌政策](TRADEMARK-POLICY.md)。Qt、MinGW 等第三方组件遵循各自许可证，见 [第三方声明](packaging/THIRD-PARTY-NOTICES.md)。
 
