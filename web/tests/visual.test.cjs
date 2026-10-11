@@ -23,6 +23,10 @@ async function main() {
     ['.brand-lockup-dark', 'assets/brand/edithere-lockup-light.svg'],
     ['.brand-symbol', 'assets/icons/edithere.svg']
   ];
+  async function ensureUtility(page) {
+    const toggle = page.locator('#utility-toggle');
+    if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  }
   try {
     for (const [width, height] of [[1480, 1000], [1280, 800], [560, 900], [390, 844], [320, 640], [844, 390]]) {
       const page = await context.newPage();
@@ -34,7 +38,7 @@ async function main() {
         assert.deepEqual(Buffer.from(source.split(',')[1], 'base64'), fs.readFileSync(path.join(root, asset)), 'The checked-in brand geometry and lettering must be reused without modification');
       }
       for (const theme of ['light', 'dark']) {
-        if (theme === 'dark') await page.locator('#theme-toggle').click();
+        if (theme === 'dark') { await ensureUtility(page); await page.locator('#theme-toggle').click(); }
         const brandSelector = width <= 370 ? '.brand-symbol' : '.brand-lockup-' + theme;
         await page.locator(brandSelector).evaluate(image => image.decode());
         assert(await page.locator(brandSelector).isVisible(), 'correct original identity must be visible: ' + width + ' ' + theme);
@@ -57,7 +61,7 @@ async function main() {
         await page.screenshot({ path: path.join(output, `home-${width}x${height}-${theme}.png`) });
         await page.locator('#demo').click();
         await page.locator('#workspace').waitFor({ state: 'visible' });
-        if (width < 900) await page.locator('#inspect-toggle').click();
+        if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
         await page.locator('#global').click();
         await page.locator('#note-text').fill('保留品牌；加强标题层级与留白。\n多行文字、English 2026 与中文可以共同阅读。');
         await page.locator('#note-form [type="submit"]').click();
