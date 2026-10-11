@@ -26,6 +26,8 @@ class DistributionTest(unittest.TestCase):
             self.write(name, "license fixture")
         for name in distribution.WEB_RUNTIME:
             self.write("web/" + name, "public runtime fixture")
+        for name in distribution.WEB_GUIDES:
+            self.write("web/" + name, "first installation instructions")
         for names in distribution.PACKAGE_FILES.values():
             for name in names:
                 self.write(name, "published component fixture")
@@ -78,6 +80,8 @@ class DistributionTest(unittest.TestCase):
             names = archive.namelist()
             self.assertIn("web/src/feedback.js", names)
             self.assertIn("web/install-skill.cjs", names)
+            self.assertIn("AI-SETUP.md", names)
+            self.assertIn("AI-SETUP.en.md", names)
             self.assertIn("web/skills/edithere-web/references/capture.md", names)
             self.assertFalse(any("tests/output" in name or "server-key" in name for name in names))
             self.assertFalse(any(b"PRIVATE-" in archive.read(name) for name in names))
