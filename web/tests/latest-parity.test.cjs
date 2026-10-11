@@ -39,6 +39,7 @@ async function main() {
   async function select(x, y) {
     const p = await page.locator('#stage').evaluate((stage, point) => { const b = stage.getBoundingClientRect(), c = document.querySelector('#canvas'); return { x: b.x + point.x * b.width / c.width, y: b.y + point.y * b.height / c.height }; }, { x, y });
     await page.locator('[data-mode="select"]').click(); await page.mouse.click(p.x, p.y); await ensurePanel();
+    if (await page.locator('#geometry').isHidden()) await page.locator('#geometry-toggle').click();
     await page.locator('#geometry').waitFor({ state: 'visible' });
     if (!await page.locator('#geometry-details').evaluate(details => details.open)) await page.locator('#geometry-details summary').click();
   }

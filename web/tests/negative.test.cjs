@@ -153,8 +153,8 @@ async function main() {
     });
     await checkpoint('empty/zero/negative component dimensions are rejected without changing layout', async () => {
       const start = await coords(115, 47); await page.mouse.click(start.x, start.y); const before = await snapshot();
-      await page.locator('#geometry-details summary').click();
-      for (const [id, value] of [['gx', ''], ['gw', '0'], ['gh', '-1']]) { await page.locator('#' + id).fill(value); await page.locator('#apply-geometry').click(); assert.deepEqual(await snapshot(), before); }
+      await ensureGlobal();
+      for (const [id, value] of [['gx', ''], ['gw', '0'], ['gh', '-1']]) { if (await page.locator('#geometry').isHidden()) await page.locator('#geometry-toggle').click(); await page.locator('#' + id).fill(value); await page.locator('#apply-geometry').click(); assert.deepEqual(await snapshot(), before); }
     });
     await restore();
     await checkpoint('undo and redo still work after repeated failed imports', async () => {

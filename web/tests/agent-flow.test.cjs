@@ -1,0 +1,115 @@
+'use strict';
+// A real image travels through CLI -> browser -> explicit submit -> waiting CLI.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const {execFile} = require('node:child_process');
+const {downloadText,readExportJson} = require('./export-test-utils.cjs');
+const {promisify} = require('node:util');
+const execute = promisify(execFile);
+const root = path.resolve(__dirname, '../..');
+const output = path.join(__dirname, 'output/agent-flow');
+const cli = path.join(root, 'web/agent.cjs');
+const first = values => values.filter(Boolean).find(value => fs.existsSync(value));
+const image = first([process.env.EDITHERE_TEST_IMAGE, path.resolve(root, '../EditHere宣传/原图/游戏修改前.png')]);
+const modulePath = first([process.env.EDITHERE_PLAYWRIGHT_MODULE, path.resolve(root, '../EditHere宣传/动画/node_modules/playwright-core'), path.join(root, 'node_modules/playwright-core')]);
+const executablePath = first([process.env.EDITHERE_BROWSER_PATH, 'C:/Users/InGing/AppData/Local/ms-playwright/chromium-1228/chrome-win64/chrome.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe']);
+assert(image && modulePath && executablePath, 'Set EDITHERE_TEST_IMAGE, EDITHERE_PLAYWRIGHT_MODULE and EDITHERE_BROWSER_PATH.');
+const {chromium} = require(modulePath);
+const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+async function command(...args) {
+  const value=await execute(process.execPath,[cli,...args],{windowsHide:true,timeout:65000,maxBuffer:2*1024*1024});
+  assert.equal(value.stderr.trim(),'');return JSON.parse(value.stdout);
+}
+async function at(page,x,y) {
+  return page.locator('#stage').evaluate((stage,p)=>{const r=stage.getBoundingClientRect(),c=document.querySelector('#canvas');return {x:r.x+p.x*r.width/c.width,y:r.y+p.y*r.height/c.height};},{x,y});
+}
+async function note(page,text) {await page.locator('#note-dialog').waitFor({state:'visible'});await page.locator('#note-text').fill(text);await page.locator('#note-form [type="submit"]').click();await page.locator('#note-dialog').waitFor({state:'hidden'});}
+async function main() {
+  fs.mkdirSync(output,{recursive:true});
+  const run=crypto.randomUUID(),file=path.join(output,run+'-feedback.json');
+  const session=await command('start','--image',image,'--output',file,'--name','游戏主页 · 链路测试','--timeout','1800');
+  assert(!fs.existsSync(file),'loading a screenshot must not create feedback');
+  const wait=command('wait','--session',session.sessionId,'--wait','55');
+  const browser=await chromium.launch({executablePath,headless:true});
+  const context=await browser.newContext({viewport:{width:560,height:720},acceptDownloads:true});
+  const page=await context.newPage(),errors=[],results=[];
+  page.on('pageerror',error=>errors.push(String(error)));page.on('dialog',dialog=>dialog.accept());
+  try {
+    await page.goto(session.url);
+    await page.waitForFunction(()=>document.body.dataset.agentState==='pending');
+    await page.locator('#workspace').waitFor({state:'visible'});
+    const dims=await page.locator('#canvas').evaluate(c=>({width:c.width,height:c.height}));
+    const original='data:image/png;base64,'+fs.readFileSync(image).toString('base64');
+    assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image),original);
+    assert.equal(await page.locator('#export').getAttribute('aria-label'),'完成并返回 AI');
+    assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
+    results.push('original image automatically loads from the session; no feedback before explicit submit');
+    if(await page.locator('#utility-toggle').isVisible())await page.locator('#utility-toggle').click();
+    const offline=await downloadText(page,'#offline');
+    assert(offline.match(/<meta http-equiv="Content-Security-Policy"[^>]+>/)[0].includes("connect-src 'none'"),'session download restores a fully offline content policy');
+    if(await page.locator('#utility-toggle').isVisible())await page.locator('#utility-toggle').click();
+    if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
+    await page.locator('#global').click();await note(page,'链路测试：全局意见自动返回当前对话');
+    await page.locator('#explode').click();await page.waitForFunction(()=>document.body.dataset.busy!=='true');
+    assert(await page.locator('#geometry').isHidden());
+    await page.locator('[data-mode="cut"]').click();
+    const start=await at(page,Math.floor(dims.width*.65),Math.floor(dims.height*.35)),end=await at(page,Math.floor(dims.width*.8),Math.floor(dims.height*.5));
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
+    await page.waitForFunction(()=>!document.querySelector('#geometry-toggle').disabled);
+    assert(await page.locator('#geometry').isHidden(),'selecting a component does not open its popup');
+    const panelHeight=(await page.locator('.sidebar').boundingBox()).height;
+    await page.locator('#geometry-toggle').click();
+    const before=await page.evaluate(()=>Object.fromEntries(['gx','gy','gw','gh'].map(id=>[id,Number(document.getElementById(id).value)])));
+    assert.equal((await page.locator('.sidebar').boundingBox()).height,panelHeight,'popup consumes no opinion-panel height');
+    await page.locator('#gx').fill(String(before.gx+30));await page.locator('#gy').fill(String(before.gy+10));await page.locator('#apply-geometry').click();
+    const empty=await page.locator('.note-card.movement-empty').getAttribute('data-note');assert(empty);
+    await page.locator(`[data-edit="${empty}"]`).click();await note(page,'链路测试：位移箭头文字与原生 movement 一起返回');
+    await page.locator('[data-mode="point"]').click();const pin=await at(page,dims.width*.2,dims.height*.25);await page.mouse.click(pin.x,pin.y);await note(page,'链路测试：点批注保留原图像素坐标');
+    results.push('global, movement-arrow text and point annotations survive compact UI editing');
+    const expected=await page.evaluate(()=>EditHereWeb.feedback());
+    const movement=expected.objects.find(o=>o.annotations.includes('链路测试：位移箭头文字与原生 movement 一起返回'));
+    assert(movement);assert.equal(movement.movements[0].to.x1-movement.source.x1,30);assert.equal(movement.movements[0].to.y1-movement.source.y1,10);
+    assert.deepEqual(movement.source,{x1:before.gx,y1:before.gy,x2:before.gx+before.gw,y2:before.gy+before.gh});
+    assert(expected.objects.some(o=>o.source===null));assert(expected.objects.some(o=>o.source&&o.source.x1===o.source.x2&&o.source.y1===o.source.y2));
+    let loseResponse=true;
+    await page.route('**/__edithere_agent/feedback?*',async route=>{if(loseResponse){loseResponse=false;await route.fetch();await route.abort('failed');}else await route.continue();});
+    await page.locator('#export').click();
+    const receipt=await wait;assert.equal(receipt.state,'completed');
+    assert.deepEqual(receipt.feedback,{annotationSpace:'result',objects:expected.objects});
+    assert(!Object.hasOwn(receipt.feedback,'image'),'the conversation receipt must not dump base64');
+    const saved=fs.readFileSync(file);assert.equal(hash(saved),receipt.sha256);assert.deepEqual(JSON.parse(saved),expected);
+    await page.waitForFunction(()=>!document.querySelector('#export').disabled);
+    const documentBefore=await page.evaluate(()=>EditHereWeb.feedback());await page.keyboard.press('ArrowRight');assert.deepEqual(await page.evaluate(()=>EditHereWeb.feedback()),documentBefore,'unconfirmed delivery keeps the exact submitted snapshot');
+    await page.locator('#export').click();await page.waitForFunction(()=>document.body.dataset.agentState==='completed');
+    assert.equal(await page.locator('#export span').textContent(),'已返回');assert.equal(hash(fs.readFileSync(file)),receipt.sha256);
+    assert(await page.locator('#export-dialog').isHidden(),'Agent feedback is returned directly without a JSON copy dialog');
+    await page.screenshot({path:path.join(output,'game-feedback-returned-560x720.png')});
+    results.push('a waiting CLI receives native JSON immediately; lost HTTP responses retry idempotently');
+    const reopen=await context.newPage();await reopen.goto(session.url);await reopen.waitForFunction(()=>document.body.dataset.agentState==='completed');
+    assert((await reopen.locator('#toast').textContent()).includes('已返回 AI'));await reopen.close();
+    const cancelledFile=path.join(output,run+'-cancelled.json');
+    const cancelled=await command('start','--image',image,'--output',cancelledFile,'--timeout','1800');
+    const other=await context.newPage();other.on('dialog',dialog=>dialog.accept());await other.goto(cancelled.url);await other.waitForFunction(()=>document.body.dataset.agentState==='pending');
+    if(await other.locator('body').getAttribute('data-inspector-open')!=='true')await other.locator('#inspect-toggle').click();
+    await other.locator('#global').click();await note(other,'链路测试：取消后仍可保存当前编辑');
+    await other.locator('#open').click();await other.waitForFunction(()=>document.body.dataset.agentState==='cancelled');
+    assert.equal((await command('wait','--session',cancelled.sessionId,'--wait','0')).state,'cancelled');assert(!fs.existsSync(cancelledFile));
+    assert.equal(await other.locator('.note-card p').textContent(),'链路测试：取消后仍可保存当前编辑');
+    results.push('cancellation returns a cancelled receipt without creating or discarding feedback');
+    const remoteFile=path.join(output,run+'-remote-cancel.json');
+    const remote=await command('start','--image',image,'--output',remoteFile,'--timeout','1800');
+    const third=await context.newPage();await third.goto(remote.url);await third.waitForFunction(()=>document.body.dataset.agentState==='pending');
+    if(await third.locator('body').getAttribute('data-inspector-open')!=='true')await third.locator('#inspect-toggle').click();
+    await third.locator('#global').click();await note(third,'链路测试：Agent 取消后保留编辑，仍可手工导出');
+    await command('cancel','--session',remote.sessionId);await third.locator('#export').click();await third.waitForFunction(()=>document.body.dataset.agentState==='cancelled');
+    assert.equal(await third.locator('#workspace').evaluate(el=>el.inert),false);assert(!fs.existsSync(remoteFile));
+    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0],'链路测试：Agent 取消后保留编辑，仍可手工导出');
+    results.push('an externally cancelled session restores editable local export instead of freezing the workspace');
+    assert.deepEqual(errors,[]);
+    fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:results.length,results,sessionId:session.sessionId,output:file,sha256:receipt.sha256,feedback:receipt.feedback},null,2));
+    results.forEach(result=>console.log('PASS '+result));console.log(results.length+' Agent flow checks passed.');
+  } finally {await browser.close();}
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

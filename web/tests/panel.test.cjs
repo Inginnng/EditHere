@@ -53,6 +53,9 @@ async function main() {
         assert(await page.locator('#media-name').isHidden(), 'source filename must not occupy the canvas');
         assert.equal(await page.locator('.sidebar #global').count(), 1, 'global note action belongs to the opinions header');
         assert.equal(await page.locator('#global span').count(), 0, 'global note action stays an icon');
+        assert.equal(await page.locator('.panel-actions #geometry-toggle + #global').count(), 1, 'component layout belongs immediately to the left of the global-note button');
+        assert(await page.locator('#geometry-toggle').isDisabled(), 'component layout is disabled without a selected component');
+        assert(await page.locator('#geometry').isHidden(), 'component layout starts closed and occupies no panel space');
         assert.equal(await page.locator('#export-dialog footer #preview').count(), 1, 'PNG export belongs in the export dialog');
         assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'false', 'compact workspace starts with the image visible');
         await page.locator('[data-mode="rect"]').click(); const a = await at(page, 815, 230), b = await at(page, 964, 275);
@@ -125,6 +128,7 @@ async function main() {
     const unchanged = await feedback(page), pixels = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
     await page.locator('#explode').click();
     assert.equal(await page.locator('#explode').getAttribute('aria-pressed'), 'true'); assert(await page.locator('[data-mode="cut"]').isVisible());
+    assert(await page.locator('#geometry').isHidden(), 'opening big bang must not open the layout popup');
     const animation = await page.locator('.explosion-preview').evaluate(layer => ({ pieces: layer.children.length, active: layer.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running').length }));
     assert(animation.pieces > 1 && animation.active > 1, 'opening big bang must animate the desktop reflection and diagonal wave');
     await page.screenshot({ path: path.join(output, 'explode-opening.png') });
@@ -148,11 +152,27 @@ async function main() {
     await page.setViewportSize({ width: 560, height: 560 }); await page.locator('#explode').click();
     const component = await at(page, 435, 300); await page.mouse.click(component.x, component.y);
     if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
-    await page.locator('#geometry-details summary').click(); await page.locator('#lock-ratio').uncheck();
+    assert(await page.locator('#geometry-toggle').isEnabled()); assert(await page.locator('#geometry').isHidden(), 'selecting a component must not automatically expand layout controls');
+    const panelBefore = await page.locator('.sidebar').boundingBox();
+    await page.locator('#geometry-toggle').click(); assert(await page.locator('#geometry').isVisible());
+    const panelAfter = await page.locator('.sidebar').boundingBox(), layoutPopup = await page.locator('#geometry').boundingBox();
+    assert.equal(panelAfter.height, panelBefore.height, 'opening the layout popup must not enlarge the opinions panel');
+    assert(layoutPopup.x >= 0 && layoutPopup.x + layoutPopup.width <= 560 && layoutPopup.y >= 0 && layoutPopup.y + layoutPopup.height <= 560, 'numeric controls must remain inside the small square viewport');
+    await page.screenshot({ path: path.join(output, 'component-layout-popup-560x560.png') });
+    await page.locator('#lock-ratio').uncheck();
     await page.locator('#gw').fill('200'); await page.locator('#gh').fill('125'); await page.locator('#apply-geometry').click();
     const resized = await feedback(page); assert(resized.objects.some(object => object.movements.some(movement => Math.abs(movement.to.x2 - movement.to.x1 - 200) < .01 && Math.abs(movement.to.y2 - movement.to.y1 - 125) < .01)), 'numeric controls must remain usable in a small square panel');
-    await page.locator('#geometry-details summary').click(); await page.locator('#explode').click();
-    results.push({ name: 'collapsed numeric controls can be expanded, scrolled and applied in a 560x560 panel' });
+    assert(await page.locator('#geometry').isHidden(), 'clicking outside the popup closes it');
+    await page.locator('#geometry-toggle').click(); await page.locator('#geometry-close').click(); assert(await page.locator('#geometry').isHidden());
+    for (const [width, height] of [[320, 640], [650, 390]]) {
+      await page.setViewportSize({ width, height }); await page.locator('#geometry-toggle').click();
+      const popup = await page.locator('#geometry').boundingBox();
+      assert(popup.x >= 0 && popup.x + popup.width <= width && popup.y >= 0 && popup.y + popup.height <= height, 'layout popup must stay within narrow and short windows: ' + JSON.stringify({ width, height, popup }));
+      await page.locator('#geometry-close').click();
+    }
+    await page.setViewportSize({ width: 560, height: 560 }); await page.locator('#geometry-toggle').click(); await page.locator('#explode').click();
+    assert(await page.locator('#geometry').isHidden()); assert(await page.locator('#geometry-toggle').isDisabled(), 'leaving big bang closes and disables the layout popup');
+    results.push({ name: 'small layout button opens usable bounded controls without consuming opinions-panel space' });
     await page.emulateMedia({ reducedMotion: 'reduce' }); await page.locator('#explode').click(); assert.equal(await page.locator('.explosion-preview').count(), 0); assert.equal(await page.locator('#explode').getAttribute('aria-pressed'), 'true'); await page.locator('#explode').click();
     results.push({ name: 'desktop wave animation, repeated exit/re-entry and reduced-motion support preserve edits', animation });
     await page.close();

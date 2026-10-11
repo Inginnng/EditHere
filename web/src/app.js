@@ -1,4 +1,4 @@
-/* EditHere Web. All media and feedback stay inside the current browser. */
+/* EditHere Web. Offline editing with an optional local Agent session. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback;
@@ -10,9 +10,10 @@
   const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
   const contains = (r,p) => p.x >= r.x1 && p.x < r.x2 && p.y >= r.y1 && p.y < r.y2;
   const timeText = seconds => {const ms=Math.max(0,Math.round((seconds||0)*1000));return String(Math.floor(ms/60000)).padStart(2,'0')+':'+String(Math.floor(ms/1000)%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
-  const offlineHTML = '<!doctype html>\n' + document.documentElement.outerHTML;
+  const offlineHTML = '<!doctype html>\n' + document.documentElement.outerHTML.replace("connect-src 'self'", "connect-src 'none'");
   const video = $('video'), canvas = $('canvas'), stage = $('stage'), ctx = canvas.getContext('2d');
   let session = null, doc = null, mode = 'smart', selected = null, selectedNote = null, zoom = 1, fitMode = true;
+  let agentBound = false;
   const selectedGroups = new Set();
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
@@ -90,7 +91,7 @@
   function changeMode(value) {if(drag)cancelDrag();mode=value;hover=null;hoveredMovement=null;selectedNote=null;document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});stage.style.cursor=spaceDown||mode==='pan'?'grab':mode==='select'?'default':'crosshair';$('hint').textContent=({select:doc?.layout?'拖动或八向缩放 · Ctrl / ⌘ 多选 · 组件上滚轮缩放':'拖动批注调整位置 · 点击编号编辑文字',smart:'悬停选块 · 滚轮切换大小 · 拖动手动框选',point:'点一下，精确指向一个像素',rect:'拖出范围，写下修改意见',cut:'拖出组件范围，再拖动或缩放',pan:'拖动自由画布 · 滚轮缩放 · 0 适应画面'})[mode];render();}
   function activate() {endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
   function releaseVideo() {if(frameCallback!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(frameCallback);frameCallback=null;video.pause();video.removeAttribute('src');video.load();if(mediaURL)URL.revokeObjectURL(mediaURL);mediaURL=null;presentedTime=null;linkSignature=null;seeking=false;}
-  function replaceOK() {return !dirty||confirm('当前编辑还没有保存。要替换素材吗？可先取消并保存项目。');}
+  function replaceOK() {if(agentBound){notify('当前素材由 AI 批注会话传入；完成或取消后再打开其他素材');return false;}return !dirty||confirm('当前编辑还没有保存。要替换素材吗？可先取消并保存项目。');}
   async function openImage(file) {const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);const c=makeCanvas(image.naturalWidth,image.naturalHeight);c.getContext('2d').drawImage(image,0,0);const data=c.toDataURL('image/png'),decoded=await decode(data);releaseVideo();session={kind:'image',name:file.name||'粘贴的图片',width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(decoded,data)};doc=session.document;activate();detect(doc);}finally{URL.revokeObjectURL(url);}}
   function waitEvent(target,event,timeout=15000) {return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{clean();reject(new Error('读取素材超时，请换一个浏览器支持的文件'));},timeout);const good=()=>{clean();resolve();},bad=()=>{clean();reject(new Error('浏览器无法解码这个视频，请使用 H.264 MP4 或 WebM'));};const clean=()=>{clearTimeout(timer);target.removeEventListener(event,good);target.removeEventListener('error',bad);};target.addEventListener(event,good,{once:true});target.addEventListener('error',bad,{once:true});});}
   function trackFrames() {if(!video.requestVideoFrameCallback)return;frameCallback=video.requestVideoFrameCallback((now,info)=>{presentedTime=info.mediaTime;trackFrames();});}
@@ -176,7 +177,7 @@
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
-  function renderGeometry() {const b=selectionBounds();$('geometry').hidden=!b;if(b){$('gx').value=Math.round(b.x1);$('gy').value=Math.round(b.y1);$('gw').value=Math.round(b.x2-b.x1);$('gh').value=Math.round(b.y2-b.y1);const title=document.querySelector('.geometry-head strong');if(title)title.textContent=selectionIds().length>1?selectionIds().length+' 个组件':'组件布局';}}
+  function renderGeometry() {const b=explodeEnabled?selectionBounds():null;globalThis.EditHereChrome?.syncGeometry(b?doc.id+':'+selectionIds().join(','):null);if(b){$('gx').value=Math.round(b.x1);$('gy').value=Math.round(b.y1);$('gw').value=Math.round(b.x2-b.x1);$('gh').value=Math.round(b.y2-b.y1);const title=document.querySelector('.geometry-head strong');if(title)title.textContent=selectionIds().length>1?selectionIds().length+' 个组件':'组件布局';}}
   function renderFrames() {if(session?.kind!=='video')return;$('frame-list').innerHTML=session.frames.filter(hasContent).map(f=>{const count=f.notes.length+movementMarkers(f).filter(m=>!m.noteId).length;return `<button data-frame="${esc(f.id)}" class="${f===doc?'active':''}" title="${count} 条意见">${timeText(f.timestampUs/1000000)} · ${count}</button>`;}).join('');}
   function refresh() {if(!doc?.layout)explodeEnabled=false;if(!selected)selectedGroups.clear();render();renderNotes();renderGeometry();renderFrames();const h=doc?history():null;$('undo').disabled=!h?.undo.length;$('redo').disabled=!h?.redo.length;$('explode').classList.toggle('active',explodeEnabled);$('explode').setAttribute('aria-pressed',String(explodeEnabled));$('explode').title=explodeEnabled?'收起组件模式（保留修改）':'大爆炸 · 拆成可移动的组件';document.querySelector('[data-mode="cut"]').hidden=!explodeEnabled;if($('reset-component'))$('reset-component').disabled=!selected||!doc?.layout;if(session?.kind==='video')updateTime();}
   function editNote(source=null,id=null,groupId=null,movementSource=null,groupIds=null) {if(!session)return;try{ensureDoc();}catch(error){notify(error.message);return;}const existing=id?doc.notes.find(n=>n.id===id):null;if(id&&!existing)return;draftNote=existing?clone(existing):{id:uid(),source:clone(source),text:'',...(groupId?{groupId}:{}),...(groupIds?{groupIds:clone(groupIds)}:{}),...(movementSource?{movementSource:clone(movementSource)}:{})};$('note-location').textContent=(session.kind==='video'?timeText(doc.timestampUs/1000000)+' · ':'')+(draftNote.groupIds?draftNote.groupIds.length+' 个组件 · ':'')+(draftNote.movementSource?locationText(draftNote.movementSource)+' → ':'')+locationText(noteRect(draftNote));$('note-title').textContent=existing?'编辑修改意见':movementSource?'说明这次位移或缩放':'写下修改意见';$('note-text').value=draftNote.text;$('note-text').required=!draftNote.movementSource;$('note-text').setCustomValidity('');$('note-dialog').showModal();$('note-text').focus();}
@@ -463,6 +464,7 @@
   document.addEventListener('keydown',event=>{
     if(event.target.closest('textarea,input,dialog'))return;
     const ctrl=event.ctrlKey||event.metaKey,key=event.key.toLowerCase();
+    if(document.body.dataset.agentLocked==='true'){if(ctrl&&key==='s'){event.preventDefault();$('save-project').click();}else if(ctrl&&key==='e'){event.preventDefault();$('export').click();}return;}
     if(busy){if(ctrl&&['o','s','e','z','y'].includes(key)||['v','b','p','r','c','h','0','1','+','=','-','escape','delete','backspace','arrowleft','arrowright','arrowup','arrowdown',' '].includes(key))event.preventDefault();return;}
     if(ctrl&&key==='o'){event.preventDefault();$('open').click();return;}if(!session)return;
     if(ctrl&&key==='s'){event.preventDefault();$('save-project').click();return;}
@@ -488,4 +490,24 @@
   const fitObserver=new ResizeObserver(()=>{if(session&&fitMode)viewportFit();});
   for(const selector of ['#viewport','.header','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){const element=document.querySelector(selector);if(element)fitObserver.observe(element);}
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
+  // Small integration surface; the local connector owns transport and tokens.
+  globalThis.EditHereWeb = {
+    bindAgent() {agentBound=true;},
+    async loadAgentImage(value) {
+      if(session)throw new Error('当前页面已有素材，请为批注会话打开新页面');
+      const image=await decode(value.image);
+      releaseVideo();agentBound=true;
+      session={kind:'image',name:value.name,width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(image,value.image)};
+      doc=session.document;activate();detect(doc);
+    },
+    feedback() {return clone(feedback(true));},
+    notify,
+    canCancel() {return !dirty||confirm('取消这次 AI 批注会话？当前编辑仍会保留在页面中，可保存项目。');},
+    releaseAgent() {agentBound=false;},
+    completedAgent() {
+      dirty=false;document.body.dataset.agentState='completed';
+      $('workspace').inert=true;$('open').disabled=true;
+      globalThis.EditHereChrome?.syncGeometry(null);
+    }
+  };
 })();

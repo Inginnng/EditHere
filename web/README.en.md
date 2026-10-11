@@ -2,20 +2,35 @@
 
 [简体中文](README.md)
 
-Open **EditHere.html** directly in a browser, or serve this single file on a static website. After the page loads, file reading, annotation, layout changes and exports run locally in the browser. There is no backend, CDN, account or external runtime dependency. The page's Content Security Policy blocks network connections.
+Open **EditHere.html** directly in a browser, or serve this single file on a static website. After the page loads, file reading, annotation, layout changes and exports run locally in the browser. The standalone HTML has no backend, CDN, account or external runtime dependency, and its Content Security Policy blocks network connections. Agent sessions described below use a separate localhost service to load an image and return feedback.
 
 For an Agent browser panel, run `node web/preview.cjs` from the repository root (requires an installed Node.js), then open `http://127.0.0.1:7330/EditHere.html`. The launcher reuses this project's service or starts it in an independent background process and checks the served HTML. Run it again to restore a stopped service. A refused connection means the local service is not listening; refreshing the page does not start it. The preview binds only to localhost and does not upload media.
+
+## Agent skill and automatic return
+
+`skills/edithere-web/` is an installable Agent skill. Copy it into the Agent's actual skill directory and record the absolute path of local `web/agent.cjs` in its `references/local-installation.md`. Keep the CLI's adjacent page and service files; Node.js is required. The repository skill records a relative entrypoint for development use. The desktop `edithere` skill can remain installed: use the web skill for browser panels and the desktop entrypoint when the user explicitly requests the desktop app.
+
+Once installed, a request such as “Help me annotate the game homepage with EditHere” or `$edithere-web` starts this flow. The Agent uses an existing or specified screenshot from the current task and loads it into a right-side session page, asking for the target only if missing. The user clicks the top **反馈** button (Finish and return to AI); feedback is written to the unique output for this session and returned through the Agent's current wait command. Manual JSON copying is unnecessary.
+
+Equivalent CLI flow (use actual absolute image/output paths and an output file that does not yet exist):
+
+```text
+node web/agent.cjs start --image <image-path> --output <new-feedback-path> --timeout 1800
+node web/agent.cjs wait --session <session-id-from-start>
+```
+
+Open the URL returned by `start`, rather than the ordinary preview URL. Each `wait` runs for at most 55 seconds; after `pending`, wait on the same session again. Continue implementation only after user submission produces a `completed` receipt. Do not use stale output after cancellation or timeout. Automatic return requires the current conversation to keep waiting; it does not send messages into a conversation that has already ended. The service listens only on loopback, without sending images or feedback to external servers. Static and offline pages retain their download/copy export flow.
 
 ## Use
 
 1. Drop an image or video, choose a file, or paste an image. Edit one source at a time.
 2. Add smart-region, point, rectangle or whole-frame comments. With the selection tool (V), drag annotation points or rectangles, and adjust rectangle bounds with eight handles. Click a numbered marker to edit its text.
-3. Choose **大爆炸** to enter component editing with a diagonal wave matching the desktop app. Click again to leave component editing while preserving movements and comments. Drag a region, resize with its eight handles, or expand **位置与尺寸** in the inspector for numeric editing. Ctrl / Command + click selects multiple regions for a shared move or scale. The wheel scales a selected component proportionally; without a selection, it cycles through overlapping region sizes. Manually draw missing regions with **框出组件**. Movement and scaling show an arrow from source to destination: click it or its inspector entry to add or edit text. Comments persist in projects and remain attached to the same movement in exported feedback. Reset a selected component to its original geometry when needed.
+3. Choose **大爆炸** to enter component editing with a diagonal wave matching the desktop app. Click again to leave component editing while preserving movements and comments. Drag a region or resize with its eight handles. The small **组件布局** button immediately left of the global-note button opens numeric controls in a popup. It starts closed and consumes no inspector height. Ctrl / Command + click selects multiple regions for a shared move or scale. The wheel scales a selected component proportionally; without a selection, it cycles through overlapping region sizes. Manually draw missing regions with **框出组件**. Movement and scaling show an arrow from source to destination: click it or its inspector entry to add or edit text. Comments persist in projects and remain attached to the same movement in exported feedback. Reset a selected component to its original geometry when needed.
 4. Pause a video and annotate the current frame. Select a saved timestamp to revisit its comments. Playback, pausing and seeking alone do not add exported frames.
 5. Export or copy image feedback or `video-feedback-1` JSON compatible with current desktop EditHere feedback. Original images or annotated video frames are embedded by default. The export dialog also saves annotation PNGs with numbered comments and blue movement arrows.
 6. Save a `.edithere-web.json` project to retain images, notes and layout state. Video projects contain annotated still frames rather than the whole source video; select the original local video again after reopening.
 
-The page can download its own standalone offline HTML. Save a project before closing: this version does not automatically persist files, upload media, or store projects in browser storage.
+The page can download its own standalone offline HTML. Save a project before closing: the standalone HTML does not automatically persist files, upload media, or store projects in browser storage. An Agent session writes its predefined feedback output only when the user explicitly submits.
 
 A movement immediately creates a real note with optional text, in creation order among other notes. Editing or clearing its text preserves its number; project reload preserves its identity and order. Reset removes an empty movement note and retains one with text, following desktop REG-110.
 
@@ -36,7 +51,7 @@ The existing `assets/icons/edithere.svg` and `assets/brand/edithere-lockup*.svg`
 - Layout movement operates on rectangular pixel regions, leaving transparent holes at their source positions. It does not generate backgrounds, segment semantic objects or render edited videos.
 - Images are limited to 32 million pixels. Video support depends on the browser and operating-system codecs; use H.264 MP4 or WebM. Where available, video frame callbacks supply the presented frame's media time; other browsers fall back to playback position. This is not a frame-by-frame video editor.
 - Web projects use `edithere-web-project-1`. Desktop `.edithere` project files are not supported. Current image/video feedback with embedded images can be imported.
-- Browsers cannot automatically read arbitrary local paths or return feedback to a CLI. Hand the JSON to your AI tool; automatic local integration would require a separate connector.
+- Ordinary static/offline pages cannot automatically read arbitrary local paths or return feedback to a CLI. Use the Agent skill above for a localhost image session with automatic return, limited to its explicitly supplied image and output.
 - Reopening a hosted page offline depends on browser caching. Download the HTML for reliable offline reopening. This version has no Service Worker.
 
 ## Develop and verify
@@ -45,7 +60,8 @@ Sources live in `src/`. Detection reuses the repository's `origin/web` implement
 
 ```text
 node web/build.cjs
-node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs
+node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs web/tests/agent-session.test.cjs
+node web/tests/agent-flow.test.cjs
 node web/tests/browser.test.cjs
 node web/tests/visual.test.cjs
 node web/tests/negative.test.cjs
