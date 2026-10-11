@@ -63,8 +63,9 @@ def tracked(pattern: str, root: Path | None = None) -> list[Path]:
     base = root or ROOT
     matches: list[Path] = []
     for current, directories, files in os.walk(base):
-        directories[:] = [name for name in directories if name not in SKIP_DIRS]
         directory = Path(current)
+        directories[:] = [name for name in directories if name not in SKIP_DIRS and not name.startswith("build-")
+                          and not (directory == ROOT / "web" / "tests" and name == "output")]
         matches += [directory / name for name in files if fnmatch.fnmatch(name, pattern)]
     return sorted(matches)
 
@@ -836,6 +837,7 @@ TRANSLATED_DOCS = (
     "docs/AI-SETUP.md",
     "docs/LINUX.md",
     "docs/DEVELOPMENT.md",
+    "docs/DISTRIBUTION.md",
 )
 
 

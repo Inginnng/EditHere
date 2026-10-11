@@ -19,7 +19,9 @@
   <a href="#功能一览">功能一览</a> ·
   <a href="docs/AGENT-CLI.md">接入 AI</a> ·
   <a href="docs/USER-GUIDE.md">使用指南</a> ·
-  <a href="CHANGELOG.md">更新日志</a>
+  <a href="CHANGELOG.md">更新日志</a> ·
+  <a href="docs/DISTRIBUTION.md">平台与分发目录</a> ·
+  <a href="web/README.md">网页版</a>
 </p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
 
