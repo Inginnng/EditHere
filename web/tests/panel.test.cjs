@@ -22,6 +22,13 @@ async function main() {
   async function note(page, text) {
     await page.locator('#note-text').fill(text); await page.locator('#note-form [type="submit"]').click(); await page.locator('#note-dialog').waitFor({ state: 'hidden' });
   }
+  async function ensureGlobal(page) {
+    if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
+  }
+  async function ensureUtility(page) {
+    const toggle = page.locator('#utility-toggle');
+    if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  }
   async function feedback(page) {
     await page.locator('#export').click(); const data = JSON.parse(await page.locator('#json-preview').inputValue()); await page.locator('[data-close="export-dialog"]').first().click(); return data;
   }
@@ -31,7 +38,7 @@ async function main() {
   async function metrics(page) {
     return page.evaluate(() => {
       const rect = element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
-      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
+      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), topIslands: ['.brand', '.view-controls', '.header-actions'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
     });
   }
   async function fitSettled(page) {
@@ -42,6 +49,10 @@ async function main() {
       const page = await context.newPage(); await page.setViewportSize({ width, height });
       try {
         await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href); await page.locator('#demo').click(); await page.locator('#workspace').waitFor({ state: 'visible' });
+        assert(await page.locator('#media-name').isHidden(), 'source filename must not occupy the canvas');
+        assert.equal(await page.locator('.sidebar #global').count(), 1, 'global note action belongs to the opinions header');
+        assert.equal(await page.locator('#global span').count(), 0, 'global note action stays an icon');
+        assert.equal(await page.locator('#export-dialog footer #preview').count(), 1, 'PNG export belongs in the export dialog');
         assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'false', 'compact workspace starts with the image visible');
         await page.locator('[data-mode="rect"]').click(); const a = await at(page, 815, 230), b = await at(page, 964, 275);
         await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up(); await note(page, '123');
@@ -55,11 +66,26 @@ async function main() {
         assert(measured.stage.bottom + 5 <= measured.panel.y, 'notes must not cover the fitted image');
         assert(measured.panel.bottom + 5 <= measured.tools.y, 'notes must clear the tools');
         assert(measured.scrollWidth <= width, 'no horizontal overflow');
+        assert(height - measured.tools.bottom >= 0 && height - measured.tools.bottom <= 12, 'tools stay close to the bottom edge');
+        for (let i = 0; i < measured.topIslands.length; i++) for (let j = i + 1; j < measured.topIslands.length; j++) {
+          const a = measured.topIslands[i], b = measured.topIslands[j];
+          assert(Math.min(a.right, b.right) - Math.max(a.x, b.x) <= 1 || Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) <= 1, 'top controls must not overlap: ' + JSON.stringify(measured.topIslands));
+        }
         assert.equal(await page.locator('.panel-eyebrow, .sidebar-footer, .note-card small').count(), 0, 'no repeated inspector labels, coordinate footer or per-note coordinate rows');
         await page.screenshot({ path: path.join(output, `single-note-${width}x${height}.png`) });
         await page.locator('#panel-close').click(); assert.equal(await page.locator('#inspect-count').isVisible(), true, 'collapsed notes remain discoverable');
-        await page.locator('#global').click(); await note(page, '新的批注自动显示'); assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'true');
-        await page.locator('#theme-toggle').click(); await page.screenshot({ path: path.join(output, `two-notes-${width}x${height}-dark.png`) });
+        await ensureGlobal(page); await page.locator('#global').click(); await note(page, '新的批注自动显示'); assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'true');
+        await ensureUtility(page); await page.locator('#help').click(); assert(await page.locator('#help-dialog').isVisible()); await page.keyboard.press('Escape');
+        if (width === 320) {
+          await page.locator('#export').click();
+          const buttons = await page.locator('#export-dialog footer button').evaluateAll(elements => elements.map(element => {
+            const r = element.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return { label: element.textContent, x: r.x, right: r.right, y: r.y, bottom: r.bottom, reachable: hit === element || element.contains(hit) };
+          }));
+          assert(buttons.every(button => button.x >= 0 && button.right <= width && button.reachable), 'all export actions must remain accessible in a 320px panel: ' + JSON.stringify(buttons));
+          await page.screenshot({ path: path.join(output, 'export-320x640.png') }); await page.keyboard.press('Escape');
+        }
+        await ensureUtility(page); await page.locator('#theme-toggle').click(); await page.screenshot({ path: path.join(output, `two-notes-${width}x${height}-dark.png`) });
         results.push({ name: 'content-sized notes, automatic reveal and centered fit ' + width + 'x' + height, ...measured });
       } catch (error) { await page.screenshot({ path: path.join(output, `failure-${width}x${height}.png`) }); throw error; }
       finally { await page.close(); }
@@ -69,7 +95,7 @@ async function main() {
     const image = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
     const many = { schemaVersion: 'edithere-web-project-1', kind: 'image', name: 'many-comments.png', width: 1100, height: 700, document: { id: 'many', timestampUs: null, image, layout: null, notes: Array.from({ length: 30 }, (_, index) => ({ id: 'note-' + index, source: null, text: '第 ' + (index + 1) + ' 条：多行意见保留可读性。\n面板不应无限挤占原图。' })) } };
     await page.locator('#file-input').setInputFiles({ name: 'many.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(many)) }); await page.waitForFunction(() => document.body.dataset.busy !== 'true');
-    await page.locator('#panel-close').click(); await page.locator('#global').click(); await note(page, '最后一条要自动滚动到这里'); await fitSettled(page);
+    await page.locator('#panel-close').click(); await ensureGlobal(page); await page.locator('#global').click(); await note(page, '最后一条要自动滚动到这里'); await fitSettled(page);
     const measured = await metrics(page); assert(measured.panel.height <= 720 * .26 + 1); assert(measured.noteScrollHeight > measured.notes.height); assert(measured.noteScrollTop > 0);
     const last = await page.locator('.note-card').last().boundingBox(); assert(last.y >= measured.notes.y - 1 && last.y + last.height <= measured.notes.bottom + 1, 'new note must be visible inside the scroll area');
     assert.equal((await feedback(page)).objects.flatMap(object => object.annotations).length, 31);
@@ -89,6 +115,13 @@ async function main() {
     await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up();
     const from = await at(page, 365, 240), to = await at(page, 405, 270); await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 6 }); await page.mouse.up();
     const moved = await feedback(page); assert(moved.objects.some(object => object.movements.length)); const movedPixels = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
+    await ensureGlobal(page);
+    assert.equal(await page.locator('.movement-draft p').first().textContent(), '位置变化，点击可写下想法...', 'a movement without text must explain how to add it');
+    const line = page.locator('.movement-line').first(); assert(['#346df1', '#2456c7'].includes(await line.getAttribute('stroke')), 'movement arrows use the blue accent');
+    const outlines = await page.locator('#overlay rect[stroke]').evaluateAll(elements => elements.map(element => element.getAttribute('stroke')));
+    assert(outlines.length && outlines.every(stroke => ['#346df1', '#2456c7'].includes(stroke)), 'selection and annotation frames use the blue accent');
+    await page.locator('.movement-draft [data-edit]').first().click(); assert.equal(await page.locator('#note-title').textContent(), '说明这次位移或缩放'); await page.keyboard.press('Escape');
+    results.push({ name: 'empty movement explains its click action and blue arrows/selection frames remain editable' });
     await page.locator('#explode').click(); assert.deepEqual(await feedback(page), moved); assert.equal(await page.locator('#canvas').evaluate(canvas => canvas.toDataURL()), movedPixels, 'closing must keep prior edits');
     await page.locator('#explode').click(); await page.locator('#explode').click(); assert.deepEqual(await feedback(page), moved, 'repeated toggles must remain non-destructive');
     await page.setViewportSize({ width: 560, height: 560 }); await page.locator('#explode').click();

@@ -35,6 +35,18 @@
   };
   $('help').onclick = () => $('help-dialog').showModal();
   $('fit-icon').onclick = () => $('fit').click();
+  const utilityToggle = $('utility-toggle');
+  utilityToggle.onclick = () => utilityToggle.setAttribute('aria-expanded', String(utilityToggle.getAttribute('aria-expanded') !== 'true'));
+  document.addEventListener('click', event => {
+    if (!event.target.closest('.utility-dock') || event.target.closest('.utility-actions button')) utilityToggle.setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') utilityToggle.setAttribute('aria-expanded', 'false');
+  });
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--tools-height', document.querySelector('.tools').getBoundingClientRect().height + 'px');
+    window.dispatchEvent(new Event('edithere:layout'));
+  }).observe(document.querySelector('.tools'));
   new ResizeObserver(() => {
     document.documentElement.style.setProperty('--video-panel-height', $('video-controls').getBoundingClientRect().height + 'px');
     window.dispatchEvent(new Event('edithere:layout'));

@@ -112,6 +112,13 @@ async function run() {
     console.log(`PASS ${label}`);
   }
   const visible = (id, targetPage = page) => targetPage.locator(id).waitFor({ state: 'visible' });
+  async function ensureGlobal(targetPage = page) {
+    if (await targetPage.locator('body').getAttribute('data-inspector-open') !== 'true') await targetPage.locator('#inspect-toggle').click();
+  }
+  async function ensureUtility(targetPage = page) {
+    const toggle = targetPage.locator('#utility-toggle');
+    if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  }
   async function note(text, targetPage = page) {
     await visible('#note-dialog', targetPage);
     await targetPage.locator('#note-text').fill(text);
@@ -164,12 +171,15 @@ async function run() {
     return data;
   }
   async function downloadBy(selector, name) {
+    if (selector === '#offline') await ensureUtility();
+    if (selector === '#preview') await page.locator('#export').click();
     const pending = page.waitForEvent('download');
     await page.locator(selector).click();
     const download = await pending;
     const filename = path.join(output, name || download.suggestedFilename());
     await download.saveAs(filename);
     assert.equal(await download.failure(), null);
+    if (selector === '#preview') await page.locator('[data-close="export-dialog"]').click();
     return filename;
   }
   async function savedProject(name) {
@@ -215,7 +225,7 @@ async function run() {
     await checkpoint('point, rectangle and global annotations preserve text and coordinates', async () => {
       await page.locator('[data-mode="point"]').click(); await clickAt(60, 65); await note('点批注：修改标题');
       await page.locator('[data-mode="rect"]').click(); await drag(750, 380, 1000, 480); await note('框批注：图表应更清楚');
-      await page.locator('#global').click(); await note('全局意见：保留轻快风格');
+      await ensureGlobal(); await page.locator('#global').click(); await note('全局意见：保留轻快风格');
       assert.equal(await page.locator('#count').textContent(), '3');
       originalFeedback = await jsonPreview();
       validateSchema(originalFeedback, path.join(root, 'schema/feedback-minimal.schema.json'));
@@ -298,7 +308,7 @@ async function run() {
         const base = document.querySelector('#canvas').getContext('2d').getImageData(0, 0, image.width, image.height).data;
         const actual = exported.getContext('2d').getImageData(0, 0, image.width, image.height).data;
         const trajectory = document.querySelector('path[data-movement]');
-        const length = trajectory.getTotalLength(), pixels = new Set();
+        const length = trajectory.getTotalLength(), pixels = new Set(), bluePixels = new Set();
         // Ignore the middle badge: the exported line itself must be painted.
         for (let fraction = .08; fraction <= .92; fraction += .02) {
           if (fraction >= .32 && fraction <= .68) continue;
@@ -308,12 +318,14 @@ async function run() {
             if (x < 0 || y < 0 || x >= image.width || y >= image.height) continue;
             const index = (y * image.width + x) * 4;
             if ([0, 1, 2, 3].some(channel => Math.abs(base[index + channel] - actual[index + channel]) > 30)) pixels.add(index);
+            if (Math.abs(actual[index] - 52) < 28 && Math.abs(actual[index + 1] - 109) < 28 && Math.abs(actual[index + 2] - 241) < 18 && Math.abs(base[index] - actual[index]) > 30) bluePixels.add(index);
           }
         }
-        return { changedPixels: pixels.size, trajectoryLength: length };
+        return { changedPixels: pixels.size, bluePixels: bluePixels.size, trajectoryLength: length };
       }, bytes.toString('base64'));
       assert(painted.trajectoryLength > 5, JSON.stringify(painted));
       assert(painted.changedPixels > 12, 'movement line is absent from the downloaded PNG: ' + JSON.stringify(painted));
+      assert(painted.bluePixels > 6, 'the downloaded movement line must use the blue accent: ' + JSON.stringify(painted));
     });
     await checkpoint('image JSON download and project round trip retain annotations and layout', async () => {
       await page.locator('#export').click();
@@ -469,7 +481,7 @@ async function run() {
       const first = await seek(.5);
       await page.locator('[data-mode="point"]').click(); await clickAt(60, 65); await note('视频第一帧：调整标题');
       assert.equal(await page.locator('#frame-list button').count(), 1);
-      const second = await seek(1.5); await page.locator('#global').click(); await note('视频第二帧：转场慢一点');
+      const second = await seek(1.5); await ensureGlobal(); await page.locator('#global').click(); await note('视频第二帧：转场慢一点');
       assert.equal(await page.locator('#frame-list button').count(), 2);
       videoFeedback = await jsonPreview();
       validateSchema(videoFeedback, path.join(root, 'schema/video-feedback-v1.schema.json'));
@@ -554,7 +566,7 @@ async function run() {
       }, base64);
       await fresh.locator('#workspace').waitFor({ state: 'visible' });
       assert.equal(await fresh.locator('#media-name').textContent(), 'local-dropped-image.png');
-      await fresh.locator('#global').click(); await fresh.locator('#note-text').fill('离线文件里的新批注');
+      await ensureGlobal(fresh); await fresh.locator('#global').click(); await fresh.locator('#note-text').fill('离线文件里的新批注');
       await fresh.locator('#note-form [type="submit"]').click();
       assert.equal(await fresh.locator('#count').textContent(), '1');
       await fresh.screenshot({ path: path.join(output, '05-downloaded-offline.png'), fullPage: true });
@@ -640,7 +652,7 @@ async function run() {
           await inspectLayout('default');
           await workspace.locator('#inspect-toggle').click();
           await inspectLayout('inspector-toggled');
-          await workspace.locator('#global').click(); await workspace.locator('#note-dialog').waitFor({ state: 'visible' });
+          await ensureGlobal(workspace); await workspace.locator('#global').click(); await workspace.locator('#note-dialog').waitFor({ state: 'visible' });
           await workspace.locator('#note-text').fill(`视口 ${width} × ${height}：工具和批注都可操作`);
           await workspace.locator('#note-form [type="submit"]').click();
           await workspace.locator('#note-dialog').waitFor({ state: 'hidden' });
@@ -757,7 +769,7 @@ async function run() {
         await online.setOffline(true); loaded = true;
         await new Promise(resolve => server.close(resolve)); closed = true;
         await web.locator('#demo').click(); await web.locator('#workspace').waitFor({ state: 'visible' });
-        await web.locator('#global').click(); await web.locator('#note-text').fill('网页获取后断网本地处理');
+        await ensureGlobal(web); await web.locator('#global').click(); await web.locator('#note-text').fill('网页获取后断网本地处理');
         await web.locator('#note-form [type="submit"]').click();
         await web.locator('#export').click();
         const feedback = JSON.parse(await web.locator('#json-preview').inputValue());

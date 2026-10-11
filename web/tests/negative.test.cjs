@@ -43,7 +43,11 @@ async function main() {
   async function snapshot() {
     return { feedback: await feedback(), pixels: await page.locator('#canvas').evaluate(canvas => canvas.toDataURL()), name: await page.locator('#media-name').textContent(), undo: await page.locator('#undo').isEnabled(), redo: await page.locator('#redo').isEnabled() };
   }
+  async function ensureGlobal() {
+    if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
+  }
   async function addNote(text) {
+    await ensureGlobal();
     await page.locator('#global').click();
     await page.locator('#note-text').fill(text);
     await page.locator('#note-form [type="submit"]').click();
@@ -136,11 +140,11 @@ async function main() {
       assert.deepEqual(await snapshot(), before);
     });
     await checkpoint('cancel new/edit notes and refuse blank submission without changing feedback', async () => {
-      const before = await snapshot(); await page.locator('#global').click(); await page.locator('#note-text').fill('取消的新意见'); await page.keyboard.press('Escape'); assert.deepEqual(await snapshot(), before);
+      const before = await snapshot(); await ensureGlobal(); await page.locator('#global').click(); await page.locator('#note-text').fill('取消的新意见'); await page.keyboard.press('Escape'); assert.deepEqual(await snapshot(), before);
       await page.locator('[data-edit="global-original"]').click(); await page.locator('#note-text').fill(' '); await page.locator('#note-form [type="submit"]').click(); assert.equal(await page.locator('#note-dialog').isVisible(), true); await page.keyboard.press('Escape'); assert.deepEqual(await snapshot(), before);
     });
     await checkpoint('input shortcuts type normally and never move components or switch tools', async () => {
-      const before = await snapshot(); await page.locator('#global').click(); await page.locator('#note-text').fill('bpvcr'); await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Backspace'); assert.equal(await page.locator('[data-mode="smart"]').getAttribute('aria-pressed'), 'true'); await page.keyboard.press('Escape'); assert.deepEqual(await snapshot(), before);
+      const before = await snapshot(); await ensureGlobal(); await page.locator('#global').click(); await page.locator('#note-text').fill('bpvcr'); await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Backspace'); assert.equal(await page.locator('[data-mode="smart"]').getAttribute('aria-pressed'), 'true'); await page.keyboard.press('Escape'); assert.deepEqual(await snapshot(), before);
     });
     await checkpoint('escape during a component drag restores exact pixels and feedback', async () => {
       await page.locator('[data-mode="select"]').click(); const start = await coords(115, 47); await page.mouse.click(start.x, start.y); const before = await snapshot();
