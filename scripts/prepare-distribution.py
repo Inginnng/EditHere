@@ -264,6 +264,7 @@ node web/install-skill.cjs
 预览：`node web/preview.cjs`，再打开 http://127.0.0.1:7330/EditHere.html。
 发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400`。
 Agent 使用返回的 URL 传图，通过同一 sessionId 的 poll/wait 读取用户明确提交的反馈。
+默认提交后回到对话说“继续”，不创建定时任务；仅本次明确选择且满足 Skill 的能力条件时定时跟进。用户关闭或取消时清理关联临时任务，调度不能保证完全无痕或立即唤醒。
 截图和后续唤醒依赖宿主提供的能力；不能从连接器自身推断已支持自动截图或后台唤醒。
 
 服务和私有会话数据在运行后写入 web/tests/output；含图片与访问令牌，不要再次整目录压缩分发。
