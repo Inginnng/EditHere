@@ -1,0 +1,4 @@
+interface:
+  display_name: "EditHere 网页批注"
+  short_description: "在 Agent 右侧打开截图批注，用户完成后自动读回同一会话反馈"
+  default_prompt: "用 $edithere-web 帮我批注游戏主页，点击反馈后直接把结果返回当前对话。"

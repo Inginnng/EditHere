@@ -21,15 +21,16 @@ function health() {
     request.on('error', () => resolve(null));
   });
 }
-function verify(state) {
+function verify(state, requireBridge = false) {
   if (state.service !== 'edithere-web-preview' || path.resolve(state.file || '') !== html) throw new Error('Port 7330 is serving another project. Stop that service before starting this preview.');
   const hash = crypto.createHash('sha256').update(fs.readFileSync(html)).digest('hex');
   if (state.sha256 !== hash) throw new Error('The preview response does not match the current EditHere.html.');
+  if (requireBridge && (state.apiVersion !== 1 || state.agentBridge !== true)) throw new Error('The existing preview (PID ' + state.pid + ') predates the Agent bridge. Stop that verified EditHere preview process and run node web/preview.cjs again.');
 }
-async function main() {
+async function ensurePreview({requireBridge = false} = {}) {
   if (!fs.existsSync(html)) throw new Error('EditHere.html is missing. Run node web/build.cjs first.');
   const existing = await health();
-  if (existing) { verify(existing); console.log('EditHere preview is ready (PID ' + existing.pid + '): ' + previewUrl); return; }
+  if (existing) { verify(existing, requireBridge); return existing; }
   const logs = path.join(__dirname, 'tests/output/preview');
   fs.mkdirSync(logs, {recursive:true});
   const out = fs.openSync(path.join(logs, 'server.log'), 'a');
@@ -41,10 +42,14 @@ async function main() {
   child.unref();
   for (let attempt = 0; attempt < 12; attempt++) {
     const state = await health();
-    if (state) { verify(state); fs.writeFileSync(path.join(logs, 'server.pid'), String(state.pid)); console.log('EditHere preview is ready (PID ' + state.pid + '): ' + previewUrl); return; }
+    if (state) { verify(state, requireBridge); fs.writeFileSync(path.join(logs, 'server.pid'), String(state.pid)); return state; }
     if (failure || child.exitCode !== null) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   throw failure || new Error('Preview did not start. Check ' + path.join(logs, 'server-error.log') + '; another service may occupy port 7330.');
 }
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module) ensurePreview().then(state => {
+  if (process.argv.includes('--json')) console.log(JSON.stringify({...state, url:previewUrl}));
+  else console.log('EditHere preview is ready (PID ' + state.pid + '): ' + previewUrl);
+}).catch(error => { console.error(error.message); process.exitCode = 1; });
+module.exports = {ensurePreview, health, verify, previewUrl};

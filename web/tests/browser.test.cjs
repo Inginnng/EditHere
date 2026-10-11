@@ -189,6 +189,7 @@ async function run() {
   }
   async function geometry() {
     if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
+    if (await page.locator('#geometry').isHidden()) await page.locator('#geometry-toggle').click();
     if (!await page.locator('#geometry-details').evaluate(details => details.open)) await page.locator('#geometry-details summary').click();
     return Promise.all(['gx', 'gy', 'gw', 'gh'].map(id => page.locator('#' + id).inputValue())).then(v => v.map(Number));
   }
@@ -245,7 +246,7 @@ async function run() {
     await checkpoint('big bang manually cuts and drags a component', async () => {
       await page.locator('#explode').click(); await visible('[data-mode="cut"]');
       await page.locator('[data-mode="cut"]').click(); await drag(245, 170, 490, 320);
-      await visible('#geometry');
+      assert(await page.locator('#geometry').isHidden(), 'selection must leave the layout popup collapsed');
       assert.deepEqual(await geometry(), [245, 170, 245, 150]);
       await drag(365, 260, 405, 300);
       assert.deepEqual(await geometry(), [285, 210, 245, 150]);
@@ -253,6 +254,7 @@ async function run() {
       assert(draggedFeedback.objects.some(o => o.movements.length), 'drag must export movement objects');
     });
     await checkpoint('component resize, undo and redo restore exact feedback', async () => {
+      await geometry();
       await page.locator('#lock-ratio').uncheck();
       await page.locator('#gw').fill('220'); await page.locator('#gh').fill('135');
       await page.locator('#apply-geometry').click();
@@ -394,7 +396,7 @@ async function run() {
         await editor.locator('[data-mode="select"]').click();
         await clickAt(640, 240, editor);
         if (await editor.locator('body').getAttribute('data-inspector-open') !== 'true') await editor.locator('#inspect-toggle').click();
-        await editor.locator('#geometry-details summary').click();
+        await editor.locator('#geometry-toggle').click();
         await editor.locator('#lock-ratio').uncheck();
         await drag(350, 240, 390, 270, editor);
         let changed = await readFeedback(editor);
@@ -439,6 +441,7 @@ async function run() {
         const objectFor = (feedback, x) => feedback.objects.find(object => object.source.x1 === x && object.source.y1 === 170);
         assert.deepEqual(objectFor(translated, 245).movements, [{ to: { x1: 280, y1: 200, x2: 525, y2: 350 } }]);
         assert.deepEqual(objectFor(translated, 520).movements, [{ to: { x1: 555, y1: 200, x2: 800, y2: 350 } }]);
+        if (await editor.locator('#geometry').isHidden()) await editor.locator('#geometry-toggle').click();
         if (!await editor.locator('#geometry-details').evaluate(details => details.open)) await editor.locator('#geometry-details summary').click();
         await editor.locator('#lock-ratio').uncheck();
         if (await editor.locator('body').getAttribute('data-inspector-open') !== 'true') await editor.locator('#inspect-toggle').click();

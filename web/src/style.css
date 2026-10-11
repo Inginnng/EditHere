@@ -106,11 +106,13 @@ body[data-inspector-open="true"] #inspect-toggle { color:var(--blue);background:
 .panel-actions .icon { width:15px;height:15px; }
 .inspect-count { position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;display:grid;place-items:center;background:var(--blue);color:var(--bg);font:9px var(--mono);border:2px solid var(--panel); }
 #inspect-toggle { position:relative; }
-.geometry { margin:0 8px 7px;background:var(--input);padding:6px 9px;border-radius:8px;flex:0 1 auto;min-height:0;overflow:auto; }
-.geometry:not(:has(details[open])) { flex-shrink:0; }
+.geometry { position:fixed;z-index:20;margin:0;width:min(280px,calc(100vw - 20px));max-height:calc(100dvh - 20px);padding:9px 11px;overflow:auto; }
 .geometry-head { display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px; }
 .geometry-head strong { font-size:11px;font-weight:550; }
-.geometry-head .quiet { font-size:10px;padding:3px 0;color:var(--blue); }
+.geometry-head .quiet { font-size:10px;padding:3px 0;color:var(--blue);margin-left:auto; }
+.geometry-head .icon-button { width:24px;height:24px;color:var(--muted); }
+.geometry-head .icon { width:14px;height:14px; }
+#geometry-toggle[aria-expanded="true"] { color:var(--blue);background:var(--pale); }
 .geometry summary { cursor:pointer;font-size:10px;color:var(--muted);padding:4px 0; }
 .geometry-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:5px; }
 .geometry-grid label { display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--line);padding:4px;border-radius:6px;font-size:9px;color:var(--muted); }
@@ -320,7 +322,7 @@ body:has(#workspace[hidden]) .view-controls { display:none; }
   .sidebar { right:10px;width:calc(100% - 20px);max-height:26dvh; }
   .tools button { min-width:30px;height:38px;padding:4px; }
   .tools .history-tools button { min-width:24px; }
-  .geometry { padding:5px 8px; }
+  .geometry { padding:8px 10px; }
   body:has(#video-controls:not([hidden])) .sidebar { max-height:min(26dvh,calc(100dvh - var(--video-panel-height,88px) - var(--tools-height,50px) - 150px)); }
 }
 @media (max-width:370px) {
@@ -340,7 +342,6 @@ body:has(#workspace[hidden]) .view-controls { display:none; }
   .tools button { min-width:28px; }
   .video-controls { bottom:calc(var(--tools-height,42px) + 22px); }
   body:has(#video-controls:not([hidden])) .sidebar { top:68px;bottom:auto;max-height:calc(100dvh - 124px); }
-  .sidebar .geometry { flex:0 1 auto;min-height:0;overflow:auto; }
 }
 @media (min-width:650px) and (max-width:780px) and (max-height:430px) {
   .utility-dock { top:auto;bottom:10px;left:12px;padding:3px; }
