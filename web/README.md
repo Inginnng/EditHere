@@ -8,6 +8,8 @@
 
 ## Agent 技能与自动返回
 
+首次安装可直接把 [AI 安装指南](AI-SETUP.md) 和实际的 `web-agent` ZIP 下载地址或本地文件交给 Agent；指南不依赖预先安装 Skill。当前生成的本地包尚不代表已有公开下载入口。
+
 `skills/edithere-web/` 是可安装的 Agent 技能。需要 Node.js ≥ 18，将 Agent Web 包解压到可写且准备长期保留的目录，再运行 `node web/install-skill.cjs`（包内若以本目录为根，则运行 `node install-skill.cjs`）。安装器默认写入 `$CODEX_HOME/skills/edithere-web` 或 `~/.codex/skills/edithere-web`，可用 `--destination <技能目录绝对路径>` 指定其他宿主的技能目录。安装器检查网页与服务文件，并把当前 CLI、Node.js 的绝对路径写入技能的 `references/local-installation.md`；目标已存在就拒绝，不覆盖已有技能，也不修改桌面 `edithere` 技能。保留 CLI 同目录的网页与服务文件，当前服务会在此目录的 `tests/output/` 中生成私有会话和日志。仓库技能保留相对入口，不包含开发者本机路径。网页技能适用于侧栏批注，用户明确指定桌面程序时使用桌面入口。
 
 安装后可以说“帮我用 EditHere 批注游戏主页”，或显式使用 `$edithere-web`。用户给出图片时直接使用；要求批注实际运行页面时，Agent 使用宿主允许的浏览器或窗口截图能力，取得并视检本轮真实截图，再载入右侧会话页面。截图依赖宿主工具，网页连接器本身不包含系统截图实现；不能把目录旧图或固定测试渲染当成当前运行界面。用户点击顶部“反馈”（完成并返回 AI），结果写入本次唯一 JSON 输出，无需手动复制 JSON。

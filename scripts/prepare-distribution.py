@@ -19,6 +19,7 @@ VERSION = re.compile(r"\d+\.\d+\.\d+")
 SKIP = {"AppDir", "licenses", "node_modules", ".git", "tests", "validation", "plugins", "qml"}
 LEGAL = ("LICENSE", "NOTICE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "TRADEMARK-POLICY.md", "packaging/THIRD-PARTY-NOTICES.md")
 WEB_RUNTIME = ("EditHere.html", "agent.cjs", "agent-session.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js")
+WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
 PACKAGE_FILES = {
     "web-skill": tuple("web/skills/edithere-web/" + name for name in (
         "SKILL.md", "agents/openai.yaml", "references/capture.md", "references/follow-up.md")),
@@ -221,7 +222,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
         raise ValueError("Current native packages missing: " + ", ".join(missing))
     # Build before writing output, so a build failure leaves no misleading catalog.
     subprocess.run([node, str(root / "web/build.cjs")], cwd=root, check=True, stdout=subprocess.PIPE, text=True)
-    for name in WEB_RUNTIME:
+    for name in (*WEB_RUNTIME, *WEB_GUIDES):
         if not (root / "web" / name).is_file():
             raise ValueError(f"Web runtime file missing: {name}")
     commit, dirty = revision(root)
@@ -243,12 +244,14 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
                        "README.md": "# EditHere Web\n\n双击 EditHere.html，或部署到静态网站。无需 Node.js。图片、视频和反馈在浏览器内处理。\n\n此包不含 Agent 自动返回连接器；需要右侧批注和反馈返回时使用同目录的 web-agent 包。\n\n这是按当前源码生成的本地预览包，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n"})
     record(offline, "web", web_version, "assembled-local-preview")
     agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
+                     **{name: root / "web" / name for name in WEB_GUIDES},
                      **archive_entries(root, "web-skill")}
     agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
     agent_entries["README.md"] = """# EditHere Web Agent
 
 Windows、macOS、Linux 使用同一份包。需要 Node.js 18 或更新版本。
 解压到当前用户可写且长期保留的目录，不能直接在 ZIP 中运行。
+首次安装：把本包与 AI-SETUP.md 交给 Agent；无需预先安装 Skill。该指南同时说明下载校验、依赖检查、已有安装处理和健康检查。
 
 安装网页版技能：
 ```text
@@ -259,7 +262,7 @@ node web/install-skill.cjs
 安装时生成本机路径记录；更换解压目录后需重新配置。不会改写桌面技能。
 
 预览：`node web/preview.cjs`，再打开 http://127.0.0.1:7330/EditHere.html。
-发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径>`。
+发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400`。
 Agent 使用返回的 URL 传图，通过同一 sessionId 的 poll/wait 读取用户明确提交的反馈。
 截图和后续唤醒依赖宿主提供的能力；不能从连接器自身推断已支持自动截图或后台唤醒。
 
