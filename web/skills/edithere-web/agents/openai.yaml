@@ -1,4 +1,4 @@
 interface:
   display_name: "EditHere 网页批注"
-  short_description: "截取当前页面并在右侧批注，通过宿主定时跟进静默读取提交反馈"
-  default_prompt: "用 $edithere-web 截取当前游戏页面并打开批注，提交后定时跟进反馈，等待期间不要催促。"
+  short_description: "截取当前页面并在右侧批注，提交后回到对话继续，关闭时清理跟进任务"
+  default_prompt: "用 $edithere-web 截取当前游戏页面并打开批注，提交反馈后我会回到对话说‘继续’。"
