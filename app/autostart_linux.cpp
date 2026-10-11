@@ -21,8 +21,6 @@ QString quotedExec(QString value) {
     value.replace('`', "\\`");
     value.replace('$', "\\$");
     value.replace('%', "%%");
-    // Desktop-entry string escaping is applied after Exec argument escaping.
-    value.replace('\\', "\\\\");
     return '"' + value + '"';
 }
 }
