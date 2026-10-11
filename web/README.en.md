@@ -4,6 +4,8 @@
 
 Open **EditHere.html** directly in a browser, or serve this single file on a static website. After the page loads, file reading, annotation, layout changes and exports run locally in the browser. There is no backend, CDN, account or external runtime dependency. The page's Content Security Policy blocks network connections.
 
+For an Agent browser panel, run `node web/preview.cjs` from the repository root (requires an installed Node.js), then open `http://127.0.0.1:7330/EditHere.html`. The launcher reuses this project's service or starts it in an independent background process and checks the served HTML. Run it again to restore a stopped service. A refused connection means the local service is not listening; refreshing the page does not start it. The preview binds only to localhost and does not upload media.
+
 ## Use
 
 1. Drop an image or video, choose a file, or paste an image. Edit one source at a time.
