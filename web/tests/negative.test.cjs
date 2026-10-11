@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const L = require('../src/layout.js');
+const { readExportJson } = require('./export-test-utils.cjs');
 const root = path.resolve(__dirname, '../..');
 const output = path.join(__dirname, 'output/negative');
 const first = values => values.filter(Boolean).find(value => fs.existsSync(value));
@@ -35,7 +36,7 @@ async function main() {
   }
   async function feedback() {
     await page.locator('#export').click();
-    const value = JSON.parse(await page.locator('#json-preview').inputValue());
+    const value = await readExportJson(page);
     await page.locator('[data-close="export-dialog"]').first().click();
     delete value.exportedAt;
     return value;
@@ -111,12 +112,12 @@ async function main() {
     invalidVideo('video dimensions disagree with project', value => value.video.width = 201);
     invalidVideo('duplicate video frame IDs', value => value.frames.push(clone(value.frames[0])));
     invalidVideo('duplicate video timestamps with distinct IDs', value => value.frames.push({ ...clone(value.frames[0]), id: 'other-id' }));
-    invalidVideo('video frame beyond duration', value => value.frames[0].timestampUs = 1000001);
+    invalidVideo('video frame beyond final millisecond', value => value.frames[0].timestampUs = 1001000);
     invalidVideo('feedback missing duration', value => delete value.video.durationMs, true);
     invalidVideo('feedback blank source', value => value.video.source = '', true);
     invalidVideo('feedback duplicate frame IDs', value => value.frames.push(clone(value.frames[0])), true);
     invalidVideo('feedback duplicate frame timestamps', value => value.frames.push({ ...clone(value.frames[0]), id: 'other-id' }), true);
-    invalidVideo('feedback frame beyond duration', value => { value.frames[0].timestampUs = 1000001; value.frames[0].timestampMs = 1000; }, true);
+    invalidVideo('feedback frame beyond final millisecond', value => { value.frames[0].timestampUs = 1001000; value.frames[0].timestampMs = 1001; }, true);
     invalidVideo('feedback fractional duration', value => value.video.durationMs = 1000.5, true);
     invalidVideo('feedback oversized frame ID', value => value.frames[0].id = 'a'.repeat(257), true);
     for (const [name, value] of invalid) {

@@ -35,6 +35,15 @@
   };
   $('help').onclick = () => $('help-dialog').showModal();
   $('fit-icon').onclick = () => $('fit').click();
+  function fitHeader() {
+    const header = document.querySelector('.header');
+    const needed = [...header.children].reduce((width, element) => width + element.getBoundingClientRect().width, 0) + 20;
+    document.body.dataset.headerWrap = String(!$('workspace').hidden && needed > header.clientWidth);
+    window.dispatchEvent(new Event('edithere:layout'));
+  }
+  const headerObserver = new ResizeObserver(fitHeader);
+  for (const element of document.querySelectorAll('.header,.header>*')) headerObserver.observe(element);
+  new MutationObserver(fitHeader).observe($('workspace'), { attributes:true, attributeFilter:['hidden'] });
   const utilityToggle = $('utility-toggle');
   utilityToggle.onclick = () => utilityToggle.setAttribute('aria-expanded', String(utilityToggle.getAttribute('aria-expanded') !== 'true'));
   document.addEventListener('click', event => {

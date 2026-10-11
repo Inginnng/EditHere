@@ -15,11 +15,15 @@ Open **EditHere.html** directly in a browser, or serve this single file on a sta
 
 The page can download its own standalone offline HTML. Save a project before closing: this version does not automatically persist files, upload media, or store projects in browser storage.
 
+A movement immediately creates a real note with optional text, in creation order among other notes. Editing or clearing its text preserves its number; project reload preserves its identity and order. Reset removes an empty movement note and retains one with text, following desktop REG-110.
+
+Feedback follows desktop `exportFeedback`: actual trajectories establish objects first, movement text joins the matching original source, and ordinary comments use current result coordinates. Empty movements export `annotations: []`. A detached child does not shrink its parent's tracked frame; adjusting an existing movement preserves trajectory order. The preview folds image bytes and shows one image object per line; copy and download retain the full compact JSON. Sidebar note order and exported object grouping follow their respective desktop rules.
+
 ## Free canvas workspace
 
 Pan by dragging the empty workspace, using the hand tool (H), or holding Space / the middle mouse button. Ctrl / Command + the wheel zooms around the pointer. Fit avoids floating controls and the inspector; 1:1 shows original pixels. The workspace can pan freely, while component geometry stays within the original image for feedback compatibility.
 
-Wide windows use a content-sized floating inspector on the right. Narrow, square and portrait windows use compact bottom cards with a centered image above them. Saving a note automatically reveals it; multiple comments scroll within about a quarter of the window height, above the video timeline. The top-right badge retains the comment count when collapsed. Coordinates remain in comment tooltips and numeric controls expand on demand. Short landscape windows use compact tools and a narrow side inspector. Zoom controls sit between the top islands, wrapping onto a second row in narrow windows. Editing tools sit near the bottom edge, with the inspector positioned above their measured height. The comment icon in the inspector header adds a global note. Find theme switching and shortcuts at the bottom left, or in the top-left More tools menu in narrow windows. Hiding markers does not remove comments or alter exported feedback.
+Wide windows use a content-sized floating inspector on the right. Narrow, square and portrait windows use compact bottom cards with a centered image above them. Saving a note automatically reveals it; multiple comments scroll within about a quarter of the window height, above the video timeline. The top-right badge retains the comment count when collapsed. Coordinates remain in comment tooltips and numeric controls expand on demand. Short landscape windows use compact tools and a narrow side inspector. Zoom controls sit between the top islands, wrapping onto a second row in narrow windows. Editing tools sit near the bottom edge, with the inspector positioned above their measured height. The comment icon in the inspector header adds a global note. Find theme switching and shortcuts at the bottom left, or in the bottom-left More tools menu in narrow windows. Hiding markers does not remove comments or alter exported feedback.
 
 The existing `assets/icons/edithere.svg` and `assets/brand/edithere-lockup*.svg` files are embedded byte for byte at build time and retain their original aspect ratios. Existing light/dark variants cover both themes; very narrow windows use the original symbol. The demo canvas also uses the original lockup.
 
@@ -39,17 +43,21 @@ Sources live in `src/`. Detection reuses the repository's `origin/web` implement
 
 ```text
 node web/build.cjs
-node --test web/tests/layout.test.cjs web/tests/movement.test.cjs
+node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs
 node web/tests/browser.test.cjs
 node web/tests/visual.test.cjs
 node web/tests/negative.test.cjs
 node web/tests/panel.test.cjs
+node web/tests/latest-parity.test.cjs
+node web/tests/native-video-boundaries.test.cjs
 ```
 
 `tests/browser.test.cjs` uses Playwright Core. Set `EDITHERE_PLAYWRIGHT_MODULE`, `EDITHERE_BROWSER_PATH` and `EDITHERE_TEST_VIDEO` to existing installations and a local video fixture. Ignored test artifacts live in `tests/output/`. Rebuild after changing source files.
 
 `visual.test.cjs` checks both themes at six window sizes, original brand bytes and proportions, text contrast and comment wrapping, and saves screenshots. `negative.test.cjs` exercises corrupt files, invalid coordinates, inconsistent movements and video metadata in an offline browser. It verifies unchanged pixels, comments and undo history after rejection, plus canceled replacements/drags, blank input and shortcuts during an import.
 
-`panel.test.cjs` focuses on eight square and portrait windows: short-note height, centered and usable image size, automatic reveal, counts and scrolling, numeric editing, desktop wave animation, non-destructive repeated toggles, and reduced-motion support.
+`panel.test.cjs` focuses on nine square and portrait windows: short-note height, centered and usable image size, automatic reveal, counts and scrolling, numeric editing, desktop wave animation, non-destructive repeated toggles, and reduced-motion support.
+
+`latest-parity.test.cjs` checks movement slots, creation order, text editing and undo, empty-note project reload, reset, and complete exported data against existing desktop tests. `native-video-boundaries.test.cjs` covers native empty-video feedback, source relinking, and microsecond timestamps within the last millisecond. JSON assertions read actual downloads, with readable previews tested separately.
 
 The repository license applies to this implementation.
