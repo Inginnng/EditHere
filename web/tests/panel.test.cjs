@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { readExportJson } = require('./export-test-utils.cjs');
 const root = path.resolve(__dirname, '../..');
 const output = path.join(__dirname, 'output/panel');
 const first = values => values.filter(Boolean).find(value => fs.existsSync(value));
@@ -30,7 +31,7 @@ async function main() {
     if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
   }
   async function feedback(page) {
-    await page.locator('#export').click(); const data = JSON.parse(await page.locator('#json-preview').inputValue()); await page.locator('[data-close="export-dialog"]').first().click(); return data;
+    await page.locator('#export').click(); const data = await readExportJson(page); await page.locator('[data-close="export-dialog"]').first().click(); return data;
   }
   async function at(page, x, y) {
     return page.locator('#stage').evaluate((stage, point) => { const r = stage.getBoundingClientRect(); return { x: r.x + point.x * r.width / 1100, y: r.y + point.y * r.height / 700 }; }, { x, y });
@@ -38,14 +39,14 @@ async function main() {
   async function metrics(page) {
     return page.evaluate(() => {
       const rect = element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
-      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), topIslands: ['.brand', '.view-controls', '.header-actions'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
+      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), header: rect(document.querySelector('.header')), headerWrap: document.body.dataset.headerWrap, topIslands: ['.brand', '.view-controls', '.header-actions'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), zoomButtons: ['#zoom-out', '#fit', '#zoom-in'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), utility: rect(document.querySelector('.utility-dock')), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
     });
   }
   async function fitSettled(page) {
     await page.locator('#fit').click(); await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
   try {
-    for (const [width, height] of [[814, 979], [560, 560], [480, 640], [420, 720], [390, 844], [320, 640], [720, 720], [1000, 1000]]) {
+    for (const [width, height] of [[814, 979], [613, 653], [560, 560], [480, 640], [420, 720], [390, 844], [320, 640], [720, 720], [1000, 1000]]) {
       const page = await context.newPage(); await page.setViewportSize({ width, height });
       try {
         await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href); await page.locator('#demo').click(); await page.locator('#workspace').waitFor({ state: 'visible' });
@@ -70,6 +71,25 @@ async function main() {
         for (let i = 0; i < measured.topIslands.length; i++) for (let j = i + 1; j < measured.topIslands.length; j++) {
           const a = measured.topIslands[i], b = measured.topIslands[j];
           assert(Math.min(a.right, b.right) - Math.max(a.x, b.x) <= 1 || Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) <= 1, 'top controls must not overlap: ' + JSON.stringify(measured.topIslands));
+        }
+        const neededHeaderWidth = measured.topIslands.reduce((sum, island) => sum + island.width, 0) + 20;
+        if (neededHeaderWidth <= measured.header.width) {
+          const brand = measured.topIslands.find(island => island.selector === '.brand');
+          assert.equal(measured.headerWrap, 'false', 'a header that fits must not unnecessarily put zoom on a second row');
+          assert(Math.abs(measured.view.y + measured.view.height / 2 - brand.y - brand.height / 2) <= 1, 'brand and zoom must share the first row when all controls fit: ' + JSON.stringify(measured));
+        }
+        for (let i = 0; i < measured.zoomButtons.length - 1; i++) {
+          const gap = measured.zoomButtons[i + 1].x - measured.zoomButtons[i].right;
+          assert(gap >= 0 && gap <= 6, 'minus, zoom percentage and plus must have compact edge spacing: ' + JSON.stringify(measured.zoomButtons));
+        }
+        if (width <= 649) {
+          assert(await page.locator('#utility-toggle').isVisible(), 'narrow panels need a visible More action');
+          assert(measured.utility.x >= 0 && measured.utility.x <= 16 && height - measured.utility.bottom >= 0 && height - measured.utility.bottom <= 16 && measured.utility.y > height * .75, 'More belongs at the lower left: ' + JSON.stringify(measured.utility));
+          await ensureUtility(page);
+          const popup = await page.locator('#utility-actions').boundingBox();
+          assert(popup && popup.y + popup.height <= measured.utility.y - 4 && popup.x >= 0 && popup.x + popup.width <= width, 'More actions must open upward inside the narrow viewport: ' + JSON.stringify({ popup, utility: measured.utility }));
+          if (width === 613 || width === 560) await page.screenshot({ path: path.join(output, `utility-upward-${width}x${height}.png`) });
+          await page.locator('#utility-toggle').click();
         }
         assert.equal(await page.locator('.panel-eyebrow, .sidebar-footer, .note-card small').count(), 0, 'no repeated inspector labels, coordinate footer or per-note coordinate rows');
         await page.screenshot({ path: path.join(output, `single-note-${width}x${height}.png`) });
@@ -116,11 +136,12 @@ async function main() {
     const from = await at(page, 365, 240), to = await at(page, 405, 270); await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 6 }); await page.mouse.up();
     const moved = await feedback(page); assert(moved.objects.some(object => object.movements.length)); const movedPixels = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
     await ensureGlobal(page);
-    assert.equal(await page.locator('.movement-draft p').first().textContent(), '位置变化，点击可写下想法...', 'a movement without text must explain how to add it');
+    assert.equal(await page.locator('.movement-empty p').first().textContent(), '位置变化，点击可写下想法...', 'a movement without text must explain how to add it');
+    assert.equal(await page.locator('.movement-empty .note-number').first().textContent(), '1', 'an empty movement is a numbered real annotation');
     const line = page.locator('.movement-line').first(); assert(['#346df1', '#2456c7'].includes(await line.getAttribute('stroke')), 'movement arrows use the blue accent');
     const outlines = await page.locator('#overlay rect[stroke]').evaluateAll(elements => elements.map(element => element.getAttribute('stroke')));
     assert(outlines.length && outlines.every(stroke => ['#346df1', '#2456c7'].includes(stroke)), 'selection and annotation frames use the blue accent');
-    await page.locator('.movement-draft [data-edit]').first().click(); assert.equal(await page.locator('#note-title').textContent(), '说明这次位移或缩放'); await page.keyboard.press('Escape');
+    await page.locator('.movement-empty [data-edit]').first().click(); assert.equal(await page.locator('#note-text').inputValue(), ''); await page.keyboard.press('Escape');
     results.push({ name: 'empty movement explains its click action and blue arrows/selection frames remain editable' });
     await page.locator('#explode').click(); assert.deepEqual(await feedback(page), moved); assert.equal(await page.locator('#canvas').evaluate(canvas => canvas.toDataURL()), movedPixels, 'closing must keep prior edits');
     await page.locator('#explode').click(); await page.locator('#explode').click(); assert.deepEqual(await feedback(page), moved, 'repeated toggles must remain non-destructive');

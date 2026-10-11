@@ -10,6 +10,7 @@
   const EPSILON = 1e-7;
   const MAX_PIECES = 4096;
   const MAX_GROUPS = 512;
+  const MAX_MOVEMENTS = 8192;
   let serial = 0;
   const copy = r => ({ x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2 });
   const width = r => r.x2 - r.x1;
@@ -131,15 +132,15 @@
       require(next.length <= MAX_PIECES, '区域过于复杂，请减少手动切分');
     }
     const groups = state.groups.map(group => ({
-      id: group.id,
-      label: group.label,
+      ...group,
+      ...(group.originalBounds ? { originalBounds: copy(group.originalBounds) } : {}),
       pieces: group.pieces.flatMap(id => replacements.get(id) || [id])
     }));
     return { pieces: next, groups, selected };
   }
   function create(w, h, candidates) {
     require(Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0 && w <= 1000000 && h <= 1000000 && w * h <= 100000000, '图片尺寸不正确');
-    const state = { width: w, height: h, pieces: [], groups: [] };
+    const state = { width: w, height: h, pieces: [], groups: [], movements: [] };
     const canvas = full(state);
     state.pieces.push({ id: identifier(state, 'piece'), source: copy(canvas), to: copy(canvas) });
     const sorted = (Array.isArray(candidates) ? candidates : []).slice().sort((a, b) => {
@@ -177,7 +178,9 @@
     const result = cut(state, region);
     if (!result.selected.length) return null;
     const id = identifier(state, 'group');
-    result.groups.push({ id, label: '手动区域 ' + (state.groups.length + 1), pieces: result.selected });
+    const members = new Set(result.selected);
+    const source = result.pieces.filter(piece => members.has(piece.id)).reduce((r, piece) => unite(r, piece.source), null);
+    result.groups.push({ id, label: '手动区域 ' + (state.groups.length + 1), originalBounds: source, pieces: result.selected });
     state.pieces = result.pieces;
     state.groups = result.groups;
     return id;
@@ -189,6 +192,23 @@
     let result = null;
     for (const piece of state.pieces) if (ids.has(piece.id)) result = unite(result, piece.to);
     return result;
+  }
+  function originalBounds(state, groupId) {
+    const group = typeof groupId === 'string' ? state.groups.find(g => g.id === groupId) : groupId;
+    if (!group) return null;
+    if (group.originalBounds) return copy(group.originalBounds);
+    const ids = new Set(group.pieces);
+    return state.pieces.filter(piece => ids.has(piece.id)).reduce((r, piece) => unite(r, piece.source), null);
+  }
+  function trackedMovements(state) {
+    if (state.movements !== undefined) return state.movements;
+    // Old projects only retain rendered pixel changes. Recover a group link
+    // where its complete original and current frames identify it exactly.
+    return movements(state).map(change => {
+      const source = change.source, destination = change.movements[change.movements.length - 1].to;
+      const group = state.groups.find(item => same(originalBounds(state, item), source) && same(bounds(state, item.id), destination));
+      return { groupId: group ? group.id : null, source, destination };
+    });
   }
   function constrain(r, state) {
     const w = Math.min(width(r), state.width), h = Math.min(height(r), state.height);
@@ -211,7 +231,23 @@
         foreground.push({ id: piece.id, source: copy(piece.source), to });
       }
     }
+    const groups = state.groups.map(item => ({ ...item, originalBounds: originalBounds(state, item), pieces: item.pieces.slice() }));
+    let tracked = false;
+    const trajectories = trackedMovements(state).map(movement => {
+      const owner = movement.groupId && state.groups.find(item => item.id === movement.groupId);
+      const included = owner ? owner.pieces.every(id => selected.has(id))
+        : state.pieces.every(piece => !intersect(piece.source, movement.source) || selected.has(piece.id));
+      tracked = tracked || movement.groupId === groupId;
+      return { ...movement, source: copy(movement.source), destination: included
+        ? constrain(mapRect(movement.destination, old, actual), state) : copy(movement.destination) };
+    });
+    if (!tracked) {
+      require(trajectories.length < MAX_MOVEMENTS, '布局轨迹数量超出限制');
+      trajectories.push({ groupId, source: originalBounds(state, group), destination: copy(actual) });
+    }
     state.pieces = background.concat(foreground);
+    state.groups = groups;
+    state.movements = trajectories;
     // A moved child becomes independent of strict parents. Nested children of
     // the selected group and partially overlapping groups retain their refs.
     for (const parent of state.groups) {
@@ -372,13 +408,28 @@
     for (const group of state.groups) {
       require(typeof group.id === 'string' && group.id.length > 0 && !groupIds.has(group.id) && typeof group.label === 'string' && group.label.length <= 1000 && Array.isArray(group.pieces) && group.pieces.length > 0 && group.pieces.length <= MAX_PIECES, '布局区域格式不正确');
       groupIds.add(group.id);
+      if (group.originalBounds !== undefined && group.originalBounds !== null) {
+        require(fits(readRect(group.originalBounds, false), w, h), '布局原始区域不正确');
+      }
       const members = new Set();
       for (const id of group.pieces) {
         require(ids.has(id) && !members.has(id), '布局区域引用无效');
         members.add(id);
       }
     }
+    if (state.movements !== undefined) {
+      require(Array.isArray(state.movements) && state.movements.length <= MAX_MOVEMENTS, '布局轨迹数量超出限制');
+      const tracked = new Set();
+      for (const movement of state.movements) {
+        require(movement && fits(readRect(movement.source, false), w, h) && fits(readRect(movement.destination, false), w, h), '布局轨迹坐标不正确');
+        if (movement.groupId !== null && movement.groupId !== undefined) {
+          require(typeof movement.groupId === 'string' && groupIds.has(movement.groupId) && !tracked.has(movement.groupId), '布局轨迹区域引用无效或重复');
+          tracked.add(movement.groupId);
+          require(same(movement.source, originalBounds(state, movement.groupId)), '布局轨迹原始区域不正确');
+        }
+      }
+    }
     return true;
   }
-  return { create, addRegion, bounds, transform, paint, movements, hit, validate, remapNotes };
+  return { create, addRegion, bounds, originalBounds, trackedMovements, transform, paint, movements, hit, validate, remapNotes };
 });

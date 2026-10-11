@@ -1,7 +1,7 @@
 /* EditHere Web. All media and feedback stay inside the current browser. */
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout;
+  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback;
   const clone = value => JSON.parse(JSON.stringify(value));
   const uid = () => 'id-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
   const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,7 +17,7 @@
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
   let panX = 0, panY = 0, pan = null, spaceDown = false, spaceUsed = false, annotationsVisible = true, hoveredMovement = null;
-  let suppressPinClickUntil = 0, componentWheel = null;
+  let suppressPinClickUntil = 0, componentWheel = null, exportData = null;
   let seeking = false, presentedTime = null, frameCallback = null, linkSignature = null, detectionId = 0;
   const histories = new WeakMap(), detections = new WeakMap(), pendingDetections = new Map();
   let worker;
@@ -44,7 +44,7 @@
   function history(d=doc) {if(!histories.has(d))histories.set(d,{undo:[],redo:[]});return histories.get(d);}
   const snapshot = d => ({notes:clone(d.notes),layout:clone(d.layout)});
   function remember(before=snapshot(doc)) {const h=history();h.undo.push(before);if(h.undo.length>40)h.undo.shift();h.redo=[];componentWheel=null;}
-  function hasContent(d) {return d.notes.length>0||!!d.layout&&L.movements(d.layout).length>0;}
+  function hasContent(d) {return d.notes.length>0||rawMovements(d).some(m=>!equalRect(m.source,m.destination));}
   function commit() {if(session.kind==='video'&&hasContent(doc)&&!session.frames.includes(doc)){if(session.frames.length>=1000)throw new Error('最多支持 1000 个批注画面');session.frames.push(doc);session.frames.sort((a,b)=>a.timestampUs-b.timestampUs);}dirty=true;refresh();}
   function viewportFit() {
     if(!session)return;
@@ -120,7 +120,7 @@
   const coversRect = (a,b) => a.x1<=b.x1+1e-7&&a.y1<=b.y1+1e-7&&a.x2>=b.x2-1e-7&&a.y2>=b.y2-1e-7;
   const areaOf = r => (r.x2-r.x1)*(r.y2-r.y1);
   const unionRect = (a,b) => a?{x1:Math.min(a.x1,b.x1),y1:Math.min(a.y1,b.y1),x2:Math.max(a.x2,b.x2),y2:Math.max(a.y2,b.y2)}:clone(b);
-  function rawMovements(d=doc) {return !d?.layout?[]:d.layout.movements||L.movements(d.layout).map(m=>({groupId:null,source:m.source,destination:m.movements.at(-1).to}));}
+  function rawMovements(d=doc) {return d?.layout?L.trackedMovements(d.layout):[];}
   function movementMarkers(d=doc) {
     return rawMovements(d).filter(m=>!equalRect(m.source,m.destination)).map((m,i)=>{
       const exact=d.notes.find(n=>n.movementSource&&equalRect(n.movementSource,m.source));
@@ -145,7 +145,8 @@
   function markerAnchor(m,scale=zoom) {const {start,end}=markerLine(m),dx=(end.x-start.x)*scale,dy=(end.y-start.y)*scale,length=Math.hypot(dx,dy);let x=(start.x+end.x)/2*scale,y=(start.y+end.y)/2*scale;if(length>0&&length<40){const shift=20,lengthSafe=Math.max(length,.001);x-=dy/lengthSafe*shift;y+=dx/lengthSafe*shift;}return {x:clamp(x,14,Math.max(14,session.width*scale-14)),y:clamp(y,14,Math.max(14,session.height*scale-14))};}
   function hitMovement(p) {if(!annotationsVisible||!doc?.layout)return null;const markers=movementMarkers();for(let i=markers.length-1;i>=0;i--){const m=markers[i],{start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=dx*dx+dy*dy,t=length?clamp(((p.x-start.x)*dx+(p.y-start.y)*dy)/length,0,1):0;if(Math.hypot(p.x-start.x-dx*t,p.y-start.y-dy*t)*zoom<8)return m;}return null;}
   function componentNoteBounds(n,d=doc) {return !d?.layout?null:(n.groupIds||[n.groupId]).filter(Boolean).map(id=>L.bounds(d.layout,id)).filter(Boolean).reduce((r,b)=>unionRect(r,b),null);}
-  function noteEntries() {if(!doc)return [];const out=doc.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource)||n.source}:{})}));for(const m of movementMarkers())if(!m.noteId)out.push({...m,text:'位置变化，点击可写下想法...',kind:'布局调整',movement:true,draft:true});return out;}
+  const movementPlaceholder = '位置变化，点击可写下想法...';
+  function noteEntries() {if(!doc)return [];const out=doc.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource)||n.source}:{})}));for(const m of movementMarkers())if(!m.noteId)out.push({...m,text:'',kind:'布局调整',movement:true,draft:true});return out;}
   function noteRect(n) {return n.movementSource?movementDestination(n.movementSource)||n.source:componentNoteBounds(n)||n.source;}
   function render() {
     if(!session)return;
@@ -167,56 +168,61 @@
     const adjusted=mode==='select'&&doc?.notes.find(n=>n.id===selectedNote&&!n.movementSource),adjustedBounds=adjusted&&noteRect(adjusted);
     if(adjustedBounds&&adjustedBounds.x2>adjustedBounds.x1){svg+=visualRect(adjustedBounds,'#346df1','#346df108');for(const [handle,p] of Object.entries(resizeHandles(adjustedBounds)))svg+=`<rect data-note-handle="${handle}" x="${p.x-4/zoom}" y="${p.y-4/zoom}" width="${8/zoom}" height="${8/zoom}" fill="white" stroke="#346df1" vector-effect="non-scaling-stroke" style="pointer-events:all;cursor:${handle}-resize"/>`;}
     $('overlay').innerHTML=svg;
-    $('pins').innerHTML=annotationsVisible?entries.map((n,i)=>{if(n.draft)return '';const r=noteRect(n),marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker):r?{x:r.x1*zoom,y:r.y1*zoom}:null;return at?`<button class="pin ${n.id===selectedNote?'selected':''} ${marker?'movement-pin':''}" data-note="${esc(n.id)}" style="left:${at.x}px;top:${at.y}px" aria-label="批注 ${i+1}：${esc(n.text)}" title="${esc(n.text)}">${i+1}</button>`:'';}).join(''):'';
+    $('pins').innerHTML=annotationsVisible?entries.map((n,i)=>{if(n.draft)return '';const r=noteRect(n),marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker):r?{x:r.x1*zoom,y:r.y1*zoom}:null,label=n.text||(n.movement?movementPlaceholder:'');return at?`<button class="pin ${n.id===selectedNote?'selected':''} ${marker?'movement-pin':''}" data-note="${esc(n.id)}" style="left:${at.x}px;top:${at.y}px" aria-label="批注 ${i+1}：${esc(label)}" title="${esc(label)}">${i+1}</button>`:'';}).join(''):'';
   }
   function renderNotes() {
     const entries=noteEntries();$('count').textContent=entries.length;globalThis.EditHereChrome?.refreshCount(entries.length);
-    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.draft?'movement-draft':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${n.draft?'↗':i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注">×</button>`}</div></div><p>${esc(n.text)}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
+    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注">×</button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
   function renderGeometry() {const b=selectionBounds();$('geometry').hidden=!b;if(b){$('gx').value=Math.round(b.x1);$('gy').value=Math.round(b.y1);$('gw').value=Math.round(b.x2-b.x1);$('gh').value=Math.round(b.y2-b.y1);const title=document.querySelector('.geometry-head strong');if(title)title.textContent=selectionIds().length>1?selectionIds().length+' 个组件':'组件布局';}}
-  function renderFrames() {if(session?.kind!=='video')return;$('frame-list').innerHTML=session.frames.filter(hasContent).map(f=>`<button data-frame="${esc(f.id)}" class="${f===doc?'active':''}" title="${f.notes.length} 条意见">${timeText(f.timestampUs/1000000)} · ${f.notes.length+L.movements(f.layout||{pieces:[]}).length}</button>`).join('');}
+  function renderFrames() {if(session?.kind!=='video')return;$('frame-list').innerHTML=session.frames.filter(hasContent).map(f=>{const count=f.notes.length+movementMarkers(f).filter(m=>!m.noteId).length;return `<button data-frame="${esc(f.id)}" class="${f===doc?'active':''}" title="${count} 条意见">${timeText(f.timestampUs/1000000)} · ${count}</button>`;}).join('');}
   function refresh() {if(!doc?.layout)explodeEnabled=false;if(!selected)selectedGroups.clear();render();renderNotes();renderGeometry();renderFrames();const h=doc?history():null;$('undo').disabled=!h?.undo.length;$('redo').disabled=!h?.redo.length;$('explode').classList.toggle('active',explodeEnabled);$('explode').setAttribute('aria-pressed',String(explodeEnabled));$('explode').title=explodeEnabled?'收起组件模式（保留修改）':'大爆炸 · 拆成可移动的组件';document.querySelector('[data-mode="cut"]').hidden=!explodeEnabled;if($('reset-component'))$('reset-component').disabled=!selected||!doc?.layout;if(session?.kind==='video')updateTime();}
-  function editNote(source=null,id=null,groupId=null,movementSource=null,groupIds=null) {if(!session)return;try{ensureDoc();}catch(error){notify(error.message);return;}const existing=id?doc.notes.find(n=>n.id===id):null;if(id&&!existing)return;draftNote=existing?clone(existing):{id:uid(),source:clone(source),text:'',...(groupId?{groupId}:{}),...(groupIds?{groupIds:clone(groupIds)}:{}),...(movementSource?{movementSource:clone(movementSource)}:{})};$('note-location').textContent=(session.kind==='video'?timeText(doc.timestampUs/1000000)+' · ':'')+(draftNote.groupIds?draftNote.groupIds.length+' 个组件 · ':'')+(draftNote.movementSource?locationText(draftNote.movementSource)+' → ':'')+locationText(noteRect(draftNote));$('note-title').textContent=existing?'编辑修改意见':movementSource?'说明这次位移或缩放':'写下修改意见';$('note-text').value=draftNote.text;$('note-text').setCustomValidity('');$('note-dialog').showModal();$('note-text').focus();}
+  function editNote(source=null,id=null,groupId=null,movementSource=null,groupIds=null) {if(!session)return;try{ensureDoc();}catch(error){notify(error.message);return;}const existing=id?doc.notes.find(n=>n.id===id):null;if(id&&!existing)return;draftNote=existing?clone(existing):{id:uid(),source:clone(source),text:'',...(groupId?{groupId}:{}),...(groupIds?{groupIds:clone(groupIds)}:{}),...(movementSource?{movementSource:clone(movementSource)}:{})};$('note-location').textContent=(session.kind==='video'?timeText(doc.timestampUs/1000000)+' · ':'')+(draftNote.groupIds?draftNote.groupIds.length+' 个组件 · ':'')+(draftNote.movementSource?locationText(draftNote.movementSource)+' → ':'')+locationText(noteRect(draftNote));$('note-title').textContent=existing?'编辑修改意见':movementSource?'说明这次位移或缩放':'写下修改意见';$('note-text').value=draftNote.text;$('note-text').required=!draftNote.movementSource;$('note-text').setCustomValidity('');$('note-dialog').showModal();$('note-text').focus();}
   function editMovement(marker) {if(!marker)return;if(marker.noteId){selectedNote=marker.noteId;refresh();editNote(null,marker.noteId);if(marker.groupId&&equalRect(draftNote.movementSource,marker.source))draftNote.groupId=marker.groupId;}else{editNote(marker.destination,null,marker.groupId,marker.source);if(marker.sources)draftNote.movementSources=clone(marker.sources);}}
   function editEntry(id) {const marker=movementMarkers().find(m=>m.id===id);if(marker)editMovement(marker);else editNote(null,id);}
-  $('note-form').onsubmit=event=>{event.preventDefault();const text=$('note-text').value.trim();if(!text){$('note-text').setCustomValidity('请写下修改意见');$('note-text').reportValidity();return;}if(!doc.notes.some(n=>n.id===draftNote.id)&&doc.notes.length>=1000){notify('每个画面最多支持 1000 条批注');return;}remember();draftNote.text=text;const index=doc.notes.findIndex(n=>n.id===draftNote.id);if(index>=0)doc.notes[index]=draftNote;else doc.notes.push(draftNote);selectedNote=draftNote.id;$('note-dialog').close();commit();globalThis.EditHereChrome?.revealNote(selectedNote);};
+  $('note-form').onsubmit=event=>{event.preventDefault();const text=$('note-text').value.trim();if(!text&&!draftNote.movementSource){$('note-text').setCustomValidity('请写下修改意见');$('note-text').reportValidity();return;}if(!doc.notes.some(n=>n.id===draftNote.id)&&doc.notes.length>=1000){notify('每个画面最多支持 1000 条批注');return;}remember();draftNote.text=text;const index=doc.notes.findIndex(n=>n.id===draftNote.id);if(index>=0)doc.notes[index]=draftNote;else doc.notes.push(draftNote);selectedNote=draftNote.id;$('note-dialog').close();commit();globalThis.EditHereChrome?.revealNote(selectedNote);};
   $('note-text').oninput=()=>$('note-text').setCustomValidity('');
   $('note-dialog').addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();$('note-form').requestSubmit();}});
   document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>$(button.dataset.close).close());
-  function sourceBounds(layout,groupId) {const group=layout.groups.find(g=>g.id===groupId),members=new Set(group?.pieces||[]);return layout.pieces.filter(p=>members.has(p.id)).reduce((r,p)=>unionRect(r,p.source),null);}
+  function sourceBounds(layout,groupId) {return L.originalBounds(layout,groupId);}
   function selectionIds(layout=doc?.layout) {if(!layout||!selected)return [];const ids=selectedGroups.size>1&&selectedGroups.has(selected)?[...selectedGroups]:[selected];return ids.filter(id=>layout.groups.some(g=>g.id===id));}
   function selectionBounds(layout=doc?.layout) {return selectionIds(layout).map(id=>L.bounds(layout,id)).filter(Boolean).reduce((r,b)=>unionRect(r,b),null);}
   function chooseGroup(id,toggle=false) {if(toggle){if(selected&&!selectedGroups.size)selectedGroups.add(selected);if(id){if(selectedGroups.has(id))selectedGroups.delete(id);else selectedGroups.add(id);}selected=[...selectedGroups].at(-1)||null;}else{selectedGroups.clear();if(id)selectedGroups.add(id);selected=id;}selectedNote=null;componentWheel=null;}
-  function synchronizeMovements(layout,previous,selectedGroupId) {
-    const selectedIds=Array.isArray(selectedGroupId)?selectedGroupId:[selectedGroupId],records=previous.filter(m=>!selectedIds.includes(m.groupId));
-    for(const id of selectedIds){const selectedSource=sourceBounds(layout,id);if(selectedSource){for(let i=records.length-1;i>=0;i--)if(!records[i].groupId&&equalRect(records[i].source,selectedSource))records.splice(i,1);records.push({groupId:id,source:selectedSource});}}
-    // A separately moved child leaves its strict parents. Derive every tracked
-    // arrow from the members that remain, rather than retaining its old frame.
-    return records.map(m=>{
-      const group=layout.groups.find(g=>g.id===m.groupId),members=group&&new Set(group.pieces);
-      const pieces=layout.pieces.filter(p=>members?members.has(p.id):coversRect(m.source,p.source));
-      if(!pieces.length)return null;
-      return {groupId:group?.id||null,source:pieces.reduce((r,p)=>unionRect(r,p.source),null),destination:pieces.reduce((r,p)=>unionRect(r,p.to),null),sources:pieces.map(p=>clone(p.source))};
-    }).filter(Boolean);
-  }
   function remapMovementNotes(before,previous) {
     doc.notes=L.remapNotes(before.notes,before.layout,doc.layout);
     for(const n of doc.notes){if(n.groupIds){const bounds=componentNoteBounds(n);if(bounds)n.source=clone(bounds);}if(n.movementSource){
       const old=previous.find(m=>m.groupId&&equalRect(m.source,n.movementSource)),groupId=n.groupId||old?.groupId;
       const movement=groupId&&doc.layout.movements.find(m=>m.groupId===groupId);
-      if(movement){n.groupId=groupId;n.movementSource=clone(movement.source);n.movementSources=clone(movement.sources);n.source=clone(movement.destination);}
+      if(movement){n.groupId=groupId;n.movementSource=clone(movement.source);n.source=clone(movement.destination);}
       else{const to=movementDestination(n.movementSource);if(to)n.source=clone(to);}
     }}
   }
+  function synchronizeMovementNotes(pending=[]) {
+    // Desktop REG-110: a move occupies its place in notes immediately, even
+    // without text. Returning home removes only the empty movement note.
+    const active=rawMovements().filter(m=>!equalRect(m.source,m.destination));
+    doc.notes=doc.notes.filter(n=>!n.movementSource||n.text.trim()||active.some(m=>equalRect(m.source,n.movementSource)));
+    for(const marker of movementMarkers())if(!marker.noteId){
+      if(doc.notes.length>=1000)continue;
+      // Pointer previews rebuild from the drag snapshot. Reuse the first
+      // preview's identity so release, editing and undo keep the same note.
+      const old=pending.find(n=>n.movementSource&&equalRect(n.movementSource,marker.source));
+      doc.notes.push({id:old?.id||uid(),source:clone(marker.destination),text:'',movementSource:clone(marker.source),...(marker.groupId?{groupId:marker.groupId}:{}),...(marker.sources?{movementSources:clone(marker.sources)}:{})});
+    }
+  }
   function applyTransform(destination,before=snapshot(doc)) {
     const ids=selectionIds(before.layout),original=selectionBounds(before.layout);if(!original)return;
-    doc.layout=clone(before.layout);let transformId=ids[0];
-    if(ids.length>1){const pieces=[...new Set(doc.layout.groups.filter(g=>ids.includes(g.id)).flatMap(g=>g.pieces))];transformId='ui-selection-'+uid();doc.layout.groups.push({id:transformId,label:'临时多选',pieces});}
-    const actual=L.transform(doc.layout,transformId,destination);if(ids.length>1)doc.layout.groups=doc.layout.groups.filter(g=>g.id!==transformId);if(!actual)return;
+    const pending=doc.notes;
+    doc.layout=clone(before.layout);
+    if(ids.length===1)L.transform(doc.layout,ids[0],destination);
+    else {
+      const width=clamp(destination.x2-destination.x1,1,doc.layout.width),height=clamp(destination.y2-destination.y1,1,doc.layout.height),x=clamp(destination.x1,0,doc.layout.width-width),y=clamp(destination.y1,0,doc.layout.height-height),sx=width/(original.x2-original.x1),sy=height/(original.y2-original.y1);
+      for(const id of ids){const b=L.bounds(before.layout,id);L.transform(doc.layout,id,{x1:x+(b.x1-original.x1)*sx,y1:y+(b.y1-original.y1)*sy,x2:x+(b.x2-original.x1)*sx,y2:y+(b.y2-original.y1)*sy});}
+    }
     const previous=rawMovements({layout:before.layout});
-    doc.layout.movements=synchronizeMovements(doc.layout,previous,ids);remapMovementNotes(before,previous);
+    remapMovementNotes(before,previous);synchronizeMovementNotes(pending);
   }
   function resetComponent() {
     if(!selected||!doc?.layout)return;
@@ -225,7 +231,9 @@
     // Restore each surviving source slice exactly. Fitting the remaining
     // bounds into the parent's former frame would stretch or move its pixels.
     for(const piece of doc.layout.pieces)if(members.has(piece.id))piece.to=clone(piece.source);
-    doc.layout.movements=synchronizeMovements(doc.layout,previous,ids);remapMovementNotes(before,previous);
+    doc.layout.movements=clone(previous);
+    for(const movement of doc.layout.movements){const group=doc.layout.groups.find(g=>g.id===movement.groupId),included=group?group.pieces.every(id=>members.has(id)):doc.layout.pieces.filter(p=>Math.min(p.source.x2,movement.source.x2)>Math.max(p.source.x1,movement.source.x1)&&Math.min(p.source.y2,movement.source.y2)>Math.max(p.source.y1,movement.source.y1)).every(p=>members.has(p.id));if(included)movement.destination=clone(movement.source);}
+    remapMovementNotes(before,previous);synchronizeMovementNotes();
     if(!same(before,snapshot(doc))){remember(before);commit();}else refresh();
   }
   function cancelDrag() {if(drag?.before){doc.layout=drag.before.layout;doc.notes=drag.before.notes;}drag=null;render();renderGeometry();}
@@ -335,23 +343,16 @@
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;dirty=true;refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
   if($('actual-size'))$('actual-size').onclick=()=>setZoom(1);
-  function exportDoc(d,embed=true) {
-    const groups=new Map(d.layout?d.layout.groups.map(g=>[g.id,new Set(g.pieces)]):[]);
-    // Keep distinct comments tied to their own source regions when adjacent moves merge.
-    const belongs=(n,source)=>(n.movementSources||[n.movementSource]).some(r=>coversRect(r,source));
-    const objects=d.layout?L.movements(d.layout,piece=>d.notes.filter(n=>n.movementSource?belongs(n,piece.source):(n.groupIds||[n.groupId]).some(id=>groups.get(id)?.has(piece.id))).map(n=>n.text)):[];
-    for(const n of d.notes){if(n.groupIds){const emitted=[];for(const id of n.groupIds){const members=groups.get(id),source=d.layout&&L.bounds(d.layout,id);if(!source||!members||d.layout.pieces.some(p=>members.has(p.id)&&!same(p.source,p.to))||emitted.some(r=>equalRect(r,source)))continue;objects.push({source:clone(source),movements:[],annotations:[n.text]});emitted.push(source);}continue;}if(n.movementSource&&objects.some(o=>coversRect(n.movementSource,o.source)&&o.annotations.includes(n.text)))continue;const current=n.movementSource?movementDestination(n.movementSource,d)||n.source:componentNoteBounds(n,d)||n.source;if(n.groupId&&d.layout){const ids=groups.get(n.groupId);if(d.layout.pieces.some(p=>ids?.has(p.id)&&!same(p.source,p.to)))continue;}
-      objects.push({source:clone(current),movements:[],annotations:[n.text]});}
-    return {annotationSpace:'result',objects,...(embed?{image:d.data}:{})};
-  }
-  function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);const frames=session.frames.filter(hasContent).sort((a,b)=>a.timestampUs-b.timestampUs).map(d=>({id:d.id,timestampMs:Math.floor(d.timestampUs/1000),timestampUs:d.timestampUs,imageFile:'frame-'+d.id+'.png',feedback:exportDoc(d,embed)}));return {schemaVersion:'video-feedback-1',tool:'EditHere',exportedAt:new Date().toISOString(),video:clone(session.video),frames,objects:frames.flatMap(f=>f.feedback.objects.map(o=>({...clone(o),timestampMs:f.timestampMs,frameId:f.id})))};}
+  function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
+  function exportDoc(d,embed=true) {return F.exportImage(feedbackDocument(d),embed);}
+  function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);return F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed);}
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
-  function refreshExport() {const data=feedback($('embed').checked);$('json-preview').value=JSON.stringify(data,null,2);$('export-hint').textContent=$('embed').checked?'包含内嵌图片。视频只保存已标注帧，源视频不包含在反馈里。':'不包含图片。请把原图或对应帧截图一起交给 AI。';}
+  function refreshExport() {exportData=feedback($('embed').checked);$('json-preview').value=F.preview(exportData);$('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和下载包含完整图片。':'不包含图片。请把原图或对应帧截图一起交给 AI。';}
   $('export').onclick=()=>{try{refreshExport();$('export-dialog').showModal();}catch(error){notify(error.message);}};$('embed').onchange=refreshExport;
-  $('download-json').onclick=()=>download(baseName()+'-feedback.json',jsonBlob(feedback($('embed').checked)));
-  $('copy-json').onclick=async()=>{try{await navigator.clipboard.writeText($('json-preview').value);$('export-hint').textContent='反馈 JSON 已复制';}catch{$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='请按 Ctrl+C / ⌘C 复制选中的 JSON';}};
+  $('download-json').onclick=()=>download(baseName()+'-feedback.json',new Blob([F.serialize(exportData)],{type:'application/json'}));
+  $('copy-json').onclick=async()=>{const complete=F.serialize(exportData);try{await navigator.clipboard.writeText(complete);$('export-hint').textContent='反馈 JSON 已复制';}catch{$('json-preview').value=complete;$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='请按 Ctrl+C / ⌘C 复制选中的完整 JSON';}};
   function serializedDoc(d) {return {id:d.id,timestampUs:d.timestampUs,image:d.data,notes:clone(d.notes),layout:clone(d.layout)};}
   function project() {return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:session.kind,name:session.name,width:session.width,height:session.height,...(session.kind==='image'?{document:serializedDoc(session.document)}:{video:clone(session.video),signature:clone(session.signature),frames:session.frames.filter(hasContent).map(serializedDoc)})};}
   $('save-project').onclick=()=>{download(baseName()+'.edithere-web.json',jsonBlob(project()));dirty=false;notify(session.kind==='video'?'项目已下载；重开后重新选择源视频即可继续播放':'项目已下载，包含原图、批注和组件布局');};
@@ -369,7 +370,7 @@
       const a=sorted[i],b=sorted[j];if(Math.min(a.y2,b.y2)>Math.max(a.y1,b.y1)+1e-7)throw new Error('位移原始切片重复');
     }
   }
-  function validateNotes(notes,w,h,layout) {if(!Array.isArray(notes)||notes.length>1000)throw new Error('项目批注数量无效');const ids=new Set();for(const n of notes){if(typeof n.id!=='string'||!n.id||ids.has(n.id)||typeof n.text!=='string'||!n.text.trim()||n.text.length>10000)throw new Error('项目批注格式无效');ids.add(n.id);validateRect(n.source,w,h);if(n.groupId&&(!layout||!layout.groups.some(g=>g.id===n.groupId)))throw new Error('项目引用了不存在的组件');if(n.groupIds!==undefined){if(!layout||n.source===null||n.groupId||n.movementSource||!Array.isArray(n.groupIds)||!n.groupIds.length||n.groupIds.length>512||new Set(n.groupIds).size!==n.groupIds.length||n.groupIds.some(id=>typeof id!=='string'||!layout.groups.some(g=>g.id===id)))throw new Error('项目多选组件引用无效');validateRect(n.source,w,h,false);}if(n.movementSource){if(!layout||n.source===null)throw new Error('位移意见缺少布局或目标区域');validateRect(n.movementSource,w,h,false);validateSources(n.movementSources,n.movementSource,w,h);if(n.groupId){if(!equalRect(n.movementSource,sourceBounds(layout,n.groupId))||!equalRect(n.source,L.bounds(layout,n.groupId)))throw new Error('位移意见与组件布局不一致');const members=new Set(layout.groups.find(g=>g.id===n.groupId).pieces);n.movementSources=layout.pieces.filter(p=>members.has(p.id)).map(p=>clone(p.source));}}else if(n.movementSources!==undefined)throw new Error('位移切片缺少原始范围');}}
+  function validateNotes(notes,w,h,layout) {if(!Array.isArray(notes)||notes.length>1000)throw new Error('项目批注数量无效');const ids=new Set();for(const n of notes){if(typeof n.id!=='string'||!n.id||ids.has(n.id)||typeof n.text!=='string'||(!n.text.trim()&&!n.movementSource)||n.text.length>10000)throw new Error('项目批注格式无效');ids.add(n.id);validateRect(n.source,w,h);if(n.groupId&&(!layout||!layout.groups.some(g=>g.id===n.groupId)))throw new Error('项目引用了不存在的组件');if(n.groupIds!==undefined){if(!layout||n.source===null||n.groupId||n.movementSource||!Array.isArray(n.groupIds)||!n.groupIds.length||n.groupIds.length>512||new Set(n.groupIds).size!==n.groupIds.length||n.groupIds.some(id=>typeof id!=='string'||!layout.groups.some(g=>g.id===id)))throw new Error('项目多选组件引用无效');validateRect(n.source,w,h,false);}if(n.movementSource){if(!layout||n.source===null)throw new Error('位移意见缺少布局或目标区域');validateRect(n.movementSource,w,h,false);validateSources(n.movementSources,n.movementSource,w,h);if(n.groupId){if(!equalRect(n.movementSource,sourceBounds(layout,n.groupId))||!equalRect(n.source,rawMovements({layout}).find(m=>m.groupId===n.groupId)?.destination||L.bounds(layout,n.groupId)))throw new Error('位移意见与组件布局不一致');}}else if(n.movementSources!==undefined)throw new Error('位移切片缺少原始范围');}}
   function validateLayoutMovements(layout,w,h) {
     if(layout.movements===undefined)return;
     if(!Array.isArray(layout.movements)||layout.movements.length>8192)throw new Error('项目位移数量无效');
@@ -380,10 +381,7 @@
       if(m.groupId!==null&&(typeof m.groupId!=='string'||ids.has(m.groupId)||!layout.groups.some(g=>g.id===m.groupId)))throw new Error('项目位移引用无效');
       if(m.groupId){
         ids.add(m.groupId);
-        if(!equalRect(m.source,sourceBounds(layout,m.groupId))||!equalRect(m.destination,L.bounds(layout,m.groupId)))throw new Error('项目位移与组件布局不一致');
-        // Group membership is the source of truth, including pieces split by a later manual cut.
-        const members=new Set(layout.groups.find(g=>g.id===m.groupId).pieces);
-        m.sources=layout.pieces.filter(p=>members.has(p.id)).map(p=>clone(p.source));
+        if(!equalRect(m.source,sourceBounds(layout,m.groupId))||!coversRect(m.destination,L.bounds(layout,m.groupId)))throw new Error('项目位移与组件布局不一致');
       }
     }
   }
@@ -398,8 +396,10 @@
     const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}for(const text of obj.annotations)d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{})});}if(d.layout)d.layout.movements=importedMovements;
     validateNotes(d.notes,w,h,d.layout);return {doc:d,width:w,height:h};
   }
-  function validateVideoMetadata(value,w=value?.width,h=value?.height) {
+  function validateVideoMetadata(value,w=value?.width,h=value?.height,empty=false) {
     if(!value||typeof value.source!=='string'||!value.source.trim()||value.source.length>32768||!Number.isSafeInteger(value.durationMs)||value.durationMs<0||value.durationMs>9007199254740)throw new Error('视频信息或时长无效');
+    // Native empty video feedback has no frame dimensions until its source is linked.
+    if(empty&&value.width===0&&value.height===0)return;
     sizeOK(value.width,value.height);
     if(value.width!==w||value.height!==h)throw new Error('视频尺寸与项目不匹配');
   }
@@ -407,7 +407,7 @@
     if(!Array.isArray(frames)||frames.length>1000)throw new Error('视频帧数量无效');
     const ids=new Set(),times=new Set();
     for(const f of frames){
-      if(!f||typeof f.id!=='string'||!f.id||f.id.length>256||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(f.id)||ids.has(f.id)||!Number.isSafeInteger(f.timestampUs)||f.timestampUs<0||f.timestampUs>durationMs*1000||times.has(f.timestampUs))throw new Error('视频帧编号或时间无效');
+      if(!f||typeof f.id!=='string'||!f.id||f.id.length>256||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(f.id)||ids.has(f.id)||!Number.isSafeInteger(f.timestampUs)||f.timestampUs<0||durationMs>0&&Math.floor(f.timestampUs/1000)>durationMs||times.has(f.timestampUs))throw new Error('视频帧编号或时间无效');
       ids.add(f.id);times.add(f.timestampUs);
     }
   }
@@ -422,14 +422,14 @@
       if(data.kind==='image'){
         nextDoc=await restoredDoc(data.document,data.width,data.height,false);next.document=nextDoc;
       }else{
-        validateVideoMetadata(data.video,data.width,data.height);validateFrameMetadata(data.frames,data.video.durationMs);
+        validateVideoMetadata(data.video,data.width,data.height,Array.isArray(data.frames)&&data.frames.length===0);validateFrameMetadata(data.frames,data.video.durationMs);
         next.video=clone(data.video);next.signature=data.signature||null;
         next.frames=await Promise.all(data.frames.map(f=>restoredDoc(f,data.width,data.height,true)));
         nextDoc=next.frames[0]||null;
       }
     }else if(data.schemaVersion==='video-feedback-1'){
-      validateVideoMetadata(data.video);validateFrameMetadata(data.frames,data.video.durationMs);
-      next={kind:'video',name:data.video.source,width:data.video.width,height:data.video.height,video:clone(data.video),signature:null,frames:[]};
+      validateVideoMetadata(data.video,data.video?.width,data.video?.height,Array.isArray(data.frames)&&data.frames.length===0);validateFrameMetadata(data.frames,data.video.durationMs);
+      next={kind:'video',name:data.video.source,width:data.video.width||640,height:data.video.height||360,video:clone(data.video),signature:null,frames:[]};
       for(const f of data.frames){
         if(f.timestampMs!==Math.floor(f.timestampUs/1000))throw new Error('视频反馈时间无效');
         const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id);next.frames.push(item.doc);
@@ -442,7 +442,18 @@
   }
   async function openFile(file) {if(!file||!replaceOK())return;if(/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json')await importJSON(file);else if(file.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|ogv)$/i.test(file.name))await openVideo(file);else if(file.type.startsWith('image/'))await openImage(file);else throw new Error('请选择浏览器支持的图片、视频或 JSON 项目');}
   $('open').onclick=$('drop-card').onclick=()=>$('file-input').click();$('file-input').onchange=()=>{const file=$('file-input').files[0];$('file-input').value='';run(()=>openFile(file));};
-  $('relink').onclick=()=>$('video-input').click();$('video-input').onchange=()=>{const file=$('video-input').files[0];$('video-input').value='';if(!file||session?.kind!=='video')return;run(async()=>{const prepared=await prepareVideo(file);const signature=session.signature;if(prepared.width!==session.width||prepared.height!==session.height||Math.abs(prepared.durationMs-session.video.durationMs)>250){URL.revokeObjectURL(prepared.url);throw new Error('视频尺寸或时长与项目不匹配，请选择原视频');}if(signature&&(signature.name!==file.name||signature.size!==file.size||signature.lastModified!==file.lastModified)&&!confirm('这个文件与原视频记录不同。请确认内容相同，否则旧时间点可能对应其他画面。仍要关联吗？')){URL.revokeObjectURL(prepared.url);return;}const previous=doc;releaseVideo();await attachVideo(file,prepared);if(previous){doc=previous;refresh();}else liveFrame();updateTime();notify('源视频已关联，可以继续播放和批注');});};
+  $('relink').onclick=()=>$('video-input').click();$('video-input').onchange=()=>{const file=$('video-input').files[0];$('video-input').value='';if(!file||session?.kind!=='video')return;run(async()=>{
+    const prepared=await prepareVideo(file),signature=session.signature;
+    const emptyFeedback=!session.frames.length&&session.video.width===0&&session.video.height===0;
+    if(!emptyFeedback&&(prepared.width!==session.width||prepared.height!==session.height)||session.video.durationMs>0&&Math.abs(prepared.durationMs-session.video.durationMs)>250){URL.revokeObjectURL(prepared.url);throw new Error('视频尺寸或时长与项目不匹配，请选择原视频');}
+    try{validateFrameMetadata(session.frames,prepared.durationMs);}catch(error){URL.revokeObjectURL(prepared.url);throw error;}
+    if(signature&&(signature.name!==file.name||signature.size!==file.size||signature.lastModified!==file.lastModified)&&!confirm('这个文件与原视频记录不同。请确认内容相同，否则旧时间点可能对应其他画面。仍要关联吗？')){URL.revokeObjectURL(prepared.url);return;}
+    const previous=doc;releaseVideo();await attachVideo(file,prepared);
+    if(emptyFeedback){session.width=prepared.width;session.height=prepared.height;session.video.width=prepared.width;session.video.height=prepared.height;session.signature={name:file.name,size:file.size,lastModified:file.lastModified};}
+    if(!session.video.durationMs)session.video.durationMs=prepared.durationMs;
+    if(emptyFeedback)activate();
+    if(previous){doc=previous;refresh();}else liveFrame();updateTime();notify('源视频已关联，可以继续播放和批注');
+  });};
   let dropDepth=0;document.addEventListener('dragenter',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();dropDepth++;$('drop-overlay').hidden=false;}});document.addEventListener('dragover',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',event=>{event.preventDefault();if(--dropDepth<=0){dropDepth=0;$('drop-overlay').hidden=true;}});document.addEventListener('drop',event=>{event.preventDefault();dropDepth=0;$('drop-overlay').hidden=true;const files=event.dataTransfer.files;if(files.length>1)notify('每次编辑一个素材，已打开第一个文件');if(files[0])run(()=>openFile(files[0]));});
   document.addEventListener('paste',event=>{if(event.target.closest('textarea,input,[contenteditable]'))return;const image=[...event.clipboardData?.items||[]].find(i=>i.type.startsWith('image/'));if(image){event.preventDefault();run(()=>openFile(image.getAsFile()));}});
   $('demo').onclick=()=>run(async()=>{if(!replaceOK())return;const brand=document.querySelector('.brand-lockup-light');await brand.decode();const c=makeCanvas(1100,700),p=c.getContext('2d');p.fillStyle='#f2f5fb';p.fillRect(0,0,1100,700);p.fillStyle='#fff';p.fillRect(0,0,190,700);p.fillRect(225,35,835,90);p.fillStyle='#346df1';p.fillRect(245,170,245,150);p.fillStyle='#36ae95';p.fillRect(520,170,245,150);p.fillStyle='#8a6add';p.fillRect(795,170,245,150);p.fillStyle='#fff';p.fillRect(245,355,795,270);p.fillStyle='#243149';p.font='bold 25px sans-serif';p.drawImage(brand,24,29,142,142*128/722);p.fillText('Overview',245,88);p.font='16px sans-serif';p.fillStyle='#7b879a';for(const [i,t] of ['Dashboard','Projects','Analytics','Settings'].entries())p.fillText(t,30,150+i*55);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Visitors',266,205);p.fillText('Conversions',541,205);p.fillText('Revenue',816,205);p.font='bold 38px sans-serif';p.fillText('24,680',266,265);p.fillText('1,842',541,265);p.fillText('$38,420',816,265);p.fillStyle='#346df1';p.fillRect(910,60,110,38);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Export',940,85);p.fillStyle='#243149';p.font='bold 18px sans-serif';p.fillText('Traffic over time',270,397);p.strokeStyle='#346df1';p.lineWidth=3;p.beginPath();p.moveTo(275,580);p.bezierCurveTo(420,420,480,630,620,470);p.bezierCurveTo(740,350,850,540,1000,430);p.stroke();const data=c.toDataURL('image/png'),image=await decode(data);releaseVideo();session={kind:'image',name:'示例仪表盘.png',width:1100,height:700,document:makeDoc(image,data)};doc=session.document;activate();detect(doc);});

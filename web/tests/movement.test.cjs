@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const layout = require('../src/layout.js');
+const feedback = require('../src/feedback.js');
 const rect = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -29,7 +30,7 @@ function appHarness() {
   }
   const document = { getElementById: element, querySelector: selector => element(selector.replace(/^#/, '')), querySelectorAll: () => [],
     addEventListener() {}, createElement: tag => element('created-' + tag), documentElement: { outerHTML: '' }, body: element('body') };
-  const sandbox = { document, EditHereLayout: layout, window: { addEventListener() {} }, console,
+  const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, window: { addEventListener() {} }, console,
     ResizeObserver: class { observe() {} }, setTimeout: () => 0, clearTimeout() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
     // Media decoding is outside these model tests. Preserve fixture dimensions
     // while exercising the actual project metadata restore/validation path.
@@ -63,6 +64,11 @@ function appHarness() {
       noteBounds(id) { return noteRect(doc.notes.find(note => note.id === id)); },
       serialized() { return serializedDoc(doc); },
       async restore(value) { const restored = await restoredDoc(value, session.width, session.height, false); doc = restored; session.document = doc; chooseGroup(null); },
+      async importFeedback(value) {
+        const restored = await docFromFeedback(value); doc = restored.doc;
+        session = { kind: 'image', name: 'native-feedback.png', width: restored.width, height: restored.height, document: doc };
+        chooseGroup(null);
+      },
       feedback() { return exportDoc(doc, false); }
     };
   `;
@@ -88,16 +94,29 @@ function groupPieces(value, id) {
   return value.pieces.filter(piece => members.has(piece.id));
 }
 
-test('detaching a returned child narrows the parent arrow and reset restores only the remaining pixels', () => {
+test('native nested parent and child feedback imports and reexports the same original source frames and targets', async () => {
+  const app = appHarness();
+  const objects = [
+    { source: rect(10, 10, 90, 90), movements: [{ to: rect(100, 10, 180, 90) }], annotations: ['整体移到右侧'] },
+    { source: rect(10, 10, 50, 90), movements: [{ to: rect(20, 10, 60, 90) }], annotations: ['左边子组件单独调整'] }
+  ];
+  await app.importFeedback({ annotationSpace: 'result', image: 'data:image/png;base64,Zml4dHVyZQ==', objects });
+  assert.deepEqual(app.feedback(), { annotationSpace: 'result', objects });
+  const state = app.state();
+  assert.deepEqual(state.markers.map(marker => ({ source: marker.source, destination: marker.destination })), objects.map(object => ({ source: object.source, destination: object.movements[0].to })));
+  assert.deepEqual(state.notes.map(note => note.text), ['整体移到右侧', '左边子组件单独调整']);
+  assert.equal(layout.validate(state.layout), true);
+});
+
+test('detaching a returned child preserves the original parent trajectory while reset restores only the remaining pixels', () => {
   const app = appHarness(), { parent, child } = fixture(app);
   app.select(parent); app.transform(rect(100, 10, 180, 90));
   app.select(child); app.transform(rect(10, 10, 50, 90));
   const detached = app.state(), marker = detached.markers.find(item => item.groupId === parent);
   assert.deepEqual(layout.bounds(detached.layout, parent), rect(140, 10, 180, 90));
   assert.deepEqual(layout.bounds(detached.layout, child), rect(10, 10, 50, 90));
-  assert.deepEqual(marker.source, rect(50, 10, 90, 90), 'the arrow source must exclude the detached left child');
-  assert.deepEqual(marker.destination, rect(140, 10, 180, 90));
-  assert.deepEqual(marker.sources, groupPieces(detached.layout, parent).map(piece => piece.source));
+  assert.deepEqual(marker.source, rect(10, 10, 90, 90), 'native trajectories retain their original frames independently from detached pixel pieces');
+  assert.deepEqual(marker.destination, rect(100, 10, 180, 90));
   assert.deepEqual(detached.raw.find(item => item.groupId === parent).destination, marker.destination);
   assert.equal(detached.markers.some(item => item.groupId === child), false, 'a child at its original location has no active movement arrow');
   const childBeforeReset = groupPieces(detached.layout, child);
@@ -111,28 +130,30 @@ test('detaching a returned child narrows the parent arrow and reset restores onl
   assert.equal(layout.validate(restored.layout), true);
 });
 
-test('parent and detached-child arrow notes keep their own source scopes through reset and history', () => {
+test('parent and detached-child arrow notes keep their own source scopes through project reload, reset and history', async () => {
   const app = appHarness(), { parent, child } = fixture(app);
   app.select(parent); app.transform(rect(100, 10, 180, 90)); app.annotate(parent, 'parent right half');
   app.select(child); app.transform(rect(20, 10, 60, 90)); app.annotate(child, 'independent child');
   const detached = app.state(), parentNote = detached.notes.find(note => note.text === 'parent right half');
-  assert.deepEqual(parentNote.movementSource, rect(50, 10, 90, 90));
-  assert.deepEqual(parentNote.movementSources, groupPieces(detached.layout, parent).map(piece => piece.source));
+  assert.deepEqual(parentNote.movementSource, rect(10, 10, 90, 90));
+  assert.deepEqual(parentNote.source, rect(100, 10, 180, 90), 'the parent note stays on its original destination frame when a child detaches');
   const moved = app.feedback().objects;
   assert.deepEqual(moved.find(object => object.annotations.includes('parent right half')), {
-    source: rect(50, 10, 90, 90), movements: [{ to: rect(140, 10, 180, 90) }], annotations: ['parent right half']
+    source: rect(10, 10, 90, 90), movements: [{ to: rect(100, 10, 180, 90) }], annotations: ['parent right half']
   });
   assert.deepEqual(moved.find(object => object.annotations.includes('independent child')), {
     source: rect(10, 10, 50, 90), movements: [{ to: rect(20, 10, 60, 90) }], annotations: ['independent child']
   });
   assert.equal(moved.filter(object => object.annotations.includes('parent right half')).length, 1);
   assert.equal(moved.filter(object => object.annotations.includes('independent child')).length, 1);
+  const savedDetached = app.serialized(); await app.restore(savedDetached);
+  assert.deepEqual(app.feedback().objects, moved, 'project validation must accept retained parent frames after a child detaches');
   const childBeforeReset = groupPieces(detached.layout, child);
   app.select(parent); app.reset();
   const parentRestored = app.state(), feedbackRestored = app.feedback();
   assert.deepEqual(groupPieces(parentRestored.layout, child), childBeforeReset);
   assert.deepEqual(feedbackRestored.objects.find(object => object.annotations.includes('parent right half')), {
-    source: rect(50, 10, 90, 90), movements: [], annotations: ['parent right half']
+    source: rect(10, 10, 90, 90), movements: [], annotations: ['parent right half']
   });
   assert.deepEqual(feedbackRestored.objects.find(object => object.annotations.includes('independent child')), {
     source: rect(10, 10, 50, 90), movements: [{ to: rect(20, 10, 60, 90) }], annotations: ['independent child']
@@ -142,12 +163,28 @@ test('parent and detached-child arrow notes keep their own source scopes through
   app.select(child); app.reset();
   assert.deepEqual(layout.movements(app.state().layout), []);
   assert.deepEqual(app.feedback().objects, [
-    { source: rect(50, 10, 90, 90), movements: [], annotations: ['parent right half'] },
+    { source: rect(10, 10, 90, 90), movements: [], annotations: ['parent right half'] },
     { source: rect(10, 10, 50, 90), movements: [], annotations: ['independent child'] }
   ]);
 });
 
-test('one multi-selection note follows disjoint components, exports onto both movements and restores its actual group references', async () => {
+test('moving A, then B, then A again preserves first-creation trajectory and note order through history', () => {
+  const app = appHarness(), aSource = rect(10, 10, 30, 90), bSource = rect(70, 10, 90, 90);
+  const value = layout.create(200, 100, [{ label: 'A', bounds: aSource }, { label: 'B', bounds: bSource }]);
+  const a = value.groups.find(group => group.label === 'A').id, b = value.groups.find(group => group.label === 'B').id;
+  app.load(value); app.select(a); app.moveSelection(rect(100, 10, 120, 90));
+  app.select(b); app.moveSelection(rect(160, 10, 180, 90));
+  const firstOrder = app.state(), before = app.feedback();
+  app.select(a); app.moveSelection(rect(110, 10, 130, 90));
+  const repeated = app.state(), after = app.feedback();
+  assert.deepEqual(repeated.raw.map(movement => movement.source), [aSource, bSource], 'updating an existing trajectory must not append it behind later movements');
+  assert.deepEqual(after.objects.map(object => object.source), [aSource, bSource]);
+  assert.deepEqual(repeated.notes.map(note => note.id), firstOrder.notes.map(note => note.id));
+  assert.deepEqual(after.objects[0].movements, [{ to: rect(110, 10, 130, 90) }]);
+  app.undo(); assert.deepEqual(app.feedback(), before); app.redo(); assert.deepEqual(app.feedback(), after);
+});
+
+test('one multi-selection note follows disjoint components and exports its result bounds independently from the actual trajectories', async () => {
   const app = appHarness();
   const value = layout.create(200, 100, [
     { label: 'A', bounds: rect(10, 10, 30, 90) },
@@ -162,15 +199,16 @@ test('one multi-selection note follows disjoint components, exports onto both mo
   assert.deepEqual(original.notes[0].source, rect(10, 10, 90, 90));
   app.moveSelection(rect(100, 10, 180, 90));
   const moved = app.state(), movedFeedback = app.feedback();
-  assert.equal(moved.notes.length, 1);
+  assert.equal(moved.notes.length, 3, 'each newly created trajectory gets its own chronological empty movement note');
   assert.deepEqual(moved.notes[0].source, rect(100, 10, 180, 90));
   assert.deepEqual(app.noteBounds(noteId), rect(100, 10, 180, 90));
   assert.deepEqual(moved.notes[0].groupIds, [a, b]);
   assert.equal(moved.layout.groups.length, 2, 'temporary multi-selection geometry must not remain in the document');
   assert.deepEqual(movedFeedback.objects.slice().sort((left, right) => left.source.x1 - right.source.x1), [
-    { source: rect(10, 10, 30, 90), movements: [{ to: rect(100, 10, 120, 90) }], annotations: ['move both components together'] },
-    { source: rect(70, 10, 90, 90), movements: [{ to: rect(160, 10, 180, 90) }], annotations: ['move both components together'] }
-  ], 'the shared comment must apply to each component without attaching to the intervening background');
+    { source: rect(10, 10, 30, 90), movements: [{ to: rect(100, 10, 120, 90) }], annotations: [] },
+    { source: rect(70, 10, 90, 90), movements: [{ to: rect(160, 10, 180, 90) }], annotations: [] },
+    { source: rect(100, 10, 180, 90), movements: [], annotations: ['move both components together'] }
+  ], 'only movementSource links text to a trajectory; an ordinary note uses its current result rectangle');
   app.undo();
   assert.deepEqual(app.state().notes, original.notes);
   assert.deepEqual(app.noteBounds(noteId), rect(10, 10, 90, 90));

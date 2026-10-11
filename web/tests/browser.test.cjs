@@ -11,6 +11,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { pathToFileURL } = require('node:url');
 const layout = require('../src/layout.js');
+const { readExportJson } = require('./export-test-utils.cjs');
 
 const root = path.resolve(__dirname, '../..');
 const bundle = path.join(root, 'web/EditHere.html');
@@ -164,9 +165,9 @@ async function run() {
     await targetPage.mouse.move(at.x, at.y); await targetPage.mouse.down();
     await targetPage.mouse.move(at.x + dx * scale, at.y + dy * scale, { steps: 10 }); await targetPage.mouse.up();
   }
-  async function jsonPreview(targetPage = page) {
+  async function readFeedback(targetPage = page) {
     await targetPage.locator('#export').click();
-    const data = JSON.parse(await targetPage.locator('#json-preview').inputValue());
+    const data = await readExportJson(targetPage);
     await targetPage.locator('[data-close="export-dialog"]').click();
     return data;
   }
@@ -227,7 +228,7 @@ async function run() {
       await page.locator('[data-mode="rect"]').click(); await drag(750, 380, 1000, 480); await note('框批注：图表应更清楚');
       await ensureGlobal(); await page.locator('#global').click(); await note('全局意见：保留轻快风格');
       assert.equal(await page.locator('#count').textContent(), '3');
-      originalFeedback = await jsonPreview();
+      originalFeedback = await readFeedback();
       validateSchema(originalFeedback, path.join(root, 'schema/feedback-minimal.schema.json'));
       assert.equal(originalFeedback.objects.length, 3);
       assert.deepEqual(originalFeedback.objects[0].source, { x1: 60, y1: 65, x2: 60, y2: 65 });
@@ -248,7 +249,7 @@ async function run() {
       assert.deepEqual(await geometry(), [245, 170, 245, 150]);
       await drag(365, 260, 405, 300);
       assert.deepEqual(await geometry(), [285, 210, 245, 150]);
-      draggedFeedback = await jsonPreview();
+      draggedFeedback = await readFeedback();
       assert(draggedFeedback.objects.some(o => o.movements.length), 'drag must export movement objects');
     });
     await checkpoint('component resize, undo and redo restore exact feedback', async () => {
@@ -256,10 +257,10 @@ async function run() {
       await page.locator('#gw').fill('220'); await page.locator('#gh').fill('135');
       await page.locator('#apply-geometry').click();
       assert.deepEqual(await geometry(), [285, 210, 220, 135]);
-      resizedFeedback = await jsonPreview();
+      resizedFeedback = await readFeedback();
       assert.notDeepEqual(resizedFeedback, draggedFeedback);
-      await page.locator('#undo').click(); assert.deepEqual(await jsonPreview(), draggedFeedback);
-      await page.locator('#redo').click(); assert.deepEqual(await jsonPreview(), resizedFeedback);
+      await page.locator('#undo').click(); assert.deepEqual(await readFeedback(), draggedFeedback);
+      await page.locator('#redo').click(); assert.deepEqual(await readFeedback(), resizedFeedback);
       validateSchema(resizedFeedback, path.join(root, 'schema/feedback-minimal.schema.json'));
       await page.screenshot({ path: path.join(output, '02-image-edited.png'), fullPage: true });
     });
@@ -274,7 +275,7 @@ async function run() {
       assert.deepEqual(JSON.parse(await arrow.getAttribute('data-destination')), moved.movements.at(-1).to);
       await clickMovementArrow();
       await note('位移意见：按钮往右下调整，保持文字清晰');
-      const added = await jsonPreview();
+      const added = await readFeedback();
       const sameMovement = data => data.objects.find(object =>
         JSON.stringify(object.source) === JSON.stringify(moved.source)
         && JSON.stringify(object.movements) === JSON.stringify(moved.movements));
@@ -287,14 +288,14 @@ async function run() {
       assert.equal(await page.locator('#note-text').inputValue(), '位移意见：按钮往右下调整，保持文字清晰');
       movementText = '位移意见已修改：保留这个目标位置，加大字重';
       await note(movementText);
-      resizedFeedback = await jsonPreview();
+      resizedFeedback = await readFeedback();
       assert.deepEqual(sameMovement(resizedFeedback).annotations, [movementText]);
-      await page.locator('#undo').click(); assert.deepEqual(await jsonPreview(), added);
-      await page.locator('#redo').click(); assert.deepEqual(await jsonPreview(), resizedFeedback);
+      await page.locator('#undo').click(); assert.deepEqual(await readFeedback(), added);
+      await page.locator('#redo').click(); assert.deepEqual(await readFeedback(), resizedFeedback);
       await page.locator('#undo').click(); await page.locator('#undo').click();
-      assert.deepEqual(await jsonPreview(), original, 'undo must remove the arrow text while retaining the layout change');
+      assert.deepEqual(await readFeedback(), original, 'undo must remove the arrow text while retaining the layout change');
       await page.locator('#redo').click(); await page.locator('#redo').click();
-      assert.deepEqual(await jsonPreview(), resizedFeedback);
+      assert.deepEqual(await readFeedback(), resizedFeedback);
       await page.screenshot({ path: path.join(output, '08-movement-with-text.png'), fullPage: true });
     });
     await checkpoint('annotated PNG includes movement arrows as well as badges', async () => {
@@ -336,7 +337,7 @@ async function run() {
       assert.equal(saved.data.document.notes.length, 4); assert(saved.data.document.layout.pieces.length);
       await page.locator('#file-input').setInputFiles(saved.filename);
       await page.waitForFunction(expected => document.querySelector('#count').textContent === String(expected), resizedFeedback.objects.length);
-      assert.deepEqual(await jsonPreview(), resizedFeedback);
+      assert.deepEqual(await readFeedback(), resizedFeedback);
       assert.match(await page.locator('#notes').textContent(), new RegExp(movementText));
       await clickMovementArrow();
       await visible('#note-dialog');
@@ -346,7 +347,7 @@ async function run() {
       assert.deepEqual(again.data.document, saved.data.document);
     });
     await checkpoint('unbounded pan, cursor-centered zoom, actual size and mark visibility preserve feedback', async () => {
-      const before = await jsonPreview();
+      const before = await readFeedback();
       await page.locator('#fit').click();
       await page.locator('[data-mode="pan"]').click();
       const initial = await page.locator('#stage').boundingBox();
@@ -375,7 +376,7 @@ async function run() {
       assert.match(await page.locator('#notes').textContent(), new RegExp(movementText));
       await page.locator('#toggle-annotations').click();
       assert(await page.locator('path[data-movement]').count() > 0);
-      assert.deepEqual(await jsonPreview(), before, 'view changes must not create or modify feedback objects');
+      assert.deepEqual(await readFeedback(), before, 'view changes must not create or modify feedback objects');
     });
     await checkpoint('selection mode moves and resizes ordinary annotations while preserving text and undo history', async () => {
       const editor = await context.newPage(); editor.on('dialog', dialog => dialog.accept());
@@ -396,21 +397,21 @@ async function run() {
         await editor.locator('#geometry-details summary').click();
         await editor.locator('#lock-ratio').uncheck();
         await drag(350, 240, 390, 270, editor);
-        let changed = await jsonPreview(editor);
+        let changed = await readFeedback(editor);
         assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 490, y2: 330 });
         await editor.locator('[data-note-handle="se"]').waitFor({ state: 'visible' });
         await dragSvgHandle(editor, '[data-note-handle="se"]', 30, 20);
-        changed = await jsonPreview(editor);
+        changed = await readFeedback(editor);
         assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 520, y2: 350 });
         const beforePoint = changed;
         await drag(50, 70, 85, 95, editor);
         assert.equal(await editor.locator('#note-dialog').isVisible(), false, 'dragging a point should adjust its location without opening text editing');
-        changed = await jsonPreview(editor);
+        changed = await readFeedback(editor);
         assert.deepEqual(changed.objects.find(object => object.annotations.includes('point to adjust')).source, { x1: 85, y1: 95, x2: 85, y2: 95 });
         assert.equal(changed.objects.length, 2); assert(changed.objects.every(object => object.movements.length === 0));
         validateSchema(changed, path.join(root, 'schema/feedback-minimal.schema.json'));
-        await editor.locator('#undo').click(); assert.deepEqual(await jsonPreview(editor), beforePoint);
-        await editor.locator('#redo').click(); assert.deepEqual(await jsonPreview(editor), changed);
+        await editor.locator('#undo').click(); assert.deepEqual(await readFeedback(editor), beforePoint);
+        await editor.locator('#redo').click(); assert.deepEqual(await readFeedback(editor), changed);
         await editor.screenshot({ path: path.join(output, '09-annotations-adjusted.png'), fullPage: true });
       } catch (error) {
         await editor.screenshot({ path: path.join(output, '09-annotations-adjustment-failure.png'), fullPage: true }).catch(() => {});
@@ -434,7 +435,7 @@ async function run() {
         await editor.keyboard.down('Control'); await clickAt(640, 240, editor); await editor.keyboard.up('Control');
         assert.equal(Number(await editor.locator('#gw').inputValue()), 520, 'multi-selection geometry must describe the combined bounds');
         await drag(365, 240, 400, 270, editor);
-        const translated = await jsonPreview(editor);
+        const translated = await readFeedback(editor);
         const objectFor = (feedback, x) => feedback.objects.find(object => object.source.x1 === x && object.source.y1 === 170);
         assert.deepEqual(objectFor(translated, 245).movements, [{ to: { x1: 280, y1: 200, x2: 525, y2: 350 } }]);
         assert.deepEqual(objectFor(translated, 520).movements, [{ to: { x1: 555, y1: 200, x2: 800, y2: 350 } }]);
@@ -442,22 +443,22 @@ async function run() {
         await editor.locator('#lock-ratio').uncheck();
         if (await editor.locator('body').getAttribute('data-inspector-open') !== 'true') await editor.locator('#inspect-toggle').click();
         await editor.locator('#gw').fill('572'); await editor.locator('#gh').fill('165'); await editor.locator('#apply-geometry').click();
-        const scaled = await jsonPreview(editor), first = objectFor(scaled, 245).movements[0].to, second = objectFor(scaled, 520).movements[0].to;
+        const scaled = await readFeedback(editor), first = objectFor(scaled, 245).movements[0].to, second = objectFor(scaled, 520).movements[0].to;
         const close = (actual, expected) => assert(Math.abs(actual - expected) < .01, `${actual} != ${expected}`);
         close(first.x1, 280); close(first.y1, 200); close(first.x2, 549.5); close(first.y2, 365);
         close(second.x1, 582.5); close(second.y1, 200); close(second.x2, 852); close(second.y2, 365);
         validateSchema(scaled, path.join(root, 'schema/feedback-minimal.schema.json'));
-        await editor.locator('#undo').click(); assert.deepEqual(await jsonPreview(editor), translated);
-        await editor.locator('#redo').click(); assert.deepEqual(await jsonPreview(editor), scaled);
+        await editor.locator('#undo').click(); assert.deepEqual(await readFeedback(editor), translated);
+        await editor.locator('#redo').click(); assert.deepEqual(await readFeedback(editor), scaled);
         await clickAt(300, 220, editor);
         const beforeView = await editor.locator('#stage').boundingBox(), wheelAt = await coords(300, 220, editor);
         await editor.mouse.move(wheelAt.x, wheelAt.y); await editor.mouse.wheel(0, -100);
-        const wheelScaled = await jsonPreview(editor), resized = objectFor(wheelScaled, 245).movements[0].to;
+        const wheelScaled = await readFeedback(editor), resized = objectFor(wheelScaled, 245).movements[0].to;
         assert(resized.x2 - resized.x1 > first.x2 - first.x1, 'ordinary wheel should scale the selected component');
         close((resized.x2 - resized.x1) / (first.x2 - first.x1), (resized.y2 - resized.y1) / (first.y2 - first.y1));
         assert.deepEqual(objectFor(wheelScaled, 520), objectFor(scaled, 520), 'scaling the first component must leave its former co-selection unchanged');
         const afterView = await editor.locator('#stage').boundingBox(); close(afterView.width, beforeView.width); close(afterView.height, beforeView.height);
-        await editor.locator('#undo').click(); assert.deepEqual(await jsonPreview(editor), scaled);
+        await editor.locator('#undo').click(); assert.deepEqual(await readFeedback(editor), scaled);
         await editor.screenshot({ path: path.join(output, '10-multi-selection-transformed.png'), fullPage: true });
       } catch (error) {
         await editor.screenshot({ path: path.join(output, '10-multi-selection-failure.png'), fullPage: true }).catch(() => {});
@@ -483,7 +484,7 @@ async function run() {
       assert.equal(await page.locator('#frame-list button').count(), 1);
       const second = await seek(1.5); await ensureGlobal(); await page.locator('#global').click(); await note('视频第二帧：转场慢一点');
       assert.equal(await page.locator('#frame-list button').count(), 2);
-      videoFeedback = await jsonPreview();
+      videoFeedback = await readFeedback();
       validateSchema(videoFeedback, path.join(root, 'schema/video-feedback-v1.schema.json'));
       assert.equal(videoFeedback.frames.length, 2); assert.equal(videoFeedback.objects.length, 2);
       assert(videoFeedback.frames[0].timestampUs >= 400000 && videoFeedback.frames[0].timestampUs <= 600000);
@@ -513,7 +514,7 @@ async function run() {
       assert.equal(await page.locator('#video').getAttribute('src'), null);
       await page.locator('#frame-list button').nth(1).click();
       assert.match(await page.locator('#notes').textContent(), /视频第二帧/);
-      const restored = await jsonPreview(); assert.deepEqual(restored.frames, videoFeedback.frames);
+      const restored = await readFeedback(); assert.deepEqual(restored.frames, videoFeedback.frames);
       await page.locator('#video-input').setInputFiles(videoFixture);
       await page.waitForFunction(() => !document.querySelector('#play').disabled);
       await page.waitForFunction(() => document.querySelector('#toast').textContent === '源视频已关联，可以继续播放和批注');
@@ -545,13 +546,13 @@ async function run() {
         return [Array.from(c.getImageData(45, 20, 1, 1).data), Array.from(c.getImageData(75, 20, 1, 1).data)];
       });
       assert.deepEqual(pixels, [[255, 0, 0, 255], [0, 255, 0, 255]]);
-      const exported = await jsonPreview();
+      const exported = await readFeedback();
       validateSchema(exported, path.join(root, 'schema/feedback-minimal.schema.json'));
       assert.deepEqual(exported, feedback);
       const project = await savedProject('overlap-project.json');
       await page.locator('#file-input').setInputFiles(project.filename);
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
-      assert.deepEqual(await jsonPreview(), feedback);
+      assert.deepEqual(await readFeedback(), feedback);
     });
     await checkpoint('downloaded offline HTML independently reopens and edits', async () => {
       const offline = await downloadBy('#offline', 'EditHere-downloaded.html');
@@ -657,7 +658,7 @@ async function run() {
           await workspace.locator('#note-form [type="submit"]').click();
           await workspace.locator('#note-dialog').waitFor({ state: 'hidden' });
           await workspace.locator('#export').click();
-          const feedback = JSON.parse(await workspace.locator('#json-preview').inputValue());
+          const feedback = await readExportJson(workspace);
           assert.equal(feedback.objects[0].annotations[0], `视口 ${width} × ${height}：工具和批注都可操作`);
           await workspace.locator('[data-close="export-dialog"]').click();
           // Video controls add another floating layer, so check the same fit budget.
@@ -740,7 +741,7 @@ async function run() {
               assert(await workspace.locator(selector).isVisible() && await workspace.locator(selector).isEnabled(), 'material makes a core action unavailable: ' + label);
             }
             await workspace.locator('#export').click();
-            const feedback = JSON.parse(await workspace.locator('#json-preview').inputValue());
+            const feedback = await readExportJson(workspace);
             assert.deepEqual(feedback.objects, []); assert.match(feedback.image, /^data:image\/png;base64,/);
             await workspace.locator('[data-close="export-dialog"]').click();
             await workspace.screenshot({ path: path.join(output, `material-${ratio}-${width}x${height}.png`), fullPage: true });
@@ -772,7 +773,7 @@ async function run() {
         await ensureGlobal(web); await web.locator('#global').click(); await web.locator('#note-text').fill('网页获取后断网本地处理');
         await web.locator('#note-form [type="submit"]').click();
         await web.locator('#export').click();
-        const feedback = JSON.parse(await web.locator('#json-preview').inputValue());
+        const feedback = await readExportJson(web);
         validateSchema(feedback, path.join(root, 'schema/feedback-minimal.schema.json'));
         assert.equal(feedback.objects[0].annotations[0], '网页获取后断网本地处理');
         const pending = web.waitForEvent('download'); await web.locator('#download-json').click();
