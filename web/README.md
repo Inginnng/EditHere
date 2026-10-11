@@ -8,18 +8,18 @@
 
 ## Agent 技能与自动返回
 
-`skills/edithere-web/` 是可安装的 Agent 技能。把该目录放到 Agent 实际加载的技能目录，并在它的 `references/local-installation.md` 记录本机 `web/agent.cjs` 的绝对路径；保留 CLI 同目录的网页与服务文件，需要 Node.js。仓库中的技能记录相对入口，可直接在开发环境使用。桌面 `edithere` 技能可继续保留；网页技能适用于侧栏批注，用户明确指定桌面程序时使用桌面入口。
+`skills/edithere-web/` 是可安装的 Agent 技能。需要 Node.js ≥ 18，将 Agent Web 包解压到可写且准备长期保留的目录，再运行 `node web/install-skill.cjs`（包内若以本目录为根，则运行 `node install-skill.cjs`）。安装器默认写入 `$CODEX_HOME/skills/edithere-web` 或 `~/.codex/skills/edithere-web`，可用 `--destination <技能目录绝对路径>` 指定其他宿主的技能目录。安装器检查网页与服务文件，并把当前 CLI、Node.js 的绝对路径写入技能的 `references/local-installation.md`；目标已存在就拒绝，不覆盖已有技能，也不修改桌面 `edithere` 技能。保留 CLI 同目录的网页与服务文件，当前服务会在此目录的 `tests/output/` 中生成私有会话和日志。仓库技能保留相对入口，不包含开发者本机路径。网页技能适用于侧栏批注，用户明确指定桌面程序时使用桌面入口。
 
-安装后可以说“帮我用 EditHere 批注游戏主页”，或显式使用 `$edithere-web`。Agent 先取得本次任务已有或指定的截图，再把图片载入右侧会话页面；缺少目标图时才询问。用户点击顶部“反馈”（完成并返回 AI），反馈会写入本次唯一 JSON 输出，并由当前 Agent 等待命令直接读回，无需手动复制 JSON。
+安装后可以说“帮我用 EditHere 批注游戏主页”，或显式使用 `$edithere-web`。用户给出图片时直接使用；要求批注实际运行页面时，Agent 使用宿主允许的浏览器或窗口截图能力，取得并视检本轮真实截图，再载入右侧会话页面。截图依赖宿主工具，网页连接器本身不包含系统截图实现；不能把目录旧图或固定测试渲染当成当前运行界面。用户点击顶部“反馈”（完成并返回 AI），结果写入本次唯一 JSON 输出，无需手动复制 JSON。
 
 等价的命令行流程（图片和输出均使用实际绝对路径，输出文件需尚不存在）：
 
 ```text
-node web/agent.cjs start --image <图片路径> --output <新的反馈路径> --timeout 1800
-node web/agent.cjs wait --session <start 返回的会话 ID>
+node web/agent.cjs start --image <图片路径> --output <新的反馈路径> --timeout 86400
+node web/agent.cjs poll --session <start 返回的会话 ID>
 ```
 
-打开 `start` 回执返回的 URL，而非普通预览 URL。每次 `wait` 最多等待 55 秒；收到 `pending` 就继续等待同一会话。只有用户提交后收到 `completed` 回执才继续按反馈实现；取消或超时不使用旧结果。自动返回依赖当前对话保持等待，不会在已结束的对话后台代发消息。本机服务只监听回环地址，图片与反馈不发到外部服务器；普通静态或离线页面继续使用下载/复制方式导出。
+打开 `start` 回执返回的 URL，而非普通预览 URL。技能保存本次会话记录后交给用户编辑并结束本轮；宿主支持且用户已授权定时跟进时，为当前对话注册一次 heartbeat，默认每两分钟 `poll` 原会话，未提交时静默。注册成功才承诺自动跟进，提交到对话继续执行存在调度延迟。没有宿主调度或未授权时，用户提交后回到对话说“继续”，Agent 对同一 ID 查询一次。仅在用户明确要求“现在等我提交”时使用单次最多 55 秒的 `wait`。只有 `completed` 且反馈可解析时继续，取消或超时不使用旧结果，并停止已注册的跟进。CLI 本身不会在结束的对话后台代发消息或立即唤醒宿主。本机服务只监听回环地址，图片与反馈不发到外部服务器；普通静态或离线页面继续使用下载/复制方式导出。
 
 ## 使用
 
@@ -60,7 +60,7 @@ node web/agent.cjs wait --session <start 返回的会话 ID>
 
 ```text
 node web/build.cjs
-node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs web/tests/agent-session.test.cjs
+node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs web/tests/agent-session.test.cjs web/tests/install-skill.test.cjs
 node web/tests/agent-flow.test.cjs
 node web/tests/browser.test.cjs
 node web/tests/visual.test.cjs

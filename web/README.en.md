@@ -8,18 +8,18 @@ For an Agent browser panel, run `node web/preview.cjs` from the repository root 
 
 ## Agent skill and automatic return
 
-`skills/edithere-web/` is an installable Agent skill. Copy it into the Agent's actual skill directory and record the absolute path of local `web/agent.cjs` in its `references/local-installation.md`. Keep the CLI's adjacent page and service files; Node.js is required. The repository skill records a relative entrypoint for development use. The desktop `edithere` skill can remain installed: use the web skill for browser panels and the desktop entrypoint when the user explicitly requests the desktop app.
+`skills/edithere-web/` is an installable Agent skill. It requires Node.js ≥ 18. Extract the Agent Web package into a writable location you will retain, then run `node web/install-skill.cjs` (or `node install-skill.cjs` when this directory is the package root). The default destination is `$CODEX_HOME/skills/edithere-web` or `~/.codex/skills/edithere-web`; use `--destination <absolute-skill-directory>` for another host. The installer checks the runtime and records this CLI and Node.js installation in `references/local-installation.md`. It refuses existing destinations, preserves existing skills, and does not modify the desktop `edithere` skill. Keep the CLI's adjacent page and service files. The service currently writes private session state and logs into `tests/output/` beside the runtime. The repository skill retains a relative entrypoint without developer-specific paths. Use the web skill for browser panels and the desktop entrypoint when the user explicitly requests the desktop app.
 
-Once installed, a request such as “Help me annotate the game homepage with EditHere” or `$edithere-web` starts this flow. The Agent uses an existing or specified screenshot from the current task and loads it into a right-side session page, asking for the target only if missing. The user clicks the top **反馈** button (Finish and return to AI); feedback is written to the unique output for this session and returned through the Agent's current wait command. Manual JSON copying is unnecessary.
+Once installed, a request such as “Help me annotate the game homepage with EditHere” or `$edithere-web` starts this flow. Provided images are used directly. For a running page, the Agent uses permitted host browser/window tools to capture and inspect a fresh screenshot before loading it into the right-side session page. Capture depends on host tools; the web bridge has no built-in system screenshot implementation. Old images or fixed test renders cannot stand in for the currently running interface. The user clicks the top **反馈** button (Finish and return to AI), which writes feedback to this session's unique output. Manual JSON copying is unnecessary.
 
 Equivalent CLI flow (use actual absolute image/output paths and an output file that does not yet exist):
 
 ```text
-node web/agent.cjs start --image <image-path> --output <new-feedback-path> --timeout 1800
-node web/agent.cjs wait --session <session-id-from-start>
+node web/agent.cjs start --image <image-path> --output <new-feedback-path> --timeout 86400
+node web/agent.cjs poll --session <session-id-from-start>
 ```
 
-Open the URL returned by `start`, rather than the ordinary preview URL. Each `wait` runs for at most 55 seconds; after `pending`, wait on the same session again. Continue implementation only after user submission produces a `completed` receipt. Do not use stale output after cancellation or timeout. Automatic return requires the current conversation to keep waiting; it does not send messages into a conversation that has already ended. The service listens only on loopback, without sending images or feedback to external servers. Static and offline pages retain their download/copy export flow.
+Open the URL returned by `start`, rather than the ordinary preview URL. The skill saves the session record, hands editing to the user, and ends the turn. When the host supports scheduling and the user authorizes follow-up, register one heartbeat for this conversation to `poll` the original session every two minutes, silently while pending. Promise automatic follow-up only after successful registration; resuming the conversation after submission has scheduling latency. Without scheduling or authorization, the user says “continue” after submitting and the Agent polls the same ID once. Use `wait`, bounded to 55 seconds per call, only when the user explicitly asks the Agent to wait now. Continue only for a parseable `completed` result, stop scheduled follow-up on terminal states, and do not use stale output after cancellation or expiry. The CLI itself cannot message an ended conversation or immediately wake its host. The service listens only on loopback, without sending images or feedback to external servers. Static and offline pages retain their download/copy export flow.
 
 ## Use
 
@@ -60,7 +60,7 @@ Sources live in `src/`. Detection reuses the repository's `origin/web` implement
 
 ```text
 node web/build.cjs
-node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs web/tests/agent-session.test.cjs
+node --test web/tests/layout.test.cjs web/tests/movement.test.cjs web/tests/feedback.test.cjs web/tests/agent-session.test.cjs web/tests/install-skill.test.cjs
 node web/tests/agent-flow.test.cjs
 node web/tests/browser.test.cjs
 node web/tests/visual.test.cjs

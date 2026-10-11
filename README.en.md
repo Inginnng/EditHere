@@ -19,7 +19,9 @@
   <a href="#features">Features</a> ·
   <a href="docs/AGENT-CLI.en.md">AI integration</a> ·
   <a href="docs/USER-GUIDE.en.md">User guide</a> ·
-  <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
+  <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a> ·
+  <a href="docs/DISTRIBUTION.en.md">Platforms and distribution</a> ·
+  <a href="web/README.en.md">Web edition</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
 
