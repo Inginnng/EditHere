@@ -7,7 +7,7 @@
     "assets/icons/edithere.svg": "a24583e793eae6bf3c70308ff36de9cb363ef1b7d0e8c7cd9db2010f7bbd51e8",
     "web/agent-session.cjs": "374b7957cbeea2a0468788086d6627ed7cf98a148d1e1af89305e8daa2ef5380",
     "web/build.cjs": "1471a8381962ca814da847d09f112a0b21613a3c2f2e310f786037eaf0b76572",
-    "web/mcp/build.mjs": "9c1fa0d08260a00d398bd4dee2616aa10bddd9969fd0a4da4fff5f59a042f3cc",
+    "web/mcp/build.mjs": "33a387a151e9e4cc6329779d25b68df5aa1181387e552be076d1b479ff74bfee",
     "web/mcp/package-lock.json": "21bb10ea12e2275ac411756c4948b8cb124ea684f3586b704f0d19ab47848cf2",
     "web/mcp/package.json": "4ca49659c74be8efbca3f09e511fb3e5f18b7aa9ba8574e97df943426f2043d8",
     "web/mcp/server.mjs": "d7a7de0a57437e4d500a3c5f9afeb08eb5845674e6534436a068dcfe60bed8e7",

@@ -13,7 +13,7 @@ execFileSync(process.execPath, [path.join(web, 'build.cjs')], {stdio:'inherit'})
 const browser = await build({
   entryPoints:[path.join(web, 'src/mcp-app.js')], bundle:true, write:false,
   platform:'browser', format:'iife', target:'es2022', minify:true, metafile:true,
-  nodePaths:[path.join(directory, 'node_modules')], legalComments:'inline'
+  nodePaths:[path.join(directory, 'node_modules')], legalComments:'none'
 });
 const bridge = browser.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 let html = fs.readFileSync(path.join(web, 'EditHere.html'), 'utf8');
@@ -25,7 +25,7 @@ fs.writeFileSync(path.join(web, 'EditHere.mcp.html'), html);
 const server = await build({
   entryPoints:[path.join(directory, 'server.mjs')], bundle:true,
   outfile:path.join(directory, 'server.bundle.cjs'), platform:'node', format:'cjs',
-  target:'node20', minify:true, metafile:true, legalComments:'inline',
+  target:'node20', minify:true, metafile:true, legalComments:'none',
   define:{'EDITHERE_MCP_DIR':'__dirname','import.meta.url':'EDITHERE_IMPORT_META_URL'},
   banner:{js:'const EDITHERE_IMPORT_META_URL = require("node:url").pathToFileURL(__filename).href;'}
 });
