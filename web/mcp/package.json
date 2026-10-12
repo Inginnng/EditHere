@@ -1,0 +1,14 @@
+{
+  "name": "edithere-web-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {"build": "node build.mjs", "start": "node server.bundle.cjs", "test": "node --test ../tests/mcp-server.test.mjs"},
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.2",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {"esbuild": "0.28.2"}
+}

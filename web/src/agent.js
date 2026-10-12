@@ -55,9 +55,9 @@
     try {
       const receipt=await request('feedback',pendingFeedback);
       if (receipt.state !== 'completed') throw new Error('反馈尚未完成，请重试');
-      app.completedAgent();label(submit,'已返回');submit.title='反馈已返回 AI';
-      submit.setAttribute('aria-label','反馈已返回 AI');
-      app.notify('反馈已返回 AI，可以回到对话继续');
+      app.completedAgent();label(submit,'已保存');submit.title='反馈已保存，回到对话说“继续”';
+      submit.setAttribute('aria-label','反馈已保存');
+      app.notify('反馈已保存；请回到对话说“继续”，AI 将读取文件');
     } catch(error) {
       if(await recoverTerminal(error))return;
       label(submit,'反馈');submit.disabled=false;cancel.disabled=false;app.notify(error.message);
@@ -80,7 +80,7 @@
       const value=await request('session');
       if(value.state!=='pending') {
         document.body.dataset.agentState=value.state;restore();submit.disabled=true;
-        app.notify(value.state==='completed'?'这次反馈已返回 AI，请回到对话查看':'这次 AI 批注会话已结束，可以重新发起');
+        app.notify(value.state==='completed'?'这次反馈已保存，请回到对话说“继续”':'这次 AI 批注会话已结束，可以重新发起');
         return;
       }
       await app.loadAgentImage(value);

@@ -4,9 +4,9 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {AgentSessions, API_VERSION, MAX_BODY} = require('./agent-session.cjs');
+const {AgentSessions, API_VERSION, MAX_BODY, defaultSessionDirectory} = require('./agent-session.cjs');
 const html = path.join(__dirname, 'EditHere.html');
-const sessionDirectory = path.join(__dirname, 'tests/output/agent');
+const sessionDirectory = defaultSessionDirectory();
 function json(res, status, body, head = false) {
   res.writeHead(status, {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer'});
   res.end(head ? undefined : JSON.stringify(body));
@@ -65,7 +65,7 @@ function createPreviewServer({port = 7330, directory = sessionDirectory} = {}) {
       fs.readFile(html, (error, data) => {
         const health = pathname === '/__edithere_preview_health';
         if (error) { json(res, 503, {error:'EditHere.html is missing; run node web/build.cjs.'}, req.method === 'HEAD'); return; }
-        if (health) { json(res, 200, {service:'edithere-web-preview',pid:process.pid,file:html,sha256:crypto.createHash('sha256').update(data).digest('hex'),apiVersion:API_VERSION,agentBridge:true}, req.method === 'HEAD'); return; }
+        if (health) { json(res, 200, {service:'edithere-web-preview',pid:process.pid,file:html,sha256:crypto.createHash('sha256').update(data).digest('hex'),apiVersion:API_VERSION,agentBridge:true,sessionDirectory:sessions.directory}, req.method === 'HEAD'); return; }
         let body = data;
         if (/^[a-f0-9]{64}$/.test(url.searchParams.get('agent') || '')) {
           try { sessions.byToken(url.searchParams.get('agent')); }

@@ -5,7 +5,14 @@ const path = require('node:path');
 const http = require('node:http');
 const {ensurePreview} = require('./preview.cjs');
 const {sessionDirectory} = require('./preview-server.cjs');
-const {imageData, MAX_BODY} = require('./agent-session.cjs');
+const {imageData, MAX_BODY, readSessionStatus} = require('./agent-session.cjs');
+const legacyDirectory = path.join(__dirname, 'tests/output/agent');
+function persistedStatus(sessionId) {
+  for (const directory of [...new Set([sessionDirectory, legacyDirectory])]) {
+    if (fs.existsSync(path.join(directory, sessionId + '.json'))) return readSessionStatus({directory, sessionId});
+  }
+  throw new Error('Session not found in persistent storage.');
+}
 function options(args) {
   const result = {command:args[0]};
   for (let index = 1; index < args.length; index += 2) {
@@ -32,7 +39,6 @@ function request(method, endpoint, body) {
 async function run(args) {
   const opts = options(args);
   if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
-  await ensurePreview({requireBridge:true});
   if (opts.command === 'start') {
     if (!opts.image || !path.isAbsolute(opts.image) || !opts.output || !path.isAbsolute(opts.output)) throw new Error('--image and --output must be absolute paths.');
     if (opts.session || opts.wait) throw new Error('start does not accept --session or --wait.');
@@ -43,22 +49,27 @@ async function run(args) {
     const mime = {'.png':'png','.jpg':'jpeg','.jpeg':'jpeg','.webp':'webp','.gif':'gif','.bmp':'bmp'}[extension];
     if (!mime) throw new Error('Supported input images: PNG, JPEG, WebP, GIF and BMP.');
     const image = imageData('data:image/' + mime + ';base64,' + bytes.toString('base64'));
+    await ensurePreview({requireBridge:true});
     return request('POST', '/__edithere_agent/sessions', {image,inputPath,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
   }
   if (!/^[a-f0-9]{32}$/.test(opts.session || '')) throw new Error('--session must be the sessionId returned by start.');
   if (opts.image || opts.output || opts.name || opts.timeout) throw new Error('Only --session and optional --wait are accepted for this command.');
   const endpoint = '/__edithere_agent/sessions/' + opts.session;
-  if (opts.command === 'cancel') return request('POST', endpoint + '/cancel', {});
+  if (opts.command === 'cancel') {
+    await ensurePreview({requireBridge:true});
+    return request('POST', endpoint + '/cancel', {});
+  }
   const seconds = opts.command === 'wait' ? Number(opts.wait ?? 55) : 0;
   if (!Number.isFinite(seconds) || seconds < 0 || seconds > 55) throw new Error('--wait must be between 0 and 55 seconds.');
   const deadline = Date.now() + seconds * 1000;
   let status;
   do {
-    status = await request('GET', endpoint);
+    // Reading a saved receipt never launches a service or depends on port 7330.
+    status = persistedStatus(opts.session);
     if (status.state !== 'pending' || Date.now() >= deadline) return status;
     await new Promise(resolve => setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))));
   } while (Date.now() <= deadline);
   return status;
 }
 if (require.main === module) run(process.argv.slice(2)).then(result => console.log(JSON.stringify(result))).catch(error => { console.error(JSON.stringify({error:error.message})); process.exitCode = 1; });
-module.exports = {run, options, request};
+module.exports = {run, options, request, persistedStatus};

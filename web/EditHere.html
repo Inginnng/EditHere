@@ -1133,10 +1133,13 @@ function dilate(input,w,h,rx,ry) {
   const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
   const contains = (r,p) => p.x >= r.x1 && p.x < r.x2 && p.y >= r.y1 && p.y < r.y2;
   const timeText = seconds => {const ms=Math.max(0,Math.round((seconds||0)*1000));return String(Math.floor(ms/60000)).padStart(2,'0')+':'+String(Math.floor(ms/1000)%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
-  const offlineHTML = '<!doctype html>\n' + document.documentElement.outerHTML.replace("connect-src 'self'", "connect-src 'none'");
+  const offlineRoot = document.documentElement.cloneNode(true);
+  offlineRoot.querySelectorAll('script[data-edithere-mcp-bridge]').forEach(script=>script.remove());
+  const offlineHTML = '<!doctype html>\n' + offlineRoot.outerHTML.replace("connect-src 'self'", "connect-src 'none'");
   const video = $('video'), canvas = $('canvas'), stage = $('stage'), ctx = canvas.getContext('2d');
   let session = null, doc = null, mode = 'smart', selected = null, selectedNote = null, zoom = 1, fitMode = true;
-  let agentBound = false;
+  let agentBound = false, projectRevision = 0;
+  const projectListeners = new Set();
   const selectedGroups = new Set();
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
@@ -1169,7 +1172,8 @@ function dilate(input,w,h,rx,ry) {
   const snapshot = d => ({notes:clone(d.notes),layout:clone(d.layout)});
   function remember(before=snapshot(doc)) {const h=history();h.undo.push(before);if(h.undo.length>40)h.undo.shift();h.redo=[];componentWheel=null;}
   function hasContent(d) {return d.notes.length>0||rawMovements(d).some(m=>!equalRect(m.source,m.destination));}
-  function commit() {if(session.kind==='video'&&hasContent(doc)&&!session.frames.includes(doc)){if(session.frames.length>=1000)throw new Error('最多支持 1000 个批注画面');session.frames.push(doc);session.frames.sort((a,b)=>a.timestampUs-b.timestampUs);}dirty=true;refresh();}
+  function changed() {dirty=true;projectRevision++;for(const listener of projectListeners){try{listener(projectRevision);}catch{ /* Transport errors must not interrupt editing. */ }}}
+  function commit() {if(session.kind==='video'&&hasContent(doc)&&!session.frames.includes(doc)){if(session.frames.length>=1000)throw new Error('最多支持 1000 个批注画面');session.frames.push(doc);session.frames.sort((a,b)=>a.timestampUs-b.timestampUs);}changed();refresh();}
   function viewportFit() {
     if(!session)return;
     const v=$('viewport'),origin=v.getBoundingClientRect(),gap=v.clientWidth>=900?12:8;
@@ -1412,7 +1416,7 @@ function dilate(input,w,h,rx,ry) {
   });
   stage.addEventListener('pointermove',event=>{if(!session||pan)return;const p=point(event);$('coords').textContent=`${Math.round(p.x)}, ${Math.round(p.y)} px`;if(drag){drag.current=p;try{if(drag.type==='move'){const a=drag.original,dx=p.x-drag.start.x,dy=p.y-drag.start.y;applyTransform({x1:a.x1+dx,y1:a.y1+dy,x2:a.x2+dx,y2:a.y2+dy},drag.before);}else if(drag.type==='resize')applyTransform(resizeDestination(drag,p),drag.before);else if(drag.type==='note-move'||drag.type==='note-resize')applyNoteDrag(drag,p);}catch(error){cancelDrag();notify(error.message);return;}render();renderGeometry();}else{hoveredMovement=hitMovement(p)?.id||null;stage.style.cursor=spaceDown||mode==='pan'?'grab':hoveredMovement?'pointer':mode==='select'&&ordinaryNoteAt(p)?'move':mode==='select'?'default':'crosshair';if(!hoveredMovement&&mode==='smart')hover=candidateAt(p);else if(!hoveredMovement&&mode==='select'&&explodeEnabled&&doc?.layout)hover=L.hit(doc.layout,p.x,p.y)[clamp(hoverIndex,0,Math.max(0,L.hit(doc.layout,p.x,p.y).length-1))]?.bounds||null;else hover=null;render();}});
   stage.addEventListener('pointerup',event=>{if(!drag)return;const d=drag;drag=null;if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);if(d.type==='note-move'||d.type==='note-resize'){const distance=Math.hypot(d.current.x-d.start.x,d.current.y-d.start.y)*zoom;if(d.fromPin)suppressPinClickUntil=Date.now()+100;if(distance<3){doc.layout=d.before.layout;doc.notes=d.before.notes;refresh();if(d.fromPin)editNote(null,d.noteId);}else if(!same(d.before,snapshot(doc))){remember(d.before);commit();}else refresh();return;}if(d.type==='move'||d.type==='resize'){if(d.type==='move'&&Math.hypot(d.current.x-d.start.x,d.current.y-d.start.y)*zoom<3){doc.layout=d.before.layout;doc.notes=d.before.notes;if(d.clickSelection)selected=d.clickSelection;refresh();}else if(!same(d.before,snapshot(doc))){remember(d.before);commit();}else refresh();return;}let area=rect(d.start,d.current);area=Object.fromEntries(Object.entries(area).map(([k,v])=>[k,Math.round(v)]));const distance=Math.hypot(d.current.x-d.start.x,d.current.y-d.start.y)*zoom;
-    if(mode==='cut'){if(area.x2-area.x1<2||area.y2-area.y1<2){render();return;}try{const before=snapshot(doc),groupId=L.addRegion(doc.layout,area);if(!groupId){notify('这个范围里没有可移动的像素');return;}chooseGroup(groupId);remember(before);dirty=true;changeMode('select');refresh();}catch(error){notify(error.message);}return;}
+    if(mode==='cut'){if(area.x2-area.x1<2||area.y2-area.y1<2){render();return;}try{const before=snapshot(doc),groupId=L.addRegion(doc.layout,area);if(!groupId){notify('这个范围里没有可移动的像素');return;}chooseGroup(groupId);remember(before);changed();changeMode('select');refresh();}catch(error){notify(error.message);}return;}
     if(mode==='point'||mode==='smart'&&distance<5&&!d.candidate){const x=clamp(Math.round(d.start.x),0,session.width-1),y=clamp(Math.round(d.start.y),0,session.height-1);editNote({x1:x,y1:y,x2:x,y2:y});}else if(mode==='smart'&&distance<5&&d.candidate)editNote(d.candidate);else if(area.x2>area.x1&&area.y2>area.y1)editNote(area);render();
   });
   stage.addEventListener('pointercancel',cancelDrag);stage.addEventListener('lostpointercapture',()=>{if(drag)cancelDrag();});stage.addEventListener('pointerleave',()=>{if(!drag){hover=null;hoverIndex=0;hoveredMovement=null;render();}});
@@ -1455,7 +1459,7 @@ function dilate(input,w,h,rx,ry) {
   $('explode').onclick=()=>run(async()=>{
     ensureDoc();
     if(explodeEnabled){endExplosion();explodeEnabled=false;chooseGroup(null);changeMode('smart');refresh();return;}
-    if(!doc.layout){const d=doc,candidates=await detect(d);if(d!==doc)return;remember();doc.layout=L.create(session.width,session.height,candidates);dirty=true;}
+    if(!doc.layout){const d=doc,candidates=await detect(d);if(d!==doc)return;remember();doc.layout=L.create(session.width,session.height,candidates);changed();}
     explodeEnabled=true;chooseGroup(null);changeMode('select');refresh();animateExplosion();
   });
   $('component-note').onclick=()=>{if(selected&&doc?.layout){const ids=selectionIds();editNote(selectionBounds(),null,ids.length===1?ids[0]:null,null,ids.length>1?ids:null);}};
@@ -1464,7 +1468,7 @@ function dilate(input,w,h,rx,ry) {
   $('apply-geometry').onclick=()=>{if(!selected||!doc?.layout)return;const inputs=['gx','gy','gw','gh'].map(id=>$(id).value),values=inputs.map(Number);if(inputs.some(value=>String(value).trim()==='')||values.some(v=>!Number.isFinite(v))||values[2]<=0||values[3]<=0){notify('请输入有效的位置和尺寸');return;}const before=snapshot(doc);try{applyTransform({x1:values[0],y1:values[1],x2:values[0]+values[2],y2:values[1]+values[3]},before);if(!same(before,snapshot(doc))){remember(before);commit();}}catch(error){doc.layout=before.layout;doc.notes=before.notes;notify(error.message);}refresh();};
   $('gw').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gh').value=Math.max(1,Math.round(Number($('gw').value)*(b.y2-b.y1)/(b.x2-b.x1)));}};
   $('gh').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gw').value=Math.max(1,Math.round(Number($('gh').value)*(b.x2-b.x1)/(b.y2-b.y1)));}};
-  function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;dirty=true;refresh();}
+  function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
   if($('actual-size'))$('actual-size').onclick=()=>setZoom(1);
   function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
@@ -1613,7 +1617,8 @@ function dilate(input,w,h,rx,ry) {
   const fitObserver=new ResizeObserver(()=>{if(session&&fitMode)viewportFit();});
   for(const selector of ['#viewport','.header','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){const element=document.querySelector(selector);if(element)fitObserver.observe(element);}
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
-  // Small integration surface; the local connector owns transport and tokens.
+  // Editing stays independent of HTTP and MCP transports. A draft is considered
+  // saved only when the transport acknowledges this exact editing revision.
   globalThis.EditHereWeb = {
     bindAgent() {agentBound=true;},
     async loadAgentImage(value) {
@@ -1623,6 +1628,20 @@ function dilate(input,w,h,rx,ry) {
       session={kind:'image',name:value.name,width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(image,value.image)};
       doc=session.document;activate();detect(doc);
     },
+    async loadAgentProject(value) {
+      if(!value.project||value.project.kind!=='image'||value.project.document?.image!==value.image)throw new Error('批注草稿与会话原图不匹配');
+      await importJSON({name:value.name||value.project.name,size:JSON.stringify(value.project).length,text:async()=>JSON.stringify(value.project)});
+      agentBound=true;
+    },
+    async loadAgentFeedback(value) {
+      if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
+      await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
+      agentBound=true;
+    },
+    project() {if(!session)throw new Error('请先打开素材');return clone(project());},
+    projectRevision() {return projectRevision;},
+    onProjectChange(listener) {projectListeners.add(listener);return ()=>projectListeners.delete(listener);},
+    markAgentDraftSaved(revision) {if(revision===projectRevision)dirty=false;},
     feedback() {return clone(feedback(true));},
     notify,
     canCancel() {return !dirty||confirm('取消这次 AI 批注会话？当前编辑仍会保留在页面中，可保存项目。');},
@@ -1691,9 +1710,9 @@ function dilate(input,w,h,rx,ry) {
     try {
       const receipt=await request('feedback',pendingFeedback);
       if (receipt.state !== 'completed') throw new Error('反馈尚未完成，请重试');
-      app.completedAgent();label(submit,'已返回');submit.title='反馈已返回 AI';
-      submit.setAttribute('aria-label','反馈已返回 AI');
-      app.notify('反馈已返回 AI，可以回到对话继续');
+      app.completedAgent();label(submit,'已保存');submit.title='反馈已保存，回到对话说“继续”';
+      submit.setAttribute('aria-label','反馈已保存');
+      app.notify('反馈已保存；请回到对话说“继续”，AI 将读取文件');
     } catch(error) {
       if(await recoverTerminal(error))return;
       label(submit,'反馈');submit.disabled=false;cancel.disabled=false;app.notify(error.message);
@@ -1716,7 +1735,7 @@ function dilate(input,w,h,rx,ry) {
       const value=await request('session');
       if(value.state!=='pending') {
         document.body.dataset.agentState=value.state;restore();submit.disabled=true;
-        app.notify(value.state==='completed'?'这次反馈已返回 AI，请回到对话查看':'这次 AI 批注会话已结束，可以重新发起');
+        app.notify(value.state==='completed'?'这次反馈已保存，请回到对话说“继续”':'这次 AI 批注会话已结束，可以重新发起');
         return;
       }
       await app.loadAgentImage(value);

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
+const {defaultSessionDirectory} = require('./agent-session.cjs');
 const html = path.join(__dirname, 'EditHere.html');
 const healthUrl = 'http://127.0.0.1:7330/__edithere_preview_health';
 const previewUrl = 'http://127.0.0.1:7330/EditHere.html';
@@ -26,6 +27,7 @@ function verify(state, requireBridge = false) {
   const hash = crypto.createHash('sha256').update(fs.readFileSync(html)).digest('hex');
   if (state.sha256 !== hash) throw new Error('The preview response does not match the current EditHere.html.');
   if (requireBridge && (state.apiVersion !== 1 || state.agentBridge !== true)) throw new Error('The existing preview (PID ' + state.pid + ') predates the Agent bridge. Stop that verified EditHere preview process and run node web/preview.cjs again.');
+  if (requireBridge && path.resolve(state.sessionDirectory || '') !== defaultSessionDirectory()) throw new Error('The preview (PID ' + state.pid + ') uses another session directory or an older runtime. Restart that verified EditHere preview with the current package and EDITHERE_WEB_DATA_DIR. Saved feedback remains readable with poll.');
 }
 async function ensurePreview({requireBridge = false} = {}) {
   if (!fs.existsSync(html)) throw new Error('EditHere.html is missing. Run node web/build.cjs first.');

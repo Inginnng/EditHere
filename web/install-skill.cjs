@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 
-const runtimeFiles = ['EditHere.html', 'agent.cjs', 'agent-session.cjs', 'preview.cjs', 'preview-server.cjs', 'src/feedback.js'];
+const runtimeFiles = ['EditHere.html', 'EditHere.mcp.html', 'agent.cjs', 'agent-session.cjs', 'preview.cjs', 'preview-server.cjs', 'src/feedback.js', 'src/layout.js', 'mcp/server.bundle.cjs', 'mcp/mcp.json', 'mcp/build-info.json', 'MCP-THIRD-PARTY-NOTICES.md'];
 
 function exists(file) {
   try { fs.lstatSync(file); return true; }
@@ -58,11 +58,16 @@ function install(target, directory = __dirname) {
       fs.copyFileSync(path.join(source, relative), output, fs.constants.COPYFILE_EXCL);
     }
     const cli = path.join(directory, 'agent.cjs');
+    const mcpServer = path.join(directory, 'mcp', 'server.bundle.cjs');
+    const mcpConfig = {mcpServers:{'edithere-web':{command:process.execPath, args:[mcpServer]}}};
     const reference = '# 本机网页入口\n\n' +
-      '安装时已验证的网页会话 CLI：\n\n```text\n' + cli + '\n```\n\n' +
+      '安装时已核对文件的 MCP 服务（需要 Node.js 20+）：\n\n```text\n' + mcpServer + '\n```\n\n' +
       '本机 Node.js：\n\n```text\n' + process.execPath + '\n```\n\n' +
-      '此技能指向当前解压目录，不复制运行时，也不修改桌面 EditHere 技能。保留该目录中的网页与服务文件，' +
-      '并确保目录可写；会话状态和日志会在其中生成。移动或删除运行时后需重新定位入口。\n';
+      '宿主 MCP 配置参考（按宿主格式合并，安装器未修改宿主配置或验证连接）：\n\n```json\n' + JSON.stringify(mcpConfig, null, 2) + '\n```\n\n' +
+      '普通浏览器兼容 CLI（Node.js 18+）：\n\n```text\n' + cli + '\n```\n\n' +
+      '此技能指向当前解压目录，不复制运行时，也不修改桌面 EditHere 技能。保留该目录中的网页与服务文件。' +
+      'MCP 会话默认位于 ~/.edithere/web-sessions，可用 EDITHERE_WEB_DATA_DIR 指定持久目录。' +
+      '移动或删除运行时后需重新定位入口。\n';
     fs.mkdirSync(path.join(staging, 'references'), {recursive:true});
     fs.writeFileSync(path.join(staging, 'references', 'local-installation.md'), reference, {encoding:'utf8'});
     // mkdir is the no-overwrite claim: rename can replace an empty directory on Unix.
@@ -74,7 +79,7 @@ function install(target, directory = __dirname) {
       fs.rmSync(target, {recursive:true, force:true});
       throw error;
     }
-    return {state:'installed', destination:target, cli, node:process.execPath};
+    return {state:'installed', destination:target, cli, node:process.execPath, mcpServer, mcpConfig};
   } finally {
     fs.rmSync(staging, {recursive:true, force:true});
   }

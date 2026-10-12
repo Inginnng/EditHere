@@ -25,9 +25,17 @@ class DistributionTest(unittest.TestCase):
         for name in distribution.LEGAL:
             self.write(name, "license fixture")
         for name in distribution.WEB_RUNTIME:
-            self.write("web/" + name, "public runtime fixture")
+            self.write("web/" + name, "public runtime fixture\n")
         for name in distribution.WEB_GUIDES:
             self.write("web/" + name, "first installation instructions")
+        for name in distribution.MCP_REQUIRED_SOURCES:
+            self.write(name, "MCP source fixture\n")
+        self.write("web/mcp/build-info.json", json.dumps({
+            "schemaVersion": 1,
+            "hashEncoding": "utf8-lf",
+            "sources": {name: distribution.mcp_hash(self.root / name) for name in distribution.MCP_REQUIRED_SOURCES},
+            "artifacts": {name: distribution.mcp_hash(self.root / name) for name in distribution.MCP_REQUIRED_ARTIFACTS}
+        }))
         for names in distribution.PACKAGE_FILES.values():
             for name in names:
                 self.write(name, "published component fixture")
@@ -36,6 +44,8 @@ class DistributionTest(unittest.TestCase):
         self.write("web/skills/edithere-web/references/capture.md", "generic capture instructions")
         self.write("web/tests/output/agent/server-key", "PRIVATE-SESSION-SECRET")
         self.write("web/tests/output/agent/session.json", "PRIVATE-IMAGE-DATA")
+        self.write("web/mcp/node_modules/package/private.json", "PRIVATE-DEPENDENCY-FILE")
+        self.write("web/mcp/.env", "PRIVATE-MCP-ENV")
         self.write("connector/package.json", '{"version":"0.2.0"}')
         self.write("connector/mcp-server.mjs", "public MCP fixture")
         self.write("connector/README.md", "MCP instructions")
@@ -80,10 +90,17 @@ class DistributionTest(unittest.TestCase):
             names = archive.namelist()
             self.assertIn("web/src/feedback.js", names)
             self.assertIn("web/install-skill.cjs", names)
+            self.assertIn("web/EditHere.mcp.html", names)
+            self.assertIn("web/mcp/server.bundle.cjs", names)
+            self.assertIn("web/mcp/mcp.json", names)
+            self.assertIn("web/mcp/build-info.json", names)
+            self.assertIn("web/MCP-THIRD-PARTY-NOTICES.md", names)
+            self.assertIn("web/src/layout.js", names)
             self.assertIn("AI-SETUP.md", names)
             self.assertIn("AI-SETUP.en.md", names)
             self.assertIn("web/skills/edithere-web/references/capture.md", names)
             self.assertFalse(any("tests/output" in name or "server-key" in name for name in names))
+            self.assertFalse(any("node_modules" in name or name.endswith(".env") for name in names))
             self.assertFalse(any(b"PRIVATE-" in archive.read(name) for name in names))
         trae = next((self.output() / "integrations/trae-plugin").rglob("*.zip"))
         with zipfile.ZipFile(trae) as archive:
@@ -91,6 +108,40 @@ class DistributionTest(unittest.TestCase):
         for line in (self.output() / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
             expected, relative = line.split("  ", 1)
             self.assertEqual(distribution.sha256(self.output() / relative), expected)
+
+    def test_incomplete_mcp_runtime_fails_before_creating_distribution(self):
+        (self.root / "web/mcp/server.bundle.cjs").unlink()
+        with self.assertRaisesRegex(ValueError, "Web runtime file missing: mcp/server.bundle.cjs"):
+            distribution.assemble(self.root, self.output())
+        self.assertFalse(self.output().exists())
+
+    def test_stale_mcp_sources_or_artifacts_cannot_be_distributed(self):
+        for relative in ("web/src/mcp-app.js", "web/mcp/server.bundle.cjs"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            self.write(relative, "updated but not built")
+            with self.assertRaisesRegex(ValueError, "Stale MCP build file"):
+                distribution.assemble(self.root, self.output())
+            self.assertFalse(self.output().exists())
+            self.write(relative, original)
+
+    def test_mcp_build_manifest_cannot_reference_an_outside_file(self):
+        manifest_file = self.root / "web/mcp/build-info.json"
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        manifest["sources"]["../private.json"] = "0" * 64
+        manifest_file.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Unsafe MCP build manifest path"):
+            distribution.assemble(self.root, self.output())
+        self.assertFalse(self.output().exists())
+
+    def test_windows_git_line_endings_do_not_invalidate_mcp_build(self):
+        for name in distribution.MCP_REQUIRED_SOURCES | distribution.MCP_REQUIRED_ARTIFACTS:
+            file = self.root / name
+            file.write_bytes(file.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        report = distribution.assemble(self.root, self.output())
+        agent = self.output() / next(item["path"] for item in report["packages"] if item["product"] == "web-agent")
+        with zipfile.ZipFile(agent) as archive:
+            self.assertEqual(archive.read("web/mcp/server.bundle.cjs"), (self.root / "web/mcp/server.bundle.cjs").read_bytes())
+        self.assertEqual(distribution.sha256(agent), next(item["sha256"] for item in report["packages"] if item["product"] == "web-agent"))
 
     def test_strict_missing_platforms_fails_before_creating_catalog(self):
         with self.assertRaisesRegex(ValueError, "Current native packages missing"):

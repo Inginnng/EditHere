@@ -2,26 +2,40 @@
 
 [简体中文](README.md)
 
-Open **EditHere.html** directly in a browser, or serve this single file on a static website. After the page loads, file reading, annotation, layout changes and exports run locally in the browser. The standalone HTML has no backend, CDN, account or external runtime dependency, and its Content Security Policy blocks network connections. Agent sessions described below use a separate localhost service to load an image and return feedback.
+Open **EditHere.html** directly in a browser, or serve this single file on a static website. After the page loads, file reading, annotation, layout changes and exports run locally in the browser. The standalone HTML has no backend, CDN, account or external runtime dependency, and its Content Security Policy blocks network connections. The MCP Apps mode below uses host-managed stdio and embedded HTML; the browser compatibility mode uses a local service.
 
-For an Agent browser panel, run `node web/preview.cjs` from the repository root (requires an installed Node.js), then open `http://127.0.0.1:7330/EditHere.html`. The launcher reuses this project's service or starts it in an independent background process and checks the served HTML. Run it again to restore a stopped service. A refused connection means the local service is not listening; refreshing the page does not start it. The preview binds only to localhost and does not upload media.
+For an Agent browser panel, run `node web/preview.cjs` from the repository root (requires an installed Node.js), then open `http://127.0.0.1:7330/EditHere.html`. The compatibility launcher reuses this project's service or attempts to start a background service and checks the served HTML. The process may end when the host stops its task; an independent daemon is not guaranteed. A refused connection means the local service is not listening; refreshing the page does not start it. The preview binds only to localhost and does not upload media.
 
-## Agent skill and automatic return
+## MCP Apps and the Agent skill
 
-For first-time setup, give the agent the [AI installation guide](AI-SETUP.en.md) and an actual `web-agent` ZIP download URL or local file. The guide does not require the Skill to be installed first. A locally generated package does not imply a public download endpoint.
+For setup, give the agent the [AI installation guide](AI-SETUP.en.md) and an actual `web-agent` ZIP. Distributed server and official App SDK bundles need no npm install. MCP requires Node.js 20+; the browser compatibility CLI supports Node.js 18+. Neither requires desktop EditHere.
 
-`skills/edithere-web/` is an installable Agent skill. It requires Node.js ≥ 18. Extract the Agent Web package into a writable location you will retain, then run `node web/install-skill.cjs` (or `node install-skill.cjs` when this directory is the package root). The default destination is `$CODEX_HOME/skills/edithere-web` or `~/.codex/skills/edithere-web`; use `--destination <absolute-skill-directory>` for another host. The installer checks the runtime and records this CLI and Node.js installation in `references/local-installation.md`. It refuses existing destinations, preserves existing skills, and does not modify the desktop `edithere` skill. Keep the CLI's adjacent page and service files. The service currently writes private session state and logs into `tests/output/` beside the runtime. The repository skill retains a relative entrypoint without developer-specific paths. Use the web skill for browser panels and the desktop entrypoint when the user explicitly requests the desktop app.
+The MCP integration follows [Cowart's stdio service and UI resources](https://github.com/zhongerxin/Cowart/blob/main/mcp/server.mjs) and uses the [official MCP Apps SDK](https://github.com/modelcontextprotocol/ext-apps). Tool metadata associates an HTML resource through `_meta.ui.resourceUri`. The host embeds that UI; the page calls persistence tools and requests a conversation message through the App SDK. This entrypoint has no port 7330 listener, localhost HTTP dependency or CDN.
 
-Once installed, a request such as “Help me annotate the game homepage with EditHere” or `$edithere-web` starts this flow. Provided images are used directly. For a running page, the Agent uses permitted host browser/window tools to capture and inspect a fresh screenshot before loading it into the right-side session page. Capture depends on host tools; the web bridge has no built-in system screenshot implementation. Old images or fixed test renders cannot stand in for the currently running interface. The user clicks the top **反馈** button (Finish and return to AI), which writes feedback to this session's unique output. Manual JSON copying is unnecessary.
+Merge `web/mcp/mcp.json` into the host configuration with actual absolute Node.js and `web/mcp/server.bundle.cjs` paths. Reload and verify the discovered `edithere_web_open` / `edithere_web_read` tools. Open accepts an absolute `imagePath` and optional `name/outputPath`. Check `uiSupport/state` and confirm the image is visible. Hosts that do not declare MCP Apps support receive unsupported with compatibility instructions, without creating an orphan pending session. WorkBuddy support needs an actual test and cannot be inferred from CodeBuddy documentation.
 
-Equivalent CLI flow (use actual absolute image/output paths and an output file that does not yet exist):
+Install the optional Skill:
 
 ```text
-node web/agent.cjs start --image <image-path> --output <new-feedback-path> --timeout 86400
-node web/agent.cjs poll --session <session-id-from-start>
+node web/install-skill.cjs
 ```
 
-Open the URL returned by `start`, rather than the ordinary preview URL. The skill saves the session record, hands editing to the user, and ends the turn without creating a scheduled task by default. The user says “continue” after submitting, and the Agent polls the same ID once. Register a heartbeat only when the user explicitly chooses follow-up for this session, the host supports it, and the Skill's page-closure conditions are met. Scheduling may leave host messages in the conversation even when the Agent gives no pending updates; promise follow-up only after registration and explain its latency. Clean up associated temporary tasks when the user reports closing or cancelling, or a reliable tool confirms this page has closed; retain the image and session record. Closing a tab does not itself cancel the server session, so pending does not prove the page remains open. Use `wait`, bounded to 55 seconds per call, only for an explicit request to wait now. Continue only for a parseable `completed` result, clean up follow-up on terminal states, and do not use stale output after cancellation or expiry. The CLI itself cannot message an ended conversation or immediately wake its host. The service listens only on loopback, without sending images or feedback to external servers. Static and offline pages retain their download/copy export flow.
+The default target is `$CODEX_HOME/skills/edithere-web` or `~/.codex/skills/edithere-web`. Other hosts can use `--destination <absolute-skill-directory>`. The installer checks files and records MCP/CLI paths plus configuration in the local reference. It does not edit host MCP settings, overwrite existing Skills or modify the desktop Skill. Retain the extracted runtime and update references after moving it.
+
+For “Help me annotate the game homepage with EditHere”, the Skill prefers connected MCP and falls back to the compatibility entrypoint when embedded UI is unavailable. Screenshots come from actual host browser/window tools and must represent this turn's target interface. EditHere has no built-in system screenshot implementation; old images and fixed test renders cannot impersonate the current interface.
+
+Feedback submission first persists complete desktop-compatible JSON, then requests a host conversation message. Persistence, message acceptance and AI implementation are reported separately. Rejected or unsupported messaging leaves saved feedback readable; the user can say “continue”. The Agent reads the original sessionId and verifies completed state and SHA before acting. Host message acceptance does not mean code was changed, and updateModelContext does not itself wake the AI.
+
+Acknowledged MCP drafts and sessions default to `~/.edithere/web-sessions`, configurable with an absolute persistent `EDITHERE_WEB_DATA_DIR`. After host restart, open the original sessionId to restore a draft or inspect submission. Do not reopen after a user stop/cancellation without renewed intent. Outputs retain the original image and native feedback schema; read receipts omit image bytes. Never redistribute private sessions, images, tokens or logs.
+
+Browser compatibility flow:
+
+```text
+node web/agent.cjs start --image <actual-absolute-image> --output <new-absolute-json> --timeout 86400
+node web/agent.cjs poll --session <sessionId-from-start>
+```
+
+Open the session URL returned by start. This mode has no host message bridge and defaults to manual “continue” without scheduling. Completed feedback remains readable after the service ends. Only an explicit per-session scheduling choice uses the Skill's follow-up rules; do not promise invisible or immediate wakeup. Closing a tab does not itself cancel the server session. Respect explicit stops and clean up associated tasks. Static/offline HTML retains download and copy exports.
 
 ## Use
 
@@ -53,7 +67,7 @@ The existing `assets/icons/edithere.svg` and `assets/brand/edithere-lockup*.svg`
 - Layout movement operates on rectangular pixel regions, leaving transparent holes at their source positions. It does not generate backgrounds, segment semantic objects or render edited videos.
 - Images are limited to 32 million pixels. Video support depends on the browser and operating-system codecs; use H.264 MP4 or WebM. Where available, video frame callbacks supply the presented frame's media time; other browsers fall back to playback position. This is not a frame-by-frame video editor.
 - Web projects use `edithere-web-project-1`. Desktop `.edithere` project files are not supported. Current image/video feedback with embedded images can be imported.
-- Ordinary static/offline pages cannot automatically read arbitrary local paths or return feedback to a CLI. Use the Agent skill above for a localhost image session with automatic return, limited to its explicitly supplied image and output.
+- Ordinary static/offline pages cannot read arbitrary local paths or automatically return feedback to an Agent. Embedded return uses MCP Apps; browser compatibility mode saves through a local image session and the Agent reads it.
 - Reopening a hosted page offline depends on browser caching. Download the HTML for reliable offline reopening. This version has no Service Worker.
 
 ## Develop and verify
@@ -81,3 +95,5 @@ node web/tests/native-video-boundaries.test.cjs
 `latest-parity.test.cjs` checks movement slots, creation order, text editing and undo, empty-note project reload, reset, and complete exported data against existing desktop tests. `native-video-boundaries.test.cjs` covers native empty-video feedback, source relinking, and microsecond timestamps within the last millisecond. JSON assertions read actual downloads, with readable previews tested separately.
 
 The repository license applies to this implementation.
+
+MCP and standalone builds are separate. After changing MCP sources, run `npm --prefix web/mcp ci` and `node web/mcp/build.mjs` from the repository root to regenerate the official SDK HTML, server bundle, third-party licenses and hash manifest. Downloaded web-agent packages need no build dependencies. Distribution checks source and artifact hashes and rejects stale bundles.

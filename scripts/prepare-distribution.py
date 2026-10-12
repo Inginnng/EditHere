@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION = re.compile(r"\d+\.\d+\.\d+")
 SKIP = {"AppDir", "licenses", "node_modules", ".git", "tests", "validation", "plugins", "qml"}
 LEGAL = ("LICENSE", "NOTICE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "TRADEMARK-POLICY.md", "packaging/THIRD-PARTY-NOTICES.md")
-WEB_RUNTIME = ("EditHere.html", "agent.cjs", "agent-session.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js")
+WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
+MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/package-lock.json", "web/mcp/build.mjs"}
+MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", "web/MCP-THIRD-PARTY-NOTICES.md"}
 WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
 PACKAGE_FILES = {
     "web-skill": tuple("web/skills/edithere-web/" + name for name in (
@@ -32,10 +34,12 @@ PACKAGE_FILES = {
 }
 GENERIC_WEB_INSTALLATION = """# 本机网页入口
 
-本包的网页 CLI 相对本文件为 `../../../agent.cjs`，需要 Node.js 18+。
+本包的 MCP 服务相对本文件为 `../../../mcp/server.bundle.cjs`，需要 Node.js 20+。
+普通浏览器兼容 CLI 为 `../../../agent.cjs`，支持 Node.js 18+。
 解压到长期保留的可写目录后，运行 `node web/install-skill.cjs` 安装技能。
-安装器生成本机入口绝对路径；包中不保存开发者的个人路径。
-更换解压目录后需重新配置。普通离线 HTML 不需要本地会话服务。
+安装器生成本机入口绝对路径和 MCP 配置参考，不自动修改宿主配置。
+包中不保存开发者个人路径。更换解压目录后需重新配置。
+MCP 通过宿主管理的 stdio 连接，无 HTTP 监听。普通离线 HTML 不需要服务器。
 """
 
 
@@ -49,6 +53,38 @@ def sha256(file: Path) -> str:
 
 def text(file: Path) -> str:
     return file.read_text(encoding="utf-8-sig").strip()
+
+
+def mcp_hash(file: Path) -> str:
+    """Git may change text line endings; package checksums still use raw bytes."""
+    try:
+        normalized = file.read_bytes().decode("utf-8").replace("\r\n", "\n").encode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("MCP build file is not UTF-8: " + str(file)) from error
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def verify_mcp_build(root: Path) -> None:
+    """Reject stale bundles without requiring npm in an assembled package."""
+    manifest_file = root / "web/mcp/build-info.json"
+    try:
+        manifest = json.loads(text(manifest_file))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("Missing or invalid MCP build manifest; run node web/mcp/build.mjs") from error
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1 or manifest.get("hashEncoding") != "utf8-lf":
+        raise ValueError("Unsupported MCP build manifest")
+    for key, required in (("sources", MCP_REQUIRED_SOURCES), ("artifacts", MCP_REQUIRED_ARTIFACTS)):
+        entries = manifest.get(key)
+        if not isinstance(entries, dict) or not required.issubset(entries):
+            raise ValueError("MCP build manifest is missing required " + key)
+        for relative, digest in entries.items():
+            if not isinstance(relative, str) or "\\" in relative or Path(relative).is_absolute() or ".." in Path(relative).parts:
+                raise ValueError("Unsafe MCP build manifest path")
+            file = root / relative
+            if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest) or not file.is_file() or file.is_symlink() or not file.resolve().is_relative_to(root):
+                raise ValueError("Missing or unsafe MCP build input: " + relative)
+            if mcp_hash(file) != digest:
+                raise ValueError("Stale MCP build file: " + relative + "; run node web/mcp/build.mjs")
 
 
 def version(root: Path) -> str:
@@ -225,6 +261,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
     for name in (*WEB_RUNTIME, *WEB_GUIDES):
         if not (root / "web" / name).is_file():
             raise ValueError(f"Web runtime file missing: {name}")
+    verify_mcp_build(root)
     commit, dirty = revision(root)
     short = commit[:8]
     output.mkdir(parents=True)
@@ -241,7 +278,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
     common["build-info.json"] = json.dumps(stamp, ensure_ascii=False, indent=2) + "\n"
     offline = output / "web" / web_version / f"EditHere-{source_version}-web-{short}.zip"
     write_zip(offline, {**common, "EditHere.html": root / "web/EditHere.html",
-                       "README.md": "# EditHere Web\n\n双击 EditHere.html，或部署到静态网站。无需 Node.js。图片、视频和反馈在浏览器内处理。\n\n此包不含 Agent 自动返回连接器；需要右侧批注和反馈返回时使用同目录的 web-agent 包。\n\n这是按当前源码生成的本地预览包，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n"})
+                       "README.md": "# EditHere Web\n\n双击 EditHere.html，或部署到静态网站。无需 Node.js。图片、视频和反馈在浏览器内处理。\n\n此包不含 MCP Apps 连接器；需要宿主内嵌批注和反馈回传时使用同目录的 web-agent 包。\n\n这是按当前源码生成的本地预览包，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n"})
     record(offline, "web", web_version, "assembled-local-preview")
     agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
                      **{name: root / "web" / name for name in WEB_GUIDES},
@@ -249,9 +286,9 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
     agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
     agent_entries["README.md"] = """# EditHere Web Agent
 
-Windows、macOS、Linux 使用同一份包。需要 Node.js 18 或更新版本。
+Windows、macOS、Linux 使用同一份包。真实 MCP Apps 需要 Node.js 20+；普通浏览器兼容 CLI 支持 Node.js 18+。
 解压到当前用户可写且长期保留的目录，不能直接在 ZIP 中运行。
-首次安装：把本包与 AI-SETUP.md 交给 Agent；无需预先安装 Skill。该指南同时说明下载校验、依赖检查、已有安装处理和健康检查。
+服务与官方 App SDK 已打包，无需 npm install。首次安装把本包与 AI-SETUP.md 交给 Agent，先检查宿主 MCP Apps 支持；无需预先安装 Skill。
 
 安装网页版技能：
 ```text
@@ -259,15 +296,24 @@ node web/install-skill.cjs
 ```
 默认安装到 CODEX_HOME/skills/edithere-web 或 ~/.codex/skills/edithere-web。
 其他宿主使用 `--destination <技能目录的绝对路径>`。已存在的技能不会被覆盖。
-安装时生成本机路径记录；更换解压目录后需重新配置。不会改写桌面技能。
+安装时生成本机路径与 MCP 配置参考，不自动改写宿主配置或桌面技能。
+按宿主配置格式合并 web/mcp/mcp.json 条目，command 为 Node.js 绝对路径，args 为本包 web/mcp/server.bundle.cjs 的绝对路径。
+重新载入 MCP 后确认实际工具 edithere_web_open / edithere_web_read。配置存在不等于连接或内嵌成功。
+
+支持 MCP Apps 时使用 edithere_web_open 传入实际 imagePath，由宿主显示内嵌 HTML，无需本地 HTTP 服务。
+提交先持久化反馈，再请求宿主发送对话消息；消息接受与 AI 已实施修改分别判断。
+用原 sessionId 调用 edithere_web_read 读取结果，或 edithere_web_open 重开草稿。宿主未声明 UI 能力会返回 unsupported 和兼容入口。
+MCP 会话默认保存 ~/.edithere/web-sessions，可通过 EDITHERE_WEB_DATA_DIR 设置持久绝对目录。
+WorkBuddy 当前版本的内嵌支持须实测，不从其他产品文档推定。
 
 预览：`node web/preview.cjs`，再打开 http://127.0.0.1:7330/EditHere.html。
 发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400`。
-Agent 使用返回的 URL 传图，通过同一 sessionId 的 poll/wait 读取用户明确提交的反馈。
-默认提交后回到对话说“继续”，不创建定时任务；仅本次明确选择且满足 Skill 的能力条件时定时跟进。用户关闭或取消时清理关联临时任务，调度不能保证完全无痕或立即唤醒。
-截图和后续唤醒依赖宿主提供的能力；不能从连接器自身推断已支持自动截图或后台唤醒。
+普通浏览器兼容模式使用返回的 URL 传图，通过同一 sessionId 的 poll 读取已保存反馈。
+该模式默认提交后回到对话说“继续”，没有宿主消息桥，不自动创建定时任务。
+后台进程可能随宿主任务停止而结束；已保存结果仍可读取，不能承诺后台服务独立常驻。
+截图依赖宿主实际提供的浏览器或窗口工具。
 
-服务和私有会话数据在运行后写入 web/tests/output；含图片与访问令牌，不要再次整目录压缩分发。
+会话目录、反馈输出与兼容日志含私有图片和访问令牌，不要随运行过的目录再次压缩分发；旧版数据可能位于 web/tests/output。
 若 7330 已有另一份 EditHere 服务，应按其 PID 和路径核实后处理，不能直接杀掉其他程序。
 本包为本地预览整理，不表示已发布或通过三平台实机验收。来源见 build-info.json。
 """

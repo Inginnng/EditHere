@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const http = require('node:http');
-const {AgentSessions} = require('../agent-session.cjs');
+const {spawnSync} = require('node:child_process');
+const {AgentSessions, readSessionStatus, hydratedDraft} = require('../agent-session.cjs');
 const {createPreviewServer} = require('../preview-server.cjs');
 const format = require('../src/feedback.js');
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
@@ -133,13 +134,85 @@ test('only a valid session HTML gains same-origin networking; ordinary offline p
   context.after(() => new Promise(resolve => server.close(resolve)));
   const origin = 'http://127.0.0.1:' + server.address().port;
   const ordinary = await (await fetch(origin + '/EditHere.html')).text();
-  assert.match(ordinary,/connect-src 'none'/);
+  const policy = html => /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1];
+  assert.match(policy(ordinary),/connect-src 'none'/);
   sessions.origin = origin; const session = create(sessions,paths);
   const page = await (await fetch(session.url)).text();
-  assert.match(page,/connect-src 'self'/); assert.doesNotMatch(page,/connect-src 'none'/);
+  assert.match(policy(page),/connect-src 'self'/); assert.doesNotMatch(policy(page),/connect-src 'none'/);
   assert.equal((await fetch(origin + '/EditHere.html?agent=' + '0'.repeat(64))).status,404);
   const health = await (await fetch(origin + '/__edithere_preview_health')).json();
   assert.equal(health.apiVersion,1); assert.equal(health.agentBridge,true);
   assert.equal(health.key,undefined); assert.equal(health.token,undefined);
   assert.equal(health.sha256,crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'../EditHere.html'))).digest('hex'));
+});
+
+function draftProject(name = '游戏主页') {
+  return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:'image',name,width:1,height:1,
+    document:{id:'frame-1',timestampUs:null,image,notes:[{id:'note-1',source:null,text:'增加说明'}],layout:null}};
+}
+test('drafts restore without duplicating the image and do not overwrite a completed session from another process', () => {
+  const paths = fixture(), first = new AgentSessions({...paths,credentials:false}), opened = create(first,paths);
+  const second = new AgentSessions({...paths,credentials:false});
+  assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
+  first.saveDraft(token(opened),draftProject());
+  const resumed = second.byId(opened.sessionId);
+  assert.deepEqual(hydratedDraft(resumed),draftProjectWithDate(resumed.draft.savedAt));
+  assert.equal(resumed.draft.document.image,undefined);
+  second.submit(token(opened),feedback);
+  assert.throws(() => first.saveDraft(token(opened),draftProject()),/completed/);
+  assert.equal(first.byId(opened.sessionId).state,'completed');
+  assert.equal(readSessionStatus({directory:paths.directory,sessionId:opened.sessionId}).state,'completed');
+  assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
+});
+function draftProjectWithDate(savedAt) {return {...draftProject(),savedAt};}
+
+test('draft validation rejects another image, unknown fields and invalid layout references', () => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),project=draftProject();
+  for (const invalid of [
+    {...project,unexpected:'field'},
+    {...project,document:{...project.document,image:image+'invalid'}},
+    {...project,document:{...project.document,notes:[{id:'note-1',source:null,text:'test',groupId:'missing'}]}},
+    {...project,document:{...project.document,layout:{width:1,height:1,pieces:[],groups:[]}}}
+  ]) assert.throws(()=>store.saveDraft(token(opened),invalid));
+  assert.equal(store.byId(opened.sessionId).draft,undefined);
+  assert.equal(fs.existsSync(paths.output),false);
+});
+
+test('reading a completed receipt checks the file and needs neither HTTP nor server credentials', () => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
+  store.submit(token(opened),feedback);
+  const key=fs.readFileSync(path.join(paths.directory,'server-key'),'utf8');
+  const stat=fs.statSync(path.join(paths.directory,opened.sessionId+'.json'));
+  const saved=readSessionStatus({directory:paths.directory,sessionId:opened.sessionId});
+  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,feedback.objects);
+  assert.equal(fs.readFileSync(path.join(paths.directory,'server-key'),'utf8'),key);
+  assert.equal(fs.statSync(path.join(paths.directory,opened.sessionId+'.json')).mtimeMs,stat.mtimeMs);
+  fs.writeFileSync(paths.output,'external edit');
+  assert.throws(()=>readSessionStatus({directory:paths.directory,sessionId:opened.sessionId}),/changed after submission/);
+});
+
+test('a crashed save lock recovers, while a live writer is respected', () => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
+  const file=path.join(paths.directory,opened.sessionId+'.lock');
+  fs.writeFileSync(file,JSON.stringify({pid:process.pid,token:'live-writer'}));
+  assert.throws(()=>store.saveDraft(token(opened),draftProject()),/being saved/);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).token,'live-writer');
+  const exited=spawnSync(process.execPath,['-e',''],{windowsHide:true,stdio:'pipe'});
+  assert.equal(exited.status,0);
+  fs.writeFileSync(file,JSON.stringify({pid:exited.pid,token:'crashed-writer'}));
+  assert.equal(store.saveDraft(token(opened),draftProject()).state,'pending');
+  assert.equal(fs.existsSync(file),false);
+  assert.equal(fs.existsSync(paths.output),false);
+});
+
+test('persistent startup and token lookup retain only requested historical sessions', () => {
+  const paths=fixture(),store=new AgentSessions({...paths,credentials:false});
+  const one=create(store,paths),two=create(store,{...paths,output:path.join(paths.directory,'second-result.json')});
+  const restarted=new AgentSessions({...paths,credentials:false});
+  assert.equal(restarted.sessions.size,0);
+  assert.equal(restarted.browser(token(one)).image,image);
+  assert.deepEqual([...restarted.sessions.keys()],[one.sessionId]);
+  assert.equal(restarted.byId(two.sessionId).id,two.sessionId);
+  assert.equal(restarted.sessions.size,2);
+  assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
 });

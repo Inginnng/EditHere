@@ -11,7 +11,7 @@ The Windows, macOS and Linux applications share the C++20 / Qt source in `app/`.
 | Directory | Contents and purpose |
 | --- | --- |
 | `app/`, `assets/`, `schema/`, `third_party/` | Shared desktop source, brand assets, data formats and vendored source dependencies |
-| `web/` | Browser source, generated standalone HTML, local Agent connector and web Skill |
+| `web/` | Browser source, standalone HTML, MCP Apps server and embedded HTML, local compatibility connector and web Skill |
 | `scripts/`, `packaging/`, `.github/workflows/` | Existing build, package, installer and CI entry points |
 | `connector/`, `skills/`, `trae-plugin/` | Sources for the desktop MCP, desktop Skill and Trae plugin |
 | `build/`, `build-macos/`, `build-linux/`, `build-*/` | Development build caches; kept in place and excluded from distribution |
@@ -23,13 +23,13 @@ Existing paths remain valid. Build scripts locate the repository through `script
 
 ## Prepare the collection
 
-Run from the repository root. Python 3.10+ is required; preparing the web packages also requires Node.js 18+:
+Run from the repository root. Python 3.10+ is required. Standalone builds support Node.js 18+; building MCP sources requires Node.js 20+. After changing MCP or shared page sources, run `npm --prefix web/mcp ci` and `node web/mcp/build.mjs` first. Downloaded Web Agent bundles need no npm install.
 
 ```powershell
 python scripts/prepare-distribution.py --output ../Distribution --include-history
 ```
 
-The destination must not already exist. Without `--output`, the destination is `dist/distribution-<product-version>-<short-git-hash>/`. The script first rebuilds `web/EditHere.html`, then collects distribution files. Existing native packages are read and copied, never moved or deleted; an existing destination is not overwritten.
+The destination must not already exist. Without `--output`, the destination is `dist/distribution-<product-version>-<short-git-hash>/`. The script rebuilds `web/EditHere.html` and checks source/artifact hashes in `web/mcp/build-info.json`, rejecting stale MCP bundles before collecting files. Existing native packages are read and copied, never moved or deleted; an existing destination is not overwritten.
 
 Useful options:
 
@@ -57,7 +57,7 @@ Distribution/
   archive/<platform>/<original-version>/<source-name+hash>/
 ```
 
-`web` separates the browser package from the connector package used by an Agent; the latter preserves its required internal paths. Packages in `integrations` use their own versions, rather than treating an MCP or plugin version as the desktop product version. Historical packages retain their original version and source, are marked `historical-unverified`, and do not fill gaps in the current release.
+`web` separates the standalone browser package from the Agent package. The web-agent allowlist includes the MCP server bundle, embedded official App SDK HTML, configuration template, licenses, installer and Skill; it excludes node_modules, tokens, sessions and personal paths. MCP requires Node.js 20+ and a host that supports MCP Apps; the same package retains browser compatibility mode. Packages in `integrations` use their own versions, rather than treating an MCP or plugin version as the desktop product version. Historical packages retain their original version and source, are marked `historical-unverified`, and do not fill gaps in the current release.
 
 Use the generated `manifest.json` to check the collected versions, sources, SHA-256 hashes, availability and missing packages. A manifest and checksums identify the collected bytes; they do not replace runtime, signing, notarization or platform acceptance checks. The source product version comes from `CMakeLists.txt`. Updating that version does not rename an older binary package into a new release. For example, source version `0.10.5` still leaves a platform pending when its matching package is absent.
 
@@ -70,7 +70,7 @@ Use the generated `manifest.json` to check the collected versions, sources, SHA-
 | Windows x64 | `scripts/build-windows.ps1` → `scripts/package-windows.ps1` → `scripts/package-installer.ps1` | `dist/EditHere-<version>-win-x64.zip`, `dist/EditHere-<version>-win-x64-setup.exe` | `EditHere-win-x64.zip`, `EditHere-win-x64-setup.exe` |
 | macOS Universal | `scripts/build-macos.sh`, including tests and DMG packaging | `dist/EditHere-<version>-macos-universal.dmg` | `EditHere-macos-universal.dmg` |
 | Linux x86_64 | `scripts/build-linux.sh` → `scripts/package-linux.sh` | `dist/linux-<version>/EditHere-linux-x86_64.AppImage`, its `.sha256`, and `edithere-cli` | `EditHere-linux-x86_64.AppImage`, `edithere-cli` |
-| Web | `node web/build.cjs`; the collection script prepares browser and Agent packages | `web/EditHere.html` and packages in the collection directory | This preparation adds no public download endpoint |
+| Web | `node web/build.cjs`; MCP uses `node web/mcp/build.mjs`; the collection script prepares both packages | `web/EditHere.html`, `web/EditHere.mcp.html`, `web/mcp/server.bundle.cjs` and distribution ZIPs | Public URLs depend on actual published assets |
 
 The Windows ZIP keeps the application, DLLs and plugin directories at its root. Do not add an enclosing platform directory: the desktop updater extracts the ZIP directly into the installation directory. The macOS CLI lives at `EditHere.app/Contents/MacOS/edithere-cli`. The separate Linux `edithere-cli` is a wrapper for its accompanying AppImage and must not be mixed with a different version.
 
