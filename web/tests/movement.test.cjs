@@ -29,7 +29,7 @@ function appHarness() {
     return elements.get(id);
   }
   const document = { getElementById: element, querySelector: selector => element(selector.replace(/^#/, '')), querySelectorAll: () => [],
-    addEventListener() {}, createElement: tag => element('created-' + tag), documentElement: { outerHTML: '' }, body: element('body') };
+    addEventListener() {}, createElement: tag => element('created-' + tag), documentElement: { outerHTML: '', cloneNode:()=>({outerHTML:'',querySelectorAll:()=>[]}) }, body: element('body') };
   const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, window: { addEventListener() {} }, console,
     ResizeObserver: class { observe() {} }, setTimeout: () => 0, clearTimeout() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
     // Media decoding is outside these model tests. Preserve fixture dimensions

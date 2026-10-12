@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "edithere-web": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/EditHere/web/mcp/server.bundle.cjs"]
+    }
+  }
+}

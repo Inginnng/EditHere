@@ -83,12 +83,12 @@ async function main() {
     await page.waitForFunction(()=>!document.querySelector('#export').disabled);
     const documentBefore=await page.evaluate(()=>EditHereWeb.feedback());await page.keyboard.press('ArrowRight');assert.deepEqual(await page.evaluate(()=>EditHereWeb.feedback()),documentBefore,'unconfirmed delivery keeps the exact submitted snapshot');
     await page.locator('#export').click();await page.waitForFunction(()=>document.body.dataset.agentState==='completed');
-    assert.equal(await page.locator('#export span').textContent(),'已返回');assert.equal(hash(fs.readFileSync(file)),receipt.sha256);
+    assert.equal(await page.locator('#export span').textContent(),'已保存');assert.equal(hash(fs.readFileSync(file)),receipt.sha256);
     assert(await page.locator('#export-dialog').isHidden(),'Agent feedback is returned directly without a JSON copy dialog');
     await page.screenshot({path:path.join(output,'game-feedback-returned-560x720.png')});
     results.push('a waiting CLI receives native JSON immediately; lost HTTP responses retry idempotently');
     const reopen=await context.newPage();await reopen.goto(session.url);await reopen.waitForFunction(()=>document.body.dataset.agentState==='completed');
-    assert((await reopen.locator('#toast').textContent()).includes('已返回 AI'));await reopen.close();
+    assert((await reopen.locator('#toast').textContent()).includes('已保存'));await reopen.close();
     const cancelledFile=path.join(output,run+'-cancelled.json');
     const cancelled=await command('start','--image',image,'--output',cancelledFile,'--timeout','1800');
     const other=await context.newPage();other.on('dialog',dialog=>dialog.accept());await other.goto(cancelled.url);await other.waitForFunction(()=>document.body.dataset.agentState==='pending');

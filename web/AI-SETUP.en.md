@@ -2,55 +2,65 @@
 
 [简体中文](AI-SETUP.md) · **English**
 
-This guide works before the Skill is installed. The host must provide local files, terminal execution and access to local web pages. Windows, macOS and Linux use the same Web Agent package. A chat interface can install it only when its host provides those capabilities.
+The Web Agent package includes a real MCP Apps entrypoint and a browser compatibility entrypoint. MCP uses host-managed stdio and an embedded HTML resource, with no localhost listener. Installing the Skill alone does not connect MCP. Standalone `EditHere.html` needs no server.
 
 ## Prompt for the agent
 
-> Follow this guide to install EditHere Web Agent. I will provide the web-agent ZIP download URL or local file and its SHA-256 checksum. Check existing runtimes and Skills first, use Node.js 18+, extract the entire package into a persistent writable user directory, install the edithere-web Skill and verify its page service. Tell me how to annotate the current page. Preserve existing Skills and other services, and report any specific conflict.
+> Follow this guide to install EditHere Web Agent. I will provide the web-agent ZIP URL or local file and its SHA-256. Inspect existing installations and extract the complete package into a retained user directory. Prefer connecting EditHere Web MCP to the current host, verify discovered tools and the embedded UI, and install the edithere-web Skill. If the host lacks MCP Apps support, explain the actual limitation and use the browser compatibility entrypoint. Preserve existing MCP entries and Skills. Tell me how to annotate the current page.
 
-## Select the package
+## Obtain and check the package
 
-Use the ZIP whose name contains **`-web-agent-`**, with `web/install-skill.cjs` inside. The `-web-` package containing only `EditHere.html` supports browser editing without the Agent session service.
+Choose the ZIP containing **`-web-agent-`** in its name. It includes `web/mcp/server.bundle.cjs`, `web/EditHere.mcp.html`, `web/install-skill.cjs` and third-party licenses. The `-web-` package containing only `EditHere.html` is for standalone editing.
 
-Creating a local ZIP does **not** publish a download URL. Use the actual address supplied by the author or listed on a release page; do not assume that the desktop `releases/latest` includes Web assets. A local ZIP works with the same steps below. Distributors should provide its `SHA256SUMS.txt` or exact package checksum.
+Use an actual distributor-provided URL or local package, not a guessed release asset. Verify the supplied SHA-256, then extract into a new, persistent writable directory. Use PowerShell `Get-FileHash -Algorithm SHA256`, macOS `shasum -a 256` or Linux `sha256sum`. Retain the runtime after installation.
 
-## Install
+MCP requires **Node.js 20+**; the browser compatibility CLI supports Node.js 18+. Distributed server and App SDK bundles need no npm install, Qt, Python or desktop EditHere. Screenshot capture depends on actual host browser/window tools.
 
-1. Check `node --version`: version 18 or newer is required. An absolute path to the host's existing Node.js runtime is also usable. The package does not bundle Node.js and needs no Qt, Python, npm dependencies or desktop EditHere. If Node.js is missing, identify the dependency and configure it for the user's environment.
-2. Verify the ZIP's SHA-256 and extract the entire package into a new, persistent, writable user directory. Use PowerShell `Get-FileHash -Algorithm SHA256`, macOS `shasum -a 256` or Linux `sha256sum`; preserve paths with the platform's ZIP extractor. Retain the extracted runtime after installation.
-3. From that directory, run:
+## Connect MCP and install the Skill
+
+1. Check `node --version`, the host's current MCP configuration and existing EditHere tools. Use a working absolute Node.js path and reuse valid installations.
+2. From the extracted directory, run:
 
    ```text
    node web/install-skill.cjs
    ```
 
-   The default destination is `$CODEX_HOME/skills/edithere-web`, or `~/.codex/skills/edithere-web` when unset. For another host, locate its actual Skill directory and pass an absolute destination:
+   The default target is `$CODEX_HOME/skills/edithere-web`, or `~/.codex/skills/edithere-web` when unset. For another host, locate its Skill directory and use:
 
    ```text
    node web/install-skill.cjs --destination <absolute-host-skill-directory/edithere-web>
    ```
 
-   Success returns JSON with `state:"installed"`, the Skill directory, CLI and Node.js paths. The installer checks the runtime and writes its local entry to the Skill's `references/local-installation.md`. It refuses an existing destination. Inspect and reuse a valid existing installation, or install to a user-selected fresh destination; do not delete an existing Skill to bypass the conflict.
-4. Start and verify the service from the same extracted directory:
+   The installer returns `state:"installed"` and local entries, and records absolute paths plus MCP configuration in `references/local-installation.md`. It does not edit host settings. Existing destinations are refused; inspect and reuse them or use a user-selected new directory rather than deleting the existing Skill.
+3. Read the `web/mcp/mcp.json` template or the install receipt's `mcpConfig`. Merge its stdio entry using the host's documented configuration: `command` is the absolute Node.js path, and the sole `args` entry is the extracted `web/mcp/server.bundle.cjs` absolute path. Preserve other MCP entries. No HTTP URL is needed. Convert to TOML or the host's settings UI where required.
+4. Reload MCP and Skills through the host. Verify `edithere_web_open` and `edithere_web_read` in the actual tool list; file existence alone does not prove connection.
+5. Call `edithere_web_open` with an actual test image, check `uiSupport/state`, and verify that image in the embedded UI. MCP tool discovery does not prove MCP Apps support. A host that does not declare UI capabilities receives `unsupported` with compatibility commands, without creating an orphan session. **This WorkBuddy version needs an actual test**; CodeBuddy Code Web UI / IDE documentation does not establish WorkBuddy support.
 
-   ```text
-   node web/preview.cjs --json
-   ```
+## Use and acceptance
 
-   Expect `service:"edithere-web-preview"`, `agentBridge:true`, `apiVersion:1`, and the extracted HTML's path, PID and SHA-256. Open its returned `url`. If port 7330 belongs to another installation or service, report its PID/path conflict rather than terminating it automatically. This verifies page access, not a user's feedback submission.
-5. Confirm the installed `SKILL.md`, all three reference files and a local entry pointing to the retained runtime. Reload Skills using the host's supported method. If the current chat has not discovered the new Skill, read its installed `SKILL.md` directly for this turn. Report actual installation paths and verification results.
+For “Help me annotate the game homepage with EditHere”, capture and inspect the actual current interface, then call the discovered `edithere_web_open` with:
 
-## First annotation
-
-The user can ask to annotate a game homepage with EditHere, or explicitly select `edithere-web`. Following the Skill, capture the actual current screen and choose unique absolute image and new feedback paths:
-
-```text
-node web/agent.cjs start --image <absolute-image> --output <new-absolute-feedback-json> --timeout 86400
-node web/agent.cjs poll --session <sessionId-returned-by-start>
+```json
+{"imagePath":"<absolute-current-image-path>","name":"Game homepage"}
 ```
 
-Open the session URL returned by `start` to load the image. The ordinary preview URL is not that session. After the user clicks Feedback, read the same sessionId and proceed only with valid `completed` feedback. Screenshot capture and opening a right panel depend on the host.
+An optional `outputPath` must be absolute and not yet exist. Otherwise the server generates a unique feedback file under `.edithere` beside the source image. Retain the sessionId and output path. The host displays an MCP UI resource without starting port 7330.
 
-Submission writes to the local session service. The default creates no scheduled task: the user returns to the chat and says “continue” after submitting. Register follow-up only for an explicit choice for this session and when the Skill's host-capability and closure-detection conditions are met. Promise follow-up only after registration succeeds; scheduling may leave host messages and has latency. Clean up associated temporary tasks when the user closes or cancels. Closing a tab does not itself cancel the server session; do not invent closure detection. Each `wait` lasts at most 55 seconds and is for an explicit request to wait now.
+Feedback submission first persists complete desktop-compatible JSON, then requests a host conversation message. Saving and messaging have separate states. If messaging is rejected, only fills the input box, or is unsupported, the user says “continue” in the chat. Read the original sessionId with `edithere_web_read` and verify `completed/sha256` before acting. Read receipts omit image base64; the full image remains in the output JSON. Host message acceptance does not prove the AI has implemented the feedback.
 
-Runtime images, tokens and logs are stored in `web/tests/output/`; exclude them from redistribution. Moving the runtime requires updating the Skill's local entry. See the repository's `web/README.en.md` for capabilities and limitations, and the installed Skill for the annotation workflow.
+Sessions and drafts default to `~/.edithere/web-sessions`. Set `EDITHERE_WEB_DATA_DIR` to a persistent absolute directory in MCP configuration if needed. Host shutdown preserves already saved data. After reconnecting, reopen with `edithere_web_open({"sessionId":"<original-ID>"})` or read submitted results. Respect user cancellation and stops; do not automatically restart stopped work.
+
+Verify image loading, annotations and movements, matching disk/read results, readable feedback after messaging failure, and reopening after MCP restart. Report the host actually tested; a reference-host test is not a WorkBuddy test.
+
+## Browser compatibility entrypoint
+
+When MCP Apps is unsupported, use:
+
+```text
+node web/agent.cjs start --image <actual-absolute-image> --output <new-absolute-feedback-json> --timeout 86400
+node web/agent.cjs poll --session <sessionId-from-start>
+```
+
+Open the session URL returned by start. Use `node web/preview.cjs --json` to check the port 7330 preview service. Inspect PID/path conflicts rather than terminating unrelated services. This mode defaults to manual “continue” after submission and has no host message bridge. A terminal background service may end when the Agent stops; do not promise an independent daemon. Completed poll results can be read from persistent data after the service ends.
+
+Compatibility logs and legacy state may be in `web/tests/output/`. Session directories and outputs contain private images; exclude them from redistribution. The Skill's [follow-up reference](skills/edithere-web/references/follow-up.md) covers an explicit per-session choice of scheduled follow-up.

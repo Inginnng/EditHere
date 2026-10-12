@@ -2,26 +2,40 @@
 
 [English](README.en.md)
 
-双击本目录的 **EditHere.html** 即可使用。也可以把这个 HTML 放到普通静态网站，让用户在线打开；页面加载完成后，素材读取、批注、布局调整与导出均在浏览器本地完成。独立 HTML 没有服务端处理、CDN、账号或外部运行时依赖，内容安全策略禁止网络连接。下文的 Agent 会话模式另用本机服务传入图片和取回反馈。
+双击本目录的 **EditHere.html** 即可使用。也可以把这个 HTML 放到普通静态网站，让用户在线打开；页面加载完成后，素材读取、批注、布局调整与导出均在浏览器本地完成。独立 HTML 没有服务端处理、CDN、账号或外部运行时依赖，内容安全策略禁止网络连接。下文的 MCP Apps 模式由宿主管理 stdio 与内嵌 HTML；普通浏览器兼容模式使用本机服务。
 
-在 Agent 的浏览器侧栏预览时，在项目根目录运行 `node web/preview.cjs`（需要已安装的 Node.js），再打开 `http://127.0.0.1:7330/EditHere.html`。启动脚本会复用本项目的现有服务，或在独立后台进程中启动服务并验证当前 HTML 的响应；服务停止后再次运行即可恢复。“拒绝建立连接”表示本地服务没有监听，刷新页面不能代替启动服务。预览仅监听本机，不上传素材。
+在 Agent 的浏览器侧栏预览时，在项目根目录运行 `node web/preview.cjs`（需要已安装的 Node.js），再打开 `http://127.0.0.1:7330/EditHere.html`。兼容启动脚本会复用本项目的现有服务，或尝试启动后台服务并验证当前 HTML 的响应；进程可能随宿主停止而结束，不能保证独立常驻。“拒绝建立连接”表示本地服务没有监听，刷新页面不能代替启动服务。预览仅监听本机，不上传素材。
 
-## Agent 技能与自动返回
+## MCP Apps 与 Agent 技能
 
-首次安装可直接把 [AI 安装指南](AI-SETUP.md) 和实际的 `web-agent` ZIP 下载地址或本地文件交给 Agent；指南不依赖预先安装 Skill。当前生成的本地包尚不代表已有公开下载入口。
+首次安装将 [AI 安装指南](AI-SETUP.md) 和实际的 `web-agent` ZIP 交给 Agent。下载包包含打包后的服务与官方 App SDK，不需要 npm install。MCP 需要 Node.js 20+，普通浏览器兼容 CLI 支持 Node.js 18+；均无需桌面 EditHere。
 
-`skills/edithere-web/` 是可安装的 Agent 技能。需要 Node.js ≥ 18，将 Agent Web 包解压到可写且准备长期保留的目录，再运行 `node web/install-skill.cjs`（包内若以本目录为根，则运行 `node install-skill.cjs`）。安装器默认写入 `$CODEX_HOME/skills/edithere-web` 或 `~/.codex/skills/edithere-web`，可用 `--destination <技能目录绝对路径>` 指定其他宿主的技能目录。安装器检查网页与服务文件，并把当前 CLI、Node.js 的绝对路径写入技能的 `references/local-installation.md`；目标已存在就拒绝，不覆盖已有技能，也不修改桌面 `edithere` 技能。保留 CLI 同目录的网页与服务文件，当前服务会在此目录的 `tests/output/` 中生成私有会话和日志。仓库技能保留相对入口，不包含开发者本机路径。网页技能适用于侧栏批注，用户明确指定桌面程序时使用桌面入口。
+MCP 接入沿用 [Cowart 的 stdio 服务和 UI 资源](https://github.com/zhongerxin/Cowart/blob/main/mcp/server.mjs)，使用 [官方 MCP Apps SDK](https://github.com/modelcontextprotocol/ext-apps)：工具通过 `_meta.ui.resourceUri` 关联 HTML 资源，宿主显示内嵌界面；页面通过 App SDK 调用保存工具并请求发送对话消息。此入口不监听 7330、不依赖本机 HTTP 服务器，也不加载 CDN。
 
-安装后可以说“帮我用 EditHere 批注游戏主页”，或显式使用 `$edithere-web`。用户给出图片时直接使用；要求批注实际运行页面时，Agent 使用宿主允许的浏览器或窗口截图能力，取得并视检本轮真实截图，再载入右侧会话页面。截图依赖宿主工具，网页连接器本身不包含系统截图实现；不能把目录旧图或固定测试渲染当成当前运行界面。用户点击顶部“反馈”（完成并返回 AI），结果写入本次唯一 JSON 输出，无需手动复制 JSON。
+在宿主配置中合并 `web/mcp/mcp.json` 条目，将 Node.js 与 `web/mcp/server.bundle.cjs` 替换为本机绝对路径。重新载入后确认实际工具 `edithere_web_open` / `edithere_web_read`。调用 open 传入实际绝对 `imagePath`、可选 `name/outputPath`，查看 `uiSupport/state` 后再确认图片已经显示。宿主未声明 MCP Apps 能力时返回 unsupported 与兼容入口，不创建待提交空会话。WorkBuddy 当前版本是否支持内嵌需实测，不能从 CodeBuddy 文档推定。
 
-等价的命令行流程（图片和输出均使用实际绝对路径，输出文件需尚不存在）：
+安装可选技能：
 
 ```text
-node web/agent.cjs start --image <图片路径> --output <新的反馈路径> --timeout 86400
-node web/agent.cjs poll --session <start 返回的会话 ID>
+node web/install-skill.cjs
 ```
 
-打开 `start` 回执返回的 URL，而非普通预览 URL。技能保存本次会话记录后交给用户编辑并结束本轮，默认不创建定时任务；用户提交后回到对话说“继续”，Agent 对同一 ID 查询一次。只有本次明确选择定时跟进、宿主支持且满足技能中的关闭检测条件时，才为当前对话注册一次 heartbeat。调度可能显示“由已安排任务发送”，未提交时不输出进度也不能消除宿主的调度消息；注册成功才承诺跟进，并说明延迟。用户明确关闭、取消或可靠工具确认本次页面已关闭时清理关联临时任务，保留原图和会话记录；关闭标签本身没有服务端取消回执，不能仅据 pending 推断页面仍打开。仅在用户明确要求“现在等我提交”时使用单次最多 55 秒的 `wait`。只有 `completed` 且反馈可解析时继续，取消或超时不使用旧结果，并清理已注册的跟进。CLI 本身不会在结束的对话后台代发消息或立即唤醒宿主。本机服务只监听回环地址，图片与反馈不发到外部服务器；普通静态或离线页面继续使用下载/复制方式导出。
+默认技能目录为 `$CODEX_HOME/skills/edithere-web` 或 `~/.codex/skills/edithere-web`；其他宿主用 `--destination <技能绝对目录>`。安装器核对文件，在技能本机引用中记录 MCP 与 CLI 路径及配置参考，不自动改宿主 MCP 设置，不覆盖已有技能，不修改桌面技能。保留解压运行时，移动后需重新定位。
+
+用户说“帮我用 EditHere 批注游戏主页”时，Skill 优先使用已连接的 MCP；没有内嵌能力时走兼容入口。截图来自宿主实际浏览器或窗口工具，必须是本轮目标画面；EditHere 本身不实现系统截图，旧图与固定测试渲染不能冒充当前界面。
+
+MCP 页面的“反馈”先持久化完整桌面兼容 JSON，再请求宿主发送消息。保存成功、消息接受和 AI 实施分别报告；宿主拒绝或不支持消息时，已保存结果仍可读取，用户回到对话说“继续”。Agent 用原 sessionId 调用 read，核对 completed 与 SHA 后处理。宿主接受消息不代表已经修改代码，updateModelContext 也不会自行唤醒 AI。
+
+已确认保存的 MCP 草稿和会话默认位于 `~/.edithere/web-sessions`，可用 `EDITHERE_WEB_DATA_DIR` 指定持久绝对目录。宿主重启后可 open 原 sessionId 恢复草稿或查看已提交结果；停止/取消后不自动重开。输出是保持原图的原生反馈 JSON，read 回执省略图片编码。不要把私有会话、图片、令牌和日志加入分发包。
+
+普通浏览器兼容流程：
+
+```text
+node web/agent.cjs start --image <实际图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400
+node web/agent.cjs poll --session <start返回的sessionId>
+```
+
+打开 start 返回的会话 URL。此模式没有宿主消息桥，默认提交后手动“继续”，不注册定时任务；已提交结果可在服务停止后读取。仅本次明确选择调度时使用技能中的跟进规则，不能承诺无痕或即时唤醒。关闭标签本身不等于取消服务端会话，用户明确停止时尊重停止并清理关联任务。普通静态/离线 HTML 保留下载与复制导出。
 
 ## 使用
 
@@ -53,7 +67,7 @@ node web/agent.cjs poll --session <start 返回的会话 ID>
 - 大爆炸移动的是矩形像素区域，原位置留透明空洞；不执行语义抠图、背景补全或视频渲染。
 - 图片最多 3200 万像素；视频格式取决于浏览器和系统的解码能力，优先使用 H.264 MP4 或 WebM。支持帧回调的浏览器使用实际呈现帧的媒体时间，其他浏览器回退播放位置；这不是逐帧视频剪辑器。
 - 网页项目使用独立格式 `edithere-web-project-1`，暂不支持桌面 `.edithere` 项目。可导入含内嵌图片的当前图片反馈和视频反馈。
-- 普通静态/离线页面不能自动读取任意本地路径或向 CLI 返回结果。需要自动返回时，通过上述 Agent 技能创建本机图片会话；其访问范围限于本次传入的图片与输出。
+- 普通静态/离线页面不能自动读取任意本地路径或向 Agent 返回结果。宿主内回传使用 MCP Apps；普通浏览器兼容模式通过本机图片会话保存，再由 Agent 查询。
 - 在线页面关闭后能否离线重新访问取决于浏览器缓存；下载 HTML 后可以直接断网双击打开。本版未增加 Service Worker。
 
 ## 开发与验证
@@ -83,3 +97,5 @@ node web/tests/native-video-boundaries.test.cjs
 `latest-parity.test.cjs` 对照桌面已有测试检查位移占位、建立顺序、补字与撤销、空批注项目重载、复位及完整导出数据；`native-video-boundaries.test.cjs` 检查原生空视频反馈、重新关联视频和最后一毫秒内的微秒时间点。所有 JSON 断言读取实际下载文件，预览文字单独验证。
 
 仓库根目录的许可同样适用于此实现。
+
+MCP 构建与离线构建分开。修改 MCP 相关源文件后，从仓库根目录执行 `npm --prefix web/mcp ci`、`node web/mcp/build.mjs`，重新生成官方 SDK 的内嵌 HTML、服务 bundle、第三方许可与哈希清单。下载后的 web-agent 包不需安装这些构建依赖。分发脚本核对清单中的源码与产物哈希，拒绝旧 bundle 与新源码混装。

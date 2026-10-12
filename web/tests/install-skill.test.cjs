@@ -45,10 +45,17 @@ test('installs from Chinese and spaced paths and records this runtime without ch
   fs.writeFileSync(desktop, 'preserve desktop skill\n');
   const result = run(web, ['--destination', target]);
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout), {state:'installed', destination:target, cli:path.join(web, 'agent.cjs'), node:process.execPath});
+  const receipt = JSON.parse(result.stdout);
+  const mcpServer = path.join(web, 'mcp', 'server.bundle.cjs');
+  assert.deepEqual(receipt, {state:'installed', destination:target, cli:path.join(web, 'agent.cjs'), node:process.execPath,
+    mcpServer, mcpConfig:{mcpServers:{'edithere-web':{command:process.execPath, args:[mcpServer]}}}});
   const reference = fs.readFileSync(path.join(target, 'references', 'local-installation.md'), 'utf8');
   assert.ok(reference.includes(path.join(web, 'agent.cjs')));
   assert.ok(reference.includes(process.execPath));
+  assert.ok(reference.includes(mcpServer));
+  const jsonConfig = reference.match(/```json\n([\s\S]*?)\n```/);
+  assert.ok(jsonConfig, 'the installed reference provides a usable MCP entry');
+  assert.deepEqual(JSON.parse(jsonConfig[1]), receipt.mcpConfig);
   assert.ok(!reference.includes('old placeholder'));
   assert.equal(fs.readFileSync(path.join(target, 'references', 'capture.md'), 'utf8'), 'capture fixture\n');
   assert.equal(fs.readFileSync(desktop, 'utf8'), 'preserve desktop skill\n');
@@ -81,6 +88,15 @@ test('refuses a missing feedback runtime before creating the skill destination',
   const result = run(web, ['--destination', target]);
   assert.equal(result.status, 1);
   assert.match(JSON.parse(result.stderr).error, /src[\\/]feedback\.js/);
+  assert.equal(fs.existsSync(path.dirname(target)), false);
+});
+
+test('refuses an incomplete MCP package before installing a misleading MCP skill', t => {
+  const {web, target} = fixture(t);
+  fs.unlinkSync(path.join(web, 'mcp', 'server.bundle.cjs'));
+  const result = run(web, ['--destination', target]);
+  assert.equal(result.status, 1);
+  assert.match(JSON.parse(result.stderr).error, /mcp[\\/]server\.bundle\.cjs/);
   assert.equal(fs.existsSync(path.dirname(target)), false);
 });
 

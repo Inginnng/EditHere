@@ -11,7 +11,7 @@ EditHere 的 Windows、macOS、Linux 版本共用 `app/` 中的 C++20 / Qt 源�
 | 目录 | 内容与用途 |
 | --- | --- |
 | `app/`、`assets/`、`schema/`、`third_party/` | 桌面共用源码、品牌资源、数据格式和随源码维护的依赖 |
-| `web/` | 网页源码、生成的独立 HTML、本地 Agent 连接器及网页 Skill |
+| `web/` | 网页源码、独立 HTML、MCP Apps 服务与内嵌 HTML、兼容本地连接器及网页 Skill |
 | `scripts/`、`packaging/`、`.github/workflows/` | 原有构建、打包、安装器和 CI 入口 |
 | `connector/`、`skills/`、`trae-plugin/` | 桌面 MCP、桌面 Skill、Trae 插件的来源 |
 | `build/`、`build-macos/`、`build-linux/`、`build-*/` | 开发构建缓存；保留原位置，不纳入分发 |
@@ -23,13 +23,13 @@ EditHere 的 Windows、macOS、Linux 版本共用 `app/` 中的 C++20 / Qt 源�
 
 ## 生成统一汇总
 
-在仓库根目录执行，依赖 Python 3.10+；网页打包还需要 Node.js 18+：
+在仓库根目录执行，依赖 Python 3.10+；离线网页构建支持 Node.js 18+，MCP 源码构建需要 Node.js 20+。修改 MCP 或其共享页面源码后先运行 `npm --prefix web/mcp ci`、`node web/mcp/build.mjs`；下载后使用已经打包的 Web Agent 不需要 npm。
 
 ```powershell
 python scripts/prepare-distribution.py --output ../分发 --include-history
 ```
 
-目标必须是尚不存在的新目录。省略 `--output` 时，生成 `dist/distribution-<产品版本>-<Git短哈希>/`。脚本先重新生成 `web/EditHere.html`，再汇总分发文件。现有原生程序包只被读取和复制，不移动、不删除，不覆盖已有分发目录。
+目标必须是尚不存在的新目录。省略 `--output` 时，生成 `dist/distribution-<产品版本>-<Git短哈希>/`。脚本先重新生成 `web/EditHere.html`，核对 `web/mcp/build-info.json` 中的源码与产物哈希，拒绝旧 MCP bundle 与新源码混装，再汇总分发文件。现有原生程序包只被读取和复制，不移动、不删除，不覆盖已有分发目录。
 
 常用参数：
 
@@ -57,7 +57,7 @@ python scripts/prepare-distribution.py --output ../分发 --include-history
   archive/<平台>/<原版本>/<来源名+哈希>/
 ```
 
-`web` 将直接打开的网页包与供 Agent 使用的连接器包分开；后者保留所需的目录关系。`integrations` 中的接入包按自身版本整理，不将 MCP 或插件版本当作桌面应用版本。历史包保留原版本及来源，标为 `historical-unverified`，不会补进当前版本的缺项。
+`web` 将直接打开的网页包与供 Agent 使用的连接器包分开。web-agent 白名单包含 MCP 服务 bundle、官方 App SDK 的内嵌 HTML、配置模板、许可、安装器与 Skill；不包含 node_modules、令牌、会话或个人路径。MCP 需要支持 MCP Apps 的宿主和 Node.js 20+；同包保留普通浏览器兼容入口。`integrations` 中的接入包按自身版本整理，不将 MCP 或插件版本当作桌面应用版本。历史包保留原版本及来源，标为 `historical-unverified`，不会补进当前版本的缺项。
 
 以生成的 `manifest.json` 为本次汇总结果：核对版本、来源、SHA-256、可用状态和缺项。清单与校验和证明收集了哪些字节，不替代程序运行、签名、公证和平台验收。当前产品源码版本来自 `CMakeLists.txt`；已有旧程序包不会因为源码升级而被改名为新版。整理时即使源码是 `0.10.5`，没有对应打包产物的平台也必须继续显示待构建。
 
@@ -70,7 +70,7 @@ python scripts/prepare-distribution.py --output ../分发 --include-history
 | Windows x64 | `scripts/build-windows.ps1` → `scripts/package-windows.ps1` → `scripts/package-installer.ps1` | `dist/EditHere-<版本>-win-x64.zip`、`dist/EditHere-<版本>-win-x64-setup.exe` | `EditHere-win-x64.zip`、`EditHere-win-x64-setup.exe` |
 | macOS Universal | `scripts/build-macos.sh`，含测试和 DMG 打包 | `dist/EditHere-<版本>-macos-universal.dmg` | `EditHere-macos-universal.dmg` |
 | Linux x86_64 | `scripts/build-linux.sh` → `scripts/package-linux.sh` | `dist/linux-<版本>/EditHere-linux-x86_64.AppImage`、同名 `.sha256`、`edithere-cli` | `EditHere-linux-x86_64.AppImage`、`edithere-cli` |
-| Web | `node web/build.cjs`；统一脚本整理网页与 Agent 两种包 | `web/EditHere.html` 及统一分发目录中的网页包 | 本次整理不新增公开下载入口 |
+| Web | `node web/build.cjs`；MCP 用 `node web/mcp/build.mjs`；统一脚本整理两种包 | `web/EditHere.html`、`web/EditHere.mcp.html`、`web/mcp/server.bundle.cjs` 及分发 ZIP | 公开入口以实际发布资产为准 |
 
 Windows ZIP 内直接放程序、DLL 和插件目录，不能再套一层平台目录：桌面更新器会将 ZIP 直接解压到安装目录。macOS 的 CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`；Linux 的独立 `edithere-cli` 是与 AppImage 配套使用的包装脚本，不应混搭另一版本。
 
