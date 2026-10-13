@@ -46,10 +46,12 @@ async function main() {
     assert.equal(await page.locator('#export').getAttribute('aria-label'),'完成并返回 AI');
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('original image automatically loads from the session; no feedback before explicit submit');
-    if(await page.locator('#utility-toggle').isVisible())await page.locator('#utility-toggle').click();
-    const offline=await downloadText(page,'#offline');
-    assert(offline.match(/<meta http-equiv="Content-Security-Policy"[^>]+>/)[0].includes("connect-src 'none'"),'session download restores a fully offline content policy');
-    if(await page.locator('#utility-toggle').isVisible())await page.locator('#utility-toggle').click();
+    assert.equal(await page.locator('#offline').count(),0);
+    assert.equal(await page.locator('#actual-size').count(),0);
+    const backup=JSON.parse(await downloadText(page,'#save-json'));
+    assert.deepEqual(backup,{annotationSpace:'result',image:original,objects:[]},'manual JSON backup preserves the immutable original without submitting the session');
+    assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
+    results.push('manual JSON backup retains the complete original and never submits feedback');
     if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
     await page.locator('#global').click();await note(page,'链路测试：全局意见自动返回当前对话');
     await page.locator('#explode').click();await page.waitForFunction(()=>document.body.dataset.busy!=='true');

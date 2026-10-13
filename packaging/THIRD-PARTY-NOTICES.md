@@ -7,7 +7,7 @@ https://zlib.net/fossils/zlib-1.3.2.tar.gz; the vendored subset and source check
 are recorded in third_party/zlib/README.md in the EditHere source tree.
 
 EditHere uses dynamically linked Qt 6.8 (Qt Core, Gui, Widgets,
-Concurrent, Network, Qt Image Formats and Qt Multimedia), copyright The Qt Company Ltd. and
+Concurrent, Network, Qt SVG, Qt Image Formats and Qt Multimedia), copyright The Qt Company Ltd. and
 contributors, under LGPL version 3 and the components' applicable licenses.
 
 Qt is not part of EditHere's application code. The shared libraries
@@ -51,6 +51,7 @@ Upstream source references:
 - https://download.qt.io/archive/qt/6.8/6.8.3/submodules/
 - https://download.qt.io/archive/qt/6.8/6.8.0/submodules/
 - https://code.qt.io/cgit/qt/qtbase.git/tag/?h=v6.8.3
+- https://code.qt.io/cgit/qt/qtsvg.git/tag/?h=v6.8.3
 - https://code.qt.io/cgit/qt/qtimageformats.git/tag/?h=v6.8.3
 - https://code.qt.io/cgit/qt/qtmultimedia.git/tag/?h=v6.8.3
 - https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -81,3 +82,8 @@ https://github.com/tesseract-ocr/tesseract ; language data is installed by the
 user's package manager and is not bundled. linuxdeploy and its Qt plugin are
 build tools, not application components; their official binaries are pinned
 and SHA-256 verified by scripts/fetch-linuxdeploy.py.
+
+Interface action icons use a pinned subset of Lucide (ISC, with the retained
+Feather MIT notice), plus EditHere-specific derivatives recorded in
+assets/ui-icons/manifest.json in the source tree. The complete upstream notices
+ship in licenses/ui-icons/LICENSE. Application branding is separate and unchanged.

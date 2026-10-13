@@ -21,11 +21,34 @@ $('note-dialog').addEventListener('keydown',event=>{
     event.stopImmediatePropagation();saveLocalNote(event);
   }
 },true);
-const bridge = new App({name:'EditHere',version:'0.10.5'}, {}, {autoResize:false});
+const bridge = new App({name:'EditHere',version:document.querySelector('meta[name="edithere-version"]').content}, {availableDisplayModes:['inline','fullscreen']}, {autoResize:false});
 const lifecycle = new AbortController();
 let connectPromise, session = null, receipt = null, snapshot = null;
 let connected = false, alive = true, working = false, draftTimer;
 let draftTail = Promise.resolve(), openTail = Promise.resolve(), lastDraftRevision = -1;
+let expansionRequested = false;
+
+async function expandForEditing() {
+  if(expansionRequested||!alive)return;
+  expansionRequested=true;
+  const context=bridge.getHostContext();
+  document.body.dataset.mcpDisplayMode=context?.displayMode||'inline';
+  if(context?.displayMode==='fullscreen')return;
+  if(!context?.availableDisplayModes?.includes('fullscreen')){
+    document.body.dataset.mcpDisplayRequest='unavailable';return;
+  }
+  document.body.dataset.mcpDisplayRequest='requesting';
+  try{
+    // The host chooses the actual container for its expanded MCP Apps surface.
+    // Request once per view so a later user collapse is always respected.
+    const result=await bridge.requestDisplayMode({mode:'fullscreen'},{timeout:10000,signal:lifecycle.signal});
+    if(!alive)return;
+    document.body.dataset.mcpDisplayMode=result.mode;
+    document.body.dataset.mcpDisplayRequest=result.mode==='fullscreen'?'accepted':'declined';
+  }catch{
+    if(alive)document.body.dataset.mcpDisplayRequest='failed';
+  }
+}
 
 function label(button, text) {button.querySelector('span').textContent=text;}
 function toolValue(result) {
@@ -47,21 +70,30 @@ async function callResult(name, args) {
 async function call(name, args) {return toolValue(await callResult(name,args)).value;}
 async function sessionImage(value) {
   const maximum=96*1024*1024;
-  if(typeof value.image==='string'){
+  if(!supportsTools()&&typeof value.image==='string'){
     if(value.image.length>maximum)throw new Error('会话图片过大');
     return value.image;
   }
-  const length=value.imageInfo?.length;
-  if(!Number.isSafeInteger(length)||length<1||length>maximum)throw new Error('会话图片信息无效');
+  // Fetch the immutable image directly through the app-only bridge. Agent
+  // tool results may transform large strings before forwarding them to the UI;
+  // accepting an inline encoding there can leave a connected but empty editor.
+  let length=value.imageInfo?.length;
+  if(length!==undefined&&(!Number.isSafeInteger(length)||length<1||length>maximum))throw new Error('会话图片信息无效');
   const chunks=[];let offset=0;
-  while(offset<length){
+  document.body.dataset.imageState='loading';
+  do{
     const result=await callResult('edithere_web_image',{sessionId:value.sessionId,token:value.token,offset});
     const info=toolValue(result).value, chunk=result?._meta?.edithereImageChunk;
+    length??=info.totalLength;
+    if(!Number.isSafeInteger(length)||length<1||length>maximum)throw new Error('会话图片信息无效');
     if(typeof chunk!=='string'||chunk.length>1024*1024||info.offset!==offset||info.totalLength!==length||
         !Number.isSafeInteger(info.nextOffset)||info.nextOffset<=offset||info.nextOffset>length||chunk.length!==info.nextOffset-offset)
       throw new Error('会话图片分块不完整，请重新打开会话');
     chunks.push(chunk);offset=info.nextOffset;
-  }
+    document.body.dataset.imageReceived=String(offset);
+    document.body.dataset.imageLength=String(length);
+  }while(offset<length);
+  document.body.dataset.imageState='received';
   return chunks.join('');
 }
 function setBusy(value) {working=value;submit.disabled=value;cancel.disabled=value;}
@@ -94,7 +126,7 @@ function persistDraft() {
     if(value.state!=='pending')throw new Error('草稿会话已结束');
     if(!alive)return;
     lastDraftRevision=revision;editor.markAgentDraftSaved(revision);
-    document.body.dataset.draftState='saved';
+    document.body.dataset.draftState=revision===editor.projectRevision()?'saved':'unsaved';
   });
   return draftTail;
 }
@@ -115,7 +147,7 @@ function manualReceipt() {
     originalExport();editor.notify('反馈已保存。请回到对话说“继续”，或让 AI 读取：'+receipt.outputPath);
   };
   submit.title='反馈已保存；宿主未接收对话消息，可导出或回到对话继续';submit.setAttribute('aria-label',submit.title);
-  cancel.disabled=false;label(cancel,'复制路径');cancel.querySelector('use').setAttribute('href','#i-note');
+  cancel.disabled=false;label(cancel,'复制路径');cancel.querySelector('use').setAttribute('href','#i-copy');
   cancel.title='复制已保存反馈的路径';cancel.setAttribute('aria-label',cancel.title);
   cancel.onclick=async()=>{
     try{await navigator.clipboard.writeText(receipt.outputPath);editor.notify('路径已复制，回到对话让 AI 读取反馈');}
@@ -185,6 +217,7 @@ async function openResult(result) {
     if(session.sessionId!==privateData.sessionId)editor.notify('当前面板已有批注会话，请为另一张图打开新面板');
     return;
   }
+  void expandForEditing();
   const image=await sessionImage(privateData);
   if(!alive)return;
   session={...privateData,image,state:value.state||privateData.state};receipt=privateData.receipt||null;
@@ -199,11 +232,12 @@ async function openResult(result) {
   }else await editor.loadAgentImage(session);
   document.body.dataset.agentState=session.state;document.body.dataset.mcpState='ready';
   document.body.dataset.agentSession=session.sessionId;
+  document.body.dataset.imageState='ready';
   $('drop-card').disabled=true;$('demo').disabled=true;
   document.querySelector('.local-badge').title='通过宿主消息桥保存本机批注；反馈与对话消息分别确认';
   if(receipt?.state==='completed'){
     editor.completedAgent();manualReceipt();
-    if(supportsMessages()){label(submit,'发送反馈');submit.onclick=sendSavedFeedback;submit.title='反馈已保存；点击将这份反馈发送到当前对话';}
+    if(supportsMessages()){label(submit,'发送反馈');submit.onclick=sendSavedFeedback;submit.title='反馈已保存；点击将这份反馈发送到当前对话';submit.setAttribute('aria-label',submit.title);}
     editor.notify('已恢复保存的反馈，可重新发送到对话');return;
   }
   if(session.state!=='pending'||!supportsTools()){
@@ -215,12 +249,15 @@ async function openResult(result) {
 
 bridge.ontoolinput=()=>{if(!session)document.body.dataset.agentState='loading';};
 bridge.ontoolresult=result=>{
-  openTail=openTail.then(()=>openResult(result)).catch(error=>{if(alive){unlockOffline();editor.notify(error.message||'批注素材未能打开');}});
+  openTail=openTail.then(()=>openResult(result)).catch(error=>{
+    if(alive){document.body.dataset.agentState='error';document.body.dataset.imageState='error';unlockOffline();editor.notify(error.message||'批注素材未能打开');}
+  });
 };
 bridge.ontoolcancelled=()=>stop('宿主已取消本次调用；当前编辑仍可保存项目或导出');
 bridge.onteardown=async()=>{stop();return {};};
 bridge.onhostcontextchanged=context=>{
   if(context.theme==='dark'||context.theme==='light')document.documentElement.dataset.theme=context.theme;
+  if(context.displayMode)document.body.dataset.mcpDisplayMode=context.displayMode;
 };
 bridge.onerror=()=>{document.body.dataset.mcpState='error';};
 

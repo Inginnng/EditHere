@@ -6,7 +6,7 @@ on:
   # workflow a tag never triggers (REG-122).
   workflow_call:
   pull_request:
-    paths: ["app/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux.yml"]
+    paths: ["app/**", "assets/ui-icons/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux.yml"]
 permissions:
   contents: read
 jobs:

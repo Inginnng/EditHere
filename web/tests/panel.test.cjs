@@ -39,14 +39,14 @@ async function main() {
   async function metrics(page) {
     return page.evaluate(() => {
       const rect = element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
-      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), header: rect(document.querySelector('.header')), headerWrap: document.body.dataset.headerWrap, topIslands: ['.brand', '.view-controls', '.header-actions'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), zoomButtons: ['#zoom-out', '#fit', '#zoom-in'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), utility: rect(document.querySelector('.utility-dock')), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
+      return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, stage: rect(document.querySelector('#stage')), panel: rect(document.querySelector('.sidebar')), tools: rect(document.querySelector('.tools')), view: rect(document.querySelector('.view-controls')), header: rect(document.querySelector('.header')), headerDensity: document.body.dataset.headerDensity, topIslands: ['.brand', '.view-controls', '.header-actions'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), topButtons: ['#open', '#save-json', '#export', '#inspect-toggle', '#toggle-annotations', '#zoom-out', '#fit', '#zoom-in', '#fit-icon'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), zoomButtons: ['#zoom-out', '#fit', '#zoom-in'].map(selector => ({ selector, ...rect(document.querySelector(selector)) })), utility: rect(document.querySelector('.utility-dock')), notes: rect(document.querySelector('#notes')), noteScrollHeight: document.querySelector('#notes').scrollHeight, noteScrollTop: document.querySelector('#notes').scrollTop };
     });
   }
   async function fitSettled(page) {
     await page.locator('#fit').click(); await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
   try {
-    for (const [width, height] of [[814, 979], [613, 653], [560, 560], [480, 640], [420, 720], [390, 844], [320, 640], [720, 720], [1000, 1000]]) {
+    for (const [width, height] of [[814, 979], [613, 653], [600, 720], [560, 560], [480, 640], [420, 720], [390, 844], [375, 720], [320, 640], [720, 720], [1000, 1000]]) {
       const page = await context.newPage(); await page.setViewportSize({ width, height });
       try {
         await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href); await page.locator('#demo').click(); await page.locator('#workspace').waitFor({ state: 'visible' });
@@ -75,12 +75,11 @@ async function main() {
           const a = measured.topIslands[i], b = measured.topIslands[j];
           assert(Math.min(a.right, b.right) - Math.max(a.x, b.x) <= 1 || Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) <= 1, 'top controls must not overlap: ' + JSON.stringify(measured.topIslands));
         }
-        const neededHeaderWidth = measured.topIslands.reduce((sum, island) => sum + island.width, 0) + 20;
-        if (neededHeaderWidth <= measured.header.width) {
-          const brand = measured.topIslands.find(island => island.selector === '.brand');
-          assert.equal(measured.headerWrap, 'false', 'a header that fits must not unnecessarily put zoom on a second row');
-          assert(Math.abs(measured.view.y + measured.view.height / 2 - brand.y - brand.height / 2) <= 1, 'brand and zoom must share the first row when all controls fit: ' + JSON.stringify(measured));
+        for (const island of measured.topIslands) {
+          assert(Math.abs(island.y - measured.header.y) <= 1 && Math.abs(island.height - measured.header.height) <= 1, 'all three header groups stay on one row with the same height: ' + JSON.stringify(measured.topIslands));
+          assert(island.x >= 0 && island.right <= width, 'header controls remain inside the narrow panel');
         }
+        for (const button of measured.topButtons) assert(button.width >= 18 && button.height >= 28 && button.x >= measured.header.x && button.right <= measured.header.right + 1, 'every header operation remains visible and unclipped: ' + JSON.stringify(button));
         for (let i = 0; i < measured.zoomButtons.length - 1; i++) {
           const gap = measured.zoomButtons[i + 1].x - measured.zoomButtons[i].right;
           assert(gap >= 0 && gap <= 6, 'minus, zoom percentage and plus must have compact edge spacing: ' + JSON.stringify(measured.zoomButtons));
@@ -96,6 +95,17 @@ async function main() {
         }
         assert.equal(await page.locator('.panel-eyebrow, .sidebar-footer, .note-card small').count(), 0, 'no repeated inspector labels, coordinate footer or per-note coordinate rows');
         await page.screenshot({ path: path.join(output, `single-note-${width}x${height}.png`) });
+        if (width === 320) {
+          await page.evaluate(() => { document.querySelector('#fit').textContent = '1600%';document.querySelector('#export span').textContent = '重试发送'; });
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          const crowded = await metrics(page);
+          for (const island of crowded.topIslands) assert(Math.abs(island.y - crowded.header.y) <= 1 && island.right <= width, 'long zoom values and feedback retry labels must not push controls down or outside');
+          for (const button of crowded.topButtons) assert(button.right <= crowded.header.right + 1, 'changing MCP labels cannot clip a zoom or action button');
+          await page.locator('#zoom-in').click();await page.locator('#zoom-out').click();
+          await page.keyboard.press('1');await page.locator('#fit-icon').click();
+          await page.locator('#toggle-annotations').click();assert.equal(await page.locator('#toggle-annotations').getAttribute('aria-pressed'), 'false');await page.locator('#toggle-annotations').click();
+          await fitSettled(page);
+        }
         await page.locator('#panel-close').click(); assert.equal(await page.locator('#inspect-count').isVisible(), true, 'collapsed notes remain discoverable');
         await ensureGlobal(page); await page.locator('#global').click(); await note(page, '新的批注自动显示'); assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'true');
         await ensureUtility(page); await page.locator('#help').click(); assert(await page.locator('#help-dialog').isVisible()); await page.keyboard.press('Escape');

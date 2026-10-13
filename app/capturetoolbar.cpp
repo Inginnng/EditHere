@@ -297,7 +297,7 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     (void)addButton(QStringLiteral("scroll"), tr("长截图"));
     (void)addButton(QStringLiteral("pin"), tr("贴图"));
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
-    (void)addButton(QStringLiteral("copy"), tr("复制图像"));
+    (void)addButton(QStringLiteral("image-copy"), tr("复制图像"));
     more_ = new QPushButton(this);
     more_->setIcon(glyph(QStringLiteral("more"), kGlyph));
     more_->setIconSize({20, 20});
@@ -306,6 +306,7 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     more_->setCursor(Qt::PointingHandCursor);
     layout->addWidget(more_);
     auto *close = new QPushButton(this);
+    close->setObjectName(QStringLiteral("captureClose"));
     close->setIcon(glyph(QStringLiteral("close"), kGlyph));
     close->setIconSize({20, 20});
     close->setProperty("tool", true);
@@ -324,6 +325,7 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
     // are built in a light colour instead of following the theme.
     auto *button = new QPushButton(this);
     button->setProperty("glyphName", glyphName);
+    button->setProperty("glyphColor", kGlyph);
     button->setIcon(glyph(glyphName, kGlyph));
     button->setIconSize({20, 20});
     button->setToolTip(label);
@@ -336,7 +338,7 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
     button->setFixedSize(34, 34);
     button->setCursor(Qt::PointingHandCursor);
     connect(button, &QPushButton::clicked, this, [this, glyphName] {
-        if (glyphName == QLatin1String("copy"))
+        if (glyphName == QLatin1String("image-copy"))
             copy();
         else if (glyphName == QLatin1String("pin"))
             pin();
@@ -360,7 +362,7 @@ void CaptureToolbar::retranslate() {
     for (auto *button : buttons_) {
         const auto name = button->property("glyphName").toString();
         QString label;
-        if (name == QLatin1String("copy"))
+        if (name == QLatin1String("image-copy"))
             label = tr("复制图像");
         else if (name == QLatin1String("pin"))
             label = tr("贴图");
@@ -379,6 +381,10 @@ void CaptureToolbar::retranslate() {
     }
     more_->setToolTip(tr("更多选项"));
     more_->setAccessibleName(tr("更多选项"));
+    if (auto *close = findChild<QPushButton *>(QStringLiteral("captureClose"))) {
+        close->setToolTip(tr("取消截图（Esc）"));
+        close->setAccessibleName(close->toolTip());
+    }
     size_->setToolTip(tr("点击输入精确尺寸"));
     ratio_->setToolTip(tr("点击选择固定比例"));
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
@@ -550,7 +556,8 @@ void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
     running_ = running;
     axis_ = axis;
     setScrollGlyph(static_cast<QPushButton *>(handle_),
-        axis == Qt::Vertical ? QStringLiteral("scroll-move-vertical") : QStringLiteral("scroll-move-horizontal"));
+        !running ? QStringLiteral("move") : axis == Qt::Vertical
+            ? QStringLiteral("scroll-move-vertical") : QStringLiteral("scroll-move-horizontal"));
     if (windowFlags().testFlag(Qt::WindowTransparentForInput) != running) {
         const bool visible = isVisible();
         setWindowFlag(Qt::WindowTransparentForInput, running);
@@ -994,7 +1001,7 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     finish_->setFixedSize(30, 30);
     finish_->setEnabled(false);
     layout->addWidget(finish_);
-    const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"), QStringLiteral("copy")};
+    const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"), QStringLiteral("image-copy")};
     const QStringList tips = {tr("将完整长图贴在桌面上"), tr("选择位置和格式，保存完整长图"),
                              tr("复制完整长图到剪贴板并关闭长截图")};
     const QStringList accessibleNames = {tr("贴图"), tr("保存"), tr("复制并关闭")};
@@ -1559,6 +1566,7 @@ CaptureSidebar::CaptureSidebar(QWidget *parent) : QWidget(parent) {
     const auto add = [this, layout](const QString &glyphName) {
         auto *button = new QPushButton(this);
         button->setProperty("glyphName", glyphName);
+        button->setProperty("glyphColor", kGlyph);
         button->setIcon(glyph(glyphName, kGlyph));
         button->setIconSize({20, 20});
         button->setProperty("tool", true);
@@ -1572,7 +1580,7 @@ CaptureSidebar::CaptureSidebar(QWidget *parent) : QWidget(parent) {
     // two different things.
     corner_ = add(QStringLiteral("corner"));
     shadow_ = add(QStringLiteral("shadow"));
-    reset_ = add(QStringLiteral("undo"));
+    reset_ = add(QStringLiteral("reset"));
     connect(corner_, &QPushButton::clicked, this,
             [this] { openPanel(StylePanel::Mode::Corners, corner_); });
     connect(shadow_, &QPushButton::clicked, this,

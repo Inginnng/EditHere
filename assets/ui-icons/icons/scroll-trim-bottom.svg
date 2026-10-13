@@ -1,0 +1,6 @@
+<!-- EditHere UI icons. Symmetric trim geometry; explicit paired segments, circular corners, flattened quarter turns. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M20 11 L20 5 A2 2 0 0 0 18 3 L6 3 A2 2 0 0 0 4 5 L4 11" />
+<path d="M20 19 A2 2 0 0 1 18 21 M14 21 L10 21 M6 21 A2 2 0 0 1 4 19" />
+<path d="M21 15 L3 15" />
+</svg>

@@ -95,6 +95,7 @@ class DistributionTest(unittest.TestCase):
             self.assertIn("web/mcp/mcp.json", names)
             self.assertIn("web/mcp/build-info.json", names)
             self.assertIn("web/MCP-THIRD-PARTY-NOTICES.md", names)
+            self.assertIn("licenses/ui-icons/LICENSE", names)
             self.assertIn("web/src/layout.js", names)
             self.assertIn("AI-SETUP.md", names)
             self.assertIn("AI-SETUP.en.md", names)

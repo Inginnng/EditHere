@@ -260,6 +260,8 @@ class CaptureTests : public QObject {
         const QRect selection(170, 200, 200, 180);
         region.setSelection(selection, bounds);
         region.setState(true, Qt::Vertical);
+        QCOMPARE(region.moveHandle()->property("glyphName").toString(), QString("scroll-move-vertical"));
+        QCOMPARE(region.moveHandle()->cursor().shape(), Qt::SizeVerCursor);
         region.show();
         QVERIFY(QTest::qWaitForWindowExposed(&region));
         QVERIFY(region.moveHandle()->isVisible());
@@ -270,10 +272,14 @@ class CaptureTests : public QObject {
         QCOMPARE(region.selection(), selection.translated(0, 45));
         region.setSelection(selection, bounds);
         region.setState(true, Qt::Horizontal);
+        QCOMPARE(region.moveHandle()->property("glyphName").toString(), QString("scroll-move-horizontal"));
+        QCOMPARE(region.moveHandle()->cursor().shape(), Qt::SizeHorCursor);
         dragGlobally(region.moveHandle(), grab, QPoint(90, 45));
         QCOMPARE(region.selection(), selection.translated(90, 0));
         region.setSelection(selection, bounds);
         region.setState(false, Qt::Vertical);
+        QCOMPARE(region.moveHandle()->property("glyphName").toString(), QString("move"));
+        QCOMPARE(region.moveHandle()->cursor().shape(), Qt::SizeAllCursor);
         dragGlobally(region.moveHandle(), grab, QPoint(40, 35));
         QCOMPARE(region.selection(), selection.translated(40, 35));
 
@@ -647,7 +653,7 @@ class CaptureTests : public QObject {
         QVERIFY(QTest::qWaitForWindowExposed(&panel));
         const QList<QPair<QString, QString>> sharedActions{
             {"scrollFinish", "edit"}, {"scrollPin", "pin"}, {"scrollSave", "image-save"},
-            {"scrollCopy", "copy"}, {"scrollCancel", "close"}, {"scrollCrop", "crop"}};
+            {"scrollCopy", "image-copy"}, {"scrollCancel", "close"}, {"scrollCrop", "crop"}};
         const QImage image = stripedImage(420, 1200);
         const QRect viewport(0, 840, 420, 360);
         for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
@@ -1301,6 +1307,57 @@ class CaptureTests : public QObject {
         QCOMPARE(marked, 1);
         QCOMPARE(primary->property("glyphName").toString(), QStringLiteral("edit"));
         QCOMPARE(primary->accessibleName(), QStringLiteral("批注"));
+    }
+    void captureCopyCancelAndStyleResetKeepTheirMeaning() {
+        CaptureToolbar bar;
+        QPushButton *copy = nullptr;
+        for (auto *button : bar.findChildren<QPushButton *>())
+            if (button->property("glyphName").toString() == QStringLiteral("image-copy"))
+                copy = button;
+        QVERIFY(copy);
+        QSignalSpy copied(&bar, &CaptureToolbar::copyRequested);
+        copy->click();
+        QCOMPARE(copied.size(), 1);
+        auto *close = bar.findChild<QPushButton *>("captureClose");
+        QVERIFY(close && !close->toolTip().isEmpty());
+        QCOMPARE(close->accessibleName(), close->toolTip());
+        QSignalSpy cancelled(&bar, &CaptureToolbar::dismissed);
+        close->click();
+        QCOMPARE(cancelled.size(), 1);
+
+        CaptureSidebar sidebar;
+        auto style = bareStyle();
+        style.cornerRadius = 18;
+        style.border = true;
+        sidebar.setStyle(style);
+        QPushButton *reset = nullptr;
+        for (auto *button : sidebar.findChildren<QPushButton *>())
+            if (button->property("glyphName").toString() == QStringLiteral("reset"))
+                reset = button;
+        QVERIFY(reset);
+        QSignalSpy changed(&sidebar, &CaptureSidebar::styleChanged);
+        reset->click();
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(sidebar.style().cornerRadius, CaptureStyle{}.cornerRadius);
+        QCOMPARE(sidebar.style().border, CaptureStyle{}.border);
+        QCOMPARE(sidebar.style().shadow, CaptureStyle{}.shadow);
+    }
+    void fixedDarkCaptureSurfacesKeepReadableIconsAfterThemeChanges() {
+        CaptureToolbar bar;
+        CaptureSidebar sidebar;
+        for (const auto theme : {ThemeMode::Light, ThemeMode::Dark, ThemeMode::Light}) {
+            applyTheme(theme);
+            for (auto *surface : {static_cast<QWidget *>(&bar), static_cast<QWidget *>(&sidebar)}) {
+                for (auto *button : surface->findChildren<QPushButton *>()) {
+                    const auto name = button->property("glyphName").toString();
+                    if (name.isEmpty()) continue;
+                    const QColor expected = button->property("primary").toBool()
+                        ? QColor(Qt::white) : QColor("#d4d5dd");
+                    QCOMPARE(button->icon().pixmap(24, QIcon::Normal, QIcon::Off).toImage(),
+                             glyph(name, expected).pixmap(24, QIcon::Normal, QIcon::Off).toImage());
+                }
+            }
+        }
     }
     // REG-067: the four ways of writing a colour were not all reachable, so a copied
     // colour could only ever be one of two things. Every one of them has to name the

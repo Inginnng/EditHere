@@ -14,7 +14,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前为 **0.10.5**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式由 `feedback-minimal.schema.json` 定义（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前为 **0.11.1**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式由 `feedback-minimal.schema.json` 定义（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
@@ -41,7 +41,7 @@
 
 Linux 预览版的系统依赖、构建、AppImage 打包与 X11/Wayland 行为见 [Linux 说明](LINUX.md)。
 
-依赖：Qt **6.8.3**（qtbase、qtimageformats、qtmultimedia 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。视频播放需随包部署 Multimedia 插件和对应解码依赖，不要求用户另行安装 Qt。
+依赖：Qt **6.8.3**（qtbase、qtsvg、qtimageformats、qtmultimedia 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。视频播放需随包部署 Multimedia 插件和对应解码依赖，不要求用户另行安装 Qt。
 
 Windows PowerShell 7，CMake 在 PATH 中：
 
@@ -55,6 +55,8 @@ Windows PowerShell 7，CMake 在 PATH 中：
 除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符、`.ts` 与预编译 `.qm` 的逐条对应，以及 AI 与命令行文档、skill 里的反馈结构与导出字段的一致性；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
 
 贡献者授权由 `.github/workflows/cla.yml` 核验，实现见 `scripts/cla-check.cjs`、配置见 `.github/cla/config.json`：工作流只检出可信基线、绝不执行 PR 中的代码，确认账号必须是贡献者本人，记录协议版本与 `cla/v2.md` 的 SHA-256 摘要到独立的 `cla-signatures` 分支。改动 CLA 相关文件后本地跑 `node --test tests/cla_check_test.cjs`；只读的 `.github/workflows/cla-tests.yml` 在 PR 中自动运行同一测试。协议内容与启用步骤见[贡献者许可协议](../CLA.md)。
+
+操作图标的唯一几何源为 `assets/ui-icons/icons/*.svg`，语义与来源见 `manifest.json`，视觉规则见[图标视觉规范](icon-visual-spec.md)。Qt 将 SVG 嵌入资源，Web 构建内联同一图形；运行 `node tools/icon-review/build.cjs` 生成独立 HTML 方案页。替换共享 SVG 后重新构建两端，不在各端手绘另一份图标。原有品牌素材独立保留。
 
 ## 截图流程与文字识别
 

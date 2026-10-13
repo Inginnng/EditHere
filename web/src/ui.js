@@ -62,18 +62,35 @@
       });
     }
   };
-  $('theme-toggle').onclick = () => {
-    const dark = document.documentElement.dataset.theme !== 'dark';
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  function syncTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    $('theme-toggle').querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
     $('theme-toggle').setAttribute('aria-label', dark ? '切换浅色主题' : '切换深色主题');
+    $('theme-toggle').title = dark ? '切换浅色主题' : '切换深色主题';
     $('theme-toggle').setAttribute('aria-pressed', String(dark));
+  }
+  $('theme-toggle').onclick = () => {
+    document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    syncTheme();
   };
+  // MCP hosts can change theme after opening the view.
+  new MutationObserver(syncTheme).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+  syncTheme();
   $('help').onclick = () => $('help-dialog').showModal();
   $('fit-icon').onclick = () => $('fit').click();
   function fitHeader() {
     const header = document.querySelector('.header');
-    const needed = [...header.children].reduce((width, element) => width + element.getBoundingClientRect().width, 0) + 20;
-    document.body.dataset.headerWrap = String(!$('workspace').hidden && needed > header.clientWidth);
+    // Keep the three islands on one row. Choose the least condensed layout
+    // that fits their actual labels, including MCP's changing feedback state.
+    for (const density of ['regular', 'compact', 'icons', 'tight']) {
+      document.body.dataset.headerDensity = density;
+      const visible = [...header.children].filter(element => getComputedStyle(element).display !== 'none');
+      const needed = visible.reduce((width, element) => {
+        const border = element.offsetWidth - element.clientWidth;
+        return width + (element.matches('.view-controls')?Math.max(element.getBoundingClientRect().width,element.scrollWidth+border):element.getBoundingClientRect().width);
+      }, 0) + Math.max(0, visible.length - 1) * parseFloat(getComputedStyle(header).columnGap);
+      if (needed <= header.clientWidth + .5) break;
+    }
     window.dispatchEvent(new Event('edithere:layout'));
   }
   const headerObserver = new ResizeObserver(fitHeader);
