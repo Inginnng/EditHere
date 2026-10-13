@@ -119,8 +119,29 @@ jobs:
     # requests produces the AppImage a tag publishes.
     uses: ./.github/workflows/native-linux.yml
 
+  build-web:
+    # The web packages are platform independent: one dependency-free build step
+    # plus the committed MCP bundle, whose source/artifact hashes are checked
+    # before packaging (scripts/prepare-distribution.py --web-only).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package the offline and web-agent ZIPs
+        run: python3 scripts/prepare-distribution.py --web-only --channel release --output dist/web-dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: dist/web-dist/**/*.zip
+
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux, build-web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,6 +163,12 @@ jobs:
           for f in EditHere-*-win-x64-setup.exe; do mv -f "$f" EditHere-win-x64-setup.exe; done
           for f in EditHere-*-win-x64.zip; do mv -f "$f" EditHere-win-x64.zip; done
           for f in EditHere-*-macos-universal.dmg; do mv -f "$f" EditHere-macos-universal.dmg; done
+          # The web ZIPs arrive under web/<version>-<short>/; collect them by
+          # name instead of predicting that depth (REG-157).
+          find . -mindepth 2 -type f -name 'EditHere-*-web-agent-*.zip' -exec mv -f {} . \;
+          find . -mindepth 2 -type f -name 'EditHere-*-web-*.zip' -not -name '*-web-agent-*' -exec mv -f {} . \;
+          for f in EditHere-*-web-agent-*.zip; do mv -f "$f" EditHere-web-agent.zip; done
+          for f in EditHere-*-web-*.zip; do mv -f "$f" EditHere-web.zip; done
           rm -f *.sha256 SHA256SUMS.txt
           # upload-artifact keeps only the path after the fixed prefix that
           # precedes the first wildcard, so dist/linux-*/<file> arrives under
@@ -248,12 +275,12 @@ jobs:
         # A tag without installers is a broken release: fail loudly here rather
         # than publishing a source-only release. The AppImage belongs on this
         # list too -- 0.9.9 shipped without it because no job built one
-        # (REG-109, REG-122).
+        # (REG-109, REG-122), and the web ZIPs since 0.11.1 (REG-177).
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd artifacts
-          packages="EditHere-win-x64-setup.exe EditHere-win-x64.zip EditHere-macos-universal.dmg EditHere-linux-x86_64.AppImage"
+          packages="EditHere-win-x64-setup.exe EditHere-win-x64.zip EditHere-macos-universal.dmg EditHere-linux-x86_64.AppImage EditHere-web.zip EditHere-web-agent.zip"
           missing=0
           for package in $packages; do
             if [[ ! -s "$package" ]]; then

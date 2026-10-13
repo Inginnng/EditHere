@@ -1,5 +1,15 @@
 *.sh text eol=lf
 *.yml text eol=lf
+# The web build concatenates web/src sources and embeds the brand art and
+# shared icons verbatim, so their line endings are part of the bytes in
+# web/EditHere.html, web/EditHere.mcp.html and the published web packages.
+# Pin them so Windows, macOS, Linux and CI build the same files; the brand
+# art is embedded base64-encoded and therefore stays CRLF.
+web/** text eol=lf
+assets/ui-icons/** text eol=lf
+assets/brand/edithere-lockup.svg text eol=crlf
+assets/brand/edithere-lockup-light.svg text eol=crlf
+assets/icons/edithere.svg text eol=crlf
 packaging/licenses/** -text -whitespace
 # Vendored third-party sources stay byte-identical to the upstream release.
 third_party/** -text -whitespace

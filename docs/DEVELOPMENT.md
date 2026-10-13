@@ -18,11 +18,11 @@
 
 ## 发布流程
 
-打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新同时检查 `Inginnng/EditHere` 的 GitHub 正式发行版与 [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) 的正式发行版，选择最高版本；同版本优先选择兼容程序包与对应 SHA-256 文件齐全的来源。一个来源失败时保留另一来源的结果并提示检查未完成，两边均失败时汇总错误。程序包与校验文件保持同一来源；现有 GitHub 发布工作流不会自动向 Gitee 发布。
+打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，`build-web` 作业打包两种 Web 包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新同时检查 `Inginnng/EditHere` 的 GitHub 正式发行版与 [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) 的正式发行版，选择最高版本；同版本优先选择兼容程序包与对应 SHA-256 文件齐全的来源。一个来源失败时保留另一来源的结果并提示检查未完成，两边均失败时汇总错误。程序包与校验文件保持同一来源；现有 GitHub 发布工作流不会自动向 Gitee 发布。
 
-- **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 四者均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。
-- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`。
-- 包下载到 release 任务后所在目录由 `upload-artifact` 决定，不要预测：它只保留第一个通配符之前那段固定前缀之后的路径，`dist/linux-*/<文件>` 因此落在 `linux-<版本>/` 下而不是 `dist/linux-<版本>/`。release 任务按文件名在任意深度把这四类文件搬到归档根目录，改收集方式时不要退回"按目录搬"（REG-157）。
+- **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 与两种 Web 包（`EditHere-web.zip`、`EditHere-web-agent.zip`）均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。Web 包由 `build-web` 作业调用 `python scripts/prepare-distribution.py --web-only --channel release` 生成；内嵌素材的行尾由 `.gitattributes` 固定，各平台与 CI 重建的 `web/EditHere.html` 与提交版一致。发布前按下发给用户的字节复核两种 Web 包：`node scripts/web-package-check.cjs <ZIP 路径>`。
+- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`；Web 包同样按无版本名发布为 `EditHere-web.zip` 与 `EditHere-web-agent.zip`。
+- 包下载到 release 任务后所在目录由 `upload-artifact` 决定，不要预测：它只保留第一个通配符之前那段固定前缀之后的路径，`dist/linux-*/<文件>` 因此落在 `linux-<版本>/` 下而不是 `dist/linux-<版本>/`，Web 包落在 `web/<版本>-<短哈希>/` 下。release 任务按文件名在任意深度把原生包与 Web 包搬到归档根目录，改收集方式时不要退回"按目录搬"（REG-157）。
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
 - 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」（发布页是单字段，没有语言切换；英文用真正的标题而不是折叠块，否则指向它的锚点点不开）。只写中文时 `check-packaging.py` 的检查会失败。
 
