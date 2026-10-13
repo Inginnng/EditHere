@@ -10,6 +10,15 @@ assets/ui-icons/** text eol=lf
 assets/brand/edithere-lockup.svg text eol=crlf
 assets/brand/edithere-lockup-light.svg text eol=crlf
 assets/icons/edithere.svg text eol=crlf
+# The legal texts are copied into the web packages byte for byte, so they are
+# pinned too; otherwise a Windows checkout (core.autocrlf) and Linux CI would
+# ship different ZIPs for the same source.
+LICENSE text eol=lf
+NOTICE text eol=lf
+LICENSING.md text eol=lf
+COMMERCIAL-LICENSE.md text eol=lf
+TRADEMARK-POLICY.md text eol=lf
+packaging/THIRD-PARTY-NOTICES.md text eol=lf
 packaging/licenses/** -text -whitespace
 # Vendored third-party sources stay byte-identical to the upstream release.
 third_party/** -text -whitespace
