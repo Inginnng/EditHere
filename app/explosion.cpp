@@ -729,7 +729,7 @@ LayoutInspector::LayoutInspector(LayoutCanvas *canvas, QWidget *parent) : QWidge
     guides->setObjectName("layoutGuides");
     guides->setChecked(true);
     headingRow->addWidget(guides);
-    annotate_ = iconButton("plus", {}, this);
+    annotate_ = iconButton("note-add", {}, this);
     annotate_->setObjectName("annotateComponent");
     annotate_->setFixedSize(26, 26);
     headingRow->addWidget(annotate_);

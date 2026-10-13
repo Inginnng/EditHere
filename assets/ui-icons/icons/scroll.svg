@@ -1,0 +1,5 @@
+<!-- EditHere UI icons. Candidate by EditHere following Lucide design specification. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<rect x="5" y="2" width="14" height="20" rx="2" />
+<path d="M12 7v10m-3-7 3-3 3 3m-6 4 3 3 3-3" />
+</svg>

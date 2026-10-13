@@ -1742,6 +1742,11 @@
 <context>
     <name>h2d::CaptureToolbar</name>
     <message>
+        <location filename="../capturetoolbar.cpp" line="384"/>
+        <source>取消截图（Esc）</source>
+        <translation>Cancel capture (Esc)</translation>
+    </message>
+    <message>
         <location filename="../capturetoolbar.cpp" line="300"/>
         <location filename="../capturetoolbar.cpp" line="364"/>
         <location filename="../capturetoolbar.cpp" line="1529"/>

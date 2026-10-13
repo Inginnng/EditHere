@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="edithere-version" content="0.11.0">
+<meta name="edithere-version" content="0.11.1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; worker-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="description" content="EditHere 无边界工作台：图片批注、组件布局与视频时间点批注，在你的设备上完成。">
 <title>EditHere · 改这里</title>
@@ -29,7 +29,7 @@ button:disabled { opacity:.4;cursor:default; }
 button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible { outline:2px solid var(--blue);outline-offset:3px; }
 [hidden] { display:none!important; }
 .svg-library { position:absolute;width:0;height:0;overflow:hidden; }
-.icon { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none; }
+.icon { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none; }
 .surface { background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:13px;backdrop-filter:blur(18px); }
 .header { position:fixed;top:16px;left:16px;right:16px;height:44px;display:flex;align-items:stretch;justify-content:space-between;gap:12px;z-index:12;pointer-events:none; }
 .header>* { pointer-events:auto; }
@@ -55,7 +55,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 .drop-card { display:flex;align-items:center;flex-direction:column;width:min(396px,100%);padding:27px 24px 22px;border:1px solid var(--line);border-radius:20px;background:var(--panel);box-shadow:0 2px 6px #1d355904,0 12px 36px #1d355909; }
 .drop-card:hover { border-color:var(--blue);background:var(--panel)!important;box-shadow:0 8px 30px #2f67dc15;transform:translateY(-2px); }
 .drop-symbol { position:relative;width:58px;height:58px;margin-bottom:18px;color:var(--blue);background:var(--pale);border-radius:17px;display:grid;place-items:center; }
-.drop-symbol>.icon { width:30px;height:30px;stroke-width:1.5; }
+.drop-symbol>.icon { width:30px;height:30px; }
 .drop-symbol>span { position:absolute;right:-1px;bottom:-1px;border:3px solid var(--panel);background:var(--blue);color:white;border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font-size:17px;line-height:1; }
 .drop-card strong { font-size:16px;font-weight:600;margin-bottom:9px; }
 .drop-card>span:not(.drop-symbol) { color:var(--muted);font-size:12px; }
@@ -63,7 +63,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 .demo { margin-top:13px;gap:16px;font-size:12px; }
 .features { display:flex;justify-content:center;gap:25px;margin-top:24px;font-size:11px;color:var(--muted); }
 .features>span { display:flex;align-items:center;gap:6px; }
-.features .icon { width:14px;height:14px; }
+.features .icon { width:16px;height:16px; }
 .privacy { color:var(--muted);font-size:11px;margin:17px 0 0; }
 .viewport { position:absolute;inset:0;overflow:hidden;touch-action:none;overscroll-behavior:contain;background:var(--bg);background-image:radial-gradient(var(--dot) .7px,transparent .7px);background-size:20px 20px; }
 .stage { position:absolute;border-radius:2px;background-color:#fff;background-image:conic-gradient(#edf0f4 25%,transparent 0 50%,#edf0f4 0 75%,transparent 0);background-size:16px 16px;box-shadow:0 3px 22px #17203813;outline:none;touch-action:none;user-select:none; }
@@ -90,7 +90,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 .tools { position:absolute;bottom:38px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;padding:5px;gap:3px;max-width:calc(100% - 36px); }
 .tool-group { display:flex;align-items:center;gap:2px; }
 .tools button { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;border-radius:9px;height:49px;min-width:43px;padding:6px 7px;font-size:10.5px;white-space:nowrap; }
-.tools button .icon { width:18px;height:18px; }
+.tools button .icon { width:20px;height:20px; }
 .tools button.active { color:var(--blue);background:var(--pale); }
 .tools .explode { color:var(--purple); }
 .tools .explode.active { background:var(--pale);color:var(--purple); }
@@ -101,7 +101,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 #coords { font:9px var(--mono);white-space:nowrap; }
 .utility-dock { position:fixed;bottom:12px;left:16px;padding:3px 4px;display:flex;align-items:center;z-index:8; }
 .utility-dock .icon-button { width:29px;height:29px; }
-.utility-dock .icon { width:15px;height:15px; }
+.utility-dock .icon { width:16px;height:16px; }
 .local-badge { display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--muted);font-size:10px; }
 .local-badge>span:first-child { width:5px;height:5px;background:#56ac8f;border-radius:50%; }
 .sidebar { position:absolute;z-index:7;top:76px;bottom:auto;right:12px;width:272px;max-height:calc(100dvh - 150px);display:flex;flex-direction:column;overflow:hidden;border-radius:13px; }
@@ -112,7 +112,7 @@ body[data-inspector-open="true"] #inspect-toggle { color:var(--blue);background:
 .sidebar h2>span { font:10px var(--mono);margin-left:5px;color:var(--muted); }
 .panel-actions { display:flex;gap:2px; }
 .panel-actions .icon-button { width:26px;height:26px;color:var(--muted); }
-.panel-actions .icon { width:15px;height:15px; }
+.panel-actions .icon { width:16px;height:16px; }
 .inspect-count { position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;display:grid;place-items:center;background:var(--blue);color:var(--bg);font:9px var(--mono);border:2px solid var(--panel); }
 #inspect-toggle { position:relative; }
 .geometry { position:fixed;z-index:20;margin:0;width:min(280px,calc(100vw - 20px));max-height:calc(100dvh - 20px);padding:9px 11px;overflow:auto; }
@@ -120,7 +120,7 @@ body[data-inspector-open="true"] #inspect-toggle { color:var(--blue);background:
 .geometry-head strong { font-size:11px;font-weight:550; }
 .geometry-head .quiet { font-size:10px;padding:3px 0;color:var(--blue);margin-left:auto; }
 .geometry-head .icon-button { width:24px;height:24px;color:var(--muted); }
-.geometry-head .icon { width:14px;height:14px; }
+.geometry-head .icon { width:16px;height:16px; }
 #geometry-toggle[aria-expanded="true"] { color:var(--blue);background:var(--pale); }
 .geometry summary { cursor:pointer;font-size:10px;color:var(--muted);padding:4px 0; }
 .geometry-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:5px; }
@@ -130,7 +130,7 @@ body[data-inspector-open="true"] #inspect-toggle { color:var(--blue);background:
 .ratio { color:var(--muted);font-size:10px;display:flex;align-items:center;gap:4px; }
 input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .geometry-options .quiet { font-size:10px;padding:3px; }
-.geometry-options .icon { width:12px;height:12px; }
+.geometry-options .icon { width:16px;height:16px; }
 #apply-geometry { width:100%;background:var(--panel);border:1px solid var(--line);min-height:26px;padding:4px;font-size:10px; }
 .notes { flex:0 1 auto;min-height:0;overflow:auto;padding:0 8px 8px;scrollbar-width:thin; }
 .note-empty { padding:9px 5px 12px;font-size:11px;line-height:1.7;color:var(--muted);text-align:center; }
@@ -143,7 +143,7 @@ input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .note-kind { display:none; }
 .note-actions { grid-column:3;grid-row:1;align-self:start;display:flex;margin-left:auto; }
 .note-actions button { width:23px;height:22px;display:grid;place-items:center;color:var(--muted);padding:3px;border-radius:5px;font-size:14px; }
-.note-actions .icon { width:13px;height:13px; }
+.note-actions .icon { width:16px;height:16px; }
 .note-card p { grid-column:2;grid-row:1;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0; }
 .note-card.movement-empty p { color:var(--muted); }
 .status-bar { display:none; }
@@ -155,7 +155,7 @@ input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .video-controls { position:absolute;left:50%;transform:translateX(-50%);bottom:103px;z-index:5;width:min(640px,calc(100% - 36px));padding:10px 13px; }
 .play-row { display:flex;align-items:center;gap:7px; }
 .play-row button { font-size:10px;padding:6px 3px;border-radius:6px;white-space:nowrap; }
-.play-row #play { width:29px;height:28px;background:var(--pale);color:var(--blue);flex:none; }
+.play-row #play { display:inline-flex;align-items:center;justify-content:center;width:29px;height:28px;background:var(--pale);color:var(--blue);flex:none; }
 #timeline { flex:1;min-width:30px;height:16px; }
 .time { color:var(--muted);font:9px var(--mono);white-space:nowrap; }
 .frame-row { display:flex;align-items:center;gap:9px;margin-top:8px; }
@@ -169,7 +169,7 @@ body[data-inspector-open="true"] .tools,body[data-inspector-open="true"] .video-
 body[data-inspector-open="true"] .media-bar { right:300px; }
 body[data-inspector-open="true"] .frame-hint { left:calc((100% - 320px)/2); }
 .drop-overlay { position:fixed;inset:0;z-index:40;background:var(--panel);backdrop-filter:blur(12px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--blue);pointer-events:none; }
-.drop-overlay .icon { width:45px;height:45px;stroke-width:1.3; }
+.drop-overlay .icon { width:45px;height:45px; }
 .drop-overlay strong { font-size:22px;font-weight:500; }
 .toast { position:fixed;top:75px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:10px;z-index:100;font-size:11px;max-width:calc(100vw - 32px);line-height:1.7;box-shadow:var(--shadow); }
 dialog { border:1px solid var(--line);border-radius:17px;background:var(--panel);color:var(--ink);padding:23px;width:min(470px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;box-shadow:0 22px 90px #18213d28; }
@@ -196,7 +196,8 @@ dialog footer>small { margin-right:auto;font-size:9px;color:var(--muted); }
 .save-options>button[aria-checked="true"] { background:var(--pale);color:var(--blue); }
 .save-options strong { display:block;font-size:12px;font-weight:550; }
 .save-options small { display:block;color:var(--muted);font-size:10px;line-height:1.6;margin-top:3px; }
-.save-check { margin-left:auto;visibility:hidden;font-size:12px; }
+.save-check { display:inline-flex;align-items:center;margin-left:auto;visibility:hidden; }
+.save-check .icon { width:14px;height:14px; }
 [aria-checked="true"]>.save-check { visibility:visible; }
 .save-options>p { margin:5px 10px;color:var(--muted);font-size:10px; }
 .help-dialog { width:min(500px,calc(100vw - 28px)); }
@@ -432,7 +433,7 @@ body[data-header-density="tight"] .header .view-controls .separator { margin:0 1
 .help-picture .help-bubble { fill:var(--panel);stroke:var(--line); }
 .help-picture .help-small-text { fill:var(--muted);font:10px system-ui,sans-serif;text-anchor:middle; }
 .help-picture .help-control-text { fill:var(--ink);font:16px system-ui,sans-serif;text-anchor:middle; }
-.help-picture .help-fit-icon { fill:none;stroke:var(--blue);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round; }
+.help-picture .help-fit-icon { fill:none;stroke:var(--blue);stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
 .help-shortcuts { margin-top:16px;border-top:1px solid var(--line);padding-top:12px; }
 .help-shortcuts summary { font-size:12px;cursor:pointer;line-height:1.8; }
 .help-shortcuts .shortcut-grid { gap:10px 14px;padding:12px 0 0; }
@@ -482,16 +483,263 @@ body[data-header-density="tight"] .header .view-controls .separator { margin:0 1
 </style>
 </head>
 <body data-inspector-open="false">
-<svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><symbol id="i-open" viewBox="0 0 24 24"><path d="M3 8V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v2M3 8h18l-3 11H3Z"/></symbol><symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3ZM7 3v6h9V3M7 21v-8h10v8"/></symbol><symbol id="i-send" viewBox="0 0 24 24"><path d="m4 4 17 8-17 8 3-8-3-8ZM7 12h14"/></symbol><symbol id="i-cursor" viewBox="0 0 24 24"><path d="m5 3 14 10-7 1-4 7-3-18Z"/></symbol><symbol id="i-smart" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M12 7l1.5 3.5L17 12l-3.5 1.5L12 17l-1.5-3.5L7 12l3.5-1.5Z"/></symbol><symbol id="i-point" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="1"/></symbol><symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" stroke-dasharray="3 3"/></symbol><symbol id="i-note" viewBox="0 0 24 24"><path d="M20 15a3 3 0 0 1-3 3H9l-6 4V6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3ZM7 8h9M7 12h6"/></symbol><symbol id="i-explode" viewBox="0 0 24 24"><path d="M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6M9 9h6v6H9Z"/></symbol><symbol id="i-cut" viewBox="0 0 24 24"><path d="M6 3v15h15M3 6h15v15"/></symbol><symbol id="i-hand" viewBox="0 0 24 24"><path d="M7 13V7a1.5 1.5 0 0 1 3 0V4a1.5 1.5 0 0 1 3 0v2a1.5 1.5 0 0 1 3 0v2a1.5 1.5 0 0 1 3 0v6c0 5-2 7-6 7-3 0-4-1-6-3l-4-5a1.5 1.5 0 0 1 2-2Z"/></symbol><symbol id="i-undo" viewBox="0 0 24 24"><path d="m8 4-5 5 5 5M3 9h10a7 7 0 0 1 7 7v4"/></symbol><symbol id="i-redo" viewBox="0 0 24 24"><path d="m16 4 5 5-5 5M21 9H11a7 7 0 0 0-7 7v4"/></symbol><symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M14 4v16M17 9h1M17 13h1"/></symbol><symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 4 4 4-6 5 7"/></symbol><symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-3v10l-4-3"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/><rect x="7" y="7" width="10" height="10" rx="1"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></symbol><symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 5 2c-1.5 1-2 1-2 3M12 17h.01"/></symbol><symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 4v6h6M3 10a9 9 0 1 1 0 6"/></symbol><symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="i-json" viewBox="0 0 24 24"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9ZM14 2v7h7M10 12H9v2l-2 1 2 1v2h1M14 12h1v2l2 1-2 1v2h-1"/></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol><symbol id="i-layout" viewBox="0 0 24 24"><path d="M4 7h6M14 7h6M4 17h10M18 17h2"/><rect x="10" y="4" width="4" height="6" rx="1"/><rect x="14" y="14" width="4" height="6" rx="1"/></symbol><symbol id="i-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6ZM13 6l5 5"/></symbol></defs></svg>
+<!-- Shared UI icons · Lucide (ISC/MIT) and EditHere additions.
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" /></symbol>
+<symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+  <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+  <path d="M7 3v4a1 1 0 0 0 1 1h7" /></symbol>
+<symbol id="i-image-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21" />
+  <path d="m14 19 3 3v-5.5" />
+  <path d="m17 22 3-3" />
+  <circle cx="9" cy="9" r="2" /></symbol>
+<symbol id="i-image-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16" />
+  <path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2" />
+  <circle cx="13" cy="7" r="1" fill="currentColor" />
+  <rect x="8" y="2" width="14" height="14" rx="2" /></symbol>
+<symbol id="i-json" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1" />
+  <path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1" /></symbol>
+<symbol id="i-json-copy-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" />
+  <path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" />
+  <path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" /></symbol>
+<symbol id="i-json-copy-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+  <path d="M9 12v-1h6v1" />
+  <path d="M11 17h2" />
+  <path d="M12 11v6" /></symbol>
+<symbol id="i-feedback-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-1.5" />
+  <path d="M2 13h10" />
+  <path d="m5 10-3 3 3 3" /></symbol>
+<symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="M12 18v-6" />
+  <path d="m9 15 3 3 3-3" /></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol>
+<symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+  <path d="m21.854 2.147-10.94 10.939" /></symbol>
+<symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" /></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+  <circle cx="12" cy="12" r="3" /></symbol>
+<symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+  <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+  <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+  <path d="m2 2 20 20" /></symbol>
+<symbol id="i-zoom-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" />
+  <line x1="21" x2="16.65" y1="21" y2="16.65" />
+  <line x1="11" x2="11" y1="8" y2="14" />
+  <line x1="8" x2="14" y1="11" y2="11" /></symbol>
+<symbol id="i-zoom-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" />
+  <line x1="21" x2="16.65" y1="21" y2="16.65" />
+  <line x1="8" x2="14" y1="11" y2="11" /></symbol>
+<symbol id="i-magnifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" /></symbol>
+<symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+  <path d="M14 15H9v-5" />
+  <path d="M16 3h5v5" />
+  <path d="M21 3 9 15" /></symbol>
+<symbol id="i-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" />
+  <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+  <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+  <path d="M16 21h3a2 2 0 0 0 2-2v-3" /></symbol>
+<symbol id="i-fullscreen-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3" />
+  <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+  <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+  <path d="M16 21v-3a2 2 0 0 1 2-2h3" /></symbol>
+<symbol id="i-window-minimize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /></symbol>
+<symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18" />
+  <path d="m6 6 12 12" /></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+  <circle cx="12" cy="12" r="3" /></symbol>
+<symbol id="i-layout-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H3" />
+  <path d="M12 19H3" />
+  <path d="M14 3v4" />
+  <path d="M16 17v4" />
+  <path d="M21 12h-9" />
+  <path d="M21 19h-5" />
+  <path d="M21 5h-7" />
+  <path d="M8 10v4" />
+  <path d="M8 12H3" /></symbol>
+<symbol id="i-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h4" />
+  <path d="M12 21v-9" />
+  <path d="M12 8V3" />
+  <path d="M17 16h4" />
+  <path d="M19 12V3" />
+  <path d="M19 21v-5" />
+  <path d="M3 14h4" />
+  <path d="M5 10V3" />
+  <path d="M5 21v-7" /></symbol>
+<symbol id="i-notes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" />
+  <path d="M15 3v18" /></symbol>
+<symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1" />
+  <circle cx="19" cy="12" r="1" />
+  <circle cx="5" cy="12" r="1" /></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" />
+  <path d="M12 5v14" /></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" /></symbol>
+<symbol id="i-explode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" />
+  <rect x="14" y="2" width="8" height="8" rx="1" /></symbol>
+<symbol id="i-note-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+  <path d="M12 8v6" />
+  <path d="M9 11h6" /></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+  <path d="m15 5 4 4" /></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6" />
+  <path d="M14 11v6" />
+  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+  <path d="M3 6h18" />
+  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
+<symbol id="i-point" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1" />
+  <circle cx="12" cy="12" r="10" /></symbol>
+<symbol id="i-rect" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" /></symbol>
+<symbol id="i-smart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" /></symbol>
+<symbol id="i-select" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" /></symbol>
+<symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" />
+  <path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" />
+  <path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" />
+  <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" /></symbol>
+<symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5" />
+  <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" /></symbol>
+<symbol id="i-redo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5" />
+  <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" /></symbol>
+<symbol id="i-reset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+  <path d="M3 3v5h5" /></symbol>
+<symbol id="i-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20" />
+  <path d="m15 19-3 3-3-3" />
+  <path d="m19 9 3 3-3 3" />
+  <path d="M2 12h20" />
+  <path d="m5 9-3 3 3 3" />
+  <path d="m9 5 3-3 3 3" /></symbol>
+<symbol id="i-ocr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <path d="M7 8h8" />
+  <path d="M7 12h10" />
+  <path d="M7 16h6" /></symbol>
+<symbol id="i-capture" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <path d="M7 12h10" /></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5" />
+  <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></symbol>
+<symbol id="i-crop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14" />
+  <path d="M18 22V8a2 2 0 0 0-2-2H2" /></symbol>
+<symbol id="i-shadow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 13.74a2 2 0 0 1-2 0L2.5 8.87a1 1 0 0 1 0-1.74L11 2.26a2 2 0 0 1 2 0l8.5 4.87a1 1 0 0 1 0 1.74z" />
+  <path d="m20 14.285 1.5.845a1 1 0 0 1 0 1.74L13 21.74a2 2 0 0 1-2 0l-8.5-4.87a1 1 0 0 1 0-1.74l1.5-.845" /></symbol>
+<symbol id="i-scroll-move-vertical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20" />
+  <path d="m8 18 4 4 4-4" />
+  <path d="m8 6 4-4 4 4" /></symbol>
+<symbol id="i-scroll-move-horizontal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 8 4 4-4 4" />
+  <path d="M2 12h20" />
+  <path d="m6 8-4 4 4 4" /></symbol>
+<symbol id="i-scroll-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1" />
+  <circle cx="9" cy="5" r="1" />
+  <circle cx="9" cy="19" r="1" />
+  <circle cx="15" cy="12" r="1" />
+  <circle cx="15" cy="5" r="1" />
+  <circle cx="15" cy="19" r="1" /></symbol>
+<symbol id="i-scroll-mouse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="7" />
+  <path d="M12 6v4" /></symbol>
+<symbol id="i-scroll-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+<symbol id="i-scroll-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /></symbol>
+<symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+  <circle cx="9" cy="9" r="2" />
+  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></symbol>
+<symbol id="i-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+  <rect x="2" y="6" width="14" height="12" rx="2" /></symbol>
+<symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1" />
+  <rect x="5" y="3" width="5" height="18" rx="1" /></symbol>
+<symbol id="i-scroll" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" />
+<path d="M12 7v10m-3-7 3-3 3 3m-6 4 3 3 3-3" /></symbol>
+<symbol id="i-corner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h8a8 8 0 0 1 8 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /></symbol>
+<symbol id="i-scroll-trim-top" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13 L4 19 A2 2 0 0 0 6 21 L18 21 A2 2 0 0 0 20 19 L20 13" />
+<path d="M4 5 A2 2 0 0 1 6 3 M10 3 L14 3 M18 3 A2 2 0 0 1 20 5" />
+<path d="M3 9 L21 9" /></symbol>
+<symbol id="i-scroll-trim-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4 L5 4 A2 2 0 0 0 3 6 L3 18 A2 2 0 0 0 5 20 L11 20" />
+<path d="M19 4 A2 2 0 0 1 21 6 M21 10 L21 14 M21 18 A2 2 0 0 1 19 20" />
+<path d="M15 3 L15 21" /></symbol>
+<symbol id="i-scroll-trim-bottom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11 L20 5 A2 2 0 0 0 18 3 L6 3 A2 2 0 0 0 4 5 L4 11" />
+<path d="M20 19 A2 2 0 0 1 18 21 M14 21 L10 21 M6 21 A2 2 0 0 1 4 19" />
+<path d="M21 15 L3 15" /></symbol>
+<symbol id="i-scroll-trim-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 20 L19 20 A2 2 0 0 0 21 18 L21 6 A2 2 0 0 0 19 4 L13 4" />
+<path d="M5 20 A2 2 0 0 1 3 18 M3 14 L3 10 M3 6 A2 2 0 0 1 5 4" />
+<path d="M9 21 L9 3" /></symbol></defs></svg>
 <header class="header">
   <div class="brand surface" aria-label="EditHere · 改这里"><img class="brand-lockup brand-lockup-light" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyODg4IiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDcyMiAxMjgiIHJvbGU9ImltZyIgYXJpYS1sYWJlbGxlZGJ5PSJlZGl0aGVyZS1sb2NrdXAtdGl0bGUiPg0KICA8dGl0bGUgaWQ9ImVkaXRoZXJlLWxvY2t1cC10aXRsZSI+RWRpdEhlcmU8L3RpdGxlPg0KICA8ZGVzYz5FZGl0SGVyZSBibHVlIGVkaXRpbmcgaWNvbiB3aXRoIHRoZSBhbWJlci1jYXAgcGVuIHdvcmRtYXJrLjwvZGVzYz4NCiAgPHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iOCA2IDUyIDUyIiB4PSItMTIiIHk9Ii0xMiI+DQogICAgPGRlZnM+DQogICAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImVkaXRoZXJlLWJsdWUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4MT0iNDgiIHkxPSIxMCIgeDI9IjE2IiB5Mj0iNDgiPg0KICAgICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM2MUFERkYiIC8+DQogICAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMxNTVEOSIgLz4NCiAgICAgIDwvbGluZWFyR3JhZGllbnQ+DQogICAgPC9kZWZzPg0KICAgIDxwYXRoIGZpbGw9InVybCgjZWRpdGhlcmUtYmx1ZSkiIGQ9Ik0gNDggMzQgViA0MC4yIEEgNy44IDcuOCAwIDAgMSA0MC4yIDQ4IEggMjMuOCBBIDcuOCA3LjggMCAwIDEgMTYgNDAuMiBWIDIzLjggQSA3LjggNy44IDAgMCAxIDIzLjggMTYgSCAzMCBBIDIuNSAyLjUgMCAwIDEgMzAgMjEgSCAyMy44IEEgMi44IDIuOCAwIDAgMCAyMSAyMy44IFYgNDAuMiBBIDIuOCAyLjggMCAwIDAgMjMuOCA0MyBIIDQwLjIgQSAyLjggMi44IDAgMCAwIDQzIDQwLjIgViAzNCBBIDIuNSAyLjUgMCAwIDEgNDggMzQgWiIgLz4NCiAgICA8cGF0aCBmaWxsPSJ1cmwoI2VkaXRoZXJlLWJsdWUpIiBkPSJNIDMzLjUyNDA2IDMxLjg5MjMgQSAwLjc1IDAuNzUgMCAwIDEgMzIuNjEzMjYgMzAuOTgxNDkgTCAzMy45MDQ1NyAyNS44Njc5MyBBIDIuNSAyLjUgMCAwIDEgMzQuNTYwNzEgMjQuNzEyMjYgTCA0NS42Njk4OCAxMy42MDMwOSBBIDEuNCAxLjQgMCAwIDEgNDcuNjQ5NzggMTMuNjAzMDkgTCA1MC45MDI0NyAxNi44NTU3OCBBIDEuNCAxLjQgMCAwIDEgNTAuOTAyNDcgMTguODM1NjggTCAzOS43OTMzIDI5Ljk0NDg1IEEgMi41IDIuNSAwIDAgMSAzOC42Mzc2MyAzMC42MDA5OSBaIiAvPg0KICA8L3N2Zz4NCiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTUwIDApIj4NCiAgICA8ZGVmcz4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYS1tYWluIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjAiIHkxPSIwIiB4Mj0iNTcwIiB5Mj0iMTEwIj4NCiAgICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzI0NkJEOSIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iIzNFNzRFRiIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNDE0N0M5IiAvPg0KICAgICAgPC9saW5lYXJHcmFkaWVudD4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icGVuIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjE3OS45MzI5NzY2MTY3NTM0OCIgeTE9IjM4IiB4Mj0iMTc5LjkzMjk3NjYxNjc1MzQ4IiB5Mj0iMTE0Ij4NCiAgICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzQxOEFGMiIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMzU1RkQ0IiAvPg0KICAgICAgPC9saW5lYXJHcmFkaWVudD4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iY2FwIiB4MT0iMCIgeTE9IjAiIHgyPSIuNSIgeTI9IjEiPg0KICAgICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjRkZCMzUyIiAvPg0KICAgICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGMzhBMzUiIC8+DQogICAgICA8L2xpbmVhckdyYWRpZW50Pg0KICAgIDwvZGVmcz4NCiAgICA8ZyBmaWxsPSJ1cmwoI2EtbWFpbikiPg0KICAgICAgPHBhdGggZD0iTTEyLjAgMTEyLjBWMTIuMEg3NS45NTg0MDExNTAxNzM2MVYyNS45MDA2NTUxMTA2NzcwOEgyNi43NTQ4NDIxMjIzOTU4MzZWNTMuNTc4NTcyNTkxMTQ1ODNINjcuNjI1MDY3ODE2ODQwMjdWNjcuNDc5MjI3NzAxODIyOTFIMjYuNzU0ODQyMTIyMzk1ODM2Vjk4LjA5OTM0NDg4OTMyMjkySDc1Ljk1ODQwMTE1MDE3MzYxVjExMi4wWiIgLz4NCiAgICAgIDxwYXRoIGQ9Ik0xMTkuODcwNDAyMDE4MjI5MTcgMTE0LjA4MzMzMzMzMzMzMzMzUTEwOS40MzUyMjEzNTQxNjY2NyAxMTQuMDgzMzMzMzMzMzMzMzMgMTAxLjgyMjM2NTY1NDgzOTQyIDEwOC44NjQwMDUxOTQ3Njk5NlE5NC4yMDk1MDk5NTU1MTIxNiAxMDMuNjQ0Njc3MDU2MjA2NiA5MC4wNTYxNDM4NjY2NDQ5NyA5NC42NzUzNDg5MTc2NDMyM1E4NS45MDI3Nzc3Nzc3Nzc3OSA4NS43MDYwMjA3NzkwNzk4NiA4NS45MDI3Nzc3Nzc3Nzc3OSA3NC40NTYwMjA3NzkwNzk4NlE4NS45MDI3Nzc3Nzc3Nzc3OSA2My4xMjk2MjUxMDg1MDY5NCA5MC4wODE2MDkwOTAxNjkyOCA1NC4xOTUwMTkxOTIxNjU3OTVROTQuMjYwNDQwNDAyNTYwNzcgNDUuMjYwNDEzMjc1ODI0NjUgMTAxLjk0OTY5MTc3MjQ2MDk0IDQwLjA4ODUzOTk3MTI0NTY1UTEwOS42Mzg5NDMxNDIzNjExMSAzNC45MTY2NjY2NjY2NjY2NiAxMjAuMTgyOTM1OTI2NjQ5MzIgMzQuOTE2NjY2NjY2NjY2NjZRMTMwLjgxMTQxMTUzOTcxMzU2IDM0LjkxNjY2NjY2NjY2NjY2IDEzOC4wNzAwOTM3OTA2OTAxMiA0MC4wOTIwMTU1ODQzMDk4OVExNDUuMzI4Nzc2MDQxNjY2NjkgNDUuMjY3MzY0NTAxOTUzMTI1IDE0OS4wNTY3ODY0MzEyMDY2IDU0LjIxNDcwMzAzMDA1NjQzUTE1Mi43ODQ3OTY4MjA3NDY1MiA2My4xNjIwNDE1NTgxNTk3MiAxNTIuNzg0Nzk2ODIwNzQ2NTIgNzQuNDU2MDIwNzc5MDc5ODZRMTUyLjc4NDc5NjgyMDc0NjUyIDg1LjY4NDAzMTE2ODYxOTc4IDE0OS4wNDQwNTM4MTk0NDQ0NiA5NC42NTMzNTkzMDcxODMxNVExNDUuMzAzMzEwODE4MTQyMzYgMTAzLjYyMjY4NzQ0NTc0NjUyIDEzNy45NzkyMjc3MDE4MjI5NCAxMDguODUzMDEwMzg5NTM5OTJRMTMwLjY1NTE0NDU4NTUwMzQ4IDExNC4wODMzMzMzMzMzMzMzMyAxMTkuODcwNDAyMDE4MjI5MTcgMTE0LjA4MzMzMzMzMzMzMzMzWk0xMjEuOTU4NDE0NzEzNTQxNjcgMTAwLjc1MjEzNjIzMDQ2ODc1UTEyOS4wNjk0ODUxMzQ1NDg2MSAxMDAuNzUyMTM2MjMwNDY4NzUgMTMzLjUzNTg4NTI4MTAzMyA5Ny4zOTkxNTI5Njc2NjQ5M1ExMzguMDAyMjg1NDI3NTE3MzYgOTQuMDQ2MTY5NzA0ODYxMTEgMTQwLjA4Njc1NDY5MjkyNTM1IDg4LjEwNDY2MDAzNDE3OTY5UTE0Mi4xNzEyMjM5NTgzMzMzNCA4Mi4xNjMxNTAzNjM0OTgyNiAxNDIuMTcxMjIzOTU4MzMzMzQgNzQuNDU2MDIwNzc5MDc5ODZRMTQyLjE3MTIyMzk1ODMzMzM0IDY2LjcwNDkxMTk3Mzc0MTMyIDE0MC4wNzU3NTk4ODc2OTUzIDYwLjc4NTM5MTkxMzUxOTk2UTEzNy45ODAyOTU4MTcwNTczIDU0Ljg2NTg3MTg1MzI5ODYxIDEzMy42MDg4MDUzMzg1NDE2OSA1MS41NTY4Njc4MTE0MTQ5M1ExMjkuMjM3MzE0ODYwMDI2MDYgNDguMjQ3ODYzNzY5NTMxMjUgMTIyLjQzMjk2MzA1MzM4NTQyIDQ4LjI0Nzg2Mzc2OTUzMTI1UTExNS4yNzc5MTM0MTE0NTgzNCA0OC4yNDc4NjM3Njk1MzEyNSAxMTAuNjQzNjgzNTM5NDk2NTQgNTEuNzU1OTQ0MTQ2MDUwMzQ2UTEwNi4wMDk0NTM2Njc1MzQ3MyA1NS4yNjQwMjQ1MjI1Njk0NCAxMDMuNzc5MTQ0Mjg3MTA5MzggNjEuMjA3MjcxOTk5NzgyOThRMTAxLjU0ODgzNDkwNjY4NDA0IDY3LjE1MDUxOTQ3Njk5NjUyIDEwMS41NDg4MzQ5MDY2ODQwNCA3NC40NTYwMjA3NzkwNzk4NlExMDEuNTQ4ODM0OTA2Njg0MDQgODEuODMwOTY2NTI1NjA3NjQgMTAzLjc3NTY2ODY3NDA0NTE0IDg3Ljc5NjIwMzYxMzI4MTI1UTEwNi4wMDI1MDI0NDE0MDYyNSA5My43NjE0NDA3MDA5NTQ4NiAxMTAuNTE4MDk1MjI4NDA3MTIgOTcuMjU2Nzg4NDY1NzExODFRMTE1LjAzMzY4ODAxNTQwNzk5IDEwMC43NTIxMzYyMzA0Njg3NSAxMjEuOTU4NDE0NzEzNTQxNjcgMTAwLjc1MjEzNjIzMDQ2ODc1Wk0xNDIuMTcxMjIzOTU4MzMzMzQgMTEyLjBWNTguMTkyMjUzOTYwNTAzNDdIMTQwLjQyNTgyMTk0MDEwNDE5VjEyLjBIMTU1LjI3NTU3MzczMDQ2ODc1VjExMi4wWiIgLz4NCiAgICAgIDxwYXRoIGQ9Ik0yNDkuNDc2NDkwNjE0MTQ5MyAxMTIuMFEyNDIuMzgwMzkwNzYwNjMzNjcgMTEzLjM5MjM2NDUwMTk1MzEyIDIzNS41NDE4MTY4ODA5Njc4NyAxMTMuMTc0Nzc0MTY5OTIxODhRMjI4LjcwMzI0MzAwMTMwMjA3IDExMi45NTcxODM4Mzc4OTA2MiAyMjMuMzI5OTUzNjgxMDk4MDYgMTEwLjUzNTg4NTI4MTAzMjk5UTIxNy45NTY2NjQzNjA4OTQwOCAxMDguMTE0NTg2NzI0MTc1MzUgMjE1LjE4Njk3Mzc0MTMxOTQzIDEwMi44NzAzNjEzMjgxMjVRMjEyLjc2MTAyOTczMDkwMjc4IDk4LjE5MzI1NDI1ODg5NzU3IDIxMi42MDAxNTEyMzE1NTM4IDkzLjM2NDUyNTY4OTAxOTFRMjEyLjQzOTI3MjczMjIwNDg0IDg4LjUzNTc5NzExOTE0MDYyIDIxMi40MzkyNzI3MzIyMDQ4NCA4Mi4zOTM0MDU0OTA0NTEzOVYxNi4xNjY2NjY2NjY2NjY2NTdIMjI3LjE5NDExNDg1NDYwMDY4VjgxLjYzNDEyODE0NjcwMTM5UTIyNy4xOTQxMTQ4NTQ2MDA2OCA4Ni4xNjMwNTU0MTk5MjE4OCAyMjcuMjk4MjgxNTIxMjY3MzcgODkuNTA1MDc3Nzg1OTE1OFEyMjcuNDAyNDQ4MTg3OTM0MDMgOTIuODQ3MTAwMTUxOTA5NzMgMjI4LjcyMTg5MjYzMjM3ODQ2IDk1LjEwNjM1MDM2ODkyMzYxUTIzMS4yMjE4OTI2MzIzNzg0NiA5OS4zOTQ1Mjc4NTkxNTc5OSAyMzYuNjg2MDE0MTMzMDI5NTIgOTkuOTk0NjMwNjAxNjcxUTI0Mi4xNTAxMzU2MzM2ODA1NSAxMDAuNTk0NzMzMzQ0MTg0MDIgMjQ5LjQ3NjQ5MDYxNDE0OTMgOTkuNTE2MDM4NjgyNzI1NjlaTTE5OC4xMjIyMjIyMjIyMjIyIDQ4LjgxMjY0MjQxNTM2NDU4VjM3LjBIMjQ5LjQ3NjQ5MDYxNDE0OTNWNDguODEyNjQyNDE1MzY0NThaIiAvPg0KICAgICAgPHBhdGggZD0iTTI2NC42MTk0NDQ0NDQ0NDQ0IDExMi4wVjEyLjBIMjc5LjM3NDI4NjU2Njg0MDNWNTUuMDAyMjE3NjEwNjc3MDhIMzI5LjExMDEzOTk3Mzk1ODNWMTIuMEgzNDMuODY0OTgyMDk2MzU0MTRWMTEyLjBIMzI5LjExMDEzOTk3Mzk1ODNWNjguOTAyODcyNzIxMzU0MTZIMjc5LjM3NDI4NjU2Njg0MDNWMTEyLjBaIiAvPg0KICAgICAgPHBhdGggZD0iTTM5My42MTAyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1EzODIuMzY4MzQ5MjAyNDczOTUgMTE0LjA4MzMzMzMzMzMzMzMzIDM3My45MzU0NjA3NDc2MTI4NiAxMDkuMTczMDI5NTgxNzA1NzJRMzY1LjUwMjU3MjI5Mjc1MTcgMTA0LjI2MjcyNTgzMDA3ODEyIDM2MC43OTAxNzUwMzUyNjQ3IDk1LjQ5MjQ3NDAyNjE1MDE4UTM1Ni4wNzc3Nzc3Nzc3Nzc3IDg2LjcyMjIyMjIyMjIyMjIzIDM1Ni4wNzc3Nzc3Nzc3Nzc3IDc1LjE2NDM2NzY3NTc4MTI1UTM1Ni4wNzc3Nzc3Nzc3Nzc3IDYyLjg3MjcwMTAwOTExNDU4IDM2MC43MDc5OTc5NzkwNTgxIDUzLjg0MTQ0NzYxODI3MjU3UTM2NS4zMzgyMTgxODAzMzg1IDQ0LjgxMDE5NDIyNzQzMDU2IDM3My42MDUwMTQ3MTYyNTQzNSAzOS44NjM0MzA0NDcwNDg2MVEzODEuODcxODExMjUyMTcwMSAzNC45MTY2NjY2NjY2NjY2NiAzOTIuODUwOTg0NzAwNTIwOCAzNC45MTY2NjY2NjY2NjY2NlE0MDQuMzI2Njk2MDk5MTc1MyAzNC45MTY2NjY2NjY2NjY2NiA0MTIuMzkyNjc4NDkzOTIzNTQgNDAuMjUyMzI2MTE3NjIxNTJRNDIwLjQ1ODY2MDg4ODY3MTgzIDQ1LjU4Nzk4NTU2ODU3NjM4NiA0MjQuNDQ5OTc4NjM3Njk1MjcgNTUuMzkzNTU0Njg3NVE0MjguNDQxMjk2Mzg2NzE4NyA2NS4xOTkxMjM4MDY0MjM2MSA0MjcuNjM0NTY0MjA4OTg0MzMgNzguNjM0MzE4MDMzODU0MTZINDEyLjg5MDE0ODkyNTc4MTJWNzMuMjczMTI1NTQyNTM0NzNRNDEyLjc1ODIxMTI2MzAyMDggNjAuMzE5NDk4Njk3OTE2NjY0IDQwNy45OTA5MDc3OTYyMjM5NSA1NC4xNDEzMTY3MzE3NzA4M1E0MDMuMjIzNjA0MzI5NDI3MSA0Ny45NjMxMzQ3NjU2MjUgMzkzLjQyMDQ0MjcwODMzMzMgNDcuOTYzMTM0NzY1NjI1UTM4Mi42MDIyMTU1NzYxNzE4MyA0Ny45NjMxMzQ3NjU2MjUgMzc3LjE2MzAyNTI0MTQyNzkzIDU0Ljc3Njc0MzU3MDk2MzU0UTM3MS43MjM4MzQ5MDY2ODQgNjEuNTkwMzUyMzc2MzAyMDggMzcxLjcyMzgzNDkwNjY4NCA3NC41UTM3MS43MjM4MzQ5MDY2ODQgODYuNzQ1Mjc5OTQ3OTE2NjYgMzc3LjE2MzAyNTI0MTQyNzkzIDkzLjQ2Mzk3OTA4NTI4NjQ1UTM4Mi42MDIyMTU1NzYxNzE4MyAxMDAuMTgyNjc4MjIyNjU2MjUgMzkyLjg1MDk4NDcwMDUyMDggMTAwLjE4MjY3ODIyMjY1NjI1UTM5OS41OTM5NzkyMjA5MjAxIDEwMC4xODI2NzgyMjI2NTYyNSA0MDQuNTE5ODU1NDE0NDk2NTMgOTcuMTM2NDEzNTc0MjE4NzVRNDA5LjQ0NTczMTYwODA3MjkgOTQuMDkwMTQ4OTI1NzgxMjUgNDEyLjE4ODc1MzI1NTIwODMgODguMzYzMzU1ODQ4NTI0MzFMNDI2LjYzNTc0MDgzMTE2MzE2IDkyLjk0NDQxNzMxNzcwODMzUTQyMi4yODk2ODE2Njc3NTE2NyAxMDMuMDAyMjk4OTkwODg1NDIgNDEzLjM4ODYyODEzMzEzNzk2IDEwOC41NDI4MTYxNjIxMDkzOFE0MDQuNDg3NTc0NTk4NTI0MjUgMTE0LjA4MzMzMzMzMzMzMzMzIDM5My42MTAyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1pNMzY2Ljk0NjAwMjg3NTQzNCA3OC42MzQzMTgwMzM4NTQxNlY2Ny4yMDEzMTQyOTAzNjQ1OEg0MjAuMjc0NTIxMjEzMTA3NlY3OC42MzQzMTgwMzM4NTQxNloiIC8+DQogICAgICA8cGF0aCBkPSJNNDM5LjUwNTU1NTU1NTU1NTUzIDExMi4wVjM3LjBINDUyLjYwOTkwNTMyNzY5MDk3VjU1LjIwMTM5NTY3MDU3MjkxNEw0NTAuODA0MzQ5NzcyMTM1MzcgNTIuODQwMjg0NTU5NDYxOFE0NTIuMTc0NzI0NjYzNjI4NDcgNDkuMjE1MjcwOTk2MDkzNzUgNDU0LjQwNzM3MzcyNTA0MzQgNDYuMTk2NzQzNDM1MzI5ODZRNDU2LjY0MDAyMjc4NjQ1ODMgNDMuMTc4MjE1ODc0NTY1OTY0IDQ1OS42MDk5NTk1ODExNjMxNCA0MS4yMjY4MjAyMDM5OTMwNlE0NjIuNDI4MjQwOTY2Nzk2ODYgMzkuMTQyMzUwOTM4NTg1MDcgNDY1Ljk0MTUzNDc2MjkxMjMgMzguMDA2OTQ0NDQ0NDQ0NDRRNDY5LjQ1NDgyODU1OTAyNzc2IDM2Ljg3MTUzNzk1MDMwMzgyIDQ3My4xMjE0ODE2NjIzMjYzNSAzNi42Mjg0ODIzOTQ3NDgyNlE0NzYuNzg4MTM0NzY1NjI1IDM2LjM4NTQyNjgzOTE5MjcwNCA0ODAuMTQ2OTMzMzIyNDgyNiAzNy4wVjUwLjgxMjY5NjY2ODgzNjhRNDc2LjUzODE2MTg5MjM2MTEgNDkuODE4NDg0ODM2MTU0NTEgNDcyLjA2NTM3ODQ4NTc4NTYgNTAuMjQwOTMyODg4NDU0ODZRNDY3LjU5MjU5NTA3OTIxIDUwLjY2MzM4MDk0MDc1NTIwNCA0NjMuODg1NDM4MzY4MDU1NTMgNTMuMDc0MjE4NzVRNDYwLjM1NDE5ODU0MDU4MTYgNTUuMjgzNjc0NDUyMDM5OTI1IDQ1OC4yNzE0MzMxNzMyODU2IDU4LjUzMzA1OTAxNDIxNDRRNDU2LjE4ODY2NzgwNTk4OTU1IDYxLjc4MjQ0MzU3NjM4ODg4NiA0NTUuMjcxOTg3NTc1OTU0OCA2NS43NDc2OTQyMjc0MzA1NlE0NTQuMzU1MzA3MzQ1OTIwMSA2OS43MTI5NDQ4Nzg0NzIyMyA0NTQuMzU1MzA3MzQ1OTIwMSA3NC4xMDY0NTg4NzU4NjgwNlYxMTIuMFoiIC8+DQogICAgICA8cGF0aCBkPSJNNTI1LjQzNTI2MjA0NDI3MDggMTE0LjA4MzMzMzMzMzMzMzMzUTUxNC4xOTMzNDkyMDI0NzM5IDExNC4wODMzMzMzMzMzMzMzMyA1MDUuNzYwNDYwNzQ3NjEyOCAxMDkuMTczMDI5NTgxNzA1NzJRNDk3LjMyNzU3MjI5Mjc1MTcgMTA0LjI2MjcyNTgzMDA3ODEyIDQ5Mi42MTUxNzUwMzUyNjQ3IDk1LjQ5MjQ3NDAyNjE1MDE4UTQ4Ny45MDI3Nzc3Nzc3Nzc3IDg2LjcyMjIyMjIyMjIyMjIzIDQ4Ny45MDI3Nzc3Nzc3Nzc3IDc1LjE2NDM2NzY3NTc4MTI1UTQ4Ny45MDI3Nzc3Nzc3Nzc3IDYyLjg3MjcwMTAwOTExNDU4IDQ5Mi41MzI5OTc5NzkwNTgxIDUzLjg0MTQ0NzYxODI3MjU3UTQ5Ny4xNjMyMTgxODAzMzg1IDQ0LjgxMDE5NDIyNzQzMDU2IDUwNS40MzAwMTQ3MTYyNTQzIDM5Ljg2MzQzMDQ0NzA0ODYxUTUxMy42OTY4MTEyNTIxNyAzNC45MTY2NjY2NjY2NjY2NiA1MjQuNjc1OTg0NzAwNTIwOCAzNC45MTY2NjY2NjY2NjY2NlE1MzYuMTUxNjk2MDk5MTc1MyAzNC45MTY2NjY2NjY2NjY2NiA1NDQuMjE3Njc4NDkzOTIzNiA0MC4yNTIzMjYxMTc2MjE1MlE1NTIuMjgzNjYwODg4NjcxOSA0NS41ODc5ODU1Njg1NzYzODYgNTU2LjI3NDk3ODYzNzY5NTMgNTUuMzkzNTU0Njg3NVE1NjAuMjY2Mjk2Mzg2NzE4OCA2NS4xOTkxMjM4MDY0MjM2MSA1NTkuNDU5NTY0MjA4OTg0NCA3OC42MzQzMTgwMzM4NTQxNkg1NDQuNzE1MTQ4OTI1NzgxMlY3My4yNzMxMjU1NDI1MzQ3M1E1NDQuNTgzMjExMjYzMDIwOCA2MC4zMTk0OTg2OTc5MTY2NjQgNTM5LjgxNTkwNzc5NjIyMzkgNTQuMTQxMzE2NzMxNzcwODNRNTM1LjA0ODYwNDMyOTQyNyA0Ny45NjMxMzQ3NjU2MjUgNTI1LjI0NTQ0MjcwODMzMzMgNDcuOTYzMTM0NzY1NjI1UTUxNC40MjcyMTU1NzYxNzE5IDQ3Ljk2MzEzNDc2NTYyNSA1MDguOTg4MDI1MjQxNDI3OSA1NC43NzY3NDM1NzA5NjM1NFE1MDMuNTQ4ODM0OTA2NjgzOTYgNjEuNTkwMzUyMzc2MzAyMDggNTAzLjU0ODgzNDkwNjY4Mzk2IDc0LjVRNTAzLjU0ODgzNDkwNjY4Mzk2IDg2Ljc0NTI3OTk0NzkxNjY2IDUwOC45ODgwMjUyNDE0Mjc5IDkzLjQ2Mzk3OTA4NTI4NjQ1UTUxNC40MjcyMTU1NzYxNzE5IDEwMC4xODI2NzgyMjI2NTYyNSA1MjQuNjc1OTg0NzAwNTIwOCAxMDAuMTgyNjc4MjIyNjU2MjVRNTMxLjQxODk3OTIyMDkyIDEwMC4xODI2NzgyMjI2NTYyNSA1MzYuMzQ0ODU1NDE0NDk2NSA5Ny4xMzY0MTM1NzQyMTg3NVE1NDEuMjcwNzMxNjA4MDcyOSA5NC4wOTAxNDg5MjU3ODEyNSA1NDQuMDEzNzUzMjU1MjA4MyA4OC4zNjMzNTU4NDg1MjQzMUw1NTguNDYwNzQwODMxMTYzMSA5Mi45NDQ0MTczMTc3MDgzM1E1NTQuMTE0NjgxNjY3NzUxNyAxMDMuMDAyMjk4OTkwODg1NDIgNTQ1LjIxMzYyODEzMzEzOCAxMDguNTQyODE2MTYyMTA5MzhRNTM2LjMxMjU3NDU5ODUyNDMgMTE0LjA4MzMzMzMzMzMzMzMzIDUyNS40MzUyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1pNNDk4Ljc3MTAwMjg3NTQzMzk2IDc4LjYzNDMxODAzMzg1NDE2VjY3LjIwMTMxNDI5MDM2NDU4SDU1Mi4wOTk1MjEyMTMxMDc2Vjc4LjYzNDMxODAzMzg1NDE2WiIgLz4NCiAgICA8L2c+DQogICAgPHBhdGggZD0iTSAxNzYuNTU1NTU1NTU1NTU1NTcgMTIgSCAxODMuMzEwMzk3Njc3OTUxMzkgUSAxODcuMzEwMzk3Njc3OTUxMzkgMTIgMTg3LjMxMDM5NzY3Nzk1MTM5IDE2IFYgMjYgUSAxODcuMzEwMzk3Njc3OTUxMzkgMjggMTg1LjMxMDM5NzY3Nzk1MTM5IDI4IEggMTc0LjU1NTU1NTU1NTU1NTU3IFEgMTcyLjU1NTU1NTU1NTU1NTU3IDI4IDE3Mi41NTU1NTU1NTU1NTU1NyAyNiBWIDE2IFEgMTcyLjU1NTU1NTU1NTU1NTU3IDEyIDE3Ni41NTU1NTU1NTU1NTU1NyAxMiBaIiBmaWxsPSJ1cmwoI2NhcCkiIC8+DQogICAgPHBhdGggZD0iTSAxNzQuMzU1NTU1NTU1NTU1NTggNDAgSCAxODUuNTEwMzk3Njc3OTUxMzcgUSAxODcuMzEwMzk3Njc3OTUxMzkgNDAgMTg3LjMxMDM5NzY3Nzk1MTM5IDQxLjggViA5OCBRIDE4Ny4zMTAzOTc2Nzc5NTEzOSAxMDAgMTg1LjgxMDM5NzY3Nzk1MTM5IDEwMiBMIDE4MS4xODI5NzY2MTY3NTM0OCAxMTEgUSAxNzkuOTMyOTc2NjE2NzUzNDggMTEzLjYgMTc4LjY4Mjk3NjYxNjc1MzQ4IDExMSBMIDE3NC4wNTU1NTU1NTU1NTU1NyAxMDIgUSAxNzIuNTU1NTU1NTU1NTU1NTcgMTAwIDE3Mi41NTU1NTU1NTU1NTU1NyA5OCBWIDQxLjggUSAxNzIuNTU1NTU1NTU1NTU1NTcgNDAgMTc0LjM1NTU1NTU1NTU1NTU4IDQwIFoiIGZpbGw9InVybCgjcGVuKSIgLz4NCiAgPC9nPg0KPC9zdmc+" alt="EditHere" width="141" height="25"><img class="brand-lockup brand-lockup-dark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyODg4IiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDcyMiAxMjgiIHJvbGU9ImltZyIgYXJpYS1sYWJlbGxlZGJ5PSJlZGl0aGVyZS1sb2NrdXAtdGl0bGUiPg0KICA8dGl0bGUgaWQ9ImVkaXRoZXJlLWxvY2t1cC10aXRsZSI+RWRpdEhlcmU8L3RpdGxlPg0KICA8ZGVzYz5FZGl0SGVyZSBibHVlIGVkaXRpbmcgaWNvbiB3aXRoIHRoZSBhbWJlci1jYXAgcGVuIHdvcmRtYXJrLjwvZGVzYz4NCiAgPHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iOCA2IDUyIDUyIiB4PSItMTIiIHk9Ii0xMiI+DQogICAgPGRlZnM+DQogICAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImVkaXRoZXJlLWJsdWUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4MT0iNDgiIHkxPSIxMCIgeDI9IjE2IiB5Mj0iNDgiPg0KICAgICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiM2MUFERkYiIC8+DQogICAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzMxNTVEOSIgLz4NCiAgICAgIDwvbGluZWFyR3JhZGllbnQ+DQogICAgPC9kZWZzPg0KICAgIDxwYXRoIGZpbGw9InVybCgjZWRpdGhlcmUtYmx1ZSkiIGQ9Ik0gNDggMzQgViA0MC4yIEEgNy44IDcuOCAwIDAgMSA0MC4yIDQ4IEggMjMuOCBBIDcuOCA3LjggMCAwIDEgMTYgNDAuMiBWIDIzLjggQSA3LjggNy44IDAgMCAxIDIzLjggMTYgSCAzMCBBIDIuNSAyLjUgMCAwIDEgMzAgMjEgSCAyMy44IEEgMi44IDIuOCAwIDAgMCAyMSAyMy44IFYgNDAuMiBBIDIuOCAyLjggMCAwIDAgMjMuOCA0MyBIIDQwLjIgQSAyLjggMi44IDAgMCAwIDQzIDQwLjIgViAzNCBBIDIuNSAyLjUgMCAwIDEgNDggMzQgWiIgLz4NCiAgICA8cGF0aCBmaWxsPSJ1cmwoI2VkaXRoZXJlLWJsdWUpIiBkPSJNIDMzLjUyNDA2IDMxLjg5MjMgQSAwLjc1IDAuNzUgMCAwIDEgMzIuNjEzMjYgMzAuOTgxNDkgTCAzMy45MDQ1NyAyNS44Njc5MyBBIDIuNSAyLjUgMCAwIDEgMzQuNTYwNzEgMjQuNzEyMjYgTCA0NS42Njk4OCAxMy42MDMwOSBBIDEuNCAxLjQgMCAwIDEgNDcuNjQ5NzggMTMuNjAzMDkgTCA1MC45MDI0NyAxNi44NTU3OCBBIDEuNCAxLjQgMCAwIDEgNTAuOTAyNDcgMTguODM1NjggTCAzOS43OTMzIDI5Ljk0NDg1IEEgMi41IDIuNSAwIDAgMSAzOC42Mzc2MyAzMC42MDA5OSBaIiAvPg0KICA8L3N2Zz4NCiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTUwIDApIj4NCiAgICA8ZGVmcz4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYS1tYWluIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjAiIHkxPSIwIiB4Mj0iNTcwIiB5Mj0iMTEwIj4NCiAgICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzcwQTlGRiIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iIzg4QTdGRiIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOTY4NkZGIiAvPg0KICAgICAgPC9saW5lYXJHcmFkaWVudD4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icGVuIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjE3OS45MzI5NzY2MTY3NTM0OCIgeTE9IjM4IiB4Mj0iMTc5LjkzMjk3NjYxNjc1MzQ4IiB5Mj0iMTE0Ij4NCiAgICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzkxQkRGRiIgLz4NCiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNzI5N0YxIiAvPg0KICAgICAgPC9saW5lYXJHcmFkaWVudD4NCiAgICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iY2FwIiB4MT0iMCIgeTE9IjAiIHgyPSIuNSIgeTI9IjEiPg0KICAgICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjRkZCMzUyIiAvPg0KICAgICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGMzhBMzUiIC8+DQogICAgICA8L2xpbmVhckdyYWRpZW50Pg0KICAgIDwvZGVmcz4NCiAgICA8ZyBmaWxsPSJ1cmwoI2EtbWFpbikiPg0KICAgICAgPHBhdGggZD0iTTEyLjAgMTEyLjBWMTIuMEg3NS45NTg0MDExNTAxNzM2MVYyNS45MDA2NTUxMTA2NzcwOEgyNi43NTQ4NDIxMjIzOTU4MzZWNTMuNTc4NTcyNTkxMTQ1ODNINjcuNjI1MDY3ODE2ODQwMjdWNjcuNDc5MjI3NzAxODIyOTFIMjYuNzU0ODQyMTIyMzk1ODM2Vjk4LjA5OTM0NDg4OTMyMjkySDc1Ljk1ODQwMTE1MDE3MzYxVjExMi4wWiIgLz4NCiAgICAgIDxwYXRoIGQ9Ik0xMTkuODcwNDAyMDE4MjI5MTcgMTE0LjA4MzMzMzMzMzMzMzMzUTEwOS40MzUyMjEzNTQxNjY2NyAxMTQuMDgzMzMzMzMzMzMzMzMgMTAxLjgyMjM2NTY1NDgzOTQyIDEwOC44NjQwMDUxOTQ3Njk5NlE5NC4yMDk1MDk5NTU1MTIxNiAxMDMuNjQ0Njc3MDU2MjA2NiA5MC4wNTYxNDM4NjY2NDQ5NyA5NC42NzUzNDg5MTc2NDMyM1E4NS45MDI3Nzc3Nzc3Nzc3OSA4NS43MDYwMjA3NzkwNzk4NiA4NS45MDI3Nzc3Nzc3Nzc3OSA3NC40NTYwMjA3NzkwNzk4NlE4NS45MDI3Nzc3Nzc3Nzc3OSA2My4xMjk2MjUxMDg1MDY5NCA5MC4wODE2MDkwOTAxNjkyOCA1NC4xOTUwMTkxOTIxNjU3OTVROTQuMjYwNDQwNDAyNTYwNzcgNDUuMjYwNDEzMjc1ODI0NjUgMTAxLjk0OTY5MTc3MjQ2MDk0IDQwLjA4ODUzOTk3MTI0NTY1UTEwOS42Mzg5NDMxNDIzNjExMSAzNC45MTY2NjY2NjY2NjY2NiAxMjAuMTgyOTM1OTI2NjQ5MzIgMzQuOTE2NjY2NjY2NjY2NjZRMTMwLjgxMTQxMTUzOTcxMzU2IDM0LjkxNjY2NjY2NjY2NjY2IDEzOC4wNzAwOTM3OTA2OTAxMiA0MC4wOTIwMTU1ODQzMDk4OVExNDUuMzI4Nzc2MDQxNjY2NjkgNDUuMjY3MzY0NTAxOTUzMTI1IDE0OS4wNTY3ODY0MzEyMDY2IDU0LjIxNDcwMzAzMDA1NjQzUTE1Mi43ODQ3OTY4MjA3NDY1MiA2My4xNjIwNDE1NTgxNTk3MiAxNTIuNzg0Nzk2ODIwNzQ2NTIgNzQuNDU2MDIwNzc5MDc5ODZRMTUyLjc4NDc5NjgyMDc0NjUyIDg1LjY4NDAzMTE2ODYxOTc4IDE0OS4wNDQwNTM4MTk0NDQ0NiA5NC42NTMzNTkzMDcxODMxNVExNDUuMzAzMzEwODE4MTQyMzYgMTAzLjYyMjY4NzQ0NTc0NjUyIDEzNy45NzkyMjc3MDE4MjI5NCAxMDguODUzMDEwMzg5NTM5OTJRMTMwLjY1NTE0NDU4NTUwMzQ4IDExNC4wODMzMzMzMzMzMzMzMyAxMTkuODcwNDAyMDE4MjI5MTcgMTE0LjA4MzMzMzMzMzMzMzMzWk0xMjEuOTU4NDE0NzEzNTQxNjcgMTAwLjc1MjEzNjIzMDQ2ODc1UTEyOS4wNjk0ODUxMzQ1NDg2MSAxMDAuNzUyMTM2MjMwNDY4NzUgMTMzLjUzNTg4NTI4MTAzMyA5Ny4zOTkxNTI5Njc2NjQ5M1ExMzguMDAyMjg1NDI3NTE3MzYgOTQuMDQ2MTY5NzA0ODYxMTEgMTQwLjA4Njc1NDY5MjkyNTM1IDg4LjEwNDY2MDAzNDE3OTY5UTE0Mi4xNzEyMjM5NTgzMzMzNCA4Mi4xNjMxNTAzNjM0OTgyNiAxNDIuMTcxMjIzOTU4MzMzMzQgNzQuNDU2MDIwNzc5MDc5ODZRMTQyLjE3MTIyMzk1ODMzMzM0IDY2LjcwNDkxMTk3Mzc0MTMyIDE0MC4wNzU3NTk4ODc2OTUzIDYwLjc4NTM5MTkxMzUxOTk2UTEzNy45ODAyOTU4MTcwNTczIDU0Ljg2NTg3MTg1MzI5ODYxIDEzMy42MDg4MDUzMzg1NDE2OSA1MS41NTY4Njc4MTE0MTQ5M1ExMjkuMjM3MzE0ODYwMDI2MDYgNDguMjQ3ODYzNzY5NTMxMjUgMTIyLjQzMjk2MzA1MzM4NTQyIDQ4LjI0Nzg2Mzc2OTUzMTI1UTExNS4yNzc5MTM0MTE0NTgzNCA0OC4yNDc4NjM3Njk1MzEyNSAxMTAuNjQzNjgzNTM5NDk2NTQgNTEuNzU1OTQ0MTQ2MDUwMzQ2UTEwNi4wMDk0NTM2Njc1MzQ3MyA1NS4yNjQwMjQ1MjI1Njk0NCAxMDMuNzc5MTQ0Mjg3MTA5MzggNjEuMjA3MjcxOTk5NzgyOThRMTAxLjU0ODgzNDkwNjY4NDA0IDY3LjE1MDUxOTQ3Njk5NjUyIDEwMS41NDg4MzQ5MDY2ODQwNCA3NC40NTYwMjA3NzkwNzk4NlExMDEuNTQ4ODM0OTA2Njg0MDQgODEuODMwOTY2NTI1NjA3NjQgMTAzLjc3NTY2ODY3NDA0NTE0IDg3Ljc5NjIwMzYxMzI4MTI1UTEwNi4wMDI1MDI0NDE0MDYyNSA5My43NjE0NDA3MDA5NTQ4NiAxMTAuNTE4MDk1MjI4NDA3MTIgOTcuMjU2Nzg4NDY1NzExODFRMTE1LjAzMzY4ODAxNTQwNzk5IDEwMC43NTIxMzYyMzA0Njg3NSAxMjEuOTU4NDE0NzEzNTQxNjcgMTAwLjc1MjEzNjIzMDQ2ODc1Wk0xNDIuMTcxMjIzOTU4MzMzMzQgMTEyLjBWNTguMTkyMjUzOTYwNTAzNDdIMTQwLjQyNTgyMTk0MDEwNDE5VjEyLjBIMTU1LjI3NTU3MzczMDQ2ODc1VjExMi4wWiIgLz4NCiAgICAgIDxwYXRoIGQ9Ik0yNDkuNDc2NDkwNjE0MTQ5MyAxMTIuMFEyNDIuMzgwMzkwNzYwNjMzNjcgMTEzLjM5MjM2NDUwMTk1MzEyIDIzNS41NDE4MTY4ODA5Njc4NyAxMTMuMTc0Nzc0MTY5OTIxODhRMjI4LjcwMzI0MzAwMTMwMjA3IDExMi45NTcxODM4Mzc4OTA2MiAyMjMuMzI5OTUzNjgxMDk4MDYgMTEwLjUzNTg4NTI4MTAzMjk5UTIxNy45NTY2NjQzNjA4OTQwOCAxMDguMTE0NTg2NzI0MTc1MzUgMjE1LjE4Njk3Mzc0MTMxOTQzIDEwMi44NzAzNjEzMjgxMjVRMjEyLjc2MTAyOTczMDkwMjc4IDk4LjE5MzI1NDI1ODg5NzU3IDIxMi42MDAxNTEyMzE1NTM4IDkzLjM2NDUyNTY4OTAxOTFRMjEyLjQzOTI3MjczMjIwNDg0IDg4LjUzNTc5NzExOTE0MDYyIDIxMi40MzkyNzI3MzIyMDQ4NCA4Mi4zOTM0MDU0OTA0NTEzOVYxNi4xNjY2NjY2NjY2NjY2NTdIMjI3LjE5NDExNDg1NDYwMDY4VjgxLjYzNDEyODE0NjcwMTM5UTIyNy4xOTQxMTQ4NTQ2MDA2OCA4Ni4xNjMwNTU0MTk5MjE4OCAyMjcuMjk4MjgxNTIxMjY3MzcgODkuNTA1MDc3Nzg1OTE1OFEyMjcuNDAyNDQ4MTg3OTM0MDMgOTIuODQ3MTAwMTUxOTA5NzMgMjI4LjcyMTg5MjYzMjM3ODQ2IDk1LjEwNjM1MDM2ODkyMzYxUTIzMS4yMjE4OTI2MzIzNzg0NiA5OS4zOTQ1Mjc4NTkxNTc5OSAyMzYuNjg2MDE0MTMzMDI5NTIgOTkuOTk0NjMwNjAxNjcxUTI0Mi4xNTAxMzU2MzM2ODA1NSAxMDAuNTk0NzMzMzQ0MTg0MDIgMjQ5LjQ3NjQ5MDYxNDE0OTMgOTkuNTE2MDM4NjgyNzI1NjlaTTE5OC4xMjIyMjIyMjIyMjIyIDQ4LjgxMjY0MjQxNTM2NDU4VjM3LjBIMjQ5LjQ3NjQ5MDYxNDE0OTNWNDguODEyNjQyNDE1MzY0NThaIiAvPg0KICAgICAgPHBhdGggZD0iTTI2NC42MTk0NDQ0NDQ0NDQ0IDExMi4wVjEyLjBIMjc5LjM3NDI4NjU2Njg0MDNWNTUuMDAyMjE3NjEwNjc3MDhIMzI5LjExMDEzOTk3Mzk1ODNWMTIuMEgzNDMuODY0OTgyMDk2MzU0MTRWMTEyLjBIMzI5LjExMDEzOTk3Mzk1ODNWNjguOTAyODcyNzIxMzU0MTZIMjc5LjM3NDI4NjU2Njg0MDNWMTEyLjBaIiAvPg0KICAgICAgPHBhdGggZD0iTTM5My42MTAyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1EzODIuMzY4MzQ5MjAyNDczOTUgMTE0LjA4MzMzMzMzMzMzMzMzIDM3My45MzU0NjA3NDc2MTI4NiAxMDkuMTczMDI5NTgxNzA1NzJRMzY1LjUwMjU3MjI5Mjc1MTcgMTA0LjI2MjcyNTgzMDA3ODEyIDM2MC43OTAxNzUwMzUyNjQ3IDk1LjQ5MjQ3NDAyNjE1MDE4UTM1Ni4wNzc3Nzc3Nzc3Nzc3IDg2LjcyMjIyMjIyMjIyMjIzIDM1Ni4wNzc3Nzc3Nzc3Nzc3IDc1LjE2NDM2NzY3NTc4MTI1UTM1Ni4wNzc3Nzc3Nzc3Nzc3IDYyLjg3MjcwMTAwOTExNDU4IDM2MC43MDc5OTc5NzkwNTgxIDUzLjg0MTQ0NzYxODI3MjU3UTM2NS4zMzgyMTgxODAzMzg1IDQ0LjgxMDE5NDIyNzQzMDU2IDM3My42MDUwMTQ3MTYyNTQzNSAzOS44NjM0MzA0NDcwNDg2MVEzODEuODcxODExMjUyMTcwMSAzNC45MTY2NjY2NjY2NjY2NiAzOTIuODUwOTg0NzAwNTIwOCAzNC45MTY2NjY2NjY2NjY2NlE0MDQuMzI2Njk2MDk5MTc1MyAzNC45MTY2NjY2NjY2NjY2NiA0MTIuMzkyNjc4NDkzOTIzNTQgNDAuMjUyMzI2MTE3NjIxNTJRNDIwLjQ1ODY2MDg4ODY3MTgzIDQ1LjU4Nzk4NTU2ODU3NjM4NiA0MjQuNDQ5OTc4NjM3Njk1MjcgNTUuMzkzNTU0Njg3NVE0MjguNDQxMjk2Mzg2NzE4NyA2NS4xOTkxMjM4MDY0MjM2MSA0MjcuNjM0NTY0MjA4OTg0MzMgNzguNjM0MzE4MDMzODU0MTZINDEyLjg5MDE0ODkyNTc4MTJWNzMuMjczMTI1NTQyNTM0NzNRNDEyLjc1ODIxMTI2MzAyMDggNjAuMzE5NDk4Njk3OTE2NjY0IDQwNy45OTA5MDc3OTYyMjM5NSA1NC4xNDEzMTY3MzE3NzA4M1E0MDMuMjIzNjA0MzI5NDI3MSA0Ny45NjMxMzQ3NjU2MjUgMzkzLjQyMDQ0MjcwODMzMzMgNDcuOTYzMTM0NzY1NjI1UTM4Mi42MDIyMTU1NzYxNzE4MyA0Ny45NjMxMzQ3NjU2MjUgMzc3LjE2MzAyNTI0MTQyNzkzIDU0Ljc3Njc0MzU3MDk2MzU0UTM3MS43MjM4MzQ5MDY2ODQgNjEuNTkwMzUyMzc2MzAyMDggMzcxLjcyMzgzNDkwNjY4NCA3NC41UTM3MS43MjM4MzQ5MDY2ODQgODYuNzQ1Mjc5OTQ3OTE2NjYgMzc3LjE2MzAyNTI0MTQyNzkzIDkzLjQ2Mzk3OTA4NTI4NjQ1UTM4Mi42MDIyMTU1NzYxNzE4MyAxMDAuMTgyNjc4MjIyNjU2MjUgMzkyLjg1MDk4NDcwMDUyMDggMTAwLjE4MjY3ODIyMjY1NjI1UTM5OS41OTM5NzkyMjA5MjAxIDEwMC4xODI2NzgyMjI2NTYyNSA0MDQuNTE5ODU1NDE0NDk2NTMgOTcuMTM2NDEzNTc0MjE4NzVRNDA5LjQ0NTczMTYwODA3MjkgOTQuMDkwMTQ4OTI1NzgxMjUgNDEyLjE4ODc1MzI1NTIwODMgODguMzYzMzU1ODQ4NTI0MzFMNDI2LjYzNTc0MDgzMTE2MzE2IDkyLjk0NDQxNzMxNzcwODMzUTQyMi4yODk2ODE2Njc3NTE2NyAxMDMuMDAyMjk4OTkwODg1NDIgNDEzLjM4ODYyODEzMzEzNzk2IDEwOC41NDI4MTYxNjIxMDkzOFE0MDQuNDg3NTc0NTk4NTI0MjUgMTE0LjA4MzMzMzMzMzMzMzMzIDM5My42MTAyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1pNMzY2Ljk0NjAwMjg3NTQzNCA3OC42MzQzMTgwMzM4NTQxNlY2Ny4yMDEzMTQyOTAzNjQ1OEg0MjAuMjc0NTIxMjEzMTA3NlY3OC42MzQzMTgwMzM4NTQxNloiIC8+DQogICAgICA8cGF0aCBkPSJNNDM5LjUwNTU1NTU1NTU1NTUzIDExMi4wVjM3LjBINDUyLjYwOTkwNTMyNzY5MDk3VjU1LjIwMTM5NTY3MDU3MjkxNEw0NTAuODA0MzQ5NzcyMTM1MzcgNTIuODQwMjg0NTU5NDYxOFE0NTIuMTc0NzI0NjYzNjI4NDcgNDkuMjE1MjcwOTk2MDkzNzUgNDU0LjQwNzM3MzcyNTA0MzQgNDYuMTk2NzQzNDM1MzI5ODZRNDU2LjY0MDAyMjc4NjQ1ODMgNDMuMTc4MjE1ODc0NTY1OTY0IDQ1OS42MDk5NTk1ODExNjMxNCA0MS4yMjY4MjAyMDM5OTMwNlE0NjIuNDI4MjQwOTY2Nzk2ODYgMzkuMTQyMzUwOTM4NTg1MDcgNDY1Ljk0MTUzNDc2MjkxMjMgMzguMDA2OTQ0NDQ0NDQ0NDRRNDY5LjQ1NDgyODU1OTAyNzc2IDM2Ljg3MTUzNzk1MDMwMzgyIDQ3My4xMjE0ODE2NjIzMjYzNSAzNi42Mjg0ODIzOTQ3NDgyNlE0NzYuNzg4MTM0NzY1NjI1IDM2LjM4NTQyNjgzOTE5MjcwNCA0ODAuMTQ2OTMzMzIyNDgyNiAzNy4wVjUwLjgxMjY5NjY2ODgzNjhRNDc2LjUzODE2MTg5MjM2MTEgNDkuODE4NDg0ODM2MTU0NTEgNDcyLjA2NTM3ODQ4NTc4NTYgNTAuMjQwOTMyODg4NDU0ODZRNDY3LjU5MjU5NTA3OTIxIDUwLjY2MzM4MDk0MDc1NTIwNCA0NjMuODg1NDM4MzY4MDU1NTMgNTMuMDc0MjE4NzVRNDYwLjM1NDE5ODU0MDU4MTYgNTUuMjgzNjc0NDUyMDM5OTI1IDQ1OC4yNzE0MzMxNzMyODU2IDU4LjUzMzA1OTAxNDIxNDRRNDU2LjE4ODY2NzgwNTk4OTU1IDYxLjc4MjQ0MzU3NjM4ODg4NiA0NTUuMjcxOTg3NTc1OTU0OCA2NS43NDc2OTQyMjc0MzA1NlE0NTQuMzU1MzA3MzQ1OTIwMSA2OS43MTI5NDQ4Nzg0NzIyMyA0NTQuMzU1MzA3MzQ1OTIwMSA3NC4xMDY0NTg4NzU4NjgwNlYxMTIuMFoiIC8+DQogICAgICA8cGF0aCBkPSJNNTI1LjQzNTI2MjA0NDI3MDggMTE0LjA4MzMzMzMzMzMzMzMzUTUxNC4xOTMzNDkyMDI0NzM5IDExNC4wODMzMzMzMzMzMzMzMyA1MDUuNzYwNDYwNzQ3NjEyOCAxMDkuMTczMDI5NTgxNzA1NzJRNDk3LjMyNzU3MjI5Mjc1MTcgMTA0LjI2MjcyNTgzMDA3ODEyIDQ5Mi42MTUxNzUwMzUyNjQ3IDk1LjQ5MjQ3NDAyNjE1MDE4UTQ4Ny45MDI3Nzc3Nzc3Nzc3IDg2LjcyMjIyMjIyMjIyMjIzIDQ4Ny45MDI3Nzc3Nzc3Nzc3IDc1LjE2NDM2NzY3NTc4MTI1UTQ4Ny45MDI3Nzc3Nzc3Nzc3IDYyLjg3MjcwMTAwOTExNDU4IDQ5Mi41MzI5OTc5NzkwNTgxIDUzLjg0MTQ0NzYxODI3MjU3UTQ5Ny4xNjMyMTgxODAzMzg1IDQ0LjgxMDE5NDIyNzQzMDU2IDUwNS40MzAwMTQ3MTYyNTQzIDM5Ljg2MzQzMDQ0NzA0ODYxUTUxMy42OTY4MTEyNTIxNyAzNC45MTY2NjY2NjY2NjY2NiA1MjQuNjc1OTg0NzAwNTIwOCAzNC45MTY2NjY2NjY2NjY2NlE1MzYuMTUxNjk2MDk5MTc1MyAzNC45MTY2NjY2NjY2NjY2NiA1NDQuMjE3Njc4NDkzOTIzNiA0MC4yNTIzMjYxMTc2MjE1MlE1NTIuMjgzNjYwODg4NjcxOSA0NS41ODc5ODU1Njg1NzYzODYgNTU2LjI3NDk3ODYzNzY5NTMgNTUuMzkzNTU0Njg3NVE1NjAuMjY2Mjk2Mzg2NzE4OCA2NS4xOTkxMjM4MDY0MjM2MSA1NTkuNDU5NTY0MjA4OTg0NCA3OC42MzQzMTgwMzM4NTQxNkg1NDQuNzE1MTQ4OTI1NzgxMlY3My4yNzMxMjU1NDI1MzQ3M1E1NDQuNTgzMjExMjYzMDIwOCA2MC4zMTk0OTg2OTc5MTY2NjQgNTM5LjgxNTkwNzc5NjIyMzkgNTQuMTQxMzE2NzMxNzcwODNRNTM1LjA0ODYwNDMyOTQyNyA0Ny45NjMxMzQ3NjU2MjUgNTI1LjI0NTQ0MjcwODMzMzMgNDcuOTYzMTM0NzY1NjI1UTUxNC40MjcyMTU1NzYxNzE5IDQ3Ljk2MzEzNDc2NTYyNSA1MDguOTg4MDI1MjQxNDI3OSA1NC43NzY3NDM1NzA5NjM1NFE1MDMuNTQ4ODM0OTA2NjgzOTYgNjEuNTkwMzUyMzc2MzAyMDggNTAzLjU0ODgzNDkwNjY4Mzk2IDc0LjVRNTAzLjU0ODgzNDkwNjY4Mzk2IDg2Ljc0NTI3OTk0NzkxNjY2IDUwOC45ODgwMjUyNDE0Mjc5IDkzLjQ2Mzk3OTA4NTI4NjQ1UTUxNC40MjcyMTU1NzYxNzE5IDEwMC4xODI2NzgyMjI2NTYyNSA1MjQuNjc1OTg0NzAwNTIwOCAxMDAuMTgyNjc4MjIyNjU2MjVRNTMxLjQxODk3OTIyMDkyIDEwMC4xODI2NzgyMjI2NTYyNSA1MzYuMzQ0ODU1NDE0NDk2NSA5Ny4xMzY0MTM1NzQyMTg3NVE1NDEuMjcwNzMxNjA4MDcyOSA5NC4wOTAxNDg5MjU3ODEyNSA1NDQuMDEzNzUzMjU1MjA4MyA4OC4zNjMzNTU4NDg1MjQzMUw1NTguNDYwNzQwODMxMTYzMSA5Mi45NDQ0MTczMTc3MDgzM1E1NTQuMTE0NjgxNjY3NzUxNyAxMDMuMDAyMjk4OTkwODg1NDIgNTQ1LjIxMzYyODEzMzEzOCAxMDguNTQyODE2MTYyMTA5MzhRNTM2LjMxMjU3NDU5ODUyNDMgMTE0LjA4MzMzMzMzMzMzMzMzIDUyNS40MzUyNjIwNDQyNzA4IDExNC4wODMzMzMzMzMzMzMzM1pNNDk4Ljc3MTAwMjg3NTQzMzk2IDc4LjYzNDMxODAzMzg1NDE2VjY3LjIwMTMxNDI5MDM2NDU4SDU1Mi4wOTk1MjEyMTMxMDc2Vjc4LjYzNDMxODAzMzg1NDE2WiIgLz4NCiAgICA8L2c+DQogICAgPHBhdGggZD0iTSAxNzYuNTU1NTU1NTU1NTU1NTcgMTIgSCAxODMuMzEwMzk3Njc3OTUxMzkgUSAxODcuMzEwMzk3Njc3OTUxMzkgMTIgMTg3LjMxMDM5NzY3Nzk1MTM5IDE2IFYgMjYgUSAxODcuMzEwMzk3Njc3OTUxMzkgMjggMTg1LjMxMDM5NzY3Nzk1MTM5IDI4IEggMTc0LjU1NTU1NTU1NTU1NTU3IFEgMTcyLjU1NTU1NTU1NTU1NTU3IDI4IDE3Mi41NTU1NTU1NTU1NTU1NyAyNiBWIDE2IFEgMTcyLjU1NTU1NTU1NTU1NTU3IDEyIDE3Ni41NTU1NTU1NTU1NTU1NyAxMiBaIiBmaWxsPSJ1cmwoI2NhcCkiIC8+DQogICAgPHBhdGggZD0iTSAxNzQuMzU1NTU1NTU1NTU1NTggNDAgSCAxODUuNTEwMzk3Njc3OTUxMzcgUSAxODcuMzEwMzk3Njc3OTUxMzkgNDAgMTg3LjMxMDM5NzY3Nzk1MTM5IDQxLjggViA5OCBRIDE4Ny4zMTAzOTc2Nzc5NTEzOSAxMDAgMTg1LjgxMDM5NzY3Nzk1MTM5IDEwMiBMIDE4MS4xODI5NzY2MTY3NTM0OCAxMTEgUSAxNzkuOTMyOTc2NjE2NzUzNDggMTEzLjYgMTc4LjY4Mjk3NjYxNjc1MzQ4IDExMSBMIDE3NC4wNTU1NTU1NTU1NTU1NyAxMDIgUSAxNzIuNTU1NTU1NTU1NTU1NTcgMTAwIDE3Mi41NTU1NTU1NTU1NTU1NyA5OCBWIDQxLjggUSAxNzIuNTU1NTU1NTU1NTU1NTcgNDAgMTc0LjM1NTU1NTU1NTU1NTU4IDQwIFoiIGZpbGw9InVybCgjcGVuKSIgLz4NCiAgPC9nPg0KPC9zdmc+" alt="EditHere" width="141" height="25"><img class="brand-symbol" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSI4IDYgNTIgNTIiPjx0aXRsZT5FZGl0SGVyZTwvdGl0bGU+PG1ldGFkYXRhPnsicmFkaXVzIjo3LjgsIndpZHRoIjo1LCJ4IjozMi4zMDU1NTgyODE0NzQ1NiwieSI6MzIuMiwic2NhbGUiOjEsImFuZ2xlIjotNDUsInRpcCI6MC43NSwic2hvdWxkZXIiOjIuNSwibG9jayI6ZmFsc2V9PC9tZXRhZGF0YT48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImhlbHBkZXNpZ24tYmx1ZSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiIHgxPSI0OCIgeTE9IjEwIiB4Mj0iMTYiIHkyPSI0OCI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjNjFBREZGIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMzE1NUQ5Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNoZWxwZGVzaWduLWJsdWUpIiBkPSJNIDQ4IDM0IFYgNDAuMiBBIDcuOCA3LjggMCAwIDEgNDAuMiA0OCBIIDIzLjggQSA3LjggNy44IDAgMCAxIDE2IDQwLjIgViAyMy44IEEgNy44IDcuOCAwIDAgMSAyMy44IDE2IEggMzAgQSAyLjUgMi41IDAgMCAxIDMwIDIxIEggMjMuOCBBIDIuOCAyLjggMCAwIDAgMjEgMjMuOCBWIDQwLjIgQSAyLjggMi44IDAgMCAwIDIzLjggNDMgSCA0MC4yIEEgMi44IDIuOCAwIDAgMCA0MyA0MC4yIFYgMzQgQSAyLjUgMi41IDAgMCAxIDQ4IDM0IFoiLz48cGF0aCBmaWxsPSJ1cmwoI2hlbHBkZXNpZ24tYmx1ZSkiIGQ9Ik0gMzMuNTI0MDYgMzEuODkyMyBBIDAuNzUgMC43NSAwIDAgMSAzMi42MTMyNiAzMC45ODE0OSBMIDMzLjkwNDU3IDI1Ljg2NzkzIEEgMi41IDIuNSAwIDAgMSAzNC41NjA3MSAyNC43MTIyNiBMIDQ1LjY2OTg4IDEzLjYwMzA5IEEgMS40IDEuNCAwIDAgMSA0Ny42NDk3OCAxMy42MDMwOSBMIDUwLjkwMjQ3IDE2Ljg1NTc4IEEgMS40IDEuNCAwIDAgMSA1MC45MDI0NyAxOC44MzU2OCBMIDM5Ljc5MzMgMjkuOTQ0ODUgQSAyLjUgMi41IDAgMCAxIDM4LjYzNzYzIDMwLjYwMDk5IFoiLz48L3N2Zz4NCg==" alt="EditHere" width="30" height="30"></div>
-  <div class="view-controls surface" role="toolbar" aria-label="画布显示与缩放"><button id="toggle-annotations" class="icon-button" aria-label="隐藏批注标记" aria-pressed="true" title="显示 / 隐藏批注标记"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button><span class="separator"></span><button id="zoom-out" class="icon-button" aria-label="缩小">−</button><button id="fit" title="适应画布 (Ctrl / ⌘ + 0)">100%</button><button id="zoom-in" class="icon-button" aria-label="放大">＋</button><button id="fit-icon" class="icon-button" aria-label="适应画布" title="适应画布"><svg class="icon" aria-hidden="true"><use href="#i-fit"/></svg></button></div>
+  <div class="view-controls surface" role="toolbar" aria-label="画布显示与缩放"><button id="toggle-annotations" class="icon-button" aria-label="隐藏批注标记" aria-pressed="true" title="隐藏批注与位移箭头"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button><span class="separator"></span><button id="zoom-out" class="icon-button" aria-label="缩小"><svg class="icon" aria-hidden="true"><use href="#i-zoom-out"/></svg></button><button id="fit" title="适应画布 (Ctrl / ⌘ + 0)">100%</button><button id="zoom-in" class="icon-button" aria-label="放大"><svg class="icon" aria-hidden="true"><use href="#i-zoom-in"/></svg></button><button id="fit-icon" class="icon-button" aria-label="适应画布" title="适应画布"><svg class="icon" aria-hidden="true"><use href="#i-fit"/></svg></button></div>
   <div class="header-actions surface">
     <button id="open" class="button" aria-label="打开图片、视频或项目" title="打开图片、视频或项目 (Ctrl / ⌘ + O)"><svg class="icon" aria-hidden="true"><use href="#i-open"/></svg><span>打开</span></button>
-    <div class="save-control"><button id="save-json" class="button icon-button" title="保存 JSON 文件 (Ctrl / ⌘ + S)" aria-label="保存 JSON 文件" disabled><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg></button><button id="save-options-toggle" class="save-options-toggle" title="选择操作" aria-label="选择操作" aria-haspopup="menu" aria-expanded="false" aria-controls="save-options"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button><div id="save-options" class="save-options surface" role="menu" aria-label="JSON 与项目操作" hidden><button role="menuitemradio" aria-checked="true" data-save-mode="file"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span><strong>保存 JSON 文件</strong><small>上传文件给 Agent</small></span><span class="save-check" aria-hidden="true">✓</span></button><button role="menuitemradio" aria-checked="false" data-save-mode="content"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span><strong>复制 JSON 内容</strong><small>直接粘贴到对话</small></span><span class="save-check" aria-hidden="true">✓</span></button><button role="menuitemradio" aria-checked="false" data-save-mode="project"><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg><span><strong>保存项目</strong><small>保留素材与布局，下次继续编辑</small></span><span class="save-check" aria-hidden="true">✓</span></button><button id="save-settings" role="menuitemradio" aria-checked="false" data-save-mode="view"><svg class="icon" aria-hidden="true"><use href="#i-json"/></svg><span><strong>查看 JSON 文件</strong><small>查看内容、体积与原图选项</small></span><span class="save-check" aria-hidden="true">✓</span></button><p>在此浏览器记住选择</p></div></div>
+    <div class="save-control"><button id="save-json" class="button icon-button" title="保存 JSON 文件 (Ctrl / ⌘ + S)" aria-label="保存 JSON 文件" disabled><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg></button><button id="save-options-toggle" class="save-options-toggle" title="选择操作" aria-label="选择操作" aria-haspopup="menu" aria-expanded="false" aria-controls="save-options"><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg></button><div id="save-options" class="save-options surface" role="menu" aria-label="JSON 与项目操作" hidden><button role="menuitemradio" aria-checked="true" data-save-mode="file"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span><strong>保存 JSON 文件</strong><small>上传文件给 Agent</small></span><span class="save-check" aria-hidden="true"><svg class="icon"><use href="#i-check"/></svg></span></button><button role="menuitemradio" aria-checked="false" data-save-mode="content"><svg class="icon" aria-hidden="true"><use href="#i-json-copy-text"/></svg><span><strong>复制 JSON 内容</strong><small>直接粘贴到对话</small></span><span class="save-check" aria-hidden="true"><svg class="icon"><use href="#i-check"/></svg></span></button><button role="menuitemradio" aria-checked="false" data-save-mode="project"><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg><span><strong>保存项目</strong><small>保留素材与布局，下次继续编辑</small></span><span class="save-check" aria-hidden="true"><svg class="icon"><use href="#i-check"/></svg></span></button><button id="save-settings" role="menuitemradio" aria-checked="false" data-save-mode="view"><svg class="icon" aria-hidden="true"><use href="#i-json"/></svg><span><strong>查看 JSON 文件</strong><small>查看内容、体积与原图选项</small></span><span class="save-check" aria-hidden="true"><svg class="icon"><use href="#i-check"/></svg></span></button><p>在此浏览器记住选择</p></div></div>
     <span class="separator"></span>
     <button id="export" class="button primary" aria-label="导出结构化反馈" title="导出结构化反馈 (Ctrl / ⌘ + E)" disabled><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg><span>导出反馈</span></button>
-    <button id="inspect-toggle" class="button icon-button" aria-label="显示修改意见面板" aria-expanded="false" title="修改意见面板"><svg class="icon" aria-hidden="true"><use href="#i-panel"/></svg><span id="inspect-count" class="inspect-count" hidden>0</span></button>
+    <button id="inspect-toggle" class="button icon-button" aria-label="显示修改意见面板" aria-expanded="false" title="修改意见面板"><svg class="icon" aria-hidden="true"><use href="#i-notes"/></svg><span id="inspect-count" class="inspect-count" hidden>0</span></button>
   </div>
 </header>
 <main class="app">
@@ -510,19 +758,19 @@ body[data-header-density="tight"] .header .view-controls .separator { margin:0 1
       </div>
       <div class="media-bar"><div class="media-info"><span class="media-dot"></span><strong id="media-name"></strong><span id="media-meta"></span></div></div>
       <div class="tools surface" role="toolbar" aria-label="编辑工具">
-        <div class="tool-group"><button data-mode="select" title="选择 / 拖动组件 (V)" aria-label="选择"><svg class="icon" aria-hidden="true"><use href="#i-cursor"/></svg><span>选择</span></button><button data-mode="pan" title="平移画布 (H / 空格拖动)" aria-label="平移"><svg class="icon" aria-hidden="true"><use href="#i-hand"/></svg><span>平移</span></button></div><i></i>
+        <div class="tool-group"><button data-mode="select" title="选择 / 拖动组件 (V)" aria-label="选择"><svg class="icon" aria-hidden="true"><use href="#i-select"/></svg><span>选择</span></button><button data-mode="pan" title="平移画布 (H / 空格拖动)" aria-label="平移"><svg class="icon" aria-hidden="true"><use href="#i-hand"/></svg><span>平移</span></button></div><i></i>
         <div class="tool-group"><button data-mode="smart" title="智能选块 (B)" aria-label="智能"><svg class="icon" aria-hidden="true"><use href="#i-smart"/></svg><span>智能</span></button><button data-mode="point" title="点批注 (P)" aria-label="点"><svg class="icon" aria-hidden="true"><use href="#i-point"/></svg><span>点</span></button><button data-mode="rect" title="框批注 (R)" aria-label="框"><svg class="icon" aria-hidden="true"><use href="#i-rect"/></svg><span>框</span></button></div><i></i>
-        <div class="tool-group"><button id="explode" class="explode" title="拆成可移动的组件，再次点击收起" aria-label="大爆炸" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-explode"/></svg><span>大爆炸</span></button><button data-mode="cut" hidden title="手动框出组件 (C)" aria-label="框组件"><svg class="icon" aria-hidden="true"><use href="#i-cut"/></svg><span>框组件</span></button></div><i></i>
+        <div class="tool-group"><button id="explode" class="explode" title="拆成可移动的组件，再次点击收起" aria-label="大爆炸" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-explode"/></svg><span>大爆炸</span></button><button data-mode="cut" hidden title="手动框出组件 (C)" aria-label="框组件"><svg class="icon" aria-hidden="true"><use href="#i-crop"/></svg><span>框组件</span></button></div><i></i>
         <div class="tool-group history-tools"><button id="undo" title="撤销 (Ctrl / ⌘ + Z)" aria-label="撤销"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg></button><button id="redo" title="重做 (Ctrl / ⌘ + Shift + Z)" aria-label="重做"><svg class="icon" aria-hidden="true"><use href="#i-redo"/></svg></button></div>
       </div>
       <section id="video-controls" class="video-controls surface" aria-label="视频时间轴" hidden>
-        <div class="play-row"><button id="play" aria-label="播放视频">▶</button><button id="back" title="向前 1 秒">−1s</button><input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="视频进度"><button id="forward" title="向后 1 秒">+1s</button><span id="time" class="time">00:00.000 / 00:00.000</span></div>
+        <div class="play-row"><button id="play" aria-label="播放视频"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></button><button id="back" title="向前 1 秒">−1s</button><input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="视频进度"><button id="forward" title="向后 1 秒">+1s</button><span id="time" class="time">00:00.000 / 00:00.000</span></div>
         <div class="frame-row"><span>批注帧</span><div id="frame-list"></div><button id="relink" class="quiet">关联源视频</button></div>
       </section>
       <div class="status-bar"><span id="hint">点击或框选，写下修改意见</span><span id="coords"></span></div>
     </div>
     <aside class="sidebar surface" aria-label="修改意见面板">
-      <header><h2>修改意见 <span id="count">0</span></h2><div class="panel-actions"><button id="geometry-toggle" class="icon-button" title="选中组件后调整布局" aria-label="组件布局" aria-expanded="false" aria-controls="geometry" disabled><svg class="icon" aria-hidden="true"><use href="#i-layout"/></svg></button><button id="global" class="icon-button" title="添加全局批注" aria-label="添加全局批注"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></button><button id="panel-close" class="icon-button" aria-label="收起修改意见面板" title="收起面板"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div></header>
+      <header><h2>修改意见 <span id="count">0</span></h2><div class="panel-actions"><button id="geometry-toggle" class="icon-button" title="选中组件后调整布局" aria-label="组件布局" aria-expanded="false" aria-controls="geometry" disabled><svg class="icon" aria-hidden="true"><use href="#i-layout"/></svg></button><button id="global" class="icon-button" title="添加全局批注" aria-label="添加全局批注"><svg class="icon" aria-hidden="true"><use href="#i-note-add"/></svg></button><button id="panel-close" class="icon-button" aria-label="收起修改意见面板" title="收起面板"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div></header>
       <div id="notes" class="notes"></div>
     </aside>
     <div id="geometry" class="geometry surface" role="region" aria-labelledby="geometry-title" hidden>
@@ -532,7 +780,7 @@ body[data-header-density="tight"] .header .view-controls .separator { margin:0 1
     </div>
   </section>
 </main>
-<div class="utility-dock surface"><button id="utility-toggle" class="icon-button" title="更多工具" aria-label="更多工具" aria-expanded="false" aria-controls="utility-actions"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button><div id="utility-actions" class="utility-actions"><span class="local-badge" title="素材不上传到服务器"><span></span><span class="local-label">本地</span></span><button id="save-project" class="icon-button" title="保存项目：包含原图、批注和布局" aria-label="保存项目" disabled><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg></button><button id="theme-toggle" class="icon-button" title="切换明暗主题" aria-label="切换明暗主题"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button><button id="help" class="icon-button" title="快捷键与使用帮助" aria-label="使用帮助"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button></div></div>
+<div class="utility-dock surface"><button id="utility-toggle" class="icon-button" title="更多工具" aria-label="更多工具" aria-expanded="false" aria-controls="utility-actions"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button><div id="utility-actions" class="utility-actions"><span class="local-badge" title="素材不上传到服务器"><span></span><span class="local-label">本地</span></span><button id="save-project" class="icon-button" title="保存项目：包含原图、批注和布局" aria-label="保存项目" disabled><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg></button><button id="theme-toggle" class="icon-button" title="切换明暗主题" aria-label="切换明暗主题"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button><button id="help" class="icon-button" title="快捷键与使用帮助" aria-label="使用帮助"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button></div></div>
 <div id="drop-overlay" class="drop-overlay" hidden><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><strong>松开，开始批注</strong></div>
 <input id="file-input" type="file" accept="image/*,video/*,.json,.edithere-web" aria-label="选择图片视频或项目" hidden><input id="video-input" type="file" accept="video/*" aria-label="重新选择源视频" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -1173,7 +1421,7 @@ function dilate(input,w,h,rx,ry) {
           ${card('rect', '圈出要改的区域', picture('框选图片中的区域，添加一条文字批注', canvas + '<rect class="help-area" x="37" y="44" width="100" height="36" rx="4"/><circle class="help-pin" cx="37" cy="44" r="10"/><text class="help-pin-text" x="37" y="48">1</text><path class="help-arrow" d="m146 55 12 7-12 7"/><rect class="help-bubble" x="167" y="48" width="49" height="28" rx="5"/><path class="help-faint" d="M177 59h27M177 66h18"/>'), '选「框」，拖出区域，再写文字。范围不准时，用「选择」拖动边框或控制点。')}
           ${card('point', '精确指出一个位置', picture('在图片中点击一个位置并添加文字，编号标记指向这个位置', canvas + '<rect class="help-neutral" x="32" y="46" width="176" height="27" rx="5"/><circle class="help-pin" cx="169" cy="58" r="10"/><text class="help-pin-text" x="169" y="62">2</text><path class="help-arrow" d="m190 73-12-10m12 0v10h-10"/>'), '选「点」，点击细节写意见。整张图的要求用修改意见面板里的「全局批注」。')}
           ${card('explode', '移动后，补充原因', picture('组件从左侧移动到右侧，位移箭头连接原位置与目标位置，点击箭头可添加文字', canvas + '<rect class="help-origin" x="30" y="48" width="54" height="30" rx="4"/><rect class="help-area" x="154" y="48" width="54" height="30" rx="4"/><path class="help-arrow" d="M87 63h59m-8-6 8 6-8 6"/><rect class="help-bubble" x="95" y="25" width="52" height="23" rx="5"/><text class="help-small-text" x="121" y="40">点箭头</text><path class="help-faint" d="M120 48v11"/>'), '开启「大爆炸」，选中组件后拖动或缩放。点击位移箭头可写说明；再次点击「大爆炸」收起。')}
-          ${card('fit', '看全图，也看细节', picture('使用缩小、缩放百分比、放大和适应画布按钮，控制画布显示', '<rect class="help-canvas" x="22" y="22" width="196" height="64" rx="9"/><text class="help-control-text" x="45" y="60">−</text><text class="help-control-text" x="101" y="60">65%</text><text class="help-control-text" x="153" y="60">＋</text><svg class="help-fit-icon" x="182" y="41" width="24" height="24"><use href="#i-fit"/></svg>'), '顶栏「− / ＋」缩放画布，「适应画布」让整张图可见。组件布局按钮可输入准确的位置和尺寸。')}
+          ${card('fit', '看全图，也看细节', picture('使用缩小、缩放百分比、放大和适应画布按钮，控制画布显示', '<rect class="help-canvas" x="22" y="22" width="196" height="64" rx="9"/><svg class="help-fit-icon" x="33" y="41" width="24" height="24"><use href="#i-zoom-out"/></svg><text class="help-control-text" x="101" y="60">65%</text><svg class="help-fit-icon" x="141" y="41" width="24" height="24"><use href="#i-zoom-in"/></svg><svg class="help-fit-icon" x="182" y="41" width="24" height="24"><use href="#i-fit"/></svg>'), '顶栏「缩小 / 放大」缩放画布，「适应画布」让整张图可见。组件布局按钮可输入准确的位置和尺寸。')}
         </div>
         <details class="help-shortcuts"><summary>常用快捷键</summary><div class="shortcut-grid"><span>选择 / 平移</span><kbd>V / H</kbd><span>智能 / 点 / 框批注</span><kbd>B / P / R</kbd><span>多选组件</span><kbd>Ctrl / ⌘ + 点击</kbd><span>缩放选中组件</span><kbd>指向组件 + 滚轮</kbd><span>平移画布</span><kbd>空格 + 拖动</kbd><span>缩放画布</span><kbd>Ctrl / ⌘ + 滚轮</kbd><span>适应画布</span><kbd>Ctrl / ⌘ + 0</kbd><span>撤销 / 重做</span><kbd>Ctrl / ⌘ + Z / Y</kbd><span>使用当前保存方式</span><kbd>Ctrl / ⌘ + S</kbd><span>直接保存项目</span><kbd>Ctrl / ⌘ + Shift + S</kbd><span>反馈 / 导出</span><kbd>Ctrl / ⌘ + E</kbd></div></details>
         <p class="help-footnote">图片、视频可直接导入；系统截图与 OCR 使用桌面 EditHere，Agent 也可先截图再传入。</p>
@@ -1183,7 +1431,7 @@ function dilate(input,w,h,rx,ry) {
           <li><span class="help-step">1</span>${icon('image')}<strong>放入画面</strong><span>导入，或让 Agent 传图</span></li>
           <li><span class="help-step">2</span>${icon('rect')}<strong>批注与位移</strong><span>写要求，标出目标位置</span></li>
           <li><span class="help-step">3</span>${icon('send')}<strong>反馈或保存 JSON</strong><span>发送到对话，或手动交付</span></li>
-          <li><span class="help-step">4</span>${icon('note')}<strong>Agent 继续</strong><span>回到对话查看修改结果</span></li>
+          <li><span class="help-step">4</span>${icon('note-add')}<strong>Agent 继续</strong><span>回到对话查看修改结果</span></li>
         </ol>
         <div class="help-status" role="status" aria-live="polite"><span class="help-status-dot"></span><p id="help-session-status"></p></div>
         <div class="help-file-guide">
@@ -1317,12 +1565,20 @@ function dilate(input,w,h,rx,ry) {
       });
     }
   };
-  $('theme-toggle').onclick = () => {
-    const dark = document.documentElement.dataset.theme !== 'dark';
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  function syncTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    $('theme-toggle').querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
     $('theme-toggle').setAttribute('aria-label', dark ? '切换浅色主题' : '切换深色主题');
+    $('theme-toggle').title = dark ? '切换浅色主题' : '切换深色主题';
     $('theme-toggle').setAttribute('aria-pressed', String(dark));
+  }
+  $('theme-toggle').onclick = () => {
+    document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    syncTheme();
   };
+  // MCP hosts can change theme after opening the view.
+  new MutationObserver(syncTheme).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+  syncTheme();
   $('help').onclick = () => $('help-dialog').showModal();
   $('fit-icon').onclick = () => $('fit').click();
   function fitHeader() {
@@ -1455,7 +1711,7 @@ function dilate(input,w,h,rx,ry) {
     panX=at.x-(at.x-panX)*factor;panY=at.y-(at.y-panY)*factor;zoom=next;fitMode=false;resizeStage();
   }
   function changeMode(value) {if(drag)cancelDrag();mode=value;hover=null;hoveredMovement=null;selectedNote=null;document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});stage.style.cursor=spaceDown||mode==='pan'?'grab':mode==='select'?'default':'crosshair';$('hint').textContent=({select:doc?.layout?'拖动或八向缩放 · Ctrl / ⌘ 多选 · 组件上滚轮缩放':'拖动批注调整位置 · 点击编号编辑文字',smart:'悬停选块 · 滚轮切换大小 · 拖动手动框选',point:'点一下，精确指向一个像素',rect:'拖出范围，写下修改意见',cut:'拖出组件范围，再拖动或缩放',pan:'拖动自由画布 · 滚轮缩放 · 0 适应画面'})[mode];render();}
-  function activate() {endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('save-json').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
+  function activate() {annotationsVisible=true;syncAnnotationVisibility();endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('save-json').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
   function releaseVideo() {if(frameCallback!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(frameCallback);frameCallback=null;video.pause();video.removeAttribute('src');video.load();if(mediaURL)URL.revokeObjectURL(mediaURL);mediaURL=null;presentedTime=null;linkSignature=null;seeking=false;}
   function replaceOK() {if(agentBound){notify('当前素材由 AI 批注会话传入；完成或取消后再打开其他素材');return false;}return !dirty||confirm('当前编辑还没有保存。要替换素材吗？可先取消并保存项目。');}
   async function openImage(file) {const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);const c=makeCanvas(image.naturalWidth,image.naturalHeight);c.getContext('2d').drawImage(image,0,0);const data=c.toDataURL('image/png'),decoded=await decode(data);releaseVideo();session={kind:'image',name:file.name||'粘贴的图片',width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(decoded,data)};doc=session.document;activate();detect(doc);}finally{URL.revokeObjectURL(url);}}
@@ -1477,7 +1733,7 @@ function dilate(input,w,h,rx,ry) {
     canvas.hidden=false;video.hidden=true;detect(doc);refresh();return doc;
   }
   async function seekTo(seconds) {if(!mediaURL){notify('已保存的批注帧可查看；继续播放需要重新选择源视频');return;}video.pause();liveFrame();const target=clamp(seconds,0,video.duration);if(Math.abs(video.currentTime-target)<.00001){updateTime();return;}const ready=waitEvent(video,'seeked');video.currentTime=target;await ready;updateTime();}
-  function updateTime() {if(!session||session.kind!=='video')return;const duration=mediaURL?video.duration:session.video.durationMs/1000;const current=doc?doc.timestampUs/1000000:video.currentTime;$('timeline').max=Number.isFinite(duration)?duration:1;$('timeline').value=current||0;$('timeline').disabled=!mediaURL||busy;$('time').textContent=timeText(current)+' / '+timeText(duration);$('play').textContent=video.paused?'▶':'Ⅱ';$('play').setAttribute('aria-label',video.paused?'播放视频':'暂停视频');$('play').disabled=!mediaURL||busy;$('back').disabled=!mediaURL||busy;$('forward').disabled=!mediaURL||busy;$('frame-hint').hidden=!!doc||!video.paused;$('frame-hint').textContent=mediaURL?'已暂停 · 添加批注时保存这一帧':'源视频未关联 · 选择源视频后继续批注';}
+  function updateTime() {if(!session||session.kind!=='video')return;const duration=mediaURL?video.duration:session.video.durationMs/1000;const current=doc?doc.timestampUs/1000000:video.currentTime;$('timeline').max=Number.isFinite(duration)?duration:1;$('timeline').value=current||0;$('timeline').disabled=!mediaURL||busy;$('time').textContent=timeText(current)+' / '+timeText(duration);$('play').querySelector('use').setAttribute('href',video.paused?'#i-play':'#i-pause');$('play').setAttribute('aria-label',video.paused?'播放视频':'暂停视频');$('play').disabled=!mediaURL||busy;$('back').disabled=!mediaURL||busy;$('forward').disabled=!mediaURL||busy;$('frame-hint').hidden=!!doc||!video.paused;$('frame-hint').textContent=mediaURL?'已暂停 · 添加批注时保存这一帧':'源视频未关联 · 选择源视频后继续批注';}
   async function selectFrame(id) {const target=session.frames.find(f=>f.id===id);if(!target)return;video.pause();endExplosion();doc=target;explodeEnabled=!!doc.layout;selected=null;selectedNote=null;hover=null;canvas.hidden=false;video.hidden=true;refresh();if(mode==='cut'&&!doc.layout)changeMode('smart');detect(doc);updateTime();}
   function detect(d) {if(detections.has(d))return detections.get(d);const promise=(async()=>{await d.image.decode();const ratio=Math.min(1,1000/Math.max(session.width,session.height)),w=Math.max(1,Math.round(session.width*ratio)),h=Math.max(1,Math.round(session.height*ratio));const c=makeCanvas(w,h),context=c.getContext('2d',{willReadFrequently:true});context.fillStyle='white';context.fillRect(0,0,w,h);context.drawImage(d.image,0,0,w,h);const pixels=context.getImageData(0,0,w,h);let regions;if(worker){regions=await new Promise((resolve,reject)=>{const id=++detectionId;pendingDetections.set(id,{resolve,reject});worker.postMessage({id,buffer:pixels.data.buffer,w,h,ow:d.image.naturalWidth,oh:d.image.naturalHeight},[pixels.data.buffer]);});}else regions=EditHereDetector.detectRegions(pixels.data,w,h,d.image.naturalWidth,d.image.naturalHeight);d.candidates=regions;if(doc===d)render();return regions;})().catch(error=>{d.candidates=[];if(doc===d)notify(error.message);return [];});detections.set(d,promise);return promise;}
   function point(event) {const r=stage.getBoundingClientRect();return {x:clamp((event.clientX-r.left)/zoom,0,session.width),y:clamp((event.clientY-r.top)/zoom,0,session.height)};}
@@ -1539,7 +1795,7 @@ function dilate(input,w,h,rx,ry) {
   }
   function renderNotes() {
     const entries=noteEntries();$('count').textContent=entries.length;globalThis.EditHereChrome?.refreshCount(entries.length);
-    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注">×</button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
+    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
@@ -1703,7 +1959,15 @@ function dilate(input,w,h,rx,ry) {
   });
   $('component-note').onclick=()=>{if(selected&&doc?.layout){const ids=selectionIds();editNote(selectionBounds(),null,ids.length===1?ids[0]:null,null,ids.length>1?ids:null);}};
   if($('reset-component'))$('reset-component').onclick=resetComponent;
-  if($('toggle-annotations'))$('toggle-annotations').onclick=()=>{annotationsVisible=!annotationsVisible;$('toggle-annotations').classList.toggle('active',annotationsVisible);$('toggle-annotations').setAttribute('aria-pressed',String(annotationsVisible));$('toggle-annotations').title=annotationsVisible?'隐藏批注与位移箭头':'显示批注与位移箭头';hoveredMovement=null;render();};
+  function syncAnnotationVisibility() {
+    const button=$('toggle-annotations'),label=annotationsVisible?'隐藏批注与位移箭头':'显示批注与位移箭头';
+    button.classList.toggle('active',annotationsVisible);
+    button.setAttribute('aria-pressed',String(annotationsVisible));
+    button.setAttribute('aria-label',label);button.title=label;
+    button.querySelector('use').setAttribute('href',annotationsVisible?'#i-eye':'#i-eye-off');
+  }
+  $('toggle-annotations').onclick=()=>{annotationsVisible=!annotationsVisible;syncAnnotationVisibility();hoveredMovement=null;render();};
+  syncAnnotationVisibility();
   $('apply-geometry').onclick=()=>{if(!selected||!doc?.layout)return;const inputs=['gx','gy','gw','gh'].map(id=>$(id).value),values=inputs.map(Number);if(inputs.some(value=>String(value).trim()==='')||values.some(v=>!Number.isFinite(v))||values[2]<=0||values[3]<=0){notify('请输入有效的位置和尺寸');return;}const before=snapshot(doc);try{applyTransform({x1:values[0],y1:values[1],x2:values[0]+values[2],y2:values[1]+values[3]},before);if(!same(before,snapshot(doc))){remember(before);commit();}}catch(error){doc.layout=before.layout;doc.notes=before.notes;notify(error.message);}refresh();};
   $('gw').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gh').value=Math.max(1,Math.round(Number($('gw').value)*(b.y2-b.y1)/(b.x2-b.x1)));}};
   $('gh').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gw').value=Math.max(1,Math.round(Number($('gh').value)*(b.x2-b.x1)/(b.y2-b.y1)));}};
@@ -1715,7 +1979,7 @@ function dilate(input,w,h,rx,ry) {
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
-  const saveModes={file:{label:'保存 JSON 文件',icon:'#i-download'},content:{label:'复制 JSON 内容',icon:'#i-copy'},project:{label:'保存项目',icon:'#i-save'},view:{label:'查看 JSON 文件',icon:'#i-json'}};
+  const saveModes={file:{label:'保存 JSON 文件',icon:'#i-download'},content:{label:'复制 JSON 内容',icon:'#i-json-copy-text'},project:{label:'保存项目',icon:'#i-save'},view:{label:'查看 JSON 文件',icon:'#i-json'}};
   const preference=(key,fallback)=>{try{return localStorage.getItem('edithere.'+key)??fallback;}catch{return fallback;}};
   const rememberPreference=(key,value)=>{try{localStorage.setItem('edithere.'+key,value);}catch{/* This view still remembers its selection when host storage is unavailable. */}};
   let saveMode=preference('saveMode','file');if(!saveModes[saveMode])saveMode='file';

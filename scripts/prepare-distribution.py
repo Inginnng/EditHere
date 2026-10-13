@@ -19,7 +19,8 @@ VERSION = re.compile(r"\d+\.\d+\.\d+")
 SKIP = {"AppDir", "licenses", "node_modules", ".git", "tests", "validation", "plugins", "qml"}
 LEGAL = ("LICENSE", "NOTICE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "TRADEMARK-POLICY.md", "packaging/THIRD-PARTY-NOTICES.md")
 WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
-MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/package-lock.json", "web/mcp/build.mjs"}
+MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/package-lock.json", "web/mcp/build.mjs",
+                        "assets/ui-icons/manifest.json", "assets/ui-icons/LICENSE"}
 MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", "web/MCP-THIRD-PARTY-NOTICES.md"}
 WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
 PACKAGE_FILES = {
@@ -272,6 +273,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
                         "state": state, "bytes": file.stat().st_size, "sha256": sha256(file), **extra})
 
     common: dict[str, Path | str] = {name: root / name for name in LEGAL}
+    common["licenses/ui-icons/LICENSE"] = root / "assets/ui-icons/LICENSE"
     stamp = {"productSourceVersion": source_version, "sourceCommit": commit, "sourceDirty": dirty,
              "webRevision": short, "channel": "local-preview", "published": False}
     web_version = source_version + "-" + short

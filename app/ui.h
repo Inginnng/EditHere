@@ -33,6 +33,7 @@ void applyInterfaceFont();
 bool isDarkTheme();
 void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());
+QStringList glyphNames();
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent = nullptr);
 QPushButton *textButton(const QString &text, bool primary = false, QWidget *parent = nullptr);
 QLabel *mutedLabel(const QString &text, QWidget *parent = nullptr);
