@@ -55,6 +55,7 @@ const sourcePaths = new Set([
   ...Object.keys(browser.metafile.inputs), ...Object.keys(server.metafile.inputs),
   ...fs.readdirSync(path.join(web,'src')).filter(file=>/\.(?:js|html|css)$/.test(file)).map(file=>path.join(web,'src',file)),
   path.join(web,'build.cjs'), path.join(directory,'build.mjs'),path.join(directory,'package.json'),path.join(directory,'package-lock.json'),
+  path.join(root,'CMakeLists.txt'),
   ...['brand/edithere-lockup.svg','brand/edithere-lockup-light.svg','icons/edithere.svg'].map(file=>path.join(root,'assets',file))
 ].map(file=>path.resolve(file)).filter(file=>!file.split(path.sep).includes('node_modules')));
 const sources=Object.fromEntries([...sourcePaths].sort().map(file=>[path.relative(root,file).split(path.sep).join('/'),hash(file)]));

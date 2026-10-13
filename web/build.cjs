@@ -2,7 +2,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const dir = __dirname;
+const version = fs.readFileSync(path.join(dir, '../CMakeLists.txt'), 'utf8').match(/project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/)?.[1];
+if (!version) throw new Error('Cannot read the product version from CMakeLists.txt');
 let html = fs.readFileSync(path.join(dir, 'src/shell.html'), 'utf8');
+html = html.replace('/*__VERSION__*/', version);
 for (const [name, file] of [
   ['BRAND_LOCKUP', 'brand/edithere-lockup.svg'],
   ['BRAND_LOCKUP_DARK', 'brand/edithere-lockup-light.svg'],
@@ -11,8 +14,8 @@ for (const [name, file] of [
   const data = fs.readFileSync(path.join(dir, '../assets', file));
   html = html.replaceAll('/*__' + name + '__*/', 'data:image/svg+xml;base64,' + data.toString('base64'));
 }
-for (const [name, file] of [['STYLE', 'style.css'], ['LAYOUT', 'layout.js'], ['FEEDBACK', 'feedback.js'], ['DETECTOR', 'detector.js'], ['UI', 'ui.js'], ['APP', 'app.js'], ['AGENT', 'agent.js']]) {
-  const source = fs.readFileSync(path.join(dir, 'src', file), 'utf8');
+for (const [name, file] of [['STYLE', 'style.css'], ['LAYOUT', 'layout.js'], ['FEEDBACK', 'feedback.js'], ['DETECTOR', 'detector.js'], ['HELP', 'help.js'], ['UI', 'ui.js'], ['APP', 'app.js'], ['AGENT', 'agent.js']]) {
+  const source = fs.readFileSync(path.join(dir, 'src', file), 'utf8') + (name === 'STYLE' ? '\n' + fs.readFileSync(path.join(dir,'src/help.css'),'utf8') : '');
   if (name !== 'STYLE') new (require('node:vm').Script)(source, {filename: file});
   html = html.replace('/*__' + name + '__*/', () => source.replace(/<\/script/gi, '<\\/script'));
 }

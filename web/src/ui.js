@@ -72,8 +72,17 @@
   $('fit-icon').onclick = () => $('fit').click();
   function fitHeader() {
     const header = document.querySelector('.header');
-    const needed = [...header.children].reduce((width, element) => width + element.getBoundingClientRect().width, 0) + 20;
-    document.body.dataset.headerWrap = String(!$('workspace').hidden && needed > header.clientWidth);
+    // Keep the three islands on one row. Choose the least condensed layout
+    // that fits their actual labels, including MCP's changing feedback state.
+    for (const density of ['regular', 'compact', 'icons', 'tight']) {
+      document.body.dataset.headerDensity = density;
+      const visible = [...header.children].filter(element => getComputedStyle(element).display !== 'none');
+      const needed = visible.reduce((width, element) => {
+        const border = element.offsetWidth - element.clientWidth;
+        return width + (element.matches('.view-controls')?Math.max(element.getBoundingClientRect().width,element.scrollWidth+border):element.getBoundingClientRect().width);
+      }, 0) + Math.max(0, visible.length - 1) * parseFloat(getComputedStyle(header).columnGap);
+      if (needed <= header.clientWidth + .5) break;
+    }
     window.dispatchEvent(new Event('edithere:layout'));
   }
   const headerObserver = new ResizeObserver(fitHeader);
