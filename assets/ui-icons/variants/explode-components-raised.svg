@@ -1,0 +1,6 @@
+<!-- EditHere derivative of Lucide layers-2 and ungroup v1.55.0, ISC. Independent components above a separated base layer. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="3" width="7" height="5" rx="1.5" />
+  <rect x="14" y="3" width="7" height="5" rx="1.5" />
+  <path d="M12.45 13.7 20.15 17.122Q21 17.5 20.15 17.878L12.45 21.3Q12 21.5 11.55 21.3L3.85 17.878Q3 17.5 3.85 17.122L11.55 13.7Q12 13.5 12.45 13.7Z" />
+</svg>

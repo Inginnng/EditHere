@@ -1561,6 +1561,9 @@ class UiTests : public QObject {
         QVERIFY(hide);
         hide->click();
         QVERIFY(hide->isChecked());
+        QCOMPARE(hide->property("glyphName").toString(), QString("eye-off"));
+        QCOMPARE(hide->toolTip(), QString("显示画面批注"));
+        QCOMPARE(hide->accessibleName(), hide->toolTip());
         QVERIFY(!editor.canvas()->annotationsVisible());
         QVERIFY(!layout->annotationsVisible());
         QCOMPARE(exportFeedback(editor.document(), true), feedback);
@@ -1576,6 +1579,14 @@ class UiTests : public QObject {
         hide->click();
         QVERIFY(editor.canvas()->annotationsVisible());
         QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        // Loading another document resets visibility and every part of its toggle.
+        hide->click();
+        editor.setDocument(gridDocument());
+        QVERIFY(editor.canvas()->annotationsVisible());
+        QVERIFY(!hide->isChecked());
+        QCOMPARE(hide->property("glyphName").toString(), QString("eye"));
+        QCOMPARE(hide->toolTip(), QString("隐藏画面批注"));
+        QCOMPARE(hide->accessibleName(), hide->toolTip());
         editor.hide();
     }
     void blankViewportWheelZoomsBothSurfacesWithoutChangingLayout() {
@@ -1849,6 +1860,8 @@ class UiTests : public QObject {
         auto text = editor.findChild<QPushButton *>("copyJsonText");
         auto file = editor.findChild<QPushButton *>("copyJson");
         QVERIFY(text && file && text->isVisible() && file->isVisible());
+        QCOMPARE(text->property("glyphName").toString(), QString("json-copy-text"));
+        QCOMPARE(file->property("glyphName").toString(), QString("json-copy-file"));
         text->click();
         QVERIFY(QApplication::clipboard()->mimeData()->hasText());
         QVERIFY(!QApplication::clipboard()->mimeData()->hasUrls());
@@ -1874,8 +1887,12 @@ class UiTests : public QObject {
             if (!dialog) return;
             auto copyText = dialog->findChild<QPushButton *>("copyJsonText");
             auto copyFile = dialog->findChild<QPushButton *>("copyJsonFile");
+            auto saveBundle = dialog->findChild<QPushButton *>("saveFeedbackBundle");
             auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(copyText && copyFile && embed);
+            QVERIFY(copyText && copyFile && saveBundle && embed);
+            QCOMPARE(copyText->property("glyphName"), text->property("glyphName"));
+            QCOMPARE(copyFile->property("glyphName"), file->property("glyphName"));
+            QCOMPARE(saveBundle->property("glyphName").toString(), QString("feedback-save"));
             copyText->click();
             QCOMPARE(clipboardJson(), expected);
             embed->setChecked(false);
@@ -2444,6 +2461,7 @@ class UiTests : public QObject {
         QCOMPARE(exportLayoutChanges(*editor.document().layout), beforeManualFeedback);
         auto annotate = editor.findChild<QPushButton *>("annotateComponent");
         QVERIFY(annotate && annotate->isEnabled());
+        QCOMPARE(annotate->property("glyphName").toString(), QString("note-add"));
         finishInlineNote(editor, "这个区域的内容需要对齐。");
         QVERIFY(!editor.document().notes[2].isPoint);
         QCOMPARE(editor.document().notes[2].rect, QRect(450, 70, 90, 55));

@@ -21,6 +21,8 @@ $outputPath = [IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory))
 if (-not $outputPath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Output must be inside the project." }
 if ((Test-Path -LiteralPath $outputPath) -or (Test-Path -LiteralPath ($outputPath + ".zip"))) { throw "Output folder or ZIP already exists. Choose a fresh OutputDirectory." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtbase/LGPL-3.0-only.txt"))) { throw "Third-party license materials are missing." }
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtsvg/LGPL-3.0-only.txt"))) { throw "Qt SVG license materials are missing." }
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "assets/ui-icons/LICENSE"))) { throw "Shared UI icon license is missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtmultimedia/LGPL-3.0-only.txt"))) { throw "Qt Multimedia license materials are missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/ffmpeg/COPYING.LGPLv2.1"))) { throw "FFmpeg license materials are missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-minimal.schema.json"))) { throw "The current feedback schema is missing." }
@@ -83,7 +85,7 @@ try {
 }
 # A developer SDK on PATH can hide an incomplete video deployment. Require the
 # backend and each FFmpeg library beside the packaged executable before zipping.
-foreach ($runtimeFile in @("Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "multimedia/ffmpegmediaplugin.dll")) {
+foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "multimedia/ffmpegmediaplugin.dll")) {
     if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Video runtime deployment is incomplete: $runtimeFile" }
 }
 $ffmpegLibraries = @()
@@ -112,9 +114,12 @@ $translationPath = Join-Path $outputPath "translations"
 [IO.Directory]::CreateDirectory($translationPath) | Out-Null
 Copy-Item -LiteralPath $qtTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_CN.qm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse
+$iconLicensePath = Join-Path $outputPath "licenses/ui-icons"
+[IO.Directory]::CreateDirectory($iconLicensePath) | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot "assets/ui-icons/LICENSE") -Destination $iconLicensePath
 $sdkSbomPath = Join-Path $outputPath "licenses/qt-sbom"
 [IO.Directory]::CreateDirectory($sdkSbomPath) | Out-Null
-foreach ($module in @("qtbase", "qtimageformats", "qtmultimedia")) {
+foreach ($module in @("qtbase", "qtsvg", "qtimageformats", "qtmultimedia")) {
     $sdkSbom = Join-Path $QtRoot "sbom/$module-$qtVersion.spdx.json"
     if (Test-Path -LiteralPath $sdkSbom) { Copy-Item -LiteralPath $sdkSbom -Destination $sdkSbomPath }
 }

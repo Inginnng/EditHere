@@ -23,12 +23,7 @@ int main(int argc, char **argv) {
 #endif
     const QDir output(argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("icon-gallery"));
     if (!QDir().mkpath(output.absolutePath())) return 1;
-    const QStringList names{
-        "scroll", "image-save", "save", "settings", "open", "ocr", "capture", "image-copy",
-        "copy", "edit", "pin", "help", "eye", "eye-off", "zoom-in", "explode",
-        "note-add", "json", "json-copy", "fit", "point", "rect", "smart", "select",
-        "undo", "redo", "fullscreen", "fullscreen-exit", "close", "notes", "trash", "more",
-        "check", "corner", "shadow", "crop", "picker", "plus", "minus"};
+    const QStringList names = h2d::glyphNames();
     constexpr int columns = 8, cellWidth = 148, cellHeight = 106, top = 48;
     const int rows = (names.size() + columns - 1) / columns;
     for (const auto &theme : {h2d::ThemeMode::Light, h2d::ThemeMode::Dark}) {

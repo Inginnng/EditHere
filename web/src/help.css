@@ -24,7 +24,7 @@
 .help-picture .help-bubble { fill:var(--panel);stroke:var(--line); }
 .help-picture .help-small-text { fill:var(--muted);font:10px system-ui,sans-serif;text-anchor:middle; }
 .help-picture .help-control-text { fill:var(--ink);font:16px system-ui,sans-serif;text-anchor:middle; }
-.help-picture .help-fit-icon { fill:none;stroke:var(--blue);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round; }
+.help-picture .help-fit-icon { fill:none;stroke:var(--blue);stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
 .help-shortcuts { margin-top:16px;border-top:1px solid var(--line);padding-top:12px; }
 .help-shortcuts summary { font-size:12px;cursor:pointer;line-height:1.8; }
 .help-shortcuts .shortcut-grid { gap:10px 14px;padding:12px 0 0; }

@@ -6,7 +6,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--qt-source", type=Path, required=True, help="Matching Qt source directory containing module subdirectories")
-parser.add_argument("--qt-modules", nargs="+", default=["qtbase", "qtimageformats", "qtmultimedia"], help="Qt module source trees to collect")
+parser.add_argument("--qt-modules", nargs="+", default=["qtbase", "qtsvg", "qtimageformats", "qtmultimedia"], help="Qt module source trees to collect")
 parser.add_argument("--ffmpeg-source", type=Path, help="Matching FFmpeg source directory")
 parser.add_argument("--mingw-licenses", type=Path)
 args = parser.parse_args()

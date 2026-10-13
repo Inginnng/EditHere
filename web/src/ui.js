@@ -62,12 +62,20 @@
       });
     }
   };
-  $('theme-toggle').onclick = () => {
-    const dark = document.documentElement.dataset.theme !== 'dark';
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  function syncTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    $('theme-toggle').querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
     $('theme-toggle').setAttribute('aria-label', dark ? '切换浅色主题' : '切换深色主题');
+    $('theme-toggle').title = dark ? '切换浅色主题' : '切换深色主题';
     $('theme-toggle').setAttribute('aria-pressed', String(dark));
+  }
+  $('theme-toggle').onclick = () => {
+    document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    syncTheme();
   };
+  // MCP hosts can change theme after opening the view.
+  new MutationObserver(syncTheme).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+  syncTheme();
   $('help').onclick = () => $('help-dialog').showModal();
   $('fit-icon').onclick = () => $('fit').click();
   function fitHeader() {

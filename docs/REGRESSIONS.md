@@ -15,6 +15,15 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 共享图标与状态（0.11.1）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-173 | 保存项目、图片、反馈目录与 JSON 复制对象曾共用含混图形，Web 与桌面各自绘制；改为共享语义 SVG，分别映射输出对象，未知 ID 明确失败，Qt 按设备像素比渲染 | `shared-icons`：注册资源、16/20/24/48px 与 1/1.25/2/3 倍缩放、不同输出轮廓、主题状态；`web/tests/icons.test.cjs`：离线渲染与引用完整；`ui::separateJsonClipboardFormatsAndHelp` | 🆕 |
+| REG-174 | 隐藏批注后加载新图只复位可见状态，未复位图标与提示；停止长截图后图标仍表示单轴移动。统一同步实际状态、图形、提示与无障碍名称 | `ui::annotationVisibilityPreservesDataAndCopyIncludesMarks`；`capture::longCaptureRegionMovesAlongAxisAndResizesWithinBounds`；`web/tests/icons.test.cjs` | 🆕 |
+| REG-175 | 固定深色截图工具条和侧栏的显式浅色图标会被全局主题刷新覆盖，浅色主题下变暗；记录并保留固定前景色，主要操作与停止状态仍使用对应强调色 | `capture::fixedDarkCaptureSurfacesKeepReadableIconsAfterThemeChanges`：同一窗口 Light → Dark → Light 后比较实际图标颜色 | 🆕 |
+| REG-176 | 四向「裁去」图标使用自动虚线时首尾断线不对称；改为显式配对的线段与圆弧，四方向共用旋转关系。按实际渲染轮廓检查镜像与旋转，防止小尺寸或高 DPI 下重新出现单侧错位 | `shared-icons::trimDirectionsHaveSymmetricSilhouettes`：16/20/24px、1/2 倍缩放下的轴对称、上下/左右互换和四方向旋转，共 54 组 | 🆕 |
+
 ## 分发目录与构建缓存
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

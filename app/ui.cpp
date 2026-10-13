@@ -5,15 +5,26 @@
 #include <cmath>
 #include <limits>
 #include <QApplication>
+#include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QIconEngine>
 #include <QKeySequenceEdit>
 #include <QLabel>
+#include <QMap>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPalette>
 #include <QPushButton>
 #include <QStyleHints>
+#include <QSvgRenderer>
 #include <QToolButton>
+
+// Reference the resource from the static library, including in test executables.
+static void initializeUiIcons() {
+    Q_INIT_RESOURCE(ui_icons);
+}
+
 namespace h2d {
 void paintTransparency(QPainter &painter, const QRect &area) {
     QRect visible = area;
@@ -197,9 +208,15 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
     for (auto widget : QApplication::allWidgets()) {
         if (auto button = qobject_cast<QPushButton *>(widget)) {
             const auto name = button->property("glyphName").toString();
-            if (!name.isEmpty())
-                button->setIcon(glyph(name, button->objectName() == "scrollStop" ? tone("#bd252f", "#ff8991") :
-                    button->property("primary").toBool() || (button->objectName()=="explodeButton" && button->isChecked()) ? QColor(Qt::white) : QColor()));
+            if (!name.isEmpty()) {
+                QColor color = button->property("glyphColor").value<QColor>();
+                if (button->objectName() == "scrollStop")
+                    color = tone("#bd252f", "#ff8991");
+                else if (button->property("primary").toBool() ||
+                         (button->objectName() == "explodeButton" && button->isChecked()))
+                    color = Qt::white;
+                button->setIcon(glyph(name, color));
+            }
         }
         if (auto label = qobject_cast<QLabel *>(widget)) {
             const auto name = label->property("glyphName").toString();
@@ -293,329 +310,89 @@ void applyInterfaceFont() {
                         9));
 #endif
 }
+namespace {
+const QMap<QString, QByteArray> &glyphSources() {
+    static const auto sources = [] {
+        initializeUiIcons();
+        QMap<QString, QByteArray> result;
+        const QDir directory(QStringLiteral(":/ui-icons/icons"));
+        for (const auto &fileName : directory.entryList({QStringLiteral("*.svg")}, QDir::Files)) {
+            QFile file(directory.filePath(fileName));
+            if (!file.open(QIODevice::ReadOnly)) {
+                qWarning() << "Cannot read shared UI icon:" << file.fileName();
+                continue;
+            }
+            const auto svg = file.readAll();
+            if (!QSvgRenderer(svg).isValid()) {
+                qWarning() << "Invalid shared UI icon:" << file.fileName();
+                continue;
+            }
+            result.insert(fileName.chopped(4), svg);
+        }
+        return result;
+    }();
+    return sources;
+}
+
+// Render the vector at the requested device scale rather than scaling one fixed
+// raster. Both themes and all platforms use the exact same SVG geometry as Web.
+class SvgGlyphEngine final : public QIconEngine {
+  public:
+    SvgGlyphEngine(QString name, QByteArray svg, QColor normal, QColor checked, QColor disabled)
+        : name_(std::move(name)), svg_(std::move(svg)), normal_(normal), checked_(checked), disabled_(disabled) {}
+    QIconEngine *clone() const override {
+        return new SvgGlyphEngine(name_, svg_, normal_, checked_, disabled_);
+    }
+    QString key() const override { return QStringLiteral("EditHereSharedSvg"); }
+    QString iconName() override { return name_; }
+    bool isNull() override { return svg_.isEmpty(); }
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override {
+        const QColor color = mode == QIcon::Disabled ? disabled_ : state == QIcon::On ? checked_ : normal_;
+        auto source = svg_;
+        source.replace("currentColor", color.name().toUtf8());
+        QSvgRenderer renderer(source);
+        painter->save();
+        painter->setOpacity(painter->opacity() * color.alphaF());
+        renderer.render(painter, QRectF(rect));
+        painter->restore();
+    }
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override {
+        return scaledPixmap(size, mode, state, 1);
+    }
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override {
+        if (size.isEmpty() || scale <= 0)
+            return {};
+        QPixmap result(size * scale);
+        result.fill(Qt::transparent);
+        result.setDevicePixelRatio(scale);
+        QPainter painter(&result);
+        paint(&painter, QRect(QPoint(), size), mode, state);
+        return result;
+    }
+
+  private:
+    QString name_;
+    QByteArray svg_;
+    QColor normal_, checked_, disabled_;
+};
+} // namespace
+
+QStringList glyphNames() {
+    return glyphSources().keys();
+}
+
 QIcon glyph(const QString &name, QColor color) {
+    const auto &sources = glyphSources();
+    const auto source = sources.constFind(name);
+    if (source == sources.cend()) {
+        qWarning() << "Unknown shared UI icon:" << name;
+        return {};
+    }
     const bool themed = !color.isValid();
     if (themed)
         color = QColor(darkTheme ? "#d4d5dd" : "#606069");
-    QPixmap pixmap(48, 48);
-    pixmap.fill(Qt::transparent);
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.scale(2, 2);
-    p.setPen(QPen(color, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(Qt::NoBrush);
-    if (name == "open") {
-        // The open front flap makes this a folder, rather than a download arrow.
-        QPainterPath folder;
-        folder.moveTo(3, 18.5);
-        folder.lineTo(3, 6);
-        folder.quadTo(3, 4.5, 4.5, 4.5);
-        folder.lineTo(8.5, 4.5);
-        folder.lineTo(11, 7.5);
-        folder.lineTo(18.5, 7.5);
-        folder.quadTo(20, 7.5, 20, 9);
-        folder.lineTo(20, 10.5);
-        p.drawPath(folder);
-        QPainterPath flap;
-        flap.moveTo(3, 19.5);
-        flap.lineTo(6.5, 11);
-        flap.lineTo(22, 11);
-        flap.lineTo(18.5, 19.5);
-        flap.closeSubpath();
-        p.drawPath(flap);
-    } else if (name == "help") {
-        p.drawEllipse(QRectF(3, 3, 18, 18));
-        QPainterPath question;
-        question.moveTo(9, 8.5);
-        question.cubicTo(9, 5.5, 15, 5.5, 15, 9);
-        question.cubicTo(15, 11, 12, 11.5, 12, 14);
-        p.drawPath(question);
-        p.drawPoint(QPointF(12, 17));
-    } else if (name == "eye" || name == "eye-off") {
-        QPainterPath path; path.moveTo(2,12); path.cubicTo(7,4,17,4,22,12); path.cubicTo(17,20,7,20,2,12); p.drawPath(path);
-        p.drawEllipse(QPointF(12,12),3,3);
-        if (name=="eye-off") {p.setPen(QPen(color,2.0));p.drawLine(3,3,21,21);}
-    } else if (name == "zoom-in") {
-        p.drawEllipse(QRectF(3,3,13,13)); p.drawLine(15,15,21,21);
-        p.drawLine(6,9,13,9); p.drawLine(9,6,9,13);
-    } else if (name == "explode") {
-        p.drawRoundedRect(QRectF(3,3,7,7),1,1);p.drawRoundedRect(QRectF(14,3,7,7),1,1);
-        p.drawRoundedRect(QRectF(3,14,7,7),1,1);p.drawRoundedRect(QRectF(14,14,7,7),1,1);
-    } else if (name == "note-add") {
-        p.drawRoundedRect(QRectF(3,3,17,17),3,3);p.drawLine(7,8,15,8);p.drawLine(7,12,11,12);
-        p.drawLine(16,15,16,23);p.drawLine(12,19,20,19);
-    } else if (name == "json" || name == "json-copy") {
-        p.drawLine(8,4,5,4);p.drawLine(5,4,5,10);p.drawLine(5,10,3,12);p.drawLine(3,12,5,14);p.drawLine(5,14,5,20);p.drawLine(5,20,8,20);
-        p.drawLine(16,4,19,4);p.drawLine(19,4,19,10);p.drawLine(19,10,21,12);p.drawLine(21,12,19,14);p.drawLine(19,14,19,20);p.drawLine(19,20,16,20);
-        if(name=="json-copy") {p.drawLine(10,9,14,9);p.drawLine(10,12,14,12);p.drawLine(10,15,13,15);}
-        else {
-            QPainterPath eye;
-            eye.moveTo(8,12);
-            eye.cubicTo(10,8.5,14,8.5,16,12);
-            eye.cubicTo(14,15.5,10,15.5,8,12);
-            p.drawPath(eye);
-            p.drawEllipse(QPointF(12,12),1.2,1.2);
-        }
-    } else if (name == "ocr") {
-        // Text recognition: capture corners surrounding a legible T.
-        for (int corner = 0; corner < 4; ++corner) {
-            p.save();
-            p.translate(12, 12);
-            p.rotate(corner * 90);
-            p.drawLine(-9, -9, -4, -9);
-            p.drawLine(-9, -9, -9, -4);
-            p.restore();
-        }
-        p.drawLine(8, 8, 16, 8);
-        p.drawLine(12, 8, 12, 17);
-    } else if (name == "scroll") {
-        // A tall capture frame, with arrows showing the vertical extent.
-        // Keep both arrowheads: a single downward arrow reads as Save/Download.
-        p.drawPolyline(QPolygonF{{6.5, 3.5}, {3.5, 3.5}, {3.5, 8}});
-        p.drawPolyline(QPolygonF{{10.5, 3.5}, {13.5, 3.5}, {13.5, 8}});
-        p.drawPolyline(QPolygonF{{3.5, 16}, {3.5, 20.5}, {6.5, 20.5}});
-        p.drawPolyline(QPolygonF{{13.5, 16}, {13.5, 20.5}, {10.5, 20.5}});
-        p.drawLine(QPointF(6.5, 9), QPointF(10.5, 9));
-        p.drawLine(QPointF(6.5, 12), QPointF(10.5, 12));
-        p.drawLine(QPointF(6.5, 15), QPointF(10.5, 15));
-        p.drawLine(18, 5, 18, 19);
-        p.drawPolyline(QPolygonF{{15.5, 7.5}, {18, 5}, {20.5, 7.5}});
-        p.drawPolyline(QPolygonF{{15.5, 16.5}, {18, 19}, {20.5, 16.5}});
-    } else if (name == "scroll-move-vertical" || name == "scroll-move-horizontal") {
-        if (name.endsWith("horizontal")) {
-            p.translate(12, 12);
-            p.rotate(90);
-            p.translate(-12, -12);
-        }
-        p.drawLine(12, 3, 12, 21);
-        p.drawPolyline(QPolygonF{{8, 7}, {12, 3}, {16, 7}});
-        p.drawPolyline(QPolygonF{{8, 17}, {12, 21}, {16, 17}});
-    } else if (name == "scroll-grip") {
-        p.setPen(Qt::NoPen);
-        p.setBrush(color);
-        for (int x : {8, 15}) for (int y : {5, 12, 19})
-            p.drawEllipse(QPointF(x, y), 1.5, 1.5);
-    } else if (name == "scroll-mouse") {
-        p.drawRoundedRect(QRectF(6, 2, 12, 20), 5, 5);
-        p.drawLine(12, 5, 12, 10);
-        p.drawPolyline(QPolygonF{{9, 15}, {12, 18}, {15, 15}});
-    } else if (name == "scroll-play" || name == "scroll-stop") {
-        p.drawRoundedRect(QRectF(4, 2, 16, 20), 1.5, 1.5);
-        if (name == "scroll-play")
-            p.drawPolygon(QPolygonF{{9, 7}, {16, 12}, {9, 17}});
-        else
-            p.drawRect(QRectF(9, 8, 6, 8));
-    } else if (name == "scroll-scissors" || name.startsWith("scroll-trim-")) {
-        if (name.startsWith("scroll-trim-")) {
-            if (name.endsWith("left") || name.endsWith("right")) {
-                p.translate(12, 12); p.rotate(90); p.translate(-12, -12);
-            }
-            if (name.endsWith("bottom") || name.endsWith("right")) {
-                p.translate(12, 12); p.rotate(180); p.translate(-12, -12);
-            }
-            p.drawPolyline(QPolygonF{{5, 12}, {5, 21}, {19, 21}, {19, 12}});
-            p.drawPolyline(QPolygonF{{6, 20}, {10, 16}, {13, 19}, {16, 16}, {18, 20}});
-            p.drawEllipse(QRectF(5, 3, 4, 4));
-            p.drawEllipse(QRectF(15, 3, 4, 4));
-            p.drawLine(8, 6, 16, 13);
-            p.drawLine(16, 6, 8, 13);
-        } else {
-            p.drawEllipse(QRectF(3, 4, 6, 6));
-            p.drawEllipse(QRectF(3, 14, 6, 6));
-            p.drawLine(8, 8, 21, 19);
-            p.drawLine(8, 16, 21, 5);
-        }
-    } else if (name == "scroll-download") {
-        p.drawLine(12, 3, 12, 16);
-        p.drawPolyline(QPolygonF{{7, 11}, {12, 16}, {17, 11}});
-        p.drawPolyline(QPolygonF{{4, 16}, {4, 21}, {20, 21}, {20, 16}});
-    } else if (name == "scroll-edit") {
-        p.drawPolyline(QPolygonF{{11, 4}, {4, 4}, {4, 21}, {21, 21}, {21, 14}});
-        p.drawPolygon(QPolygonF{{10, 11}, {18, 3}, {22, 7}, {14, 15}, {9, 16}});
-        p.drawLine(QPointF(16, 5), QPointF(20, 9));
-    } else if (name == "scroll-pin") {
-        p.translate(12, 12); p.rotate(40); p.translate(-12, -12);
-        p.drawPolyline(QPolygonF{{8, 3}, {16, 3}, {15, 9}, {18, 14}, {6, 14}, {9, 9}, {8, 3}});
-        p.drawLine(12, 14, 12, 22);
-    } else if (name == "picker") {
-        // A dropper leaning towards the bottom left corner.
-        p.drawLine(3, 21, 12, 12);
-        p.drawLine(3, 21, 3, 18);
-        p.drawLine(12, 12, 15, 9);
-        p.drawRoundedRect(QRectF(13, 3, 8, 8), 2.5, 2.5);
-    } else if (name == "image-copy") {
-        p.drawRoundedRect(QRectF(3.5, 3.5, 14, 13), 1.5, 1.5);
-        p.drawEllipse(QPointF(7.5, 7.5), 1.2, 1.2);
-        p.drawPolyline(QPolygonF{{4.5, 14.5}, {8.5, 10.5}, {11.5, 13.5}, {14, 11}, {17.5, 14.5}});
-        p.drawPolyline(QPolygonF{{8, 20.5}, {21, 20.5}, {21, 7.5}});
-    } else if (name == "settings") {
-        QPainterPath cog;
-        const auto toothPoint = [](double degrees, double radius) {
-            const double radians = degrees * 3.14159265358979323846 / 180;
-            return QPointF(12 + radius * std::cos(radians), 12 + radius * std::sin(radians));
-        };
-        cog.moveTo(toothPoint(-22.5, 7));
-        for (int tooth = 0; tooth < 8; ++tooth) {
-            const double angle = tooth * 45.0;
-            for (const auto [offset, radius] : {std::pair{-22.5, 7.0}, {-13.0, 7.0},
-                                               {-10.0, 9.0}, {10.0, 9.0},
-                                               {13.0, 7.0}, {22.5, 7.0}}) {
-                const auto at = toothPoint(angle + offset, radius);
-                cog.lineTo(at);
-            }
-        }
-        cog.closeSubpath();
-        p.drawPath(cog);
-        p.drawEllipse(QPointF(12, 12), 3, 3);
-    } else if (name == "fit") {
-        // Show the image expanding to its view, distinct from taking a screenshot.
-        p.drawRoundedRect(QRectF(3.5, 3.5, 17, 17), 1.5, 1.5);
-        p.drawLine(8, 16, 16, 8);
-        p.drawPolyline(QPolygonF{{12, 8}, {16, 8}, {16, 12}});
-        p.drawPolyline(QPolygonF{{8, 12}, {8, 16}, {12, 16}});
-    } else if (name == "point") {
-        p.drawEllipse(QPointF(12, 12), 7, 7);
-        p.drawEllipse(QPointF(12, 12), 2, 2);
-    } else if (name == "rect")
-        p.drawRoundedRect(QRectF(4, 5, 16, 14), 1, 1);
-    else if (name == "smart") {
-        for (int corner = 0; corner < 4; ++corner) {
-            p.save();
-            p.translate(12, 12);
-            p.rotate(corner * 90);
-            p.drawLine(-9, -4, -9, -9);
-            p.drawLine(-9, -9, -4, -9);
-            p.restore();
-        }
-        p.drawLine(8, 12, 16, 12);
-        p.drawLine(12, 8, 12, 16);
-    } else if (name == "select") {
-        QPolygonF a{{6, 3}, {18, 13}, {12, 14}, {9, 20}, {6, 3}};
-        p.drawPolygon(a);
-    } else if (name == "undo" || name == "redo") {
-        if (name == "redo") {
-            p.translate(24, 0);
-            p.scale(-1, 1);
-        }
-        p.drawLine(4, 9, 10, 4);
-        p.drawLine(4, 9, 10, 14);
-        QPainterPath path;
-        path.moveTo(4, 9);
-        path.lineTo(14, 9);
-        path.cubicTo(23, 9, 23, 21, 11, 20);
-        p.drawPath(path);
-    } else if (name == "fullscreen" || name == "fullscreen-exit") {
-        for (int corner = 0; corner < 4; ++corner) {
-            p.save();
-            p.translate(12, 12);
-            p.rotate(corner * 90);
-            if (name == "fullscreen") {
-                p.drawLine(-8, -3, -8, -8);
-                p.drawLine(-8, -8, -3, -8);
-            } else {
-                p.drawLine(-3, -8, -3, -3);
-                p.drawLine(-3, -3, -8, -3);
-            }
-            p.restore();
-        }
-    } else if (name == "close") {
-        p.drawLine(7, 7, 17, 17);
-        p.drawLine(17, 7, 7, 17);
-    } else if (name == "copy") {
-        p.drawRoundedRect(QRectF(8, 8, 12, 13), 2, 2);
-        p.drawLine(4, 16, 4, 4);
-        p.drawLine(4, 4, 15, 4);
-    } else if (name == "save" || name == "image-save") {
-        // Use the same familiar Save symbol for project files and image files.
-        QPainterPath disk;
-        disk.moveTo(4.5, 3.5);
-        disk.lineTo(17, 3.5);
-        disk.lineTo(20.5, 7);
-        disk.lineTo(20.5, 19.5);
-        disk.quadTo(20.5, 20.5, 19.5, 20.5);
-        disk.lineTo(4.5, 20.5);
-        disk.quadTo(3.5, 20.5, 3.5, 19.5);
-        disk.lineTo(3.5, 4.5);
-        disk.quadTo(3.5, 3.5, 4.5, 3.5);
-        p.drawPath(disk);
-        p.drawPolyline(QPolygonF{{7.5, 3.5}, {7.5, 9}, {15.5, 9}, {15.5, 3.5}});
-        p.drawPolyline(QPolygonF{{7.5, 20.5}, {7.5, 13.5}, {16.5, 13.5}, {16.5, 20.5}});
-    } else if (name == "notes") {
-        p.drawRoundedRect(QRectF(3, 4, 18, 16), 2, 2);
-        p.drawLine(14, 4, 14, 20);
-    } else if (name == "edit") {
-        p.drawLine(5, 18, 7, 12);
-        p.drawLine(7, 12, 17, 3);
-        p.drawLine(17, 3, 21, 7);
-        p.drawLine(21, 7, 11, 16);
-        p.drawLine(11, 16, 5, 18);
-    } else if (name == "trash") {
-        p.drawLine(5, 7, 19, 7);
-        p.drawLine(9, 4, 15, 4);
-        p.drawLine(7, 7, 8, 21);
-        p.drawLine(8, 21, 16, 21);
-        p.drawLine(16, 21, 17, 7);
-        p.drawLine(11, 10, 11, 17);
-        p.drawLine(14, 10, 14, 17);
-    } else if (name == "more") {
-        p.setBrush(color);
-        for (int x : {5, 12, 19})
-            p.drawEllipse(QPointF(x, 12), 1, 1);
-    } else if (name == "pin") {
-        p.drawLine(8, 3, 16, 3);
-        p.drawLine(9, 3, 9, 9);
-        p.drawLine(15, 3, 15, 9);
-        p.drawLine(9, 9, 6, 14);
-        p.drawLine(15, 9, 18, 14);
-        p.drawLine(6, 14, 18, 14);
-        p.drawLine(12, 14, 12, 22);
-    } else if (name == "check") {
-        p.drawLine(4, 12, 10, 18);
-        p.drawLine(10, 18, 20, 6);
-    } else if (name == "corner") {
-        // One rounded corner with square ones beside it, so the number it stands for
-        // is obvious without a label.
-        p.drawLine(4, 12, 4, 20);
-        p.drawLine(4, 20, 20, 20);
-        QPainterPath arc;
-        arc.moveTo(4, 14);
-        arc.cubicTo(4, 8, 8, 4, 14, 4);
-        p.drawPath(arc);
-        p.drawLine(14, 4, 20, 4);
-        p.drawLine(4, 8, 4, 12);
-    } else if (name == "shadow") {
-        // A plate with a soft band running out from under it.
-        p.drawRoundedRect(QRectF(5, 4, 14, 10), 2, 2);
-        p.drawLine(7, 17, 17, 17);
-        p.drawLine(9, 20, 15, 20);
-    } else if (name == "crop") {
-        p.drawLine(7, 2, 7, 17);
-        p.drawLine(7, 17, 22, 17);
-        p.drawLine(2, 7, 17, 7);
-        p.drawLine(17, 7, 17, 22);
-    } else if (name == "capture") {
-        p.drawRoundedRect(QRectF(3, 4, 18, 16), 3, 3);
-        p.drawLine(8, 9, 10, 9);
-        p.drawLine(8, 9, 8, 11);
-        p.drawLine(16, 15, 14, 15);
-        p.drawLine(16, 15, 16, 13);
-    } else if (name == "plus" || name == "minus") {
-        p.drawLine(5, 12, 19, 12);
-        if (name == "plus")
-            p.drawLine(12, 5, 12, 19);
-    }
-    p.end();
-    pixmap.setDevicePixelRatio(2);
-    QIcon icon(pixmap);
-    if (themed) {
-        QPixmap checked = pixmap;
-        QPainter tint(&checked);
-        tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
-        tint.fillRect(checked.rect(), accent());
-        tint.end();
-        icon.addPixmap(checked, QIcon::Normal, QIcon::On);
-    }
-    return icon;
+    return QIcon(new SvgGlyphEngine(name, *source, color, themed ? accent() : color,
+                                   qApp->palette().color(QPalette::Disabled, QPalette::ButtonText)));
 }
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent) {
     auto b = new QPushButton(parent);

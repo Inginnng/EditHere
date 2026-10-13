@@ -112,6 +112,7 @@ class Editor final : public QWidget {
     void editMovement(QRectF source, QRectF destination);
     void addManualRegion(QRect area);
     void toggleAnnotations();
+    void updateAnnotationVisibility();
     void copyJson();
     void copyJsonText();
     void showJsonHelp();

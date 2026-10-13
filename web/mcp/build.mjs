@@ -44,6 +44,9 @@ for (const input of [...Object.keys(browser.metafile.inputs), ...Object.keys(ser
   packages.set(metadata.name, {metadata, license:fs.readFileSync(path.join(root, license), 'utf8')});
 }
 const notices = ['# EditHere Web MCP bundled dependencies\n\nBuilt from the pinned web/mcp/package-lock.json. Cowart informed the transport workflow; its source and branding are not bundled.\n'];
+const iconDirectory = path.join(web, '../assets/ui-icons');
+const iconManifest = JSON.parse(fs.readFileSync(path.join(iconDirectory, 'manifest.json'), 'utf8'));
+notices.push('\n## Shared UI icons — Lucide and EditHere\n\nThe same SVG assets are embedded in the desktop and Web editors. Individual sources and adaptations are recorded in assets/ui-icons/manifest.json.\n\n' + fs.readFileSync(path.join(iconDirectory, 'LICENSE'), 'utf8').trim() + '\n');
 for (const [name, {metadata, license}] of [...packages].sort(([a],[b]) => a.localeCompare(b))) {
   notices.push(`\n## ${name} ${metadata.version}\n\nLicense: ${metadata.license || 'See below'}\n\n${license.trim()}\n`);
 }
@@ -56,6 +59,8 @@ const sourcePaths = new Set([
   ...fs.readdirSync(path.join(web,'src')).filter(file=>/\.(?:js|html|css)$/.test(file)).map(file=>path.join(web,'src',file)),
   path.join(web,'build.cjs'), path.join(directory,'build.mjs'),path.join(directory,'package.json'),path.join(directory,'package-lock.json'),
   path.join(root,'CMakeLists.txt'),
+  path.join(iconDirectory,'manifest.json'), path.join(iconDirectory,'LICENSE'),
+  ...iconManifest.icons.map(icon=>path.join(iconDirectory,icon.file)),
   ...['brand/edithere-lockup.svg','brand/edithere-lockup-light.svg','icons/edithere.svg'].map(file=>path.join(root,'assets',file))
 ].map(file=>path.resolve(file)).filter(file=>!file.split(path.sep).includes('node_modules')));
 const sources=Object.fromEntries([...sourcePaths].sort().map(file=>[path.relative(root,file).split(path.sep).join('/'),hash(file)]));

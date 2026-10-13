@@ -17,6 +17,7 @@
 #include <QCloseEvent>
 #include <QContextMenuEvent>
 #include <QDateTime>
+#include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -74,11 +75,14 @@ int annotationCount(const Document &doc) {
 QString toolbarGlyph(const QString &id) {
     if (id == "saveProject") return "save";
     if (id == "saveImage") return "image-save";
-    if (id == "copyJson" || id == "copyJsonText") return "json-copy";
+    if (id == "copyJson") return "json-copy-file";
+    if (id == "copyJsonText") return "json-copy-text";
     if (id == "exportJson") return "json";
     if (id == "capture") return "capture";
     if (id == "fit") return "fit";
-    return "image-copy";
+    if (id == "copyImage") return "image-copy";
+    qWarning() << "Unknown toolbar action:" << id;
+    return {};
 }
 // 反馈 JSON 临时文件目录：可配置，默认位于应用缓存目录下的 feedback 子目录。
 QString feedbackTempDir(const QString &configured = {}) {
@@ -169,13 +173,14 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     hideAnnotations_->setCheckable(true);
     header->addWidget(hideAnnotations_);
     connect(hideAnnotations_, &QPushButton::clicked, this, &Editor::toggleAnnotations);
-    auto magnifier=iconButton("zoom-in", {}, bar);
+    auto magnifier=iconButton("magnifier", {}, bar);
     magnifier->setObjectName("toggleMagnifier");
     magnifier->setCheckable(true); magnifier->setChecked(true);
     header->addWidget(magnifier);
     connect(magnifier,&QPushButton::toggled,this,[this,magnifier](bool enabled) {
         canvas_->setMagnifierEnabled(enabled);
         magnifier->setToolTip(enabled ? tr("关闭放大镜") : tr("开启放大镜"));
+        magnifier->setAccessibleName(magnifier->toolTip());
     });
     explosion_ = textButton({}, false, bar);
     explosion_->setProperty("glyphName", "explode");
@@ -198,7 +203,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         finishNoteEdit();
         emit settingsRequested();
     });
-    auto minimize = iconButton("minus", {}, bar);
+    auto minimize = iconButton("window-minimize", {}, bar);
     minimize->setObjectName("minimizeWindow");
     fullscreen_ = iconButton("fullscreen", {}, bar);
     fullscreen_->setObjectName("fullscreenWindow");
@@ -391,7 +396,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(undo_, &QPushButton::clicked, this, &Editor::undo);
     connect(redo_, &QPushButton::clicked, this, &Editor::redo);
     dock->addSpacing(10);
-    auto minus = iconButton("minus", {}, shell), plus = iconButton("plus", {}, shell);
+    auto minus = iconButton("zoom-out", {}, shell), plus = iconButton("zoom-in", {}, shell);
     minus->setObjectName("zoomOut");
     plus->setObjectName("zoomIn");
     zoom_ = textButton("100%", false, shell);
@@ -420,6 +425,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     dock->addSpacing(5);
     for (const auto &definition : toolbarActionDefinitions()) {
         const QString icon = toolbarGlyph(definition.id);
+        if (icon.isEmpty()) continue;
         auto button = iconButton(icon, {}, shell);
         button->setObjectName(definition.id);
         outputButtons_.insert(definition.id, button);
@@ -431,7 +437,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
         else if (definition.id == "capture") connect(button, &QPushButton::clicked, this, &Editor::captureRequested);
         else if (definition.id == "fit") connect(button, &QPushButton::clicked, this, &Editor::fit);
-        else connect(button, &QPushButton::clicked, this, &Editor::copyImage);
+        else if (definition.id == "copyImage") connect(button, &QPushButton::clicked, this, &Editor::copyImage);
     }
     auto more = iconButton("more", {}, shell);
     more->setObjectName("moreActions");
@@ -537,7 +543,7 @@ void Editor::retranslate() {
     tooltip("zoomOut", tr("缩小"));
     tooltip("zoomIn", tr("放大"));
     tooltip("moreActions", tr("更多操作"));
-    tooltip("hideAnnotations", annotationsVisible_ ? tr("隐藏画面批注") : tr("显示画面批注"));
+    updateAnnotationVisibility();
     if (auto magnifier = findChild<QPushButton *>("toggleMagnifier"))
         tooltip("toggleMagnifier", magnifier->isChecked() ? tr("关闭放大镜") : tr("开启放大镜"));
     if (auto agentHint = findChild<QLabel *>("agentSessionHint"))
@@ -638,8 +644,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     if (!switchingVideoFrame_) clearVideo();
     if (!preserveView) {
         annotationsVisible_ = true;
-        hideAnnotations_->setChecked(false);
-        canvas_->setAnnotationsVisible(true);
+        updateAnnotationVisibility();
     }
     resetLayoutTools();
     doc_ = std::move(document);
@@ -1364,13 +1369,17 @@ void Editor::addManualRegion(QRect area) {
     } catch(const std::exception &error) { showError(QString::fromUtf8(error.what())); }
 }
 void Editor::toggleAnnotations() {
-    annotationsVisible_=!annotationsVisible_;
+    annotationsVisible_ = !annotationsVisible_;
+    updateAnnotationVisibility();
+}
+void Editor::updateAnnotationVisibility() {
     hideAnnotations_->setChecked(!annotationsVisible_);
     hideAnnotations_->setToolTip(annotationsVisible_ ? tr("隐藏画面批注") : tr("显示画面批注"));
-    hideAnnotations_->setProperty("glyphName",annotationsVisible_ ? "eye" : "eye-off");
+    hideAnnotations_->setAccessibleName(hideAnnotations_->toolTip());
+    hideAnnotations_->setProperty("glyphName", annotationsVisible_ ? "eye" : "eye-off");
     hideAnnotations_->setIcon(glyph(annotationsVisible_ ? "eye" : "eye-off"));
     canvas_->setAnnotationsVisible(annotationsVisible_);
-    if(layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
+    if (layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
     if (auto owner = qobject_cast<QWidget *>(object); owner && owner->window() != this)
@@ -2004,9 +2013,10 @@ void Editor::exportJson() {
     auto copyText = textButton(tr("复制 JSON 内容"), false, &dialog);
     copy->setObjectName("copyJsonFile");
     copyText->setObjectName("copyJsonText");
-    save->setProperty("glyphName","save");save->setIcon(glyph("save"));
+    save->setProperty("glyphName","feedback-save");save->setIcon(glyph("feedback-save"));
     close->setProperty("glyphName","close");close->setIcon(glyph("close"));
-    copy->setProperty("glyphName","json-copy");copy->setIcon(glyph("json-copy",Qt::white));
+    copy->setProperty("glyphName","json-copy-file");copy->setIcon(glyph("json-copy-file",Qt::white));
+    copyText->setProperty("glyphName","json-copy-text");copyText->setIcon(glyph("json-copy-text"));
     save->setObjectName("saveFeedbackBundle");
     row->addWidget(save);
     row->addStretch();
@@ -2160,7 +2170,7 @@ void Editor::showContext(QPoint p) {
     QMenu menu(this);
     auto settings = menu.addAction(glyph("settings"), tr("设置…"), this, &Editor::settingsRequested);
     settings->setObjectName("editorSettings");
-    menu.addAction(glyph("settings"),tr("自定义工具栏…"),this,&Editor::toolbarSettingsRequested);
+    menu.addAction(glyph("layout-settings"),tr("自定义工具栏…"),this,&Editor::toolbarSettingsRequested);
     bool hiddenActions=false;
     for (const auto &definition : toolbarActionDefinitions()) {
         auto button=outputButtons_.value(definition.id);
