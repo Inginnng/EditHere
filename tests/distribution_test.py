@@ -144,6 +144,24 @@ class DistributionTest(unittest.TestCase):
             self.assertEqual(archive.read("web/mcp/server.bundle.cjs"), (self.root / "web/mcp/server.bundle.cjs").read_bytes())
         self.assertEqual(distribution.sha256(agent), next(item["sha256"] for item in report["packages"] if item["product"] == "web-agent"))
 
+    def test_web_only_mode_builds_just_the_two_web_packages(self):
+        report = distribution.assemble_web(self.root, self.output("web-only"), channel="release")
+        self.assertEqual(report["mode"], "web-only")
+        self.assertEqual(report["channel"], "release")
+        self.assertEqual([item["product"] for item in report["packages"]], ["web", "web-agent"])
+        self.assertEqual([item["state"] for item in report["packages"]], ["assembled-release", "assembled-release"])
+        self.assertTrue((self.output("web-only") / "manifest.json").is_file())
+        self.assertFalse((self.output("web-only") / "windows").exists())
+        self.assertFalse((self.output("web-only") / "integrations").exists())
+        offline = self.output("web-only") / next(item["path"] for item in report["packages"] if item["product"] == "web")
+        with zipfile.ZipFile(offline) as archive:
+            stamp = json.loads(archive.read("build-info.json"))
+        self.assertEqual(stamp["channel"], "release")
+        self.assertTrue(stamp["published"])
+        preview = distribution.assemble_web(self.root, self.output("web-preview"))
+        self.assertEqual([item["state"] for item in preview["packages"]],
+                         ["assembled-local-preview", "assembled-local-preview"])
+
     def test_strict_missing_platforms_fails_before_creating_catalog(self):
         with self.assertRaisesRegex(ValueError, "Current native packages missing"):
             distribution.assemble(self.root, self.output(), require_all=True)

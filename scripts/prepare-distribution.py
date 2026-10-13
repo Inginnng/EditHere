@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Assemble local distribution files without moving sources or publishing assets."""
+"""Assemble local distribution files without moving sources or publishing assets.
+
+The default run collects native packages, the two web packages and the integrations.
+`--web-only` builds just the web packages (the release workflow uses it with
+`--channel release`); neither mode tags, uploads or replaces installed files.
+"""
 from __future__ import annotations
 
 import argparse
@@ -42,6 +47,18 @@ GENERIC_WEB_INSTALLATION = """# 本机网页入口
 包中不保存开发者个人路径。更换解压目录后需重新配置。
 MCP 通过宿主管理的 stdio 连接，无 HTTP 监听。普通离线 HTML 不需要服务器。
 """
+# The same packages are assembled locally for checking and by the release job.
+# Only the closing note differs: a released ZIP must not call itself a preview.
+WEB_CHANNEL_NOTES = {
+    "local-preview": {
+        "offline": "这是按当前源码生成的本地预览包，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n",
+        "agent": "本包为本地预览整理，不表示已发布或通过三平台实机验收。来源见 build-info.json。\n",
+    },
+    "release": {
+        "offline": "本包随版本发布生成，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n",
+        "agent": "本包随版本发布生成，来源见 build-info.json。\n",
+    },
+}
 
 
 def sha256(file: Path) -> str:
@@ -208,6 +225,77 @@ def write_zip(file: Path, entries: dict[str, Path | str]) -> None:
             archive.writestr(item, data)
 
 
+def build_web(root: Path, node: str = "node") -> None:
+    """Regenerate the offline app and refuse to ship a stale MCP bundle."""
+    subprocess.run([node, str(root / "web/build.cjs")], cwd=root, check=True, stdout=subprocess.PIPE, text=True)
+    for name in (*WEB_RUNTIME, *WEB_GUIDES):
+        if not (root / "web" / name).is_file():
+            raise ValueError(f"Web runtime file missing: {name}")
+    verify_mcp_build(root)
+
+
+def write_web_packages(root: Path, output: Path, source_version: str, commit: str, dirty: bool,
+                       *, channel: str = "local-preview") -> tuple[str, list[dict], dict[str, Path | str]]:
+    """Write the offline and web-agent ZIPs; return version, records and the shared entries.
+
+    The shared entries (licenses, the shared icon license and the build stamp) are
+    reused by the integrations packages.
+    """
+    short = commit[:8]
+    web_version = source_version + "-" + short
+    common: dict[str, Path | str] = {name: root / name for name in LEGAL}
+    common["licenses/ui-icons/LICENSE"] = root / "assets/ui-icons/LICENSE"
+    common["build-info.json"] = json.dumps({
+        "productSourceVersion": source_version, "sourceCommit": commit, "sourceDirty": dirty,
+        "webRevision": short, "channel": channel, "published": channel == "release"}, ensure_ascii=False, indent=2) + "\n"
+    notes = WEB_CHANNEL_NOTES[channel]
+    offline = output / "web" / web_version / f"EditHere-{source_version}-web-{short}.zip"
+    write_zip(offline, {**common, "EditHere.html": root / "web/EditHere.html",
+                       "README.md": "# EditHere Web\n\n双击 EditHere.html，或部署到静态网站。无需 Node.js。图片、视频和反馈在浏览器内处理。\n\n此包不含 MCP Apps 连接器；需要宿主内嵌批注和反馈回传时使用同目录的 web-agent 包。\n\n" + notes["offline"]})
+    agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
+                     **{name: root / "web" / name for name in WEB_GUIDES},
+                     **archive_entries(root, "web-skill")}
+    agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
+    agent_entries["README.md"] = """# EditHere Web Agent
+
+Windows、macOS、Linux 使用同一份包。真实 MCP Apps 需要 Node.js 20+；普通浏览器兼容 CLI 支持 Node.js 18+。
+解压到当前用户可写且长期保留的目录，不能直接在 ZIP 中运行。
+服务与官方 App SDK 已打包，无需 npm install。首次安装把本包与 AI-SETUP.md 交给 Agent，先检查宿主 MCP Apps 支持；无需预先安装 Skill。
+
+安装网页版技能：
+```text
+node web/install-skill.cjs
+```
+默认安装到 CODEX_HOME/skills/edithere-web 或 ~/.codex/skills/edithere-web。
+其他宿主使用 `--destination <技能目录的绝对路径>`。已存在的技能不会被覆盖。
+安装时生成本机路径与 MCP 配置参考，不自动改写宿主配置或桌面技能。
+按宿主配置格式合并 web/mcp/mcp.json 条目，command 为 Node.js 绝对路径，args 为本包 web/mcp/server.bundle.cjs 的绝对路径。
+重新载入 MCP 后确认实际工具 edithere_web_open / edithere_web_read。配置存在不等于连接或内嵌成功。
+
+支持 MCP Apps 时使用 edithere_web_open 传入实际 imagePath，由宿主显示内嵌 HTML，无需本地 HTTP 服务。
+提交先持久化反馈，再请求宿主发送对话消息；消息接受与 AI 已实施修改分别判断。
+用原 sessionId 调用 edithere_web_read 读取结果，或 edithere_web_open 重开草稿。宿主未声明 UI 能力会返回 unsupported 和兼容入口。
+MCP 会话默认保存 ~/.edithere/web-sessions，可通过 EDITHERE_WEB_DATA_DIR 设置持久绝对目录。
+WorkBuddy 当前版本的内嵌支持须实测，不从其他产品文档推定。
+
+预览：`node web/preview.cjs`，再打开 http://127.0.0.1:7330/EditHere.html。
+发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400`。
+普通浏览器兼容模式使用返回的 URL 传图，通过同一 sessionId 的 poll 读取已保存反馈。
+该模式默认提交后回到对话说“继续”，没有宿主消息桥，不自动创建定时任务。
+后台进程可能随宿主任务停止而结束；已保存结果仍可读取，不能承诺后台服务独立常驻。
+截图依赖宿主实际提供的浏览器或窗口工具。
+
+会话目录、反馈输出与兼容日志含私有图片和访问令牌，不要随运行过的目录再次压缩分发；旧版数据可能位于 web/tests/output。
+若 7330 已有另一份 EditHere 服务，应按其 PID 和路径核实后处理，不能直接杀掉其他程序。
+""" + notes["agent"]
+    agent_package = output / "web" / web_version / f"EditHere-{source_version}-web-agent-{short}.zip"
+    write_zip(agent_package, agent_entries)
+    created = [{"path": package.relative_to(output).as_posix(), "product": product, "version": web_version,
+                "state": "assembled-" + channel, "bytes": package.stat().st_size, "sha256": sha256(package)}
+               for package, product in ((offline, "web"), (agent_package, "web-agent"))]
+    return web_version, created, common
+
+
 def assemble(root: Path, output: Path, *, include_history: bool = False, native_dirs: list[Path] | None = None,
              require_all: bool = False, node: str = "node") -> dict:
     root, output = root.resolve(), output.resolve()
@@ -258,11 +346,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
     if require_all and missing:
         raise ValueError("Current native packages missing: " + ", ".join(missing))
     # Build before writing output, so a build failure leaves no misleading catalog.
-    subprocess.run([node, str(root / "web/build.cjs")], cwd=root, check=True, stdout=subprocess.PIPE, text=True)
-    for name in (*WEB_RUNTIME, *WEB_GUIDES):
-        if not (root / "web" / name).is_file():
-            raise ValueError(f"Web runtime file missing: {name}")
-    verify_mcp_build(root)
+    build_web(root, node)
     commit, dirty = revision(root)
     short = commit[:8]
     output.mkdir(parents=True)
@@ -272,56 +356,8 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
         created.append({"path": file.relative_to(output).as_posix(), "product": product, "version": package_version,
                         "state": state, "bytes": file.stat().st_size, "sha256": sha256(file), **extra})
 
-    common: dict[str, Path | str] = {name: root / name for name in LEGAL}
-    common["licenses/ui-icons/LICENSE"] = root / "assets/ui-icons/LICENSE"
-    stamp = {"productSourceVersion": source_version, "sourceCommit": commit, "sourceDirty": dirty,
-             "webRevision": short, "channel": "local-preview", "published": False}
-    web_version = source_version + "-" + short
-    common["build-info.json"] = json.dumps(stamp, ensure_ascii=False, indent=2) + "\n"
-    offline = output / "web" / web_version / f"EditHere-{source_version}-web-{short}.zip"
-    write_zip(offline, {**common, "EditHere.html": root / "web/EditHere.html",
-                       "README.md": "# EditHere Web\n\n双击 EditHere.html，或部署到静态网站。无需 Node.js。图片、视频和反馈在浏览器内处理。\n\n此包不含 MCP Apps 连接器；需要宿主内嵌批注和反馈回传时使用同目录的 web-agent 包。\n\n这是按当前源码生成的本地预览包，版本与来源见 build-info.json。许可见 LICENSE / LICENSING.md。\n"})
-    record(offline, "web", web_version, "assembled-local-preview")
-    agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
-                     **{name: root / "web" / name for name in WEB_GUIDES},
-                     **archive_entries(root, "web-skill")}
-    agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
-    agent_entries["README.md"] = """# EditHere Web Agent
-
-Windows、macOS、Linux 使用同一份包。真实 MCP Apps 需要 Node.js 20+；普通浏览器兼容 CLI 支持 Node.js 18+。
-解压到当前用户可写且长期保留的目录，不能直接在 ZIP 中运行。
-服务与官方 App SDK 已打包，无需 npm install。首次安装把本包与 AI-SETUP.md 交给 Agent，先检查宿主 MCP Apps 支持；无需预先安装 Skill。
-
-安装网页版技能：
-```text
-node web/install-skill.cjs
-```
-默认安装到 CODEX_HOME/skills/edithere-web 或 ~/.codex/skills/edithere-web。
-其他宿主使用 `--destination <技能目录的绝对路径>`。已存在的技能不会被覆盖。
-安装时生成本机路径与 MCP 配置参考，不自动改写宿主配置或桌面技能。
-按宿主配置格式合并 web/mcp/mcp.json 条目，command 为 Node.js 绝对路径，args 为本包 web/mcp/server.bundle.cjs 的绝对路径。
-重新载入 MCP 后确认实际工具 edithere_web_open / edithere_web_read。配置存在不等于连接或内嵌成功。
-
-支持 MCP Apps 时使用 edithere_web_open 传入实际 imagePath，由宿主显示内嵌 HTML，无需本地 HTTP 服务。
-提交先持久化反馈，再请求宿主发送对话消息；消息接受与 AI 已实施修改分别判断。
-用原 sessionId 调用 edithere_web_read 读取结果，或 edithere_web_open 重开草稿。宿主未声明 UI 能力会返回 unsupported 和兼容入口。
-MCP 会话默认保存 ~/.edithere/web-sessions，可通过 EDITHERE_WEB_DATA_DIR 设置持久绝对目录。
-WorkBuddy 当前版本的内嵌支持须实测，不从其他产品文档推定。
-
-预览：`node web/preview.cjs`，再打开 http://127.0.0.1:7330/EditHere.html。
-发起批注：`node web/agent.cjs start --image <图片绝对路径> --output <尚不存在的JSON绝对路径> --timeout 86400`。
-普通浏览器兼容模式使用返回的 URL 传图，通过同一 sessionId 的 poll 读取已保存反馈。
-该模式默认提交后回到对话说“继续”，没有宿主消息桥，不自动创建定时任务。
-后台进程可能随宿主任务停止而结束；已保存结果仍可读取，不能承诺后台服务独立常驻。
-截图依赖宿主实际提供的浏览器或窗口工具。
-
-会话目录、反馈输出与兼容日志含私有图片和访问令牌，不要随运行过的目录再次压缩分发；旧版数据可能位于 web/tests/output。
-若 7330 已有另一份 EditHere 服务，应按其 PID 和路径核实后处理，不能直接杀掉其他程序。
-本包为本地预览整理，不表示已发布或通过三平台实机验收。来源见 build-info.json。
-"""
-    agent_package = output / "web" / web_version / f"EditHere-{source_version}-web-agent-{short}.zip"
-    write_zip(agent_package, agent_entries)
-    record(agent_package, "web-agent", web_version, "assembled-local-preview")
+    web_version, web_created, common = write_web_packages(root, output, source_version, commit, dirty)
+    created.extend(web_created)
     integration_specs = (("desktop-mcp", "connector", "connector/package.json"),
                          ("trae-plugin", "trae-plugin", "trae-plugin/package.json"),
                          ("desktop-skill", "skills/edithere", None))
@@ -405,6 +441,46 @@ Web 文件名中的 {source_version} 表示对应源码基线，不表示它与�
     return report
 
 
+def assemble_web(root: Path, output: Path, *, channel: str = "local-preview", node: str = "node") -> dict:
+    """Build and package only the two web ZIPs, for local checks and release jobs."""
+    root, output = root.resolve(), output.resolve()
+    if output.exists():
+        raise ValueError(f"Output already exists; choose a fresh directory: {output}")
+    if output == root or root.is_relative_to(output):
+        raise ValueError("Output cannot contain the source repository")
+    if output.is_relative_to(root) and output.parts[len(root.parts)] != "dist":
+        raise ValueError("Inside the repository, output must be under dist/")
+    source_version = version(root)
+    build_web(root, node)
+    commit, dirty = revision(root)
+    short = commit[:8]
+    output.mkdir(parents=True)
+    web_version, created, _ = write_web_packages(root, output, source_version, commit, dirty, channel=channel)
+    report = {"schemaVersion": 1, "generatedAt": datetime.now(timezone.utc).isoformat(), "mode": "web-only",
+              "productSourceVersion": source_version, "sourceCommit": commit, "sourceDirty": dirty,
+              "channel": channel, "published": False, "packages": created, "existingArtifacts": []}
+    (output / "manifest.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    checksum_files = sorted(file for file in output.rglob("*") if file.is_file())
+    (output / "SHA256SUMS.txt").write_text("".join(sha256(file) + "  " + file.relative_to(output).as_posix() + "\n" for file in checksum_files), encoding="utf-8")
+    (output / "README.md").write_text(f"""# EditHere Web 包
+
+源码目标版本：**{source_version}**；源码提交：`{commit}`；工作树有改动：`{str(dirty).lower()}`；渠道：{channel}。
+只整理离线网页包与 Web Agent 包，不检查三平台原生程序包，也不上传发布。发布构建使用 `--channel release`。
+
+| 文件 | 用途 |
+| --- | --- |
+| web/{web_version}/EditHere-{source_version}-web-{short}.zip | 离线单文件网页版，双击 EditHere.html |
+| web/{web_version}/EditHere-{source_version}-web-agent-{short}.zip | MCP Apps 服务、普通浏览器兼容 CLI、安装器与 Skill |
+
+安装步骤见包内 AI-SETUP.md（`node web/install-skill.cjs` 安装技能，MCP 需要 Node.js 20+）。
+实际文件与 SHA-256 见 manifest.json / SHA256SUMS.txt。发布资产使用不含版本号的稳定文件名，由 release 工作流改名。
+不覆盖已有目录，不从此命令上传 GitHub/Gitee。
+""", encoding="utf-8")
+    with (output / "SHA256SUMS.txt").open("a", encoding="utf-8") as stream:
+        stream.write(sha256(output / "README.md") + "  README.md\n")
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
@@ -412,14 +488,28 @@ def main() -> None:
     parser.add_argument("--native-dir", action="append", default=[], type=Path,
                         help="Original build artifacts: versioned Windows/macOS names; Linux with adjacent version metadata")
     parser.add_argument("--require-all", action="store_true")
+    parser.add_argument("--web-only", action="store_true",
+                        help="Only build the two web packages (offline and web-agent) for the current source tree")
+    parser.add_argument("--channel", choices=("local-preview", "release"), default="local-preview",
+                        help="Marks web packages as local previews or as release builds")
     parser.add_argument("--node", default="node")
     args = parser.parse_args()
-    destination = args.output or ROOT / "dist" / f"distribution-{version(ROOT)}-{revision(ROOT)[0][:8]}"
+    if args.web_only and (args.include_history or args.native_dir or args.require_all):
+        parser.error("--web-only cannot be combined with --include-history, --native-dir or --require-all")
+    if args.channel != "local-preview" and not args.web_only:
+        parser.error("--channel release is only available together with --web-only")
     try:
-        report = assemble(ROOT, destination, include_history=args.include_history, native_dirs=args.native_dir, require_all=args.require_all, node=args.node)
+        if args.web_only:
+            destination = args.output or ROOT / "dist" / f"web-{version(ROOT)}-{revision(ROOT)[0][:8]}"
+            report = assemble_web(ROOT, destination, channel=args.channel, node=args.node)
+        else:
+            destination = args.output or ROOT / "dist" / f"distribution-{version(ROOT)}-{revision(ROOT)[0][:8]}"
+            report = assemble(ROOT, destination, include_history=args.include_history, native_dirs=args.native_dir, require_all=args.require_all, node=args.node)
     except (ValueError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         parser.exit(1, f"Distribution error: {error}\n")
-    print(json.dumps({"output": str(destination.resolve()), "packages": len(report["packages"]), "missingCurrentNative": report["missingCurrentNative"], "published": False}, ensure_ascii=False))
+    print(json.dumps({"output": str(destination.resolve()), "mode": "web" if args.web_only else "full",
+                      "packages": len(report["packages"]), "missingCurrentNative": report.get("missingCurrentNative", []),
+                      "channel": args.channel, "published": False}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
