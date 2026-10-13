@@ -83,6 +83,6 @@ Windows ZIP 内直接放程序、DLL 和插件目录，不能再套一层平台�
 
 统一脚本只准备本地文件。它不会打标签、推送仓库、创建 GitHub / Gitee Release、注册开机启动，或更新当前机器上的程序。
 
-现有 `.github/workflows/release.yml` 在版本标签触发后构建并汇总四类原生程序包与两种 Web 包，再使用表中的稳定下载名发布（Web 包由 `build-web` 作业调用 `--web-only --channel release` 生成；内嵌素材的行尾由 `.gitattributes` 固定，避免同一源码在不同平台产出不同字节）。文档和 Windows 更新器依赖这些名字，本次目录整理不更改它们。正式发布还应核对标签与构建版本、全部平台产物、测试结果、许可及相应源码材料；历史失败的发布记录、试验包或同版本名文件都不能代替这些检查。
+现有 `.github/workflows/release.yml` 在版本标签触发后构建并汇总四类原生程序包与两种 Web 包，再使用表中的稳定下载名发布（Web 包由 `build-web` 作业调用 `--web-only --channel release` 生成；内嵌素材与随包法律文本的行尾由 `.gitattributes` 固定，避免同一源码在不同平台产出不同字节）。文档和 Windows 更新器依赖这些名字，本次目录整理不更改它们。正式发布还应核对标签与构建版本、全部平台产物、测试结果、许可及相应源码材料；历史失败的发布记录、试验包或同版本名文件都不能代替这些检查。
 
 Windows 与 macOS 的签名状态、macOS 公证及实机验收、Linux 预览状态仍以当前[产品说明](../README.md)和构建记录为准。Qt、FFmpeg 等许可和对应源码要求见[第三方说明](../packaging/THIRD-PARTY-NOTICES.md)；汇总脚本不代表已完成公开分发验收。
