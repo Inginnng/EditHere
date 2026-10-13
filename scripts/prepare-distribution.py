@@ -222,6 +222,12 @@ def write_zip(file: Path, entries: dict[str, Path | str]) -> None:
             item = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
             item.compress_type = zipfile.ZIP_DEFLATED
             item.external_attr = (0o100644 << 16)
+            # ZipInfo copies the host OS into create_system (0 on Windows, 3
+            # elsewhere), which is why the same source used to produce different
+            # ZIP bytes per platform. Declare Unix explicitly: it matches the
+            # mode in external_attr and makes the packages byte-identical
+            # everywhere, so a local rebuild reproduces the published SHA-256.
+            item.create_system = 3
             archive.writestr(item, data)
 
 
