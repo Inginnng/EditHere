@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "accountId": 60340799,
+  "signatures": [
+    {
+      "account": {
+        "id": 60340799,
+        "login": "yyyzl"
+      },
+      "agreement": {
+        "version": "2",
+        "sha256": "a8ea87b40183aa8c059a0f1c3841ec33fb7be03756d8fb521c7a10fe208e19f9",
+        "repository": "Inginnng/EditHere",
+        "path": "cla/v2.md",
+        "url": "https://github.com/Inginnng/EditHere/blob/codex/native/cla/v2.md"
+      },
+      "pullRequest": {
+        "id": 4848804759,
+        "number": 16,
+        "url": "https://github.com/Inginnng/EditHere/pull/16",
+        "headSha": "ab5e830b13b531fa48d2459e26e0fc99be487043"
+      },
+      "source": {
+        "eventName": "pull_request_target",
+        "action": "edited",
+        "actorId": 60340799,
+        "eventObjectId": 4848804759,
+        "eventObjectUrl": "https://github.com/Inginnng/EditHere/pull/16",
+        "eventUpdatedAt": "2026-10-13T20:11:57Z",
+        "workflowRunId": 38460914491,
+        "workflowRunAttempt": 1
+      },
+      "signedAt": "2026-10-13T20:12:15.982Z",
+      "acceptedText": "我已阅读并同意 [EditHere 贡献者许可协议 v2](https://github.com/Inginnng/EditHere/blob/codex/native/cla/v2.md)，确认有权提交这些贡献，并授权项目作者按协议进行商业授权及其他许可发布。"
+    }
+  ]
+}
