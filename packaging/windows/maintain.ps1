@@ -45,11 +45,50 @@ function FullPath([string]$path) {
 function IsInside([string]$path,[string]$root) {
     return $path.Equals($root,[StringComparison]::OrdinalIgnoreCase) -or $path.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)
 }
-function Assert-NoReparse([string]$path,[bool]$recursive=$false) {
+function Get-ReparseTag([string]$path) {
+    if (!('EditHere.InstallerReparseInfo' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+namespace EditHere {
+    public static class InstallerReparseInfo {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TagInfo { public uint Attributes; public uint Tag; }
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFileW(string path, uint access,
+            uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandleEx(SafeFileHandle file,
+            int infoClass, out TagInfo info, uint size);
+        public static uint ReadTag(string path) {
+            // 只读取重解析点自身，不跟随链接，也不请求文件内容。
+            using (SafeFileHandle file = CreateFileW(path, 0, 7, IntPtr.Zero, 3,
+                    0x02200000, IntPtr.Zero)) {
+                if (file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+                TagInfo info;
+                if (!GetFileInformationByHandleEx(file, 9, out info, 8))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                return info.Tag;
+            }
+        }
+    }
+}
+'@
+    }
+    return [EditHere.InstallerReparseInfo]::ReadTag($path)
+}
+function Assert-NoReparse([string]$path,[bool]$recursive=$false,[bool]$allowCloud=$false) {
     $cursor=$path
     while ($cursor) {
         if ([IO.File]::Exists($cursor) -or [IO.Directory]::Exists($cursor)) {
-            if (([IO.File]::GetAttributes($cursor) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝重解析目录或文件：$cursor" }
+            if (([IO.File]::GetAttributes($cursor) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                # 仅快捷方式允许 CLOUD 到 CLOUD_F；符号链接、目录联接及未知标记仍拒绝。
+                # 0xFFFF0FFF 屏蔽 CLOUD_MASK，0x9000001A 是 IO_REPARSE_TAG_CLOUD。
+                if (!$allowCloud -or (((Get-ReparseTag $cursor) -band 4294905855L) -ne 2415919130L)) { throw "拒绝重解析目录或文件：$cursor" }
+            }
         }
         $parent=[IO.Path]::GetDirectoryName($cursor)
         if ($parent -eq $cursor) { break }
@@ -70,10 +109,10 @@ function Assert-NoReparse([string]$path,[bool]$recursive=$false) {
         }
     }
 }
-function Atomic-Json([string]$path,$value) {
+function Atomic-Json([string]$path,$value,[bool]$cloudShortcut=$false) {
     $parent=[IO.Path]::GetDirectoryName($path)
     [void][IO.Directory]::CreateDirectory($parent)
-    Assert-NoReparse $parent
+    Assert-NoReparse $parent $false $cloudShortcut
     $temporary=Join-Path $parent ('.'+[IO.Path]::GetFileName($path)+'.'+[guid]::NewGuid().ToString('N')+'.tmp')
     $previous=$temporary+'.previous'
     try {
@@ -209,7 +248,7 @@ function Integrate([string]$operation,[string]$snapshot='') {
 function Shortcut-Snapshot {
     $snapshots=@()
     foreach ($path in $script:shortcutPaths) {
-        Assert-NoReparse $path
+        Assert-NoReparse $path $false $true
         $exists=[IO.File]::Exists($path)
         if ($exists) {
             if ($script:isFixture) { $linked=[string](Read-Json $path).target }
@@ -223,15 +262,16 @@ function Shortcut-Snapshot {
 function Shortcut-Restore($snapshots) {
     foreach ($item in $snapshots) {
         if (@($script:shortcutPaths | Where-Object { $_ -ieq [string]$item.path }).Count -ne 1) { throw '快捷方式快照路径无效。' }
-        Assert-NoReparse ([string]$item.path)
+        Assert-NoReparse ([string]$item.path) $false $true
         if ($item.existed) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($item.path)); [IO.File]::WriteAllBytes($item.path,[Convert]::FromBase64String($item.content)) }
         elseif ([IO.File]::Exists($item.path)) { [IO.File]::Delete($item.path) }
     }
 }
 function Set-Shortcut([string]$path,[string]$executable) {
+    Assert-NoReparse $path $false $true
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
-    Assert-NoReparse $path
-    if ($script:isFixture) { Atomic-Json $path @{target=$executable}; return }
+    Assert-NoReparse $path $false $true
+    if ($script:isFixture) { Atomic-Json $path @{target=$executable} $true; return }
     $shell=New-Object -ComObject WScript.Shell
     $shortcut=$shell.CreateShortcut($path)
     $shortcut.TargetPath=$executable; $shortcut.WorkingDirectory=$script:target
@@ -239,11 +279,11 @@ function Set-Shortcut([string]$path,[string]$executable) {
     if (![IO.File]::Exists($path)) { throw "无法创建快捷方式：$path" }
 }
 function Shortcut-Apply([bool]$uninstall) {
-    if ($uninstall) { foreach ($path in $script:shortcutPaths) { if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) } }; return }
+    if ($uninstall) { foreach ($path in $script:shortcutPaths) { Assert-NoReparse $path $false $true; if ([IO.File]::Exists($path)) { [IO.File]::Delete($path) } }; return }
     Set-Shortcut $script:shortcutPaths[0] (Join-Path $script:target 'EditHere.exe')
     Set-Shortcut $script:shortcutPaths[1] (Join-Path $script:target 'Uninstall.exe')
     if ($Desktop -eq '1') { Set-Shortcut $script:shortcutPaths[2] (Join-Path $script:target 'EditHere.exe') }
-    elseif ([IO.File]::Exists($script:shortcutPaths[2])) { [IO.File]::Delete($script:shortcutPaths[2]) }
+    else { Assert-NoReparse $script:shortcutPaths[2] $false $true; if ([IO.File]::Exists($script:shortcutPaths[2])) { [IO.File]::Delete($script:shortcutPaths[2]) } }
 }
 function Read-Handoff {
     if (!$HandoffId) { return }
