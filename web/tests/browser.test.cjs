@@ -172,7 +172,7 @@ async function run() {
     return data;
   }
   async function downloadBy(selector, name) {
-    if (selector === '#offline') await ensureUtility();
+    if (selector === '#save-project') await ensureUtility();
     if (selector === '#preview') await page.locator('#export').click();
     const pending = page.waitForEvent('download');
     await page.locator(selector).click();
@@ -367,7 +367,8 @@ async function run() {
       assert(enlarged.width > panned.width, 'Ctrl + wheel should enlarge the view');
       assert(Math.abs((anchor.x - enlarged.x) / enlarged.width * 1100 - 100) < 1, 'zoom must retain the image pixel under the pointer');
       assert(Math.abs((anchor.y - enlarged.y) / enlarged.height * 700 - 100) < 1, 'zoom must retain the image pixel under the pointer');
-      await page.locator('#actual-size').click();
+      assert.equal(await page.locator('#actual-size').count(), 0);
+      await page.keyboard.press('1');
       const actual = await page.locator('#stage').boundingBox();
       assert(Math.abs(actual.width - 1100) < 1 && Math.abs(actual.height - 700) < 1, JSON.stringify(actual));
       await page.locator('#fit').click();
@@ -557,9 +558,13 @@ async function run() {
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
       assert.deepEqual(await readFeedback(), feedback);
     });
-    await checkpoint('downloaded offline HTML independently reopens and edits', async () => {
-      const offline = await downloadBy('#offline', 'EditHere-downloaded.html');
-      const fresh = await context.newPage(); await fresh.goto(pathToFileURL(offline).href);
+    await checkpoint('distributed offline HTML independently reopens, edits and restores a project', async () => {
+      assert.equal(await page.locator('#offline').count(), 0);
+      const saved = await savedProject('offline-reopen-project.json');
+      const expected = await readFeedback();
+      const fresh = await context.newPage(); fresh.on('dialog', dialog => dialog.accept()); await fresh.goto(pathToFileURL(bundle).href);
+      assert.equal(await fresh.locator('#offline').count(), 0);
+      assert.equal(await fresh.locator('#actual-size').count(), 0);
       assert(await fresh.locator('#empty').isVisible());
       const base64 = fs.readFileSync(path.join(output, 'image-annotations.png')).toString('base64');
       await fresh.evaluate(encoded => {
@@ -573,7 +578,10 @@ async function run() {
       await ensureGlobal(fresh); await fresh.locator('#global').click(); await fresh.locator('#note-text').fill('离线文件里的新批注');
       await fresh.locator('#note-form [type="submit"]').click();
       assert.equal(await fresh.locator('#count').textContent(), '1');
-      await fresh.screenshot({ path: path.join(output, '05-downloaded-offline.png'), fullPage: true });
+      await fresh.locator('#file-input').setInputFiles(saved.filename);
+      await fresh.waitForFunction(() => document.body.dataset.busy !== 'true');
+      assert.deepEqual(await readFeedback(fresh), expected);
+      await fresh.screenshot({ path: path.join(output, '05-offline-project-restored.png'), fullPage: true });
       await fresh.close();
     });
     await checkpoint('390px mobile home has no horizontal overflow', async () => {
@@ -616,7 +624,7 @@ async function run() {
                 const element = document.querySelector(selector);
                 return rendered(element) ? { selector, ...rectangle(element) } : null;
               }).filter(Boolean);
-              const selectors = ['#open', '#save-project', '#export', '#fit', '#inspect-toggle'];
+              const selectors = ['#open', '#save-json', '#export', '#fit', '#inspect-toggle'];
               if (!document.querySelector('#video-controls').hidden) selectors.push('#play', '#timeline', '#relink');
               if (document.body.dataset.inspectorOpen === 'true') selectors.push('#panel-close');
               const buttons = selectors.map(selector => {
@@ -740,7 +748,7 @@ async function run() {
               assert(Math.min(stage.right, layer.right) - Math.max(stage.x, layer.x) <= 1 || Math.min(stage.bottom, layer.bottom) - Math.max(stage.y, layer.y) <= 1,
                 'material is hidden under ' + layer.selector + ': ' + label);
             }
-            for (const selector of ['#open', '#save-project', '#export', '#fit', '#inspect-toggle']) {
+            for (const selector of ['#open', '#save-json', '#export', '#fit', '#inspect-toggle']) {
               assert(await workspace.locator(selector).isVisible() && await workspace.locator(selector).isEnabled(), 'material makes a core action unavailable: ' + label);
             }
             await workspace.locator('#export').click();

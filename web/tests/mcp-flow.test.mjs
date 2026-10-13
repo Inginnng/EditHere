@@ -30,15 +30,26 @@ async function connect() {
 }
 const appBridge = await build({stdin:{contents:`
   import {AppBridge,PostMessageTransport} from '@modelcontextprotocol/ext-apps/app-bridge';
-  window.installView=async ({html,result,arguments:args,messageSupported=true})=>{
+  window.installView=async ({html,result,arguments:args,messageSupported=true,allowExpansion=true})=>{
     if(window.bridge){await window.bridge.teardownResource({});await window.bridge.close();}
     const old=document.querySelector('iframe');if(old)old.remove();
     const frame=document.createElement('iframe');frame.style='width:100%;height:100%;border:0';
     frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-downloads');document.body.appendChild(frame);
-    window.messages=[];window.calls=[];window.rejectMessage=false;window.loseSaveReply=false;
+    window.messages=[];window.calls=[];window.callErrors=[];window.displayRequests=[];window.rejectMessage=false;window.loseSaveReply=false;
+    window.holdNextDraftReply=false;window.releaseDraftReply=null;window.draftReplyReleased=false;
     const capabilities={serverTools:{},...(messageSupported?{message:{text:{}}}:{})};
-    const bridge=window.bridge=new AppBridge(null,{name:'Official SDK reference host',version:'1.0.0'},capabilities);
+    const bridge=window.bridge=new AppBridge(null,{name:'Official SDK reference host',version:'1.0.0'},capabilities,
+      {hostContext:{displayMode:'inline',availableDisplayModes:['inline','fullscreen']}});
+    bridge.onrequestdisplaymode=async ({mode})=>{
+      window.displayRequests.push(mode);
+      const actual=allowExpansion?mode:'inline';
+      bridge.setHostContext({displayMode:actual,availableDisplayModes:['inline','fullscreen']});
+      return {mode:actual};
+    };
     bridge.oncalltool=async params=>{window.calls.push(params.name);const response=await window.hostCallTool(params);
+      if(response.isError)window.callErrors.push({name:params.name,content:response.content});
+      if(params.name==='edithere_web_draft'&&window.holdNextDraftReply){window.holdNextDraftReply=false;
+        await new Promise(resolve=>window.releaseDraftReply=resolve);window.draftReplyReleased=true;}
       if(params.name==='edithere_web_submit'&&window.loseSaveReply){window.loseSaveReply=false;throw new Error('Simulated lost save ACK');}return response;};
     bridge.onmessage=async params=>{if(window.rejectMessage)return {isError:true};window.messages.push(params);return {};};
     bridge.oninitialized=async()=>{await bridge.sendToolInput({arguments:args});await bridge.sendToolResult(result);};
@@ -56,11 +67,16 @@ await page.exposeFunction('hostCallTool', async params=>{
   catch(error){return {isError:true,content:[{type:'text',text:error.message}]};}
 });
 const hash = file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-async function open(args) {
+async function open(args,{damageInlineImage=false}={}) {
   const result=await client.callTool({name:'edithere_web_open',arguments:args});
   assert(!result.isError, JSON.stringify(result.content));
   const resource=await client.readResource({uri:'ui://edithere/annotation.html'});
-  await page.evaluate(value=>window.installView(value),{html:resource.contents[0].text,result,arguments:args});
+  const uiResult=structuredClone(result);
+  if(damageInlineImage){
+    assert.equal(typeof uiResult._meta.edithere.image,'string');
+    uiResult._meta.edithere.image='data:image/png;base64,broken';
+  }
+  await page.evaluate(value=>window.installView(value),{html:resource.contents[0].text,result:uiResult,arguments:args});
   const frame=page.frameLocator('iframe');
   await frame.locator('#workspace').waitFor({state:'visible'});
   return {frame,result};
@@ -93,16 +109,57 @@ try {
   await connect();await page.goto('http://127.0.0.1:'+server.address().port);
   const tools=await client.listTools();
   assert.equal(tools.tools.find(t=>t.name==='edithere_web_open')._meta.ui.resourceUri,'ui://edithere/annotation.html');
-  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试'});
+  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试'},{damageInlineImage:true});
   const sessionId=view.result.structuredContent.sessionId;
+  await view.frame.locator('body[data-mcp-display-request="accepted"]').waitFor();
+  await view.frame.locator('body[data-image-state="ready"]').waitFor();
+  assert.equal(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.project().document.image),view.result._meta.edithere.image);
+  assert((await page.evaluate(()=>window.calls)).includes('edithere_web_image'));
+  checks.push('Original image loads through app-only chunks even when the agent result contains a damaged image encoding');
+  for(const width of [480,375,320,560]){
+    await page.setViewportSize({width,height:720});
+    await view.frame.locator('body').evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const header=await view.frame.locator('.header').evaluate(element=>{
+      const rect=element.getBoundingClientRect();
+      return {height:rect.height,y:rect.y,width:innerWidth,islands:Array.from(element.children).map(island=>{
+        const r=island.getBoundingClientRect();return {y:r.y,height:r.height,right:r.right};
+      })};
+    });
+    assert(header.islands.every(island=>Math.abs(island.y-header.y)<1&&Math.abs(island.height-header.height)<1&&island.right<=header.width),'MCP header must remain one aligned row at '+width+'px');
+    if(width===480)assert(await view.frame.locator('#export span').isVisible(),'Feedback text remains visible at a typical narrow Agent panel width');
+  }
+  checks.push('MCP feedback and zoom controls share one row at 320–560px; the feedback label remains readable at 480px');
+  assert.deepEqual(await page.evaluate(()=>window.displayRequests),['fullscreen']);
+  await page.evaluate(()=>window.bridge.setHostContext({displayMode:'inline',availableDisplayModes:['inline','fullscreen']}));
+  await view.frame.locator('body[data-mcp-display-mode="inline"]').waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.displayRequests),['fullscreen']);
+  checks.push('One expanded-display request through the official bridge; user collapse is respected');
   assert(!fs.existsSync(outputPath));
   assert.equal(await view.frame.locator('#canvas').evaluate(c=>c.width),await view.frame.locator('#canvas').evaluate(c=>EditHereWeb.project().width));
-  await globalNote(view.frame,'游戏主页：让开始按钮更醒目');
+  stage='stale draft ACK';
+  await page.evaluate(()=>window.holdNextDraftReply=true);
+  await globalNote(view.frame,'游戏主页：开始按钮初稿');
+  await page.waitForFunction(()=>typeof window.releaseDraftReply==='function');
+  const oldRevision=await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.projectRevision());
+  await view.frame.locator('.note-card [data-edit]').click();
+  await view.frame.locator('#note-text').fill('游戏主页：让开始按钮更醒目');
+  await view.frame.locator('#note-text').press('Control+Enter');
+  await view.frame.locator('#note-dialog').waitFor({state:'hidden'});
+  assert(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.projectRevision())>oldRevision);
+  await page.evaluate(()=>window.releaseDraftReply());
+  await page.waitForFunction(()=>window.draftReplyReleased);
+  await view.frame.locator('body').evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))));
+  assert.equal(await view.frame.locator('body').getAttribute('data-draft-state'),'unsaved','a stale save ACK must not mark a newer editing revision as saved');
+  checks.push('A delayed draft ACK leaves a newer editing revision unsaved until its own save completes');
   await movementNote(view.frame);
   // Wait for a real persisted draft, then replace the MCP process and iframe.
+  const savedDraftContainsEdits=()=>{
+    const notes=JSON.parse(fs.readFileSync(path.join(data,sessionId+'.json'),'utf8')).draft?.document?.notes||[];
+    return ['游戏主页：让开始按钮更醒目','这个组件右移，并保留位移箭头批注'].every(text=>notes.some(note=>note.text===text));
+  };
   const deadline=Date.now()+10000;
-  while(Date.now()<deadline){const value=JSON.parse(fs.readFileSync(path.join(data,sessionId+'.json'),'utf8'));if(value.draft?.document?.notes?.length)break;await new Promise(r=>setTimeout(r,100));}
-  assert(JSON.parse(fs.readFileSync(path.join(data,sessionId+'.json'),'utf8')).draft.document.notes.length);
+  while(Date.now()<deadline&&!savedDraftContainsEdits())await new Promise(r=>setTimeout(r,100));
+  assert(savedDraftContainsEdits(),'both latest annotations must reach disk before testing a process restart');
   stage='restart after draft';
   await page.waitForFunction(()=>document.querySelector('iframe')?.contentDocument?.body.dataset.draftState==='saved');
   await page.evaluate(()=>window.bridge.teardownResource({}));
@@ -142,23 +199,41 @@ try {
   // UI capability fallback: a host without ui/message still preserves feedback.
   const reopenResult=await client.callTool({name:'edithere_web_open',arguments:{sessionId}});
   const resource=await client.readResource({uri:'ui://edithere/annotation.html'});
-  await page.evaluate(value=>window.installView(value),{html:resource.contents[0].text,result:reopenResult,arguments:{sessionId},messageSupported:false});
+  await page.evaluate(value=>window.installView(value),{html:resource.contents[0].text,result:reopenResult,arguments:{sessionId},messageSupported:false,allowExpansion:false});
   view.frame=page.frameLocator('iframe');await view.frame.locator('#workspace').waitFor({state:'visible'});
+  await view.frame.locator('body[data-mcp-display-request="declined"]').waitFor();
+  assert.equal(await view.frame.locator('body').getAttribute('data-mcp-display-mode'),'inline');
+  assert.deepEqual(await page.evaluate(()=>window.displayRequests),['fullscreen']);
+  checks.push('Host refusal leaves a usable inline editor without repeat expansion requests');
   assert((await view.frame.locator('#toast').textContent()).includes('保存'));
   assert.equal(hash(outputPath),savedHash);
   checks.push('Completed feedback reopens with a manual fallback when the host has no message capability');
 
-  // The in-app download is still an ordinary self-contained offline HTML file.
-  if(await view.frame.locator('#utility-toggle').isVisible())await view.frame.locator('#utility-toggle').click();
-  const downloadPromise=page.waitForEvent('download');await view.frame.locator('#offline').click();
+  // Saved feedback can be backed up manually even when chat delivery is unsupported.
+  assert.equal(await view.frame.locator('#offline').count(),0);
+  assert.equal(await view.frame.locator('#actual-size').count(),0);
+  if(await view.frame.locator('body').getAttribute('data-save-mode')!=='file'){
+    await view.frame.locator('#save-options-toggle').click();
+    await view.frame.locator('#save-options [data-save-mode="file"]').click();
+  }
+  const downloadPromise=page.waitForEvent('download');await view.frame.locator('#save-json').click();
   const download=await downloadPromise,stream=await download.createReadStream(),chunks=[];
   for await(const chunk of stream)chunks.push(chunk);
-  const offline=Buffer.concat(chunks).toString('utf8');
-  assert.doesNotMatch(offline,/<script\b[^>]*\bdata-edithere-mcp-bridge\b/);assert(offline.includes("connect-src 'none'"));
-  checks.push('Offline download removes the host bridge and requires no service or npm');
+  const backup=Buffer.concat(chunks).toString('utf8');
+  assert.equal(await download.failure(),null);
+  assert.deepEqual(JSON.parse(backup),expected,'manual JSON backup preserves the complete saved feedback and original image');
+  assert.equal(hash(outputPath),savedHash);
+  checks.push('Manual JSON backup preserves completed native feedback without resubmitting or changing the receipt');
   assert.deepEqual(errors,[]);
   await page.screenshot({path:path.join(output,'mcp-reference-host-560x720.png')});
   fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:checks.length,checks,sha256:savedHash},null,2));
   console.log(checks.map(value=>'PASS '+value).join('\n'));
-} catch(error){console.error('MCP flow failed at: '+stage);throw error;}
+} catch(error){
+  console.error('MCP flow failed at: '+stage);
+  console.error(JSON.stringify(await page.evaluate(()=>{
+    const body=document.querySelector('iframe')?.contentDocument?.body;
+    return {state:body?.dataset,toast:body?.querySelector('#toast')?.textContent,calls:window.calls,callErrors:window.callErrors};
+  })));
+  throw error;
+}
 finally {await client?.close();await browser.close();await new Promise(resolve=>server.close(resolve));}

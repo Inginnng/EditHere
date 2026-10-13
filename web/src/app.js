@@ -10,9 +10,6 @@
   const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
   const contains = (r,p) => p.x >= r.x1 && p.x < r.x2 && p.y >= r.y1 && p.y < r.y2;
   const timeText = seconds => {const ms=Math.max(0,Math.round((seconds||0)*1000));return String(Math.floor(ms/60000)).padStart(2,'0')+':'+String(Math.floor(ms/1000)%60).padStart(2,'0')+'.'+String(ms%1000).padStart(3,'0');};
-  const offlineRoot = document.documentElement.cloneNode(true);
-  offlineRoot.querySelectorAll('script[data-edithere-mcp-bridge]').forEach(script=>script.remove());
-  const offlineHTML = '<!doctype html>\n' + offlineRoot.outerHTML.replace("connect-src 'self'", "connect-src 'none'");
   const video = $('video'), canvas = $('canvas'), stage = $('stage'), ctx = canvas.getContext('2d');
   let session = null, doc = null, mode = 'smart', selected = null, selectedNote = null, zoom = 1, fitMode = true;
   let agentBound = false, projectRevision = 0;
@@ -21,7 +18,7 @@
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
   let panX = 0, panY = 0, pan = null, spaceDown = false, spaceUsed = false, annotationsVisible = true, hoveredMovement = null;
-  let suppressPinClickUntil = 0, componentWheel = null, exportData = null;
+  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null;
   let seeking = false, presentedTime = null, frameCallback = null, linkSignature = null, detectionId = 0;
   const histories = new WeakMap(), detections = new WeakMap(), pendingDetections = new Map();
   let worker;
@@ -93,7 +90,7 @@
     panX=at.x-(at.x-panX)*factor;panY=at.y-(at.y-panY)*factor;zoom=next;fitMode=false;resizeStage();
   }
   function changeMode(value) {if(drag)cancelDrag();mode=value;hover=null;hoveredMovement=null;selectedNote=null;document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});stage.style.cursor=spaceDown||mode==='pan'?'grab':mode==='select'?'default':'crosshair';$('hint').textContent=({select:doc?.layout?'拖动或八向缩放 · Ctrl / ⌘ 多选 · 组件上滚轮缩放':'拖动批注调整位置 · 点击编号编辑文字',smart:'悬停选块 · 滚轮切换大小 · 拖动手动框选',point:'点一下，精确指向一个像素',rect:'拖出范围，写下修改意见',cut:'拖出组件范围，再拖动或缩放',pan:'拖动自由画布 · 滚轮缩放 · 0 适应画面'})[mode];render();}
-  function activate() {endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
+  function activate() {endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('save-json').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
   function releaseVideo() {if(frameCallback!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(frameCallback);frameCallback=null;video.pause();video.removeAttribute('src');video.load();if(mediaURL)URL.revokeObjectURL(mediaURL);mediaURL=null;presentedTime=null;linkSignature=null;seeking=false;}
   function replaceOK() {if(agentBound){notify('当前素材由 AI 批注会话传入；完成或取消后再打开其他素材');return false;}return !dirty||confirm('当前编辑还没有保存。要替换素材吗？可先取消并保存项目。');}
   async function openImage(file) {const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);const c=makeCanvas(image.naturalWidth,image.naturalHeight);c.getContext('2d').drawImage(image,0,0);const data=c.toDataURL('image/png'),decoded=await decode(data);releaseVideo();session={kind:'image',name:file.name||'粘贴的图片',width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(decoded,data)};doc=session.document;activate();detect(doc);}finally{URL.revokeObjectURL(url);}}
@@ -177,7 +174,7 @@
   }
   function renderNotes() {
     const entries=noteEntries();$('count').textContent=entries.length;globalThis.EditHereChrome?.refreshCount(entries.length);
-    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注">×</button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
+    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注">×</button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
@@ -347,21 +344,82 @@
   $('gh').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gw').value=Math.max(1,Math.round(Number($('gh').value)*(b.x2-b.x1)/(b.y2-b.y1)));}};
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
-  if($('actual-size'))$('actual-size').onclick=()=>setZoom(1);
   function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
   function exportDoc(d,embed=true) {return F.exportImage(feedbackDocument(d),embed);}
   function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);return F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed);}
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
-  function refreshExport() {exportData=feedback($('embed').checked);$('json-preview').value=F.preview(exportData);$('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和下载包含完整图片。':'不包含图片。请把原图或对应帧截图一起交给 AI。';}
-  $('export').onclick=()=>{try{refreshExport();$('export-dialog').showModal();}catch(error){notify(error.message);}};$('embed').onchange=refreshExport;
-  $('download-json').onclick=()=>download(baseName()+'-feedback.json',new Blob([F.serialize(exportData)],{type:'application/json'}));
-  $('copy-json').onclick=async()=>{const complete=F.serialize(exportData);try{await navigator.clipboard.writeText(complete);$('export-hint').textContent='反馈 JSON 已复制';}catch{$('json-preview').value=complete;$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='请按 Ctrl+C / ⌘C 复制选中的完整 JSON';}};
+  const saveModes={file:{label:'保存 JSON 文件',icon:'#i-download'},content:{label:'复制 JSON 内容',icon:'#i-copy'},project:{label:'保存项目',icon:'#i-save'},view:{label:'查看 JSON 文件',icon:'#i-json'}};
+  const preference=(key,fallback)=>{try{return localStorage.getItem('edithere.'+key)??fallback;}catch{return fallback;}};
+  const rememberPreference=(key,value)=>{try{localStorage.setItem('edithere.'+key,value);}catch{/* This view still remembers its selection when host storage is unavailable. */}};
+  let saveMode=preference('saveMode','file');if(!saveModes[saveMode])saveMode='file';
+  $('embed').checked=preference('includeImage','true')!=='false';
+  function chooseSaveMode(mode) {
+    saveMode=mode;rememberPreference('saveMode',mode);
+    $('save-json').querySelector('use').setAttribute('href',saveModes[mode].icon);
+    $('save-json').title=saveModes[mode].label+' (Ctrl / ⌘ + S)';$('save-json').setAttribute('aria-label',saveModes[mode].label);
+    document.body.dataset.saveMode=mode;
+    for(const option of $('save-options').querySelectorAll('[data-save-mode]'))option.setAttribute('aria-checked',String(option.dataset.saveMode===mode));
+    window.dispatchEvent(new Event('edithere:layout'));
+  }
+  function closeSaveOptions(focus=false) {$('save-options').hidden=true;$('save-options-toggle').setAttribute('aria-expanded','false');if(focus)$('save-options-toggle').focus();}
+  function refreshExport() {
+    const embed=$('embed').checked;
+    // Reuse one snapshot across file and clipboard delivery, including video
+    // export time, and avoid re-encoding large images until the editing changes.
+    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.embed!==embed){
+      exportData=feedback(embed);exportText=F.serialize(exportData);
+      exportCache={session,revision:projectRevision,embed,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
+    }
+    $('json-preview').value=exportCache.preview;
+    const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
+    $('json-summary').textContent=summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
+    $('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和文件保存包含完整原图。':'不包含图片，内容更小。仅用于 Agent 已持有同一原图；否则请同时附上原图或对应帧截图。此文件不能单独恢复画面。';
+  }
+  function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
+  function saveJsonFile() {
+    refreshExport();download(baseName()+'-feedback.json',new Blob([exportText],{type:'application/json'}));
+    $('export-hint').textContent='已发起 JSON 文件下载；完成后将文件交给 Agent';notify('已发起 JSON 文件下载');
+  }
+  async function copyJson() {
+    refreshExport();const complete=exportText;
+    try{await navigator.clipboard.writeText(complete);$('export-hint').textContent='完整反馈 JSON 已复制';notify('JSON 内容已复制，可粘贴到 Agent 对话');}
+    catch{openExport();$('json-preview').value=complete;$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='剪贴板不可用。请按 Ctrl+C / ⌘C 复制选中的完整 JSON，或保存 JSON 文件';}
+  }
+  async function performSave() {if(!session)return;try{if(saveMode==='project')$('save-project').click();else if(saveMode==='content')await copyJson();else if(saveMode==='view')openExport();else saveJsonFile();}catch(error){notify(error.message);}}
+  chooseSaveMode(saveMode);
+  // Keep the popup outside the backdrop-filtered header, which otherwise
+  // changes the containing block for fixed positioning in narrow panels.
+  document.body.append($('save-options'));
+  function placeSaveOptions() {
+    if($('save-options').hidden)return;
+    const anchor=$('save-options-toggle').getBoundingClientRect(),menu=$('save-options').getBoundingClientRect();
+    $('save-options').style.left=Math.max(10,Math.min(anchor.right-menu.width,innerWidth-menu.width-10))+'px';
+    $('save-options').style.top=anchor.bottom+8+'px';
+  }
+  $('save-json').onclick=performSave;
+  $('save-options-toggle').onclick=()=>{
+    const open=$('save-options').hidden;$('save-options').hidden=!open;$('save-options-toggle').setAttribute('aria-expanded',String(open));
+    if(open){placeSaveOptions();$('save-options').querySelector('[data-save-mode="'+saveMode+'"]').focus();}
+  };
+  for(const option of $('save-options').querySelectorAll('[data-save-mode]'))option.onclick=()=>{chooseSaveMode(option.dataset.saveMode);closeSaveOptions();$('save-json').focus();};
+  $('save-options').onkeydown=event=>{
+    const options=[...$('save-options').querySelectorAll('[role^="menuitem"]')],at=options.indexOf(document.activeElement);
+    if(event.key==='Escape'){event.preventDefault();closeSaveOptions(true);}
+    else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();options[event.key==='Home'?0:event.key==='End'?options.length-1:(at+(event.key==='ArrowDown'?1:-1)+options.length)%options.length].focus();}
+    else if(event.key==='Tab')closeSaveOptions();
+  };
+  window.addEventListener('resize',placeSaveOptions);
+  document.addEventListener('pointerdown',event=>{if(!event.target.closest('.save-control,#save-options'))closeSaveOptions();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSaveOptions();});
+  $('export').onclick=openExport;
+  $('embed').onchange=()=>{rememberPreference('includeImage',String($('embed').checked));refreshExport();};
+  $('download-json').onclick=()=>{chooseSaveMode('file');saveJsonFile();};
+  $('copy-json').onclick=()=>{chooseSaveMode('content');copyJson();};
   function serializedDoc(d) {return {id:d.id,timestampUs:d.timestampUs,image:d.data,notes:clone(d.notes),layout:clone(d.layout)};}
   function project() {return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:session.kind,name:session.name,width:session.width,height:session.height,...(session.kind==='image'?{document:serializedDoc(session.document)}:{video:clone(session.video),signature:clone(session.signature),frames:session.frames.filter(hasContent).map(serializedDoc)})};}
-  $('save-project').onclick=()=>{download(baseName()+'.edithere-web.json',jsonBlob(project()));dirty=false;notify(session.kind==='video'?'项目已下载；重开后重新选择源视频即可继续播放':'项目已下载，包含原图、批注和组件布局');};
-  $('offline').onclick=()=>{download('EditHere.html',new Blob([offlineHTML],{type:'text/html;charset=utf-8'}));notify('离线 HTML 已下载；编辑内容请另存项目');};
+  $('save-project').onclick=()=>{try{download(baseName()+'.edithere-web.json',jsonBlob(project()));dirty=false;notify(session.kind==='video'?'已发起项目下载；重开后重新选择源视频即可继续播放':'已发起项目下载，包含原图、批注和组件布局');}catch(error){notify(error.message);}};
   $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(doc.layout)L.paint(p,doc.image,doc.layout);else p.drawImage(doc.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers();p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
     for(const m of markers){const {start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);if(length<.0001)continue;const ux=dx/length,uy=dy/length,head=Math.min(9*line,length*.35);p.strokeStyle='white';p.lineWidth=4*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.stroke();p.strokeStyle='#346df1';p.lineWidth=1.5*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.moveTo(end.x-ux*head-uy*head*.5,end.y-uy*head+ux*head*.5);p.lineTo(end.x,end.y);p.lineTo(end.x-ux*head+uy*head*.5,end.y-uy*head-ux*head*.5);p.stroke();p.fillStyle='white';p.beginPath();p.arc(start.x,start.y,3*line,0,Math.PI*2);p.fill();p.stroke();}
     p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries().entries()){if(n.draft)continue;const r=noteRect(n);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
@@ -468,10 +526,10 @@
   document.addEventListener('keydown',event=>{
     if(event.target.closest('textarea,input,dialog'))return;
     const ctrl=event.ctrlKey||event.metaKey,key=event.key.toLowerCase();
-    if(document.body.dataset.agentLocked==='true'){if(ctrl&&key==='s'){event.preventDefault();$('save-project').click();}else if(ctrl&&key==='e'){event.preventDefault();$('export').click();}return;}
+    if(document.body.dataset.agentLocked==='true'){if(ctrl&&key==='s'){event.preventDefault();$(event.shiftKey?'save-project':'save-json').click();}else if(ctrl&&key==='e'){event.preventDefault();$('export').click();}return;}
     if(busy){if(ctrl&&['o','s','e','z','y'].includes(key)||['v','b','p','r','c','h','0','1','+','=','-','escape','delete','backspace','arrowleft','arrowright','arrowup','arrowdown',' '].includes(key))event.preventDefault();return;}
     if(ctrl&&key==='o'){event.preventDefault();$('open').click();return;}if(!session)return;
-    if(ctrl&&key==='s'){event.preventDefault();$('save-project').click();return;}
+    if(ctrl&&key==='s'){event.preventDefault();$(event.shiftKey?'save-project':'save-json').click();return;}
     if(ctrl&&key==='e'){event.preventDefault();$('export').click();return;}
     if(ctrl&&(key==='z'||key==='y')){event.preventDefault();travelHistory(key==='y'||event.shiftKey?'redo':'undo');return;}
     if(key==='0'){event.preventDefault();viewportFit();return;}if(key==='1'&&!ctrl){event.preventDefault();setZoom(1);return;}

@@ -3,7 +3,13 @@
 // folds image payloads and is never an authoritative serialization fixture.
 const assert = require('node:assert/strict');
 
+async function ensureUtility(page) {
+  const toggle = page.locator('#utility-toggle');
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+}
+
 async function downloadText(page, selector = '#download-json') {
+  if (selector === '#save-project') await ensureUtility(page);
   const pending = page.waitForEvent('download');
   await page.locator(selector).click();
   const download = await pending;
@@ -19,4 +25,4 @@ async function readExportJson(page) {
   return JSON.parse(await downloadText(page));
 }
 
-module.exports = { downloadText, readExportJson };
+module.exports = { downloadText, readExportJson, ensureUtility };

@@ -80,6 +80,16 @@
   function serialize(feedback) {
     return JSON.stringify(ordered(feedback)) + '\n';
   }
+  // Display-only metadata: the native feedback itself retains its exact keys,
+  // array order and fractional coordinates. Both delivery modes use serialize.
+  function summary(feedback,serialized=serialize(feedback)) {
+    const objects=feedback.objects;
+    const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
+    const byteLength=value=>new TextEncoder().encode(value).byteLength;
+    return {objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
+      movements:objects.reduce((sum,object)=>sum+object.movements.length,0),
+      bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
+  }
   const foldedImage = image => image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]';
 
   // The desktop export dialog folds image bytes only in its readable preview.
@@ -106,5 +116,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview};
+  return {exportImage, exportVideo, serialize, preview, summary};
 });
