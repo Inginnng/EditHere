@@ -119,13 +119,30 @@ function runScenario(pkg, workDir, capabilities, openArgs, timeoutMs = 60000, re
   });
 }
 
-function checkCommon(pkg, layout) {
+/** 内嵌图标集随包发出时，其许可必须一起发出；未内嵌的版本不做要求。
+ *  0.11.1 起 web 构建从 assets/ui-icons 取图标，构建清单里会出现这些源文件。 */
+function checkIconLicense(pkg, required) {
+  const license = path.join(pkg, 'licenses/ui-icons/LICENSE');
+  if (fs.existsSync(license)) {
+    check('共享图标许可非空', fs.statSync(license).size > 0, fs.statSync(license).size + ' 字节');
+  } else if (required) {
+    check('共享图标许可随包发出', false, '构建清单含 assets/ui-icons 源文件');
+  } else {
+    skip('共享图标许可（本版 web 构建未内嵌共享图标集）');
+  }
+}
+
+function manifestIconSources(pkg) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(pkg, 'web/mcp/build-info.json'), 'utf8'));
+    return Object.keys(manifest.sources || {}).some((name) => name.startsWith('assets/ui-icons/'));
+  } catch { return false; }
+}
+
+function checkCommon(pkg) {
   const files = ['LICENSE', 'LICENSING.md', 'NOTICE', 'TRADEMARK-POLICY.md', 'COMMERCIAL-LICENSE.md',
-                 'packaging/THIRD-PARTY-NOTICES.md', 'licenses/ui-icons/LICENSE', 'build-info.json', 'README.md'];
+                 'packaging/THIRD-PARTY-NOTICES.md', 'build-info.json', 'README.md'];
   for (const relative of files) check(`包内存在 ${relative}`, fs.existsSync(path.join(pkg, relative)));
-  const iconLicense = path.join(pkg, 'licenses/ui-icons/LICENSE');
-  check('共享图标许可非空', fs.existsSync(iconLicense) && fs.statSync(iconLicense).size > 0,
-        fs.existsSync(iconLicense) ? fs.statSync(iconLicense).size + ' 字节' : '缺失');
 
   let stamp = null;
   try { stamp = JSON.parse(fs.readFileSync(path.join(pkg, 'build-info.json'), 'utf8')); } catch {}
@@ -159,9 +176,11 @@ function checkOffline(pkg) {
   check('离线包不含 AI-SETUP 指南', !fs.existsSync(path.join(pkg, 'AI-SETUP.md')));
   const readme = fs.readFileSync(path.join(pkg, 'README.md'), 'utf8');
   check('离线包 README 说明无需 Node.js', /无需\s*Node\.js/.test(readme) && /web-agent/.test(readme));
+  checkIconLicense(pkg, false);
 }
 
 function checkAgent(pkg, stamp) {
+  checkIconLicense(pkg, manifestIconSources(pkg));
   for (const relative of ['AI-SETUP.md', 'AI-SETUP.en.md',
                           'web/EditHere.html', 'web/EditHere.mcp.html', 'web/MCP-THIRD-PARTY-NOTICES.md',
                           'web/install-skill.cjs', 'web/agent.cjs', 'web/agent-session.cjs',
@@ -283,7 +302,7 @@ async function checkMcp(pkg, work, image) {
     check('包结构可识别（offline 或 web-agent）', isAgent || isOffline,
           isAgent ? 'web-agent' : isOffline ? 'offline' : '既不是 EditHere-web.zip 也不是 EditHere-web-agent.zip');
     if (!isAgent && !isOffline) throw new Error('无法识别包类型');
-    const stamp = checkCommon(pkg, isAgent ? 'agent' : 'offline');
+    const stamp = checkCommon(pkg);
     if (isAgent) {
       const installed = checkAgent(pkg, stamp);
       work = installed.work;
