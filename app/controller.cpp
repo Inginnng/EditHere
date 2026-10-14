@@ -19,6 +19,9 @@
 #include "settingsdialog.h"
 #include "ui.h"
 #include "updatechecker.h"
+#ifdef Q_OS_MACOS
+#include "trayeventguard_mac.h"
+#endif
 #include <QApplication>
 #include <QClipboard>
 #include <QMenu>
@@ -79,7 +82,13 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     tray_.setContextMenu(menu);
     retranslate();
     updateTrayShortcut();
-    tray_.show();
+#ifdef Q_OS_MACOS
+    QString trayGuardError;
+    if (!installCocoaTrayEventGuard(&trayGuardError))
+        diagnostics::write(diagnostics::Level::Error, "startup.tray_guard", trayGuardError);
+    else
+#endif
+        tray_.show();
 #ifdef Q_OS_LINUX
     connect(&editor_, &Editor::hiddenToTray, this, [] {
         if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable())
@@ -276,6 +285,12 @@ void Controller::showGuide() {
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
     if (!background)
         scheduleStartupUpdate();
+#ifdef Q_OS_MACOS
+    // An unsupported Qt delegate must leave an entry point while the unsafe tray
+    // is hidden, including when the application was launched at login.
+    if (!tray_.isVisible())
+        editor_.show();
+#endif
 #ifdef Q_OS_LINUX
     // GNOME may have no tray host. Keep a visible entry point in that case.
     if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)

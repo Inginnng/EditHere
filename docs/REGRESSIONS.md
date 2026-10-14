@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## macOS 菜单栏事件兼容
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-178 | [Issue #11](https://github.com/Inginnng/EditHere/issues/11)：macOS 27 菜单栏控件改由手势识别器驱动，菜单开始跟踪时 `NSApp.currentEvent` 可能为 `KitDefined`。Qt 6.8.3 的 Cocoa 托盘委托直接读取 `clickCount`，AppKit 抛异常后程序 abort；[Qt 上游](https://github.com/qt/qtbase/blob/dev/src/plugins/platforms/cocoa/qcocoasystemtrayicon.mm) 已检查事件类型。应用仅包装该 Qt 委托的两个激活回调，非鼠标事件跳过点击解析，鼠标事件仍交给原实现，原生菜单跟踪不变。安装时核对 Qt 6.8、委托类与方法签名，不兼容时隐藏托盘并显示编辑窗口、记录诊断；不修改 `NSEvent` 全局方法 | macOS `cocoa-tray`：真实 Qt 回调及 `KitDefined` 负对照、非鼠标/空事件、鼠标单击/双击/右击、重复安装、原生菜单打开与动作。Windows 不执行 Objective-C++；macOS 15 CI 注入同型事件验证崩溃路径，macOS 27 菜单栏手势仍需实机复测 | ⚠️ |
+
 ## 共享图标与状态（0.11.1）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
