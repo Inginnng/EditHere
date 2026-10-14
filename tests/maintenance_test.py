@@ -142,6 +142,71 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual((self.target / "user.edithere").read_bytes(), b"unique user project")
         self.assertEqual(self.integration.read_bytes(), self.original_integration)
 
+    @contextmanager
+    def cloud_desktop(self):
+        """仅在隔离目录模拟云标记；实际云标记读取另有只读测试。"""
+        desktop = self.work / 'Shell/Desktop'
+        desktop.parent.mkdir(exist_ok=True)
+        storage = self.work / 'cloud-storage'
+        storage.mkdir()
+        result = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(desktop), str(storage)],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        worker = self.worker / 'maintain.ps1'
+        source = worker.read_text(encoding='utf-8-sig')
+        marker = '\ntry {\n    $script:target=FullPath $InstallDirectory'
+        self.assertEqual(source.count(marker), 1)
+        override = ("\nfunction Get-ReparseTag([string]$path) {\n"
+                    "    if ($path -ieq '" + str(desktop).replace("'", "''") + "') { return 2415927322L }\n"
+                    "    throw '云目录替身不允许读取其他重解析点。'\n}\n")
+        worker.write_text(source.replace(marker, override + marker), encoding='utf-8-sig')
+        try:
+            yield desktop
+        finally:
+            desktop.rmdir()
+
+    def test_cloud_desktop_supports_both_options_and_uninstall(self):
+        with self.cloud_desktop() as desktop:
+            unrelated = desktop / 'user-note.txt'
+            unrelated.write_bytes(b'unrelated cloud file')
+            for enabled in (0, 1):
+                with self.subTest(Desktop=enabled):
+                    self.run_worker(stage=self.stage(), Desktop=enabled)
+                    self.assertEqual(self.receipt()['status'], 'committed')
+                    self.assertEqual((desktop / 'EditHere.lnk').exists(), bool(enabled))
+            self.run_worker(mode='Uninstall')
+            self.assertFalse((desktop / 'EditHere.lnk').exists())
+            self.assertEqual(unrelated.read_bytes(), b'unrelated cloud file')
+            self.assertEqual((self.target / 'user.edithere').read_bytes(), b'unique user project')
+
+    def test_cloud_desktop_shortcut_is_restored_after_interrupted_integration(self):
+        with self.cloud_desktop() as desktop:
+            shortcut = desktop / 'EditHere.lnk'
+            content = json.dumps({'target': str(self.target / 'EditHere.exe'), 'extra': 'original'})
+            shortcut.write_text(content, encoding='utf-8')
+            result = subprocess.run(self.command(stage=self.stage(), Desktop=0,
+                                    TestFailure='AfterIntegration'), capture_output=True, timeout=45)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(shortcut.exists())
+            self.run_worker(mode='Recover')
+            self.assert_old_intact()
+            self.assertEqual(shortcut.read_text(encoding='utf-8'), content)
+
+    def test_desktop_junction_is_rejected_before_file_changes(self):
+        desktop = self.work / 'Shell/Desktop'
+        desktop.parent.mkdir(exist_ok=True)
+        outside = self.work / 'linked-storage'
+        outside.mkdir()
+        result = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(desktop), str(outside)],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        try:
+            self.run_worker(stage=self.stage(), Desktop=1, expected=1)
+            self.assert_old_intact()
+            self.assertEqual(list(outside.iterdir()), [])
+        finally:
+            desktop.rmdir()
+
     def test_upgrade_removes_obsolete_files_preserves_unknown_and_commits(self):
         self.run_worker(stage=self.stage(), Desktop=1)
         self.assertEqual((self.target / "version.txt").read_text().strip(), VERSION)
@@ -611,6 +676,96 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIn('legacyFileRecovery', self.journal())
         self.assertEqual(self.journal()['state'], 'RolledBack')
         self.assertEqual(Path(self.receipt()['recovery']), Path(self.journal()['displaced']))
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'Windows reparse tags')
+class ReparseTagTests(unittest.TestCase):
+    def run_functions(self, body, native_plugin=None):
+        """通过 AST 只载入生产函数，不执行维护事务或改写用户 Shell。"""
+        with tempfile.TemporaryDirectory(prefix='edithere-reparse-test-') as directory:
+            if native_plugin:
+                shutil.copy2(native_plugin, Path(directory) / 'System.dll')
+            script = Path(directory) / 'check.ps1'
+            script.write_text(r'''param([string]$Worker,[string]$Root)
+$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($Worker,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw ($errors | Out-String) }
+foreach ($function in $ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$false)) {
+    Invoke-Expression $function.Extent.Text
+}
+function Expect-Rejection([scriptblock]$action) {
+    try { & $action } catch { return }
+    throw '预期拒绝重解析点，但校验通过。'
+}
+''' + body, encoding='utf-8-sig')
+            result = subprocess.run([str(POWERSHELL), '-NoProfile', '-NonInteractive',
+                                     '-ExecutionPolicy', 'Bypass', '-File', str(script),
+                                     str(ROOT / 'packaging/windows/maintain.ps1'), directory],
+                                    cwd=directory, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 0,
+                             result.stdout.decode('utf-8', errors='replace') +
+                             result.stderr.decode('utf-8', errors='replace'))
+            return result.stdout.decode('utf-8', errors='replace')
+
+    def test_native_junction_tag_and_all_cloud_variants(self):
+        self.run_functions(r'''
+$storage=Join-Path $Root 'storage'; [void][IO.Directory]::CreateDirectory($storage)
+$link=Join-Path $Root 'link'; $shortcut=Join-Path $link 'EditHere.lnk'
+& cmd.exe /c mklink /J $link $storage | Out-Null
+if ($LASTEXITCODE) { throw '无法创建隔离目录联接。' }
+try {
+    if ((Get-ReparseTag $link) -ne 2684354563L) { throw '真实目录联接标记不正确。' }
+    Expect-Rejection { Assert-NoReparse $shortcut $false $true }
+    function Get-ReparseTag([string]$path) { return $script:testTag }
+    foreach ($variant in 0..15) {
+        $script:testTag=2415919130L+($variant*4096)
+        Assert-NoReparse $shortcut $false $true
+        Expect-Rejection { Assert-NoReparse $shortcut }
+    }
+    foreach ($tag in @(2684354563L,2684354572L,2147483672L,2147483667L,4294967295L)) {
+        $script:testTag=$tag
+        Expect-Rejection { Assert-NoReparse $shortcut $false $true }
+    }
+} finally { [IO.Directory]::Delete($link) }
+''')
+
+    def test_tag_query_failure_is_not_treated_as_cloud(self):
+        self.run_functions(r'''
+Expect-Rejection { Get-ReparseTag (Join-Path $Root 'missing') }
+''')
+
+    def test_native_tag_query_ignores_nsis_plugin_in_working_directory(self):
+        if __package__:
+            from .installer_shell_notification_test import find_native_plugin
+        else:
+            from installer_shell_notification_test import find_native_plugin
+        plugin = find_native_plugin()
+        if plugin is None:
+            self.skipTest('requires the native NSIS System.dll plugin')
+        self.run_functions(r'''
+$storage=Join-Path $Root 'storage'; [void][IO.Directory]::CreateDirectory($storage)
+$link=Join-Path $Root 'link'
+& cmd.exe /c mklink /J $link $storage | Out-Null
+if ($LASTEXITCODE) { throw 'Cannot create isolated directory junction.' }
+try {
+    if ((Get-ReparseTag $link) -ne 2684354563L) { throw 'Incorrect native junction tag.' }
+} finally { [IO.Directory]::Delete($link) }
+''', native_plugin=plugin)
+
+    def test_real_cloud_desktop_read_only(self):
+        output = self.run_functions(r'''
+$desktop=[Environment]::GetFolderPath('DesktopDirectory')
+if (!([IO.File]::GetAttributes($desktop) -band [IO.FileAttributes]::ReparsePoint)) { 'SKIP'; return }
+$tag=Get-ReparseTag $desktop
+if (($tag -band 4294905855L) -ne 2415919130L) { 'SKIP'; return }
+Assert-NoReparse (Join-Path $desktop 'EditHere.lnk') $false $true
+Expect-Rejection { Assert-NoReparse $desktop }
+'真实 CLOUD 桌面只读校验通过。'
+''')
+        if 'SKIP' in output:
+            self.skipTest('当前用户没有 CLOUD 桌面；模拟云标记回归仍会执行')
 
 
 if __name__ == "__main__":
