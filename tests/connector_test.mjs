@@ -13,6 +13,41 @@ process.env.EDITHERE_CLI = process.execPath;
 const connectorUrl = new URL('../connector/mcp-server.mjs', import.meta.url);
 const { runCli, cliResultToContent, statusContent, annotateResultToContent } = await import(connectorUrl);
 
+test('MCP handshake and status identify the connector version pinned by distribution metadata', { timeout: 5000 }, async () => {
+  const readJson = (filename) => JSON.parse(fs.readFileSync(new URL(`../connector/${filename}`, import.meta.url), 'utf8'));
+  const manifest = readJson('package.json');
+  const metadata = readJson('connector-meta.json');
+  const configuration = readJson('mcp.json').mcpServers.edithere;
+  const skill = fs.readFileSync(new URL('../connector/skills/edithere/SKILL.md', import.meta.url), 'utf8');
+  assert.equal(metadata.version, manifest.version, 'market metadata must identify the same package');
+  assert.equal(configuration.command, 'npx');
+  assert.deepEqual(configuration.args, ['-y', `${manifest.name}@${manifest.version}`], 'market launch must pin the advertised package');
+  assert.equal(skill.match(/^version:\s*(\S+)$/m)?.[1], manifest.version, 'the bundled skill must identify the same connector');
+
+  const server = spawn(process.execPath, [fileURLToPath(connectorUrl)], { stdio: ['pipe', 'pipe', 'pipe'] });
+  server.stdout.setEncoding('utf8');
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  try {
+    server.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 21, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'connector-regression', version: '1' } } }) + '\n');
+    const started = Date.now();
+    while (!output.includes('\n') && Date.now() - started < 2000) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const response = output.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)).find((reply) => reply.id === 21);
+    assert.ok(response, 'the running server must answer the MCP initialization request');
+    assert.equal(response.result.serverInfo.name, metadata.source);
+    assert.equal(response.result.serverInfo.version, manifest.version, 'the executing server must match the distribution version');
+    const status = JSON.parse(statusContent({ exitCode: 0, json: { ok: true, version: '0.11.1', running: false } }).content[0].text);
+    assert.equal(status.connector.version, response.result.serverInfo.version, 'status must identify the same implementation as the handshake');
+    assert.equal(status.version, '0.11.1', 'the desktop version remains independent');
+  } finally {
+    const closed = once(server, 'close');
+    server.stdin.end();
+    await closed;
+  }
+});
+
 function videoFeedback(frameCount = 2) {
   const frames = Array.from({ length: frameCount }, (_, index) => ({
     id: `frame-${index}`,

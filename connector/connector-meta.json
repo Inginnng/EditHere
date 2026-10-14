@@ -7,7 +7,7 @@
   "description_en": "Annotate screenshots and design mockups, move and resize components, then hand structured feedback to the AI. Use it when the user needs to point out exactly what to change on a UI.",
   "source": "edithere",
   "type": "mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "examples_zh": [
     "用 EditHere 打开这张界面截图，我标注完你按反馈改",
     "把刚才的设计图交给 EditHere，等我批注完再动手",

@@ -5,7 +5,7 @@ display_name_en: EditHere
 description: 用 EditHere（改这里）让用户在截图或设计图上批注、移动和缩放组件，读取用户明确提交的结构化反馈后继续实现。适用于用户要求用 EditHere 标注修改、想在图上直接画出改法，或需要处理 EditHere 反馈 JSON 的场景。
 description_zh: 在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI，适用于难以用文字描述清楚的界面调整。
 description_en: Let the user annotate a screenshot or mockup, move and resize components, then read the structured feedback the user submits and continue implementing.
-version: 0.2.0
+version: 0.2.1
 author: EditHere
 ---
 
@@ -26,6 +26,8 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 ## 版本检查
 
 先跑一次 `edithere_status`：响应里的 `connector` 给出连接器版本、实际使用的 CLI 路径与来源，`version` 是 EditHere 程序自身的版本。需要独立核对时用该路径运行 `--version`，输出一行 `EditHere <版本>`，不连接桌面。本 skill 按 **0.10.0** 描述能力：只做图片与 `.edithere` 项目标注时 0.9.8 及以上即可，涉及视频时必须 0.10.0 及以上。低于所需版本时告知用户升级（<https://github.com/Inginnng/EditHere/releases/latest>），不要改用另一份同名程序，也不要改动全局环境。
+
+包含回执中断恢复修复的当前连接器标识为 **0.2.1**；桌面程序升级不会替换宿主加载的连接器源码。若 `connector.version` 仍是 0.2.0，应更新宿主配置所指的 `connector/mcp-server.mjs` 并重启连接器，再核对版本。当前 npm 包尚未发布，使用本地 `node <绝对路径>/connector/mcp-server.mjs` 配置；不要把 npm 安装失败当作桌面程序不可用。
 
 ## 工具一览
 

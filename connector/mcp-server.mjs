@@ -28,7 +28,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const SERVER_NAME = 'edithere';
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.2.1';
 const PROTOCOL_VERSION = '2025-06-18';
 
 // ---------------------------------------------------------------- CLI 定位
