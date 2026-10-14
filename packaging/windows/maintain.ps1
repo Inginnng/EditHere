@@ -47,7 +47,13 @@ function IsInside([string]$path,[string]$root) {
 }
 function Get-ReparseTag([string]$path) {
     if (!('EditHere.InstallerReparseInfo' -as [type])) {
-        Add-Type -TypeDefinition @'
+        # NSIS's working directory contains a native System.dll. Resolve
+        # compiler references from the runtime, as Notify-Shell does.
+        $framework=[Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+        $references=@([object].Assembly.Location,
+            [IO.Path]::Combine($framework,'System.dll'),
+            [IO.Path]::Combine($framework,'System.Core.dll'))
+        Add-Type -ReferencedAssemblies $references -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;

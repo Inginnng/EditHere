@@ -680,9 +680,11 @@ class MaintenanceTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows reparse tags')
 class ReparseTagTests(unittest.TestCase):
-    def run_functions(self, body):
+    def run_functions(self, body, native_plugin=None):
         """通过 AST 只载入生产函数，不执行维护事务或改写用户 Shell。"""
         with tempfile.TemporaryDirectory(prefix='edithere-reparse-test-') as directory:
+            if native_plugin:
+                shutil.copy2(native_plugin, Path(directory) / 'System.dll')
             script = Path(directory) / 'check.ps1'
             script.write_text(r'''param([string]$Worker,[string]$Root)
 $ErrorActionPreference='Stop'
@@ -701,7 +703,7 @@ function Expect-Rejection([scriptblock]$action) {
             result = subprocess.run([str(POWERSHELL), '-NoProfile', '-NonInteractive',
                                      '-ExecutionPolicy', 'Bypass', '-File', str(script),
                                      str(ROOT / 'packaging/windows/maintain.ps1'), directory],
-                                    capture_output=True, timeout=20)
+                                    cwd=directory, capture_output=True, timeout=20)
             self.assertEqual(result.returncode, 0,
                              result.stdout.decode('utf-8', errors='replace') +
                              result.stderr.decode('utf-8', errors='replace'))
@@ -733,6 +735,24 @@ try {
         self.run_functions(r'''
 Expect-Rejection { Get-ReparseTag (Join-Path $Root 'missing') }
 ''')
+
+    def test_native_tag_query_ignores_nsis_plugin_in_working_directory(self):
+        if __package__:
+            from .installer_shell_notification_test import find_native_plugin
+        else:
+            from installer_shell_notification_test import find_native_plugin
+        plugin = find_native_plugin()
+        if plugin is None:
+            self.skipTest('requires the native NSIS System.dll plugin')
+        self.run_functions(r'''
+$storage=Join-Path $Root 'storage'; [void][IO.Directory]::CreateDirectory($storage)
+$link=Join-Path $Root 'link'
+& cmd.exe /c mklink /J $link $storage | Out-Null
+if ($LASTEXITCODE) { throw 'Cannot create isolated directory junction.' }
+try {
+    if ((Get-ReparseTag $link) -ne 2684354563L) { throw 'Incorrect native junction tag.' }
+} finally { [IO.Directory]::Delete($link) }
+''', native_plugin=plugin)
 
     def test_real_cloud_desktop_read_only(self):
         output = self.run_functions(r'''
