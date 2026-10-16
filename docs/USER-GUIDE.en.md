@@ -205,7 +205,8 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 | `annotationSpace` | Fixed to `"result"`, meaning annotation coordinates refer to the current adjusted image |
 | `objects[].source` | The object's region in the original image; `null` for a global note |
 | `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final coordinates |
-| `objects[].annotations` | Text notes attached to this object |
+| `objects[].id` | An object identifier such as `o1`, unique within this image feedback (per frame for video); not stable across rounds |
+| `objects[].annotations` | An array of `{number, text}` matching the UI numbers; historical string annotations still import |
 
 Components that do not change in image feedback are not exported; no full slice list, component group references, hashes or full-project timestamps are output; only the root export timestamp is included. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
@@ -215,16 +216,83 @@ The example below omits the optional `image` field and shows a point comment, a 
 
 ```json
 {
+  "$schema": "urn:edithere:feedback-minimal:2",
+  "schemaVersion": "feedback-minimal-2",
+  "tool": {
+    "name": "EditHere",
+    "version": "0.11.1"
+  },
+  "exportedAt": "2026-10-16T16:30:00+08:00",
   "annotationSpace": "result",
   "objects": [
-    {"source": {"x1": 240, "y1": 180, "x2": 240, "y2": 180},
-     "movements": [], "annotations": ["Change this to blue"]},
-    {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240},
-     "movements": [], "annotations": ["Add rounded corners"]},
-    {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200},
-     "movements": [{"to": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
-     "annotations": ["Move the whole block down and to the right a little"]},
-    {"source": null, "movements": [], "annotations": ["Overall lighter and quieter, less decoration"]}
+    {
+      "source": {
+        "x1": 240,
+        "y1": 180,
+        "x2": 240,
+        "y2": 180
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 1,
+          "text": "Change this to blue"
+        }
+      ],
+      "id": "o1"
+    },
+    {
+      "source": {
+        "x1": 200,
+        "y1": 140,
+        "x2": 400,
+        "y2": 240
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 2,
+          "text": "Add rounded corners"
+        }
+      ],
+      "id": "o2"
+    },
+    {
+      "source": {
+        "x1": 100,
+        "y1": 100,
+        "x2": 300,
+        "y2": 200
+      },
+      "movements": [
+        {
+          "to": {
+            "x1": 200,
+            "y1": 140,
+            "x2": 400,
+            "y2": 240
+          }
+        }
+      ],
+      "annotations": [
+        {
+          "number": 3,
+          "text": "Move the whole block down and to the right a little"
+        }
+      ],
+      "id": "o3"
+    },
+    {
+      "source": null,
+      "movements": [],
+      "annotations": [
+        {
+          "number": 4,
+          "text": "Overall lighter and quieter, less decoration"
+        }
+      ],
+      "id": "o4"
+    }
   ]
 }
 ```

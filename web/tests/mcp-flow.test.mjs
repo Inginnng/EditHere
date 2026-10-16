@@ -102,7 +102,7 @@ async function movementNote(frame) {
   await frame.locator(`[data-edit="${note}"]`).click();await frame.locator('#note-text').fill('这个组件右移，并保留位移箭头批注');
   await frame.locator('#note-text').press('Control+Enter');await frame.locator('#note-dialog').waitFor({state:'hidden'});
   const feedback=await frame.locator('#canvas').evaluate(()=>EditHereWeb.feedback());
-  assert(feedback.objects.some(object=>object.movements.length&&object.annotations.includes('这个组件右移，并保留位移箭头批注')));
+  assert(feedback.objects.some(object=>object.movements.length&&object.annotations.some(annotation => annotation.text === '这个组件右移，并保留位移箭头批注')));
 }
 try {
   stage='first open';

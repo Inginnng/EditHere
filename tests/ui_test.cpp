@@ -1449,7 +1449,7 @@ class UiTests : public QObject {
         QVERIFY(input->viewport()->graphicsEffect()->isEnabled());
         QCOMPARE(input->toPlainText(), fullText);
         const auto objs = exportFeedback(editor.document())["objects"].toArray();
-        QCOMPARE(objs.last().toObject()["annotations"].toArray().last().toString(), fullText);
+        QCOMPARE(objs.last().toObject()["annotations"].toArray().last().toObject()["text"].toString(), fullText);
         artifact(editor, "long-note-collapsed.png");
         fold->click();
         QTRY_COMPARE(fold->text(), QString("收起"));

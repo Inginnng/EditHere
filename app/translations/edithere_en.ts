@@ -25,7 +25,7 @@
         <translation>Manual area</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="94"/>
+        <location filename="../model.cpp" line="95"/>
         <source>手动标注</source>
         <translation>Manual annotation</translation>
     </message>
@@ -333,113 +333,113 @@
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="49"/>
+        <location filename="../model.cpp" line="50"/>
         <source>坐标格式不正确</source>
         <translation>Coordinate format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="54"/>
+        <location filename="../model.cpp" line="55"/>
         <source>矩形字段不正确</source>
         <translation>Rectangle fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="57"/>
+        <location filename="../model.cpp" line="58"/>
         <source>矩形尺寸必须为正数</source>
         <translation>Rectangle sizes must be positive</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="106"/>
-        <location filename="../model.cpp" line="116"/>
+        <location filename="../model.cpp" line="107"/>
+        <location filename="../model.cpp" line="117"/>
         <source>无法编码图片</source>
         <translation>Could not encode the image</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="122"/>
+        <location filename="../model.cpp" line="123"/>
         <source>图片过大或无法读取，最多支持 3200 万像素</source>
         <translation>The image is too large or unreadable; up to 32 megapixels are supported</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="135"/>
+        <location filename="../model.cpp" line="136"/>
         <source>图片或批注数量超出限制</source>
         <translation>Too many images or annotations</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="137"/>
+        <location filename="../model.cpp" line="138"/>
         <source>项目标识或日期不正确</source>
         <translation>Project ID or date is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="139"/>
+        <location filename="../model.cpp" line="140"/>
         <source>图片来源不正确</source>
         <translation>Image source is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="143"/>
-        <location filename="../model.cpp" line="1083"/>
+        <location filename="../model.cpp" line="144"/>
+        <location filename="../model.cpp" line="1122"/>
         <source>原图文件名不正确</source>
         <translation>Source image file name is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="145"/>
+        <location filename="../model.cpp" line="146"/>
         <source>屏幕范围不正确</source>
         <translation>Screen bounds are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="154"/>
+        <location filename="../model.cpp" line="155"/>
         <source>批注编号或文字不正确</source>
         <translation>Annotation index or text is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="157"/>
+        <location filename="../model.cpp" line="158"/>
         <source>全局批注不能关联移动区域</source>
         <translation>A global annotation cannot reference a moved region</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="164"/>
+        <location filename="../model.cpp" line="165"/>
         <source>关联移动区域不正确</source>
         <translation>The referenced moved region is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="170"/>
-        <location filename="../model.cpp" line="878"/>
-        <location filename="../model.cpp" line="931"/>
+        <location filename="../model.cpp" line="171"/>
+        <location filename="../model.cpp" line="900"/>
+        <location filename="../model.cpp" line="965"/>
         <source>点标注超出画布</source>
         <translation>The point annotation falls outside the canvas</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="174"/>
-        <location filename="../model.cpp" line="940"/>
-        <location filename="../model.cpp" line="946"/>
+        <location filename="../model.cpp" line="175"/>
+        <location filename="../model.cpp" line="974"/>
+        <location filename="../model.cpp" line="980"/>
         <source>框选超出画布</source>
         <translation>The selection falls outside the canvas</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="178"/>
+        <location filename="../model.cpp" line="179"/>
         <source>批注来源格式不正确</source>
         <translation>Annotation source format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="182"/>
+        <location filename="../model.cpp" line="183"/>
         <source>批注来源字段不正确</source>
         <translation>Annotation source fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="187"/>
+        <location filename="../model.cpp" line="188"/>
         <source>批注日期不正确</source>
         <translation>Annotation date is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="196"/>
+        <location filename="../model.cpp" line="197"/>
         <source>移动区域字段不正确</source>
         <translation>Moved region fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="200"/>
+        <location filename="../model.cpp" line="201"/>
         <source>移动区域坐标不正确</source>
         <translation>Moved region coordinates are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="204"/>
+        <location filename="../model.cpp" line="205"/>
         <source>移动区域尺寸必须为正数</source>
         <translation>Moved region sizes must be positive</translation>
     </message>
@@ -511,7 +511,7 @@
     </message>
     <message>
         <location filename="../model.cpp" line="760"/>
-        <location filename="../model.cpp" line="1089"/>
+        <location filename="../model.cpp" line="1128"/>
         <source>原图 Base64 不正确</source>
         <translation>Source image Base64 is invalid</translation>
     </message>
@@ -591,278 +591,286 @@
         <translation>Invalid object source dimensions</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="851"/>
+        <location filename="../model.cpp" line="853"/>
         <source>对象格式不正确</source>
         <translation>Object format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="855"/>
+        <location filename="../model.cpp" line="861"/>
+        <source>对象标识不正确或重复</source>
+        <translation>Object identifiers must be valid and unique</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="866"/>
         <source>对象移动或批注格式不正确</source>
         <translation>Object movement or annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="861"/>
+        <location filename="../model.cpp" line="872"/>
         <source>批注或移动数量超出限制</source>
         <translation>Too many annotations or movements</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="872"/>
+        <location filename="../model.cpp" line="880"/>
+        <source>批注编号不正确或重复</source>
+        <translation>Annotation numbers must be valid and unique</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="894"/>
         <source>对象源区域超出画布</source>
         <translation>The object source is outside the canvas</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="875"/>
+        <location filename="../model.cpp" line="897"/>
         <source>点标注不能关联移动</source>
         <translation>Point annotations cannot have movements</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="886"/>
+        <location filename="../model.cpp" line="908"/>
         <source>移动格式不正确</source>
         <translation>Movement format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="867"/>
-        <location filename="../model.cpp" line="906"/>
+        <location filename="../model.cpp" line="889"/>
+        <location filename="../model.cpp" line="944"/>
         <source>全局批注不能关联移动</source>
         <translation>A global annotation cannot reference a movement</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="864"/>
-        <location filename="../model.cpp" line="909"/>
-        <location filename="../model.cpp" line="924"/>
-        <location filename="../model.cpp" line="969"/>
+        <location filename="../model.cpp" line="885"/>
+        <location filename="../model.cpp" line="1008"/>
         <source>批注文字格式不正确</source>
         <translation>Annotation text format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="955"/>
+        <location filename="../model.cpp" line="994"/>
         <source>批注或变化列表格式不正确</source>
         <translation>The annotation or change list format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="961"/>
+        <location filename="../model.cpp" line="1000"/>
         <source>批注格式不正确</source>
         <translation>Annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="979"/>
+        <location filename="../model.cpp" line="1018"/>
         <source>批注关联的移动不存在</source>
         <translation>The movement referenced by the annotation does not exist</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="986"/>
+        <location filename="../model.cpp" line="1025"/>
         <source>点标注格式不正确</source>
         <translation>Point annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="992"/>
+        <location filename="../model.cpp" line="1031"/>
         <source>框标注格式不正确</source>
         <translation>Box annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1007"/>
+        <location filename="../model.cpp" line="1046"/>
         <source>无法打开文件</source>
         <translation>Could not open the file</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1011"/>
+        <location filename="../model.cpp" line="1050"/>
         <source>图片文件不能超过 48 MB</source>
         <translation>An image file cannot exceed 48 MB</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1017"/>
+        <location filename="../model.cpp" line="1056"/>
         <source>图片尺寸超出限制</source>
         <translation>Image size exceeds the limit</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1021"/>
+        <location filename="../model.cpp" line="1060"/>
         <source>项目文件不能超过 96 MB</source>
         <translation>A project file cannot exceed 96 MB</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1025"/>
+        <location filename="../model.cpp" line="1064"/>
         <source>JSON 格式不正确</source>
         <translation>JSON format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1041"/>
+        <location filename="../model.cpp" line="1080"/>
         <source>请将 JSON 与同名原图 %1 放在同一目录</source>
         <translation>Place the JSON and the source image named %1 in the same folder</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1094"/>
+        <location filename="../model.cpp" line="1133"/>
         <source>请将 JSON 与原图 %1 放在同一目录</source>
         <translation>Place the JSON and the source image %1 in the same folder</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1052"/>
+        <location filename="../model.cpp" line="1091"/>
         <source>不支持这个项目版本</source>
         <translation>This project version is not supported</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="891"/>
+        <location filename="../model.cpp" line="913"/>
         <source>移动目标超出画布或尺寸不正确</source>
         <translation>The movement destination is outside the canvas or has invalid dimensions</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1060"/>
+        <location filename="../model.cpp" line="1099"/>
         <source>项目坐标或布局格式不正确</source>
         <translation>Project coordinates or layout format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1064"/>
+        <location filename="../model.cpp" line="1103"/>
         <source>大爆炸项目必须包含布局对象</source>
         <translation>A project with Explode enabled must contain a layout object.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1066"/>
+        <location filename="../model.cpp" line="1105"/>
         <source>导出日期不正确</source>
         <translation>Export date is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1068"/>
+        <location filename="../model.cpp" line="1107"/>
         <source>批注列表格式或数量不正确</source>
         <translation>The annotation list format or count is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1074"/>
+        <location filename="../model.cpp" line="1113"/>
         <source>项目坐标约定不兼容</source>
         <translation>Project coordinate convention is incompatible</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1076"/>
+        <location filename="../model.cpp" line="1115"/>
         <source>项目标题格式不正确</source>
         <translation>Project title format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1079"/>
+        <location filename="../model.cpp" line="1118"/>
         <source>项目图片尺寸不正确</source>
         <translation>Project image size is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1097"/>
+        <location filename="../model.cpp" line="1136"/>
         <source>原图数据字段不正确</source>
         <translation>Source image data fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1101"/>
+        <location filename="../model.cpp" line="1140"/>
         <source>原图校验不一致，无法保证标注位置</source>
         <translation>The source image checksum does not match, so annotation positions cannot be guaranteed</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1106"/>
-        <location filename="../model.cpp" line="1109"/>
+        <location filename="../model.cpp" line="1145"/>
+        <location filename="../model.cpp" line="1148"/>
         <source>原图尺寸与项目不一致</source>
         <translation>The source image size does not match the project</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1118"/>
+        <location filename="../model.cpp" line="1157"/>
         <source>批注列表格式不正确</source>
         <translation>Annotation list format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1128"/>
+        <location filename="../model.cpp" line="1167"/>
         <source>批注编号必须连续</source>
         <translation>Annotation indices must be consecutive</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1130"/>
+        <location filename="../model.cpp" line="1169"/>
         <source>批注类型不正确</source>
         <translation>Annotation type is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1137"/>
+        <location filename="../model.cpp" line="1176"/>
         <source>关联移动区域格式不正确</source>
         <translation>The referenced moved region format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1145"/>
+        <location filename="../model.cpp" line="1184"/>
         <source>辅助功能元素需要 1.1.0 格式</source>
         <translation>Accessibility elements require the 1.1.0 format</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1150"/>
+        <location filename="../model.cpp" line="1189"/>
         <source>全局批注不能包含坐标</source>
         <translation>A global annotation cannot contain coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1153"/>
+        <location filename="../model.cpp" line="1192"/>
         <source>点标注不能带框坐标</source>
         <translation>A point annotation cannot carry box coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1159"/>
+        <location filename="../model.cpp" line="1198"/>
         <source>框标注不能带点坐标</source>
         <translation>A box annotation cannot carry point coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1177"/>
+        <location filename="../model.cpp" line="1216"/>
         <source>文件保存失败（%1：%2），请检查目录权限和剩余空间</source>
         <translation>Could not save the file (%1: %2). Check the folder permissions and free space</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1178"/>
+        <location filename="../model.cpp" line="1217"/>
         <source>未知原因</source>
         <translation>unknown reason</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1270"/>
+        <location filename="../model.cpp" line="1309"/>
         <source>探索     收藏     关于</source>
         <translation>Explore     Saved     About</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1272"/>
+        <location filename="../model.cpp" line="1311"/>
         <source>为日常，留一点空白。</source>
         <translation>Leave a little blank space for every day.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1275"/>
+        <location filename="../model.cpp" line="1314"/>
         <source>点选这里，写下你希望改变的细节。</source>
         <translation>Click here and write down the detail you want to change.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1280"/>
+        <location filename="../model.cpp" line="1319"/>
         <source>发现灵感  →</source>
         <translation>Find inspiration  →</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1281"/>
+        <location filename="../model.cpp" line="1320"/>
         <source>林间的光</source>
         <translation>Light through the trees</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1281"/>
+        <location filename="../model.cpp" line="1320"/>
         <source>山的轮廓</source>
         <translation>Outlines of the mountains</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1281"/>
+        <location filename="../model.cpp" line="1320"/>
         <source>慢一点的午后</source>
         <translation>A slower afternoon</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1304"/>
+        <location filename="../model.cpp" line="1343"/>
         <source>生活观察   /   VOL. 0%1</source>
         <translation>Life Notes   /   VOL. 0%1</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1307"/>
+        <location filename="../model.cpp" line="1346"/>
         <source>© FIELDNOTES · 示例图片，仅用于体验批注</source>
         <translation>© FIELDNOTES · Sample image, for trying out annotations only</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1316"/>
-        <location filename="../model.cpp" line="1330"/>
+        <location filename="../model.cpp" line="1355"/>
+        <location filename="../model.cpp" line="1369"/>
         <source>预览图片过大，请保存项目</source>
         <translation>The preview image is too large; save the project instead</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1373"/>
+        <location filename="../model.cpp" line="1412"/>
         <source>批注 %1 条</source>
         <translation>%1 annotations</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1390"/>
+        <location filename="../model.cpp" line="1429"/>
         <source>整体意见</source>
         <translation>Overall note</translation>
     </message>

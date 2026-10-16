@@ -87,7 +87,8 @@ test('versioned image metadata reaches the saved file and MCP read receipt uncha
   const paths=fixture(),client=await connect(context,paths);
   const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath}),{sessionId,token}=opened._meta.edithere;
   const metadata={$schema:'urn:edithere:feedback-minimal:2',schemaVersion:'feedback-minimal-2',tool:{name:'EditHere',version:'0.11.1'},exportedAt:'2026-10-16T16:30:00+08:00'};
-  const changes={...metadata,annotationSpace:'result',objects:feedback.objects};
+  const changes={...metadata,annotationSpace:'result',objects:[{id:'object-a',source:null,movements:[],annotations:[{number:7,text:'稀疏编号保留'}]}]};
+  assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...changes,objects:[...changes.objects,...changes.objects]}})).isError,true);
   assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...changes,schemaVersion:'feedback-minimal-99'}})).isError,true);
   const submitted=await call(client,'edithere_web_submit',{sessionId,token,feedback:changes});
   assert.equal(submitted.structuredContent.state,'completed');

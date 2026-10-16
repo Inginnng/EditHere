@@ -12,13 +12,14 @@ file back is covered by ``tests/core_test.cpp::legacyFeedbackStillImports``.
 """
 import base64
 import json
+import os
 import struct
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 root = Path(__file__).resolve().parents[1]
-artifacts = root / "artifacts" / "native-ui"
+artifacts = Path(os.environ.get("H2D_TEST_ARTIFACTS", root / "artifacts" / "native-ui"))
 
 SCHEMAS = (
     "feedback-minimal.schema.json",
@@ -45,7 +46,9 @@ def validate(name, document):
 
 def check_objects(document):
     for item in document["objects"]:
-        assert set(item) == {"source", "movements", "annotations"}, item
+        assert set(item) in ({"source", "movements", "annotations"}, {"id", "source", "movements", "annotations"}), item
+        for annotation in item["annotations"]:
+            assert isinstance(annotation, str) or (set(annotation) == {"number", "text"} and 1 <= annotation["number"] <= 1000), annotation
 
 
 for name in SCHEMAS:
@@ -74,6 +77,8 @@ validate("feedback-minimal.schema.json", plain)
 assert {key: value for key, value in embedded.items() if key not in ("image", "exportedAt")} == \
        {key: value for key, value in plain.items() if key not in ("image", "exportedAt")}
 assert embedded["schemaVersion"] == "feedback-minimal-2"
+assert len({item["id"] for item in embedded["objects"]}) == len(embedded["objects"])
+assert all(isinstance(annotation, dict) for item in embedded["objects"] for annotation in item["annotations"])
 assert embedded["tool"]["name"] == "EditHere"
 validate("feedback-minimal-v2.schema.json", embedded)
 check_objects(embedded)

@@ -163,7 +163,8 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 | `annotationSpace` | 固定为 `result`，批注位于调整后的画面 |
 | `objects[].source` | 该对象在原图中的区域；全局意见为 `null`，点批注是零面积区域（`x1 == x2`、`y1 == y2`） |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放，`to` 为最终区域 |
-| `objects[].annotations` | 挂在该对象上的文字意见 |
+| `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
+| `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
 | 旧格式 `annotations` | 文字批注，可用 `point`、`rectangle` 定位；只有 `text` 的批注针对整体；`change` 对应 `changes` 的零基索引 |
 | 旧格式 `changes` | 实际位置、尺寸变化；每项 `from` 指原图区域，`to` 指最终区域 |
 

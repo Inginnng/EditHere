@@ -163,7 +163,8 @@ The file names under `schema/` denote the data format, not the application versi
 | `annotationSpace` | Fixed to `result`; annotations sit on the adjusted image |
 | `objects[].source` | The object's region in the source image; `null` for a global note, and a zero-area region for a point annotation (`x1 == x2`, `y1 == y2`) |
 | `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final region |
-| `objects[].annotations` | The written notes attached to this object |
+| `objects[].id` | An object identifier such as `o1`, unique within this image feedback (per frame for video); not stable across rounds |
+| `objects[].annotations` | An array of `{number, text}` matching the UI numbers; historical string annotations still import |
 | Legacy `annotations` | Text annotations, located with `point` or `rectangle`; an annotation with only `text` applies to the whole image; `change` is a zero-based index into `changes` |
 | Legacy `changes` | The actual position and size changes; each entry's `from` is the source region and `to` is the final region |
 

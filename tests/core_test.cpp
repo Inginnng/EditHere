@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPainter>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QTest>
 using namespace h2d;
@@ -92,6 +93,127 @@ class CoreTests : public QObject {
         saveBytes(path, QJsonDocument(feedback).toJson());
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
     }
+    void numberedFeedbackPreservesSidebarOrderAndReadsEarlierFormats() {
+        auto doc = fromImage(exampleImage(), "file", "numbered feedback");
+        doc.layout = createLayout(doc.image.size(), {});
+        const QRectF source(80, 80, 60, 40), destination(240, 80, 60, 40);
+        const auto group = addLayoutRegion(*doc.layout, source);
+        transformLayoutGroup(*doc.layout, group, destination);
+        Note global; global.isGlobal = true; global.comment = "overall";
+        Note point; point.point = {20, 30}; point.comment = "point";
+        Note emptyMovement; emptyMovement.isPoint = false;
+        emptyMovement.movementSource = source; emptyMovement.rect = destination.toRect();
+        Note movement = emptyMovement; movement.id = uniqueId(); movement.comment = "movement";
+        Note rectangle; rectangle.isPoint = false; rectangle.rect = {400, 80, 40, 30};
+        rectangle.comment = "rectangle";
+        doc.notes = {global, point, emptyMovement, movement, rectangle};
+        const auto feedback = exportFeedback(doc, true);
+        const auto objects = feedback["objects"].toArray();
+        QSet<QString> ids;
+        QSet<int> numbers;
+        for (qsizetype index = 0; index < objects.size(); ++index) {
+            const auto object = objects[index].toObject();
+            QCOMPARE(object["id"].toString(), "o" + QString::number(index + 1));
+            QVERIFY(!ids.contains(object["id"].toString()));
+            ids.insert(object["id"].toString());
+            for (const auto &value : object["annotations"].toArray()) {
+                const auto annotation = value.toObject();
+                const int number = annotation["number"].toInt();
+                QVERIFY(number >= 1 && number <= doc.notes.size());
+                QCOMPARE(annotation["text"].toString(), doc.notes[number - 1].comment);
+                QVERIFY(!numbers.contains(number));
+                numbers.insert(number);
+            }
+        }
+        QCOMPARE(numbers, (QSet<int>{1, 2, 4, 5})); // An omitted empty movement leaves a valid gap.
+        QCOMPARE(objects.first().toObject()["annotations"].toArray().first().toObject()["number"].toInt(), 4);
+        auto shuffled = feedback;
+        QJsonArray reversed;
+        for (qsizetype index = objects.size(); index > 0; --index)
+            reversed.append(objects[index - 1]);
+        shuffled["objects"] = reversed;
+        const auto restored = loadFeedback(shuffled, {});
+        QCOMPARE(restored.notes.size(), 4);
+        QCOMPARE(restored.notes[0].comment, global.comment);
+        QCOMPARE(restored.notes[1].comment, point.comment);
+        QCOMPARE(restored.notes[2].comment, movement.comment);
+        QCOMPARE(restored.notes[3].comment, rectangle.comment);
+        QCOMPARE(restored.notes[2].movementSource, movement.movementSource);
+        QCOMPARE(restored.notes[2].rect, movement.rect);
+
+        // J01 already emitted version 2 with string notes and no object IDs.
+        auto earlier = feedback;
+        QJsonArray earlierObjects;
+        for (const auto &value : objects) {
+            auto object = value.toObject();
+            object.remove("id");
+            QJsonArray texts;
+            for (const auto &annotation : object["annotations"].toArray())
+                texts.append(annotation.toObject()["text"]);
+            object["annotations"] = texts;
+            earlierObjects.append(object);
+        }
+        earlier["objects"] = earlierObjects;
+        QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
+        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+            earlier.remove(field);
+        QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
+
+        // Mixed notes allocate old strings around explicit numbers without collisions.
+        auto mixedObject = reversed.last().toObject();
+        mixedObject["id"] = QString(256, 'a');
+        mixedObject["annotations"] = QJsonArray{movement.comment};
+        reversed[reversed.size() - 1] = mixedObject;
+        shuffled["objects"] = reversed;
+        const auto mixed = loadFeedback(shuffled, {});
+        QCOMPARE(mixed.notes[2].comment, movement.comment);
+        auto boundaryObject = reversed.first().toObject();
+        auto boundaryAnnotation = boundaryObject["annotations"].toArray().first().toObject();
+        boundaryAnnotation["number"] = MaxNotes;
+        boundaryObject["annotations"] = QJsonArray{boundaryAnnotation};
+        reversed[0] = boundaryObject;
+        shuffled["objects"] = reversed;
+        QCOMPARE(loadFeedback(shuffled, {}).notes.last().comment, rectangle.comment);
+    }
+    void numberedFeedbackRejectsInvalidIdentifiers_data() {
+        QTest::addColumn<QString>("corruption");
+        for (const auto *name : {"duplicate-id", "blank-id", "oversized-id", "nonstring-id",
+                                "duplicate-number", "zero-number", "negative-number", "fractional-number",
+                                "oversized-number", "string-number", "missing-number", "missing-text",
+                                "nonstring-text", "extra-annotation-field"})
+            QTest::newRow(name) << QString(name);
+    }
+    void numberedFeedbackRejectsInvalidIdentifiers() {
+        QFETCH(QString, corruption);
+        auto doc = fromImage(exampleImage(), "file", "invalid identifiers");
+        Note first; first.point = {20, 30}; first.comment = "first";
+        Note second; second.point = {40, 50}; second.comment = "second";
+        doc.notes = {first, second};
+        auto feedback = exportFeedback(doc, true);
+        auto objects = feedback["objects"].toArray();
+        auto object = objects.first().toObject();
+        auto annotations = object["annotations"].toArray();
+        auto annotation = annotations.first().toObject();
+        if (corruption == "duplicate-id") object["id"] = objects.last().toObject()["id"];
+        if (corruption == "blank-id") object["id"] = " \t ";
+        if (corruption == "oversized-id") object["id"] = QString(257, 'a');
+        if (corruption == "nonstring-id") object["id"] = 3;
+        if (corruption == "duplicate-number") annotation["number"] = 2;
+        if (corruption == "zero-number") annotation["number"] = 0;
+        if (corruption == "negative-number") annotation["number"] = -1;
+        if (corruption == "fractional-number") annotation["number"] = 1.5;
+        if (corruption == "oversized-number") annotation["number"] = MaxNotes + 1;
+        if (corruption == "string-number") annotation["number"] = "1";
+        if (corruption == "missing-number") annotation.remove("number");
+        if (corruption == "missing-text") annotation.remove("text");
+        if (corruption == "nonstring-text") annotation["text"] = false;
+        if (corruption == "extra-annotation-field") annotation["unknown"] = true;
+        annotations[0] = annotation;
+        object["annotations"] = annotations;
+        objects[0] = object;
+        feedback["objects"] = objects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, {}), std::runtime_error);
+    }
     void previewLayoutIsIndependentOfSourceResolution() {
         auto makeDocument = [](int factor) {
             QImage image(960 * factor, 540 * factor, QImage::Format_RGB32);
@@ -143,7 +265,7 @@ class CoreTests : public QObject {
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 1);
         QCOMPARE(objects[0].toObject()["source"], QJsonValue(QJsonValue::Null));
-        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toString(), global.comment);
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QVERIFY(imported.notes[0].isGlobal);
         QCOMPARE(imported.notes[0].comment, global.comment);
@@ -171,7 +293,7 @@ class CoreTests : public QObject {
         saveBytes(path, QJsonDocument(invalid).toJson());
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
     }
-    void movementNumbersMatchNotesAndStayOutOfJson() {
+    void movementNumbersMatchNotesAndFeedback() {
         QImage image(960, 220, QImage::Format_ARGB32);
         image.fill(Qt::white);
         auto doc = fromImage(image, "demo", "箭头编号");
@@ -248,7 +370,7 @@ class CoreTests : public QObject {
                 QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
                          (QJsonObject{{"x1", 200.}, {"y1", 100.}, {"x2", 240.}, {"y2", 130.}}));
                 QCOMPARE(obj["annotations"].toArray().size(), 1);
-                QCOMPARE(obj["annotations"].toArray()[0].toString(), movement.comment);
+                QCOMPARE(obj["annotations"].toArray()[0].toObject()["text"].toString(), movement.comment);
             }
         }
         QVERIFY(foundMovementObject);
@@ -375,7 +497,7 @@ class CoreTests : public QObject {
                 QCOMPARE(obj["movements"].toArray().size(), 1);
                 QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
                          (QJsonObject{{"x1", 350.}, {"y1", 280.}, {"x2", 650.}, {"y2", 520.}}));
-                QCOMPARE(obj["annotations"].toArray()[0].toString(), parentNote.comment);
+                QCOMPARE(obj["annotations"].toArray()[0].toObject()["text"].toString(), parentNote.comment);
             }
         }
         QVERIFY(foundParentObject);

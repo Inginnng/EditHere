@@ -103,6 +103,8 @@ edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--n
 
 ## 解释反馈并实施
 
+- 新导出为 `feedback-minimal-2`：`objects[].id` 只在当前图片反馈内唯一（视频按帧）；`annotations` 为 `{number, text}` 数组，按 `number` 与图上编号对照，不能按对象数组位置重新编号。旧字符串批注及缺少对象 ID 的历史反馈仍可读取。
+
 - 当前图片反馈版本为 `feedback-minimal-2`，根级 `$schema` 为 `urn:edithere:feedback-minimal:2`，对应随包 `schema/feedback-minimal-v2.schema.json`；`tool` 包含名称与实际版本，`exportedAt` 为带时区 ISO 时间。先按显式版本解析；无版本 `objects` 为 `feedback-minimal-1`，无版本 `annotations` + `changes` 为旧格式。未知显式版本应拒绝，不能猜测。CLI 图片成功回执含 `schemaVersion`。
 
 - `image` 是**调整前**原图的 PNG/JPEG data URL，不是调整后的预览。缺少 `image` 时需保留并关联本次输入原图；独立重新导入反馈通常需要同名 PNG。

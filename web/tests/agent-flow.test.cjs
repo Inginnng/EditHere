@@ -72,7 +72,7 @@ async function main() {
     await page.locator('[data-mode="point"]').click();const pin=await at(page,dims.width*.2,dims.height*.25);await page.mouse.click(pin.x,pin.y);await note(page,'链路测试：点批注保留原图像素坐标');
     results.push('global, movement-arrow text and point annotations survive compact UI editing');
     const expected=await page.evaluate(()=>EditHereWeb.feedback());
-    const movement=expected.objects.find(o=>o.annotations.includes('链路测试：位移箭头文字与原生 movement 一起返回'));
+    const movement=expected.objects.find(o=>o.annotations.some(annotation => annotation.text === '链路测试：位移箭头文字与原生 movement 一起返回'));
     assert(movement);assert.equal(movement.movements[0].to.x1-movement.source.x1,30);assert.equal(movement.movements[0].to.y1-movement.source.y1,10);
     assert.deepEqual(movement.source,{x1:before.gx,y1:before.gy,x2:before.gx+before.gw,y2:before.gy+before.gh});
     assert(expected.objects.some(o=>o.source===null));assert(expected.objects.some(o=>o.source&&o.source.x1===o.source.x2&&o.source.y1===o.source.y2));
@@ -109,7 +109,7 @@ async function main() {
     await third.locator('#global').click();await note(third,'链路测试：Agent 取消后保留编辑，仍可手工导出');
     await command('cancel','--session',remote.sessionId);await third.locator('#export').click();await third.waitForFunction(()=>document.body.dataset.agentState==='cancelled');
     assert.equal(await third.locator('#workspace').evaluate(el=>el.inert),false);assert(!fs.existsSync(remoteFile));
-    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0],'链路测试：Agent 取消后保留编辑，仍可手工导出');
+    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0].text,'链路测试：Agent 取消后保留编辑，仍可手工导出');
     results.push('an externally cancelled session restores editable local export instead of freezing the workspace');
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:results.length,results,sessionId:session.sessionId,output:file,sha256:receipt.sha256,feedback:receipt.feedback},null,2));

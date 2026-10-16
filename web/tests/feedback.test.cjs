@@ -19,9 +19,9 @@ test('native minimalFeedbackRoundTrips fixture keeps movement and independent re
     notes:[{source:rectangle(20, 20, 20, 20), text:'加大标题'}, {source, text:'表格右移'}]
   }, false, exportedAt);
   assert.deepEqual(actual, {...metadata, annotationSpace:'result', objects:[
-    {source, movements:[{to:destination}], annotations:[]},
-    {source:rectangle(20, 20, 20, 20), movements:[], annotations:['加大标题']},
-    {source, movements:[], annotations:['表格右移']}
+    {id:'o1', source, movements:[{to:destination}], annotations:[]},
+    {id:'o2', source:rectangle(20, 20, 20, 20), movements:[], annotations:[{number:1,text:'加大标题'}]},
+    {id:'o3', source, movements:[], annotations:[{number:2,text:'表格右移'}]}
   ]});
 });
 
@@ -38,9 +38,9 @@ test('native movementSource notes merge with their exact source without exportin
     ]
   });
   assert.deepEqual(actual.objects, [
-    {source, movements:[{to:destination}, {to:rectangle(60, 60, 150, 120)}], annotations:['保持这个位置，视觉更轻盈']},
-    {source, movements:[], annotations:['独立框批注']},
-    {source:null, movements:[], annotations:['整体采用杂志风格']}
+    {id:'o1', source, movements:[{to:destination}, {to:rectangle(60, 60, 150, 120)}], annotations:[{number:2,text:'保持这个位置，视觉更轻盈'}]},
+    {id:'o2', source, movements:[], annotations:[{number:3,text:'独立框批注'}]},
+    {id:'o3', source:null, movements:[], annotations:[{number:4,text:'整体采用杂志风格'}]}
   ]);
   assert.equal(actual.image, image, 'the embedded image is the unchanged original');
 });
@@ -60,8 +60,8 @@ test('native tracked parent and child sources stay nested instead of exporting p
     ]
   }, false);
   assert.deepEqual(actual.objects, [
-    {source:parent, movements:[{to:rectangle(100, 10, 180, 90)}], annotations:['父区域']},
-    {source:child, movements:[{to:rectangle(20, 10, 60, 90)}], annotations:['子区域']}
+    {id:'o1', source:parent, movements:[{to:rectangle(100, 10, 180, 90)}], annotations:[{number:1,text:'父区域'}]},
+    {id:'o2', source:child, movements:[{to:rectangle(20, 10, 60, 90)}], annotations:[{number:2,text:'子区域'}]}
   ]);
 });
 
@@ -70,7 +70,7 @@ test('native returning home drops movement while retaining its text on the origi
   const actual = feedback.exportImage({image, movements:[{source, destination:source}],
     notes:[{source, movementSource:source, text:'回到原位后保留'}]
   }, false);
-  assert.deepEqual(actual.objects, [{source, movements:[], annotations:['回到原位后保留']}]);
+  assert.deepEqual(actual.objects, [{id:'o1', source, movements:[], annotations:[{number:1,text:'回到原位后保留'}]}]);
 });
 
 test('native fractional sources remain distinct even when nearly equal', () => {
@@ -163,9 +163,9 @@ test('legacy point, region, movement and global feedback retain their targets du
     annotations:[{change:0, text:'右移'}, {point:{x:5,y:6}, text:'留白'}, {rectangle:source, text:'区域'}, {text:'整体'}]
   });
   assert.deepEqual(actual, {annotationSpace:'result', image, objects:[
-    {source, movements:[{to:destination}], annotations:['右移']},
-    {source:rectangle(5,6,5,6), movements:[], annotations:['留白']},
-    {source, movements:[], annotations:['区域']}, {source:null, movements:[], annotations:['整体']}
+    {source, movements:[{to:destination}], annotations:[{number:1,text:'右移'}]},
+    {source:rectangle(5,6,5,6), movements:[], annotations:[{number:2,text:'留白'}]},
+    {source, movements:[], annotations:[{number:3,text:'区域'}]}, {source:null, movements:[], annotations:[{number:4,text:'整体'}]}
   ]});
   assert.throws(() => feedback.normalizeImage({changes:[], annotations:[{text:'整体'}, {change:0,text:'不存在'}]}), /missing change/);
 });
@@ -176,4 +176,37 @@ test('native empty video feedback uses zero dimensions', () => {
   assert.deepEqual(actual.video, {source:'relative-video.mp4', durationMs:0, width:0, height:0});
   assert.deepEqual(actual.frames, []);
   assert.deepEqual(actual.objects, []);
+});
+
+test('annotation numbers follow original note order across object grouping and omitted movement placeholders', () => {
+  const actual = feedback.exportImage({image, movements:[{source,destination}], notes:[
+    {source:null,text:'先写全局'},
+    {source:rectangle(2,3,2,3),text:'再写点'},
+    {source:destination,movementSource:source,text:''},
+    {source:destination,movementSource:source,text:'第四条是移动'},
+    {source:rectangle(1,1,8,8),text:'第五条是区域'}
+  ]});
+  assert.deepEqual(actual.objects.map(object=>object.id),['o1','o2','o3','o4']);
+  assert.deepEqual(actual.objects.flatMap(object=>object.annotations),[
+    {number:4,text:'第四条是移动'}, {number:1,text:'先写全局'}, {number:2,text:'再写点'}, {number:5,text:'第五条是区域'}
+  ]);
+  assert.deepEqual(feedback.annotationEntries(actual.objects).sort((a,b)=>a.number-b.number).map(({number,text})=>({number,text})),[
+    {number:1,text:'先写全局'}, {number:2,text:'再写点'}, {number:4,text:'第四条是移动'}, {number:5,text:'第五条是区域'}
+  ]);
+  assert.equal(feedback.summary(actual).annotations,4);
+  assert.deepEqual(JSON.parse(feedback.preview(actual)).objects, actual.objects);
+});
+
+test('annotation and object identities reject duplicates while old v2 strings remain readable', () => {
+  const object=(id,annotations)=>({id,source:null,movements:[],annotations});
+  const current={...metadata,annotationSpace:'result',objects:[object('a',[{number:2,text:'第二条'}]),object('b',[{number:1000,text:'末条'}])]};
+  assert.deepEqual(feedback.normalizeImage(current),current);
+  for(const objects of [
+    [object('same',[]),object('same',[])], [object(' ',[])], [object('x'.repeat(257),[])],
+    [object('a',[{number:2,text:'重复'}]),object('b',[{number:2,text:'重复'}])],
+    ...[0,-1,1001,1.5,'1',null].map(number=>[object('a',[{number,text:'无效编号'}])])
+  ])assert.throws(()=>feedback.normalizeImage({...current,objects}),/ID|number/);
+  const old={...metadata,annotationSpace:'result',objects:[{source:null,movements:[],annotations:['先出现','后出现']}]};
+  assert.deepEqual(feedback.normalizeImage(old),old);
+  assert.deepEqual(feedback.annotationEntries(old.objects).map(({number,text})=>({number,text})),[{number:1,text:'先出现'},{number:2,text:'后出现'}]);
 });

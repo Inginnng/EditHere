@@ -282,6 +282,108 @@ test('video-feedback-1 accepts versioned frame feedback while preserving its con
   assert.match(resultText(rejected), /不支持的图片反馈版本/);
 });
 
+test('numbered image annotations keep UI numbers independently of object ordering and legacy strings', () => {
+  const feedback = versionedImageFeedback({ objects: [
+    { id: 'third-party:move', source: { x1: 10, y1: 20, x2: 50, y2: 60 }, movements: [{ to: { x1: 30, y1: 20, x2: 70, y2: 60 } }], annotations: [{ number: 9, text: '先导出的移动对象保持第九号' }] },
+    { id: 'o2', source: null, movements: [], annotations: [{ number: 1, text: '第一条全局意见' }, '旧字符串意见'] },
+    { source: null, movements: [], annotations: [{ number: 1000, text: '保留编号间隙与上限' }] },
+  ] });
+  const before = JSON.stringify(feedback);
+  for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true }, {}, receipt);
+    assert.equal(result.isError, false);
+    const text = resultText(result);
+    assert.match(text, /objects\[0\] \(id=third-party:move\)/);
+    assert.match(text, /批注#9: 先导出的移动对象保持第九号/);
+    assert.match(text, /批注#1: 第一条全局意见/);
+    assert.match(text, /批注#2: 旧字符串意见/);
+    assert.match(text, /批注#1000: 保留编号间隙与上限/);
+    assert.equal(text.includes('[object Object]'), false);
+  }
+  assert.equal(JSON.stringify(feedback), before);
+  const longestId = versionedImageFeedback({ objects: [{ id: 'x'.repeat(256), source: null, movements: [], annotations: [] }] });
+  assert.equal(feedbackResult(longestId).isError, false);
+});
+
+test('numbered image feedback rejects invalid or repeated IDs and numbers and keeps field validation strict', () => {
+  const cases = [
+    [(feedback) => { feedback.objects[0].id = ''; }, /id 必须是/],
+    [(feedback) => { feedback.objects[0].id = '   '; }, /id 必须是/],
+    [(feedback) => { feedback.objects[0].id = null; }, /id 必须是/],
+    [(feedback) => { feedback.objects[0].id = 'x'.repeat(257); }, /id 必须是/],
+    [(feedback) => { feedback.objects[1].id = feedback.objects[0].id; }, /id 在本图片反馈中重复/],
+    [(feedback) => { feedback.objects[0].annotations[0].number = 0; }, /number 必须是/],
+    [(feedback) => { feedback.objects[0].annotations[0].number = 1001; }, /number 必须是/],
+    [(feedback) => { feedback.objects[0].annotations[0].number = 1.5; }, /number 必须是/],
+    [(feedback) => { feedback.objects[0].annotations[0].number = '1'; }, /number 必须是/],
+    [(feedback) => { delete feedback.objects[0].annotations[0].number; }, /number 必须是/],
+    [(feedback) => { feedback.objects[1].annotations[0].number = 1; }, /number 在本图片反馈中重复/],
+    [(feedback) => { feedback.objects[0].annotations[0].text = ''; }, /有效的非空批注文字/],
+    [(feedback) => { delete feedback.objects[0].annotations[0].text; }, /有效的非空批注文字/],
+    [(feedback) => { feedback.objects[0].annotations[0].extra = true; }, /不支持的字段/],
+    [(feedback) => { feedback.objects[0].extra = true; }, /不支持的字段/],
+  ];
+  for (const [mutate, error] of cases) {
+    const feedback = versionedImageFeedback({ objects: [
+      { id: 'o1', source: null, movements: [], annotations: [{ number: 1, text: '第一条' }] },
+      { id: 'o2', source: null, movements: [], annotations: [{ number: 3, text: '第三条' }] },
+    ] });
+    mutate(feedback);
+    for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+      const result = feedbackResult(feedback, { recoverCompletedFeedback: true }, {}, receipt);
+      assert.equal(result.isError, true);
+      assert.match(resultText(result), error);
+    }
+  }
+});
+
+function numberedVideoFeedback() {
+  const feedback = videoFeedback();
+  feedback.frames.forEach((frame) => {
+    frame.feedback = versionedImageFeedback(frame.feedback);
+    frame.feedback.objects[0].id = 'o1';
+    frame.feedback.objects[0].annotations = [{ number: 7, text: frame.feedback.objects[0].annotations[0] }];
+  });
+  feedback.objects = feedback.frames.flatMap((frame) => frame.feedback.objects.map((object) => ({ ...object, frameId: frame.id, timestampMs: frame.timestampMs })));
+  return JSON.parse(JSON.stringify(feedback));
+}
+
+test('video annotation numbers and object IDs are frame-local and root indexes compare their identity', () => {
+  const feedback = numberedVideoFeedback();
+  // Equivalent JSON field order must not make the expanded root index differ.
+  feedback.objects[0].annotations[0] = { text: feedback.objects[0].annotations[0].text, number: 7 };
+  for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true, includeImage: true }, {}, receipt);
+    assert.equal(result.isError, false);
+    assert.equal(resultText(result).split('批注#7:').length - 1, 2);
+    assert.equal(resultText(result).split('(id=o1)').length - 1, 2);
+    assert.equal(result.content.filter((item) => item.type === 'image').length, 2);
+  }
+  for (const field of ['id', 'number', 'extra', 'sourceExtra']) {
+    const mismatch = numberedVideoFeedback();
+    if (field === 'id') mismatch.objects[0].id = 'other-object';
+    else if (field === 'number') mismatch.objects[0].annotations[0].number = 8;
+    else if (field === 'sourceExtra') mismatch.objects[0].source.extra = true;
+    else mismatch.objects[0].extra = true;
+    const result = feedbackResult(mismatch);
+    assert.equal(result.isError, true);
+    assert.match(resultText(result), field === 'extra' || field === 'sourceExtra' ? /不支持的字段/ : /与对应帧的批注内容不一致/);
+  }
+});
+
+test('video feedback still rejects duplicate IDs or annotation numbers within a single frame', () => {
+  for (const field of ['id', 'number']) {
+    const feedback = numberedVideoFeedback();
+    feedback.frames[0].feedback.objects.push({
+      id: field === 'id' ? 'o1' : 'o2', source: null, movements: [],
+      annotations: [{ number: field === 'number' ? 7 : 8, text: '同帧新增意见' }],
+    });
+    const result = feedbackResult(feedback);
+    assert.equal(result.isError, true);
+    assert.match(resultText(result), field === 'id' ? /id 在本图片反馈中重复/ : /number 在本图片反馈中重复/);
+  }
+});
+
 test('annotation recovers committed feedback when the real CLI exits without its receipt', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-lost-receipt-'));
   const filename = path.join(directory, 'feedback.json');

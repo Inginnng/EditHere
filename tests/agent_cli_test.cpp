@@ -546,7 +546,7 @@ class AgentCliTests : public QObject {
         QVERIFY(object["source"].isNull());
         QCOMPARE(object["movements"].toArray().size(), 0);
         QCOMPARE(object["annotations"].toArray().size(), 1);
-        QCOMPARE(object["annotations"].toArray()[0].toString(), QString("Move the button"));
+        QCOMPARE(object["annotations"].toArray()[0].toObject()["text"].toString(), QString("Move the button"));
         QVERIFY(!feedback["image"].toString().isEmpty());
         QVERIFY(!editor->findChild<QWidget *>("agentSessionBanner")->isVisible());
         QVERIFY(editor->hasDocument());
@@ -594,7 +594,7 @@ class AgentCliTests : public QObject {
         QCOMPARE(receipt["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
         const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
         QCOMPARE(feedback["schemaVersion"], receipt["schemaVersion"]);
-        QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toString(), comment);
+        QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toObject()["text"].toString(), comment);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QTest::qWait(50);
         QCOMPARE(finished.size(), 1);
@@ -862,9 +862,9 @@ class AgentCliTests : public QObject {
         QCOMPARE(objects[0].toObject()["source"], objects[1].toObject()["source"]);
         QVERIFY(objects[0].toObject()["frameId"] != objects[1].toObject()["frameId"]);
         QVERIFY(objects[0].toObject()["timestampMs"].toInteger() < objects[1].toObject()["timestampMs"].toInteger());
-        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toString(), firstComment);
-        QCOMPARE(objects[1].toObject()["annotations"].toArray()[0].toString(), secondComment);
-        QCOMPARE(objects[2].toObject()["annotations"].toArray()[0].toString(), thirdComment);
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), firstComment);
+        QCOMPARE(objects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), secondComment);
+        QCOMPARE(objects[2].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), thirdComment);
         for (const auto &frame : embedded["frames"].toArray())
             QVERIFY(frame.toObject()["feedback"].toObject().contains("image"));
 

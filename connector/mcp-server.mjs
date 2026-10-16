@@ -282,18 +282,49 @@ function validateRectangle(rectangle, location) {
   }
 }
 
-function validateVideoObject(object, location) {
+function validateKnownKeys(value, allowed, location) {
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
+    throw new Error(`${location} 包含不支持的字段或不是对象。`);
+  }
+}
+
+function validateAnnotationText(value, location) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 10000) {
+    throw new Error(`${location} 必须是有效的非空批注文字。`);
+  }
+}
+
+function validateVideoObject(object, location, { versioned = false, indexed = false } = {}) {
   if (!isRecord(object) || !Array.isArray(object.movements) || !Array.isArray(object.annotations)) {
     throw new Error(`${location} 必须包含 source、movements 和 annotations。`);
   }
-  if (object.source !== null) validateRectangle(object.source, `${location}.source`);
+  validateKnownKeys(object, ['source', 'movements', 'annotations', ...(versioned ? ['id'] : []), ...(indexed ? ['frameId', 'timestampMs'] : [])], location);
+  if (object.id !== undefined && (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256)) {
+    throw new Error(`${location}.id 必须是长度不超过 256 的非空字符串。`);
+  }
+  if (object.source !== null) {
+    validateKnownKeys(object.source, ['x1', 'y1', 'x2', 'y2'], `${location}.source`);
+    validateRectangle(object.source, `${location}.source`);
+  }
   object.movements.forEach((movement, index) => {
     if (!isRecord(movement)) throw new Error(`${location}.movements[${index}] 不是对象。`);
+    validateKnownKeys(movement, ['to'], `${location}.movements[${index}]`);
+    validateKnownKeys(movement.to, ['x1', 'y1', 'x2', 'y2'], `${location}.movements[${index}].to`);
     validateRectangle(movement.to, `${location}.movements[${index}].to`);
   });
-  if (object.annotations.some((text) => typeof text !== 'string' || !text.trim())) {
-    throw new Error(`${location}.annotations 必须是非空文字数组。`);
-  }
+  object.annotations.forEach((annotation, index) => {
+    const annotationLocation = `${location}.annotations[${index}]`;
+    if (typeof annotation === 'string') {
+      validateAnnotationText(annotation, annotationLocation);
+      return;
+    }
+    if (!versioned) throw new Error(`${annotationLocation} 必须是非空批注文字。`);
+    validateKnownKeys(annotation, ['number', 'text'], annotationLocation);
+    if (!Number.isInteger(annotation.number) || annotation.number < 1 || annotation.number > 1000) {
+      throw new Error(`${annotationLocation}.number 必须是 1–1000 的正整数。`);
+    }
+    validateAnnotationText(annotation.text, `${annotationLocation}.text`);
+  });
 }
 
 // Recovery has no successful CLI receipt to vouch for the file. Require a
@@ -301,11 +332,7 @@ function validateVideoObject(object, location) {
 // empty submission. Keep the legacy image format usable too.
 function validateImageRecoveryFeedback(feedback) {
   const versioned = validateImageFeedbackMetadata(feedback);
-  const keys = (value, allowed, location) => {
-    if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
-      throw new Error(`${location} 包含不支持的字段或不是对象。`);
-    }
-  };
+  const keys = validateKnownKeys;
   const rectangle = (value, location, integer = false, allowPoint = false) => {
     keys(value, ['x1', 'y1', 'x2', 'y2'], location);
     validateRectangle(value, location);
@@ -320,11 +347,7 @@ function validateImageRecoveryFeedback(feedback) {
     }
     return point;
   };
-  const text = (value, location) => {
-    if (typeof value !== 'string' || !value.trim() || value.length > 10000) {
-      throw new Error(`${location} 必须是有效的非空批注文字。`);
-    }
-  };
+  const text = validateAnnotationText;
   if (feedback.image !== undefined && !dataUrlToImageContent(feedback.image)) {
     throw new Error('image 不是有效的 PNG/JPEG Base64 data URL。');
   }
@@ -335,10 +358,15 @@ function validateImageRecoveryFeedback(feedback) {
     }
     let noteCount = 0;
     let movementCount = 0;
+    const objectIds = new Set();
+    const annotationNumbers = new Set();
     feedback.objects.forEach((object, index) => {
       const location = `objects[${index}]`;
-      keys(object, ['source', 'movements', 'annotations'], location);
-      validateVideoObject(object, location);
+      validateVideoObject(object, location, { versioned });
+      if (object.id !== undefined) {
+        if (objectIds.has(object.id)) throw new Error(`${location}.id 在本图片反馈中重复。`);
+        objectIds.add(object.id);
+      }
       const locatedPoint = object.source !== null && rectangle(object.source, `${location}.source`, false, true);
       if ((object.source === null || locatedPoint) && object.movements.length) {
         throw new Error(`${location} 的全局或点批注不能关联移动。`);
@@ -350,7 +378,13 @@ function validateImageRecoveryFeedback(feedback) {
         keys(movement, ['to'], `${location}.movements[${movementIndex}]`);
         rectangle(movement.to, `${location}.movements[${movementIndex}].to`);
       });
-      object.annotations.forEach((annotation, noteIndex) => text(annotation, `${location}.annotations[${noteIndex}]`));
+      object.annotations.forEach((annotation, noteIndex) => {
+        if (typeof annotation === 'string') return;
+        if (annotationNumbers.has(annotation.number)) {
+          throw new Error(`${location}.annotations[${noteIndex}].number 在本图片反馈中重复。`);
+        }
+        annotationNumbers.add(annotation.number);
+      });
     });
     return;
   }
@@ -386,7 +420,25 @@ function validateImageRecoveryFeedback(feedback) {
 }
 
 function objectIndexKey(object) {
-  return JSON.stringify([object.source, object.movements, object.annotations]);
+  const rectangleKey = (rectangle) => rectangle === null ? null : ['x1', 'y1', 'x2', 'y2'].map((key) => rectangle[key]);
+  return JSON.stringify([object.id ?? null, rectangleKey(object.source),
+    object.movements.map((movement) => rectangleKey(movement.to)),
+    object.annotations.map((annotation) => typeof annotation === 'string' ? annotation : [annotation.number, annotation.text])]);
+}
+
+// Old feedback has no badge numbers. Reserve every explicit number first, then
+// assign legacy strings the smallest unused numbers in their appearance order.
+function numberedAnnotations(objects) {
+  const arrays = objects.map((object) => Array.isArray(object.annotations) ? object.annotations : []);
+  const used = new Set(arrays.flatMap((annotations) => annotations.filter(isRecord).map((annotation) => annotation.number)));
+  let next = 1;
+  return arrays.map((annotations) => annotations.map((annotation) => {
+    if (typeof annotation !== 'string') return annotation;
+    while (used.has(next)) next += 1;
+    const number = next++;
+    used.add(number);
+    return { number, text: annotation };
+  }));
 }
 
 function validateVideoFeedback(feedback) {
@@ -421,7 +473,8 @@ function validateVideoFeedback(feedback) {
         || !Array.isArray(frame.feedback.objects)) {
       throw new Error(`${location}.feedback 必须是 annotationSpace=result 的对象反馈。`);
     }
-    if (validateImageFeedbackMetadata(frame.feedback)) validateImageRecoveryFeedback(frame.feedback);
+    const versioned = validateImageFeedbackMetadata(frame.feedback);
+    if (versioned) validateImageRecoveryFeedback(frame.feedback);
     if (frame.feedback.image !== undefined && typeof frame.feedback.image !== 'string') {
       throw new Error(`${location}.feedback.image 必须是图像 data URL 字符串。`);
     }
@@ -433,7 +486,7 @@ function validateVideoFeedback(feedback) {
       throw new Error(`${location}.imageFile 必须是反馈 JSON 同目录的 PNG/JPEG 文件名，不能包含路径。`);
     }
     frame.feedback.objects.forEach((object, objectIndex) => {
-      validateVideoObject(object, `${location}.feedback.objects[${objectIndex}]`);
+      validateVideoObject(object, `${location}.feedback.objects[${objectIndex}]`, { versioned });
     });
     const remaining = new Map();
     frame.feedback.objects.forEach((object) => {
@@ -453,7 +506,7 @@ function validateVideoFeedback(feedback) {
       if (!entry || object.timestampMs !== entry.frame.timestampMs) {
         throw new Error(`objects[${index}] 的 frameId 或 timestampMs 没有匹配的帧。`);
       }
-      validateVideoObject(object, `objects[${index}]`);
+      validateVideoObject(object, `objects[${index}]`, { versioned: entry.frame.feedback.schemaVersion === IMAGE_FEEDBACK_VERSION, indexed: true });
       const key = objectIndexKey(object);
       const remaining = entry.remaining.get(key) || 0;
       if (!remaining) throw new Error(`objects[${index}] 与对应帧的批注内容不一致。`);
@@ -496,15 +549,16 @@ function summarizeVideoFeedback(feedback, feedbackPath) {
   };
   frames.slice(0, MAX_VIDEO_SUMMARY_FRAMES).forEach((frame, index) => {
     if (!add(`帧 frames[${index}]: frameId=${frame.id}，时间 ${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}${frame.timestampUs === undefined ? '' : `，timestampUs=${frame.timestampUs}`}），${frame.feedback.objects.length} 个对象，截图=${frame.feedback.image ? `frames[${index}].feedback.image` : '未内嵌'}${frame.imageFile ? `，外部截图=${frame.imageFile}（JSON 同目录）` : ''}`)) return;
+    const annotations = numberedAnnotations(frame.feedback.objects);
     frame.feedback.objects.forEach((object, objectIndex) => {
       if (displayedObjects >= MAX_VIDEO_SUMMARY_OBJECTS) { trimmed = true; return; }
-      if (!add(`  frames[${index}].feedback.objects[${objectIndex}]: ${formatVideoSource(object.source)}`)) return;
+      if (!add(`  frames[${index}].feedback.objects[${objectIndex}]${object.id === undefined ? '' : ` (id=${object.id})`}: ${formatVideoSource(object.source)}`)) return;
       displayedObjects += 1;
       object.movements.slice(0, 32).forEach((movement, movementIndex) => add(`      移动#${movementIndex}: -> ${formatRectangle(movement.to)}`));
-      object.annotations.slice(0, 64).forEach((text, noteIndex) => {
+      annotations[objectIndex].slice(0, 64).forEach(({ number, text }) => {
         const shortened = text.length > 1000;
         if (shortened) trimmed = true;
-        add(`      批注#${noteIndex}: ${text.slice(0, 1000)}${shortened ? '…（全文见 JSON）' : ''}`);
+        add(`      批注#${number}: ${text.slice(0, 1000)}${shortened ? '…（全文见 JSON）' : ''}`);
       });
       if (object.movements.length > 32 || object.annotations.length > 64) trimmed = true;
     });
@@ -612,17 +666,19 @@ function summarizeFeedback(feedback, feedbackPath) {
     lines.push('坐标系: 图像像素，原点在左上角；批注位于调整后的画面（annotationSpace=result）。矩形右下边界不包含自身，宽高为 x2-x1、y2-y1。坐标不能直接当作屏幕坐标或 CSS 像素。');
     if (objects.length) {
       lines.push('对象列表 (source=原图区域，movements=移动到的位置，annotations=修改意见):');
+      const objectAnnotations = numberedAnnotations(objects);
       objects.forEach((o, i) => {
+        const objectLabel = `objects[${i}]${o.id === undefined ? '' : ` (id=${o.id})`}`;
         if (o.source) {
-          lines.push(`  [${i}] 原图区域${formatRectangle(o.source)}`);
+          lines.push(`  ${objectLabel} 原图区域${formatRectangle(o.source)}`);
         } else {
-          lines.push(`  [${i}] 全局对象（无 source）`);
+          lines.push(`  ${objectLabel} 全局对象（无 source）`);
         }
         (Array.isArray(o.movements) ? o.movements : []).forEach((m, j) => {
           lines.push(`      移动#${j}: -> ${formatRectangle(m.to)}`);
         });
-        (Array.isArray(o.annotations) ? o.annotations : []).forEach((t, j) => {
-          lines.push(`      批注#${j}: ${t}`);
+        objectAnnotations[i].forEach(({ number, text }) => {
+          lines.push(`      批注#${number}: ${text}`);
         });
       });
     } else {

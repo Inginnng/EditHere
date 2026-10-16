@@ -92,7 +92,7 @@ class VideoProjectTests : public QObject {
             QCOMPARE(parsed.image.size(), QSize(320, 180));
             QCOMPARE(parsed.notes.size(), 1);
             QCOMPARE(parsed.notes[0].rect, QRect(80, 40, 100, 32));
-            QCOMPARE(parsed.notes[0].comment, object["annotations"].toArray()[0].toString());
+            QCOMPARE(parsed.notes[0].comment, object["annotations"].toArray()[0].toObject()["text"].toString());
         }
         QVERIFY(!feedback["video"].toObject().contains("data"));
     }

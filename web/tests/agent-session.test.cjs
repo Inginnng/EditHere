@@ -64,6 +64,22 @@ test('a declared image version cannot omit or replace its metadata', () => {
   assert.equal(store.byId(session.sessionId).state, 'pending');
 });
 
+test('numbered feedback retains file object IDs and sparse numbers in the persisted MCP receipt', () => {
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const current = format.exportImage({image,movements:[],notes:[{source:null,text:'意见'}]});
+  current.objects=[{id:'first-object',source:null,movements:[],annotations:[{number:3,text:'较早'}]},
+    {id:'second-object',source:rectangle,movements:[],annotations:[{number:1000,text:'较晚'}]}];
+  for(const objects of [
+    [current.objects[0],{...current.objects[1],id:'first-object'}],
+    [current.objects[0],{...current.objects[1],annotations:[{number:3,text:'重复编号'}]}]
+  ])assert.throws(()=>store.submit(token(session),{...current,objects}),/duplicate/);
+  const receipt=store.submit(token(session),current);
+  assert.deepEqual(receipt.feedback.objects,current.objects);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),current);
+  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}),receipt);
+  assert.deepEqual(new AgentSessions(paths).submit(token(session),current),receipt);
+});
+
 test('feedback rejects a replaced image, empty text, invalid coordinates and incompatible fields', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
   for (const invalid of [

@@ -52,7 +52,7 @@ async function main(){
     await page.reload();assert.equal(await page.locator('#embed').isChecked(),false);assert.equal(await page.locator('body').getAttribute('data-save-mode'),'content');await note();
     await page.evaluate(()=>{window.rejectCopy=true;});await page.locator('#save-json').click();
     await page.locator('#export-dialog').waitFor({state:'visible'});
-    assert.equal(JSON.parse(await page.locator('#json-preview').inputValue()).objects[0].annotations[0],'游戏主页更清晰 ✨');
+    assert.equal(JSON.parse(await page.locator('#json-preview').inputValue()).objects[0].annotations[0].text,'游戏主页更清晰 ✨');
     assert((await page.locator('#export-hint').textContent()).includes('剪贴板不可用'));
     await page.locator('[data-close="export-dialog"]').click();
     await menu();const downloadsBefore=downloads.length;await page.locator('#save-options [data-save-mode="project"]').click();

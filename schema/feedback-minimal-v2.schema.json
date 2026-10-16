@@ -59,8 +59,22 @@
           "annotations": {
             "type": "array",
             "items": {
-              "$ref": "#/$defs/text"
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/text"
+                },
+                {
+                  "$ref": "#/$defs/numberedAnnotation"
+                }
+              ]
             }
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "\\S",
+            "description": "Unique within this feedback file. Not a cross-round component identity."
           }
         }
       }
@@ -168,6 +182,24 @@
       "minLength": 1,
       "maxLength": 10000,
       "pattern": "\\S"
+    },
+    "numberedAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "text"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        }
+      }
     }
   }
 }

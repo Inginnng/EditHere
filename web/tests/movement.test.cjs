@@ -8,6 +8,7 @@ const layout = require('../src/layout.js');
 const feedback = require('../src/feedback.js');
 const rect = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
 const plain = value => JSON.parse(JSON.stringify(value));
+const legacyObjects = objects => objects.map(({id, ...object}) => ({...object, annotations:object.annotations.map(annotation => typeof annotation === 'string' ? annotation : annotation.text)}));
 
 // Execute the complete production app. Only browser rendering and DOM storage
 // are stubbed; transforms, note submission, reset, history and feedback export
@@ -80,7 +81,7 @@ function appHarness() {
   const actual = sandbox.__movementTest;
   return { ...actual, state: () => plain(actual.state()), rawFeedback: () => plain(actual.rawFeedback()), feedback: () => {
     const {$schema, schemaVersion, tool, exportedAt, ...value} = plain(actual.feedback());
-    return value; // These model fixtures compare geometry; metadata has its own export tests.
+    return {...value, objects:legacyObjects(value.objects)}; // Geometry fixtures compare content; numbered exports are covered directly below.
   }, noteBounds: id => plain(actual.noteBounds(id)), serialized: () => plain(actual.serialized()) };
 }
 
@@ -119,7 +120,7 @@ test('the editor imports versioned and legacy image feedback and rejects unknown
   const source = rect(10, 10, 40, 30), destination = rect(50, 10, 80, 30);
   const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', movements:[{source,destination}], notes:[{source,movementSource:source,text:'保留位移'}]});
   await app.importFeedback(current);
-  assert.deepEqual(app.feedback().objects, current.objects);
+  assert.deepEqual(app.feedback().objects, legacyObjects(current.objects));
   const before = app.state();
   await assert.rejects(app.importFeedback({...current,schemaVersion:'feedback-minimal-99'}), /version/);
   assert.deepEqual(app.state(), before);
@@ -135,6 +136,30 @@ test('reopening saved Agent feedback preserves its original export metadata in a
   const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', toolVersion:'0.10.0',movements:[],notes:[{source:null,text:'已保存'}]}, true, '2026-10-15T09:30:00+08:00');
   await app.restoreAgentFeedback(current);
   assert.deepEqual(app.rawFeedback(), current);
+  current.objects[0].id='saved-object';current.objects[0].annotations[0].number=7;
+  await app.restoreAgentFeedback(current);
+  assert.deepEqual(app.rawFeedback(),current,'a completed backup keeps sparse numbers and file IDs exactly as saved');
+});
+
+test('numbered feedback restores note order before project saving and reexporting', async () => {
+  const app=appHarness(),source=rect(10,10,40,30),destination=rect(50,10,80,30);
+  const current=feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==',notes:[],movements:[]});
+  current.objects=[
+    {id:'movement',source,movements:[{to:destination}],annotations:[{number:7,text:'移动在后'}]},
+    {id:'global',source:null,movements:[],annotations:[{number:1,text:'全局在前'}]},
+    {id:'point',source:rect(2,3,2,3),movements:[],annotations:[{number:4,text:'点在中间'}]}
+  ];
+  await app.importFeedback(current);
+  assert.deepEqual(app.state().notes.map(note=>note.text),['全局在前','点在中间','移动在后']);
+  const project=app.serialized();await app.restore(project);
+  assert.deepEqual(app.state().notes.map(note=>note.text),['全局在前','点在中间','移动在后']);
+  assert.deepEqual(app.rawFeedback().objects.flatMap(object=>object.annotations).sort((a,b)=>a.number-b.number),[
+    {number:1,text:'全局在前'},{number:2,text:'点在中间'},{number:3,text:'移动在后'}
+  ]);
+  const retained=app.state();
+  await assert.rejects(app.importFeedback({...current,objects:[current.objects[0],{...current.objects[1],id:'movement'}]}),/duplicate/);
+  await assert.rejects(app.importFeedback({...current,objects:[current.objects[0],{...current.objects[1],annotations:[{number:7,text:'冲突'}]}]}),/duplicate/);
+  assert.deepEqual(app.state(),retained);
 });
 
 test('detaching a returned child preserves the original parent trajectory while reset restores only the remaining pixels', () => {

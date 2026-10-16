@@ -359,6 +359,7 @@
     // All delivery paths share one export time until the document changes, so
     // a saved backup and an idempotent Agent submission identify the same snapshot.
     if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
+    if(feedbackStamp.snapshot){const {image,...withoutImage}=feedbackStamp.snapshot;return clone(embed?feedbackStamp.snapshot:withoutImage);}
     const exportedAt=feedbackStamp.exportedAt;
     const value=session.kind==='image'?exportDoc(session.document,embed,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed,exportedAt);
     return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
@@ -471,9 +472,10 @@
     const image=await decode(f.image);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
     const d=makeDoc(image,f.image,timestampUs,id),groups=new Map();
     // Partition every source before moving any piece: destinations may cover later sources.
-    for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations)||obj.annotations.some(t=>typeof t!=='string'||!t.trim()||t.length>10000))throw new Error('反馈对象格式无效');
+    for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations))throw new Error('反馈对象格式无效');
       if(obj.movements.length){if(!obj.source)throw new Error('全局意见不能包含移动');validateRect(obj.source,w,h,false);for(const movement of obj.movements)validateRect(movement.to,w,h,false);if(!d.layout)d.layout=L.create(w,h);const groupId=L.addRegion(d.layout,obj.source);if(!groupId)throw new Error('无法还原反馈的移动区域');groups.set(obj,groupId);}}
-    const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}for(const text of obj.annotations)d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{})});}if(d.layout)d.layout.movements=importedMovements;
+    const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}}if(d.layout)d.layout.movements=importedMovements;
+    for(const {object:obj,text} of F.annotationEntries(f.objects).sort((a,b)=>a.number-b.number)){const groupId=groups.get(obj);d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{})});}
     validateNotes(d.notes,w,h,d.layout);return {doc:d,width:w,height:h};
   }
   function validateVideoMetadata(value,w=value?.width,h=value?.height,empty=false) {
@@ -589,7 +591,7 @@
       if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
       await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
       const metadata=F.imageMetadata(value.feedback);
-      if(metadata.exportedAt)feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt,metadata};
+      feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt||new Date().toISOString(),metadata,snapshot:clone(value.feedback)};
       exportCache=null;
       agentBound=true;
     },

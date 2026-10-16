@@ -22,6 +22,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace h2d {
 namespace {
@@ -524,7 +525,7 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
     validateDocument(doc);
     const auto movements = doc.layout ? layoutMovements(*doc.layout) : QVector<LayoutMovement>{};
     // Build object-oriented structure: each object has source + movements + annotations.
-    struct ObjectEntry { QRectF source; bool isGlobal = false; QVector<QRectF> dests; QStringList texts; };
+    struct ObjectEntry { QRectF source; bool isGlobal = false; QVector<QRectF> dests; QJsonArray texts; };
     QVector<ObjectEntry> entries;
     QHash<QString, int> bySource;
     auto keyFor = [](QRectF r) {
@@ -544,18 +545,20 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         const int idx = ensureEntry(m.source);
         entries[idx].dests.append(m.destination);
     }
+    int number = 0;
     for (const auto &note : doc.notes) {
+        const QJsonObject annotation{{"number", ++number}, {"text", note.comment}};
         if (note.isGlobal) {
             ObjectEntry e;
             e.isGlobal = true;
-            e.texts.append(note.comment);
+            e.texts.append(annotation);
             entries.append(e);
             continue;
         }
         if (note.movementSource) {
             const int idx = ensureEntry(*note.movementSource);
             if (!note.comment.trimmed().isEmpty())
-                entries[idx].texts.append(note.comment);
+                entries[idx].texts.append(annotation);
             continue;
         }
         // Standalone point or rect annotation.
@@ -563,12 +566,12 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         e.source = note.isPoint
             ? QRectF(note.point.x(), note.point.y(), 0, 0)
             : QRectF(note.rect);
-        e.texts.append(note.comment);
+        e.texts.append(annotation);
         entries.append(e);
     }
     QJsonArray objects;
     for (const auto &e : entries) {
-        QJsonObject obj;
+        QJsonObject obj{{"id", "o" + QString::number(objects.size() + 1)}};
         if (e.isGlobal)
             obj.insert("source", QJsonValue(QJsonValue::Null));
         else
@@ -577,10 +580,7 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         for (const auto &dest : e.dests)
             movementArray.append(QJsonObject{{"to", floatingRectJson(dest)}});
         obj.insert("movements", movementArray);
-        QJsonArray textArray;
-        for (const auto &t : e.texts)
-            textArray.append(t);
-        obj.insert("annotations", textArray);
+        obj.insert("annotations", e.texts);
         objects.append(obj);
     }
     QJsonObject result{{"$schema", FeedbackSchemaId},
@@ -842,6 +842,8 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         // with overlapping sources) that the flat change-list cannot represent.
         QVector<LayoutSequence> layoutObjects;
         qsizetype noteCount = 0, movementCount = 0;
+        QSet<QString> objectIds;
+        QSet<int> annotationNumbers;
         const auto fitsImage = [&](QRectF rect) {
             return rect.left() >= 0 && rect.top() >= 0 && rect.right() <= image.width() + 1e-7 &&
                    rect.bottom() <= image.height() + 1e-7;
@@ -850,7 +852,16 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             if (!value.isObject())
                 fail(tr("对象格式不正确"));
             const auto obj = value.toObject();
-            exactKeys(obj, {"source", "movements", "annotations"});
+            QStringList fields{"source", "movements", "annotations"};
+            if (obj.contains("id")) {
+                fields.append("id");
+                const auto id = obj["id"].toString();
+                if (!obj["id"].isString() || id.trimmed().isEmpty() || id.size() > 256 ||
+                    objectIds.contains(id))
+                    fail(tr("对象标识不正确或重复"));
+                objectIds.insert(id);
+            }
+            exactKeys(obj, fields);
             if (!obj["movements"].isArray() || !obj["annotations"].isArray())
                 fail(tr("对象移动或批注格式不正确"));
             const auto movements = obj["movements"].toArray();
@@ -859,9 +870,20 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             movementCount += movements.size();
             if (noteCount > MaxNotes || movementCount > MaxLayoutMovements)
                 fail(tr("批注或移动数量超出限制"));
-            for (const auto &text : annotations)
+            for (const auto &annotation : annotations) {
+                QJsonValue text = annotation;
+                if (annotation.isObject()) {
+                    const auto item = annotation.toObject();
+                    exactKeys(item, {"number", "text"});
+                    const int number = integer(item["number"]);
+                    if (number <= 0 || number > MaxNotes || annotationNumbers.contains(number))
+                        fail(tr("批注编号不正确或重复"));
+                    annotationNumbers.insert(number);
+                    text = item["text"];
+                }
                 if (!text.isString() || text.toString().size() > 10000)
                     fail(tr("批注文字格式不正确"));
+            }
             if (obj["source"].isNull()) {
                 if (!movements.isEmpty())
                     fail(tr("全局批注不能关联移动"));
@@ -898,6 +920,22 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
         if (!layoutObjects.isEmpty()) {
             doc.layout = importLayoutSequences(layoutObjects, image.size());
         }
+        QVector<std::pair<int, Note>> numberedNotes;
+        int implicitNumber = 1;
+        const auto annotationText = [](const QJsonValue &annotation) {
+            return annotation.isString() ? annotation.toString() : annotation.toObject()["text"].toString();
+        };
+        const auto appendNote = [&](Note note, const QJsonValue &annotation) {
+            int number = 0;
+            if (annotation.isObject()) {
+                number = annotation.toObject()["number"].toInt();
+            } else {
+                while (annotationNumbers.contains(implicitNumber))
+                    ++implicitNumber;
+                number = implicitNumber++;
+            }
+            numberedNotes.append({number, std::move(note)});
+        };
         for (const auto &value : objects) {
             const auto obj = value.toObject();
             const auto texts = obj["annotations"].toArray();
@@ -905,13 +943,11 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                 if (!obj["movements"].toArray().isEmpty())
                     fail(tr("全局批注不能关联移动"));
                 for (const auto &text : texts) {
-                    if (!text.isString())
-                        fail(tr("批注文字格式不正确"));
                     Note note;
                     note.isGlobal = true;
                     note.isPoint = true;
-                    note.comment = text.toString();
-                    doc.notes.append(note);
+                    note.comment = annotationText(text);
+                    appendNote(std::move(note), text);
                 }
                 continue;
             }
@@ -920,10 +956,8 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
             const auto movements = obj["movements"].toArray();
             const bool hasMovements = !movements.isEmpty();
             for (const auto &text : texts) {
-                if (!text.isString())
-                    fail(tr("批注文字格式不正确"));
                 Note note;
-                note.comment = text.toString();
+                note.comment = annotationText(text);
                 if (isPoint) {
                     note.isPoint = true;
                     note.point = QPoint(qRound(source.left()), qRound(source.top()));
@@ -945,9 +979,14 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
                     if (note.rect.isEmpty())
                         fail(tr("框选超出画布"));
                 }
-                doc.notes.append(note);
+                appendNote(std::move(note), text);
             }
         }
+        std::sort(numberedNotes.begin(), numberedNotes.end(), [](const auto &left, const auto &right) {
+            return left.first < right.first;
+        });
+        for (auto &entry : numberedNotes)
+            doc.notes.append(std::move(entry.second));
     } else {
         // Legacy action-oriented format: annotations reference changes by index.
         if (!feedback["annotations"].isArray() || !feedback["changes"].isArray() ||

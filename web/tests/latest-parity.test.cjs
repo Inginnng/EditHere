@@ -101,15 +101,15 @@ async function main() {
       await importProject(textProject); await select(240, 130); await page.locator('#reset-component').click();
       const ordered = await cards(); assert.equal(ordered.length, 3); assert.equal(ordered[1].id, movementId); assert.equal(ordered[1].text, '移动的说明');
       assert.equal(await page.locator('path[data-movement]').count(), 0);
-      const object = (await exported()).objects.find(object => object.annotations.includes('移动的说明')); assert.deepEqual(object, { source: left, movements: [], annotations: ['移动的说明'] });
+      const object = (await exported()).objects.find(object => object.annotations.some(annotation => annotation.text === '移动的说明')); assert.deepEqual(object, { id:'o2',source: left, movements: [], annotations: [{number:2,text:'移动的说明'}] });
     });
     current = 'adjacent source export';
     await checkpoint('two adjacent equal-distance moves remain separate native source objects', async () => {
       await importProject(fixture); await select(45, 50); await move(200, 100); await select(95, 50); await move(250, 100);
       const feedback = await exported(); assert.equal(feedback.objects.length, 2, 'equal transforms must not merge neighboring sources into one object');
       assert.deepEqual(feedback.objects, [
-        { source: left, movements: [{ to: rect(200, 100, 250, 140) }], annotations: [] },
-        { source: right, movements: [{ to: rect(250, 100, 300, 140) }], annotations: [] }
+        { id:'o1',source: left, movements: [{ to: rect(200, 100, 250, 140) }], annotations: [] },
+        { id:'o2',source: right, movements: [{ to: rect(250, 100, 300, 140) }], annotations: [] }
       ]);
       assert.deepEqual((await cards()).map(card => card.number), ['1', '2']);
     });

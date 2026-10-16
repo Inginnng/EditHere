@@ -613,25 +613,25 @@ class LayoutTests : public QObject {
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
         QCOMPARE(objects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({50, 50, 90, 60})}}}},
                               {"annotations", QJsonArray{}}}));
         // 点批注：(20,20) 处的 "加大标题"，源区域为零尺寸。
         QCOMPARE(objects[1].toObject(),
-                 (QJsonObject{{"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
+                 (QJsonObject{{"id", "o2"}, {"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
                               {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"加大标题"}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", "加大标题"}}}}}));
         // 矩形批注：(10,10,60x40) 处的 "表格右移"。
         QCOMPARE(objects[2].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o3"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"表格右移"}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 2}, {"text", "表格右移"}}}}}));
         const auto compact = serializeFeedback(document);
         auto payload = feedback;
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             payload.remove(field);
         const auto payloadBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-        QVERIFY(payloadBytes.size() < 350); // Preserve the original compact geometry budget.
+        QVERIFY(payloadBytes.size() < 450); // IDs and two numbered notes add less than 100 bytes.
         QVERIFY(compact.size() - payloadBytes.size() < 250); // Metadata stays bounded too.
         const auto path = directory.filePath("feedback-minimal.json");
         saveBytes(path, compact);
@@ -863,11 +863,11 @@ class LayoutTests : public QObject {
         const auto feedbackObjects = feedback["objects"].toArray();
         QCOMPARE(feedbackObjects.size(), 3);
         QCOMPARE(feedbackObjects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 30, 20})},
+                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 30, 20})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({90, 70, 30, 20})}}}},
-                              {"annotations", QJsonArray{movement.comment}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", movement.comment}}}}}));
         QCOMPARE(feedbackObjects[1].toObject()["source"], QJsonValue(QJsonValue::Null));
-        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toString(), global.comment);
+        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
         QCOMPARE(imported.notes[0].rect, movement.rect);

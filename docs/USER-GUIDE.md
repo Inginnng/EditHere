@@ -205,7 +205,8 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 | `annotationSpace` | 固定为 `"result"`，表示批注坐标对应当前调整后的画面 |
 | `objects[].source` | 该对象在原图中的区域；全局意见为 `null` |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放结果，`to` 为最终坐标 |
-| `objects[].annotations` | 挂在该对象上的文字意见 |
+| `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
+| `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
 
 图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或完整项目时间戳；仅保留根级导出时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 
@@ -215,16 +216,83 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 ```json
 {
+  "$schema": "urn:edithere:feedback-minimal:2",
+  "schemaVersion": "feedback-minimal-2",
+  "tool": {
+    "name": "EditHere",
+    "version": "0.11.1"
+  },
+  "exportedAt": "2026-10-16T16:30:00+08:00",
   "annotationSpace": "result",
   "objects": [
-    {"source": {"x1": 240, "y1": 180, "x2": 240, "y2": 180},
-     "movements": [], "annotations": ["这里改为蓝色"]},
-    {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240},
-     "movements": [], "annotations": ["增加圆角"]},
-    {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200},
-     "movements": [{"to": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
-     "annotations": ["整块往右下挪一点"]},
-    {"source": null, "movements": [], "annotations": ["整体更轻盈、安静，减少装饰"]}
+    {
+      "source": {
+        "x1": 240,
+        "y1": 180,
+        "x2": 240,
+        "y2": 180
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 1,
+          "text": "这里改为蓝色"
+        }
+      ],
+      "id": "o1"
+    },
+    {
+      "source": {
+        "x1": 200,
+        "y1": 140,
+        "x2": 400,
+        "y2": 240
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 2,
+          "text": "增加圆角"
+        }
+      ],
+      "id": "o2"
+    },
+    {
+      "source": {
+        "x1": 100,
+        "y1": 100,
+        "x2": 300,
+        "y2": 200
+      },
+      "movements": [
+        {
+          "to": {
+            "x1": 200,
+            "y1": 140,
+            "x2": 400,
+            "y2": 240
+          }
+        }
+      ],
+      "annotations": [
+        {
+          "number": 3,
+          "text": "整块往右下挪一点"
+        }
+      ],
+      "id": "o3"
+    },
+    {
+      "source": null,
+      "movements": [],
+      "annotations": [
+        {
+          "number": 4,
+          "text": "整体更轻盈、安静，减少装饰"
+        }
+      ],
+      "id": "o4"
+    }
   ]
 }
 ```

@@ -42,6 +42,8 @@ node <agent.cjs绝对路径> poll --session <start返回的sessionId>
 
 ## 核验与落实反馈
 
+- 新导出为 `feedback-minimal-2`：`objects[].id` 只在当前图片反馈内唯一（视频按帧）；`annotations` 为 `{number, text}` 数组，按 `number` 与图上编号对照，不能按对象数组位置重新编号。旧字符串批注及缺少对象 ID 的历史反馈仍可读取。
+
 核对原 `sessionId/outputPath`、`completedAt` 与 `sha256`；读取回执中不含图片的 `feedback`，需要原图时读取本次输出文件。避免打印图片 base64。将会话及处理进度记入当前任务的 `.edithere/sessions/<sessionId>.json`：首次提交可记 `received`，**仅在真正开始实施已授权修改时记 `processing`**；等待澄清或只读取结果时不得提前标记。完成后记 `handled` 和 SHA；中断时保留真实进度，后续先核实已有修改，避免重复实施。
 
 - 原图像素是坐标单位，`image` 为调整前原图；`annotationSpace:"result"` 对应调整后批注，不直接等于屏幕或 CSS 坐标。

@@ -45,7 +45,7 @@ function validateFeedback(value, image) {
   if (value.annotationSpace !== 'result' || value.image !== image) fail('Feedback must include this session\'s original image.');
   if (!Array.isArray(value.objects) || value.objects.length > 1000) fail('Invalid feedback objects.');
   const objects = value.objects.map(object => {
-    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== 'annotations,movements,source') fail('Invalid feedback object fields.');
+    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== (Object.hasOwn(object, 'id') ? 'annotations,id,movements,source' : 'annotations,movements,source')) fail('Invalid feedback object fields.');
     const source = object.source === null ? null : rectangle(object.source);
     if (!Array.isArray(object.movements) || object.movements.length > 1000 || !Array.isArray(object.annotations) || object.annotations.length > 1000) fail('Invalid movement or annotation list.');
     if (source === null && object.movements.length) fail('A global annotation cannot move.');
@@ -55,12 +55,9 @@ function validateFeedback(value, image) {
       if (source.x1 === source.x2 || source.y1 === source.y2 || to.x1 === to.x2 || to.y1 === to.y2) fail('Movement rectangles must have positive dimensions.');
       return {to};
     });
-    const annotations = object.annotations.map(text => {
-      if (typeof text !== 'string' || !text.trim() || text.length > 10000) fail('Annotations must contain nonempty text.');
-      return text;
-    });
+    const annotations = object.annotations.map(annotation => typeof annotation === 'string' ? annotation : {...annotation});
     if (!movements.length && !annotations.length) fail('Empty feedback objects are not valid.');
-    return {source, movements, annotations};
+    return {...(Object.hasOwn(object, 'id') ? {id:object.id} : {}), source, movements, annotations};
   });
   return {...feedbackFormat.imageMetadata(value), annotationSpace:'result', image, objects};
 }

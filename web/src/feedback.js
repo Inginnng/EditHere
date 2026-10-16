@@ -43,6 +43,36 @@
     }
     return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
   }
+  function annotationEntries(objects) {
+    if (!Array.isArray(objects) || objects.length > 9704) throw new Error('Invalid feedback objects.');
+    const ids = new Set(), numbers = new Set(), entries = [];
+    for (const object of objects) {
+      if (!exactKeys(object, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : [])]) ||
+          !Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object fields.');
+      if (Object.hasOwn(object, 'id')) {
+        if (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256 || ids.has(object.id)) throw new Error('Invalid or duplicate feedback object ID.');
+        ids.add(object.id);
+      }
+      for (const annotation of object.annotations) {
+        if (typeof annotation !== 'string' && !exactKeys(annotation, ['number', 'text'])) throw new Error('Invalid feedback annotation fields.');
+        const text = typeof annotation === 'string' ? annotation : annotation.text;
+        if (typeof text !== 'string' || !text.trim() || text.length > 10000) throw new Error('Invalid feedback annotation text.');
+        const number = typeof annotation === 'string' ? null : annotation.number;
+        if (typeof annotation !== 'string') {
+          if (!Number.isInteger(number) || number < 1 || number > 1000 || numbers.has(number)) throw new Error('Invalid or duplicate feedback annotation number.');
+          numbers.add(number);
+        }
+        entries.push({object, text, number});
+        if (entries.length > 1000) throw new Error('Too many feedback annotations.');
+      }
+    }
+    let next = 1;
+    for (const entry of entries) if (entry.number === null) {
+      while (numbers.has(next)) next++;
+      entry.number = next++; numbers.add(entry.number);
+    }
+    return entries;
+  }
   function normalizeImage(value) {
     const metadata = imageMetadata(value), modern = Object.hasOwn(value, 'schemaVersion');
     const objectFormat = Object.hasOwn(value, 'objects');
@@ -53,6 +83,7 @@
     const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
+      annotationEntries(value.objects);
       return {...base, objects:value.objects};
     }
     if (!Array.isArray(value.annotations) || value.annotations.length > 1000 || !Array.isArray(value.changes) || value.changes.length > 8704) throw new Error('Invalid legacy feedback lists.');
@@ -60,19 +91,20 @@
       if (!exactKeys(change, ['from', 'to'])) throw new Error('Invalid legacy feedback change.');
       return {source:change.from, movements:[{to:change.to}], annotations:[]};
     });
-    for (const annotation of value.annotations) {
+    for (const [index, annotation] of value.annotations.entries()) {
       if (!record(annotation)) throw new Error('Invalid legacy feedback annotation.');
       const kind = ['point', 'rectangle', 'change'].find(key => Object.hasOwn(annotation, key));
       if (!exactKeys(annotation, kind ? [kind, 'text'] : ['text'])) throw new Error('Invalid legacy feedback annotation fields.');
       if (kind === 'change') {
         if (!Number.isInteger(annotation.change) || annotation.change < 0 || annotation.change >= value.changes.length) throw new Error('Legacy annotation references a missing change.');
-        objects[annotation.change].annotations.push(annotation.text);
+        objects[annotation.change].annotations.push({number:index + 1, text:annotation.text});
       } else {
         if (kind === 'point' && !exactKeys(annotation.point, ['x', 'y'])) throw new Error('Invalid legacy feedback point.');
         const source = kind === 'point' ? {x1:annotation.point.x, y1:annotation.point.y, x2:annotation.point.x, y2:annotation.point.y} : kind === 'rectangle' ? annotation.rectangle : null;
-        objects.push({source, movements:[], annotations:[annotation.text]});
+        objects.push({source, movements:[], annotations:[{number:index + 1, text:annotation.text}]});
       }
     }
+    annotationEntries(objects);
     return {...base, objects};
   }
 
@@ -95,18 +127,19 @@
       if (sameRectangle(movement.source, movement.destination)) continue;
       ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
     }
-    for (const note of document.notes || []) {
+    for (const [index, note] of (document.notes || []).entries()) {
+      const annotation = {number:index + 1, text:note.text};
       if (note.movementSource) {
         const entry = ensureEntry(note.movementSource);
-        if (note.text.trim()) entry.annotations.push(note.text);
+        if (note.text.trim()) entry.annotations.push(annotation);
       } else {
         // Independent notes stay independent even when their rectangles match.
-        objects.push({source:rectangle(note.source), movements:[], annotations:[note.text]});
+        objects.push({source:rectangle(note.source), movements:[], annotations:[annotation]});
       }
     }
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
-      annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
+      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})), ...(embed ? {image:document.image} : {})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
@@ -123,6 +156,7 @@
       feedback:exportImage(document, embed, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
+      id:object.id,
       source:rectangle(object.source),
       movements:object.movements.map(movement => ({to:rectangle(movement.to)})),
       annotations:object.annotations.slice(),
@@ -187,5 +221,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries};
 });
