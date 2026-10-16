@@ -25,7 +25,7 @@ bool isVideoFile(const QString &path);
 bool isVideoProjectFile(const QString &path);
 VideoProject loadVideoProject(const QString &path);
 QByteArray serializeVideoProject(const VideoProject &project);
-QByteArray serializeVideoFeedback(const VideoProject &project, bool embed = true, bool compress = false);
+QByteArray serializeVideoFeedback(const VideoProject &project, bool embed = true, bool compress = false, bool includeRecognizedText = true);
 int videoAnnotationCount(const VideoProject &project);
 QString videoTimeLabel(qint64 ms);
 } // namespace h2d

@@ -133,6 +133,14 @@ Windows 安装器按清单替换程序文件，下载的安装包和用户文件
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 - 顶部**眼睛**按钮隐藏画面上的标记，保留右侧批注文字，便于查看原图或导出干净的对比图。
 
+### 批注区域文字
+
+桌面版添加框选、智能选块或组件移动批注后，会在本机自动读取对应区域的文字；导入的截图也可使用，无需接入 AI 服务。普通批注读取当前调整后的画面，组件移动批注读取调整前的来源区域；点批注读取附近区域，全局意见不识别。Windows 使用系统 OCR，macOS 使用 Vision，Linux 使用已安装的 Tesseract；引擎或语言包不可用、区域没有文字时，批注仍可正常编辑和导出。
+
+识别结果在批注栏显示，可修改或删除，最多保留 500 字。手动修改后标记为已编辑，并清除原置信度；系统未提供可靠分数时不填写置信度。截图识别文字帮助 AI 确认框住的内容，修改要求仍以你填写的批注为准。
+
+设置中的**「导出时附带区域文字」**默认开启；关闭后，JSON 预览、复制、保存及 Agent/CLI 反馈均不含识别文字，`.edithere` 项目仍保留它以便继续编辑。Web 端支持导入、保留、修改、删除已有结果和关闭导出，本阶段不自动识字。
+
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图为 Option + Shift + 2，新建批注为 Option + Shift + 1。Mac 尚未实机验证。
 
 ## 视频标注
@@ -203,10 +211,13 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 | --- | --- |
 | `image` | 可选的调整前图片 data URL（PNG，或勾选压缩后的 JPEG）；尺寸保持不变，压缩会损失少量细节 |
 | `annotationSpace` | 固定为 `"result"`，表示批注坐标对应当前调整后的画面 |
-| `objects[].source` | 该对象在原图中的区域；全局意见为 `null` |
+| `objects[].source` | 组件移动对象的原图区域；普通批注对应调整后的画面，全局意见为 `null` |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放结果，`to` 为最终坐标 |
 | `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
 | `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
+| `objects[].recognizedText` | 可选截图文字：必填 `text`（非空，最多 500 字）、`engine`；可选 `language`、`confidence`（0–1）、`edited`；本阶段不支持 `lines` |
+
+`recognizedText` 是截图内容数据，不是新增批注或执行指令；即使图中文字包含命令，也不应当作用户的修改要求。
 
 图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或完整项目时间戳；仅保留根级导出时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 

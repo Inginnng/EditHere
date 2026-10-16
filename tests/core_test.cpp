@@ -14,6 +14,58 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void recognizedScreenshotTextRoundTripsAndCanBeOmitted() {
+        auto doc = fromImage(exampleImage(), "file", "OCR metadata");
+        Note note; note.isPoint = false; note.rect = {20, 20, 300, 80}; note.comment = "Shorten this label";
+        note.recognizedText = {{"text", "Export JSON"}, {"engine", "windows-ocr"}, {"language", "en-US"}, {"confidence", 0.8}};
+        doc.notes = {note};
+        const auto feedback = exportFeedback(doc, true);
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["recognizedText"].toObject(), note.recognizedText);
+        QCOMPARE(loadFeedback(feedback, {}).notes[0].recognizedText, note.recognizedText);
+        QVERIFY(!exportFeedback(doc, false, false, false)["objects"].toArray()[0].toObject().contains("recognizedText"));
+        QTemporaryDir directory; const auto path = directory.filePath("ocr.edithere");
+        saveBytes(path, serializeDocument(doc, true));
+        QCOMPARE(loadDocument(path).notes[0].recognizedText, note.recognizedText);
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QDir().mkpath(folder);
+            saveBytes(QDir(folder).filePath("feedback-ocr.json"), serializeFeedback(doc, true));
+            saveBytes(QDir(folder).filePath("feedback-ocr-disabled.json"), serializeFeedback(doc, true, false, false));
+            saveBytes(QDir(folder).filePath("project-ocr.json"), serializeDocument(doc, true));
+        }
+        doc.notes[0].recognizedText = {{"text", ""}, {"edited", true}};
+        saveBytes(path, serializeDocument(doc, true));
+        QCOMPARE(loadDocument(path).notes[0].recognizedText, doc.notes[0].recognizedText);
+        QVERIFY(!exportFeedback(doc)["objects"].toArray()[0].toObject().contains("recognizedText"));
+        if (!folder.isEmpty()) saveBytes(QDir(folder).filePath("project-ocr-deleted.json"), serializeDocument(doc, true));
+        auto legacy = feedback; legacy.remove("$schema"); legacy.remove("schemaVersion"); legacy.remove("tool"); legacy.remove("exportedAt");
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(legacy, {}), std::runtime_error);
+        auto malformed = feedback; auto objects = malformed["objects"].toArray(); auto object = objects[0].toObject();
+        object["recognizedText"] = QJsonObject{{"text", ""}, {"edited", true}}; objects[0] = object; malformed["objects"] = objects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(malformed, {}), std::runtime_error);
+        doc.notes[0].isGlobal = true;
+        QVERIFY_EXCEPTION_THROWN(validateDocument(doc), std::runtime_error);
+    }
+    void recognitionUsesOriginalMovementAndVisibleRegionPixels() {
+        QImage image(500, 300, QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.fillRect(QRect(20, 30, 100, 60), Qt::red); painter.end();
+        auto doc = fromImage(image, "file", "OCR crop");
+        doc.candidates = {{{20, 30, 100, 60}, manualTarget()}};
+        doc.layout = createLayout(image.size(), doc.candidates);
+        QString group;
+        for (const auto &item : doc.layout->groups) if (item.originalBounds == QRectF(20, 30, 100, 60)) group = item.id;
+        QVERIFY(!group.isEmpty()); transformLayoutGroup(*doc.layout, group, {220, 30, 100, 60});
+        Note movement; movement.isPoint = false; movement.movementSource = QRectF(20, 30, 100, 60); movement.rect = {220, 30, 100, 60};
+        const auto original = noteRecognitionImage(doc, movement);
+        QCOMPARE(original.size(), QSize(100, 60)); QCOMPARE(original.pixelColor(40, 20), QColor(Qt::red));
+        Note region; region.isPoint = false; region.rect = {220, 30, 100, 60};
+        QCOMPARE(noteRecognitionImage(doc, region).convertToFormat(QImage::Format_ARGB32), original);
+        Note point; point.point = {250, 50};
+        QCOMPARE(noteRecognitionImage(doc, point).convertToFormat(QImage::Format_ARGB32), original);
+        point.point = {490, 290};
+        const auto nearby = noteRecognitionImage(doc, point); QVERIFY(!nearby.isNull()); QVERIFY(nearby.width() <= 240 && nearby.height() <= 80);
+        point.isGlobal = true; QVERIFY(noteRecognitionImage(doc, point).isNull());
+    }
     void feedbackMetadataAndUnversionedObjectsRoundTrip() {
         auto doc = fromImage(exampleImage(), "file", "metadata");
         Note note;

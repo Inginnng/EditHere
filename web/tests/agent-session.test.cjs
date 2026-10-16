@@ -52,6 +52,19 @@ test('versioned metadata survives submission, restart, disk verification and cra
   assert.deepEqual(restarted.submit(token(session), current), receipt);
 });
 
+test('recognized screenshot text survives Agent submission, receipts and restart as data', () => {
+  const paths=fixture(),store=new AgentSessions(paths),session=create(store,paths);
+  const current=format.exportImage({image,movements:[],notes:[{source:rectangle,text:'按钮更醒目',recognizedText:{text:'开始',engine:'windows-ocr',language:'zh-Hans'}}]});
+  const receipt=store.submit(token(session),current);
+  assert.deepEqual(receipt.feedback.objects,current.objects);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),current);
+  assert.deepEqual(new AgentSessions(paths).status(store.byId(session.sessionId)),receipt);
+  const otherPaths=fixture(),otherStore=new AgentSessions(otherPaths),otherSession=create(otherStore,otherPaths);
+  const invalid=structuredClone(current);invalid.objects[0].recognizedText.lines=[];
+  assert.throws(()=>otherStore.submit(token(otherSession),invalid),/recognized screenshot text/);
+  assert.equal(fs.existsSync(otherPaths.output),false);
+});
+
 test('a declared image version cannot omit or replace its metadata', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
   const current = {...feedback, $schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
@@ -219,6 +232,21 @@ test('draft validation rejects another image, unknown fields and invalid layout 
   ]) assert.throws(()=>store.saveDraft(token(opened),invalid));
   assert.equal(store.byId(opened.sessionId).draft,undefined);
   assert.equal(fs.existsSync(paths.output),false);
+});
+
+test('Agent drafts preserve recognized text and explicit deletion while rejecting malformed or global OCR', () => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),project=draftProject();
+  project.document.notes=[{id:'ocr-note',source:rectangle,text:'放大按钮',recognizedText:{text:'开始',engine:'windows-ocr'}}];
+  store.saveDraft(token(opened),project);
+  const restarted=new AgentSessions(paths);
+  assert.deepEqual(hydratedDraft(restarted.byId(opened.sessionId)).document.notes,project.document.notes);
+  const deleted=structuredClone(project);deleted.document.notes[0].recognizedText={text:'',edited:true};
+  store.saveDraft(token(opened),deleted);
+  assert.deepEqual(hydratedDraft(new AgentSessions(paths).byId(opened.sessionId)).document.notes,deleted.document.notes);
+  for(const mutate of [v=>v.document.notes[0].source=null,v=>v.document.notes[0].recognizedText.edited=false,v=>v.document.notes[0].recognizedText.lines=[]]){
+    const invalid=structuredClone(deleted);mutate(invalid);assert.throws(()=>store.saveDraft(token(opened),invalid));
+    assert.deepEqual(hydratedDraft(store.byId(opened.sessionId)).document.notes,deleted.document.notes);
+  }
 });
 
 test('reading a completed receipt checks the file and needs neither HTTP nor server credentials', () => {

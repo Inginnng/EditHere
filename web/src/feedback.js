@@ -43,12 +43,28 @@
     }
     return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
   }
+  // Screenshot text is evidence/data. It never becomes an annotation or an
+  // executable instruction, and editing it does not invent a confidence score.
+  function validateRecognizedText(value, project = false) {
+    if (project && exactKeys(value, ['text', 'edited']) && value.text === '' && value.edited === true) return value;
+    const fields = ['text', 'engine', ...['language', 'confidence', 'edited'].filter(key => Object.hasOwn(value || {}, key))];
+    if (!exactKeys(value, fields) || typeof value.text !== 'string' || !value.text.trim() || value.text.length > 500 ||
+        typeof value.engine !== 'string' || !value.engine.trim() || value.engine.length > 64 ||
+        Object.hasOwn(value, 'language') && (typeof value.language !== 'string' || value.language.length > 100) ||
+        Object.hasOwn(value, 'confidence') && (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1) ||
+        Object.hasOwn(value, 'edited') && typeof value.edited !== 'boolean') throw new Error('Invalid recognized screenshot text.');
+    return value;
+  }
   function annotationEntries(objects) {
     if (!Array.isArray(objects) || objects.length > 9704) throw new Error('Invalid feedback objects.');
     const ids = new Set(), numbers = new Set(), entries = [];
     for (const object of objects) {
-      if (!exactKeys(object, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : [])]) ||
+      if (!exactKeys(object, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(object || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
           !Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object fields.');
+      if (Object.hasOwn(object, 'recognizedText')) {
+        if (object.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
+        validateRecognizedText(object.recognizedText);
+      }
       if (Object.hasOwn(object, 'id')) {
         if (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256 || ids.has(object.id)) throw new Error('Invalid or duplicate feedback object ID.');
         ids.add(object.id);
@@ -83,6 +99,7 @@
     const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
+      if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
       annotationEntries(value.objects);
       return {...base, objects:value.objects};
     }
@@ -123,6 +140,12 @@
       }
       return bySource.get(key);
     }
+    function attachRecognition(entry, note) {
+      if (document.includeRecognizedText === false || !Object.hasOwn(note, 'recognizedText')) return;
+      const recognized = validateRecognizedText(note.recognizedText, true);
+      if (recognized.text && entry.source !== null) entry.recognizedText = {...recognized};
+      else delete entry.recognizedText;
+    }
     for (const movement of document.movements || []) {
       if (sameRectangle(movement.source, movement.destination)) continue;
       ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
@@ -131,10 +154,12 @@
       const annotation = {number:index + 1, text:note.text};
       if (note.movementSource) {
         const entry = ensureEntry(note.movementSource);
+        attachRecognition(entry, note);
         if (note.text.trim()) entry.annotations.push(annotation);
       } else {
         // Independent notes stay independent even when their rectangles match.
-        objects.push({source:rectangle(note.source), movements:[], annotations:[annotation]});
+        const entry = {source:rectangle(note.source), movements:[], annotations:[annotation]};
+        attachRecognition(entry, note); objects.push(entry);
       }
     }
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
@@ -160,6 +185,7 @@
       source:rectangle(object.source),
       movements:object.movements.map(movement => ({to:rectangle(movement.to)})),
       annotations:object.annotations.slice(),
+      ...(object.recognizedText ? {recognizedText:{...object.recognizedText}} : {}),
       timestampMs:frame.timestampMs,
       frameId:frame.id
     })));
@@ -169,6 +195,21 @@
         width:documents[0]?.width || 0, height:documents[0]?.height || 0},
       frames, objects
     };
+  }
+
+  // OCR is duplicated in the video's lightweight index. Validate that evidence
+  // against the frame payload instead of silently discarding a conflicting copy.
+  function validateVideoRecognitionIndex(value) {
+    const signature = (object, frameId, timestampMs) => serialize({frameId, timestampMs,
+      source:object.source, movements:object.movements, annotations:object.annotations, recognizedText:object.recognizedText});
+    const expected = value.frames.flatMap(frame => normalizeImage(frame.feedback).objects
+      .filter(object => Object.hasOwn(object, 'recognizedText')).map(object => signature(object, frame.id, frame.timestampMs))).sort();
+    const actual = value.objects.filter(object => Object.hasOwn(object || {}, 'recognizedText')).map(object => {
+      if (object.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
+      validateRecognizedText(object.recognizedText);
+      return signature(object, object.frameId, object.timestampMs);
+    }).sort();
+    if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Video recognized screenshot text index does not match its frames.');
   }
 
   // QJsonObject serializes keys in sorted order. Array order remains significant.
@@ -189,7 +230,7 @@
     const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
     return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
-      movements:objects.reduce((sum,object)=>sum+object.movements.length,0),
+      movements:objects.reduce((sum,object)=>sum+object.movements.length,0), recognizedTexts:objects.filter(object=>object.recognizedText).length,
       bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
   }
   const foldedImage = image => image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]';
@@ -221,5 +262,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex};
 });

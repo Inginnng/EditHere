@@ -335,11 +335,11 @@ QByteArray serializeVideoProject(const VideoProject &project) {
     storageSize(bytes.size());
     return bytes;
 }
-QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress) {
+QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress, bool includeRecognizedText) {
     const auto ordered = orderedFrames(project);
     QJsonArray frames, objects;
     for (const auto *frame : ordered) {
-        const auto feedback = exportFeedback(frame->document, embed, compress);
+        const auto feedback = exportFeedback(frame->document, embed, compress, includeRecognizedText);
         frames.append(QJsonObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
                                   {"timestampUs", frame->timestampUs},
                                   {"imageFile", "frame-" + frame->document.id + ".png"}, {"feedback", feedback}});

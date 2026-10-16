@@ -2,6 +2,7 @@
 #include "controller.h"
 #include "capturetoolbar.h"
 #include "editor.h"
+#include "ocr.h"
 #include "explosion.h"
 #include "overlay.h"
 #include "settingsdialog.h"
@@ -254,6 +255,78 @@ class UiTests : public QObject {
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
   private slots:
+    void recognizedTextEditingAndDeletionApplyToGroupedMovements() {
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), {{{20, 20, 100, 60}, manualTarget()}});
+        QString group;
+        for (const auto &item : document.layout->groups) if (item.originalBounds == QRectF(20, 20, 100, 60)) group = item.id;
+        QVERIFY(!group.isEmpty()); transformLayoutGroup(*document.layout, group, {220, 20, 100, 60});
+        Note first; first.isPoint = false; first.movementSource = QRectF(20, 20, 100, 60); first.rect = {220, 20, 100, 60};
+        first.recognizedText = {{"text", "Original title"}, {"engine", "windows-ocr"}, {"confidence", 0.8}};
+        auto second = first; second.id = uniqueId(); second.comment = "Keep aligned";
+        document.notes = {first, second};
+        Editor editor; editor.setDocument(document); QTest::qWait(20);
+        auto text = editor.findChild<QPlainTextEdit *>("recognizedText_" + first.id); QVERIFY(text && text->isVisible());
+        text->setFocus(); text->setPlainText("Edited title");
+        auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["recognizedText"].toObject()["text"].toString(), QString("Edited title"));
+        for (const auto &note : editor.document().notes) {
+            QCOMPARE(note.recognizedText["text"].toString(), QString("Edited title"));
+            QVERIFY(note.recognizedText["edited"] == true); QVERIFY(!note.recognizedText.contains("confidence"));
+        }
+        const auto cards = editor.findChildren<QWidget *>("noteCard");
+        QWidget *firstCard = nullptr;
+        for (auto card : cards) if (card->property("noteId").toString() == first.id) firstCard = card;
+        QVERIFY(firstCard); auto clear = firstCard->findChild<QPushButton *>("clearRecognizedText"); QVERIFY(clear); clear->click();
+        feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("recognizedText"));
+        for (const auto &note : editor.document().notes) QCOMPARE(note.recognizedText, (QJsonObject{{"text", ""}, {"edited", true}}));
+        artifact(editor, "recognized-text-deleted.png");
+    }
+    void recognizedTextExportPreferenceIncludesAgentClipboardAndProject() {
+        auto document = gridDocument();
+        Note note; note.isPoint = false; note.rect = {20, 20, 100, 60}; note.comment = "Shorten";
+        note.recognizedText = {{"text", "Screenshot label"}, {"engine", "windows-ocr"}}; document.notes = {note};
+        Editor editor; auto settings = defaultSettings(); settings.includeRecognizedText = false; editor.setPreferences(settings); editor.setDocument(document);
+        auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("recognizedText"));
+        const auto project = QJsonDocument::fromJson(editor.projectBytes()).object();
+        QCOMPARE(project["annotations"].toArray()[0].toObject()["recognizedText"].toObject(), note.recognizedText);
+        settings.includeRecognizedText = true; editor.setPreferences(settings);
+        feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["recognizedText"].toObject(), note.recognizedText);
+        artifact(editor, "recognized-text-editor.png");
+    }
+    void newScreenshotAnnotationRunsSystemOcrAndCancelsStaleResults() {
+#ifndef Q_OS_WIN
+        QSKIP("this automatic recognition integration fixture uses the Windows system recognizer");
+#endif
+        if (!OcrEngine::supported() || !OcrEngine::availableLanguages().contains("en-US", Qt::CaseInsensitive))
+            QSKIP("English system recognizer is unavailable");
+        QImage image(600, 180, QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black); painter.setFont(QFont("Segoe UI", 36));
+        painter.drawText(image.rect(), Qt::AlignCenter, "EDITHERE"); painter.end();
+        auto document = fromImage(image, "file", "Automatic screenshot OCR");
+        Editor editor; auto settings = defaultSettings(); settings.ocrLanguage = OcrLanguageMode::English; editor.setPreferences(settings); editor.setDocument(document);
+        Note note; note.isPoint = false; note.rect = image.rect(); note.comment = "Change this title";
+        editor.canvas()->editRequested(note, true, {}); editor.agentFeedback(true);
+        QTRY_VERIFY_WITH_TIMEOUT(!editor.document().notes[0].recognizedText["text"].toString().isEmpty(), 45000);
+        const auto metadata = editor.document().notes[0].recognizedText;
+        QVERIFY2(metadata["text"].toString().contains("EDITHERE", Qt::CaseInsensitive), qPrintable(metadata["text"].toString()));
+        QCOMPARE(metadata["engine"].toString(), QString("windows-ocr")); QVERIFY(!metadata.contains("confidence"));
+        artifact(editor, "recognized-text-automatic.png");
+        // A manual correction made while a recognition request is starting must survive its completion.
+        auto next = editor.document(); next.notes[0].recognizedText = {}; editor.setDocument(next);
+        auto moved = next.notes[0]; moved.rect = {0, 0, 590, 180}; editor.canvas()->geometryChanged(moved);
+        QTRY_VERIFY_WITH_TIMEOUT(editor.findChild<OcrEngine *>("regionTextRecognizer")->busy(), 3000);
+        auto replacement = fromImage(image, "file", "Replacement document");
+        Note replacementNote; replacementNote.point = {20, 20}; replacementNote.comment = "Keep replacement";
+        replacement.notes = {replacementNote}; editor.setDocument(replacement);
+        QTest::qWait(1000);
+        QCOMPARE(editor.document().id, replacement.id); QVERIFY(editor.document().notes[0].recognizedText.isEmpty());
+        QVERIFY(!editor.findChild<OcrEngine *>("regionTextRecognizer")->busy());
+    }
+
     void initTestCase() {
         // Keep the save-failure test's file chooser inspectable through Qt on every platform.
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);

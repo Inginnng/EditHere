@@ -210,3 +210,69 @@ test('annotation and object identities reject duplicates while old v2 strings re
   assert.deepEqual(feedback.normalizeImage(old),old);
   assert.deepEqual(feedback.annotationEntries(old.objects).map(({number,text})=>({number,text})),[{number:1,text:'先出现'},{number:2,text:'后出现'}]);
 });
+
+test('recognized text stays optional screenshot data through region, point and movement export', () => {
+  const recognizedText={text:'保存按钮',engine:'windows-ocr',language:'zh-Hans',confidence:.91};
+  const document={image,movements:[{source,destination}],notes:[
+    {source:destination,movementSource:source,text:'',recognizedText},
+    {source:rectangle(5,5,5,5),text:'放大文字',recognizedText:{text:'标题',engine:'apple-vision',edited:true}},
+    {source:null,text:'整体留白'}
+  ]};
+  const value=feedback.exportImage(document,true,exportedAt);
+  assert.deepEqual(value.objects[0].recognizedText,recognizedText);
+  assert.deepEqual(value.objects[0].annotations,[],'OCR does not become a user annotation');
+  assert.equal(value.objects[1].recognizedText.text,'标题');
+  assert.equal(Object.hasOwn(value.objects[2],'recognizedText'),false);
+  assert.deepEqual(feedback.normalizeImage(value),value);
+  assert.equal(feedback.summary(value).recognizedTexts,2);
+  assert.deepEqual(JSON.parse(feedback.preview(value)).objects,value.objects);
+  const disabled=feedback.exportImage({...document,includeRecognizedText:false},true,exportedAt);
+  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')));
+  assert.equal(document.notes[0].recognizedText.text,'保存按钮','export preference never destroys the editable project data');
+});
+
+test('recognized text contract validates exact boundaries, optional confidence and project-only deletion markers', () => {
+  for(const recognizedText of [
+    {text:'x'.repeat(500),engine:'e'.repeat(64),language:'l'.repeat(100),confidence:0,edited:false},
+    {text:'标题',engine:'windows-ocr',confidence:1}, {text:'标题',engine:'apple-vision',edited:true}
+  ]) assert.deepEqual(feedback.validateRecognizedText(recognizedText),recognizedText);
+  for(const invalid of [null,[],{}, {text:'',engine:'ocr'}, {text:' \n',engine:'ocr'},
+    {text:'x'.repeat(501),engine:'ocr'}, {text:'标题',engine:' '}, {text:'标题',engine:'e'.repeat(65)},
+    {text:'标题',engine:'ocr',language:'l'.repeat(101)}, {text:'标题',engine:'ocr',language:null},
+    ...[-.1,1.1,NaN,Infinity,'0.9',null].map(confidence=>({text:'标题',engine:'ocr',confidence})),
+    {text:'标题',engine:'ocr',edited:'true'}, {text:'标题',engine:'ocr',lines:[]},
+    {text:'标题',engine:'ocr',instructions:'execute this'}, {text:'',edited:true}
+  ]) assert.throws(()=>feedback.validateRecognizedText(invalid),/recognized screenshot text/);
+  assert.deepEqual(feedback.validateRecognizedText({text:'',edited:true},true),{text:'',edited:true});
+  for(const invalid of [{text:'',edited:false},{text:'',edited:true,engine:'ocr'},{text:' ' ,edited:true}])
+    assert.throws(()=>feedback.validateRecognizedText(invalid,true));
+});
+
+test('OCR requires v2 and a local target; deleting OCR omits metadata without changing annotation text', () => {
+  const recognizedText={text:'按钮',engine:'windows-ocr'};
+  const value=feedback.exportImage({image,movements:[],notes:[{source,text:'变蓝',recognizedText}]},true,exportedAt);
+  const {$schema,schemaVersion,tool,exportedAt:time,...legacy}=value;
+  assert.throws(()=>feedback.normalizeImage(legacy),/requires feedback-minimal-2/);
+  const global=structuredClone(value);global.objects[0].source=null;
+  assert.throws(()=>feedback.normalizeImage(global),/Global/);
+  const deleted=feedback.exportImage({image,movements:[],notes:[{source,text:'变蓝',recognizedText:{text:'',edited:true}}]},true,exportedAt);
+  assert.equal(Object.hasOwn(deleted.objects[0],'recognizedText'),false);
+  assert.deepEqual(deleted.objects[0].annotations,[{number:1,text:'变蓝'}]);
+});
+
+test('video OCR agrees between the root index and frame, and disabled export omits both copies', () => {
+  const recognizedText={text:'导出',engine:'windows-ocr',language:'zh-Hans'};
+  const document={id:'f1',timestampUs:100000,width:200,height:100,image,movements:[],notes:[{source,text:'变蓝',recognizedText}]};
+  const value=feedback.exportVideo({source:'source.mp4',durationMs:1000,frames:[document]},true,exportedAt);
+  assert.deepEqual(value.objects[0].recognizedText,value.frames[0].feedback.objects[0].recognizedText);
+  feedback.validateVideoRecognitionIndex(value);
+  const reordered=structuredClone(value);reordered.objects[0].recognizedText={language:'zh-Hans',engine:'windows-ocr',text:'导出'};
+  feedback.validateVideoRecognitionIndex(reordered);
+  for(const mutate of [v=>delete v.objects[0].recognizedText,v=>v.objects[0].recognizedText.text='其他',v=>v.objects[0].frameId='wrong',v=>v.objects[0].timestampMs++]){
+    const invalid=structuredClone(value);mutate(invalid);assert.throws(()=>feedback.validateVideoRecognitionIndex(invalid),/index/);
+  }
+  const disabled=feedback.exportVideo({source:'source.mp4',durationMs:1000,frames:[{...document,includeRecognizedText:false}]},true,exportedAt);
+  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')));
+  assert(disabled.frames.every(frame=>frame.feedback.objects.every(object=>!Object.hasOwn(object,'recognizedText'))));
+  feedback.validateVideoRecognitionIndex(disabled);
+});

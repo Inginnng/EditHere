@@ -45,7 +45,7 @@ function validateFeedback(value, image) {
   if (value.annotationSpace !== 'result' || value.image !== image) fail('Feedback must include this session\'s original image.');
   if (!Array.isArray(value.objects) || value.objects.length > 1000) fail('Invalid feedback objects.');
   const objects = value.objects.map(object => {
-    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== (Object.hasOwn(object, 'id') ? 'annotations,id,movements,source' : 'annotations,movements,source')) fail('Invalid feedback object fields.');
+    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== ['annotations','movements','source',...(Object.hasOwn(object,'id')?['id']:[]),...(Object.hasOwn(object,'recognizedText')?['recognizedText']:[])].sort().join(',')) fail('Invalid feedback object fields.');
     const source = object.source === null ? null : rectangle(object.source);
     if (!Array.isArray(object.movements) || object.movements.length > 1000 || !Array.isArray(object.annotations) || object.annotations.length > 1000) fail('Invalid movement or annotation list.');
     if (source === null && object.movements.length) fail('A global annotation cannot move.');
@@ -57,7 +57,8 @@ function validateFeedback(value, image) {
     });
     const annotations = object.annotations.map(annotation => typeof annotation === 'string' ? annotation : {...annotation});
     if (!movements.length && !annotations.length) fail('Empty feedback objects are not valid.');
-    return {...(Object.hasOwn(object, 'id') ? {id:object.id} : {}), source, movements, annotations};
+    return {...(Object.hasOwn(object, 'id') ? {id:object.id} : {}), source, movements, annotations,
+      ...(Object.hasOwn(object,'recognizedText')?{recognizedText:{...object.recognizedText}}:{})};
   });
   return {...feedbackFormat.imageMetadata(value), annotationSpace:'result', image, objects};
 }
@@ -102,9 +103,13 @@ function validateDraft(value, session) {
     if (valid.x2 > width || valid.y2 > height) fail('Draft annotation is outside the image.');
   }
   for (const note of documentValue.notes) {
-    allowedKeys(note, ['id','source','text','groupId','groupIds','movementSource','movementSources'], 'draft annotation');
+    allowedKeys(note, ['id','source','text','groupId','groupIds','movementSource','movementSources','recognizedText'], 'draft annotation');
     if (typeof note.id !== 'string' || !note.id || note.id.length > 256 || ids.has(note.id) || typeof note.text !== 'string' || note.text.length > 10000 || !note.text.trim() && !note.movementSource) fail('Invalid draft annotation.');
     ids.add(note.id); draftRectangle(note.source);
+    if(Object.hasOwn(note,'recognizedText')){
+      if(note.source===null)fail('Global annotations cannot contain recognized screenshot text.');
+      try{feedbackFormat.validateRecognizedText(note.recognizedText,true);}catch(error){fail(error.message);}
+    }
     if (note.groupId && !groups.has(note.groupId)) fail('Draft annotation references a missing component.');
     if (note.groupIds !== undefined && (!Array.isArray(note.groupIds) || !note.groupIds.length || note.groupIds.length > 512 || new Set(note.groupIds).size !== note.groupIds.length || note.groupIds.some(id => !groups.has(id)))) fail('Invalid draft component references.');
     if (note.movementSource) {
