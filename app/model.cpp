@@ -583,7 +583,11 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress) {
         obj.insert("annotations", textArray);
         objects.append(obj);
     }
-    QJsonObject result{{"annotationSpace", "result"}, {"objects", objects}};
+    QJsonObject result{{"$schema", FeedbackSchemaId},
+                       {"schemaVersion", FeedbackSchemaVersion},
+                       {"tool", QJsonObject{{"name", "EditHere"}, {"version", EDITHERE_VERSION}}},
+                       {"exportedAt", timestamp()},
+                       {"annotationSpace", "result"}, {"objects", objects}};
     if (embed) {
         validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4, doc.png.size());
         QByteArray encoded=doc.png;
@@ -709,6 +713,24 @@ static void feedbackFields(const QJsonObject &feedback) {
     // action-oriented format ("annotations" + "changes"). Both optionally carry
     // an "annotationSpace": "result" tag and an embedded "image" data URL.
     QStringList fields;
+    if (feedback.contains("schemaVersion")) {
+        if (feedback["schemaVersion"] != FeedbackSchemaVersion)
+            fail(tr("不支持这个反馈版本"));
+        fields.append({"$schema", "schemaVersion", "tool", "exportedAt"});
+        if (feedback["$schema"] != FeedbackSchemaId || !feedback.contains("objects") ||
+            feedback["annotationSpace"] != "result" || !feedback["tool"].isObject())
+            fail(tr("反馈元数据格式不正确"));
+        const auto tool = feedback["tool"].toObject();
+        exactKeys(tool, {"name", "version"});
+        if (tool["name"] != "EditHere" || !tool["version"].isString() ||
+            tool["version"].toString().trimmed().isEmpty() || tool["version"].toString().size() > 100)
+            fail(tr("反馈工具信息不正确"));
+        const auto exportedAt = feedback["exportedAt"].toString();
+        static const QRegularExpression timezone("(?:Z|[+-]\\d{2}:\\d{2})$");
+        if (!QDateTime::fromString(exportedAt, Qt::ISODateWithMs).isValid() ||
+            !timezone.match(exportedAt).hasMatch())
+            fail(tr("反馈导出日期必须是带时区的 ISO 8601 日期"));
+    }
     if (feedback.contains("objects"))
         fields.append("objects");
     else
@@ -1002,7 +1024,9 @@ Document loadDocument(const QString &path) {
     if (error.error != QJsonParseError::NoError || !parsed.isObject())
         fail(tr("JSON 格式不正确"));
     auto root = parsed.object();
-    if (!root.contains("schemaVersion")) {
+    const QString version = root.value("schemaVersion").toString();
+    if (!root.contains("schemaVersion") || version.startsWith("feedback-") ||
+        root.contains("objects") || root.contains("changes")) {
         feedbackFields(root);
         const QFileInfo jsonFile(path);
         if (root.contains("image")) {
@@ -1022,7 +1046,6 @@ Document loadDocument(const QString &path) {
         document.title = jsonFile.completeBaseName();
         return document;
     }
-    const QString version = root["schemaVersion"].toString();
     const bool current = version == "3.0.0";
     if (!QStringList{"1.0.0", "1.1.0", "2.0.0", "3.0.0"}.contains(version) ||
         root["tool"] != "EditHere")

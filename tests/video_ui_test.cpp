@@ -1,3 +1,4 @@
+#include "feedback_test_helpers.h"
 #include "editor.h"
 #include "imagearea.h"
 #include "videoplayback.h"
@@ -690,7 +691,7 @@ class VideoUiTests : public QObject {
         QVERIFY(!editor.hasDocument());
         QCOMPARE(captured.size(), 1);
         const auto unchanged = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
-        QCOMPARE(unchanged["frames"], savedFeedback["frames"]);
+        QCOMPARE(withoutFeedbackExportTime(unchanged["frames"]), withoutFeedbackExportTime(savedFeedback["frames"]));
         QCOMPARE(unchanged["objects"], savedFeedback["objects"]);
         QCOMPARE(editor.videoProject().frames.size(), 1);
         QCOMPARE(QJsonDocument::fromJson(editor.projectBytes()).object()["frames"].toArray().size(), 1);

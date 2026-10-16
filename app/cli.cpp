@@ -109,7 +109,9 @@ int main(int argc, char **argv) {
             }
             const auto doc = loadDocument(input);
             writeNewFeedback(output, serializeFeedback(doc, embed));
-            return printResult({{"ok", true}, {"command", "export"}, {"output", output}, {"annotations", doc.notes.size()}, {"imageIncluded", embed}});
+            return printResult({{"ok", true}, {"command", "export"}, {"output", output},
+                                {"annotations", doc.notes.size()}, {"imageIncluded", embed},
+                                {"schemaVersion", FeedbackSchemaVersion}});
         } catch (const std::exception &error) { return printResult(agentError("io_error", QString::fromUtf8(error.what()))); }
     }
     QLocalSocket socket;

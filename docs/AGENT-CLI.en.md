@@ -121,7 +121,7 @@ Except for `--help` and `--version`, the commands write a single line of UTF-8 J
 The success receipt for `annotate` / `export` looks like this; `annotations` is a count, and the actual annotation content is in the file that `output` points to:
 
 ```json
-{"ok":true,"command":"annotate","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
 ```
 
 The responses for `open` / `capture` carry `accepted: true`, which only means the request was accepted; `open` also returns the absolute path `input`. A common failure response:
@@ -151,7 +151,9 @@ A missing input file, an output that already exists, or a write failure returns 
 
 ## How the AI reads the feedback
 
-Feedback follows [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json). The current export uses an object-oriented structure; the parallel `annotations` / `changes` arrays used by earlier versions can still be imported. A complete project follows [project-v3.schema.json](../schema/project-v3.schema.json).
+The root `$schema` is `urn:edithere:feedback-minimal:2`, a stable identifier for the bundled local schema; no network lookup is needed. `tool` contains `name` and the actual application `version`; `exportedAt` is an ISO timestamp with a timezone. Dispatch explicit `schemaVersion` first. Unversioned `objects` means `feedback-minimal-1`; unversioned `annotations` + `changes` means legacy feedback. Reject unknown explicit versions. Image CLI success receipts also include `schemaVersion`.
+
+Image feedback now uses `schemaVersion: "feedback-minimal-2"` and follows [feedback-minimal-v2.schema.json](../schema/feedback-minimal-v2.schema.json). The [compatibility schema](../schema/feedback-minimal.schema.json) also accepts unversioned object feedback and legacy parallel arrays. The current export uses an object-oriented structure; the parallel `annotations` / `changes` arrays used by earlier versions can still be imported. A complete project follows [project-v3.schema.json](../schema/project-v3.schema.json).
 
 The file names under `schema/` denote the data format, not the application version: `feedback-minimal.schema.json` is the current minimal feedback, `project-v3.schema.json` is a complete project, and the rest are historical formats, among which `feedback-v1` / `v1.1` / `v2` describe early project documents rather than feedback.
 

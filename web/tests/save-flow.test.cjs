@@ -32,6 +32,11 @@ async function main(){
     const initial=await downloadText(page,'#save-json');
     assert.equal(initial,await page.evaluate(()=>EditHereFeedback.serialize(EditHereWeb.feedback())));
     assert(JSON.parse(initial).image.startsWith('data:image/png;base64,'));
+    const imageFeedback=JSON.parse(initial);
+    assert.equal(imageFeedback.schemaVersion,'feedback-minimal-2');
+    assert.equal(imageFeedback.$schema,'urn:edithere:feedback-minimal:2');
+    assert.deepEqual(imageFeedback.tool,{name:'EditHere',version:await page.locator('meta[name="edithere-version"]').getAttribute('content')});
+    assert.match(imageFeedback.exportedAt,/^\d{4}-\d{2}-\d{2}T.*Z$/);
     await menu();await page.locator('#save-options [data-save-mode="content"]').click();
     assert.equal(await page.evaluate(()=>window.copiedJSON),undefined,'selecting copy mode must not copy');assert.equal(downloads.length,1);
     assert.equal(await page.locator('#save-json').evaluate(el=>el===document.activeElement),true);

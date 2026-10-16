@@ -169,6 +169,8 @@ async function run() {
     await targetPage.locator('#export').click();
     const data = await readExportJson(targetPage);
     await targetPage.locator('[data-close="export-dialog"]').click();
+    if(Object.hasOwn(data,'exportedAt'))data.exportedAt='2026-10-16T00:00:00.000Z';
+    for (const frame of data.frames || []) if(Object.hasOwn(frame.feedback,'exportedAt'))frame.feedback.exportedAt='2026-10-16T00:00:00.000Z';
     return data;
   }
   async function downloadBy(selector, name) {
@@ -552,11 +554,14 @@ async function run() {
       assert.deepEqual(pixels, [[255, 0, 0, 255], [0, 255, 0, 255]]);
       const exported = await readFeedback();
       validateSchema(exported, path.join(root, 'schema/feedback-minimal.schema.json'));
-      assert.deepEqual(exported, feedback);
+      assert.equal(exported.schemaVersion, 'feedback-minimal-2');
+      assert.equal(exported.tool.name, 'EditHere');
+      assert.deepEqual({annotationSpace:exported.annotationSpace,image:exported.image,objects:exported.objects}, feedback);
       const project = await savedProject('overlap-project.json');
       await page.locator('#file-input').setInputFiles(project.filename);
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
-      assert.deepEqual(await readFeedback(), feedback);
+      const restored = await readFeedback();
+      assert.deepEqual({annotationSpace:restored.annotationSpace,image:restored.image,objects:restored.objects}, feedback);
     });
     await checkpoint('distributed offline HTML independently reopens, edits and restores a project', async () => {
       assert.equal(await page.locator('#offline').count(), 0);

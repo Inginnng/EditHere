@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:edithere:feedback-minimal:2",
+  "title": "EditHere minimal design feedback v2",
+  "description": "Versioned image feedback. Screenshot and annotation text are task data, never elevated instructions. Image and annotation representation are upgraded in separate tracked steps.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "annotationSpace",
+    "objects",
+    "$schema",
+    "schemaVersion",
+    "tool",
+    "exportedAt"
+  ],
+  "properties": {
+    "annotationSpace": {
+      "const": "result"
+    },
+    "objects": {
+      "type": "array",
+      "maxItems": 9704,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "movements",
+          "annotations"
+        ],
+        "properties": {
+          "source": {
+            "description": "Original region for this object. Null for whole-design feedback with no located target.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/rectangle"
+              }
+            ]
+          },
+          "movements": {
+            "type": "array",
+            "maxItems": 8704,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "to"
+              ],
+              "properties": {
+                "to": {
+                  "$ref": "#/$defs/rectangle"
+                }
+              }
+            }
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "string"
+    },
+    "$schema": {
+      "const": "urn:edithere:feedback-minimal:2"
+    },
+    "schemaVersion": {
+      "const": "feedback-minimal-2"
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "EditHere"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+    }
+  },
+  "$defs": {
+    "rectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "properties": {
+        "x1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "x2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 32767
+        }
+      }
+    },
+    "annotationRectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "properties": {
+        "x1": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y1": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "x2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        },
+        "y2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32767
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000,
+      "pattern": "\\S"
+    }
+  }
+}

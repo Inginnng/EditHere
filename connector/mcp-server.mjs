@@ -17,8 +17,8 @@
 //
 // CLI 定位顺序：EDITHERE_CLI 环境变量 → PATH → 默认安装目录；
 // EDITHERE_CLI 指向的路径不可用时直接报错，不静默改用其他来源的 CLI。
-// 反馈 JSON 遵循 schema/feedback-minimal.schema.json：当前导出为 objects 对象结构，
-// 兼容早期版本的 annotations + changes 并行数组。
+// 图片反馈采用 feedback-minimal-2；兼容无版本 objects 对象结构和早期版本的
+// annotations + changes 并行数组。视频容器仍采用 video-feedback-1。
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -225,6 +225,8 @@ const MAX_VIDEO_SUMMARY_OBJECTS = 256;
 const MAX_VIDEO_SUMMARY_CHARS = 100000;
 const MAX_VIDEO_RESULT_IMAGES = 8;
 const MAX_VIDEO_RESULT_IMAGE_CHARS = 24 * 1024 * 1024;
+const IMAGE_FEEDBACK_VERSION = 'feedback-minimal-2';
+const IMAGE_FEEDBACK_SCHEMA = 'urn:edithere:feedback-minimal:2';
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -232,6 +234,35 @@ function isRecord(value) {
 
 function isVideoFeedback(feedback) {
   return feedback.schemaVersion === 'video-feedback-1';
+}
+
+function validateImageFeedbackMetadata(feedback) {
+  if (!Object.hasOwn(feedback, 'schemaVersion')) return false;
+  if (feedback.schemaVersion !== IMAGE_FEEDBACK_VERSION) {
+    throw new Error(`不支持的图片反馈版本: ${String(feedback.schemaVersion)}；需要 ${IMAGE_FEEDBACK_VERSION}。`);
+  }
+  if (feedback.$schema !== IMAGE_FEEDBACK_SCHEMA) {
+    throw new Error(`图片反馈的 $schema 必须是 ${IMAGE_FEEDBACK_SCHEMA}。`);
+  }
+  if (!isRecord(feedback.tool) || feedback.tool.name !== 'EditHere'
+      || typeof feedback.tool.version !== 'string' || !feedback.tool.version.trim()
+      || feedback.tool.version.length > 100
+      || Object.keys(feedback.tool).some((key) => !['name', 'version'].includes(key))) {
+    throw new Error('图片反馈的 tool 必须包含 EditHere 名称和有效的工具版本。');
+  }
+  const date = typeof feedback.exportedAt === 'string'
+    ? /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(feedback.exportedAt)
+    : null;
+  // Date.parse accepts normalized dates such as February 30. Check the written
+  // calendar day independently of its timezone before accepting that timestamp.
+  const calendar = new Date(0);
+  if (date) calendar.setUTCFullYear(Number(date[1]), Number(date[2]) - 1, Number(date[3]));
+  if (!date || Number(date[1]) < 1 || calendar.getUTCFullYear() !== Number(date[1])
+      || calendar.getUTCMonth() !== Number(date[2]) - 1 || calendar.getUTCDate() !== Number(date[3])
+      || !Number.isFinite(Date.parse(feedback.exportedAt))) {
+    throw new Error('图片反馈的 exportedAt 必须是带时区的 ISO 时间。');
+  }
+  return true;
 }
 
 function formatTimestamp(timestampMs) {
@@ -269,6 +300,7 @@ function validateVideoObject(object, location) {
 // complete feedback shape rather than treating arbitrary JSON (even {}) as an
 // empty submission. Keep the legacy image format usable too.
 function validateImageRecoveryFeedback(feedback) {
+  const versioned = validateImageFeedbackMetadata(feedback);
   const keys = (value, allowed, location) => {
     if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
       throw new Error(`${location} 包含不支持的字段或不是对象。`);
@@ -297,7 +329,7 @@ function validateImageRecoveryFeedback(feedback) {
     throw new Error('image 不是有效的 PNG/JPEG Base64 data URL。');
   }
   if (feedback.objects !== undefined) {
-    keys(feedback, ['annotationSpace', 'objects', 'image'], '反馈');
+    keys(feedback, ['annotationSpace', 'objects', 'image', ...(versioned ? ['$schema', 'schemaVersion', 'tool', 'exportedAt'] : [])], '反馈');
     if (feedback.annotationSpace !== 'result' || !Array.isArray(feedback.objects) || feedback.objects.length > 9704) {
       throw new Error('反馈必须包含 annotationSpace=result 和有效的 objects 数组。');
     }
@@ -322,6 +354,7 @@ function validateImageRecoveryFeedback(feedback) {
     });
     return;
   }
+  if (versioned) throw new Error(`${IMAGE_FEEDBACK_VERSION} 图片反馈必须包含 objects 数组。`);
   keys(feedback, ['annotationSpace', 'annotations', 'changes', 'image'], '反馈');
   if ((feedback.annotationSpace !== undefined && feedback.annotationSpace !== 'result')
       || !Array.isArray(feedback.annotations) || feedback.annotations.length > 1000
@@ -388,6 +421,7 @@ function validateVideoFeedback(feedback) {
         || !Array.isArray(frame.feedback.objects)) {
       throw new Error(`${location}.feedback 必须是 annotationSpace=result 的对象反馈。`);
     }
+    if (validateImageFeedbackMetadata(frame.feedback)) validateImageRecoveryFeedback(frame.feedback);
     if (frame.feedback.image !== undefined && typeof frame.feedback.image !== 'string') {
       throw new Error(`${location}.feedback.image 必须是图像 data URL 字符串。`);
     }
@@ -560,11 +594,15 @@ function formatVideoSource(rectangle) {
 // 支持两种格式：0.9.0 面向对象格式（objects）与旧版动作格式（annotations+changes）。
 function summarizeFeedback(feedback, feedbackPath) {
   if (isVideoFeedback(feedback)) return summarizeVideoFeedback(feedback, feedbackPath);
+  const versioned = validateImageFeedbackMetadata(feedback);
   const lines = [];
   const objects = Array.isArray(feedback.objects) ? feedback.objects : null;
   const annotations = Array.isArray(feedback.annotations) ? feedback.annotations : [];
   const changes = Array.isArray(feedback.changes) ? feedback.changes : [];
   lines.push(`反馈文件: ${feedbackPath}`);
+  if (versioned) {
+    lines.push(`反馈类型: ${feedback.schemaVersion}，生成工具: ${feedback.tool.name} ${feedback.tool.version}，导出时间: ${feedback.exportedAt}`);
+  }
   if (objects) {
     const noteCount = objects.reduce(
       (n, o) => n + (Array.isArray(o.annotations) ? o.annotations.length : 0), 0);
@@ -1026,7 +1064,7 @@ function annotateResultToContent(r, outputPath, p) {
       if (recover) feedback.frames.forEach((frame) => validateImageRecoveryFeedback(frame.feedback));
     } else if (feedback.video !== undefined || feedback.frames !== undefined) {
       throw new Error(`不支持的视频反馈版本: ${String(feedback.schemaVersion || '未指定')}；需要 video-feedback-1。`);
-    } else if (recover) validateImageRecoveryFeedback(feedback);
+    } else if (validateImageFeedbackMetadata(feedback) || recover) validateImageRecoveryFeedback(feedback);
   } catch (error) {
     if (recover) {
       const failure = cliResultToContent(r);

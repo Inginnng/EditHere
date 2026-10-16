@@ -1,3 +1,4 @@
+#include "feedback_test_helpers.h"
 #include "controller.h"
 #include "capturetoolbar.h"
 #include "editor.h"
@@ -535,7 +536,7 @@ class UiTests : public QObject {
         QVERIFY(qApp->palette().color(QPalette::Window).lightness() < 80);
         QVERIFY(qApp->palette().color(QPalette::WindowText).lightness() > 170);
         QTest::qWait(40);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         artifact(editor, "editor-dark.png");
         QTimer::singleShot(70, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
@@ -559,7 +560,7 @@ class UiTests : public QObject {
         applyTheme(ThemeMode::Light);
         QVERIFY(!isDarkTheme());
         QVERIFY(qApp->palette().color(QPalette::Window).lightness() > 200);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         editor.hide();
     }
 
@@ -749,7 +750,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().png, before.png);
         QVERIFY(editor.document().notes == before.notes);
         QVERIFY(editor.document().layout == before.layout);
-        QCOMPARE(exportFeedback(editor.document()), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document())), stableFeedback(feedback));
         QVERIFY(editor.document().dirty);
         QCOMPARE(canvas->selected(), selection);
         QCOMPARE(editor.geometry(), geometry);
@@ -817,7 +818,7 @@ class UiTests : public QObject {
         QCOMPARE(opened, 1);
         QCOMPARE(requested.count(), 1);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
-        QCOMPARE(exportFeedback(editor->document(), true), before);
+        QCOMPARE(stableFeedback(exportFeedback(editor->document(), true)), stableFeedback(before));
         QVERIFY(!QFileInfo::exists(settingsFile));
 
         QTimer::singleShot(60, &controller, [&] {
@@ -836,7 +837,7 @@ class UiTests : public QObject {
         QTest::mouseClick(editor->canvas(), Qt::RightButton, Qt::NoModifier, QPoint(40, 40));
         QCOMPARE(opened, 2);
         QCOMPARE(requested.count(), 2);
-        QCOMPARE(exportFeedback(editor->document(), true), before);
+        QCOMPARE(stableFeedback(exportFeedback(editor->document(), true)), stableFeedback(before));
         QVERIFY(!QFileInfo::exists(settingsFile));
         artifact(*editor, "main-header-controls.png");
         editor->hide();
@@ -919,7 +920,7 @@ class UiTests : public QObject {
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
         QCOMPARE(editor.document().dirty, before.dirty);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(hiddenToTray.count(), 0);
 
         fullscreen->click();
@@ -956,7 +957,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().png, before.png);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(hiddenToTray.count(), 0);
         QVERIFY(editor.isVisible() && editor.hasDocument());
         editor.hide();
@@ -1064,7 +1065,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().dirty, before.dirty);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         // Releasing the middle button must end the pan, including on empty viewport space.
         mouse(QEvent::MouseMove, start + finalOffset + QPoint(30, 20), Qt::NoButton, Qt::NoButton);
         QCOMPARE(canvas->pos(), beforePosition + finalOffset);
@@ -1078,14 +1079,14 @@ class UiTests : public QObject {
         QCOMPARE(scroll->widget(), canvas);
         QCOMPARE(canvas->pos(), pannedPosition);
         QCOMPARE(editor.canvas()->zoom(), zoom);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(editor.document().dirty, before.dirty);
         editor.fit();
         QTRY_VERIFY(qAbs(canvas->geometry().center().x() - scroll->viewport()->rect().center().x()) <= 1);
         QTRY_VERIFY(qAbs(canvas->geometry().center().y() - scroll->viewport()->rect().center().y()) <= 1);
         QVERIFY(canvas->width() <= scroll->viewport()->width());
         QVERIFY(canvas->height() <= scroll->viewport()->height());
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         editor.hide();
     }
     void wheelZoomKeepsThePixelUnderThePointer_data() {
@@ -1180,7 +1181,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().dirty, before.dirty);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(editor.geometry(), geometry);
         editor.hide();
     }
@@ -1566,11 +1567,11 @@ class UiTests : public QObject {
         QCOMPARE(hide->accessibleName(), hide->toolTip());
         QVERIFY(!editor.canvas()->annotationsVisible());
         QVERIFY(!layout->annotationsVisible());
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QVERIFY(editor.document().layout == state);
         editor.explode();
         QVERIFY(!editor.canvas()->annotationsVisible());
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         auto copy = editor.findChild<QPushButton *>("copyImage");
         QVERIFY(copy);
         copy->click();
@@ -1578,7 +1579,7 @@ class UiTests : public QObject {
         QTRY_COMPARE(QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32), expected);
         hide->click();
         QVERIFY(editor.canvas()->annotationsVisible());
-        QCOMPARE(exportFeedback(editor.document(), true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         // Loading another document resets visibility and every part of its toggle.
         hide->click();
         editor.setDocument(gridDocument());
@@ -1616,7 +1617,7 @@ class UiTests : public QObject {
         send({0, -120});
         QVERIFY(editor.layoutCanvas()->zoom() < before);
         QCOMPARE(editor.layoutCanvas()->zoom(), editor.canvas()->zoom());
-        QCOMPARE(exportFeedback(editor.document()), baseline);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document())), stableFeedback(baseline));
         editor.hide();
     }
     void toolbarPreferencesKeepCoreToolsAndSettingsReachable() {
@@ -1707,8 +1708,7 @@ class UiTests : public QObject {
         };
         QApplication::clipboard()->clear();
         triggerMore("copyJson");
-        QTRY_COMPARE(clipboardJson().object(),
-                     exportFeedback(editor.document(), true));
+        QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(exportFeedback(editor.document(), true)));
         QVERIFY(QApplication::activeModalWidget() == nullptr);
         triggerMore("capture");
         QCOMPARE(captures.size(), 2);
@@ -1869,7 +1869,7 @@ class UiTests : public QObject {
         QVERIFY(expected.object().value("image").toString().startsWith("data:image/"));
         file->click();
         QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
-        QCOMPARE(clipboardJson(), expected);
+        QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(expected));
         const auto tools = editor.findChild<QPushButton *>("mode_smart");
         QCOMPARE(text->mapTo(&editor, QPoint()).y(), tools->mapTo(&editor, QPoint()).y());
         QVERIFY(editor.findChild<QPushButton *>("jsonHelp")->mapTo(&editor, QPoint()).y() < 42);
@@ -1894,14 +1894,14 @@ class UiTests : public QObject {
             QCOMPARE(copyFile->property("glyphName"), file->property("glyphName"));
             QCOMPARE(saveBundle->property("glyphName").toString(), QString("feedback-save"));
             copyText->click();
-            QCOMPARE(clipboardJson(), expected);
+            QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(expected));
             embed->setChecked(false);
             copyText->click();
             auto withoutImage = clipboardJson();
             QVERIFY(!withoutImage.object().contains("image"));
             copyFile->click();
             QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
-            QCOMPARE(clipboardJson(), withoutImage);
+            QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(withoutImage));
             artifact(*dialog, "json-preview-actions.png");
             checked = true;
             dialog->accept();
@@ -1945,7 +1945,7 @@ class UiTests : public QObject {
         QCOMPARE(editor.document().notes.size(), 1);
         QCOMPARE(editor.document().notes[0].comment, QString("复制按钮应当提交正在编辑的意见，并包含完整原图。"));
         const auto expected = exportFeedback(editor.document(), true);
-        QTRY_COMPARE(clipboardJson().object(), expected);
+        QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expected));
         const QString image = expected["image"].toString();
         QVERIFY(image.startsWith("data:image/png;base64,"));
         QCOMPARE(QByteArray::fromBase64(image.mid(QString("data:image/png;base64,").size()).toLatin1()),
@@ -1962,7 +1962,7 @@ class UiTests : public QObject {
             json.remove("image"); // The readable preview abbreviates only the base64 value.
             auto withoutImage = expected;
             withoutImage.remove("image");
-            QCOMPARE(json, withoutImage);
+            QCOMPARE(stableFeedback(json), stableFeedback(withoutImage));
             opened = true;
             dialog->reject();
         });
@@ -2298,7 +2298,7 @@ class UiTests : public QObject {
         const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "objects"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         bool foundMovement = false;
         for (const auto &value : objects) {
@@ -2351,7 +2351,7 @@ class UiTests : public QObject {
         QVERIFY(canvas->state() == appliedLayout);
         QVERIFY(editor.document().notes == appliedNotes);
         QCOMPARE(editor.document().dirty, dirty);
-        QCOMPARE(serializeFeedback(editor.document(), true), feedbackBeforeWave);
+        QCOMPARE(stableFeedback(serializeFeedback(editor.document(), true)), stableFeedback(feedbackBeforeWave));
 
         QStringList pieceIds;
         for (const auto &piece : canvas->state().pieces)
@@ -2638,22 +2638,21 @@ class UiTests : public QObject {
             auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
             QVERIFY(embed && embed->isChecked());
             auto preview = parsed.object();
-            QCOMPARE(preview.keys(), QStringList({"annotationSpace", "image", "objects"}));
+            QCOMPARE(preview.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
             QVERIFY(preview["image"].toString().startsWith("data:image/png;base64,"));
             QVERIFY(preview["image"] != expectedEmbedded["image"]);
             preview.remove("image");
-            QCOMPARE(preview, expectedFeedback);
+            QCOMPARE(stableFeedback(preview), stableFeedback(expectedFeedback));
             QPushButton *copy = nullptr;
             for (auto button : dialog->findChildren<QPushButton *>())
                 if (button->text() == "复制 JSON 文件")
                     copy = button;
             QVERIFY(copy && copy->isEnabled());
             copy->click();
-            QTRY_COMPARE(clipboardJson().object(),
-                         expectedEmbedded);
+            QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expectedEmbedded));
             const auto copied = clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
-            QCOMPARE(copied.object(), expectedEmbedded);
+            QCOMPARE(stableFeedback(copied.object()), stableFeedback(expectedEmbedded));
             QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 文件已复制"));
             const auto encoded =
                 copied.object()["image"].toString().mid(QString("data:image/png;base64,").size());
@@ -2665,12 +2664,11 @@ class UiTests : public QObject {
             QTRY_VERIFY(dialog->isActiveWindow() && text->hasFocus());
             text->selectAll();
             QTest::keyClick(text, Qt::Key_C, Qt::ControlModifier);
-            QTRY_COMPARE(clipboardJson().object(),
-                         expectedEmbedded);
+            QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expectedEmbedded));
             const auto keyboardCopy =
                 clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
-            QCOMPARE(keyboardCopy.object(), expectedEmbedded);
+            QCOMPARE(stableFeedback(keyboardCopy.object()), stableFeedback(expectedEmbedded));
             const auto keyboardImage =
                 keyboardCopy.object()["image"].toString().mid(QString("data:image/png;base64,").size());
             QCOMPARE(QByteArray::fromBase64(keyboardImage.toLatin1()), document.png);
@@ -2680,11 +2678,10 @@ class UiTests : public QObject {
             QVERIFY(!embed->isChecked());
             const auto compact = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
-            QCOMPARE(compact.object(), expectedFeedback);
+            QCOMPARE(stableFeedback(compact.object()), stableFeedback(expectedFeedback));
             QVERIFY(!compact.object().contains("image"));
             copy->click();
-            QTRY_COMPARE(clipboardJson().object(),
-                         expectedFeedback);
+            QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expectedFeedback));
             artifact(*dialog, "compact-export.png");
             exportChecked = true;
             dialog->reject();
@@ -2742,7 +2739,7 @@ class UiTests : public QObject {
         QVERIFY(!restored.notes[1].isPoint);
         QCOMPARE(restored.notes[1].rect, rectangle.rect);
         QCOMPARE(restored.notes[1].comment, rectangle.comment);
-        QCOMPARE(exportFeedback(restored), expectedFeedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(expectedFeedback));
 
         bool unexpectedPrompt = false;
         QTimer rejectUnexpectedPrompt;

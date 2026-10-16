@@ -9,12 +9,78 @@
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
   const sourceKey = r => JSON.stringify([r.x1, r.y1, r.x2, r.y2]);
+  const IMAGE_VERSION = 'feedback-minimal-2';
+  const IMAGE_SCHEMA = 'urn:edithere:feedback-minimal:2';
+  const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
+  function timestampWithZone(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
+    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+    const monthEnd = new Date(0); monthEnd.setUTCFullYear(year, month, 0);
+    return year > 0 && month > 0 && month <= 12 && day > 0 && day <= monthEnd.getUTCDate();
+  }
+  function productVersion(document) {
+    let version = document.toolVersion;
+    if (!version && typeof globalThis.document !== 'undefined') version = globalThis.document.querySelector('meta[name="edithere-version"]')?.content;
+    // Node consumers run from source. Keep this lazy: the bundled MCP session
+    // validator never needs the source tree or product version at runtime.
+    if (!version && typeof module === 'object' && module.exports) {
+      const cmake = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../CMakeLists.txt'), 'utf8');
+      version = /project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/.exec(cmake)?.[1];
+    }
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('EditHere build version is unavailable.');
+    return version;
+  }
+  function imageMetadata(value) {
+    if (!record(value)) throw new Error('Invalid image feedback.');
+    if (!Object.hasOwn(value, 'schemaVersion')) return {};
+    if (value.schemaVersion !== IMAGE_VERSION) throw new Error('Unsupported image feedback version.');
+    if (value.$schema !== IMAGE_SCHEMA || !exactKeys(value.tool, ['name', 'version']) ||
+        value.tool.name !== 'EditHere' ||
+        typeof value.tool.version !== 'string' || !value.tool.version.trim() || value.tool.version.length > 100 ||
+        !timestampWithZone(value.exportedAt)) {
+      throw new Error('Invalid image feedback metadata.');
+    }
+    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
+  }
+  function normalizeImage(value) {
+    const metadata = imageMetadata(value), modern = Object.hasOwn(value, 'schemaVersion');
+    const objectFormat = Object.hasOwn(value, 'objects');
+    const fields = [...Object.keys(metadata), ...(objectFormat ? ['objects'] : ['annotations', 'changes']),
+      ...(Object.hasOwn(value, 'annotationSpace') ? ['annotationSpace'] : []), ...(Object.hasOwn(value, 'image') ? ['image'] : [])];
+    if (!exactKeys(value, fields) || (modern && (!objectFormat || !Object.hasOwn(value, 'annotationSpace'))) ||
+        Object.hasOwn(value, 'annotationSpace') && value.annotationSpace !== 'result') throw new Error('Invalid image feedback fields.');
+    const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
+    if (objectFormat) {
+      if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
+      return {...base, objects:value.objects};
+    }
+    if (!Array.isArray(value.annotations) || value.annotations.length > 1000 || !Array.isArray(value.changes) || value.changes.length > 8704) throw new Error('Invalid legacy feedback lists.');
+    const objects = value.changes.map(change => {
+      if (!exactKeys(change, ['from', 'to'])) throw new Error('Invalid legacy feedback change.');
+      return {source:change.from, movements:[{to:change.to}], annotations:[]};
+    });
+    for (const annotation of value.annotations) {
+      if (!record(annotation)) throw new Error('Invalid legacy feedback annotation.');
+      const kind = ['point', 'rectangle', 'change'].find(key => Object.hasOwn(annotation, key));
+      if (!exactKeys(annotation, kind ? [kind, 'text'] : ['text'])) throw new Error('Invalid legacy feedback annotation fields.');
+      if (kind === 'change') {
+        if (!Number.isInteger(annotation.change) || annotation.change < 0 || annotation.change >= value.changes.length) throw new Error('Legacy annotation references a missing change.');
+        objects[annotation.change].annotations.push(annotation.text);
+      } else {
+        if (kind === 'point' && !exactKeys(annotation.point, ['x', 'y'])) throw new Error('Invalid legacy feedback point.');
+        const source = kind === 'point' ? {x1:annotation.point.x, y1:annotation.point.y, x2:annotation.point.x, y2:annotation.point.y} : kind === 'rectangle' ? annotation.rectangle : null;
+        objects.push({source, movements:[], annotations:[annotation.text]});
+      }
+    }
+    return {...base, objects};
+  }
 
   // Matches app/model.cpp exportFeedback. Movements are the actual group
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
-  function exportImage(document, embed = true) {
+  function exportImage(document, embed = true, exportedAt = new Date().toISOString()) {
     const objects = [], bySource = new Map();
     function ensureEntry(source) {
       const key = sourceKey(source);
@@ -38,7 +104,9 @@
         objects.push({source:rectangle(note.source), movements:[], annotations:[note.text]});
       }
     }
-    return {annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
+    return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
+      tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
+      annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
@@ -52,7 +120,7 @@
       timestampMs:Math.floor(document.timestampUs / 1000),
       timestampUs:document.timestampUs,
       imageFile:'frame-' + document.id + '.png',
-      feedback:exportImage(document, embed)
+      feedback:exportImage(document, embed, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
       source:rectangle(object.source),
@@ -86,7 +154,7 @@
     const objects=feedback.objects;
     const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
-    return {objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
+    return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
       movements:objects.reduce((sum,object)=>sum+object.movements.length,0),
       bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
   }
@@ -105,10 +173,13 @@
       return JSON.stringify(readable, null, 4) + '\n';
     }
     const lines = ['{'];
+    for (const [key, value] of Object.entries(ordered(feedback))) {
+      if (key !== 'image' && key !== 'objects') lines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(value) + ',');
+    }
     if (Object.prototype.hasOwnProperty.call(feedback, 'image')) {
       lines.push('  "image": ' + JSON.stringify(foldedImage(feedback.image)) + ',');
     }
-    lines.push('  "annotationSpace": "result",', '  "objects": [');
+    lines.push('  "objects": [');
     feedback.objects.forEach((object, index) => {
       lines.push('    ' + JSON.stringify(ordered(object)) + (index + 1 < feedback.objects.length ? ',' : ''));
     });
@@ -116,5 +187,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage};
 });

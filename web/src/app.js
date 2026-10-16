@@ -18,7 +18,7 @@
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
   let panX = 0, panY = 0, pan = null, spaceDown = false, spaceUsed = false, annotationsVisible = true, hoveredMovement = null;
-  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null;
+  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null, feedbackStamp = null;
   let seeking = false, presentedTime = null, frameCallback = null, linkSignature = null, detectionId = 0;
   const histories = new WeakMap(), detections = new WeakMap(), pendingDetections = new Map();
   let worker;
@@ -353,8 +353,16 @@
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
   function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
-  function exportDoc(d,embed=true) {return F.exportImage(feedbackDocument(d),embed);}
-  function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);return F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed);}
+  function exportDoc(d,embed=true,exportedAt) {return F.exportImage(feedbackDocument(d),embed,exportedAt);}
+  function feedback(embed=true) {
+    if(!session)throw new Error('请先打开素材');
+    // All delivery paths share one export time until the document changes, so
+    // a saved backup and an idempotent Agent submission identify the same snapshot.
+    if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
+    const exportedAt=feedbackStamp.exportedAt;
+    const value=session.kind==='image'?exportDoc(session.document,embed,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed,exportedAt);
+    return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
+  }
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
@@ -382,7 +390,7 @@
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
-    $('json-summary').textContent=summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
+    $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
     $('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和文件保存包含完整原图。':'不包含图片，内容更小。仅用于 Agent 已持有同一原图；否则请同时附上原图或对应帧截图。此文件不能单独恢复画面。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
@@ -458,6 +466,7 @@
   }
   async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
   async function docFromFeedback(f,w,h,timestampUs=null,id=uid()) {
+    f=F.normalizeImage(f);
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     const image=await decode(f.image);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
     const d=makeDoc(image,f.image,timestampUs,id),groups=new Map();
@@ -506,7 +515,7 @@
         const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id);next.frames.push(item.doc);
       }
       nextDoc=next.frames[0]||null;
-    }else if(data.objects){
+    }else if(Object.hasOwn(data,'schemaVersion')||data.objects||data.annotations&&data.changes){
       const result=await docFromFeedback(data);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
     }else throw new Error('请选择网页项目或含内嵌图片的反馈 JSON；桌面 .edithere 项目暂不支持');
     releaseVideo();session=next;doc=nextDoc;activate();if(doc)detect(doc);if(session.kind==='video')notify('批注帧已恢复；继续播放请重新选择源视频');
@@ -579,6 +588,9 @@
     async loadAgentFeedback(value) {
       if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
       await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
+      const metadata=F.imageMetadata(value.feedback);
+      if(metadata.exportedAt)feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt,metadata};
+      exportCache=null;
       agentBound=true;
     },
     project() {if(!session)throw new Error('请先打开素材');return clone(project());},

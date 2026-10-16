@@ -37,6 +37,33 @@ test('explicit submit writes native complete JSON; receipt omits image; retry is
   assert.throws(() => store.submit(token(session), {...feedback,objects:[]}), /different feedback/);
 });
 
+test('versioned metadata survives submission, restart, disk verification and crash recovery', () => {
+  const metadata = {$schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
+    tool:{name:'EditHere', version:'0.11.1'}, exportedAt:'2026-10-16T16:30:00+08:00'};
+  const current = {...metadata, ...feedback};
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const receipt = store.submit(token(session), current);
+  assert.deepEqual(receipt.feedback, {...metadata, annotationSpace:'result', objects:feedback.objects});
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output, 'utf8')), current);
+  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}), receipt);
+  const raw = store.byId(session.sessionId); raw.state = 'submitting'; raw.result = {objects:[]}; store.persist(raw);
+  const restarted = new AgentSessions(paths);
+  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)), receipt);
+  assert.deepEqual(restarted.submit(token(session), current), receipt);
+});
+
+test('a declared image version cannot omit or replace its metadata', () => {
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const current = {...feedback, $schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
+    tool:{name:'EditHere',version:'0.11.1'}, exportedAt:'2026-10-16T08:30:00Z'};
+  for (const invalid of [
+    {...current,schemaVersion:'feedback-minimal-3'}, {...current,$schema:null},
+    {...current,tool:{name:'Another tool',version:'0.11.1'}}, {...current,exportedAt:'2026-10-16T08:30:00'}
+  ]) assert.throws(() => store.submit(token(session), invalid));
+  assert.equal(fs.existsSync(paths.output), false);
+  assert.equal(store.byId(session.sessionId).state, 'pending');
+});
+
 test('feedback rejects a replaced image, empty text, invalid coordinates and incompatible fields', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
   for (const invalid of [

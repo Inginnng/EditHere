@@ -1233,12 +1233,78 @@ SOFTWARE.
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
   const sourceKey = r => JSON.stringify([r.x1, r.y1, r.x2, r.y2]);
+  const IMAGE_VERSION = 'feedback-minimal-2';
+  const IMAGE_SCHEMA = 'urn:edithere:feedback-minimal:2';
+  const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
+  function timestampWithZone(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
+    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+    const monthEnd = new Date(0); monthEnd.setUTCFullYear(year, month, 0);
+    return year > 0 && month > 0 && month <= 12 && day > 0 && day <= monthEnd.getUTCDate();
+  }
+  function productVersion(document) {
+    let version = document.toolVersion;
+    if (!version && typeof globalThis.document !== 'undefined') version = globalThis.document.querySelector('meta[name="edithere-version"]')?.content;
+    // Node consumers run from source. Keep this lazy: the bundled MCP session
+    // validator never needs the source tree or product version at runtime.
+    if (!version && typeof module === 'object' && module.exports) {
+      const cmake = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../CMakeLists.txt'), 'utf8');
+      version = /project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/.exec(cmake)?.[1];
+    }
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('EditHere build version is unavailable.');
+    return version;
+  }
+  function imageMetadata(value) {
+    if (!record(value)) throw new Error('Invalid image feedback.');
+    if (!Object.hasOwn(value, 'schemaVersion')) return {};
+    if (value.schemaVersion !== IMAGE_VERSION) throw new Error('Unsupported image feedback version.');
+    if (value.$schema !== IMAGE_SCHEMA || !exactKeys(value.tool, ['name', 'version']) ||
+        value.tool.name !== 'EditHere' ||
+        typeof value.tool.version !== 'string' || !value.tool.version.trim() || value.tool.version.length > 100 ||
+        !timestampWithZone(value.exportedAt)) {
+      throw new Error('Invalid image feedback metadata.');
+    }
+    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
+  }
+  function normalizeImage(value) {
+    const metadata = imageMetadata(value), modern = Object.hasOwn(value, 'schemaVersion');
+    const objectFormat = Object.hasOwn(value, 'objects');
+    const fields = [...Object.keys(metadata), ...(objectFormat ? ['objects'] : ['annotations', 'changes']),
+      ...(Object.hasOwn(value, 'annotationSpace') ? ['annotationSpace'] : []), ...(Object.hasOwn(value, 'image') ? ['image'] : [])];
+    if (!exactKeys(value, fields) || (modern && (!objectFormat || !Object.hasOwn(value, 'annotationSpace'))) ||
+        Object.hasOwn(value, 'annotationSpace') && value.annotationSpace !== 'result') throw new Error('Invalid image feedback fields.');
+    const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
+    if (objectFormat) {
+      if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
+      return {...base, objects:value.objects};
+    }
+    if (!Array.isArray(value.annotations) || value.annotations.length > 1000 || !Array.isArray(value.changes) || value.changes.length > 8704) throw new Error('Invalid legacy feedback lists.');
+    const objects = value.changes.map(change => {
+      if (!exactKeys(change, ['from', 'to'])) throw new Error('Invalid legacy feedback change.');
+      return {source:change.from, movements:[{to:change.to}], annotations:[]};
+    });
+    for (const annotation of value.annotations) {
+      if (!record(annotation)) throw new Error('Invalid legacy feedback annotation.');
+      const kind = ['point', 'rectangle', 'change'].find(key => Object.hasOwn(annotation, key));
+      if (!exactKeys(annotation, kind ? [kind, 'text'] : ['text'])) throw new Error('Invalid legacy feedback annotation fields.');
+      if (kind === 'change') {
+        if (!Number.isInteger(annotation.change) || annotation.change < 0 || annotation.change >= value.changes.length) throw new Error('Legacy annotation references a missing change.');
+        objects[annotation.change].annotations.push(annotation.text);
+      } else {
+        if (kind === 'point' && !exactKeys(annotation.point, ['x', 'y'])) throw new Error('Invalid legacy feedback point.');
+        const source = kind === 'point' ? {x1:annotation.point.x, y1:annotation.point.y, x2:annotation.point.x, y2:annotation.point.y} : kind === 'rectangle' ? annotation.rectangle : null;
+        objects.push({source, movements:[], annotations:[annotation.text]});
+      }
+    }
+    return {...base, objects};
+  }
 
   // Matches app/model.cpp exportFeedback. Movements are the actual group
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
-  function exportImage(document, embed = true) {
+  function exportImage(document, embed = true, exportedAt = new Date().toISOString()) {
     const objects = [], bySource = new Map();
     function ensureEntry(source) {
       const key = sourceKey(source);
@@ -1262,7 +1328,9 @@ SOFTWARE.
         objects.push({source:rectangle(note.source), movements:[], annotations:[note.text]});
       }
     }
-    return {annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
+    return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
+      tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
+      annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
@@ -1276,7 +1344,7 @@ SOFTWARE.
       timestampMs:Math.floor(document.timestampUs / 1000),
       timestampUs:document.timestampUs,
       imageFile:'frame-' + document.id + '.png',
-      feedback:exportImage(document, embed)
+      feedback:exportImage(document, embed, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
       source:rectangle(object.source),
@@ -1310,7 +1378,7 @@ SOFTWARE.
     const objects=feedback.objects;
     const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
-    return {objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
+    return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
       movements:objects.reduce((sum,object)=>sum+object.movements.length,0),
       bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
   }
@@ -1329,10 +1397,13 @@ SOFTWARE.
       return JSON.stringify(readable, null, 4) + '\n';
     }
     const lines = ['{'];
+    for (const [key, value] of Object.entries(ordered(feedback))) {
+      if (key !== 'image' && key !== 'objects') lines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(value) + ',');
+    }
     if (Object.prototype.hasOwnProperty.call(feedback, 'image')) {
       lines.push('  "image": ' + JSON.stringify(foldedImage(feedback.image)) + ',');
     }
-    lines.push('  "annotationSpace": "result",', '  "objects": [');
+    lines.push('  "objects": [');
     feedback.objects.forEach((object, index) => {
       lines.push('    ' + JSON.stringify(ordered(object)) + (index + 1 < feedback.objects.length ? ',' : ''));
     });
@@ -1340,7 +1411,7 @@ SOFTWARE.
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage};
 });
 </script><script id="detector-code">(function (root) {
   'use strict';
@@ -1639,7 +1710,7 @@ function dilate(input,w,h,rx,ry) {
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
   let panX = 0, panY = 0, pan = null, spaceDown = false, spaceUsed = false, annotationsVisible = true, hoveredMovement = null;
-  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null;
+  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null, feedbackStamp = null;
   let seeking = false, presentedTime = null, frameCallback = null, linkSignature = null, detectionId = 0;
   const histories = new WeakMap(), detections = new WeakMap(), pendingDetections = new Map();
   let worker;
@@ -1974,8 +2045,16 @@ function dilate(input,w,h,rx,ry) {
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
   function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
-  function exportDoc(d,embed=true) {return F.exportImage(feedbackDocument(d),embed);}
-  function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);return F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed);}
+  function exportDoc(d,embed=true,exportedAt) {return F.exportImage(feedbackDocument(d),embed,exportedAt);}
+  function feedback(embed=true) {
+    if(!session)throw new Error('请先打开素材');
+    // All delivery paths share one export time until the document changes, so
+    // a saved backup and an idempotent Agent submission identify the same snapshot.
+    if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
+    const exportedAt=feedbackStamp.exportedAt;
+    const value=session.kind==='image'?exportDoc(session.document,embed,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed,exportedAt);
+    return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
+  }
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
@@ -2003,7 +2082,7 @@ function dilate(input,w,h,rx,ry) {
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
-    $('json-summary').textContent=summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
+    $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
     $('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和文件保存包含完整原图。':'不包含图片，内容更小。仅用于 Agent 已持有同一原图；否则请同时附上原图或对应帧截图。此文件不能单独恢复画面。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
@@ -2079,6 +2158,7 @@ function dilate(input,w,h,rx,ry) {
   }
   async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
   async function docFromFeedback(f,w,h,timestampUs=null,id=uid()) {
+    f=F.normalizeImage(f);
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     const image=await decode(f.image);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
     const d=makeDoc(image,f.image,timestampUs,id),groups=new Map();
@@ -2127,7 +2207,7 @@ function dilate(input,w,h,rx,ry) {
         const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id);next.frames.push(item.doc);
       }
       nextDoc=next.frames[0]||null;
-    }else if(data.objects){
+    }else if(Object.hasOwn(data,'schemaVersion')||data.objects||data.annotations&&data.changes){
       const result=await docFromFeedback(data);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
     }else throw new Error('请选择网页项目或含内嵌图片的反馈 JSON；桌面 .edithere 项目暂不支持');
     releaseVideo();session=next;doc=nextDoc;activate();if(doc)detect(doc);if(session.kind==='video')notify('批注帧已恢复；继续播放请重新选择源视频');
@@ -2200,6 +2280,9 @@ function dilate(input,w,h,rx,ry) {
     async loadAgentFeedback(value) {
       if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
       await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
+      const metadata=F.imageMetadata(value.feedback);
+      if(metadata.exportedAt)feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt,metadata};
+      exportCache=null;
       agentBound=true;
     },
     project() {if(!session)throw new Error('请先打开素材');return clone(project());},

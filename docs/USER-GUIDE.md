@@ -195,6 +195,8 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 ## 反馈 JSON
 
+图片反馈现带格式版本 `feedback-minimal-2`、生成工具名称和真实版本、带时区导出时间及 Schema 标识。原先没有版本号的反馈仍可导入；以下字段示意只展示意见内容。
+
 图片反馈采用**面向对象**结构：每个对象记录一块来源区域 `source`、它发生的位置变化 `movements`，以及挂在这块区域上的意见 `annotations`，AI 可直接把同一对象的意见与移动对应起来。视频反馈在 `frames[].feedback` 内复用这份结构，并补充帧时间戳、源视频信息和带时间戳的对象索引，详见 [视频标注](#视频标注)。
 
 | 字段 | 含义 |
@@ -205,7 +207,7 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放结果，`to` 为最终坐标 |
 | `objects[].annotations` | 挂在该对象上的文字意见 |
 
-图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或时间戳。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。图片格式由 `schema/feedback-minimal.schema.json` 定义；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
+图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或完整项目时间戳；仅保留根级导出时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 
 坐标以画布左上角为原点，单位为图像像素，与窗口位置和视图缩放无关。框使用 `x1/y1/x2/y2` 两个端点；右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`。批注坐标为整数，布局变化坐标可含小数。
 

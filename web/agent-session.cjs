@@ -40,7 +40,8 @@ function rectangle(value) {
 }
 function validateFeedback(value, image) {
   boundedJSON(value, MAX_BODY, 'Feedback');
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'annotationSpace,image,objects') fail('Expected native image feedback: annotationSpace, image and objects.');
+  try { value = feedbackFormat.normalizeImage(value); } catch (error) { fail(error.message); }
+  if (!Object.hasOwn(value, 'image')) fail('Expected native image feedback with the original image.');
   if (value.annotationSpace !== 'result' || value.image !== image) fail('Feedback must include this session\'s original image.');
   if (!Array.isArray(value.objects) || value.objects.length > 1000) fail('Invalid feedback objects.');
   const objects = value.objects.map(object => {
@@ -61,7 +62,11 @@ function validateFeedback(value, image) {
     if (!movements.length && !annotations.length) fail('Empty feedback objects are not valid.');
     return {source, movements, annotations};
   });
-  return {annotationSpace:'result', image, objects};
+  return {...feedbackFormat.imageMetadata(value), annotationSpace:'result', image, objects};
+}
+function feedbackReceipt(feedback) {
+  const {image, ...result} = feedback;
+  return result;
 }
 
 function defaultSessionDirectory() {
@@ -176,7 +181,7 @@ function persistedSession(directory, id) {
       const serialized = fs.readFileSync(session.output);
       if (digest(serialized) !== session.sha256) throw new Error('Unmatched result.');
       const feedback = validateFeedback(JSON.parse(serialized), session.image);
-      session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
+      session.result = feedbackReceipt(feedback);
       session.state = 'completed'; session.completedAt ||= new Date().toISOString();
     } catch { session.state = 'pending'; delete session.sha256; delete session.result; }
   }
@@ -194,7 +199,7 @@ function readSessionStatus({directory = defaultSessionDirectory(), sessionId}) {
     try { output = fs.readFileSync(session.output); } catch { fail('Completed feedback file is missing or unreadable.', 409); }
     if (digest(output) !== session.sha256) fail('Completed feedback file was changed after submission.', 409);
     const feedback = validateFeedback(JSON.parse(output), session.image);
-    session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
+    session.result = feedbackReceipt(feedback);
   }
   return receipt(session);
 }
@@ -274,7 +279,7 @@ class AgentSessions {
     }
     if (session.state !== 'pending') fail('This session is ' + session.state + '.', 409);
     session.state = 'submitting'; session.sha256 = sha256;
-    session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
+    session.result = feedbackReceipt(feedback);
     this.persist(session);
     try {
       atomicOutput(session.output, serialized, session.id);

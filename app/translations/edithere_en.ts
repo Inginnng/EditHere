@@ -14,7 +14,7 @@
         <translation>Content area</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="709"/>
+        <location filename="../editor.cpp" line="714"/>
         <location filename="../layout.cpp" line="235"/>
         <source>整个图片</source>
         <translation>Whole image</translation>
@@ -124,17 +124,17 @@
         <translation>Could not enable launch at login: the command, including startup arguments, must not exceed 260 characters. Move the app to a shorter path.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="128"/>
+        <location filename="../editor.cpp" line="132"/>
         <source>复制完整 JSON</source>
         <translation>Copy full JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="134"/>
+        <location filename="../editor.cpp" line="138"/>
         <source>全选</source>
         <translation>Select all</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2043"/>
+        <location filename="../editor.cpp" line="2053"/>
         <source>,[图片编码已折叠]&quot;,</source>
         <translation>,[image data collapsed]&quot;,</translation>
     </message>
@@ -375,7 +375,7 @@
     </message>
     <message>
         <location filename="../model.cpp" line="143"/>
-        <location filename="../model.cpp" line="1060"/>
+        <location filename="../model.cpp" line="1083"/>
         <source>原图文件名不正确</source>
         <translation>Source image file name is invalid</translation>
     </message>
@@ -401,15 +401,15 @@
     </message>
     <message>
         <location filename="../model.cpp" line="170"/>
-        <location filename="../model.cpp" line="856"/>
-        <location filename="../model.cpp" line="909"/>
+        <location filename="../model.cpp" line="878"/>
+        <location filename="../model.cpp" line="931"/>
         <source>点标注超出画布</source>
         <translation>The point annotation falls outside the canvas</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="174"/>
-        <location filename="../model.cpp" line="918"/>
-        <location filename="../model.cpp" line="924"/>
+        <location filename="../model.cpp" line="940"/>
+        <location filename="../model.cpp" line="946"/>
         <source>框选超出画布</source>
         <translation>The selection falls outside the canvas</translation>
     </message>
@@ -444,405 +444,425 @@
         <translation>Moved region sizes must be positive</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="618"/>
+        <location filename="../model.cpp" line="622"/>
         <source>这些批注需要当前 EditHere 项目格式</source>
         <translation>These annotations need the current EditHere project format</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="623"/>
+        <location filename="../model.cpp" line="627"/>
         <source>这些批注无法用旧版原图坐标保存，请使用当前反馈格式</source>
         <translation>These annotations cannot be saved with legacy source-image coordinates; use the current feedback format</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="686"/>
+        <location filename="../model.cpp" line="690"/>
         <source>项目不能超过 96 MiB，未保存当前修改。请缩小图片或减少批注和分块后重试</source>
         <translation>A project cannot exceed 96 MiB, so your changes were not saved. Shrink the image or reduce annotations and slices, then retry</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="688"/>
+        <location filename="../model.cpp" line="692"/>
         <source>配套原图不能超过 48 MiB，请缩小图片后重试</source>
         <translation>The companion source image cannot exceed 48 MiB; shrink the image and retry</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="702"/>
+        <location filename="../model.cpp" line="706"/>
         <source>项目字段缺失或包含未知字段</source>
         <translation>Project fields are missing or contain unknown fields</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="705"/>
+        <location filename="../model.cpp" line="709"/>
         <source>项目缺少字段：%1</source>
         <translation>The project is missing the field: %1</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="718"/>
+        <source>不支持这个反馈版本</source>
+        <translation>This feedback version is not supported</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="722"/>
+        <source>反馈元数据格式不正确</source>
+        <translation>The feedback metadata is invalid</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="727"/>
+        <source>反馈工具信息不正确</source>
+        <translation>The feedback tool information is invalid</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="732"/>
+        <source>反馈导出日期必须是带时区的 ISO 8601 日期</source>
+        <translation>The feedback export date must be an ISO 8601 timestamp with a timezone</translation>
+    </message>
+    <message>
+        <location filename="../model.cpp" line="740"/>
         <source>批注坐标空间不正确</source>
         <translation>Annotation coordinate space is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="728"/>
-        <location filename="../model.cpp" line="731"/>
+        <location filename="../model.cpp" line="750"/>
+        <location filename="../model.cpp" line="753"/>
         <source>内嵌图片必须是 PNG 或 JPEG data URL</source>
         <translation>An embedded image must be a PNG or JPEG data URL</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="734"/>
+        <location filename="../model.cpp" line="756"/>
         <source>内嵌原图不能超过 48 MiB</source>
         <translation>An embedded source image cannot exceed 48 MiB</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="738"/>
-        <location filename="../model.cpp" line="1066"/>
+        <location filename="../model.cpp" line="760"/>
+        <location filename="../model.cpp" line="1089"/>
         <source>原图 Base64 不正确</source>
         <translation>Source image Base64 is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="741"/>
+        <location filename="../model.cpp" line="763"/>
         <source>内嵌图片类型与编码不一致</source>
         <translation>The embedded image type does not match its encoding</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="750"/>
+        <location filename="../model.cpp" line="772"/>
         <source>内嵌图片尺寸超出限制</source>
         <translation>Embedded image size exceeds the limit</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="752"/>
+        <location filename="../model.cpp" line="774"/>
         <source>内嵌图片无法读取</source>
         <translation>The embedded image cannot be read</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="754"/>
+        <location filename="../model.cpp" line="776"/>
         <source>图片转换失败</source>
         <translation>Image conversion failed</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="759"/>
+        <location filename="../model.cpp" line="781"/>
         <source>内嵌原图不是有效的 PNG</source>
         <translation>The embedded source image is not a valid PNG</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="764"/>
+        <location filename="../model.cpp" line="786"/>
         <source>内嵌原图尺寸超出限制</source>
         <translation>Embedded source image size exceeds the limit</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="770"/>
+        <location filename="../model.cpp" line="792"/>
         <source>内嵌原图尺寸不正确</source>
         <translation>Embedded source image size is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="773"/>
+        <location filename="../model.cpp" line="795"/>
         <source>内嵌原图无法读取</source>
         <translation>The embedded source image cannot be read</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="785"/>
+        <location filename="../model.cpp" line="807"/>
         <source>内嵌原图与提供的图片不一致</source>
         <translation>The embedded source image does not match the provided image</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="787"/>
+        <location filename="../model.cpp" line="809"/>
         <source>设计反馈</source>
         <translation>Design feedback</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="795"/>
+        <location filename="../model.cpp" line="817"/>
         <source>对象列表格式或数量不正确</source>
         <translation>The object list format or count is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="802"/>
+        <location filename="../model.cpp" line="824"/>
         <source>对象源区域格式不正确</source>
         <translation>Object source region format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="806"/>
+        <location filename="../model.cpp" line="828"/>
         <source>对象源区域字段不正确</source>
         <translation>Object source region fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="810"/>
+        <location filename="../model.cpp" line="832"/>
         <source>对象源区域坐标不正确</source>
         <translation>Object source region coordinates are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="815"/>
+        <location filename="../model.cpp" line="837"/>
         <source>对象源区域尺寸不正确</source>
         <translation>Invalid object source dimensions</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="829"/>
+        <location filename="../model.cpp" line="851"/>
         <source>对象格式不正确</source>
         <translation>Object format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="833"/>
+        <location filename="../model.cpp" line="855"/>
         <source>对象移动或批注格式不正确</source>
         <translation>Object movement or annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="839"/>
+        <location filename="../model.cpp" line="861"/>
         <source>批注或移动数量超出限制</source>
         <translation>Too many annotations or movements</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="850"/>
+        <location filename="../model.cpp" line="872"/>
         <source>对象源区域超出画布</source>
         <translation>The object source is outside the canvas</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="853"/>
+        <location filename="../model.cpp" line="875"/>
         <source>点标注不能关联移动</source>
         <translation>Point annotations cannot have movements</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="864"/>
+        <location filename="../model.cpp" line="886"/>
         <source>移动格式不正确</source>
         <translation>Movement format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="845"/>
-        <location filename="../model.cpp" line="884"/>
+        <location filename="../model.cpp" line="867"/>
+        <location filename="../model.cpp" line="906"/>
         <source>全局批注不能关联移动</source>
         <translation>A global annotation cannot reference a movement</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="842"/>
-        <location filename="../model.cpp" line="887"/>
-        <location filename="../model.cpp" line="902"/>
-        <location filename="../model.cpp" line="947"/>
+        <location filename="../model.cpp" line="864"/>
+        <location filename="../model.cpp" line="909"/>
+        <location filename="../model.cpp" line="924"/>
+        <location filename="../model.cpp" line="969"/>
         <source>批注文字格式不正确</source>
         <translation>Annotation text format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="933"/>
+        <location filename="../model.cpp" line="955"/>
         <source>批注或变化列表格式不正确</source>
         <translation>The annotation or change list format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="939"/>
+        <location filename="../model.cpp" line="961"/>
         <source>批注格式不正确</source>
         <translation>Annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="957"/>
+        <location filename="../model.cpp" line="979"/>
         <source>批注关联的移动不存在</source>
         <translation>The movement referenced by the annotation does not exist</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="964"/>
+        <location filename="../model.cpp" line="986"/>
         <source>点标注格式不正确</source>
         <translation>Point annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="970"/>
+        <location filename="../model.cpp" line="992"/>
         <source>框标注格式不正确</source>
         <translation>Box annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="985"/>
+        <location filename="../model.cpp" line="1007"/>
         <source>无法打开文件</source>
         <translation>Could not open the file</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="989"/>
+        <location filename="../model.cpp" line="1011"/>
         <source>图片文件不能超过 48 MB</source>
         <translation>An image file cannot exceed 48 MB</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="995"/>
+        <location filename="../model.cpp" line="1017"/>
         <source>图片尺寸超出限制</source>
         <translation>Image size exceeds the limit</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="999"/>
+        <location filename="../model.cpp" line="1021"/>
         <source>项目文件不能超过 96 MB</source>
         <translation>A project file cannot exceed 96 MB</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1003"/>
+        <location filename="../model.cpp" line="1025"/>
         <source>JSON 格式不正确</source>
         <translation>JSON format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1017"/>
+        <location filename="../model.cpp" line="1041"/>
         <source>请将 JSON 与同名原图 %1 放在同一目录</source>
         <translation>Place the JSON and the source image named %1 in the same folder</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1071"/>
+        <location filename="../model.cpp" line="1094"/>
         <source>请将 JSON 与原图 %1 放在同一目录</source>
         <translation>Place the JSON and the source image %1 in the same folder</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1029"/>
+        <location filename="../model.cpp" line="1052"/>
         <source>不支持这个项目版本</source>
         <translation>This project version is not supported</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="869"/>
+        <location filename="../model.cpp" line="891"/>
         <source>移动目标超出画布或尺寸不正确</source>
         <translation>The movement destination is outside the canvas or has invalid dimensions</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1037"/>
+        <location filename="../model.cpp" line="1060"/>
         <source>项目坐标或布局格式不正确</source>
         <translation>Project coordinates or layout format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1041"/>
+        <location filename="../model.cpp" line="1064"/>
         <source>大爆炸项目必须包含布局对象</source>
         <translation>A project with Explode enabled must contain a layout object.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1043"/>
+        <location filename="../model.cpp" line="1066"/>
         <source>导出日期不正确</source>
         <translation>Export date is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1045"/>
+        <location filename="../model.cpp" line="1068"/>
         <source>批注列表格式或数量不正确</source>
         <translation>The annotation list format or count is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1051"/>
+        <location filename="../model.cpp" line="1074"/>
         <source>项目坐标约定不兼容</source>
         <translation>Project coordinate convention is incompatible</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1053"/>
+        <location filename="../model.cpp" line="1076"/>
         <source>项目标题格式不正确</source>
         <translation>Project title format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1056"/>
+        <location filename="../model.cpp" line="1079"/>
         <source>项目图片尺寸不正确</source>
         <translation>Project image size is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1074"/>
+        <location filename="../model.cpp" line="1097"/>
         <source>原图数据字段不正确</source>
         <translation>Source image data fields are invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1078"/>
+        <location filename="../model.cpp" line="1101"/>
         <source>原图校验不一致，无法保证标注位置</source>
         <translation>The source image checksum does not match, so annotation positions cannot be guaranteed</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1083"/>
-        <location filename="../model.cpp" line="1086"/>
+        <location filename="../model.cpp" line="1106"/>
+        <location filename="../model.cpp" line="1109"/>
         <source>原图尺寸与项目不一致</source>
         <translation>The source image size does not match the project</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1095"/>
+        <location filename="../model.cpp" line="1118"/>
         <source>批注列表格式不正确</source>
         <translation>Annotation list format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1105"/>
+        <location filename="../model.cpp" line="1128"/>
         <source>批注编号必须连续</source>
         <translation>Annotation indices must be consecutive</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1107"/>
+        <location filename="../model.cpp" line="1130"/>
         <source>批注类型不正确</source>
         <translation>Annotation type is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1114"/>
+        <location filename="../model.cpp" line="1137"/>
         <source>关联移动区域格式不正确</source>
         <translation>The referenced moved region format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1122"/>
+        <location filename="../model.cpp" line="1145"/>
         <source>辅助功能元素需要 1.1.0 格式</source>
         <translation>Accessibility elements require the 1.1.0 format</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1127"/>
+        <location filename="../model.cpp" line="1150"/>
         <source>全局批注不能包含坐标</source>
         <translation>A global annotation cannot contain coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1130"/>
+        <location filename="../model.cpp" line="1153"/>
         <source>点标注不能带框坐标</source>
         <translation>A point annotation cannot carry box coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1136"/>
+        <location filename="../model.cpp" line="1159"/>
         <source>框标注不能带点坐标</source>
         <translation>A box annotation cannot carry point coordinates</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1154"/>
+        <location filename="../model.cpp" line="1177"/>
         <source>文件保存失败（%1：%2），请检查目录权限和剩余空间</source>
         <translation>Could not save the file (%1: %2). Check the folder permissions and free space</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1155"/>
+        <location filename="../model.cpp" line="1178"/>
         <source>未知原因</source>
         <translation>unknown reason</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1247"/>
+        <location filename="../model.cpp" line="1270"/>
         <source>探索     收藏     关于</source>
         <translation>Explore     Saved     About</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1249"/>
+        <location filename="../model.cpp" line="1272"/>
         <source>为日常，留一点空白。</source>
         <translation>Leave a little blank space for every day.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1252"/>
+        <location filename="../model.cpp" line="1275"/>
         <source>点选这里，写下你希望改变的细节。</source>
         <translation>Click here and write down the detail you want to change.</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1257"/>
+        <location filename="../model.cpp" line="1280"/>
         <source>发现灵感  →</source>
         <translation>Find inspiration  →</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1258"/>
+        <location filename="../model.cpp" line="1281"/>
         <source>林间的光</source>
         <translation>Light through the trees</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1258"/>
+        <location filename="../model.cpp" line="1281"/>
         <source>山的轮廓</source>
         <translation>Outlines of the mountains</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1258"/>
+        <location filename="../model.cpp" line="1281"/>
         <source>慢一点的午后</source>
         <translation>A slower afternoon</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1281"/>
+        <location filename="../model.cpp" line="1304"/>
         <source>生活观察   /   VOL. 0%1</source>
         <translation>Life Notes   /   VOL. 0%1</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1284"/>
+        <location filename="../model.cpp" line="1307"/>
         <source>© FIELDNOTES · 示例图片，仅用于体验批注</source>
         <translation>© FIELDNOTES · Sample image, for trying out annotations only</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1293"/>
-        <location filename="../model.cpp" line="1307"/>
+        <location filename="../model.cpp" line="1316"/>
+        <location filename="../model.cpp" line="1330"/>
         <source>预览图片过大，请保存项目</source>
         <translation>The preview image is too large; save the project instead</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1350"/>
+        <location filename="../model.cpp" line="1373"/>
         <source>批注 %1 条</source>
         <translation>%1 annotations</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1367"/>
+        <location filename="../model.cpp" line="1390"/>
         <source>整体意见</source>
         <translation>Overall note</translation>
     </message>
@@ -1626,17 +1646,17 @@
         <translation>Could not create the app data folder. Check the current user’s folder permissions.</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="156"/>
+        <location filename="../main.cpp" line="169"/>
         <source>无法创建程序锁，请检查程序数据目录的权限。</source>
         <translation>Could not create the instance lock. Check the app data folder permissions.</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="172"/>
+        <location filename="../main.cpp" line="185"/>
         <source>无法连接正在运行的 EditHere，请退出后重试。</source>
         <translation>Could not connect to the running EditHere instance. Quit it and try again.</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="182"/>
+        <location filename="../main.cpp" line="195"/>
         <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
         <translation>Could not start the app communication service. Quit other EditHere instances and try again.</translation>
     </message>
@@ -1702,39 +1722,39 @@
 <context>
     <name>h2d::CaptureSidebar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1590"/>
-        <location filename="../capturetoolbar.cpp" line="1609"/>
+        <location filename="../capturetoolbar.cpp" line="1598"/>
+        <location filename="../capturetoolbar.cpp" line="1617"/>
         <source>圆角</source>
         <translation>Rounded corners</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1591"/>
-        <location filename="../capturetoolbar.cpp" line="1616"/>
+        <location filename="../capturetoolbar.cpp" line="1599"/>
+        <location filename="../capturetoolbar.cpp" line="1624"/>
         <source>阴影 / 边框</source>
         <translation>Shadow / border</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1592"/>
+        <location filename="../capturetoolbar.cpp" line="1600"/>
         <source>重置圆角、边框与阴影</source>
         <translation>Reset corners, border and shadow</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1609"/>
+        <location filename="../capturetoolbar.cpp" line="1617"/>
         <source>圆角 %1 px</source>
         <translation>Corners %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1612"/>
+        <location filename="../capturetoolbar.cpp" line="1620"/>
         <source>阴影 %1</source>
         <translation>Shadow %1</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1614"/>
+        <location filename="../capturetoolbar.cpp" line="1622"/>
         <source>边框 %1 px</source>
         <translation>Border %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1615"/>
+        <location filename="../capturetoolbar.cpp" line="1623"/>
         <source>%1 · 边框 %2 px</source>
         <translation>%1 · border %2 px</translation>
     </message>
@@ -1742,186 +1762,186 @@
 <context>
     <name>h2d::CaptureToolbar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="384"/>
+        <location filename="../capturetoolbar.cpp" line="385"/>
         <source>取消截图（Esc）</source>
         <translation>Cancel capture (Esc)</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="300"/>
-        <location filename="../capturetoolbar.cpp" line="364"/>
-        <location filename="../capturetoolbar.cpp" line="1529"/>
+        <location filename="../capturetoolbar.cpp" line="366"/>
+        <location filename="../capturetoolbar.cpp" line="1536"/>
         <source>复制图像</source>
         <translation>Copy image</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="299"/>
-        <location filename="../capturetoolbar.cpp" line="368"/>
-        <location filename="../capturetoolbar.cpp" line="1530"/>
+        <location filename="../capturetoolbar.cpp" line="370"/>
+        <location filename="../capturetoolbar.cpp" line="1537"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="296"/>
-        <location filename="../capturetoolbar.cpp" line="370"/>
-        <location filename="../capturetoolbar.cpp" line="1532"/>
+        <location filename="../capturetoolbar.cpp" line="372"/>
+        <location filename="../capturetoolbar.cpp" line="1539"/>
         <source>文字识别</source>
         <translation>Text recognition</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="295"/>
-        <location filename="../capturetoolbar.cpp" line="372"/>
-        <location filename="../capturetoolbar.cpp" line="1454"/>
+        <location filename="../capturetoolbar.cpp" line="374"/>
+        <location filename="../capturetoolbar.cpp" line="1461"/>
         <source>批注</source>
         <translation>Annotate</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="380"/>
-        <location filename="../capturetoolbar.cpp" line="381"/>
-        <location filename="../capturetoolbar.cpp" line="1535"/>
+        <location filename="../capturetoolbar.cpp" line="382"/>
+        <location filename="../capturetoolbar.cpp" line="383"/>
+        <location filename="../capturetoolbar.cpp" line="1542"/>
         <source>更多选项</source>
         <translation>More options</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="382"/>
+        <location filename="../capturetoolbar.cpp" line="388"/>
         <source>点击输入精确尺寸</source>
         <translation>Click to type an exact size</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="383"/>
+        <location filename="../capturetoolbar.cpp" line="389"/>
         <source>点击选择固定比例</source>
         <translation>Click to choose a fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1509"/>
+        <location filename="../capturetoolbar.cpp" line="1516"/>
         <source>%1 × %2</source>
         <translation>%1 × %2</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1401"/>
+        <location filename="../capturetoolbar.cpp" line="1408"/>
         <source>输入选区尺寸</source>
         <translation>Selection size</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="298"/>
-        <location filename="../capturetoolbar.cpp" line="366"/>
-        <location filename="../capturetoolbar.cpp" line="1531"/>
+        <location filename="../capturetoolbar.cpp" line="368"/>
+        <location filename="../capturetoolbar.cpp" line="1538"/>
         <source>贴图</source>
         <translation>Pin to screen</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1533"/>
+        <location filename="../capturetoolbar.cpp" line="1540"/>
         <source>取色</source>
         <translation>Pick a colour</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="394"/>
+        <location filename="../capturetoolbar.cpp" line="400"/>
         <source>%1 × %2 px</source>
         <translation>%1 × %2 px</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="297"/>
-        <location filename="../capturetoolbar.cpp" line="374"/>
+        <location filename="../capturetoolbar.cpp" line="376"/>
         <source>长截图</source>
         <translation>Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="402"/>
+        <location filename="../capturetoolbar.cpp" line="408"/>
         <source>%1, %2 · %3 × %4 px</source>
         <translation>%1, %2 · %3 × %4 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1406"/>
-        <location filename="../capturetoolbar.cpp" line="1410"/>
+        <location filename="../capturetoolbar.cpp" line="1413"/>
+        <location filename="../capturetoolbar.cpp" line="1417"/>
         <source> 像素</source>
         <translation> px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1411"/>
+        <location filename="../capturetoolbar.cpp" line="1418"/>
         <source>宽</source>
         <translation>Width</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1412"/>
+        <location filename="../capturetoolbar.cpp" line="1419"/>
         <source>高</source>
         <translation>Height</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1457"/>
+        <location filename="../capturetoolbar.cpp" line="1464"/>
         <source>固定比例</source>
         <translation>Fixed ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1467"/>
+        <location filename="../capturetoolbar.cpp" line="1474"/>
         <source>自定义…</source>
         <translation>Custom…</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1473"/>
+        <location filename="../capturetoolbar.cpp" line="1480"/>
         <source>自定义比例</source>
         <translation>Custom ratio</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1473"/>
+        <location filename="../capturetoolbar.cpp" line="1480"/>
         <source>宽:高，例如 21:9</source>
         <translation>Width:height, for example 21:9</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1536"/>
+        <location filename="../capturetoolbar.cpp" line="1543"/>
         <source>历史截图上一张 / 下一张</source>
         <translation>Previous / next capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1537"/>
+        <location filename="../capturetoolbar.cpp" line="1544"/>
         <source>从对角收缩 1 px</source>
         <translation>Shrink 1 px from the far corner</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1538"/>
+        <location filename="../capturetoolbar.cpp" line="1545"/>
         <source>向外扩展 1 px</source>
         <translation>Grow 1 px outwards</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1539"/>
+        <location filename="../capturetoolbar.cpp" line="1546"/>
         <source>移动选区 1 px</source>
         <translation>Move the region 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1489"/>
+        <location filename="../capturetoolbar.cpp" line="1496"/>
         <source>截图历史</source>
         <translation>Capture history</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1499"/>
+        <location filename="../capturetoolbar.cpp" line="1506"/>
         <source>上一张  &lt;</source>
         <translation>Previous  &lt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1502"/>
+        <location filename="../capturetoolbar.cpp" line="1509"/>
         <source>下一张  &gt;</source>
         <translation>Next  &gt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1506"/>
+        <location filename="../capturetoolbar.cpp" line="1513"/>
         <source>最近的选区</source>
         <translation>Recent regions</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1513"/>
+        <location filename="../capturetoolbar.cpp" line="1520"/>
         <source>文字识别语言</source>
         <translation>Recognition language</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1527"/>
+        <location filename="../capturetoolbar.cpp" line="1534"/>
         <source>快捷键</source>
         <translation>Shortcuts</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1534"/>
+        <location filename="../capturetoolbar.cpp" line="1541"/>
         <source>恢复上次选区</source>
         <translation>Restore last region</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1540"/>
+        <location filename="../capturetoolbar.cpp" line="1547"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
@@ -2381,582 +2401,580 @@ Scroll back a little; stitching continues once it lines up.</translation>
 <context>
     <name>h2d::Editor</name>
     <message>
-        <location filename="../editor.cpp" line="178"/>
-        <location filename="../editor.cpp" line="542"/>
+        <location filename="../editor.cpp" line="182"/>
+        <location filename="../editor.cpp" line="548"/>
         <source>关闭放大镜</source>
         <translation>Turn off the magnifier</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="178"/>
-        <location filename="../editor.cpp" line="542"/>
+        <location filename="../editor.cpp" line="182"/>
+        <location filename="../editor.cpp" line="548"/>
         <source>开启放大镜</source>
         <translation>Turn on the magnifier</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="163"/>
+        <location filename="../editor.cpp" line="167"/>
         <source>无法使用？</source>
         <translation>Need help?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="517"/>
+        <location filename="../editor.cpp" line="523"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="529"/>
+        <location filename="../editor.cpp" line="535"/>
         <source>重新截图</source>
         <translation>Retake screenshot</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="530"/>
+        <location filename="../editor.cpp" line="536"/>
         <source>使用引导</source>
         <translation>Open the guide</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="532"/>
+        <location filename="../editor.cpp" line="538"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="533"/>
+        <location filename="../editor.cpp" line="539"/>
         <source>最小化</source>
         <translation>Minimize</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="534"/>
-        <location filename="../editor.cpp" line="931"/>
+        <location filename="../editor.cpp" line="540"/>
+        <location filename="../editor.cpp" line="936"/>
         <source>全屏</source>
         <translation>Full screen</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="535"/>
-        <location filename="../editor.cpp" line="2175"/>
+        <location filename="../editor.cpp" line="541"/>
+        <location filename="../editor.cpp" line="2191"/>
         <source>关闭当前截图</source>
         <translation>Close current screenshot</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="536"/>
+        <location filename="../editor.cpp" line="542"/>
         <source>添加全局批注</source>
         <translation>Add global annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="537"/>
+        <location filename="../editor.cpp" line="543"/>
         <source>缩小</source>
         <translation>Zoom out</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="538"/>
+        <location filename="../editor.cpp" line="544"/>
         <source>放大</source>
         <translation>Zoom in</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="539"/>
+        <location filename="../editor.cpp" line="545"/>
         <source>更多操作</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="540"/>
-        <location filename="../editor.cpp" line="1369"/>
+        <location filename="../editor.cpp" line="1377"/>
         <source>隐藏画面批注</source>
         <translation>Hide on-canvas annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="540"/>
-        <location filename="../editor.cpp" line="1369"/>
+        <location filename="../editor.cpp" line="1377"/>
         <source>显示画面批注</source>
         <translation>Show on-canvas annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="544"/>
+        <location filename="../editor.cpp" line="550"/>
         <source>AI 正在等待你的修改意见</source>
         <translation>AI is waiting for your feedback</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="546"/>
+        <location filename="../editor.cpp" line="552"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="548"/>
+        <location filename="../editor.cpp" line="554"/>
         <source>完成并返回 AI</source>
         <translation>Finish and return to AI</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="549"/>
+        <location filename="../editor.cpp" line="555"/>
         <source>圈出位置，或添加一条全局意见。</source>
         <translation>Mark a spot, or add one overall note.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="556"/>
+        <location filename="../editor.cpp" line="562"/>
         <source>适应图片</source>
         <translation>Fit image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="561"/>
+        <location filename="../editor.cpp" line="567"/>
         <source>撤销</source>
         <translation>Undo</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="562"/>
+        <location filename="../editor.cpp" line="568"/>
         <source>重做</source>
         <translation>Redo</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="564"/>
-        <location filename="../editor.cpp" line="629"/>
+        <location filename="../editor.cpp" line="570"/>
+        <location filename="../editor.cpp" line="635"/>
         <source>大爆炸</source>
         <translation>Explode</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="587"/>
-        <location filename="../editor.cpp" line="1099"/>
+        <location filename="../editor.cpp" line="593"/>
+        <location filename="../editor.cpp" line="1104"/>
         <source>批注 %1 条</source>
         <translation>%1 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="594"/>
+        <location filename="../editor.cpp" line="600"/>
         <source>引导示例</source>
         <translation>Guide example</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="621"/>
+        <location filename="../editor.cpp" line="627"/>
         <source>智能选块</source>
         <translation>Smart select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="621"/>
+        <location filename="../editor.cpp" line="627"/>
         <source>点标注</source>
         <translation>Point</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="621"/>
+        <location filename="../editor.cpp" line="627"/>
         <source>框选</source>
         <translation>Box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="621"/>
+        <location filename="../editor.cpp" line="627"/>
         <source>调整批注</source>
         <translation>Adjust</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="728"/>
+        <location filename="../editor.cpp" line="733"/>
         <source>视频文件不存在</source>
         <translation>The video file does not exist</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="766"/>
+        <location filename="../editor.cpp" line="771"/>
         <source>源视频未找到，可查看已保存的批注画面，或重新指定视频。</source>
         <translation>Source video not found. You can view saved annotated frames or locate the video again.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="839"/>
+        <location filename="../editor.cpp" line="844"/>
         <source>视频画面 %1</source>
         <translation>Video frame %1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="809"/>
-        <location filename="../editor.cpp" line="845"/>
-        <location filename="../editor.cpp" line="863"/>
+        <location filename="../editor.cpp" line="814"/>
+        <location filename="../editor.cpp" line="850"/>
+        <location filename="../editor.cpp" line="868"/>
         <source>%1 × %2 · %3</source>
         <translation>%1 × %2 · %3</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="931"/>
+        <location filename="../editor.cpp" line="936"/>
         <source>退出全屏</source>
         <translation>Exit full screen</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1018"/>
-        <location filename="../editor.cpp" line="2056"/>
+        <location filename="../editor.cpp" line="1023"/>
+        <location filename="../editor.cpp" line="2072"/>
         <source>直接复制文件（携带原图信息），适用于可以发送文件的 Agent。</source>
         <translation>Copy a file including the original image, for agents that accept file uploads.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1020"/>
-        <location filename="../editor.cpp" line="2059"/>
+        <location filename="../editor.cpp" line="1025"/>
+        <location filename="../editor.cpp" line="2075"/>
         <source>复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。</source>
         <translation>Copy JSON text including the original image, for agents that cannot accept files.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1074"/>
+        <location filename="../editor.cpp" line="1079"/>
         <source>展开批注框</source>
         <translation>Expand the annotation box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1074"/>
+        <location filename="../editor.cpp" line="1079"/>
         <source>收起批注框</source>
         <translation>Collapse the annotation box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1080"/>
+        <location filename="../editor.cpp" line="1085"/>
         <source>全局</source>
         <translation>Global</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1081"/>
+        <location filename="../editor.cpp" line="1086"/>
         <source>位置变化</source>
         <translation>Moved</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1082"/>
+        <location filename="../editor.cpp" line="1087"/>
         <source>点 (%1,%2)</source>
         <translation>Point (%1,%2)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1083"/>
+        <location filename="../editor.cpp" line="1088"/>
         <source>框 (%1,%2)→(%3,%4)</source>
         <translation>Box (%1,%2)→(%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1124"/>
+        <location filename="../editor.cpp" line="1129"/>
         <source>编辑批注</source>
         <translation>Edit annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1124"/>
+        <location filename="../editor.cpp" line="1129"/>
         <source>删除批注</source>
         <translation>Delete annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1132"/>
+        <location filename="../editor.cpp" line="1137"/>
         <source>批注内容</source>
         <translation>Annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1133"/>
+        <location filename="../editor.cpp" line="1138"/>
         <source>写下你的想法…</source>
         <translation>Write what you have in mind…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1147"/>
+        <location filename="../editor.cpp" line="1152"/>
         <source>收起</source>
         <translation>Collapse</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1147"/>
+        <location filename="../editor.cpp" line="1152"/>
         <source>展开</source>
         <translation>Expand</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1148"/>
+        <location filename="../editor.cpp" line="1153"/>
         <source>收起批注全文</source>
         <translation>Collapse the full annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1148"/>
+        <location filename="../editor.cpp" line="1153"/>
         <source>展开批注全文</source>
         <translation>Expand the full annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1197"/>
+        <location filename="../editor.cpp" line="1202"/>
         <source>批注 %1 内容</source>
         <translation>Annotation %1 text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1233"/>
+        <location filename="../editor.cpp" line="1238"/>
         <source>点击此处为这次移动添加文字…</source>
         <translation>Click here to add text for this move…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1248"/>
+        <location filename="../editor.cpp" line="1253"/>
         <source>移动 (%1,%2) → (%3,%4)</source>
         <translation>Move (%1,%2) → (%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1335"/>
+        <location filename="../editor.cpp" line="1340"/>
         <source>最多支持 1000 条批注</source>
         <translation>Up to 1000 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1496"/>
-        <location filename="../editor.cpp" line="2100"/>
+        <location filename="../editor.cpp" line="1505"/>
+        <location filename="../editor.cpp" line="2116"/>
         <source>JSON 文本已复制，包含完整原图</source>
         <translation>JSON text copied, including the full original image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1502"/>
+        <location filename="../editor.cpp" line="1511"/>
         <source>无法使用 JSON？</source>
         <translation>Trouble using JSON?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1504"/>
+        <location filename="../editor.cpp" line="1513"/>
         <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;打开“查看 JSON”，关闭“包含原图”，点击“复制 JSON 内容”。然后向 Agent 上传原图，再发送复制的带批注图片和这份 JSON 文本。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;</source>
         <translation>&lt;h3&gt;1. JSON text gets truncated and JSON files cannot be uploaded?&lt;/h3&gt;&lt;p&gt;Open “View JSON”, turn off “Include original image”, and click “Copy JSON content”. Upload the original image to the agent, then send the copied annotated image and this JSON text.&lt;/p&gt;&lt;h3&gt;2. Only chat is supported, with no uploads?&lt;/h3&gt;&lt;p&gt;Try sending JSON text without the original image. Without the image, the outcome cannot be confirmed.&lt;/p&gt;&lt;h3&gt;3. The AI did not recognize the embedded image?&lt;/h3&gt;&lt;p&gt;Add “Refer to the image information in the JSON file…” to your prompt. If that still fails, use the first method.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1525"/>
-        <location filename="../editor.cpp" line="2091"/>
+        <location filename="../editor.cpp" line="1534"/>
+        <location filename="../editor.cpp" line="2107"/>
         <source>JSON 文件已复制，包含完整原图</source>
         <translation>JSON copied, with the full source image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1917"/>
+        <location filename="../editor.cpp" line="1926"/>
         <source>打开图片、视频或项目</source>
         <translation>Open image, video, or project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1918"/>
+        <location filename="../editor.cpp" line="1927"/>
         <source>图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)</source>
         <translation>Images, videos, or projects (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2003"/>
+        <location filename="../editor.cpp" line="2012"/>
         <source>复制 JSON 文件</source>
         <translation>Copy JSON file</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2004"/>
+        <location filename="../editor.cpp" line="2013"/>
         <source>复制 JSON 内容</source>
         <translation>Copy JSON content</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2029"/>
+        <location filename="../editor.cpp" line="2039"/>
         <source>,[图片编码已折叠]</source>
         <translation>,[image data collapsed]</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2035"/>
+        <location filename="../editor.cpp" line="2045"/>
         <source>%1 个批注画面 · 时间戳为视频相对时间 · 复制和保存包含完整 JSON</source>
         <translation>%1 annotated frames · Timestamps are relative to the video start · Copy and save include the complete JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2057"/>
+        <location filename="../editor.cpp" line="2073"/>
         <source>直接复制文件（不包含原图信息），适用于可以发送文件的 Agent。</source>
         <translation>Copy a file without the original image, for agents that accept file uploads.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2060"/>
+        <location filename="../editor.cpp" line="2076"/>
         <source>复制 JSON 文本（不包含原图信息），适用于无法发送文件的 Agent。</source>
         <translation>Copy JSON text without the original image, for agents that cannot accept files.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2091"/>
+        <location filename="../editor.cpp" line="2107"/>
         <source>JSON 文件已复制，未包含原图</source>
         <translation>JSON copied, without the source image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1578"/>
+        <location filename="../editor.cpp" line="1587"/>
         <source>在调整后的画面批注 · 滚轮切换范围 · 单击或拖动框选</source>
         <translation>Annotate on the adjusted image · Scroll to change the region · Click or drag to select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="359"/>
+        <location filename="../editor.cpp" line="364"/>
         <source>重新指定视频</source>
         <translation>Locate video again</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="360"/>
+        <location filename="../editor.cpp" line="365"/>
         <source>视频 (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;所有文件 (*)</source>
         <translation>Videos (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="531"/>
-        <location filename="../editor.cpp" line="553"/>
-        <location filename="../editor.cpp" line="2174"/>
+        <location filename="../editor.cpp" line="537"/>
+        <location filename="../editor.cpp" line="559"/>
+        <location filename="../editor.cpp" line="2190"/>
         <source>导入图片、视频或项目</source>
         <translation>Import image, video, or project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="551"/>
+        <location filename="../editor.cpp" line="557"/>
         <source>可拖入图片或视频，也可粘贴图片</source>
         <translation>Drop an image or video here, or paste an image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1579"/>
+        <location filename="../editor.cpp" line="1588"/>
         <source>滚轮切换范围 · 单击批注 · 拖动框选</source>
         <translation>Scroll to change the region · Click to annotate · Drag to select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1594"/>
+        <location filename="../editor.cpp" line="1603"/>
         <source>悬停滚轮选范围 · 拖边改宽高 · 拖角等比 · 点标注或框选可添加意见</source>
         <translation>Hover and scroll to pick a region · Drag the edges to resize · Drag a corner to scale proportionally · Use Point or Box to leave a note</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1763"/>
+        <location filename="../editor.cpp" line="1772"/>
         <source>带批注图片已复制</source>
         <translation>Annotated image copied</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1775"/>
+        <location filename="../editor.cpp" line="1784"/>
         <source>保存 EditHere 项目</source>
         <translation>Save EditHere project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1776"/>
+        <location filename="../editor.cpp" line="1785"/>
         <source>设计反馈.edithere</source>
         <translation>design-feedback.edithere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1777"/>
+        <location filename="../editor.cpp" line="1786"/>
         <source>EditHere 项目 (*.edithere)</source>
         <translation>EditHere project (*.edithere)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1795"/>
+        <location filename="../editor.cpp" line="1804"/>
         <source>项目已保存，可双击继续编辑</source>
         <translation>Project saved. Double-click it to keep editing.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1795"/>
+        <location filename="../editor.cpp" line="1804"/>
         <source>项目已保存，可从 EditHere 导入继续编辑</source>
         <translation>Project saved. Import it from EditHere to keep editing.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1818"/>
-        <location filename="../editor.cpp" line="1833"/>
-        <location filename="../editor.cpp" line="2212"/>
+        <location filename="../editor.cpp" line="1827"/>
+        <location filename="../editor.cpp" line="1842"/>
+        <location filename="../editor.cpp" line="2228"/>
         <source>请先完成或取消当前 AI 批注任务</source>
         <translation>Finish or cancel the current AI annotation task first</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1825"/>
-        <location filename="../editor.cpp" line="1898"/>
+        <location filename="../editor.cpp" line="1834"/>
+        <location filename="../editor.cpp" line="1907"/>
         <source>保留当前修改？</source>
         <translation>Keep your changes?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1825"/>
-        <location filename="../editor.cpp" line="1899"/>
+        <location filename="../editor.cpp" line="1834"/>
+        <location filename="../editor.cpp" line="1908"/>
         <source>当前批注或布局修改尚未保存。是否先保存项目？</source>
         <translation>The annotation or layout changes have not been saved yet. Save the project first?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1903"/>
+        <location filename="../editor.cpp" line="1912"/>
         <source>不再提醒，可在设置中修改</source>
         <translation>Do not ask again — changeable in the settings</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1934"/>
+        <location filename="../editor.cpp" line="1943"/>
         <source>剪贴板图片</source>
         <translation>Clipboard image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1948"/>
+        <location filename="../editor.cpp" line="1957"/>
         <source>保存带批注图片</source>
         <translation>Save annotated image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1949"/>
+        <location filename="../editor.cpp" line="1958"/>
         <source>保存调整效果</source>
         <translation>Save adjusted result</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1950"/>
+        <location filename="../editor.cpp" line="1959"/>
         <source>保存原图</source>
         <translation>Save original image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1954"/>
+        <location filename="../editor.cpp" line="1963"/>
         <source>PNG 图片 (*.png)</source>
         <translation>PNG image (*.png)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1963"/>
+        <location filename="../editor.cpp" line="1972"/>
         <source>图片已保存</source>
         <translation>Image saved</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1974"/>
+        <location filename="../editor.cpp" line="1983"/>
         <source>查看 JSON</source>
         <translation>View JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1978"/>
+        <location filename="../editor.cpp" line="1987"/>
         <source>查看 JSON  ·  批注 %1 条</source>
         <translation>View JSON  ·  %1 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1984"/>
+        <location filename="../editor.cpp" line="1993"/>
         <source>包含原图，可独立还原</source>
         <translation>Includes the source image; fully self-contained</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1988"/>
+        <location filename="../editor.cpp" line="1997"/>
         <source>压缩示意图（保持尺寸，可能轻微损失细节）</source>
         <translation>Compressed preview (same size, may lose slight detail)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1992"/>
+        <location filename="../editor.cpp" line="2001"/>
         <source>标准化 JSON</source>
         <translation>Standard JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2002"/>
+        <location filename="../editor.cpp" line="2011"/>
         <source>保存 JSON 与图片</source>
         <translation>Save JSON and image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2002"/>
+        <location filename="../editor.cpp" line="2011"/>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2064"/>
+        <location filename="../editor.cpp" line="2080"/>
         <source>%1 · %2 字符 · 批注坐标对应调整后的画面</source>
         <translation>%1 · %2 characters · Annotation coordinates refer to the adjusted image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2065"/>
+        <location filename="../editor.cpp" line="2081"/>
         <source>图片编码仅在预览中折叠，复制/保存包含图片</source>
         <translation>The image data is only collapsed in the preview; copying and saving include it</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2066"/>
+        <location filename="../editor.cpp" line="2082"/>
         <source>未包含原图，重新打开需同名 PNG</source>
         <translation>Source image not included; reopening needs a PNG with the same name</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2101"/>
+        <location filename="../editor.cpp" line="2117"/>
         <source>JSON 文本已复制，未包含原图</source>
         <translation>JSON text copied, without the original image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2109"/>
+        <location filename="../editor.cpp" line="2125"/>
         <source>选择导出目录</source>
         <translation>Choose the export folder</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2123"/>
+        <location filename="../editor.cpp" line="2139"/>
         <source>视频 JSON 与所有批注帧截图已保存到：</source>
         <translation>Video JSON and all annotated frame screenshots saved to:</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2131"/>
+        <location filename="../editor.cpp" line="2147"/>
         <source>无法创建导出目录</source>
         <translation>Could not create the export folder</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2140"/>
+        <location filename="../editor.cpp" line="2156"/>
         <source>批注预览未保存：</source>
         <translation>The annotation preview was not saved: </translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2146"/>
+        <location filename="../editor.cpp" line="2162"/>
         <source>调整效果图未保存：</source>
         <translation>The adjusted image was not saved: </translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2150"/>
+        <location filename="../editor.cpp" line="2166"/>
         <source>已保存到：</source>
         <translation>Saved to: </translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2151"/>
+        <location filename="../editor.cpp" line="2167"/>
         <source>JSON 与原图已保存到：</source>
         <translation>JSON and source image saved to: </translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2161"/>
+        <location filename="../editor.cpp" line="2177"/>
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2163"/>
+        <location filename="../editor.cpp" line="2179"/>
         <source>自定义工具栏…</source>
         <translation>Customize toolbar…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2219"/>
+        <location filename="../editor.cpp" line="2235"/>
         <source>拖入的图片</source>
         <translation>Dropped picture</translation>
     </message>
@@ -3558,228 +3576,228 @@ Scroll back a little; stitching continues once it lines up.</translation>
 <context>
     <name>h2d::ScrollCaptureProgress</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="901"/>
+        <location filename="../capturetoolbar.cpp" line="908"/>
         <source>EditHere · 长截图</source>
         <translation>EditHere · Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1000"/>
+        <location filename="../capturetoolbar.cpp" line="1007"/>
         <source>贴图</source>
         <translation>Pin to screen</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1000"/>
+        <location filename="../capturetoolbar.cpp" line="1007"/>
         <source>保存</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="911"/>
+        <location filename="../capturetoolbar.cpp" line="918"/>
         <source>拖动工具栏</source>
         <translation>Drag the toolbar</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="931"/>
+        <location filename="../capturetoolbar.cpp" line="938"/>
         <source>已拼接长图的宽度和高度，单位为像素</source>
         <translation>Width and height of the stitched image, in pixels</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="944"/>
+        <location filename="../capturetoolbar.cpp" line="951"/>
         <source>切换垂直或水平截图；切换方向会重新开始拼接</source>
         <translation>Switch between vertical and horizontal capture. Changing direction starts a new capture.</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="945"/>
+        <location filename="../capturetoolbar.cpp" line="952"/>
         <source>切换截图方向</source>
         <translation>Change capture direction</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="951"/>
-        <location filename="../capturetoolbar.cpp" line="1306"/>
+        <location filename="../capturetoolbar.cpp" line="958"/>
+        <location filename="../capturetoolbar.cpp" line="1313"/>
         <source>垂直</source>
         <translation>Vertical</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="951"/>
-        <location filename="../capturetoolbar.cpp" line="1306"/>
+        <location filename="../capturetoolbar.cpp" line="958"/>
+        <location filename="../capturetoolbar.cpp" line="1313"/>
         <source>水平</source>
         <translation>Horizontal</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="963"/>
-        <location filename="../capturetoolbar.cpp" line="1323"/>
+        <location filename="../capturetoolbar.cpp" line="970"/>
+        <location filename="../capturetoolbar.cpp" line="1330"/>
         <source>自动向下滚动并拼接；再次点击切换为手动滚动</source>
         <translation>Scroll down and stitch automatically. Click again to scroll manually.</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="970"/>
+        <location filename="../capturetoolbar.cpp" line="977"/>
         <source>自动滚动（默认手动滚动）</source>
         <translation>Scroll automatically (manual scrolling by default)</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="978"/>
+        <location filename="../capturetoolbar.cpp" line="985"/>
         <source>裁剪当前可见区域之前或之后的内容，裁剪后可继续截图</source>
         <translation>Trim content before or after the current view, then continue capturing.</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="979"/>
+        <location filename="../capturetoolbar.cpp" line="986"/>
         <source>裁剪长截图</source>
         <translation>Crop scrolling capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="985"/>
-        <location filename="../capturetoolbar.cpp" line="1294"/>
+        <location filename="../capturetoolbar.cpp" line="992"/>
+        <location filename="../capturetoolbar.cpp" line="1301"/>
         <source>停止截图并清空本次结果；可调整选区后重新开始</source>
         <translation>Stop and discard this capture. Adjust the selection and start again.</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="986"/>
-        <location filename="../capturetoolbar.cpp" line="1295"/>
+        <location filename="../capturetoolbar.cpp" line="993"/>
+        <location filename="../capturetoolbar.cpp" line="1302"/>
         <source>停止截图</source>
         <translation>Stop capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="992"/>
-        <location filename="../capturetoolbar.cpp" line="1224"/>
+        <location filename="../capturetoolbar.cpp" line="999"/>
+        <location filename="../capturetoolbar.cpp" line="1231"/>
         <source>完成长截图并进入编辑器（Enter）</source>
         <translation>Finish the capture and open it in the editor (Enter)</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="993"/>
+        <location filename="../capturetoolbar.cpp" line="1000"/>
         <source>完成并进入编辑器</source>
         <translation>Finish and open in the editor</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="998"/>
-        <location filename="../capturetoolbar.cpp" line="1225"/>
+        <location filename="../capturetoolbar.cpp" line="1005"/>
+        <location filename="../capturetoolbar.cpp" line="1232"/>
         <source>将完整长图贴在桌面上</source>
         <translation>Pin the complete stitched image to the desktop</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="998"/>
+        <location filename="../capturetoolbar.cpp" line="1005"/>
         <source>选择位置和格式，保存完整长图</source>
         <translation>Choose a location and format to save the complete stitched image</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="999"/>
-        <location filename="../capturetoolbar.cpp" line="1226"/>
+        <location filename="../capturetoolbar.cpp" line="1006"/>
+        <location filename="../capturetoolbar.cpp" line="1233"/>
         <source>复制完整长图到剪贴板并关闭长截图</source>
         <translation>Copy the complete stitched image to the clipboard and close capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1000"/>
+        <location filename="../capturetoolbar.cpp" line="1007"/>
         <source>复制并关闭</source>
         <translation>Copy and close</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1017"/>
+        <location filename="../capturetoolbar.cpp" line="1024"/>
         <source>关闭长截图并放弃本次结果（Esc）</source>
         <translation>Close capture and discard this result (Esc)</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1018"/>
+        <location filename="../capturetoolbar.cpp" line="1025"/>
         <source>关闭长截图</source>
         <translation>Close scrolling capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1063"/>
-        <location filename="../capturetoolbar.cpp" line="1066"/>
+        <location filename="../capturetoolbar.cpp" line="1070"/>
+        <location filename="../capturetoolbar.cpp" line="1073"/>
         <source>自动裁剪</source>
         <translation>Auto-crop</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1065"/>
+        <location filename="../capturetoolbar.cpp" line="1072"/>
         <source>反向滚动时，自动裁去当前可见区域之外的长图内容</source>
         <translation>When scrolling in reverse, automatically trim content outside the current view</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1223"/>
+        <location filename="../capturetoolbar.cpp" line="1230"/>
         <source>超大长图请使用 PNG 保存；当前尺寸超过复制、贴图和编辑的图像上限。</source>
         <translation>Save this large capture as PNG. Its dimensions exceed the limits for copying, pinning and editing.</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1247"/>
+        <location filename="../capturetoolbar.cpp" line="1254"/>
         <source>正在自动滚动 · %1 × %2 px
 已追加 %3 帧，随时可停止</source>
         <translation>Scrolling automatically · %1 × %2 px
 %3 frames added. Stop at any time</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1249"/>
+        <location filename="../capturetoolbar.cpp" line="1256"/>
         <source>请在选区内上下滚动页面
 %1 × %2 px · 已追加 %3 帧</source>
         <translation>Scroll up or down inside the selection
 %1 × %2 px · %3 frames added</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1250"/>
+        <location filename="../capturetoolbar.cpp" line="1257"/>
         <source>请在选区内左右滚动或拖动水平滚动条
 %1 × %2 px · 已追加 %3 帧</source>
         <translation>Scroll left or right inside the selection, or drag the horizontal scrollbar
 %1 × %2 px · %3 frames added</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1279"/>
-        <location filename="../capturetoolbar.cpp" line="1321"/>
+        <location filename="../capturetoolbar.cpp" line="1286"/>
+        <location filename="../capturetoolbar.cpp" line="1328"/>
         <source>重新开始截图后可启用自动滚动</source>
         <translation>Start capturing again to enable automatic scrolling</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1282"/>
+        <location filename="../capturetoolbar.cpp" line="1289"/>
         <source>按当前选区开始新的长截图</source>
         <translation>Start a new scrolling capture using the current selection</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1283"/>
+        <location filename="../capturetoolbar.cpp" line="1290"/>
         <source>开始截图</source>
         <translation>Start capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1313"/>
+        <location filename="../capturetoolbar.cpp" line="1320"/>
         <source>裁去当前可见区域上方的内容，保留当前区域及其下方</source>
         <translation>Trim above the current view, keeping the current view and everything below it</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1314"/>
+        <location filename="../capturetoolbar.cpp" line="1321"/>
         <source>裁去当前可见区域左侧的内容，保留当前区域及其右侧</source>
         <translation>Trim left of the current view, keeping the current view and everything to its right</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1315"/>
+        <location filename="../capturetoolbar.cpp" line="1322"/>
         <source>裁去当前可见区域下方的内容，保留当前区域及其上方</source>
         <translation>Trim below the current view, keeping the current view and everything above it</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1316"/>
+        <location filename="../capturetoolbar.cpp" line="1323"/>
         <source>裁去当前可见区域右侧的内容，保留当前区域及其左侧</source>
         <translation>Trim right of the current view, keeping the current view and everything to its left</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1317"/>
+        <location filename="../capturetoolbar.cpp" line="1324"/>
         <source>上裁剪</source>
         <translation>Trim above the current view</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1317"/>
+        <location filename="../capturetoolbar.cpp" line="1324"/>
         <source>左裁剪</source>
         <translation>Trim left of the current view</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1318"/>
+        <location filename="../capturetoolbar.cpp" line="1325"/>
         <source>下裁剪</source>
         <translation>Trim below the current view</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1318"/>
+        <location filename="../capturetoolbar.cpp" line="1325"/>
         <source>右裁剪</source>
         <translation>Trim right of the current view</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1324"/>
+        <location filename="../capturetoolbar.cpp" line="1331"/>
         <source>水平截图请手动滚动或拖动水平滚动条</source>
         <translation>For horizontal capture, scroll manually or drag the horizontal scrollbar</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1348"/>
+        <location filename="../capturetoolbar.cpp" line="1355"/>
         <source>在预览中点击并拖动，调整蓝色裁剪线。
 点击另一端裁剪按钮可切换边界。</source>
         <translation>Click and drag in the preview to move the blue crop line.
@@ -3789,12 +3807,12 @@ Click the other crop button to adjust the opposite edge.</translation>
 <context>
     <name>h2d::ScrollCaptureRegion</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="564"/>
+        <location filename="../capturetoolbar.cpp" line="571"/>
         <source>拖动移动选区；拖动蓝框边缘调整大小</source>
         <translation>Drag to move the selection; drag the blue border to resize</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="564"/>
+        <location filename="../capturetoolbar.cpp" line="571"/>
         <source>拖动沿截图方向移动选区，保留已截取内容并继续追加</source>
         <translation>Drag along the capture direction to move the region, keeping captured content and continuing to append.</translation>
     </message>
@@ -3813,14 +3831,14 @@ Click the other crop button to adjust the opposite edge.</translation>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="537"/>
-        <location filename="../settingsdialog.cpp" line="592"/>
+        <location filename="../settingsdialog.cpp" line="536"/>
+        <location filename="../settingsdialog.cpp" line="591"/>
         <source>立即更新</source>
         <translation>Update now</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="537"/>
-        <location filename="../settingsdialog.cpp" line="592"/>
+        <location filename="../settingsdialog.cpp" line="536"/>
+        <location filename="../settingsdialog.cpp" line="591"/>
         <source>打开发布页</source>
         <translation>Open the releases page</translation>
     </message>
@@ -4123,53 +4141,53 @@ Click the other crop button to adjust the opposite edge.</translation>
         <translation>&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;Read the license&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="531"/>
+        <location filename="../settingsdialog.cpp" line="530"/>
         <source>启动时检查更新</source>
         <translation>Check for updates on launch</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="533"/>
+        <location filename="../settingsdialog.cpp" line="532"/>
         <source>尚未检查更新。</source>
         <translation>Not checked for updates yet.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="535"/>
+        <location filename="../settingsdialog.cpp" line="534"/>
         <source>检查更新</source>
         <translation>Check for updates</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="541"/>
+        <location filename="../settingsdialog.cpp" line="540"/>
         <source>也可以加入 QQ 群 1018416966（反馈信息专用）；加群时请说明来自 GitHub。</source>
         <translation>You can also join the QQ group 1018416966 (feedback only); mention that you came from GitHub when joining.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="543"/>
+        <location filename="../settingsdialog.cpp" line="542"/>
         <source>恢复默认</source>
         <translation>Restore defaults</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="545"/>
+        <location filename="../settingsdialog.cpp" line="544"/>
         <source>使用引导</source>
         <translation>Open the guide</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="546"/>
+        <location filename="../settingsdialog.cpp" line="545"/>
         <source>关闭设置并打开使用引导；未保存的设置将不会保存。</source>
         <translation>Closes Settings and opens the guide; unsaved settings will not be saved.</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="539"/>
-        <location filename="../settingsdialog.cpp" line="549"/>
+        <location filename="../settingsdialog.cpp" line="538"/>
+        <location filename="../settingsdialog.cpp" line="548"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="551"/>
+        <location filename="../settingsdialog.cpp" line="550"/>
         <source>保存</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="558"/>
+        <location filename="../settingsdialog.cpp" line="557"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>Could not load the interface language. Please reinstall EditHere.</translation>
     </message>

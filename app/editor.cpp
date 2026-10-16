@@ -2051,7 +2051,13 @@ void Editor::exportJson() {
                 lines.append(
                     "  \"image\": \"" + feedback["image"].toString().section(',',0,0) +
                         QCoreApplication::translate("h2d", ",[图片编码已折叠]\","));
-            lines.append("  \"annotationSpace\": \"result\",");
+            for (auto it = feedback.constBegin(); it != feedback.constEnd(); ++it) {
+                if (it.key() == "image" || it.key() == "objects")
+                    continue;
+                const auto member = QJsonDocument(QJsonObject{{it.key(), it.value()}})
+                                        .toJson(QJsonDocument::Compact);
+                lines.append("  " + QString::fromUtf8(member.mid(1, member.size() - 2)) + ",");
+            }
             lines.append("  \"objects\": [");
             const auto objects = feedback["objects"].toArray();
             for (qsizetype i = 0; i < objects.size(); ++i)

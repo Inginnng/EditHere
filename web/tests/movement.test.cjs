@@ -20,7 +20,8 @@ function appHarness() {
       const classes = new Set();
       const node = { id, style: {}, dataset: {}, value: '', textContent: '', innerHTML: '', hidden: false, checked: true,
         classList: { add: name => classes.add(name), remove: name => classes.delete(name), toggle: (name, force) => force ? classes.add(name) : classes.delete(name), contains: name => classes.has(name) },
-        addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() {}, select() {}, setCustomValidity() {}, reportValidity() {},
+        addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() {}, select() {}, setCustomValidity() {}, reportValidity() {}, append() {},
+        querySelector: selector => element(id + ' ' + selector), querySelectorAll: () => [],
         getContext: () => drawing, getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100 }),
         showModal() { this.open = true; }, close() { this.open = false; }, click() { return this.onclick?.(); },
         pause() {}, load() {}, hasPointerCapture: () => false, releasePointerCapture() {}, setPointerCapture() {}, clientWidth: 200, clientHeight: 100 };
@@ -30,7 +31,7 @@ function appHarness() {
   }
   const document = { getElementById: element, querySelector: selector => element(selector.replace(/^#/, '')), querySelectorAll: () => [],
     addEventListener() {}, createElement: tag => element('created-' + tag), documentElement: { outerHTML: '', cloneNode:()=>({outerHTML:'',querySelectorAll:()=>[]}) }, body: element('body') };
-  const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, window: { addEventListener() {} }, console,
+  const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, window: { addEventListener() {}, dispatchEvent() {} }, Event:class {}, console,
     ResizeObserver: class { observe() {} }, setTimeout: () => 0, clearTimeout() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
     // Media decoding is outside these model tests. Preserve fixture dimensions
     // while exercising the actual project metadata restore/validation path.
@@ -69,13 +70,18 @@ function appHarness() {
         session = { kind: 'image', name: 'native-feedback.png', width: restored.width, height: restored.height, document: doc };
         chooseGroup(null);
       },
+      async restoreAgentFeedback(value) { await globalThis.EditHereWeb.loadAgentFeedback({image:value.image,name:'saved-feedback',feedback:value}); },
+      rawFeedback() { return feedback(); },
       feedback() { return exportDoc(doc, false); }
     };
   `;
   assert.match(production, /\}\)\(\);\s*$/, 'app IIFE must have an identifiable end');
   vm.runInContext(production.replace(/\}\)\(\);\s*$/, exposure + '\n})();'), sandbox, { filename: 'app.js' });
   const actual = sandbox.__movementTest;
-  return { ...actual, state: () => plain(actual.state()), feedback: () => plain(actual.feedback()), noteBounds: id => plain(actual.noteBounds(id)), serialized: () => plain(actual.serialized()) };
+  return { ...actual, state: () => plain(actual.state()), rawFeedback: () => plain(actual.rawFeedback()), feedback: () => {
+    const {$schema, schemaVersion, tool, exportedAt, ...value} = plain(actual.feedback());
+    return value; // These model fixtures compare geometry; metadata has its own export tests.
+  }, noteBounds: id => plain(actual.noteBounds(id)), serialized: () => plain(actual.serialized()) };
 }
 
 function fixture(app) {
@@ -106,6 +112,29 @@ test('native nested parent and child feedback imports and reexports the same ori
   assert.deepEqual(state.markers.map(marker => ({ source: marker.source, destination: marker.destination })), objects.map(object => ({ source: object.source, destination: object.movements[0].to })));
   assert.deepEqual(state.notes.map(note => note.text), ['整体移到右侧', '左边子组件单独调整']);
   assert.equal(layout.validate(state.layout), true);
+});
+
+test('the editor imports versioned and legacy image feedback and rejects unknown versions before replacing work', async () => {
+  const app = appHarness();
+  const source = rect(10, 10, 40, 30), destination = rect(50, 10, 80, 30);
+  const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', movements:[{source,destination}], notes:[{source,movementSource:source,text:'保留位移'}]});
+  await app.importFeedback(current);
+  assert.deepEqual(app.feedback().objects, current.objects);
+  const before = app.state();
+  await assert.rejects(app.importFeedback({...current,schemaVersion:'feedback-minimal-99'}), /version/);
+  assert.deepEqual(app.state(), before);
+  await app.importFeedback({annotationSpace:'result',image:current.image,changes:[{from:source,to:destination}],annotations:[{change:0,text:'旧移动'},{point:{x:1,y:2},text:'旧点'}]});
+  assert.deepEqual(app.feedback().objects, [
+    {source,movements:[{to:destination}],annotations:['旧移动']},
+    {source:rect(1,2,1,2),movements:[],annotations:['旧点']}
+  ]);
+});
+
+test('reopening saved Agent feedback preserves its original export metadata in a manual backup', async () => {
+  const app = appHarness();
+  const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', toolVersion:'0.10.0',movements:[],notes:[{source:null,text:'已保存'}]}, true, '2026-10-15T09:30:00+08:00');
+  await app.restoreAgentFeedback(current);
+  assert.deepEqual(app.rawFeedback(), current);
 });
 
 test('detaching a returned child preserves the original parent trajectory while reset restores only the remaining pixels', () => {

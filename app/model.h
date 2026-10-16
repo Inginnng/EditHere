@@ -13,6 +13,8 @@ constexpr qint64 MaxPixels = 32000000;
 constexpr int MaxNotes = 1000;
 constexpr qint64 MaxImageFileBytes = 48LL * 1024 * 1024;
 constexpr qint64 MaxProjectFileBytes = 96LL * 1024 * 1024;
+inline constexpr auto FeedbackSchemaVersion = "feedback-minimal-2";
+inline constexpr auto FeedbackSchemaId = "urn:edithere:feedback-minimal:2";
 QString uniqueId();
 QString timestamp();
 QJsonObject rectJson(const QRect &rect);

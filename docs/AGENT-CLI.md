@@ -121,7 +121,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 `annotate` / `export` 的成功回执如下，`annotations` 是数量，实际批注正文在 `output` 指向的文件中：
 
 ```json
-{"ok":true,"command":"annotate","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
 ```
 
 `open` / `capture` 的响应带 `accepted: true`，仅表示请求受理；`open` 还会返回绝对路径 `input`。常见失败响应：
@@ -151,7 +151,9 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 
 ## AI 如何理解反馈
 
-反馈遵循 [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json)。当前导出为面向对象结构，早期版本使用的 `annotations` / `changes` 并行数组仍可导入。完整项目遵循 [project-v3.schema.json](../schema/project-v3.schema.json)。
+根级 `$schema` 为 `urn:edithere:feedback-minimal:2`，是本地随包 Schema 的稳定标识，不需要联网解析；`tool` 包含 `name` 与实际应用 `version`，`exportedAt` 是带时区的 ISO 导出时间。读取时先按 `schemaVersion` 分流；无版本的 `objects` 追认为 `feedback-minimal-1`，无版本 `annotations` + `changes` 按旧格式读取。未知显式版本不能猜测为旧格式。CLI 图片成功回执也包含 `schemaVersion`。
+
+当前图片反馈使用 `schemaVersion: "feedback-minimal-2"`，遵循 [feedback-minimal-v2.schema.json](../schema/feedback-minimal-v2.schema.json)；[兼容 Schema](../schema/feedback-minimal.schema.json) 同时接受无版本对象格式和更早的并行数组格式。当前导出为面向对象结构，早期版本使用的 `annotations` / `changes` 并行数组仍可导入。完整项目遵循 [project-v3.schema.json](../schema/project-v3.schema.json)。
 
 `schema/` 下的文件名代表数据格式，不代表应用版本：`feedback-minimal.schema.json` 是当前精简反馈，`project-v3.schema.json` 是完整项目，其余为历史格式，其中 `feedback-v1` / `v1.1` / `v2` 描述的是早期项目文档而非反馈。
 

@@ -27,9 +27,13 @@ async function main() {
     await page.locator('#file-input').setInputFiles({ name: 'native-video-feedback.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
     await page.waitForFunction(() => document.body.dataset.busy !== 'true');
   }
-  async function exported() { await page.locator('#export').click(); const value = await readExportJson(page); await page.keyboard.press('Escape'); return value; }
+  async function exported() { await page.locator('#export').click(); const value = await readExportJson(page); await page.keyboard.press('Escape'); for(const frame of value.frames)assert.equal(frame.feedback.schemaVersion,'feedback-minimal-2'); return value; }
   async function savedProject() { return JSON.parse(await downloadText(page, '#save-project')); }
-  const metadata = value => { const stable = JSON.parse(JSON.stringify(value)); delete stable.exportedAt; return stable; };
+  const metadata = value => {
+    const stable = JSON.parse(JSON.stringify(value)); delete stable.exportedAt;
+    for(const frame of stable.frames){delete frame.feedback.$schema;delete frame.feedback.schemaVersion;delete frame.feedback.tool;delete frame.feedback.exportedAt;}
+    return stable;
+  };
   let current = 'load';
   try {
     await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href);

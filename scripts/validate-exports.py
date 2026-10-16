@@ -22,6 +22,7 @@ artifacts = root / "artifacts" / "native-ui"
 
 SCHEMAS = (
     "feedback-minimal.schema.json",
+    "feedback-minimal-v2.schema.json",
     "feedback-v0.7.schema.json",
     "feedback-v1.schema.json",
     "feedback-v1.1.schema.json",
@@ -70,8 +71,11 @@ embedded = export("feedback.json")
 plain = export("feedback-no-image.json")
 validate("feedback-minimal.schema.json", embedded)
 validate("feedback-minimal.schema.json", plain)
-assert {key: value for key, value in embedded.items() if key != "image"} == \
-       {key: value for key, value in plain.items() if key != "image"}
+assert {key: value for key, value in embedded.items() if key not in ("image", "exportedAt")} == \
+       {key: value for key, value in plain.items() if key not in ("image", "exportedAt")}
+assert embedded["schemaVersion"] == "feedback-minimal-2"
+assert embedded["tool"]["name"] == "EditHere"
+validate("feedback-minimal-v2.schema.json", embedded)
 check_objects(embedded)
 print(f"PASS: current feedback, {len(embedded['objects'])} object(s), with and without the image")
 

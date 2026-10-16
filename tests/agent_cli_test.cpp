@@ -591,7 +591,9 @@ class AgentCliTests : public QObject {
         QCOMPARE(cli.exitCode(), 0);
         const auto receipt = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
         QVERIFY(receipt["ok"].toBool());
+        QCOMPARE(receipt["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
         const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
+        QCOMPARE(feedback["schemaVersion"], receipt["schemaVersion"]);
         QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toString(), comment);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QTest::qWait(50);
@@ -685,6 +687,8 @@ class AgentCliTests : public QObject {
         QCOMPARE(cli.exitCode(), 0);
         const auto reply = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
         QVERIFY(reply["ok"].toBool());
+        QCOMPARE(reply["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
+        QCOMPARE(QJsonDocument::fromJson(readFile(output)).object()["schemaVersion"], reply["schemaVersion"]);
         QVERIFY(!QJsonDocument::fromJson(readFile(output)).object().contains("image"));
         cli.start(executable, {"export", input, "--output", output});
         QVERIFY(cli.waitForFinished(15000));

@@ -1,5 +1,7 @@
+#include "feedback_test_helpers.h"
 #include "detector.h"
 #include "model.h"
+#include <QDateTime>
 #include <QFile>
 #include <QImageReader>
 #include <QJsonArray>
@@ -11,6 +13,85 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void feedbackMetadataAndUnversionedObjectsRoundTrip() {
+        auto doc = fromImage(exampleImage(), "file", "metadata");
+        Note note;
+        note.point = {20, 30};
+        note.comment = "Keep the exported contract self describing";
+        doc.notes.append(note);
+        const auto before = QDateTime::currentDateTimeUtc();
+        const auto feedback = exportFeedback(doc, true);
+        const auto after = QDateTime::currentDateTimeUtc();
+        QCOMPARE(feedback["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
+        QCOMPARE(feedback["$schema"].toString(), QString(FeedbackSchemaId));
+        QCOMPARE(feedback["tool"].toObject(),
+                 (QJsonObject{{"name", "EditHere"}, {"version", EDITHERE_VERSION}}));
+        const auto timeText = feedback["exportedAt"].toString();
+        QVERIFY(timeText.endsWith('Z'));
+        const auto time = QDateTime::fromString(timeText, Qt::ISODateWithMs);
+        QVERIFY(time.isValid() && time >= before && time <= after);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("feedback.json");
+        saveBytes(path, QJsonDocument(feedback).toJson());
+        Document imported;
+        QVERIFY_THROWS_NO_EXCEPTION(imported = loadDocument(path));
+        QCOMPARE(imported.image, doc.image);
+        QCOMPARE(imported.notes[0].comment, note.comment);
+
+        auto external = feedback;
+        external.remove("image");
+        saveBytes(directory.filePath("feedback.png"), doc.png);
+        saveBytes(path, QJsonDocument(external).toJson());
+        QVERIFY_THROWS_NO_EXCEPTION(imported = loadDocument(path));
+        QCOMPARE(imported.notes[0].point, note.point);
+
+        auto legacy = feedback;
+        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+            legacy.remove(field);
+        saveBytes(path, QJsonDocument(legacy).toJson());
+        QVERIFY_THROWS_NO_EXCEPTION(imported = loadDocument(path));
+        QCOMPARE(imported.notes[0].comment, note.comment);
+        QVERIFY_THROWS_NO_EXCEPTION(imported = loadFeedback(legacy, {}));
+        QCOMPARE(imported.notes[0].point, note.point);
+
+        auto offset = feedback;
+        offset["exportedAt"] = "2026-10-16T13:14:15.123+08:00";
+        QVERIFY_THROWS_NO_EXCEPTION(imported = loadFeedback(offset, {}));
+        QCOMPARE(imported.notes[0].comment, note.comment);
+    }
+    void feedbackRejectsInvalidMetadata_data() {
+        QTest::addColumn<QString>("field");
+        QTest::addColumn<QJsonValue>("value");
+        QTest::newRow("unknown feedback version") << QString("schemaVersion") << QJsonValue("feedback-minimal-99");
+        QTest::newRow("null version") << QString("schemaVersion") << QJsonValue(QJsonValue::Null);
+        QTest::newRow("missing schema id") << QString("$schema") << QJsonValue(QJsonValue::Undefined);
+        QTest::newRow("wrong schema id") << QString("$schema") << QJsonValue("urn:other:2");
+        QTest::newRow("missing tool") << QString("tool") << QJsonValue(QJsonValue::Undefined);
+        QTest::newRow("tool string") << QString("tool") << QJsonValue("EditHere");
+        QTest::newRow("wrong tool") << QString("tool")
+            << QJsonValue(QJsonObject{{"name", "Other"}, {"version", "1.0"}});
+        QTest::newRow("missing tool version") << QString("tool")
+            << QJsonValue(QJsonObject{{"name", "EditHere"}});
+        QTest::newRow("blank tool version") << QString("tool")
+            << QJsonValue(QJsonObject{{"name", "EditHere"}, {"version", " "}});
+        QTest::newRow("oversized tool version") << QString("tool")
+            << QJsonValue(QJsonObject{{"name", "EditHere"}, {"version", QString(101, 'a')}});
+        QTest::newRow("missing date") << QString("exportedAt") << QJsonValue(QJsonValue::Undefined);
+        QTest::newRow("invalid date") << QString("exportedAt") << QJsonValue("not-a-date");
+        QTest::newRow("date without timezone") << QString("exportedAt") << QJsonValue("2026-10-16T13:14:15.123");
+        QTest::newRow("missing annotation space") << QString("annotationSpace") << QJsonValue(QJsonValue::Undefined);
+    }
+    void feedbackRejectsInvalidMetadata() {
+        QFETCH(QString, field);
+        QFETCH(QJsonValue, value);
+        auto feedback = exportFeedback(fromImage(exampleImage(), "file", "metadata"), true);
+        feedback.insert(field, value);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, {}), std::runtime_error);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("feedback.json");
+        saveBytes(path, QJsonDocument(feedback).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+    }
     void previewLayoutIsIndependentOfSourceResolution() {
         auto makeDocument = [](int factor) {
             QImage image(960 * factor, 540 * factor, QImage::Format_RGB32);
@@ -151,8 +232,8 @@ class CoreTests : public QObject {
             }
         QCOMPARE(bluePixels, 0);
         QCOMPARE(doc.notes, originalNotes);
-        QCOMPARE(exportFeedback(doc), feedback);
-        QCOMPARE(feedback.keys(), (QStringList{"annotationSpace", "objects"}));
+        QCOMPARE(stableFeedback(exportFeedback(doc)), stableFeedback(feedback));
+        QCOMPARE(feedback.keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 6);
         // The movement-linked object keeps the source rect, the destination,
@@ -680,7 +761,7 @@ class CoreTests : public QObject {
         QVERIFY(imported.notes[3].isGlobal);
         QVERIFY(imported.layout.has_value());
         // Re-exporting an imported old file already uses the current structure.
-        QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"annotationSpace", "objects"}));
+        QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
     }
     void objectFeedbackRejectsInvalidGeometry_data() {
         QTest::addColumn<QJsonValue>("source");

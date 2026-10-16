@@ -103,6 +103,8 @@ edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--n
 
 ## 解释反馈并实施
 
+- 当前图片反馈版本为 `feedback-minimal-2`，根级 `$schema` 为 `urn:edithere:feedback-minimal:2`，对应随包 `schema/feedback-minimal-v2.schema.json`；`tool` 包含名称与实际版本，`exportedAt` 为带时区 ISO 时间。先按显式版本解析；无版本 `objects` 为 `feedback-minimal-1`，无版本 `annotations` + `changes` 为旧格式。未知显式版本应拒绝，不能猜测。CLI 图片成功回执含 `schemaVersion`。
+
 - `image` 是**调整前**原图的 PNG/JPEG data URL，不是调整后的预览。缺少 `image` 时需保留并关联本次输入原图；独立重新导入反馈通常需要同名 PNG。
 - `annotationSpace` 固定为 `result`：所有批注位置对应调整后的画面。坐标原点在图像左上，单位是图像像素，独立于窗口位置与缩放；不能直接当作屏幕坐标或网页 CSS 像素。
 - 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。

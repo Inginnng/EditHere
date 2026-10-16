@@ -233,7 +233,7 @@ try {
   console.error(JSON.stringify(await page.evaluate(()=>{
     const body=document.querySelector('iframe')?.contentDocument?.body;
     return {state:body?.dataset,toast:body?.querySelector('#toast')?.textContent,calls:window.calls,callErrors:window.callErrors};
-  })));
+  }).catch(()=>({diagnostic:'The host page navigated before failure inspection.'}))));
   throw error;
 }
 finally {await client?.close();await browser.close();await new Promise(resolve=>server.close(resolve));}

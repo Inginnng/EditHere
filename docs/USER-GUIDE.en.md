@@ -195,6 +195,8 @@ Copying and exporting JSON use the same minimal structure; see [Feedback JSON](#
 
 ## Feedback JSON
 
+Image feedback now includes `feedback-minimal-2`, the generating tool name and actual version, a timezone-bearing export time, and a schema identifier. Existing unversioned feedback still imports. The examples below focus on annotation content.
+
 Image feedback uses an **object-oriented** structure: each object records a source region `source`, the position changes it undergoes `movements`, and the comments attached to that region `annotations`, so an AI can directly pair the comments and moves of the same object. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
 
 | Field | Meaning |
@@ -205,7 +207,7 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 | `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final coordinates |
 | `objects[].annotations` | Text notes attached to this object |
 
-Components that do not change in image feedback are not exported; no full slice list, component group references, hashes or timestamps are output. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The image format is defined by `schema/feedback-minimal.schema.json`; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
+Components that do not change in image feedback are not exported; no full slice list, component group references, hashes or full-project timestamps are output; only the root export timestamp is included. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
 Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers, while layout change coordinates may contain decimals.
 

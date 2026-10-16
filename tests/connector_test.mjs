@@ -36,6 +36,18 @@ function videoFeedback(frameCount = 2) {
   };
 }
 
+function versionedImageFeedback(feedback = {}) {
+  return {
+    $schema: 'urn:edithere:feedback-minimal:2',
+    schemaVersion: 'feedback-minimal-2',
+    tool: { name: 'EditHere', version: '0.11.1-test' },
+    exportedAt: '2026-10-16T16:30:00+08:00',
+    annotationSpace: 'result',
+    objects: [],
+    ...feedback,
+  };
+}
+
 function feedbackResult(feedback, options = {}, files = {}, cliResult = { exitCode: 0, json: { ok: true } }) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-feedback-test-'));
   const filename = path.join(directory, 'feedback.json');
@@ -203,6 +215,71 @@ test('original object and legacy image feedback return unchanged text and a sing
   assert.equal(objectResult.content.filter((item) => item.type === 'image').length, 1);
   assert.equal(legacyResult.content.filter((item) => item.type === 'image').length, 1);
   assert.equal(resultText(objectResult).includes('video-feedback-1'), false);
+});
+
+test('versioned image feedback preserves annotations and images on success and receipt recovery', () => {
+  const feedback = versionedImageFeedback({
+    image: `data:image/png;base64,${Buffer.from('versioned-image').toString('base64')}`,
+    objects: [{ source: null, movements: [], annotations: ['保留这条批注及原图'] }],
+  });
+  const before = JSON.stringify(feedback);
+  for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true, includeImage: true }, {}, receipt);
+    assert.equal(result.isError, false);
+    assert.match(resultText(result), /feedback-minimal-2/);
+    assert.match(resultText(result), /EditHere 0\.11\.1-test/);
+    assert.match(resultText(result), /2026-10-16T16:30:00\+08:00/);
+    assert.match(resultText(result), /保留这条批注及原图/);
+    assert.equal(result.content.filter((item) => item.type === 'image').length, 1);
+  }
+  assert.equal(JSON.stringify(feedback), before, 'metadata handling must preserve the feedback payload');
+  assert.equal(feedbackResult(versionedImageFeedback({ exportedAt: '2026-10-16T08:30:00.123Z' })).isError, false);
+  assert.equal(feedbackResult(versionedImageFeedback({ exportedAt: '2024-02-29T23:30:00-08:00' })).isError, false);
+  assert.equal(feedbackResult(versionedImageFeedback({ tool: { name: 'EditHere', version: 'v'.repeat(100) } })).isError, false);
+});
+
+test('explicit image versions and their required metadata are checked before returning feedback', () => {
+  const cases = [
+    [(feedback) => { feedback.schemaVersion = 'feedback-minimal-3'; }, /不支持的图片反馈版本/],
+    [(feedback) => { feedback.schemaVersion = null; }, /不支持的图片反馈版本/],
+    [(feedback) => { feedback.$schema = 'urn:other'; }, /\$schema 必须是/],
+    [(feedback) => { delete feedback.tool; }, /tool 必须包含/],
+    [(feedback) => { feedback.tool = 'EditHere'; }, /tool 必须包含/],
+    [(feedback) => { delete feedback.tool.version; }, /tool 必须包含/],
+    [(feedback) => { feedback.tool.version = 'v'.repeat(101); }, /tool 必须包含/],
+    [(feedback) => { feedback.exportedAt = '2026-10-16T16:30:00'; }, /带时区的 ISO 时间/],
+    [(feedback) => { feedback.exportedAt = '2026-13-16T16:30:00+08:00'; }, /带时区的 ISO 时间/],
+    [(feedback) => { feedback.exportedAt = '2026-02-30T16:30:00+08:00'; }, /带时区的 ISO 时间/],
+    [(feedback) => { feedback.exportedAt = '2026-02-29T08:30:00Z'; }, /带时区的 ISO 时间/],
+    [(feedback) => { feedback.exportedAt = '2026-04-31T16:30:00-08:00'; }, /带时区的 ISO 时间/],
+    [(feedback) => { delete feedback.exportedAt; }, /带时区的 ISO 时间/],
+    [(feedback) => { delete feedback.objects; feedback.annotations = []; feedback.changes = []; }, /必须包含 objects 数组/],
+  ];
+  for (const [mutate, error] of cases) {
+    const feedback = versionedImageFeedback();
+    mutate(feedback);
+    for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+      const result = feedbackResult(feedback, { recoverCompletedFeedback: true }, {}, receipt);
+      assert.equal(result.isError, true);
+      assert.match(resultText(result), error);
+    }
+  }
+});
+
+test('video-feedback-1 accepts versioned frame feedback while preserving its container and index', () => {
+  const feedback = videoFeedback();
+  feedback.frames[0].feedback = versionedImageFeedback(feedback.frames[0].feedback);
+  for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true, includeImage: true }, {}, receipt);
+    assert.equal(result.isError, false);
+    assert.match(resultText(result), /反馈类型: video-feedback-1/);
+    assert.equal(resultText(result).split('标题太早出现，延后到下一秒').length - 1, 1);
+    assert.equal(result.content.filter((item) => item.type === 'image').length, 2);
+  }
+  feedback.frames[0].feedback.schemaVersion = 'feedback-minimal-99';
+  const rejected = feedbackResult(feedback);
+  assert.equal(rejected.isError, true);
+  assert.match(resultText(rejected), /不支持的图片反馈版本/);
 });
 
 test('annotation recovers committed feedback when the real CLI exits without its receipt', async () => {
