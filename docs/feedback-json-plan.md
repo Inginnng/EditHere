@@ -8,7 +8,7 @@
 
 ## 实施进度
 
-主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；各阶段单独提交并推送；J01/J04/J05 已通过 [PR #17](https://github.com/Inginnng/EditHere/pull/17) 合入默认分支 `codex/native`，J03 已通过 [PR #18](https://github.com/Inginnng/EditHere/pull/18) 合入默认分支，GitHub 与 Gitee 均已核对为 `533b0e9`。J07 已完成实现及验证，提交与合入状态见下方记录。
+主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；各阶段单独提交并推送；J01/J04/J05 已通过 [PR #17](https://github.com/Inginnng/EditHere/pull/17) 合入默认分支 `codex/native`，J03 已通过 [PR #18](https://github.com/Inginnng/EditHere/pull/18) 合入默认分支，GitHub 与 Gitee 均已核对为 `533b0e9`。J07 已完成实现、验证及双远端推送，主分支合入状态见 [PR #19](https://github.com/Inginnng/EditHere/pull/19)。
 
 - [x] J01：版本号、工具标识、导出时间与 Schema 标识（本轮第 1 阶段）
 - [ ] J02：图片尺寸与缩放比例
@@ -35,7 +35,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 | J04 | 已完成 | 桌面 292 项、连接器 31 例、Web 68 例及真实编号/提交流程、Schema 校验通过 | `00739ea`，GitHub / Gitee 已确认 |
 | J03 | 已完成 | 桌面 9 组、连接器 42 例（1 项 Windows 符号链接权限跳过）、Web 87 单元及浏览器 22 项、三模式/MCP/CLI 流程、真实 Schema 和正式 Windows 包预览导出通过 | `47ef76d`；已合入主分支（PR #18） |
 | J05 | 已完成 | 桌面 9 组（含真实 Windows OCR）、连接器 36 例、Web 65 例及浏览器流程、真实导出 Schema、打包与 863 条翻译检查通过 | `0a4e63f`；三阶段已合入主分支（PR #17） |
-| J07 | 已完成 | 桌面 11 组、Windows 独立窗口快照、连接器 47 例（1 项权限跳过）、Web 96 单元及离线/CLI 6 项/MCP 9 项回传、真实 Schema、21 项打包与 897 条翻译检查通过 | 实现与验证完成；独立提交、推送并通过 PR 合入 |
+| J07 | 已完成 | 桌面 11 组、Windows 独立窗口快照、连接器 47 例（1 项权限跳过）、Web 96 单元及离线/CLI 6 项/MCP 9 项回传、真实 Schema、21 项打包与 897 条翻译检查通过 | `1a13d27`，GitHub / Gitee 已确认；合入状态见 [PR #19](https://github.com/Inginnng/EditHere/pull/19) |
 
 ---
 
