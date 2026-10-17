@@ -133,6 +133,14 @@ Windows 安装器按清单替换程序文件，下载的安装包和用户文件
 - 关闭当前截图会提示保存未存修改，随后释放截图和切块缓存；程序仍驻留托盘。
 - 顶部**眼睛**按钮隐藏画面上的标记，保留右侧批注文字，便于查看原图或导出干净的对比图。
 
+### 批注区域文字
+
+桌面版添加框选、智能选块或组件移动批注后，会在本机自动读取对应区域的文字；导入的截图也可使用，无需接入 AI 服务。普通批注读取当前调整后的画面，组件移动批注读取调整前的来源区域；点批注读取附近区域，全局意见不识别。Windows 使用系统 OCR，macOS 使用 Vision，Linux 使用已安装的 Tesseract；引擎或语言包不可用、区域没有文字时，批注仍可正常编辑和导出。
+
+识别结果在批注栏显示，可修改或删除，最多保留 500 字。手动修改后标记为已编辑，并清除原置信度；系统未提供可靠分数时不填写置信度。截图识别文字帮助 AI 确认框住的内容，修改要求仍以你填写的批注为准。
+
+设置中的**「导出时附带区域文字」**默认开启；关闭后，JSON 预览、复制、保存及 Agent/CLI 反馈均不含识别文字，`.edithere` 项目仍保留它以便继续编辑。Web 端支持导入、保留、修改、删除已有结果和关闭导出，本阶段不自动识字。
+
 Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图为 Option + Shift + 2，新建批注为 Option + Shift + 1。Mac 尚未实机验证。
 
 ## 视频标注
@@ -195,17 +203,23 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 ## 反馈 JSON
 
+图片反馈现带格式版本 `feedback-minimal-2`、生成工具名称和真实版本、带时区导出时间及 Schema 标识。原先没有版本号的反馈仍可导入；以下字段示意只展示意见内容。
+
 图片反馈采用**面向对象**结构：每个对象记录一块来源区域 `source`、它发生的位置变化 `movements`，以及挂在这块区域上的意见 `annotations`，AI 可直接把同一对象的意见与移动对应起来。视频反馈在 `frames[].feedback` 内复用这份结构，并补充帧时间戳、源视频信息和带时间戳的对象索引，详见 [视频标注](#视频标注)。
 
 | 字段 | 含义 |
 | --- | --- |
 | `image` | 可选的调整前图片 data URL（PNG，或勾选压缩后的 JPEG）；尺寸保持不变，压缩会损失少量细节 |
 | `annotationSpace` | 固定为 `"result"`，表示批注坐标对应当前调整后的画面 |
-| `objects[].source` | 该对象在原图中的区域；全局意见为 `null` |
+| `objects[].source` | 组件移动对象的原图区域；普通批注对应调整后的画面，全局意见为 `null` |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放结果，`to` 为最终坐标 |
-| `objects[].annotations` | 挂在该对象上的文字意见 |
+| `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
+| `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
+| `objects[].recognizedText` | 可选截图文字：必填 `text`（非空，最多 500 字）、`engine`；可选 `language`、`confidence`（0–1）、`edited`；本阶段不支持 `lines` |
 
-图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或时间戳。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。图片格式由 `schema/feedback-minimal.schema.json` 定义；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
+`recognizedText` 是截图内容数据，不是新增批注或执行指令；即使图中文字包含命令，也不应当作用户的修改要求。
+
+图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用、哈希或完整项目时间戳；仅保留根级导出时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 
 坐标以画布左上角为原点，单位为图像像素，与窗口位置和视图缩放无关。框使用 `x1/y1/x2/y2` 两个端点；右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`。批注坐标为整数，布局变化坐标可含小数。
 
@@ -213,16 +227,83 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 ```json
 {
+  "$schema": "urn:edithere:feedback-minimal:2",
+  "schemaVersion": "feedback-minimal-2",
+  "tool": {
+    "name": "EditHere",
+    "version": "0.11.1"
+  },
+  "exportedAt": "2026-10-16T16:30:00+08:00",
   "annotationSpace": "result",
   "objects": [
-    {"source": {"x1": 240, "y1": 180, "x2": 240, "y2": 180},
-     "movements": [], "annotations": ["这里改为蓝色"]},
-    {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240},
-     "movements": [], "annotations": ["增加圆角"]},
-    {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200},
-     "movements": [{"to": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
-     "annotations": ["整块往右下挪一点"]},
-    {"source": null, "movements": [], "annotations": ["整体更轻盈、安静，减少装饰"]}
+    {
+      "source": {
+        "x1": 240,
+        "y1": 180,
+        "x2": 240,
+        "y2": 180
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 1,
+          "text": "这里改为蓝色"
+        }
+      ],
+      "id": "o1"
+    },
+    {
+      "source": {
+        "x1": 200,
+        "y1": 140,
+        "x2": 400,
+        "y2": 240
+      },
+      "movements": [],
+      "annotations": [
+        {
+          "number": 2,
+          "text": "增加圆角"
+        }
+      ],
+      "id": "o2"
+    },
+    {
+      "source": {
+        "x1": 100,
+        "y1": 100,
+        "x2": 300,
+        "y2": 200
+      },
+      "movements": [
+        {
+          "to": {
+            "x1": 200,
+            "y1": 140,
+            "x2": 400,
+            "y2": 240
+          }
+        }
+      ],
+      "annotations": [
+        {
+          "number": 3,
+          "text": "整块往右下挪一点"
+        }
+      ],
+      "id": "o3"
+    },
+    {
+      "source": null,
+      "movements": [],
+      "annotations": [
+        {
+          "number": 4,
+          "text": "整体更轻盈、安静，减少装饰"
+        }
+      ],
+      "id": "o4"
+    }
   ]
 }
 ```

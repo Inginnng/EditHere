@@ -165,11 +165,16 @@ async function run() {
     await targetPage.mouse.move(at.x, at.y); await targetPage.mouse.down();
     await targetPage.mouse.move(at.x + dx * scale, at.y + dy * scale, { steps: 10 }); await targetPage.mouse.up();
   }
+  function stableFeedback(data) {
+    if(Object.hasOwn(data,'exportedAt'))data.exportedAt='2026-10-16T00:00:00.000Z';
+    for (const frame of data.frames || []) if(Object.hasOwn(frame.feedback,'exportedAt'))frame.feedback.exportedAt='2026-10-16T00:00:00.000Z';
+    return data;
+  }
   async function readFeedback(targetPage = page) {
     await targetPage.locator('#export').click();
     const data = await readExportJson(targetPage);
     await targetPage.locator('[data-close="export-dialog"]').click();
-    return data;
+    return stableFeedback(data);
   }
   async function downloadBy(selector, name) {
     if (selector === '#save-project') await ensureUtility();
@@ -282,7 +287,7 @@ async function run() {
         JSON.stringify(object.source) === JSON.stringify(moved.source)
         && JSON.stringify(object.movements) === JSON.stringify(moved.movements));
       assert(sameMovement(added), 'the annotated arrow must preserve its original source and destination');
-      assert.deepEqual(sameMovement(added).annotations, ['位移意见：按钮往右下调整，保持文字清晰']);
+      assert.deepEqual(sameMovement(added).annotations.map(annotation=>annotation.text), ['位移意见：按钮往右下调整，保持文字清晰']);
       assert.equal(added.objects.length, original.objects.length, 'arrow text belongs to the movement, rather than an extra located object');
       validateSchema(added, path.join(root, 'schema/feedback-minimal.schema.json'));
       await clickMovementArrow();
@@ -291,7 +296,7 @@ async function run() {
       movementText = '位移意见已修改：保留这个目标位置，加大字重';
       await note(movementText);
       resizedFeedback = await readFeedback();
-      assert.deepEqual(sameMovement(resizedFeedback).annotations, [movementText]);
+      assert.deepEqual(sameMovement(resizedFeedback).annotations.map(annotation=>annotation.text), [movementText]);
       await page.locator('#undo').click(); assert.deepEqual(await readFeedback(), added);
       await page.locator('#redo').click(); assert.deepEqual(await readFeedback(), resizedFeedback);
       await page.locator('#undo').click(); await page.locator('#undo').click();
@@ -334,7 +339,7 @@ async function run() {
       await page.locator('#export').click();
       const filename = await downloadBy('#download-json', 'image-feedback.json');
       await page.locator('[data-close="export-dialog"]').click();
-      assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')), resizedFeedback);
+      assert.deepEqual(stableFeedback(JSON.parse(fs.readFileSync(filename, 'utf8'))), resizedFeedback);
       const saved = await savedProject('image-project.json');
       assert.equal(saved.data.document.notes.length, 4); assert(saved.data.document.layout.pieces.length);
       await page.locator('#file-input').setInputFiles(saved.filename);
@@ -401,16 +406,16 @@ async function run() {
         await editor.locator('#lock-ratio').uncheck();
         await drag(350, 240, 390, 270, editor);
         let changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 490, y2: 330 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'rectangle to adjust')).source, { x1: 290, y1: 210, x2: 490, y2: 330 });
         await editor.locator('[data-note-handle="se"]').waitFor({ state: 'visible' });
         await dragSvgHandle(editor, '[data-note-handle="se"]', 30, 20);
         changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 520, y2: 350 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'rectangle to adjust')).source, { x1: 290, y1: 210, x2: 520, y2: 350 });
         const beforePoint = changed;
         await drag(50, 70, 85, 95, editor);
         assert.equal(await editor.locator('#note-dialog').isVisible(), false, 'dragging a point should adjust its location without opening text editing');
         changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.includes('point to adjust')).source, { x1: 85, y1: 95, x2: 85, y2: 95 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'point to adjust')).source, { x1: 85, y1: 95, x2: 85, y2: 95 });
         assert.equal(changed.objects.length, 2); assert(changed.objects.every(object => object.movements.length === 0));
         validateSchema(changed, path.join(root, 'schema/feedback-minimal.schema.json'));
         await editor.locator('#undo').click(); assert.deepEqual(await readFeedback(editor), beforePoint);
@@ -506,7 +511,7 @@ async function run() {
       const filename = await downloadBy('#download-json', 'video-feedback.json');
       await page.locator('[data-close="export-dialog"]').click();
       const downloaded = JSON.parse(fs.readFileSync(filename, 'utf8')); validateSchema(downloaded, path.join(root, 'schema/video-feedback-v1.schema.json'));
-      assert.deepEqual(downloaded.frames, videoFeedback.frames);
+      assert.deepEqual(stableFeedback(downloaded).frames, videoFeedback.frames);
       videoProject = await savedProject('video-project.json');
       assert.equal(videoProject.data.frames.length, 2); assert(!Object.hasOwn(videoProject.data, 'videoData'));
       await page.screenshot({ path: path.join(output, '03-video-annotated.png'), fullPage: true });
@@ -552,11 +557,15 @@ async function run() {
       assert.deepEqual(pixels, [[255, 0, 0, 255], [0, 255, 0, 255]]);
       const exported = await readFeedback();
       validateSchema(exported, path.join(root, 'schema/feedback-minimal.schema.json'));
-      assert.deepEqual(exported, feedback);
+      assert.equal(exported.schemaVersion, 'feedback-minimal-2');
+      assert.equal(exported.tool.name, 'EditHere');
+      const legacyObjects=objects=>objects.map(({id,...object})=>({...object,annotations:object.annotations.map(annotation=>annotation.text)}));
+      assert.deepEqual({annotationSpace:exported.annotationSpace,image:exported.image,objects:legacyObjects(exported.objects)}, feedback);
       const project = await savedProject('overlap-project.json');
       await page.locator('#file-input').setInputFiles(project.filename);
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
-      assert.deepEqual(await readFeedback(), feedback);
+      const restored = await readFeedback();
+      assert.deepEqual({annotationSpace:restored.annotationSpace,image:restored.image,objects:legacyObjects(restored.objects)}, feedback);
     });
     await checkpoint('distributed offline HTML independently reopens, edits and restores a project', async () => {
       assert.equal(await page.locator('#offline').count(), 0);
@@ -670,7 +679,7 @@ async function run() {
           await workspace.locator('#note-dialog').waitFor({ state: 'hidden' });
           await workspace.locator('#export').click();
           const feedback = await readExportJson(workspace);
-          assert.equal(feedback.objects[0].annotations[0], `视口 ${width} × ${height}：工具和批注都可操作`);
+          assert.equal(feedback.objects[0].annotations[0].text, `视口 ${width} × ${height}：工具和批注都可操作`);
           await workspace.locator('[data-close="export-dialog"]').click();
           // Video controls add another floating layer, so check the same fit budget.
           await workspace.locator('#file-input').setInputFiles(videoFixture);
@@ -786,7 +795,7 @@ async function run() {
         await web.locator('#export').click();
         const feedback = await readExportJson(web);
         validateSchema(feedback, path.join(root, 'schema/feedback-minimal.schema.json'));
-        assert.equal(feedback.objects[0].annotations[0], '网页获取后断网本地处理');
+        assert.equal(feedback.objects[0].annotations[0].text, '网页获取后断网本地处理');
         const pending = web.waitForEvent('download'); await web.locator('#download-json').click();
         const downloaded = await pending; await downloaded.saveAs(path.join(output, 'http-then-offline-feedback.json'));
         assert.equal(await downloaded.failure(), null);

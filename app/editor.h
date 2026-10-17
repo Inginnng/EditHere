@@ -21,6 +21,7 @@ class LayoutInspector;
 class ExplosionWave;
 class GuideOverlay;
 class VideoPlayback;
+class OcrEngine;
 class Editor final : public QWidget {
     Q_OBJECT
   public:
@@ -94,6 +95,11 @@ class Editor final : public QWidget {
 
   private:
     void editNote(Note note, bool fresh, QPoint global);
+    void scheduleRegionRecognition();
+    void updateRecognizedText(const QString &id, const QJsonObject &text);
+    void recognizeNextRegion();
+    QByteArray recognitionKey(const Note &note) const;
+    void cancelRegionRecognition();
     void changed(bool contentChanged = true);
     void renderNotes();
     // Rebuilds every label of the permanent chrome. Called from the constructor
@@ -205,6 +211,10 @@ class Editor final : public QWidget {
     QPoint viewportPanPosition_;
     bool fitted_ = true;
     int generation_ = 0;
+    int recognitionGeneration_ = 0;
+    OcrEngine *regionOcr_ = nullptr;
+    QMap<QString, QByteArray> recognizedRegions_;
+    bool recognitionScheduled_ = false;
     QString projectPath_;
 };
 } // namespace h2d

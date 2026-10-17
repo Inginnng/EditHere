@@ -12,21 +12,27 @@ file back is covered by ``tests/core_test.cpp::legacyFeedbackStillImports``.
 """
 import base64
 import json
+import os
 import struct
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource
 
 root = Path(__file__).resolve().parents[1]
-artifacts = root / "artifacts" / "native-ui"
+artifacts = Path(os.environ.get("H2D_TEST_ARTIFACTS", root / "artifacts" / "native-ui"))
 
 SCHEMAS = (
     "feedback-minimal.schema.json",
+    "feedback-minimal-v2.schema.json",
     "feedback-v0.7.schema.json",
     "feedback-v1.schema.json",
     "feedback-v1.1.schema.json",
     "feedback-v2.schema.json",
     "project-v3.schema.json",
+    "video-feedback-v1.schema.json",
+    "video-project-v1.schema.json",
 )
 
 
@@ -38,13 +44,25 @@ def export(name):
     return json.loads((artifacts / name).read_text(encoding="utf-8"))
 
 
+def retrieve_schema(uri):
+    # Resolve only bundled schemas; validation must never fetch a network URL.
+    name = uri.rsplit("/", 1)[-1]
+    if name not in SCHEMAS:
+        raise NoSuchResource(ref=uri)
+    return Resource.from_contents(schema(name))
+
+
 def validate(name, document):
-    Draft202012Validator(schema(name), format_checker=FormatChecker()).validate(document)
+    Draft202012Validator(schema(name), format_checker=FormatChecker(),
+                         registry=Registry(retrieve=retrieve_schema)).validate(document)
 
 
 def check_objects(document):
     for item in document["objects"]:
-        assert set(item) == {"source", "movements", "annotations"}, item
+        assert {"source", "movements", "annotations"} <= set(item) <= {
+            "id", "source", "movements", "annotations", "recognizedText"}, item
+        for annotation in item["annotations"]:
+            assert isinstance(annotation, str) or (set(annotation) == {"number", "text"} and 1 <= annotation["number"] <= 1000), annotation
 
 
 for name in SCHEMAS:
@@ -70,8 +88,13 @@ embedded = export("feedback.json")
 plain = export("feedback-no-image.json")
 validate("feedback-minimal.schema.json", embedded)
 validate("feedback-minimal.schema.json", plain)
-assert {key: value for key, value in embedded.items() if key != "image"} == \
-       {key: value for key, value in plain.items() if key != "image"}
+assert {key: value for key, value in embedded.items() if key not in ("image", "exportedAt")} == \
+       {key: value for key, value in plain.items() if key not in ("image", "exportedAt")}
+assert embedded["schemaVersion"] == "feedback-minimal-2"
+assert len({item["id"] for item in embedded["objects"]}) == len(embedded["objects"])
+assert all(isinstance(annotation, dict) for item in embedded["objects"] for annotation in item["annotations"])
+assert embedded["tool"]["name"] == "EditHere"
+validate("feedback-minimal-v2.schema.json", embedded)
 check_objects(embedded)
 print(f"PASS: current feedback, {len(embedded['objects'])} object(s), with and without the image")
 
@@ -97,3 +120,28 @@ width, height = struct.unpack(">II", png[16:24])
 assert 0 < width <= 32767 and 0 < height <= 32767 and width * height <= 32_000_000
 assert embedded["annotationSpace"] == "result"
 print(f"PASS: standalone original PNG {width}x{height}, result-coordinate notes")
+
+# Real OCR-bearing exports from the model tests, including the project-only
+# deletion marker and the setting that removes evidence from feedback.
+ocr = export("feedback-ocr.json")
+validate("feedback-minimal-v2.schema.json", ocr)
+validate("feedback-minimal.schema.json", ocr)
+check_objects(ocr)
+assert ocr["objects"][0]["recognizedText"]["text"] == "Export JSON"
+disabled = export("feedback-ocr-disabled.json")
+validate("feedback-minimal-v2.schema.json", disabled)
+assert all("recognizedText" not in item for item in disabled["objects"])
+for artifact in ("project-ocr.json", "project-ocr-deleted.json"):
+    validate("project-v3.schema.json", export(artifact))
+assert export("project-ocr-deleted.json")["annotations"][0]["recognizedText"] == {
+    "text": "", "edited": True}
+video = export("video-feedback-ocr.json")
+validate("video-feedback-v1.schema.json", video)
+for frame in video["frames"]:
+    validate("feedback-minimal-v2.schema.json", frame["feedback"])
+    nested = frame["feedback"]["objects"]
+    indexed = [{key: value for key, value in item.items()
+                if key not in ("frameId", "timestampMs")}
+               for item in video["objects"] if item["frameId"] == frame["id"]]
+    assert nested == indexed
+print("PASS: OCR feedback, omitted export, editable/deleted project and video index")

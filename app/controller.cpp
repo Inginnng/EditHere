@@ -1634,7 +1634,8 @@ void Controller::finishAgentSession() {
         return;
     }
     const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
-                            {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentEmbed_}};
+                            {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentEmbed_},
+                            {"schemaVersion", editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);

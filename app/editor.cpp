@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "ocr.h"
 #include "diagnostics.h"
 #include "videoplayback.h"
 #include "imagearea.h"
@@ -17,6 +18,8 @@
 #include <QCloseEvent>
 #include <QContextMenuEvent>
 #include <QDateTime>
+#include <QDataStream>
+#include <QCryptographicHash>
 #include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -460,6 +463,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         remember();
         for (auto &stored : doc_.notes)
             if (stored.id == n.id) {
+                if (!n.movementSource && (stored.isPoint != n.isPoint || stored.point != n.point || stored.rect != n.rect))
+                    n.recognizedText = {};
                 stored = n;
                 break;
             }
@@ -647,7 +652,9 @@ void Editor::setDocument(Document document, const QString &projectPath) {
         updateAnnotationVisibility();
     }
     resetLayoutTools();
+    cancelRegionRecognition();
     doc_ = std::move(document);
+    for (const auto &note : doc_.notes) recognizedRegions_.insert(note.id, recognitionKey(note));
     videoPreview_ = false;
     if (!switchingVideoFrame_) projectPath_ = projectPath;
     detailsStack_->setEnabled(true);
@@ -896,7 +903,8 @@ QByteArray Editor::projectBytes() {
 }
 QByteArray Editor::feedbackBytes(bool embed, bool compress) {
     finishNoteEdit(); commitVideoFrame();
-    return video_ ? serializeVideoFeedback(*video_, embed, compress) : serializeFeedback(doc_, embed, compress);
+    return video_ ? serializeVideoFeedback(*video_, embed, compress, preferences_.includeRecognizedText)
+                  : serializeFeedback(doc_, embed, compress, preferences_.includeRecognizedText);
 }
 void Editor::toggleFullscreen() {
     stopViewportPan();
@@ -1140,6 +1148,43 @@ void Editor::renderNotes() {
             text->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             text->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             l->addWidget(text);
+            auto recognition = new QWidget(card);
+            recognition->setObjectName("recognizedTextSection");
+            auto recognitionLayout = new QVBoxLayout(recognition);
+            recognitionLayout->setContentsMargins(0, 4, 0, 0); recognitionLayout->setSpacing(2);
+            auto recognitionRow = new QHBoxLayout;
+            auto recognitionLabel = mutedLabel(tr("区域文字"), recognition);
+            recognitionLabel->setObjectName("recognizedTextLabel"); recognitionRow->addWidget(recognitionLabel, 1);
+            auto clearRecognition = iconButton("trash", tr("删除识别文字"), recognition);
+            clearRecognition->setObjectName("clearRecognizedText"); clearRecognition->setFixedSize(24, 24);
+            recognitionRow->addWidget(clearRecognition); recognitionLayout->addLayout(recognitionRow);
+            auto recognized = new InlineNoteEdit(recognition);
+            recognized->setObjectName("recognizedText_" + n.id); recognized->setProperty("noteId", n.id);
+            recognized->setAccessibleName(tr("识别的区域文字")); recognized->setTabChangesFocus(true);
+            recognized->setExpanded(false); recognitionLayout->addWidget(recognized);
+            l->addWidget(recognition);
+            recognized->started = [this, id=n.id] { beginNoteEdit(id); };
+            recognized->finished = [this, id=n.id] { QTimer::singleShot(0, this, [this,id] { if (editingId_ == id) finishNoteEdit(); }); };
+            recognized->cancelled = [this] { cancelNoteEdit(); };
+            connect(recognized, &QPlainTextEdit::textChanged, this, [this,recognized,id=n.id] {
+                recognized->fitContent();
+                if (renderingNotes_) return;
+                beginNoteEdit(id);
+                auto value = recognized->toPlainText().left(500);
+                if (!value.isEmpty() && value.back().isHighSurrogate()) value.chop(1);
+                if (recognized->toPlainText() != value) { QSignalBlocker blocker(recognized); recognized->setPlainText(value); }
+                for (auto &note : doc_.notes) if (note.id == id) {
+                    if (value.trimmed().isEmpty()) updateRecognizedText(id, {{"text", ""}, {"edited", true}});
+                    else { auto metadata = note.recognizedText; metadata.insert("text", value); metadata.insert("edited", true); metadata.remove("confidence"); updateRecognizedText(id, metadata); }
+                    break;
+                }
+                doc_.dirty = true;
+            });
+            connect(clearRecognition, &QPushButton::clicked, this, [this,id=n.id] {
+                finishNoteEdit(); remember();
+                updateRecognizedText(id, {{"text", ""}, {"edited", true}});
+                changed();
+            });
             auto fold = new QPushButton(card);
             fold->setObjectName("foldNote");
             fold->setProperty("noteId", n.id);
@@ -1201,6 +1246,12 @@ void Editor::renderNotes() {
         if (!text->hasFocus() && text->toPlainText()!=n.comment) { QSignalBlocker blocker(text); text->setPlainText(n.comment); }
         text->setAccessibleName(tr("批注 %1 内容").arg(number));
         text->fitContent();
+        auto recognition = card->findChild<QWidget *>("recognizedTextSection");
+        auto recognized = static_cast<InlineNoteEdit *>(recognition->findChild<QPlainTextEdit *>("recognizedText_" + n.id));
+        const auto recognizedText = n.recognizedText["text"].toString();
+        if (!recognized->hasFocus() && recognized->toPlainText() != recognizedText) { QSignalBlocker blocker(recognized); recognized->setPlainText(recognizedText); }
+        recognized->fitContent();
+        recognition->setVisible(!recognizedText.isEmpty());
         noteLayout_->insertWidget(number-1,card,0,Qt::AlignTop);
     }
     // Display movements without text annotations as orphan cards.
@@ -1273,7 +1324,7 @@ void Editor::finishNoteEdit() {
     for (auto &note : doc_.notes) if (note.id==id) {
         note.comment=note.comment.trimmed();
         if (note.comment.isEmpty() && id!=draftId_)
-            for (const auto &before : editingBaseline_.notes) if (before.id==id) note=before;
+            for (const auto &before : editingBaseline_.notes) if (before.id==id) note.comment=before.comment;
         break;
     }
     if (id==draftId_) doc_.notes.removeIf([&](const Note &note) { return note.id==id && note.comment.isEmpty(); });
@@ -1341,8 +1392,96 @@ void Editor::editNote(Note note, bool fresh, QPoint) {
         editingBaseline_={doc_.notes,doc_.layout}; editingWasDirty_=doc_.dirty;
         editingId_=note.id; draftId_=note.id;
         doc_.notes.append(note);
+        scheduleRegionRecognition();
     }
     focusNote(note.id);
+}
+void Editor::updateRecognizedText(const QString &id, const QJsonObject &text) {
+    std::optional<QRectF> source;
+    for (const auto &note : doc_.notes) if (note.id == id) { source = note.movementSource; break; }
+    for (auto &note : doc_.notes)
+        if (note.id == id || (source && note.movementSource == source)) note.recognizedText = text;
+}
+QByteArray Editor::recognitionKey(const Note &note) const {
+    QJsonObject value{{"global", note.isGlobal}, {"point", note.isPoint},
+                      {"x", note.point.x()}, {"y", note.point.y()}, {"rect", rectJson(note.rect)}};
+    if (note.movementSource) {
+        const auto r = *note.movementSource;
+        value = {{"sourceX", r.x()}, {"sourceY", r.y()}, {"sourceW", r.width()}, {"sourceH", r.height()}};
+    } else if (!note.isGlobal && doc_.layout) {
+        QByteArray geometry;
+        QDataStream stream(&geometry, QIODevice::WriteOnly);
+        for (const auto &piece : doc_.layout->pieces) stream << piece.id << piece.source << piece.destination;
+        value.insert("layout", QString::fromLatin1(QCryptographicHash::hash(geometry, QCryptographicHash::Sha256).toHex()));
+    }
+    return QJsonDocument(value).toJson(QJsonDocument::Compact);
+}
+void Editor::cancelRegionRecognition() {
+    ++recognitionGeneration_;
+    recognitionScheduled_ = false;
+    recognizedRegions_.clear();
+    if (regionOcr_) regionOcr_->cancel();
+}
+void Editor::scheduleRegionRecognition() {
+    if (recognitionScheduled_ || !hasDocument()) return;
+    recognitionScheduled_ = true;
+    const int generation = recognitionGeneration_;
+    QTimer::singleShot(200, this, [this, generation] {
+        if (generation != recognitionGeneration_) return;
+        recognitionScheduled_ = false;
+        recognizeNextRegion();
+    });
+}
+void Editor::recognizeNextRegion() {
+    if (!hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
+    for (auto &note : doc_.notes) {
+        if (note.isGlobal || note.recognizedText.value("edited") == true) continue;
+        const auto key = recognitionKey(note);
+        if (recognizedRegions_.contains(note.id) && recognizedRegions_.value(note.id) == key) continue;
+        if (!recognizedRegions_.contains(note.id) && !note.recognizedText.isEmpty()) {
+            recognizedRegions_.insert(note.id, key); continue;
+        }
+        recognizedRegions_.insert(note.id, key);
+        note.recognizedText = {};
+        QImage picture;
+        try { picture = noteRecognitionImage(doc_, note); }
+        catch (const std::exception &) { continue; }
+        if (picture.isNull()) continue;
+        if (!regionOcr_) { regionOcr_ = new OcrEngine(this); regionOcr_->setObjectName("regionTextRecognizer"); }
+        const QString id = note.id, documentId = doc_.id;
+        const int generation = recognitionGeneration_;
+        QPointer<Editor> self(this);
+        regionOcr_->recognize(picture, preferences_.ocrLanguage,
+            [self, generation, documentId, id, key](OcrResult result) {
+                if (!self || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
+                for (auto &current : self->doc_.notes) {
+                    if (current.id != id || current.recognizedText.value("edited") == true || self->recognitionKey(current) != key) continue;
+                    QString text = result.text().trimmed().left(500);
+                    if (!text.isEmpty() && text.back().isHighSurrogate()) text.chop(1);
+                    if (result.ok && !text.isEmpty()) {
+#ifdef Q_OS_WIN
+                        const QString engine = "windows-ocr";
+#elif defined(Q_OS_APPLE)
+                        const QString engine = "apple-vision";
+#else
+                        const QString engine = "tesseract";
+#endif
+                        current.recognizedText = {{"text", text}, {"engine", engine}};
+                        if (!result.engineLanguage.isEmpty()) current.recognizedText.insert("language", result.engineLanguage.left(100));
+                        self->updateRecognizedText(id, current.recognizedText);
+                        // An OCR completion must survive cancelling a concurrent comment draft.
+                        for (auto &baseline : self->editingBaseline_.notes)
+                            if (baseline.id == id && baseline.recognizedText.value("edited") != true) baseline.recognizedText = current.recognizedText;
+                        if (!self->editingId_.isEmpty()) self->editingWasDirty_ = true;
+                        self->changed();
+                    }
+                    break;
+                }
+                self->scheduleRegionRecognition();
+            });
+        renderNotes();
+        return;
+    }
 }
 void Editor::addGlobalNote() {
     if (!ensureVideoAnnotationFrame()) return;
@@ -1543,6 +1682,7 @@ void Editor::changed(bool contentChanged) {
         layoutCanvas_->setAnnotations(doc_.notes);
     renderNotes();
     updateControls();
+    scheduleRegionRecognition();
 }
 void Editor::remember() {
     finishNoteEdit();
@@ -1845,6 +1985,7 @@ void Editor::openEmpty() {
     if (!allowReplace())
         return;
     ++generation_;
+    cancelRegionRecognition();
     clearVideo();
     stopViewportPan();
     resetLayoutTools();
@@ -2051,7 +2192,13 @@ void Editor::exportJson() {
                 lines.append(
                     "  \"image\": \"" + feedback["image"].toString().section(',',0,0) +
                         QCoreApplication::translate("h2d", ",[图片编码已折叠]\","));
-            lines.append("  \"annotationSpace\": \"result\",");
+            for (auto it = feedback.constBegin(); it != feedback.constEnd(); ++it) {
+                if (it.key() == "image" || it.key() == "objects")
+                    continue;
+                const auto member = QJsonDocument(QJsonObject{{it.key(), it.value()}})
+                                        .toJson(QJsonDocument::Compact);
+                lines.append("  " + QString::fromUtf8(member.mid(1, member.size() - 2)) + ",");
+            }
             lines.append("  \"objects\": [");
             const auto objects = feedback["objects"].toArray();
             for (qsizetype i = 0; i < objects.size(); ++i)
@@ -2198,6 +2345,7 @@ void Editor::closeEvent(QCloseEvent *e) {
     if (!confirmDiscardOnClose())
         return;
     ++generation_;
+    cancelRegionRecognition();
     clearVideo();
     stopViewportPan();
     resetLayoutTools();

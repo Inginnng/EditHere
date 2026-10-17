@@ -59,6 +59,22 @@ QJsonObject changedFrame(QJsonObject root, int index, const QString &key, const 
 class VideoProjectTests : public QObject {
     Q_OBJECT
   private slots:
+    void recognizedFrameTextHasMatchingIndexAndExportSwitch() {
+        auto project = sampleProject();
+        auto &note = project.frames[0].document.notes[0];
+        note.recognizedText = {{"text", "Frame title"}, {"engine", "windows-ocr"}};
+        const auto root = QJsonDocument::fromJson(serializeVideoFeedback(project, true)).object();
+        const auto indexed = root["objects"].toArray()[1].toObject()["recognizedText"].toObject();
+        QCOMPARE(indexed, note.recognizedText);
+        const auto nested = root["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject()["recognizedText"].toObject();
+        QCOMPARE(nested, indexed);
+        const auto omitted = QJsonDocument::fromJson(serializeVideoFeedback(project, true, false, false)).object();
+        QVERIFY(!omitted["objects"].toArray()[1].toObject().contains("recognizedText"));
+        QVERIFY(!omitted["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject().contains("recognizedText"));
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) { QDir().mkpath(folder); saveBytes(QDir(folder).filePath("video-feedback-ocr.json"), serializeVideoFeedback(project)); }
+    }
+
     void sameCoordinatesAtDifferentTimesRemainSeparate() {
         const auto project = sampleProject();
         const auto feedback = QJsonDocument::fromJson(serializeVideoFeedback(project)).object();
@@ -92,7 +108,7 @@ class VideoProjectTests : public QObject {
             QCOMPARE(parsed.image.size(), QSize(320, 180));
             QCOMPARE(parsed.notes.size(), 1);
             QCOMPARE(parsed.notes[0].rect, QRect(80, 40, 100, 32));
-            QCOMPARE(parsed.notes[0].comment, object["annotations"].toArray()[0].toString());
+            QCOMPARE(parsed.notes[0].comment, object["annotations"].toArray()[0].toObject()["text"].toString());
         }
         QVERIFY(!feedback["video"].toObject().contains("data"));
     }

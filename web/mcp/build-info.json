@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashEncoding": "utf8-lf",
   "sources": {
-    "CMakeLists.txt": "46dde224e8b3a5a32265ad9ad08a25b3bf68b5e6297ce5692d593e716898796e",
+    "CMakeLists.txt": "853b420ffe46207e5e8f1e4be06d9bbbdc0c4e69bb4247cfc7920d45de0e8d82",
     "assets/brand/edithere-lockup-light.svg": "b72ec4ea0d71cf847bacfd2ac5b5420fe0b5f081bf50881c62a9789f8380049b",
     "assets/brand/edithere-lockup.svg": "9f767de272079f89a146619fb764662eb9c96b7fe20ea8472c3671538b2b69f2",
     "assets/icons/edithere.svg": "a24583e793eae6bf3c70308ff36de9cb363ef1b7d0e8c7cd9db2010f7bbd51e8",
@@ -75,27 +75,27 @@
     "assets/ui-icons/icons/zoom-in.svg": "3d7c7662dd51510789121bd9187a293c9aa585691d416adff172b5189d59ad9f",
     "assets/ui-icons/icons/zoom-out.svg": "a68f2734815af41b55ad3609a795a791baf0c8b6d9db58ef736abcb2b96a2f2f",
     "assets/ui-icons/manifest.json": "bbd5c43ef38ca9c46034ee2bcde1ef12e4b75c0a2cb62748099b4b3fabb96e75",
-    "web/agent-session.cjs": "374b7957cbeea2a0468788086d6627ed7cf98a148d1e1af89305e8daa2ef5380",
+    "web/agent-session.cjs": "ccbd6380731c6e66783f2cf2607410a21780ccd3c838705d11c7b1d14d45b18d",
     "web/build.cjs": "8f230d77599d60d7b7c4def700d2ddb334fcdee5e6d680886e737a732c0f777f",
     "web/mcp/build.mjs": "23738f81a46c513ca18d80a98c5f87c6e2ebc52072ef9e2c876feacd13349804",
     "web/mcp/package-lock.json": "21bb10ea12e2275ac411756c4948b8cb124ea684f3586b704f0d19ab47848cf2",
     "web/mcp/package.json": "4ca49659c74be8efbca3f09e511fb3e5f18b7aa9ba8574e97df943426f2043d8",
     "web/mcp/server.mjs": "d7a7de0a57437e4d500a3c5f9afeb08eb5845674e6534436a068dcfe60bed8e7",
     "web/src/agent.js": "895df94c87b1eafc05463d0de1d95349bfd10c251ce64c92df093a17eec9b313",
-    "web/src/app.js": "d312391a031e92f47979f3b828078a8c3202a7a68fdfccec00e07152860d8c2f",
+    "web/src/app.js": "e66d09fe07db73e9cb13314773f21bff764026d12920f5b1d1ca14f5c7e9dad4",
     "web/src/detector.js": "62907166244b47b0d18b561bd9f6d86120909aca8353077785620f1da12e8eee",
-    "web/src/feedback.js": "2f8525d5e063334b51cea355dedd7573068338eb048a6c05c8d2252a2f5b3f50",
+    "web/src/feedback.js": "b4e7aee22e7a6659880d8589d49029571df066a7a0b555bf0da28ea746caa5c3",
     "web/src/help.css": "320279c850481e36cc524fd20494674e2045204c775338e20663bd69982189af",
     "web/src/help.js": "15a4b23041dd1059063a6f5572faba5f3e3faa2057dbac366f6089b8e6c6864a",
     "web/src/layout.js": "e9301a453a0261e763ec4a435d831a32da2186e8de53c1170c9d05e90eda015f",
     "web/src/mcp-app.js": "bf8e8ba662f1ac6935ee31cc9c8007094d51e571f8951c8c3d86c5d80dc2e237",
-    "web/src/shell.html": "6562e0a7a59dc15a9c8ac2ca0c8262f3f1a395656a9e806efeae202b84b4f3fd",
-    "web/src/style.css": "c60c8360766b100c4001dd1a29bac43f42082c0c7aefdaea70d4493b73555aa6",
+    "web/src/shell.html": "f96072978b6857c0b2a606bd3abf40c9aa71a6a60633bbac54da10f60149da46",
+    "web/src/style.css": "3e297e029e2af7e4aef08c127f628e2e350e945e4c200aef6bf0cffc5bedcfa5",
     "web/src/ui.js": "423aaa951db069cd915fd777ff0df6cefa9fc1c97d917b004a5a196fb7e40957"
   },
   "artifacts": {
-    "web/EditHere.mcp.html": "23680266aed884eb9de38ffb60011965f2961dc8ee9ef92231b1c9b1539bf780",
-    "web/mcp/server.bundle.cjs": "8f7ebf0c86f9d2c989a2f86ffe5ce62645cb09635f7872e093a77a5dde47677b",
+    "web/EditHere.mcp.html": "43a86522785a768217304ee9d1b0cd810895ac015644d970d9121140c3ab7ad2",
+    "web/mcp/server.bundle.cjs": "ff0b0770a37506da108f665044a2edc6e3849c3a7278cb93658fa9c539d7db4f",
     "web/MCP-THIRD-PARTY-NOTICES.md": "507ce6aa295ec02125d556f2f1f7ee64790f79bba46b777e42931ddbfada6692"
   }
 }

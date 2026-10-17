@@ -3,6 +3,7 @@
 #include "agentlaunch.h"
 #include "diagnostics.h"
 #include "model.h"
+#include "settings.h"
 #include "videoproject.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -101,15 +102,17 @@ int main(int argc, char **argv) {
         try {
             if (isVideoProjectFile(input)) {
                 const auto project = loadVideoProject(input);
-                writeNewFeedback(output, serializeVideoFeedback(project, embed));
+                writeNewFeedback(output, serializeVideoFeedback(project, embed, false, recognizedTextExportEnabled()));
                 return printResult({{"ok", true}, {"command", "export"}, {"output", output},
                                     {"annotations", videoAnnotationCount(project)},
                                     {"frames", project.frames.size()}, {"imageIncluded", embed},
                                     {"schemaVersion", "video-feedback-1"}});
             }
             const auto doc = loadDocument(input);
-            writeNewFeedback(output, serializeFeedback(doc, embed));
-            return printResult({{"ok", true}, {"command", "export"}, {"output", output}, {"annotations", doc.notes.size()}, {"imageIncluded", embed}});
+            writeNewFeedback(output, serializeFeedback(doc, embed, false, recognizedTextExportEnabled()));
+            return printResult({{"ok", true}, {"command", "export"}, {"output", output},
+                                {"annotations", doc.notes.size()}, {"imageIncluded", embed},
+                                {"schemaVersion", FeedbackSchemaVersion}});
         } catch (const std::exception &error) { return printResult(agentError("io_error", QString::fromUtf8(error.what()))); }
     }
     QLocalSocket socket;

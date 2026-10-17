@@ -171,6 +171,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
     embedOriginal_ = new QCheckBox(defaults);
     embedOriginal_->setObjectName("defaultEmbedOriginal");
+    includeRecognizedText_ = new QCheckBox(defaults);
+    includeRecognizedText_->setObjectName("includeRecognizedText");
     confirmBeforeDiscard_ = new QCheckBox(defaults);
     confirmBeforeDiscard_->setObjectName("confirmBeforeDiscard");
     defaultsLayout->addWidget(captureOnStartup_);
@@ -185,6 +187,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
     defaultsLayout->addWidget(embedOriginal_);
+    defaultsLayout->addWidget(includeRecognizedText_);
     defaultsLayout->addWidget(confirmBeforeDiscard_);
     auto feedbackRow = new QHBoxLayout;
     feedbackDir_ = new QLineEdit(defaults);
@@ -479,6 +482,8 @@ void SettingsDialog::retranslate() {
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
     fitImageOnOpen_->setToolTip(tr("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。"));
+    includeRecognizedText_->setText(tr("导出时附带区域文字"));
+    includeRecognizedText_->setToolTip(tr("自动在本机识别批注区域文字。关闭后导出 JSON 不包含识别文字，项目仍保留结果。"));
     embedOriginal_->setText(tr("导出 JSON 默认包含原图"));
     confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
     confirmBeforeDiscard_->setToolTip(
@@ -614,6 +619,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     embedOriginal_->setChecked(settings.embedOriginal);
+    includeRecognizedText_->setChecked(settings.includeRecognizedText);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
     feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
@@ -629,6 +635,7 @@ AppSettings SettingsDialog::settings() const {
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.embedOriginal = embedOriginal_->isChecked();
+    result.includeRecognizedText = includeRecognizedText_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());

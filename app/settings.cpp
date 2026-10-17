@@ -164,6 +164,27 @@ QString validateSettings(const AppSettings &settings) {
         return tr("包含无法识别的快捷键配置。");
     return {};
 }
+bool recognizedTextExportEnabled(const QString &filePath) {
+    // Safe in the CLI's QCoreApplication: loading all preferences also creates GUI shortcut keys.
+    QString path = filePath;
+    if (path.isEmpty()) {
+        // The console keeps its own identity for diagnostics/IPC, but this switch belongs
+        // to the desktop user's preferences. Resolve that namespace and restore immediately.
+        const auto application = QCoreApplication::applicationName();
+        const auto organization = QCoreApplication::organizationName();
+        QCoreApplication::setApplicationName("EditHere");
+        QCoreApplication::setOrganizationName("EditHere");
+        path = settingsPath({});
+        QCoreApplication::setApplicationName(application);
+        QCoreApplication::setOrganizationName(organization);
+    }
+    QSettings source(path, QSettings::IniFormat);
+    bool valid = false;
+    const int version = source.value("version", 1).toInt(&valid);
+    if (!valid || version != 1 || source.status() != QSettings::NoError) return true;
+    const auto value = source.value("defaults/includeRecognizedText", true).toString().toLower();
+    return value != "false" && value != "0";
+}
 AppSettings loadSettings(const QString &filePath) {
     auto result = defaultSettings();
     QSettings source(settingsPath(filePath), QSettings::IniFormat);
@@ -208,6 +229,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.launchAtLogin = boolean("defaults/launchAtLogin", false);
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
+    result.includeRecognizedText = boolean("defaults/includeRecognizedText", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
     const QString scrollAxis = source.value("capture/scrollAxis", QStringLiteral("vertical")).toString();
@@ -298,6 +320,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/launchAtLogin", settings.launchAtLogin);
     target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
+    target.setValue("defaults/includeRecognizedText", settings.includeRecognizedText);
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);

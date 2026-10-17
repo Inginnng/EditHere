@@ -39,6 +39,7 @@ async function main() {
     const value = await readExportJson(page);
     await page.locator('[data-close="export-dialog"]').first().click();
     delete value.exportedAt;
+    for (const frame of value.frames || []) delete frame.feedback.exportedAt;
     return value;
   }
   async function snapshot() {
