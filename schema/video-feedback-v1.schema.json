@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:edithere:video-feedback:1",
   "title": "EditHere timestamped video feedback v1",
-  "description": "Each frame.feedback is independently readable existing EditHere minimal feedback. Its image is embedded once per frame. The root objects array is a chronological annotation index: use frameId to find the screenshot and timestampMs to locate the video. Coordinates use original video-frame pixels; source is null for whole-frame feedback. Only annotated frames are exported; timestamps are relative to video start, timestampMs=floor(timestampUs/1000).",
+  "description": "Timestamped screenshot feedback. Each frame.feedback is independently readable image feedback; feedback.image specifies file, embedded or none. Older frame.imageFile references and data URLs remain readable. Root objects is a chronological index of those same objects, not additional instructions. Coordinates use the frame image pixels.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -67,7 +67,6 @@
           "id",
           "timestampMs",
           "timestampUs",
-          "imageFile",
           "feedback"
         ],
         "properties": {
@@ -89,7 +88,8 @@
           },
           "imageFile": {
             "type": "string",
-            "pattern": "^frame-[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.png$"
+            "description": "Legacy same-directory image index. New file mode also carries the matching feedback.image.file. Absent in embedded/none mode.",
+            "pattern": "^[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.(png|jpg|jpeg|webp|gif|bmp)$"
           },
           "feedback": {
             "$ref": "feedback-minimal.schema.json#/$defs/objectFormat"

@@ -22,7 +22,7 @@ async function main(){
   async function exported(){await page.locator('#export').click();const value=await readExportJson(page);await page.locator('[data-close="export-dialog"]').click();return value;}
   const cards=()=>page.locator('.note-card').evaluateAll(elements=>elements.map(element=>({id:element.dataset.note,number:Number(element.querySelector('.note-number').textContent),text:element.querySelector('p').textContent})));
   try{
-    await page.goto(pathToFileURL(path.join(web,'EditHere.html')).href);
+    await page.goto(pathToFileURL(path.join(web,'EditHere.html')).href);await page.evaluate(()=>document.querySelector('#image-mode').value='embedded');
     const image=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=400;c.height=200;c.getContext('2d').fillRect(0,0,400,200);return c.toDataURL('image/png');});
     const a=rect(20,20,60,50),b=rect(70,20,100,50),toA=rect(120,20,160,50),toB=rect(200,20,230,50),layout=L.create(400,200);
     const aId=L.addRegion(layout,a),bId=L.addRegion(layout,b);L.transform(layout,aId,toA);L.transform(layout,bId,toB);

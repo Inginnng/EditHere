@@ -219,9 +219,9 @@ try {
   const downloadPromise=page.waitForEvent('download');await view.frame.locator('#save-json').click();
   const download=await downloadPromise,stream=await download.createReadStream(),chunks=[];
   for await(const chunk of stream)chunks.push(chunk);
-  const backup=Buffer.concat(chunks).toString('utf8');
+  const bytes=Buffer.concat(chunks),entries=bytes.readUInt32LE(0)===0x04034b50?require('../src/bundle.js').unzip(bytes):null,backup=entries?Buffer.from([...entries].find(([name])=>name.endsWith('.json'))[1]).toString('utf8'):bytes.toString('utf8');
   assert.equal(await download.failure(),null);
-  assert.deepEqual(JSON.parse(backup),expected,'manual JSON backup preserves the complete saved feedback and original image');
+  const backupValue=JSON.parse(backup);assert.deepEqual({...backupValue,image:null},{...expected,image:null},'manual JSON backup preserves saved feedback');assert.equal(backupValue.image.sha256,expected.image.sha256);assert(entries?.has(backupValue.image.file));
   assert.equal(hash(outputPath),savedHash);
   checks.push('Manual JSON backup preserves completed native feedback without resubmitting or changing the receipt');
   assert.deepEqual(errors,[]);

@@ -1,10 +1,13 @@
 (function (root, factory) {
   'use strict';
+
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.EditHereFeedback = api;
 })(typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
+
+  const imageFormat=typeof module==='object'&&module.exports?require('./image-format.js'):globalThis.EditHereImage;
 
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
@@ -97,6 +100,7 @@
     if (!exactKeys(value, fields) || (modern && (!objectFormat || !Object.hasOwn(value, 'annotationSpace'))) ||
         Object.hasOwn(value, 'annotationSpace') && value.annotationSpace !== 'result') throw new Error('Invalid image feedback fields.');
     const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
+    if(Object.hasOwn(value,'image')&&typeof value.image!=='string')imageFormat.validate(value.image);
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
       if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
@@ -129,7 +133,7 @@
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
-  function exportImage(document, embed = true, exportedAt = new Date().toISOString()) {
+  function exportImage(document, mode = 'file', exportedAt = new Date().toISOString()) {
     const objects = [], bySource = new Map();
     function ensureEntry(source) {
       const key = sourceKey(source);
@@ -164,12 +168,13 @@
     }
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
-      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})), ...(embed ? {image:document.image} : {})};
+      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})),
+      image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
-  function exportVideo(project, embed = true, exportedAt = new Date().toISOString()) {
+  function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
     const documents = project.frames.filter(document => document.notes.length ||
       document.movements.some(movement => !sameRectangle(movement.source, movement.destination)))
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
@@ -177,8 +182,8 @@
       id:document.id,
       timestampMs:Math.floor(document.timestampUs / 1000),
       timestampUs:document.timestampUs,
-      imageFile:'frame-' + document.id + '.png',
-      feedback:exportImage(document, embed, exportedAt)
+      imageFile:document.imageFile||'frame-' + document.id + '.png',
+      feedback:exportImage({...document,imageFile:document.imageFile||'frame-'+document.id+'.png'}, mode, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
       id:object.id,
@@ -231,9 +236,9 @@
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
     return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
       movements:objects.reduce((sum,object)=>sum+object.movements.length,0), recognizedTexts:objects.filter(object=>object.recognizedText).length,
-      bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
+      bytes:byteLength(serialized),imageBytes:images.map(image=>imageFormat.dataUrlOf(image)).filter(Boolean).reduce((sum,image)=>sum+byteLength(image),0)};
   }
-  const foldedImage = image => image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]';
+  const foldedImage = image => typeof image==='string'?image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]':image?.mode==='embedded'?{...image,dataUrl:foldedImage(image.dataUrl)}:image;
 
   // The desktop export dialog folds image bytes only in its readable preview.
   // Clipboard and file downloads must always use serialize(), never this text.
@@ -262,5 +267,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, imageFormat};
 });

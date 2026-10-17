@@ -154,7 +154,9 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
         if (!value.isObject())
             fail(tr("视频标注帧必须是对象"));
         const auto frame = value.toObject();
-        exactKeys(frame, {"id", "timestampMs", "timestampUs", "imageFile", "feedback"});
+        QStringList frameFields{"id", "timestampMs", "timestampUs", "feedback"};
+        if (frame.contains("imageFile")) frameFields.append("imageFile");
+        exactKeys(frame, frameFields);
         const auto id = frame["id"].toString();
         if (!frame["id"].isString())
             fail(tr("视频帧标识必须是字符串"));
@@ -164,15 +166,19 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
             (project.durationMs && time / 1000 > project.durationMs) || ids.contains(id) || times.contains(time))
             fail(tr("视频反馈包含重复、无效或不一致的帧时间或标识"));
         const QString imageFile = "frame-" + id + ".png";
-        if (frame["imageFile"] != imageFile || !frame["feedback"].isObject())
-            fail(tr("视频帧图片文件名或反馈格式不正确"));
+        if (!frame["feedback"].isObject()) fail(tr("视频帧反馈格式不正确"));
         const auto feedback = frame["feedback"].toObject();
+        const auto image = feedback.value("image");
+        if (image.isObject()) {
+            const auto info = image.toObject();
+            if (info["mode"] == "file") {
+                if (!frame["imageFile"].isString() || frame["imageFile"] != info["file"] || !safeFeedbackImageName(frame["imageFile"].toString()))
+                    fail(tr("视频帧原图引用与图片信息不一致"));
+            } else if (frame.contains("imageFile")) fail(tr("内嵌或无图模式不能声明视频帧原图文件"));
+        } else if (frame.contains("imageFile") && frame["imageFile"] != imageFile) fail(tr("视频帧图片文件名不正确"));
         if (!feedback["objects"].isArray() || feedback["objects"].toArray().isEmpty())
             fail(tr("视频反馈只能包含有批注或移动的对象帧"));
-        QImage original;
-        if (!feedback.contains("image"))
-            original = loadDocument(QFileInfo(path).dir().filePath(imageFile)).image;
-        auto document = loadFeedback(feedback, original);
+        auto document = loadFeedbackFile(feedback, path, imageFile);
         if (document.image.size() != QSize(int(width), int(height)))
             fail(tr("视频反馈图片尺寸与视频信息不一致"));
         document.id = id;
@@ -335,14 +341,21 @@ QByteArray serializeVideoProject(const VideoProject &project) {
     storageSize(bytes.size());
     return bytes;
 }
-QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress, bool includeRecognizedText) {
+FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const FeedbackExportOptions &options) {
+    FeedbackBundle bundle;
     const auto ordered = orderedFrames(project);
     QJsonArray frames, objects;
     for (const auto *frame : ordered) {
-        const auto feedback = exportFeedback(frame->document, embed, compress, includeRecognizedText);
-        frames.append(QJsonObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
-                                  {"timestampUs", frame->timestampUs},
-                                  {"imageFile", "frame-" + frame->document.id + ".png"}, {"feedback", feedback}});
+        auto frameOptions = options;
+        frameOptions.imageFile = "frame-" + frame->document.id + ".png";
+        frameOptions.previewFile = "frame-" + frame->document.id + ".annotated.jpg";
+        const auto frameBundle = buildFeedbackBundle(frame->document, frameOptions);
+        for (auto it = frameBundle.files.cbegin(); it != frameBundle.files.cend(); ++it) bundle.files.insert(it.key(), it.value());
+        const auto feedback = QJsonDocument::fromJson(frameBundle.json).object();
+        QJsonObject frameObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
+                                {"timestampUs", frame->timestampUs}, {"feedback", feedback}};
+        if (options.mode == ImageExportMode::File) frameObject.insert("imageFile", frameOptions.imageFile);
+        frames.append(frameObject);
         // This index repeats only lightweight annotation metadata. The image is
         // stored once in its frame's independently readable existing feedback.
         for (const auto &value : feedback["objects"].toArray()) {
@@ -357,9 +370,20 @@ QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool 
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"width", dimensions.width()}, {"height", dimensions.height()}}},
                            {"frames", frames}, {"objects", objects}};
-    auto bytes = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
-    storageSize(bytes.size());
-    return bytes;
+    bundle.json = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
+    qint64 total = bundle.json.size();
+    for (const auto &bytes : bundle.files) total += bytes.size();
+    storageSize(total);
+    return bundle;
+}
+QByteArray serializeVideoFeedback(const VideoProject &project, const FeedbackExportOptions &options) {
+    return buildVideoFeedbackBundle(project, options).json;
+}
+QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress, bool includeRecognizedText) {
+    FeedbackExportOptions options;
+    options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
+    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    return serializeVideoFeedback(project, options);
 }
 int videoAnnotationCount(const VideoProject &project) {
     int count = 0;

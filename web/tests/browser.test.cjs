@@ -171,6 +171,7 @@ async function run() {
     return data;
   }
   async function readFeedback(targetPage = page) {
+    await targetPage.evaluate(()=>document.querySelector('#image-mode').value='embedded');
     await targetPage.locator('#export').click();
     const data = await readExportJson(targetPage);
     await targetPage.locator('[data-close="export-dialog"]').click();
@@ -218,7 +219,7 @@ async function run() {
   }
   try {
     await checkpoint('file:// opens with an offline context', async () => {
-      await page.goto(pathToFileURL(bundle).href);
+      await page.goto(pathToFileURL(bundle).href); await page.evaluate(()=>{const el=document.querySelector('#image-mode');el.value='embedded';});
       await visible('#empty');
       assert.equal(await page.title(), 'EditHere · 改这里');
       await page.screenshot({ path: path.join(output, '01-empty.png'), fullPage: true });
@@ -240,7 +241,7 @@ async function run() {
       assert.deepEqual(originalFeedback.objects[0].source, { x1: 60, y1: 65, x2: 60, y2: 65 });
       assert.deepEqual(originalFeedback.objects[1].source, { x1: 750, y1: 380, x2: 1000, y2: 480 });
       assert.equal(originalFeedback.objects[2].source, null);
-      assert.match(originalFeedback.image, /^data:image\/png;base64,/);
+      assert.match(originalFeedback.image.dataUrl, /^data:image\/png;base64,/);
     });
     await checkpoint('annotated PNG downloads at original resolution', async () => {
       const filename = await downloadBy('#preview', 'image-annotations.png'), bytes = fs.readFileSync(filename);
@@ -393,7 +394,7 @@ async function run() {
         const pieces = layout.create(1100, 700);
         layout.addRegion(pieces, { x1: 520, y1: 170, x2: 765, y2: 320 });
         const fixture = { schemaVersion: 'edithere-web-project-1', tool: 'EditHere Web', kind: 'image', name: 'annotation-adjustment.png', width: 1100, height: 700,
-          document: { id: 'annotation-adjustment', timestampUs: null, image: originalFeedback.image, layout: pieces, notes: [
+          document: { id: 'annotation-adjustment', timestampUs: null, image: originalFeedback.image.dataUrl, layout: pieces, notes: [
             { id: 'point-to-adjust', source: { x1: 50, y1: 70, x2: 50, y2: 70 }, text: 'point to adjust' },
             { id: 'rectangle-to-adjust', source: { x1: 250, y1: 180, x2: 450, y2: 300 }, text: 'rectangle to adjust' }
           ] } };
@@ -434,7 +435,7 @@ async function run() {
         layout.addRegion(pieces, { x1: 245, y1: 170, x2: 490, y2: 320 });
         layout.addRegion(pieces, { x1: 520, y1: 170, x2: 765, y2: 320 });
         const fixture = { schemaVersion: 'edithere-web-project-1', tool: 'EditHere Web', kind: 'image', name: 'multi-selection.png', width: 1100, height: 700,
-          document: { id: 'multi-selection', timestampUs: null, image: originalFeedback.image, notes: [], layout: pieces } };
+          document: { id: 'multi-selection', timestampUs: null, image: originalFeedback.image.dataUrl, notes: [], layout: pieces } };
         await editor.locator('#file-input').setInputFiles({ name: 'multi-selection.edithere-web.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
         await editor.locator('#workspace').waitFor({ state: 'visible' });
         await editor.locator('[data-mode="select"]').click();
@@ -499,12 +500,12 @@ async function run() {
       assert(videoFeedback.frames[0].timestampUs >= 400000 && videoFeedback.frames[0].timestampUs <= 600000);
       assert(videoFeedback.frames[1].timestampUs >= 1400000 && videoFeedback.frames[1].timestampUs <= 1600000);
       for (const [i, captured] of [first, second].entries()) {
-        assert.equal(videoFeedback.frames[i].feedback.image, captured.image, 'exported frame must match the paused video pixels');
+        assert.equal(videoFeedback.frames[i].feedback.image.dataUrl, captured.image, 'exported frame must match the paused video pixels');
         if (captured.presented !== null) assert.equal(videoFeedback.frames[i].timestampUs, Math.round(captured.presented * 1000000), 'timestamp must use the presented media frame');
       }
       for (const frame of videoFeedback.frames) {
         assert.equal(frame.timestampMs, Math.floor(frame.timestampUs / 1000));
-        assert.match(frame.feedback.image, /^data:image\/png;base64,/);
+        assert.match(frame.feedback.image.dataUrl, /^data:image\/png;base64,/);
         assert(videoFeedback.objects.some(o => o.frameId === frame.id && o.timestampMs === frame.timestampMs));
       }
       await page.locator('#export').click();
@@ -560,12 +561,12 @@ async function run() {
       assert.equal(exported.schemaVersion, 'feedback-minimal-2');
       assert.equal(exported.tool.name, 'EditHere');
       const legacyObjects=objects=>objects.map(({id,...object})=>({...object,annotations:object.annotations.map(annotation=>annotation.text)}));
-      assert.deepEqual({annotationSpace:exported.annotationSpace,image:exported.image,objects:legacyObjects(exported.objects)}, feedback);
+      assert.deepEqual({annotationSpace:exported.annotationSpace,image:exported.image.dataUrl,objects:legacyObjects(exported.objects)}, feedback);
       const project = await savedProject('overlap-project.json');
       await page.locator('#file-input').setInputFiles(project.filename);
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
       const restored = await readFeedback();
-      assert.deepEqual({annotationSpace:restored.annotationSpace,image:restored.image,objects:legacyObjects(restored.objects)}, feedback);
+      assert.deepEqual({annotationSpace:restored.annotationSpace,image:restored.image.dataUrl,objects:legacyObjects(restored.objects)}, feedback);
     });
     await checkpoint('distributed offline HTML independently reopens, edits and restores a project', async () => {
       assert.equal(await page.locator('#offline').count(), 0);
@@ -762,7 +763,7 @@ async function run() {
             }
             await workspace.locator('#export').click();
             const feedback = await readExportJson(workspace);
-            assert.deepEqual(feedback.objects, []); assert.match(feedback.image, /^data:image\/png;base64,/);
+            assert.deepEqual(feedback.objects, []); assert.equal(feedback.image.mode,'file'); assert.match(feedback.image.sha256,/^[a-f0-9]{64}$/);
             await workspace.locator('[data-close="export-dialog"]').click();
             await workspace.screenshot({ path: path.join(output, `material-${ratio}-${width}x${height}.png`), fullPage: true });
             materialRatioReports.push({ width, height, imageWidth, imageHeight, ratio, ...measured });

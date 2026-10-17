@@ -12,6 +12,7 @@ import {z} from 'zod';
 import sessionModule from '../agent-session.cjs';
 
 const {AgentSessions, MAX_BODY, imageData, defaultSessionDirectory, readSessionStatus} = sessionModule;
+const imageFormat=sessionModule.imageFormat;
 const directory = typeof EDITHERE_MCP_DIR !== 'undefined' ? EDITHERE_MCP_DIR : path.dirname(fileURLToPath(import.meta.url));
 export const UI_URI = 'ui://edithere/annotation.html';
 const sessionIdSchema = z.string().regex(/^[a-f0-9]{32}$/);
@@ -21,7 +22,7 @@ const IMAGE_CHUNK_SIZE = 256 * 1024;
 
 function publicReceipt(status) {
   return {sessionId:status.sessionId, state:status.state, name:status.name, outputPath:status.output, expiresAt:status.expiresAt,
-    ...(status.state === 'completed' ? {completedAt:status.completedAt, sha256:status.sha256, feedback:status.feedback} : {})};
+    ...(status.state === 'completed' ? {completedAt:status.completedAt, sha256:status.sha256, feedback:status.feedback,...(status.imagePath?{imagePath:status.imagePath}:{}),...(status.previewPath?{previewPath:status.previewPath}:{})} : {})};
 }
 function result(value, meta) {
   return {content:[{type:'text', text:JSON.stringify(value)}], structuredContent:value, ...(meta ? {_meta:{edithere:meta}} : {})};
@@ -43,9 +44,9 @@ function imageInput(imagePath) {
   if (!mime) throw new Error('Supported input images: PNG, JPEG, WebP, GIF and BMP.');
   return {inputPath, image:imageData('data:image/' + mime + ';base64,' + fs.readFileSync(inputPath).toString('base64'))};
 }
-function fallback(imagePath, outputPath, name) {
+function fallback(imagePath, outputPath, name,imageMode,preview) {
   return {offlineHtmlPath:path.resolve(directory, '../EditHere.html'), command:process.execPath,
-    args:[path.resolve(directory, '../agent.cjs'), 'start', '--image', imagePath, '--output', outputPath, ...(name ? ['--name', name] : [])],
+    args:[path.resolve(directory, '../agent.cjs'), 'start', '--image', imagePath, '--output', outputPath, ...(name ? ['--name', name] : []),...(imageMode?['--image-mode',imageMode]:[]),...(preview!==undefined?['--preview',String(preview)]:[])],
     instruction:'This host has not advertised MCP Apps support. Use the offline HTML for manual export, or run the compatibility command and open the returned URL. Do not claim the embedded panel opened.'};
 }
 
@@ -60,32 +61,32 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
 
   registerAppTool(server, 'edithere_web_open', {
     title:'Open EditHere', description:'Open a local screenshot in EditHere for the user to annotate and move components. Pass an absolute imagePath and optional unique outputPath, or only a previously returned sessionId to resume its persisted draft/receipt. Wait for user feedback; do not invent edits or repeatedly poll. A host without MCP Apps receives an explicit compatibility fallback.',
-    inputSchema:{imagePath:z.string().optional(), outputPath:z.string().optional(), name:z.string().min(1).max(200).optional(), sessionId:sessionIdSchema.optional()},
+    inputSchema:{imagePath:z.string().optional(), outputPath:z.string().optional(), name:z.string().min(1).max(200).optional(), imageMode:z.enum(['file','embedded','none']).optional(),preview:z.boolean().optional(),sessionId:sessionIdSchema.optional()},
     annotations:{readOnlyHint:false, destructiveHint:false, idempotentHint:false, openWorldHint:false},
     _meta:{ui:{resourceUri:UI_URI, visibility:['model']}}
   }, guarded(async args => {
     const uiSupport = getUiCapability(server.server.getClientCapabilities())?.mimeTypes?.includes(RESOURCE_MIME_TYPE) ? 'supported' : 'unsupported';
     let session;
     if (args.sessionId) {
-      if (args.imagePath !== undefined || args.outputPath !== undefined || args.name !== undefined) throw new Error('To resume, pass only sessionId.');
+      if (args.imagePath !== undefined || args.outputPath !== undefined || args.name !== undefined||args.imageMode!==undefined||args.preview!==undefined) throw new Error('To resume, pass only sessionId.');
       session = sessions.byId(args.sessionId);
     } else {
       const input = imageInput(args.imagePath);
       const outputPath = args.outputPath ?? path.join(path.dirname(input.inputPath), '.edithere', 'feedback-' + crypto.randomUUID() + '.json');
       if (!path.isAbsolute(outputPath)) throw new Error('outputPath must be absolute.');
-      if (uiSupport === 'unsupported') return result({state:'unsupported', uiSupport, fallback:fallback(input.inputPath, path.resolve(outputPath), args.name)});
-      const created = sessions.create({...input, output:outputPath, name:args.name, timeoutSeconds:86400});
+      if (uiSupport === 'unsupported') return result({state:'unsupported', uiSupport, fallback:fallback(input.inputPath, path.resolve(outputPath), args.name,args.imageMode,args.preview)});
+      const created = sessions.create({...input, output:outputPath, name:args.name,imageMode:args.imageMode,preview:args.preview, timeoutSeconds:86400});
       session = sessions.byId(created.sessionId);
     }
     const receipt = publicReceipt(session.state === 'completed' ? readSessionStatus({directory:dataDirectory, sessionId:session.id}) : sessions.status(session));
-    const meta = {sessionId:session.id, token:session.token, name:session.name, state:session.state,
+    const meta = {sessionId:session.id, token:session.token, name:session.name, state:session.state,imageMode:session.imageMode??'file',preview:session.preview??false,outputFileName:path.basename(session.output),
       ...(session.draft ? {draft:session.draft} : {}), ...(session.state === 'completed' ? {receipt} : {})};
     // SDK stdio clients commonly cap one incoming message at 10 MiB. A draft
     // never repeats its immutable image; larger images cross the same official
     // tool bridge in bounded private chunks instead of increasing host limits.
     if (session.image.length < INLINE_IMAGE_LIMIT && Buffer.byteLength(JSON.stringify(meta)) + session.image.length < INLINE_IMAGE_LIMIT) meta.image = session.image;
     else meta.imageInfo = {length:session.image.length};
-    return result({...receipt, uiSupport, ...(uiSupport === 'unsupported' ? {fallback:fallback(session.inputPath, session.output, session.name)} : {})}, meta);
+    return result({...receipt, uiSupport, ...(uiSupport === 'unsupported' ? {fallback:fallback(session.inputPath, session.output, session.name,session.imageMode,session.preview)} : {})}, meta);
   }));
 
   server.registerTool('edithere_web_read', {
@@ -108,13 +109,16 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
     const chunk = session.image.slice(offset, offset + IMAGE_CHUNK_SIZE);
     return {...result({offset, nextOffset:offset + chunk.length, totalLength:session.image.length}), _meta:{edithereImageChunk:chunk}};
   });
-  appTool('edithere_web_submit', 'Save EditHere feedback', {sessionId:sessionIdSchema, token:tokenSchema, feedback:z.unknown()}, async ({sessionId,token,feedback}) => {
+  appTool('edithere_web_submit', 'Save EditHere feedback', {sessionId:sessionIdSchema, token:tokenSchema, feedback:z.unknown(),previewDataUrl:z.string().optional()}, async ({sessionId,token,feedback,previewDataUrl}) => {
     const session = authorized(sessionId, token);
     // The immutable original belongs to the authorized session. Apps upload
     // only changes; callers that explicitly supply another image are rejected
     // by the unchanged strict native validator below.
-    const complete = feedback && typeof feedback === 'object' && !Array.isArray(feedback) && !Object.hasOwn(feedback, 'image') ? {...feedback, image:session.image} : feedback;
-    return result(publicReceipt(sessions.submit(token, complete)));
+    const extension={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(session.image).mimeType];
+    const base=path.basename(session.output,path.extname(session.output)),file=base+'.'+extension;
+    let complete = feedback && typeof feedback === 'object' && !Array.isArray(feedback) && !Object.hasOwn(feedback, 'image') ? {...feedback, image:feedback.schemaVersion==='feedback-minimal-2'?imageFormat.descriptor(session.image,session.imageMode??'file',file,{preview:session.preview?base+'.annotated.jpg':undefined}):session.image} : feedback;
+    if(complete?.image?.mode==='embedded'&&!Object.hasOwn(complete.image,'dataUrl'))complete={...complete,image:{...complete.image,dataUrl:session.image}};
+    return result(publicReceipt(sessions.submit(token, complete,previewDataUrl)));
   });
   appTool('edithere_web_draft', 'Save EditHere draft', {sessionId:sessionIdSchema, token:tokenSchema, project:z.unknown()}, async ({sessionId,token,project}) => {
     const session = authorized(sessionId, token), document = project?.document;

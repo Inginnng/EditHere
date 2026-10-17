@@ -566,7 +566,7 @@ QImage noteRecognitionImage(const Document &doc, const Note &note) {
     area = area.intersected(picture.rect());
     return area.isEmpty() ? QImage() : picture.copy(area);
 }
-QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
+QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &options) {
     validateDocument(doc);
     const auto movements = doc.layout ? layoutMovements(*doc.layout) : QVector<LayoutMovement>{};
     // Build object-oriented structure: each object has source + movements + annotations.
@@ -628,7 +628,7 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool 
             movementArray.append(QJsonObject{{"to", floatingRectJson(dest)}});
         obj.insert("movements", movementArray);
         obj.insert("annotations", e.texts);
-        if (includeRecognizedText && !e.recognizedText["text"].toString().trimmed().isEmpty())
+        if (options.includeRecognizedText && !e.recognizedText["text"].toString().trimmed().isEmpty())
             obj.insert("recognizedText", e.recognizedText);
         objects.append(obj);
     }
@@ -637,30 +637,79 @@ QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool 
                        {"tool", QJsonObject{{"name", "EditHere"}, {"version", EDITHERE_VERSION}}},
                        {"exportedAt", timestamp()},
                        {"annotationSpace", "result"}, {"objects", objects}};
-    if (embed) {
-        validateProjectStorageSize(((qint64(doc.png.size()) + 2) / 3) * 4, doc.png.size());
-        QByteArray encoded=doc.png;
-        QString mime="png";
-        if(compress) {
-            const QImage rgba=doc.image.convertToFormat(QImage::Format_ARGB32);
-            bool opaque=true;
-            for(int y=0;opaque && y<rgba.height();++y) {
-                const auto row=reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
-                for(int x=0;x<rgba.width();++x) if(qAlpha(row[x])!=255) { opaque=false; break; }
-            }
-            if(opaque) {
-                QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
-                if(doc.image.save(&buffer,"JPEG",80) && jpeg.size()<encoded.size()) { encoded=jpeg; mime="jpeg"; }
-            }
+    QByteArray encoded = doc.png;
+    QString mime = "image/png";
+    if (options.mode == ImageExportMode::Embedded && options.compress) {
+        const QImage rgba = doc.image.convertToFormat(QImage::Format_ARGB32);
+        bool opaque = true;
+        for (int y = 0; opaque && y < rgba.height(); ++y) {
+            const auto row = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
+            for (int x = 0; x < rgba.width(); ++x) if (qAlpha(row[x]) != 255) { opaque = false; break; }
         }
-        result.insert("image", "data:image/"+mime+";base64," + QString::fromLatin1(encoded.toBase64()));
+        if (opaque) {
+            QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
+            if (doc.image.save(&buffer, "JPEG", 80) && jpeg.size() < encoded.size()) { encoded = jpeg; mime = "image/jpeg"; }
+        }
     }
+    QJsonObject image{{"mode", options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"},
+                      {"mimeType", mime}, {"width", doc.image.width()}, {"height", doc.image.height()},
+                      {"devicePixelRatio", QJsonValue(QJsonValue::Null)},
+                      {"sha256", QString::fromLatin1(QCryptographicHash::hash(encoded, QCryptographicHash::Sha256).toHex())}};
+    if (options.mode == ImageExportMode::File) {
+        if (!safeFeedbackImageName(options.imageFile) || !options.imageFile.endsWith(".png", Qt::CaseInsensitive))
+            fail(tr("原图必须使用同目录的 PNG 文件名"));
+        image.insert("file", options.imageFile);
+    } else if (options.mode == ImageExportMode::Embedded) {
+        validateProjectStorageSize(((qint64(encoded.size()) + 2) / 3) * 4, encoded.size());
+        image.insert("dataUrl", "data:" + mime + ";base64," + QString::fromLatin1(encoded.toBase64()));
+    }
+    if (options.preview) {
+        const QString name = options.previewFile.isEmpty() ? QFileInfo(options.imageFile).completeBaseName() + ".annotated.jpg" : options.previewFile;
+        if (!safeFeedbackImageName(name, true) || !name.endsWith(".annotated.jpg", Qt::CaseInsensitive))
+            fail(tr("标注示意图必须使用同目录的 .annotated.jpg 文件名"));
+        image.insert("preview", name);
+    }
+    result.insert("image", image);
     return result;
 }
-QByteArray serializeFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
-    auto bytes = QJsonDocument(exportFeedback(doc, embed, compress, includeRecognizedText)).toJson(QJsonDocument::Compact);
+QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
+    FeedbackExportOptions options;
+    options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
+    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    return exportFeedback(doc, options);
+}
+QByteArray serializeFeedback(const Document &doc, const FeedbackExportOptions &options) {
+    auto bytes = QJsonDocument(exportFeedback(doc, options)).toJson(QJsonDocument::Compact);
     validateProjectStorageSize(bytes.size() + 1);
     return bytes + '\n';
+}
+QByteArray serializeFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
+    FeedbackExportOptions options;
+    options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
+    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    return serializeFeedback(doc, options);
+}
+FeedbackBundle buildFeedbackBundle(const Document &doc, const FeedbackExportOptions &options) {
+    FeedbackBundle bundle;
+    const auto feedback = exportFeedback(doc, options);
+    bundle.json = QJsonDocument(feedback).toJson(QJsonDocument::Compact) + '\n';
+    validateProjectStorageSize(bundle.json.size());
+    const auto image = feedback["image"].toObject();
+    if (options.mode == ImageExportMode::File) {
+        bundle.imageFile = image["file"].toString();
+        bundle.files.insert(bundle.imageFile, doc.png);
+    }
+    if (options.preview) {
+        QImage rendered = previewImage(doc);
+        QImage opaque(rendered.size(), QImage::Format_RGB32); opaque.fill(Qt::white);
+        QPainter painter(&opaque); painter.drawImage(0, 0, rendered); painter.end();
+        QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
+        if (!opaque.save(&buffer, "JPEG", options.compress ? 80 : 95)) fail(tr("无法生成标注示意图"));
+        if (jpeg.size() > MaxImageFileBytes) fail(tr("标注示意图不能超过 48 MiB"));
+        bundle.previewFile = image["preview"].toString();
+        bundle.files.insert(bundle.previewFile, jpeg);
+    }
+    return bundle;
 }
 static QJsonObject documentObject(const Document &d, bool embed, bool current) {
     validateDocument(d);
@@ -798,10 +847,10 @@ static void feedbackFields(const QJsonObject &feedback) {
 static QByteArray feedbackPng(const QJsonValue &value) {
     const QString prefix = value.toString().startsWith("data:image/jpeg;base64,") ? "data:image/jpeg;base64," : "data:image/png;base64,";
     if (!value.isString())
-        fail(tr("内嵌图片必须是 PNG 或 JPEG data URL"));
+        fail(tr("内嵌图片必须是支持的图片 data URL"));
     const QString data = value.toString();
     if (!data.startsWith(prefix))
-        fail(tr("内嵌图片必须是 PNG 或 JPEG data URL"));
+        fail(tr("内嵌图片必须是支持的图片 data URL"));
     const qint64 encodedSize = data.size() - prefix.size();
     if (encodedSize <= 0 || encodedSize > ((MaxImageFileBytes + 2) / 3) * 4)
         fail(tr("内嵌原图不能超过 48 MiB"));
@@ -846,20 +895,98 @@ static QImage readFeedbackPng(QByteArray &png) {
         fail(tr("内嵌原图无法读取"));
     return image;
 }
-Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
+static QJsonObject feedbackImageInfo(const QJsonValue &value) {
+    if (!value.isObject()) fail(tr("原图信息必须是对象"));
+    const auto info = value.toObject();
+    const QString mode = info["mode"].toString();
+    QStringList fields{"mode", "mimeType", "width", "height", "devicePixelRatio", "sha256"};
+    if (mode == "file") fields.append("file");
+    else if (mode == "embedded") fields.append("dataUrl");
+    else if (mode != "none") fail(tr("不支持这个原图模式"));
+    if (info.contains("preview")) fields.append("preview");
+    exactKeys(info, fields);
+    const auto mime = info["mimeType"].toString();
+    if (!QStringList{"image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"}.contains(mime)) fail(tr("不支持这个原图类型"));
+    const int width = integer(info["width"]), height = integer(info["height"]);
+    if (width <= 0 || height <= 0 || width > 32767 || height > 32767 || qint64(width) * height > MaxPixels)
+        fail(tr("原图尺寸超出限制"));
+    const auto ratio = info["devicePixelRatio"];
+    if (!ratio.isNull() && (!ratio.isDouble() || !std::isfinite(ratio.toDouble()) || ratio.toDouble() <= 0))
+        fail(tr("原图缩放比例不正确"));
+    static const QRegularExpression hash("^[0-9a-fA-F]{64}$");
+    if (!info["sha256"].isString() || !hash.match(info["sha256"].toString()).hasMatch()) fail(tr("原图校验值格式不正确"));
+    if (mode == "file" && (!info["file"].isString() || !safeFeedbackImageName(info["file"].toString()) ||
+        (mime == "image/jpeg" ? !(info["file"].toString().endsWith(".jpg", Qt::CaseInsensitive) || info["file"].toString().endsWith(".jpeg", Qt::CaseInsensitive))
+          : !info["file"].toString().endsWith("." + mime.mid(6), Qt::CaseInsensitive))))
+        fail(tr("原图必须使用同目录的图片文件名"));
+    if (info.contains("preview") && (!info["preview"].isString() || !safeFeedbackImageName(info["preview"].toString(), true) ||
+        !info["preview"].toString().endsWith(".annotated.jpg", Qt::CaseInsensitive))) fail(tr("标注示意图文件名不正确"));
+    if (mode == "embedded" && !info["dataUrl"].isString()) fail(tr("内嵌图片必须是支持的图片 data URL"));
+    return info;
+}
+static QString feedbackImageMime(const QByteArray &bytes) {
+    if (bytes.startsWith(QByteArray::fromHex("89504e470d0a1a0a"))) return "image/png";
+    if (bytes.startsWith(QByteArray::fromHex("ffd8ff"))) return "image/jpeg";
+    if (bytes.startsWith("RIFF") && bytes.mid(8, 4) == "WEBP") return "image/webp";
+    if (bytes.startsWith("GIF87a") || bytes.startsWith("GIF89a")) return "image/gif";
+    if (bytes.startsWith("BM")) return "image/bmp";
+    fail(tr("不支持这个原图编码"));
+    return {};
+}
+static QImage decodeFeedbackBytes(const QByteArray &bytes) {
+    if (bytes.size() <= 0 || bytes.size() > MaxImageFileBytes) fail(tr("原图不能超过 48 MiB"));
+    feedbackImageMime(bytes);
+    QBuffer buffer; buffer.setData(bytes); buffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&buffer); reader.setAutoTransform(false);
+    const QSize size = reader.size();
+    if (!size.isValid() || size.width() > 32767 || size.height() > 32767 || qint64(size.width()) * size.height() > MaxPixels)
+        fail(tr("原图尺寸超出限制"));
+    const QImage image = reader.read();
+    if (image.isNull() || image.size() != size) fail(tr("无法读取反馈原图"));
+    return image;
+}
+static QByteArray embeddedFeedbackBytes(const QString &dataUrl, const QString &mime) {
+    const QString prefix = "data:" + mime + ";base64,";
+    if (!dataUrl.startsWith(prefix) || dataUrl.size() - prefix.size() > ((MaxImageFileBytes + 2) / 3) * 4)
+        fail(tr("原图 data URL 类型或大小不正确"));
+    const auto encoded = dataUrl.mid(prefix.size()).toLatin1();
+    const auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
+    if (!decoded || decoded.decoded.isEmpty() || decoded.decoded.toBase64() != encoded) fail(tr("原图 Base64 不正确"));
+    return decoded.decoded;
+}
+static void verifyFeedbackImage(const QJsonObject &info, const QByteArray &bytes, const QImage &image) {
+    if (feedbackImageMime(bytes) != info["mimeType"].toString() || bytes.size() > MaxImageFileBytes ||
+        QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()) != info["sha256"].toString().toLower())
+        fail(tr("原图校验不一致，无法保证标注位置"));
+    if (image.size() != QSize(info["width"].toInt(), info["height"].toInt())) fail(tr("原图尺寸与反馈不一致"));
+}
+Document loadFeedback(const QJsonObject &feedback, const QImage &original, const QByteArray &originalBytes) {
     feedbackFields(feedback);
     QImage image = original;
     QByteArray embedded;
     if (feedback.contains("image")) {
-        embedded = feedbackPng(feedback["image"]);
-        image = readFeedbackPng(embedded);
-        if (!original.isNull() &&
-            image.convertToFormat(QImage::Format_ARGB32) != original.convertToFormat(QImage::Format_ARGB32))
+        const auto value = feedback["image"];
+        if (value.isString()) {
+            embedded = feedbackPng(value);
+            image = readFeedbackPng(embedded);
+        } else {
+            const auto info = feedbackImageInfo(value);
+            if (info["mode"] == "embedded") {
+                const QByteArray encoded = embeddedFeedbackBytes(info["dataUrl"].toString(), info["mimeType"].toString());
+                image = decodeFeedbackBytes(encoded);
+                verifyFeedbackImage(info, encoded, image);
+                embedded = info["mimeType"] == "image/png" ? encoded : encodePng(image);
+            } else {
+                if (image.isNull()) fail(tr("此反馈未内嵌原图，请同时提供对应原图"));
+                verifyFeedbackImage(info, originalBytes.isEmpty() ? encodePng(image) : originalBytes, image);
+            }
+        }
+        if (!original.isNull() && image.convertToFormat(QImage::Format_ARGB32) != original.convertToFormat(QImage::Format_ARGB32))
             fail(tr("内嵌原图与提供的图片不一致"));
     }
     auto doc = fromImage(image, "file", tr("设计反馈"));
-    if (!embedded.isEmpty())
-        doc.png = embedded;
+    if (!embedded.isEmpty()) doc.png = embedded;
+    else if (!originalBytes.isEmpty() && originalBytes.startsWith(QByteArray::fromHex("89504e470d0a1a0a"))) doc.png = originalBytes;
     if (feedback.contains("objects")) {
         // Object-oriented format. Each entry describes a source region (or a null
         // source for global feedback) together with its movements and text notes.
@@ -1105,6 +1232,45 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original) {
     validateDocument(doc);
     return doc;
 }
+Document loadFeedbackFile(const QJsonObject &feedback, const QString &jsonPath, const QString &legacyImageName) {
+    feedbackFields(feedback);
+    const QFileInfo jsonFile(jsonPath);
+    const auto value = feedback.value("image");
+    if (value.isObject()) {
+        const auto info = feedbackImageInfo(value);
+        if (info.contains("preview")) {
+            const QFileInfo preview(jsonFile.dir().filePath(info["preview"].toString()));
+            if (!preview.exists() || !preview.isFile() || QFileInfo(preview.canonicalFilePath()).absolutePath() != jsonFile.dir().canonicalPath())
+                fail(tr("请将 JSON 与标注示意图放在同一目录"));
+            QFile file(preview.absoluteFilePath());
+            if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > MaxImageFileBytes) fail(tr("无法读取标注示意图"));
+            const auto bytes = file.readAll();
+            if (feedbackImageMime(bytes) != "image/jpeg") fail(tr("标注示意图必须是 JPEG 图片"));
+            // A preview contains a notes panel and can be larger than the source.
+            decodeFeedbackBytes(bytes);
+        }
+    }
+
+    if (value.isString() || value.isObject() && feedbackImageInfo(value)["mode"] == "embedded")
+        return loadFeedback(feedback, {});
+    const QString filename = value.isObject() && value.toObject()["mode"] == "file" ? value.toObject()["file"].toString()
+        : !legacyImageName.isEmpty() ? legacyImageName : jsonFile.completeBaseName() + ".png";
+    if (!safeFeedbackImageName(filename)) fail(tr("原图文件名不正确"));
+    const QFileInfo source(jsonFile.dir().filePath(filename));
+    const QString directory = jsonFile.dir().canonicalPath();
+    if (!source.exists() || !source.isFile()) fail(tr("请将 JSON 与原图 %1 放在同一目录").arg(filename));
+    if (QFileInfo(source.canonicalFilePath()).absolutePath() != directory)
+        fail(tr("原图不能通过符号链接读取其他目录"));
+    QFile file(source.absoluteFilePath());
+    if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > MaxImageFileBytes) fail(tr("无法读取反馈原图，图片最多 48 MiB"));
+    const QByteArray original = file.readAll();
+    const QImage image = decodeFeedbackBytes(original);
+    const QByteArray normalized = feedbackImageMime(original) == "image/png" ? original : encodePng(image);
+    auto document = loadFeedback(feedback, image, original);
+    document.png = normalized;
+    document.imageFile = QFileInfo(filename).completeBaseName() + ".png";
+    return document;
+}
 Document loadDocument(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
@@ -1132,22 +1298,9 @@ Document loadDocument(const QString &path) {
     if (!root.contains("schemaVersion") || version.startsWith("feedback-") ||
         root.contains("objects") || root.contains("changes")) {
         feedbackFields(root);
-        const QFileInfo jsonFile(path);
-        if (root.contains("image")) {
-            auto document = loadFeedback(root, {});
-            document.imageFile = jsonFile.completeBaseName() + ".png";
-            document.title = jsonFile.completeBaseName();
-            validateDocument(document);
-            return document;
-        }
-        const QString imagePath = jsonFile.dir().filePath(jsonFile.completeBaseName() + ".png");
-        if (!QFileInfo::exists(imagePath))
-            fail(tr("请将 JSON 与同名原图 %1 放在同一目录").arg(QFileInfo(imagePath).fileName()));
-        const auto imageDocument = loadDocument(imagePath);
-        auto document = loadFeedback(root, imageDocument.image);
-        document.png = imageDocument.png;
-        document.imageFile = QFileInfo(imagePath).fileName();
-        document.title = jsonFile.completeBaseName();
+        auto document = loadFeedbackFile(root, path);
+        document.title = QFileInfo(path).completeBaseName();
+        validateDocument(document);
         return document;
     }
     const bool current = version == "3.0.0";

@@ -1,5 +1,6 @@
 #pragma once
 #include "capturesession.h"
+#include "feedbackexport.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QString>
@@ -23,7 +24,9 @@ struct AppSettings {
     bool captureOnStartup = true;
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
-    bool embedOriginal = true;
+    bool embedOriginal = true; // Legacy preference, retained for settings compatibility.
+    ImageExportMode imageExportMode = ImageExportMode::File;
+    bool includeFeedbackPreview = false;
     bool includeRecognizedText = true;
     // Whether closing the annotation window asks about unsaved changes. Turning it off
     // is what the "don't ask again" box on that question does: from then on closing

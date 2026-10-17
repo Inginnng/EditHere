@@ -27,13 +27,13 @@ async function main() {
     await page.locator('#file-input').setInputFiles({ name: 'native-video-feedback.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
     await page.waitForFunction(() => document.body.dataset.busy !== 'true');
   }
-  async function exported() { await page.locator('#export').click(); const value = await readExportJson(page); await page.keyboard.press('Escape'); for(const frame of value.frames)assert.equal(frame.feedback.schemaVersion,'feedback-minimal-2'); return value; }
+  async function exported() { await page.locator('#export').click();await page.locator('#image-mode').selectOption('embedded'); const value = await readExportJson(page); await page.keyboard.press('Escape'); for(const frame of value.frames)assert.equal(frame.feedback.schemaVersion,'feedback-minimal-2'); return value; }
   async function savedProject() { return JSON.parse(await downloadText(page, '#save-project')); }
   const metadata = value => {
     const stable = JSON.parse(JSON.stringify(value)); delete stable.exportedAt;
     const objects=items=>items.map(({id,...object})=>({...object,annotations:object.annotations.map(annotation=>typeof annotation==='string'?annotation:annotation.text)}));
     stable.objects=objects(stable.objects);
-    for(const frame of stable.frames){delete frame.feedback.$schema;delete frame.feedback.schemaVersion;delete frame.feedback.tool;delete frame.feedback.exportedAt;frame.feedback.objects=objects(frame.feedback.objects);}
+    for(const frame of stable.frames){delete frame.feedback.$schema;delete frame.feedback.schemaVersion;delete frame.feedback.tool;delete frame.feedback.exportedAt;frame.feedback.objects=objects(frame.feedback.objects);if(frame.feedback.image?.mode==='embedded')frame.feedback.image=frame.feedback.image.dataUrl;}
     return stable;
   };
   let current = 'load';

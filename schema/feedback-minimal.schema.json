@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "EditHere minimal design feedback",
-  "description": "Coordinates use original-image pixels with a top-left origin. Rectangle x2/y2 are exclusive. The object-oriented format groups each source region with its movements and text annotations; the legacy format stores parallel annotations and changes arrays. Both shapes may carry annotationSpace='result' and an embedded image data URL.",
+  "description": "Compatibility entry point for versioned and older image feedback. Coordinates are image pixels. Versioned images can reference same-directory files, embed data URLs or retain metadata only; old strings and missing images remain readable.",
   "oneOf": [
     {
       "$ref": "#/$defs/objectFormat"
@@ -382,7 +382,14 @@
           }
         },
         "image": {
-          "type": "string"
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/imageDescriptor"
+            }
+          ]
         },
         "$schema": {
           "const": "urn:edithere:feedback-minimal:2"
@@ -467,6 +474,238 @@
           "type": "boolean"
         }
       }
+    },
+    "imageDescriptor": {
+      "description": "Encoded screenshot metadata. file is a same-directory attachment, embedded carries dataUrl, and none has no screenshot bytes. sha256 hashes the exact encoded image bytes. Unknown device pixel ratio is null. preview is an optional same-directory annotated JPEG, never the original image.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "mimeType",
+        "width",
+        "height",
+        "devicePixelRatio",
+        "sha256"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "file",
+            "embedded",
+            "none"
+          ]
+        },
+        "mimeType": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+            "image/bmp"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767
+        },
+        "devicePixelRatio": {
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^(?!\\.)(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|$))[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.(?:[pP][nN][gG]|[jJ][pP][gG]|[jJ][pP][eE][gG]|[wW][eE][bB][pP]|[gG][iI][fF]|[bB][mM][pP])$"
+        },
+        "dataUrl": {
+          "type": "string",
+          "pattern": "^data:image/(png|jpeg|webp|gif|bmp);base64,[A-Za-z0-9+/]+={0,2}$"
+        },
+        "preview": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^(?!\\.)(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|$))[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.[aA][nN][nN][oO][tT][aA][tT][eE][dD]\\.[jJ][pP][gG]$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "file"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "file"
+            ],
+            "not": {
+              "required": [
+                "dataUrl"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "embedded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dataUrl"
+            ],
+            "not": {
+              "required": [
+                "file"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "file"
+                  ]
+                },
+                {
+                  "required": [
+                    "dataUrl"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mimeType": {
+                "const": "image/png"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "file": {
+                "pattern": "\\.(?:[pP][nN][gG])$"
+              },
+              "dataUrl": {
+                "pattern": "^data:image/png;base64,"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mimeType": {
+                "const": "image/jpeg"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "file": {
+                "pattern": "\\.(?:[jJ][pP][gG]|[jJ][pP][eE][gG])$"
+              },
+              "dataUrl": {
+                "pattern": "^data:image/jpeg;base64,"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mimeType": {
+                "const": "image/webp"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "file": {
+                "pattern": "\\.(?:[wW][eE][bB][pP])$"
+              },
+              "dataUrl": {
+                "pattern": "^data:image/webp;base64,"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mimeType": {
+                "const": "image/gif"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "file": {
+                "pattern": "\\.(?:[gG][iI][fF])$"
+              },
+              "dataUrl": {
+                "pattern": "^data:image/gif;base64,"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mimeType": {
+                "const": "image/bmp"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "file": {
+                "pattern": "\\.(?:[bB][mM][pP])$"
+              },
+              "dataUrl": {
+                "pattern": "^data:image/bmp;base64,"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

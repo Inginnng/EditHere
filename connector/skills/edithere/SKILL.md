@@ -77,7 +77,7 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 ## 解读反馈
 
 - 图片反馈的新格式使用 `schemaVersion: "feedback-minimal-2"`，`$schema` 为 `urn:edithere:feedback-minimal:2`，另有 `tool` 和 `exportedAt`。该 URN 是格式标识，无需联网获取；仍接受没有版本字段的旧版反馈，遇到未知显式版本应停止解读并核对版本。
-- `image` 是**调整前**原图的 data URL，不是调整后的预览。缺少 `image` 时需自行关联本次输入原图。
+- `image` 描述调整前原图，默认 `mode:"file"` 指向同目录图片，也可 `embedded` 使用 `dataUrl`，或 `none` 仅保留原图信息。均含 MIME、像素宽高、未知时为 null 的 devicePixelRatio、实际编码字节的 SHA-256；可选 `image.preview` 是带编号的 JPEG。一起保留 file 模式的原图，不将预览图当成原图；旧字符串 image 与缺图时的同名 PNG 继续兼容。
 - `annotationSpace` 固定为 `result`：批注位置对应**调整后**的画面。坐标原点在图像左上角，单位是**图像像素**，独立于窗口位置与缩放——**不能**直接当作屏幕坐标或网页 CSS 像素。
 - 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。
 - **同一批批注不要执行两遍**：`frames[n].feedback.objects` 与根 `objects` 指同一批修改，按帧读取一次即可。
@@ -95,3 +95,5 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 - 高风险操作（删除文件、覆盖已有产物、对外发布）在批注中提到时，先回显将要执行的内容并取得用户确认。
 
 实施后运行与修改相符的验证，并向用户说明反馈如何落实、还有哪些歧义需要确认。
+
+导出默认生成 JSON 与配套原图；`imageMode` 选择 file / embedded / none，`preview:true` 附带编号 JPEG。CLI 用 `--embed-image` / `--no-image` 切换，两者互斥。回执 `imageFile` / `previewFile` 为绝对路径或 null；`includeImage` 只控制 MCP 回复附图，不改变文件导出模式。

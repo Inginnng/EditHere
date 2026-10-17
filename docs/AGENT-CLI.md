@@ -75,7 +75,7 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 | `export <image-video-project-or-feedback> --output <new.json>` | 将已保存项目（含视频项目）、图片或有效反馈 JSON 转为反馈 JSON | 否 |
 | `annotate <image-video-or-project> --output <new.json>` | 打开用户标注会话并等待明确提交 | **是** |
 
-`export` 和 `annotate` 默认包含原图，可加 `--no-image`。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
+`export` 和 `annotate` 默认将原图保存为 JSON 同目录的同名 PNG（`file`）；`--embed-image` 改为内嵌，`--no-image` 改为仅保留原图描述（两者互斥）。`--preview` 另存带编号的 JPEG，三种模式均可使用。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
 
 `open` 与 `annotate` 接受图片（PNG/JPEG/WebP/BMP）、视频（MP4/MOV/WebM 等）和 `.edithere` 项目（含视频项目）。视频在 EditHere 中播放，用户暂停到目标画面后批注；同一个位置在不同时间点的意见分别保留，不会合并。视频项目的 `export` 回执还含帧数 `frames` 与 `schemaVersion`（`video-feedback-1`）。
 
@@ -112,7 +112,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 & $EditHereCli export 'C:\absolute\review.edithere' --output 'C:\absolute\review-feedback.json'
 ```
 
-这一步读取已保存的项目，不会等待新的用户输入。`export` 也能读取 PNG、JPEG、WebP、BMP 图片或有效反馈 JSON；外部图像反馈需要配套同名 PNG。`--no-image` 适用于接收方已经拿到相应原图的场景；把不含图片的反馈作为独立文件重新导入时，需要配套同名原图 PNG。完整 `.edithere` 项目与精简反馈 JSON 是两种格式，不能仅改扩展名代替导出。
+这一步读取已保存的项目，不会等待新的用户输入。`export` 也能读取图片或有效反馈 JSON。默认导出需一起保留 JSON 与同目录原图；`none` 模式重新导入需提供与描述匹配的原图。JSON 和所有配套文件必须尚不存在，失败时不会覆盖原文件。完整 `.edithere` 项目与精简反馈 JSON 是两种格式，不能仅改扩展名代替导出。
 
 ## 响应与错误
 
@@ -121,7 +121,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 `annotate` / `export` 的成功回执如下，`annotations` 是数量，实际批注正文在 `output` 指向的文件中：
 
 ```json
-{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
 ```
 
 `open` / `capture` 的响应带 `accepted: true`，仅表示请求受理；`open` 还会返回绝对路径 `input`。常见失败响应：
@@ -159,7 +159,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 
 | 字段 | 真实含义 |
 | --- | --- |
-| `image` | 调整前原图的 PNG 或 JPEG data URL；可省略，但需要另行提供原图 |
+| `image` | 调整前原图的描述对象，支持 `file` / `embedded` / `none`；见下文 |
 | `annotationSpace` | 固定为 `result`，批注位于调整后的画面 |
 | `objects[].source` | 组件移动对象的原图区域；普通批注对应调整后画面。全局意见为 `null`，点批注是零面积区域（`x1 == x2`、`y1 == y2`） |
 | `objects[].movements` | 按顺序记录这块区域的移动或缩放，`to` 为最终区域 |
@@ -168,6 +168,8 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 | `objects[].recognizedText` | 可选截图文字；`text` 为非空文字（最多 500 字），`engine` 为本机引擎名，`language`、`confidence`（0–1）、`edited` 可省略；本阶段不支持 `lines` |
 | 旧格式 `annotations` | 文字批注，可用 `point`、`rectangle` 定位；只有 `text` 的批注针对整体；`change` 对应 `changes` 的零基索引 |
 | 旧格式 `changes` | 实际位置、尺寸变化；每项 `from` 指原图区域，`to` 指最终区域 |
+
+`image` 现在是原图描述对象：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均包含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 与原图实际编码字节的 `sha256`；不要按解码后像素计算哈希。可选 `image.preview` 指向同目录带编号的 JPEG，它是标注示意图。文件导入校验图片类型、尺寸和哈希，不接受跨目录路径或符号链接。旧字符串 `image` 和缺图时同名 PNG 的约定继续可读。
 
 所有坐标以图像左上角为原点，单位为图像像素，不受编辑窗口位置或查看缩放影响。矩形的右下边界不包含自身，宽高为 `x2-x1` 与 `y2-y1`。批注坐标为整数，变化坐标可含小数。不能把这些值未经换算直接当成网页 CSS 像素或屏幕绝对坐标。
 
@@ -186,11 +188,11 @@ AI 应结合实际页面与源码，将反馈落实为布局、样式或内容�
 | `video.source` | 源视频的路径或地址，只作引用；源文件移走或丢失后，已保存的帧截图与批注仍然可读 |
 | `video.durationMs` | 视频总时长，用于校验每帧时间戳 |
 | `frames[].id` / `frames[].timestampMs` | 该帧的唯一标识与画面时间（另写出微秒口径 `timestampUs`） |
-| `frames[].imageFile` | 与反馈 JSON 同目录的帧截图文件名（`frame-*.png`）；是否内嵌由导出时的 `--no-image` 决定 |
+| `frames[].imageFile` | file 模式下与反馈 JSON 同目录的帧截图（`frame-*.png`），与帧内 `image.file` 一致 |
 | `frames[].feedback` | 该帧的图片反馈，结构与 [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) 一致 |
 | `objects[]` | 同一批对象带上 `frameId` 与 `timestampMs` 的展开索引，可按时间顺序读 |
 
-`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。`--no-image` 省略所有内嵌帧截图，外部 `imageFile` 与批注文字仍然保留；把不含图片的反馈作为独立文件重新导入时，需要帧截图仍在 JSON 同目录。
+`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。每帧使用同一原图模式：默认真实写入帧截图；`--embed-image` 内嵌每帧；`--no-image` 仅保留原图描述，不写原图。`--preview` 为每帧另存编号 JPEG。
 
 项目文件遵循 [video-project-v1.schema.json](../schema/video-project-v1.schema.json)：它保存每个已标注画面的截图与编辑状态，源视频只按地址引用，移动或丢失源视频不影响已保存内容。
 

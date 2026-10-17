@@ -6,6 +6,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const layout = require('../src/layout.js');
 const feedback = require('../src/feedback.js');
+const imageFormat=require('../src/image-format.js'),bundle=require('../src/bundle.js');
+const image=require('./image-fixture.cjs').pngData(200,100);
 const rect = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
 const plain = value => JSON.parse(JSON.stringify(value));
 const legacyObjects = objects => objects.map(({id, ...object}) => ({...object, annotations:object.annotations.map(annotation => typeof annotation === 'string' ? annotation : annotation.text)}));
@@ -32,7 +34,7 @@ function appHarness() {
   }
   const document = { getElementById: element, querySelector: selector => element(selector.replace(/^#/, '')), querySelectorAll: () => [],
     addEventListener() {}, createElement: tag => element('created-' + tag), documentElement: { outerHTML: '', cloneNode:()=>({outerHTML:'',querySelectorAll:()=>[]}) }, body: element('body') };
-  const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, window: { addEventListener() {}, dispatchEvent() {} }, Event:class {}, console,
+  const sandbox = { document, EditHereLayout: layout, EditHereFeedback: feedback, EditHereImage:imageFormat,EditHereBundle:bundle, window: { addEventListener() {}, dispatchEvent() {} }, Event:class {}, console,
     ResizeObserver: class { observe() {} }, setTimeout: () => 0, clearTimeout() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
     // Media decoding is outside these model tests. Preserve fixture dimensions
     // while exercising the actual project metadata restore/validation path.
@@ -42,7 +44,7 @@ function appHarness() {
   const exposure = `
     globalThis.__movementTest = {
       load(value) {
-        doc = makeDoc({ complete: false, naturalWidth: value.width, naturalHeight: value.height }, 'data:image/png;base64,Zml4dHVyZQ==', null, 'movement-fixture');
+        doc = makeDoc({ complete: false, naturalWidth: value.width, naturalHeight: value.height }, ${JSON.stringify(image)}, null, 'movement-fixture');
         doc.layout = clone(value); session = { kind: 'image', name: 'fixture.png', width: value.width, height: value.height, document: doc };
         selected = null;
       },
@@ -67,20 +69,20 @@ function appHarness() {
       serialized() { return serializedDoc(doc); },
       async restore(value) { const restored = await restoredDoc(value, session.width, session.height, false); doc = restored; session.document = doc; chooseGroup(null); },
       async importFeedback(value) {
-        const restored = await docFromFeedback(value); doc = restored.doc;
+        const restored = await docFromFeedback({...value,image:typeof value.image==='object'?I.descriptor(${JSON.stringify(image)},'embedded'):value.image}); doc = restored.doc;
         session = { kind: 'image', name: 'native-feedback.png', width: restored.width, height: restored.height, document: doc };
         chooseGroup(null);
       },
-      async restoreAgentFeedback(value) { await globalThis.EditHereWeb.loadAgentFeedback({image:value.image,name:'saved-feedback',feedback:value}); },
+      async restoreAgentFeedback(value) { await globalThis.EditHereWeb.loadAgentFeedback({image:typeof value.image==='string'?value.image:value.image.dataUrl||${JSON.stringify(image)},name:'saved-feedback',feedback:value}); },
       rawFeedback() { return feedback(); },
-      feedback() { return exportDoc(doc, false); }
+      feedback() { return F.exportImage(feedbackDocument(doc,'none'),'none'); }
     };
   `;
   assert.match(production, /\}\)\(\);\s*$/, 'app IIFE must have an identifiable end');
   vm.runInContext(production.replace(/\}\)\(\);\s*$/, exposure + '\n})();'), sandbox, { filename: 'app.js' });
   const actual = sandbox.__movementTest;
   return { ...actual, state: () => plain(actual.state()), rawFeedback: () => plain(actual.rawFeedback()), feedback: () => {
-    const {$schema, schemaVersion, tool, exportedAt, ...value} = plain(actual.feedback());
+    const {$schema, schemaVersion, tool, exportedAt, image:descriptor, ...value} = plain(actual.feedback());
     return {...value, objects:legacyObjects(value.objects)}; // Geometry fixtures compare content; numbered exports are covered directly below.
   }, noteBounds: id => plain(actual.noteBounds(id)), serialized: () => plain(actual.serialized()) };
 }
@@ -107,7 +109,7 @@ test('native nested parent and child feedback imports and reexports the same ori
     { source: rect(10, 10, 90, 90), movements: [{ to: rect(100, 10, 180, 90) }], annotations: ['整体移到右侧'] },
     { source: rect(10, 10, 50, 90), movements: [{ to: rect(20, 10, 60, 90) }], annotations: ['左边子组件单独调整'] }
   ];
-  await app.importFeedback({ annotationSpace: 'result', image: 'data:image/png;base64,Zml4dHVyZQ==', objects });
+  await app.importFeedback({ annotationSpace: 'result', image: image, objects });
   assert.deepEqual(app.feedback(), { annotationSpace: 'result', objects });
   const state = app.state();
   assert.deepEqual(state.markers.map(marker => ({ source: marker.source, destination: marker.destination })), objects.map(object => ({ source: object.source, destination: object.movements[0].to })));
@@ -118,13 +120,13 @@ test('native nested parent and child feedback imports and reexports the same ori
 test('the editor imports versioned and legacy image feedback and rejects unknown versions before replacing work', async () => {
   const app = appHarness();
   const source = rect(10, 10, 40, 30), destination = rect(50, 10, 80, 30);
-  const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', movements:[{source,destination}], notes:[{source,movementSource:source,text:'保留位移'}]});
-  await app.importFeedback(current);
+  const current = feedback.exportImage({image, movements:[{source,destination}], notes:[{source,movementSource:source,text:'保留位移'}]});
+  await app.importFeedback({...current,image:imageFormat.descriptor(image,'embedded')});
   assert.deepEqual(app.feedback().objects, legacyObjects(current.objects));
   const before = app.state();
   await assert.rejects(app.importFeedback({...current,schemaVersion:'feedback-minimal-99'}), /version/);
   assert.deepEqual(app.state(), before);
-  await app.importFeedback({annotationSpace:'result',image:current.image,changes:[{from:source,to:destination}],annotations:[{change:0,text:'旧移动'},{point:{x:1,y:2},text:'旧点'}]});
+  await app.importFeedback({annotationSpace:'result',image,changes:[{from:source,to:destination}],annotations:[{change:0,text:'旧移动'},{point:{x:1,y:2},text:'旧点'}]});
   assert.deepEqual(app.feedback().objects, [
     {source,movements:[{to:destination}],annotations:['旧移动']},
     {source:rect(1,2,1,2),movements:[],annotations:['旧点']}
@@ -133,17 +135,17 @@ test('the editor imports versioned and legacy image feedback and rejects unknown
 
 test('reopening saved Agent feedback preserves its original export metadata in a manual backup', async () => {
   const app = appHarness();
-  const current = feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==', toolVersion:'0.10.0',movements:[],notes:[{source:null,text:'已保存'}]}, true, '2026-10-15T09:30:00+08:00');
+  const current = feedback.exportImage({image, toolVersion:'0.10.0',movements:[],notes:[{source:null,text:'已保存'}]}, true, '2026-10-15T09:30:00+08:00');
   await app.restoreAgentFeedback(current);
-  assert.deepEqual(app.rawFeedback(), current);
+  assert.deepEqual({...app.rawFeedback(),image:null},{...current,image:null});
   current.objects[0].id='saved-object';current.objects[0].annotations[0].number=7;
   await app.restoreAgentFeedback(current);
-  assert.deepEqual(app.rawFeedback(),current,'a completed backup keeps sparse numbers and file IDs exactly as saved');
+  assert.deepEqual({...app.rawFeedback(),image:null},{...current,image:null},'a completed backup keeps sparse numbers and file IDs exactly as saved');
 });
 
 test('numbered feedback restores note order before project saving and reexporting', async () => {
   const app=appHarness(),source=rect(10,10,40,30),destination=rect(50,10,80,30);
-  const current=feedback.exportImage({image:'data:image/png;base64,Zml4dHVyZQ==',notes:[],movements:[]});
+  const current=feedback.exportImage({image,notes:[],movements:[]});
   current.objects=[
     {id:'movement',source,movements:[{to:destination}],annotations:[{number:7,text:'移动在后'}]},
     {id:'global',source:null,movements:[],annotations:[{number:1,text:'全局在前'}]},
