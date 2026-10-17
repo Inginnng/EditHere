@@ -1,3 +1,4 @@
+#include "feedback_test_helpers.h"
 #include "layout.h"
 #include "model.h"
 #include <QDir>
@@ -607,26 +608,31 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "objects"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
         QCOMPARE(objects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({50, 50, 90, 60})}}}},
                               {"annotations", QJsonArray{}}}));
         // 点批注：(20,20) 处的 "加大标题"，源区域为零尺寸。
         QCOMPARE(objects[1].toObject(),
-                 (QJsonObject{{"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
+                 (QJsonObject{{"id", "o2"}, {"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
                               {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"加大标题"}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", "加大标题"}}}}}));
         // 矩形批注：(10,10,60x40) 处的 "表格右移"。
         QCOMPARE(objects[2].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o3"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"表格右移"}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 2}, {"text", "表格右移"}}}}}));
         const auto compact = serializeFeedback(document);
-        QVERIFY(compact.size() < 350);
+        auto payload = feedback;
+        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+            payload.remove(field);
+        const auto payloadBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        QVERIFY(payloadBytes.size() < 450); // IDs and two numbered notes add less than 100 bytes.
+        QVERIFY(compact.size() - payloadBytes.size() < 250); // Metadata stays bounded too.
         const auto path = directory.filePath("feedback-minimal.json");
         saveBytes(path, compact);
         QVERIFY_EXCEPTION_THROWN(loadDocument(path),
@@ -634,15 +640,16 @@ class LayoutTests : public QObject {
         saveBytes(directory.filePath("feedback-minimal.png"), document.png);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            // The tag is optional on import, so the sample that drops it cannot be validated
-            // against the schema that requires it; it is published as feedback-notag.json.
+            // Unversioned feedback also imports without the optional coordinate tag.
             auto notag = feedback;
+            for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+                notag.remove(field);
             notag.remove("annotationSpace");
             saveBytes(QDir(folder).filePath("feedback-notag.json"),
                       QJsonDocument(notag).toJson(QJsonDocument::Compact));
@@ -706,7 +713,7 @@ class LayoutTests : public QObject {
         QVERIFY(restored.layout.has_value());
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
     }
     void feedbackKeepsDistinctFractionalSourceRegions() {
         auto document = fromImage(sourceImage(), "demo", "fractional source regions");
@@ -740,7 +747,7 @@ class LayoutTests : public QObject {
         const auto restored = loadFeedback(feedback, image);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(restored.layout->groups.size(), MaxLayoutGroups);
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(original.image, *original.layout));
         QVERIFY(importLayout(exportLayout(*restored.layout), image.size()) == *restored.layout);
@@ -780,7 +787,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "这里加大文字";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document, true);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "image", "objects"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
         QCOMPARE(feedback["objects"].toArray().size(), 3);
         QCOMPARE(feedback["image"],
@@ -791,7 +798,7 @@ class LayoutTests : public QObject {
         const auto restored = loadDocument(path);
         QCOMPARE(restored.png, document.png);
         QCOMPARE(restored.image, document.image);
-        QCOMPARE(exportFeedback(restored, true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored, true)), stableFeedback(feedback));
         QVERIFY(restored.layout.has_value());
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
@@ -856,11 +863,11 @@ class LayoutTests : public QObject {
         const auto feedbackObjects = feedback["objects"].toArray();
         QCOMPARE(feedbackObjects.size(), 3);
         QCOMPARE(feedbackObjects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 30, 20})},
+                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 30, 20})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({90, 70, 30, 20})}}}},
-                              {"annotations", QJsonArray{movement.comment}}}));
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", movement.comment}}}}}));
         QCOMPARE(feedbackObjects[1].toObject()["source"], QJsonValue(QJsonValue::Null));
-        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toString(), global.comment);
+        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
         QCOMPARE(imported.notes[0].rect, movement.rect);
@@ -873,7 +880,7 @@ class LayoutTests : public QObject {
         QCOMPARE(restored.notes, doc.notes);
         QCOMPARE(restored.layout, doc.layout);
         QCOMPARE(restored.image, doc.image);
-        QCOMPARE(exportFeedback(restored), exportFeedback(doc));
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(exportFeedback(doc)));
         // Notes added in transparent holes must survive without a lossy reverse mapping.
         QCOMPARE(restored.notes[2].point, inHole.point);
         auto movedAgain = *doc.layout;
@@ -918,6 +925,8 @@ class LayoutTests : public QObject {
         rectangle.comment = "旧矩形";
         document.notes = {point, rectangle};
         auto legacy = exportFeedback(document);
+        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+            legacy.remove(field);
         legacy.remove("annotationSpace");
         auto restored = loadFeedback(legacy, document.image);
         QCOMPARE(restored.notes[0].point, QPoint(100, 80));
@@ -933,7 +942,7 @@ class LayoutTests : public QObject {
         const auto fullRestored = loadDocument(path);
         QCOMPARE(fullRestored.notes, restored.notes);
         QCOMPARE(fullRestored.image, document.image);
-        QCOMPARE(exportFeedback(fullRestored), exportFeedback(restored));
+        QCOMPARE(stableFeedback(exportFeedback(fullRestored)), stableFeedback(exportFeedback(restored)));
 
         Note inHole;
         inHole.point = {20, 20};

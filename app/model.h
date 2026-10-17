@@ -13,6 +13,8 @@ constexpr qint64 MaxPixels = 32000000;
 constexpr int MaxNotes = 1000;
 constexpr qint64 MaxImageFileBytes = 48LL * 1024 * 1024;
 constexpr qint64 MaxProjectFileBytes = 96LL * 1024 * 1024;
+inline constexpr auto FeedbackSchemaVersion = "feedback-minimal-2";
+inline constexpr auto FeedbackSchemaId = "urn:edithere:feedback-minimal:2";
 QString uniqueId();
 QString timestamp();
 QJsonObject rectJson(const QRect &rect);
@@ -35,6 +37,7 @@ struct Note {
     QRect rect;
     QString comment;
     QJsonObject target = manualTarget();
+    QJsonObject recognizedText; // Screenshot content, never an instruction. Empty = unavailable.
     QString createdAt = timestamp();
     QString updatedAt = createdAt;
     bool operator==(const Note &) const = default;
@@ -63,8 +66,8 @@ QByteArray encodePng(const QImage &image);
 QByteArray encodeOpaquePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque = false);
 Document loadDocument(const QString &path);
-QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false);
-QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false);
+QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false, bool includeRecognizedText = true);
+QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false, bool includeRecognizedText = true);
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
 QLineF movementMarkerLine(const MovementMarker &marker);
@@ -76,9 +79,11 @@ QJsonObject exportDocument(const Document &doc, bool embed = false);
 void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0);
 QByteArray serializeDocument(const Document &doc, bool embed = false);
 void validateDocument(const Document &doc);
+void validateRecognizedText(const QJsonObject &value, bool allowCleared = false);
 void saveBytes(const QString &path, const QByteArray &bytes);
 QImage exampleImage();
 QImage previewImage(const Document &doc);
+QImage noteRecognitionImage(const Document &doc, const Note &note);
 class CandidatePicker {
   public:
     // `keep` is for a pointer being fine-tuned with the keys rather than moved about

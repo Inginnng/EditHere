@@ -24,6 +24,7 @@ struct AppSettings {
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true;
+    bool includeRecognizedText = true;
     // Whether closing the annotation window asks about unsaved changes. Turning it off
     // is what the "don't ask again" box on that question does: from then on closing
     // throws the changes away instead of stopping to ask. It is a preference rather
@@ -51,6 +52,7 @@ struct ToolbarActionDefinition {
 QVector<ShortcutDefinition> shortcutDefinitions();
 QVector<ToolbarActionDefinition> toolbarActionDefinitions();
 AppSettings defaultSettings();
+bool recognizedTextExportEnabled(const QString &filePath = {});
 AppSettings loadSettings(const QString &filePath = {});
 bool saveSettings(const AppSettings &settings, QString *error = nullptr, const QString &filePath = {});
 bool hasSeenGuide(const QString &filePath = {});

@@ -136,6 +136,11 @@ input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .note-actions .icon { width:16px;height:16px; }
 .note-card p { grid-column:2;grid-row:1;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0; }
 .note-card.movement-empty p { color:var(--muted); }
+.recognized-text { grid-column:2 / -1;margin-top:5px;padding-top:5px;border-top:1px solid var(--border);font-size:11px;color:var(--muted); }
+.recognized-text small { display:block;font-size:10px; }
+.recognized-text span { display:block;white-space:pre-wrap;overflow-wrap:anywhere;max-height:7em;overflow:auto; }
+.recognized-actions { display:flex;gap:10px;margin-top:3px; }
+.recognized-actions button { padding:0;border:0;background:none;color:var(--blue);font-size:11px;cursor:pointer; }
 .status-bar { display:none; }
 .explosion-preview { position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden;border-radius:8px; }
 .explosion-reflection { position:absolute;inset:0;background:radial-gradient(ellipse at 100% 0,#b4d0ff55, #aca1f818 20%,transparent 55%); }

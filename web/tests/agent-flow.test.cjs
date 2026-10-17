@@ -49,7 +49,8 @@ async function main() {
     assert.equal(await page.locator('#offline').count(),0);
     assert.equal(await page.locator('#actual-size').count(),0);
     const backup=JSON.parse(await downloadText(page,'#save-json'));
-    assert.deepEqual(backup,{annotationSpace:'result',image:original,objects:[]},'manual JSON backup preserves the immutable original without submitting the session');
+    assert.equal(backup.schemaVersion,'feedback-minimal-2');assert.equal(backup.tool.name,'EditHere');
+    assert.deepEqual({annotationSpace:backup.annotationSpace,image:backup.image,objects:backup.objects},{annotationSpace:'result',image:original,objects:[]},'manual JSON backup preserves the immutable original without submitting the session');
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('manual JSON backup retains the complete original and never submits feedback');
     if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
@@ -71,7 +72,7 @@ async function main() {
     await page.locator('[data-mode="point"]').click();const pin=await at(page,dims.width*.2,dims.height*.25);await page.mouse.click(pin.x,pin.y);await note(page,'链路测试：点批注保留原图像素坐标');
     results.push('global, movement-arrow text and point annotations survive compact UI editing');
     const expected=await page.evaluate(()=>EditHereWeb.feedback());
-    const movement=expected.objects.find(o=>o.annotations.includes('链路测试：位移箭头文字与原生 movement 一起返回'));
+    const movement=expected.objects.find(o=>o.annotations.some(annotation => annotation.text === '链路测试：位移箭头文字与原生 movement 一起返回'));
     assert(movement);assert.equal(movement.movements[0].to.x1-movement.source.x1,30);assert.equal(movement.movements[0].to.y1-movement.source.y1,10);
     assert.deepEqual(movement.source,{x1:before.gx,y1:before.gy,x2:before.gx+before.gw,y2:before.gy+before.gh});
     assert(expected.objects.some(o=>o.source===null));assert(expected.objects.some(o=>o.source&&o.source.x1===o.source.x2&&o.source.y1===o.source.y2));
@@ -79,7 +80,8 @@ async function main() {
     await page.route('**/__edithere_agent/feedback?*',async route=>{if(loseResponse){loseResponse=false;await route.fetch();await route.abort('failed');}else await route.continue();});
     await page.locator('#export').click();
     const receipt=await wait;assert.equal(receipt.state,'completed');
-    assert.deepEqual(receipt.feedback,{annotationSpace:'result',objects:expected.objects});
+    const {image:expectedImage,...expectedReceipt}=expected;
+    assert.deepEqual(receipt.feedback,expectedReceipt);
     assert(!Object.hasOwn(receipt.feedback,'image'),'the conversation receipt must not dump base64');
     const saved=fs.readFileSync(file);assert.equal(hash(saved),receipt.sha256);assert.deepEqual(JSON.parse(saved),expected);
     await page.waitForFunction(()=>!document.querySelector('#export').disabled);
@@ -107,7 +109,7 @@ async function main() {
     await third.locator('#global').click();await note(third,'链路测试：Agent 取消后保留编辑，仍可手工导出');
     await command('cancel','--session',remote.sessionId);await third.locator('#export').click();await third.waitForFunction(()=>document.body.dataset.agentState==='cancelled');
     assert.equal(await third.locator('#workspace').evaluate(el=>el.inert),false);assert(!fs.existsSync(remoteFile));
-    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0],'链路测试：Agent 取消后保留编辑，仍可手工导出');
+    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0].text,'链路测试：Agent 取消后保留编辑，仍可手工导出');
     results.push('an externally cancelled session restores editable local export instead of freezing the workspace');
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:results.length,results,sessionId:session.sessionId,output:file,sha256:receipt.sha256,feedback:receipt.feedback},null,2));
