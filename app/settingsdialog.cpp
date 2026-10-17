@@ -176,6 +176,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     imageExportMode_->addItem(QString(), int(ImageExportMode::None));
     includeFeedbackPreview_ = new QCheckBox(defaults);
     includeFeedbackPreview_->setObjectName("defaultFeedbackPreview");
+    includeWindowTitle_ = new QCheckBox(defaults);
+    includeWindowTitle_->setObjectName("includeWindowTitle");
     includeRecognizedText_ = new QCheckBox(defaults);
     includeRecognizedText_->setObjectName("includeRecognizedText");
     confirmBeforeDiscard_ = new QCheckBox(defaults);
@@ -194,6 +196,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     defaultsLayout->addWidget(imageExportMode_);
     defaultsLayout->addWidget(includeFeedbackPreview_);
     defaultsLayout->addWidget(includeRecognizedText_);
+    defaultsLayout->addWidget(includeWindowTitle_);
     defaultsLayout->addWidget(confirmBeforeDiscard_);
     auto feedbackRow = new QHBoxLayout;
     feedbackDir_ = new QLineEdit(defaults);
@@ -488,6 +491,8 @@ void SettingsDialog::retranslate() {
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
     fitImageOnOpen_->setToolTip(tr("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。"));
+    includeWindowTitle_->setText(tr("导出时附带窗口标题"));
+    includeWindowTitle_->setToolTip(tr("关闭后反馈 JSON 不包含窗口标题，应用名称与页面描述仍会保留。"));
     includeRecognizedText_->setText(tr("导出时附带区域文字"));
     includeRecognizedText_->setToolTip(tr("自动在本机识别批注区域文字。关闭后导出 JSON 不包含识别文字，项目仍保留结果。"));
     imageExportMode_->setItemText(0, tr("原图：随文件保存"));
@@ -631,6 +636,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     imageExportMode_->setCurrentIndex(imageExportMode_->findData(int(settings.imageExportMode)));
     includeFeedbackPreview_->setChecked(settings.includeFeedbackPreview);
     includeRecognizedText_->setChecked(settings.includeRecognizedText);
+    includeWindowTitle_->setChecked(settings.includeWindowTitle);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
     feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
@@ -649,6 +655,7 @@ AppSettings SettingsDialog::settings() const {
     result.embedOriginal = legacyEmbedOriginal_;
     result.includeFeedbackPreview = includeFeedbackPreview_->isChecked();
     result.includeRecognizedText = includeRecognizedText_->isChecked();
+    result.includeWindowTitle = includeWindowTitle_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());

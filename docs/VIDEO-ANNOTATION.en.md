@@ -123,3 +123,7 @@ The independent acceptance also extracted the five frames around each `timestamp
 Both exact-PTS candidates have the lowest whole-frame error in their respective five-frame windows; the three annotated regions all reach their lowest error at `(0,0)` in the `±2px` shift comparison. The images differ slightly in colour values, so this comparison proves the time and position correspondence; it does not claim that a decoded source-video screenshot is pixel-for-pixel identical to the exported PNG.
 
 Detailed evidence is in [the independent AI acceptance report](../artifacts/video-independent-reader/report.md) and [the per-object localisation and PTS comparison result](../artifacts/video-independent-reader/result.json), which keep the SHA-256 of the source/asset versions, the extracted-frame record and the comparison values. The SHA-256 of the independent report's input JSON matches the real export file.
+
+## Page context
+
+When opening a video or video project, an Agent can supply `--page-context "Game homepage"` (pageContext in the connector). It appears in the editor separately from the title. Root capture supplies new-frame defaults and each frame retains its own capture in feedback and projects across reopening and export. Disabling window-title export filters windowTitle at the video root and within every frame while projects retain it; page/appName remain. Older videos without capture still import. No image-recognition service is called.

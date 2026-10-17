@@ -25,6 +25,7 @@
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
+| REG-184 | 精简反馈缺少页面来源；新增 capture 与 AI 页面说明后需避免标题覆盖、工程/视频/恢复丢失及隐私开关漏过滤，截图窗口信息必须来自抓取快照 | native core/layout/ui/agent-cli/settings/video-project；Windows 独立窗口快照；connector 参数/摘要/校验；Web capture/session/recovery/MCP 与浏览器；真实导出 Schema | ✅ |
 | REG-183 | 内嵌原图导致 JSON 体积大，缺图反馈依赖隐含文件名且无法验证图片；新增三模式与编码字节哈希，按完整 bundle 发布，预览使用编号 JPEG | native core / agent-cli / video-project / ui，connector 图片篡改与路径校验，Web bundle、session 与导入测试；validate-exports 校验实际三模式和附件 | ✅ |
 
 J04 回归：移动对象先归组，不能改变批注原有编号。原生 `core` 与 Web feedback / browser 测试验证交错的全局、点和移动批注；连接器拒绝重复 ID 或编号，同时保留旧字符串批注兼容。

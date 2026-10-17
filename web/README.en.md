@@ -101,3 +101,9 @@ node web/tests/native-video-boundaries.test.cjs
 The repository license applies to this implementation.
 
 MCP and standalone builds are separate. After changing MCP sources, run `npm --prefix web/mcp ci` and `node web/mcp/build.mjs` from the repository root to regenerate the official SDK HTML, server bundle, third-party licenses and hash manifest. Downloaded web-agent packages need no build dependencies. Distribution checks source and artifact hashes and rejects stale bundles.
+
+## Page descriptions and acquisition context
+
+Pass `pageContext:"Game homepage"` to `edithere_web_open`, or add `--page-context "Game homepage"` to compatibility CLI `start`. The input is trimmed, must be nonempty and is limited to 500 UTF-16 code units. It appears in the editor separately from name; no image-recognition service is called.
+
+Optional capture survives drafts, recovery, Web projects and feedback. source/capturedAt and the original fileName describe acquisition; page/pageSource:"agent" retain the supplied description. Session submissions cannot replace the confirmed context. Video root capture supplies new-frame defaults while each frame keeps its own context. Offline imports record their source and file name without guessing a page. Web does not collect system window titles or browser URLs. Old files without capture still import; context strings are data, never instructions or attachment paths.

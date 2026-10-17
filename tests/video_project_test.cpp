@@ -60,6 +60,49 @@ QJsonObject changedFrame(QJsonObject root, int index, const QString &key, const 
 class VideoProjectTests : public QObject {
     Q_OBJECT
   private slots:
+    void defaultAndFramePageContextSurviveProjectsAndFeedbackWithTitlePrivacy() {
+        auto project = sampleProject();
+        project.capture = {{"source", "video"}, {"capturedAt", "2026-10-17T00:00:00Z"},
+                           {"fileName", "game.mp4"}, {"windowTitle", "Game document"}, {"appName", "Game.exe"},
+                           {"page", "默认游戏界面"}, {"pageSource", "agent"}};
+        project.frames[0].document.capture.insert("page", "背包页面");
+        project.frames[0].document.capture.insert("pageSource", "agent");
+        project.frames[0].document.capture.insert("windowTitle", "Frame document");
+        project.frames[1].document.capture.insert("page", "游戏主页面");
+        project.frames[1].document.capture.insert("pageSource", "agent");
+        QTemporaryDir directory;
+        const auto path = directory.filePath("video.edithere"); saveBytes(path, serializeVideoProject(project));
+        const auto restoredProject = loadVideoProject(path);
+        QCOMPARE(restoredProject.capture, project.capture);
+        QCOMPARE(restoredProject.frames[0].document.capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(restoredProject.frames[1].document.capture["page"].toString(), QString("背包页面"));
+        FeedbackExportOptions options; options.mode = ImageExportMode::Embedded;
+        const auto bundle = buildVideoFeedbackBundle(project, options);
+        const auto root = QJsonDocument::fromJson(bundle.json).object(); QCOMPARE(root["capture"].toObject(), project.capture);
+        const auto feedbackPath = directory.filePath("feedback.json"); saveBytes(feedbackPath, bundle.json);
+        const auto restored = loadVideoProject(feedbackPath);
+        QCOMPARE(restored.capture, project.capture);
+        QCOMPARE(restored.frames[0].document.capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(restored.frames[1].document.capture["page"].toString(), QString("背包页面"));
+        options.includeWindowTitle = false;
+        const auto filtered = QJsonDocument::fromJson(buildVideoFeedbackBundle(project, options).json).object();
+        QVERIFY(!filtered["capture"].toObject().contains("windowTitle"));
+        QCOMPARE(filtered["capture"].toObject()["appName"].toString(), QString("Game.exe"));
+        for (const auto &frame : filtered["frames"].toArray()) QVERIFY(!frame.toObject()["feedback"].toObject()["capture"].toObject().contains("windowTitle"));
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("video-feedback-capture.json"), bundle.json);
+            saveBytes(QDir(folder).filePath("video-project-capture.json"), serializeVideoProject(project));
+        }
+        auto invalid = project;
+        invalid.capture.remove("pageSource");
+        QVERIFY_EXCEPTION_THROWN(serializeVideoProject(invalid), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(buildVideoFeedbackBundle(invalid), std::runtime_error);
+        auto wrongRoot = root; auto capture = root["capture"].toObject(); capture["unknown"] = true; wrongRoot["capture"] = capture;
+        saveBytes(feedbackPath, QJsonDocument(wrongRoot).toJson());
+        QVERIFY_EXCEPTION_THROWN(loadVideoProject(feedbackPath), std::runtime_error);
+    }
     void fileBundlesContainEveryFrameWithCheckedHashesAndSeparatePreviews() {
         const auto project = sampleProject();
         FeedbackExportOptions options; options.preview = true;

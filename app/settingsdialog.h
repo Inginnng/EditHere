@@ -47,7 +47,7 @@ class SettingsDialog final : public QDialog {
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.
     LanguageMode appliedLanguage_ = LanguageMode::System;
-    QCheckBox *includeRecognizedText_, *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *includeFeedbackPreview_,
+    QCheckBox *includeRecognizedText_, *includeWindowTitle_, *captureOnStartup_, *launchAtLogin_, *fitImageOnOpen_, *includeFeedbackPreview_,
         *confirmBeforeDiscard_, *checkUpdatesOnStartup_, *scrollAutoCrop_, *scrollUltraLong_;
     bool legacyEmbedOriginal_ = true;
     QComboBox *imageExportMode_;

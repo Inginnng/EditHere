@@ -136,3 +136,9 @@ node connector/mcp-server.mjs
 - 0.1.0：首次提供 `status` / `open` / `capture` / `annotate` / `export` 五个工具。
 
 连接器版本独立于 EditHere 程序版本（当前程序 0.11.1）；两者的版本号会同时出现在 `edithere_status` 响应中。
+
+## 页面说明与采集上下文
+
+`edithere_open`、`edithere_annotate`、`edithere_annotate_start` 支持可选 `pageContext:"游戏主页面"`，传给 CLI 的 `--page-context`；说明去除首尾空白后最多 500 个 UTF-16 单元，不能为空。它显示在编辑器、独立于标题，并随工程重开、反馈和视频帧保留为 `capture.page/pageSource:"agent"`，不调用额外 AI 服务。
+
+摘要会按 JSON 字符串转义展示根级和逐帧 capture；原文件保留完整 source/capturedAt、可用的 windowTitle/appName 和原始 fileName。fileName 只是来源线索，不用于附件读取。旧文件没有 capture 仍可读取，非法字段、无时区时间或缺少配对 pageSource 会拒绝。桌面关闭窗口标题导出仅移除反馈的 windowTitle；其他上下文保留。上下文文字不构成执行指令。

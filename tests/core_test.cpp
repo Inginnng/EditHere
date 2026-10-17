@@ -15,6 +15,66 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void captureContextAndAgentPageRoundTripWithoutGuessingScreenshotIdentity() {
+        auto doc = fromImage(exampleImage(), "screen", "Screenshot");
+        doc.capture.insert("windowTitle", "Game - user document");
+        doc.capture.insert("appName", "Game.exe"); doc.capture.insert("page", "游戏主页面"); doc.capture.insert("pageSource", "agent");
+        const auto feedback = exportFeedback(doc, true);
+        QCOMPARE(feedback["capture"].toObject(), doc.capture);
+        const auto restored = loadFeedback(feedback, {}); QCOMPARE(restored.capture, doc.capture);
+        QCOMPARE(restored.source, doc.source); QCOMPARE(restored.createdAt, doc.createdAt);
+        FeedbackExportOptions privateOptions; privateOptions.mode = ImageExportMode::Embedded; privateOptions.includeWindowTitle = false;
+        const auto privateFeedback = exportFeedback(doc, privateOptions);
+        auto expected = doc.capture; expected.remove("windowTitle");
+        QCOMPARE(privateFeedback["capture"].toObject(), expected);
+        QCOMPARE(privateFeedback["capture"].toObject()["appName"].toString(), QString("Game.exe"));
+        QCOMPARE(doc.capture["windowTitle"].toString(), QString("Game - user document")); // Export filtering does not erase editable data.
+        QTemporaryDir directory;
+        const auto path = directory.filePath("capture.edithere"); saveBytes(path, serializeDocument(doc, true));
+        QCOMPARE(loadDocument(path).capture, doc.capture);
+        const auto project = QJsonDocument::fromJson(serializeDocument(doc, true)).object();
+        QCOMPARE(project["capture"].toObject()["createdAt"], feedback["capture"].toObject()["capturedAt"]);
+        QVERIFY(!project["capture"].toObject().contains("capturedAt"));
+        auto old = feedback; old.remove("capture");
+        const auto importedOld = loadFeedback(old, {}); QVERIFY(importedOld.capture.isEmpty());
+        QVERIFY(!exportFeedback(importedOld).contains("capture"));
+        auto screenshot = fromImage(exampleImage(), "file", "main-screen.png");
+        QCOMPARE(screenshot.capture["fileName"].toString(), QString("main-screen.png"));
+        QVERIFY(!screenshot.capture.contains("page")); // Filenames never become guessed page identities.
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            saveBytes(QDir(folder).filePath("feedback-capture.json"), serializeFeedback(doc, true));
+            saveBytes(QDir(folder).filePath("feedback-capture-private.json"), QJsonDocument(privateFeedback).toJson());
+            saveBytes(QDir(folder).filePath("project-capture.json"), serializeDocument(doc, true));
+        }
+    }
+    void captureContextRejectsInvalidMetadataAndPairedPageFields() {
+        const auto doc = fromImage(exampleImage(), "screen", "Capture validation");
+        const QJsonObject valid{{"source", "screen"}, {"capturedAt", doc.createdAt}, {"page", "游戏主页面"}, {"pageSource", "agent"}};
+        QVector<QJsonObject> invalid;
+        for (const auto &field : {QString("page"), QString("pageSource"), QString("source"), QString("capturedAt")}) {
+            auto missing = valid; missing.remove(field); invalid.append(missing);
+        }
+        for (const auto &entry : QVector<QPair<QString, QJsonValue>>{
+                 {"source", "unknown"}, {"capturedAt", "2026-02-30T00:00:00Z"}, {"capturedAt", "2026-10-17T00:00:00"},
+                 {"fileName", "../private.png"}, {"fileName", "C:\\private.png"}, {"fileName", ".."},
+                 {"windowTitle", 1}, {"appName", QString(1001, 'a')}, {"page", " \t\n"},
+                 {"page", QString(501, 'p')}, {"pageSource", "guessed"}, {"unknown", true}}) {
+            auto broken = valid; broken[entry.first] = entry.second; invalid.append(broken);
+        }
+        auto nul = valid; nul["page"] = QString("Page") + QChar::Null; invalid.append(nul);
+        for (const auto &capture : invalid) {
+            QVERIFY_EXCEPTION_THROWN(validateCaptureContext(capture), std::runtime_error);
+            auto feedback = exportFeedback(doc, true); feedback["capture"] = capture;
+            QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, {}), std::runtime_error);
+        }
+        for (const auto &source : {"screen", "file", "clipboard", "demo", "scroll", "history", "pin", "drop", "video"}) {
+            auto capture = valid; capture["source"] = source; QVERIFY_THROWS_NO_EXCEPTION(validateCaptureContext(capture));
+        }
+        auto bounds = valid; bounds["page"] = QString(500, 'p'); bounds["windowTitle"] = QString(1000, 'w'); bounds["appName"] = QString(1000, 'a');
+        QVERIFY_THROWS_NO_EXCEPTION(validateCaptureContext(bounds));
+    }
     void imageBundleModesUseRealBytesAndPreserveCoordinates() {
         auto doc = fromImage(exampleImage(), "file", "Image bundle");
         Note note; note.point = {40, 50}; note.comment = "Change the heading"; doc.notes = {note};
@@ -193,6 +253,7 @@ class CoreTests : public QObject {
         QCOMPARE(imported.notes[0].point, note.point);
 
         auto legacy = feedback;
+        legacy.remove("capture");
         legacy["image"] = feedback["image"].toObject()["dataUrl"];
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             legacy.remove(field);
@@ -303,6 +364,7 @@ class CoreTests : public QObject {
         earlier["objects"] = earlierObjects;
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
         earlier["image"] = earlier["image"].toObject()["dataUrl"];
+        earlier.remove("capture");
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             earlier.remove(field);
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
@@ -503,7 +565,7 @@ class CoreTests : public QObject {
         QCOMPARE(bluePixels, 0);
         QCOMPARE(doc.notes, originalNotes);
         QCOMPARE(stableFeedback(exportFeedback(doc)), stableFeedback(feedback));
-        QCOMPARE(feedback.keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), (QStringList{"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 6);
         // The movement-linked object keeps the source rect, the destination,

@@ -337,8 +337,28 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(owner_->scroller_->frames(), 1);
         QVERIFY(!owner_->editor_.hasDocument());
     }
+    void normalCaptureKeepsSnapshotTimeAndTheFrontWindowAtSelectionCenter() {
+        ScreenFrame frame;
+        frame.capturedAt = "2026-10-17T02:30:00.000Z";
+        frame.captureWindows = {{{0, 0, 80, 80}, "outside", "outside.exe"},
+                                {{80, 100, 400, 300}, "游戏主页面", "game.exe"},
+                                {{0, 0, 640, 480}, "background", "background.exe"}};
+        const QRect selected(40, 60, 240, 180);
+        auto *source = overlay(selected, frame);
+        owner_->completeCapture(source, selected, {});
+        QVERIFY(owner_->editor_.hasDocument());
+        const auto &result = owner_->editor_.document();
+        QCOMPARE(result.createdAt, frame.capturedAt);
+        QCOMPARE(result.capture["capturedAt"].toString(), frame.capturedAt);
+        QCOMPARE(result.capture["source"].toString(), QString("screen"));
+        QCOMPARE(result.capture["windowTitle"].toString(), QString("游戏主页面"));
+        QCOMPARE(result.capture["appName"].toString(), QString("game.exe"));
+    }
     void manualCaptureFinishesWhileRunningAndRejectsLateFrames() {
-        auto *source = overlay();
+        ScreenFrame frame;
+        frame.capturedAt = "2026-10-17T02:30:00.000Z";
+        frame.captureWindows = {{{0, 0, 640, 480}, "采集前窗口", "game.exe"}};
+        auto *source = overlay({40, 60, 240, 180}, frame);
         const QImage whole = document();
         const QImage first = whole.copy(0, 0, 240, 180);
         const QImage next = whole.copy(0, 60, 240, 180);
@@ -359,6 +379,11 @@ class ScrollControllerTests final : public QObject {
         QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
         QVERIFY(owner_->editor_.hasDocument());
         QVERIFY(!owner_->capturing_);
+        const auto capture = owner_->editor_.document().capture;
+        QCOMPARE(capture["source"].toString(), QString("scroll"));
+        QCOMPARE(capture["capturedAt"].toString(), frame.capturedAt);
+        QCOMPARE(capture["windowTitle"].toString(), QString("采集前窗口"));
+        QCOMPARE(capture["appName"].toString(), QString("game.exe"));
         QCOMPARE(wheelSteps_, 0);
         const QImage result = owner_->editor_.document().image;
         QCOMPARE(result, whole.copy(0, 0, 240, 240).convertToFormat(QImage::Format_ARGB32));

@@ -6,6 +6,7 @@
 #include "platform.h"
 #include <QApplication>
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QScreen>
 #include <QTimer>
 #include <QWidget>
@@ -315,6 +316,7 @@ void captureScreens(CaptureCallback callback) {
                           info.rcMonitor.bottom - info.rcMonitor.top);
         }
         ScreenFrame frame{screen->name(), screen->geometry(), native, image, !native.isEmpty()};
+        frame.capturedAt = timestamp();
         frame.windowScopeAvailable = true;
         struct Windows { ScreenFrame *frame; DWORD excluded; } data{&frame, GetCurrentProcessId()};
         EnumWindows([](HWND hwnd, LPARAM param)->BOOL {
@@ -338,6 +340,23 @@ void captureScreens(CaptureCallback callback) {
                 target["source"]="window";
                 target["windowId"]=QString::number(quintptr(hwnd));
                 f.frontWindows.append({bounds,target});
+                // Window titles are separate capture metadata, never an accessibility
+                // component label. Read while the desktop snapshot still precedes us.
+                const int titleLength = qMin(GetWindowTextLengthW(hwnd), 1000);
+                QString title;
+                if (titleLength > 0) {
+                    wchar_t text[1001]{};
+                    const int copied = GetWindowTextW(hwnd, text, titleLength + 1);
+                    if (copied > 0) title = QString::fromWCharArray(text, copied);
+                }
+                QString appName;
+                if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
+                    wchar_t executable[32768]{}; DWORD length = 32768;
+                    if (QueryFullProcessImageNameW(process, 0, executable, &length))
+                        appName = QFileInfo(QString::fromWCharArray(executable, int(length))).fileName().left(1000);
+                    CloseHandle(process);
+                }
+                f.captureWindows.append({bounds, title, appName});
             }
             return TRUE;
         },reinterpret_cast<LPARAM>(&data));

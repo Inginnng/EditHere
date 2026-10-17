@@ -225,6 +225,35 @@ class VideoUiTests : public QObject {
         QTest::newRow("native-missing-file") << false;
         QTest::newRow("missing-windows-drive") << true;
     }
+    void suppliedPageContextUpdatesSavedFramesAndFutureVideoFrames() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        QImage image(320, 180, QImage::Format_RGB32); image.fill(Qt::white);
+        auto doc = fromImage(image, "video", "saved frame");
+        Note note; note.point = {50, 40}; note.comment = "Keep this label"; doc.notes.append(note);
+        doc.capture["windowTitle"] = "private saved title";
+        VideoProject project; project.source = directory.filePath("missing.mp4"); project.durationMs = 10000;
+        project.capture = {{"source", "video"}, {"capturedAt", doc.createdAt}, {"fileName", "game.mp4"}, {"windowTitle", "private video title"}};
+        project.frames.append({1000000, doc});
+        Editor editor; auto settings = defaultSettings(); settings.includeWindowTitle = false;
+        editor.setPreferences(settings); editor.setVideoProject(project); editor.setPageContext("  游戏主页面  ");
+        const auto saved = editor.videoProject();
+        QCOMPARE(saved.capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(saved.frames.first().document.capture["page"].toString(), QString("游戏主页面"));
+        const auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QVERIFY(!feedback["capture"].toObject().contains("windowTitle"));
+        QVERIFY(!feedback["frames"].toArray().first().toObject()["capture"].toObject().contains("windowTitle"));
+        const auto stored = QJsonDocument::fromJson(editor.projectBytes()).object();
+        QCOMPARE(stored["capture"].toObject()["windowTitle"].toString(), QString("private video title"));
+        auto frameSpecific = saved; frameSpecific.frames.first().document.capture["page"] = "游戏设置页面";
+        editor.setVideoProject(frameSpecific);
+        QCOMPARE(editor.findChild<QLabel *>("captureContextLabel")->property("pageContext").toString(), QString("游戏设置页面"));
+        auto playback = editor.findChild<VideoPlayback *>(); QVERIFY(playback);
+        playback->frameCaptured(image, 2000000);
+        QCOMPARE(editor.document().capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(editor.document().capture["pageSource"].toString(), QString("agent"));
+        QCOMPARE(editor.document().capture["fileName"].toString(), QString("game.mp4"));
+        editor.hide();
+    }
     void sourceMissingStillRestoresScreenshots() {
         QFETCH(bool, windowsPath);
         QTemporaryDir missingSource;

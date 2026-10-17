@@ -626,7 +626,7 @@ class AgentCliTests : public QObject {
         const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
 #endif
         QProcess cli;
-        cli.start(executable, {"annotate", inputProject(directory), "--output", output, "--timeout", "60"});
+        cli.start(executable, {"annotate", inputProject(directory), "--output", output, "--timeout", "60", "--page-context", "  游戏主页面  "});
         QVERIFY2(cli.waitForStarted(), qPrintable(cli.errorString()));
         QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
         const auto documentId = editor->document().id;
@@ -645,6 +645,8 @@ class AgentCliTests : public QObject {
         QCOMPARE(receipt["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
         const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
         QCOMPARE(feedback["schemaVersion"], receipt["schemaVersion"]);
+        QCOMPARE(feedback["capture"].toObject()["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(feedback["capture"].toObject()["pageSource"].toString(), QString("agent"));
         QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toObject()["text"].toString(), comment);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QTest::qWait(50);
@@ -749,6 +751,45 @@ class AgentCliTests : public QObject {
         cli.start(executable, {"annotate", input, "--output", directory.filePath("other.json"), "--timeout", "0"});
         QVERIFY(cli.waitForFinished(15000));
         QCOMPARE(cli.exitCode(), 2);
+    }
+    void pageContextRejectsInvalidCliAndIpcAndSurvivesAgentCompletion() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto input = inputProject(directory);
+        for (const auto &page : {QString(), QString("   "), QString(501, 'x'), QString("bad") + QChar::Null}) {
+            Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+            auto value = request(input, directory.filePath("invalid.json")); value["pageContext"] = page;
+            QCOMPARE(agentExitCode(controller.handleAgentRequest(value)), 2);
+            QVERIFY(!editorOf(controller)->hasDocument());
+        }
+        {
+            Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+            for (const auto &command : {"capture", "status"}) {
+                QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", command}, {"pageContext", "游戏主页面"}})), 2);
+                QVERIFY(!editorOf(controller)->hasDocument());
+            }
+        }
+        for (const auto &flags : {QStringList{"--page-context"}, QStringList{"--page-context", " "}, QStringList{"--page-context", QString(501, 'x')},
+                                  QStringList{"--page-context", "one", "--page-context", "two"}}) {
+            QStringList arguments{"annotate", input, "--output", directory.filePath("invalid.json")}; arguments.append(flags);
+            QProcess cli; cli.start(cliExecutable(), arguments); QVERIFY(cli.waitForFinished(15000)); QCOMPARE(cli.exitCode(), 2);
+        }
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto open = QJsonObject{{"command", "open"}, {"input", input}, {"pageContext", "  游戏主页面  "}};
+        QVERIFY(controller.handleAgentRequest(open)["ok"].toBool());
+        auto editor = editorOf(controller);
+        QCOMPARE(editor->document().capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(editor->document().capture["pageSource"].toString(), QString("agent"));
+        const auto stored = directory.filePath("page.edithere"); saveBytes(stored, editor->projectBytes());
+        const auto restored = loadDocument(stored); QCOMPARE(restored.capture["page"].toString(), QString("游戏主页面"));
+        editor->setDocument(restored); // A clean re-open can begin an annotation session.
+        QSignalSpy finished(&controller, &Controller::agentSessionFinished);
+        const auto output = directory.filePath("page-feedback.json");
+        auto annotate = request(stored, output); annotate["pageContext"] = "游戏设置页面";
+        QVERIFY(controller.handleAgentRequest(annotate)["pending"].toBool());
+        editor->findChild<QPushButton *>("agentFinish")->click(); QCOMPARE(finished.size(), 1);
+        QVERIFY(finished.first()[1].toJsonObject()["ok"].toBool());
+        QCOMPARE(loadDocument(output).capture["page"].toString(), QString("游戏设置页面"));
+        editor->hide();
     }
     void consoleVideoOpenAnnotateSaveAndReopenThroughAgentTransport() {
         const auto source = qEnvironmentVariable("EDITHERE_VIDEO_TEST_SOURCE");

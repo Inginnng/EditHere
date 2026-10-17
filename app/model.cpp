@@ -127,6 +127,8 @@ Document fromImage(const QImage &image, const QString &source, const QString &ti
     doc.png = opaque ? encodeOpaquePng(doc.image) : encodePng(doc.image);
     doc.source = source;
     doc.title = title;
+    doc.capture = {{"source", source}, {"capturedAt", doc.createdAt}};
+    if (source == "file" && !title.isEmpty() && !title.contains('/') && !title.contains('\\')) doc.capture.insert("fileName", title.left(1024));
     doc.imageFile = "capture-" + doc.id.left(8) + ".png";
     return doc;
 }
@@ -149,13 +151,46 @@ void validateRecognizedText(const QJsonObject &value, bool allowCleared) {
         fail(tr("识别置信度不正确"));
     if (value.contains("edited") && !value["edited"].isBool()) fail(tr("识别编辑标记不正确"));
 }
+void validatePageContext(const QString &page) {
+    if (page.size() > 500 || page.trimmed().isEmpty() || page.contains(QChar::Null)) fail(tr("页面描述必须为 1 至 500 字的非空文字"));
+}
+void validateCaptureContext(const QJsonObject &capture) {
+    const QStringList fields{"source", "capturedAt", "fileName", "windowTitle", "appName", "page", "pageSource"};
+    for (auto it = capture.constBegin(); it != capture.constEnd(); ++it) if (!fields.contains(it.key())) fail(tr("采集上下文字段不正确"));
+    if (!capture["source"].isString() || !QStringList{"screen", "file", "clipboard", "demo", "scroll", "history", "pin", "drop", "video"}.contains(capture["source"].toString()))
+        fail(tr("采集来源不正确"));
+    const auto at = capture["capturedAt"].toString();
+    static const QRegularExpression timezone("(?:Z|[+-]\\d{2}:\\d{2})$");
+    if (!capture["capturedAt"].isString() || !QDateTime::fromString(at, Qt::ISODateWithMs).isValid() || !timezone.match(at).hasMatch())
+        fail(tr("采集日期必须是带时区的 ISO 8601 日期"));
+    for (const auto &field : {"windowTitle", "appName"})
+        if (capture.contains(field) && (!capture[field].isString() || capture[field].toString().size() > 1000 || capture[field].toString().contains(QChar::Null)))
+            fail(tr("窗口标题或应用名称不正确"));
+    if (capture.contains("fileName")) {
+        const auto filename = capture["fileName"].toString();
+        if (!capture["fileName"].isString() || filename.isEmpty() || filename == "." || filename == ".." || filename.size() > 1024 || filename.contains('/') || filename.contains('\\') || filename.contains(QChar::Null))
+            fail(tr("来源文件名必须是文件名，不能包含路径"));
+    }
+    if (capture.contains("page") != capture.contains("pageSource")) fail(tr("页面描述必须带有来源标记"));
+    if (capture.contains("page")) {
+        if (!capture["page"].isString() || capture["pageSource"] != "agent") fail(tr("页面描述或来源标记不正确"));
+        validatePageContext(capture["page"].toString());
+    }
+}
+QJsonObject exportCaptureContext(const QJsonObject &capture, bool includeWindowTitle) {
+    validateCaptureContext(capture);
+    auto value = capture;
+    if (!includeWindowTitle) value.remove("windowTitle");
+    return value;
+}
 void validateDocument(const Document &d) {
     if (d.image.isNull() || qint64(d.image.width()) * d.image.height() > MaxPixels ||
         d.image.width() > 32767 || d.image.height() > 32767 || d.notes.size() > MaxNotes)
         fail(tr("图片或批注数量超出限制"));
     if (d.id.isEmpty() || !QDateTime::fromString(d.createdAt, Qt::ISODateWithMs).isValid())
         fail(tr("项目标识或日期不正确"));
-    if (!QStringList{"screen", "file", "clipboard", "demo"}.contains(d.source))
+    if (!d.capture.isEmpty()) validateCaptureContext(d.capture);
+    if (!QStringList{"screen", "file", "clipboard", "demo", "scroll", "history", "pin", "drop", "video"}.contains(d.source))
         fail(tr("图片来源不正确"));
     if (!QRegularExpression("^[^\\\\/:*?\"<>|\\x00-\\x1f]+\\.png$", QRegularExpression::CaseInsensitiveOption)
              .match(d.imageFile)
@@ -670,6 +705,7 @@ QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &opt
         image.insert("preview", name);
     }
     result.insert("image", image);
+    if (!doc.capture.isEmpty()) result.insert("capture", exportCaptureContext(doc.capture, options.includeWindowTitle));
     return result;
 }
 QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
@@ -740,6 +776,10 @@ static QJsonObject documentObject(const Document &d, bool embed, bool current) {
         {"sha256", QString::fromLatin1(QCryptographicHash::hash(d.png, QCryptographicHash::Sha256).toHex())},
         {"pngBase64",
          embed ? QJsonValue(QString::fromLatin1(d.png.toBase64())) : QJsonValue(QJsonValue::Null)}};
+    if (current && !d.capture.isEmpty()) {
+        for (const auto &field : {"fileName", "windowTitle", "appName", "page", "pageSource"})
+            if (d.capture.contains(field)) capture.insert(field, d.capture[field]);
+    }
     QJsonArray notes;
     int number = 0;
     bool ax = false;
@@ -835,6 +875,11 @@ static void feedbackFields(const QJsonObject &feedback) {
         fields.append("objects");
     else
         fields.append("annotations"), fields.append("changes");
+    if (feedback.contains("capture")) {
+        if (!feedback.contains("schemaVersion")) fail(tr("采集上下文需要当前反馈格式"));
+        if (!feedback["capture"].isObject()) fail(tr("采集上下文必须是对象"));
+        validateCaptureContext(feedback["capture"].toObject()); fields.append("capture");
+    }
     if (feedback.contains("annotationSpace")) {
         if (feedback["annotationSpace"] != "result")
             fail(tr("批注坐标空间不正确"));
@@ -985,6 +1030,8 @@ Document loadFeedback(const QJsonObject &feedback, const QImage &original, const
             fail(tr("内嵌原图与提供的图片不一致"));
     }
     auto doc = fromImage(image, "file", tr("设计反馈"));
+    doc.capture = feedback.contains("capture") ? feedback["capture"].toObject() : QJsonObject{};
+    if (!doc.capture.isEmpty()) { doc.source = doc.capture["source"].toString(); doc.createdAt = doc.capture["capturedAt"].toString(); }
     if (!embedded.isEmpty()) doc.png = embedded;
     else if (!originalBytes.isEmpty() && originalBytes.startsWith(QByteArray::fromHex("89504e470d0a1a0a"))) doc.png = originalBytes;
     if (feedback.contains("objects")) {
@@ -1324,8 +1371,9 @@ Document loadDocument(const QString &path) {
     if (!root["annotations"].isArray() || root["annotations"].toArray().size() > MaxNotes)
         fail(tr("批注列表格式或数量不正确"));
     const auto c = root["capture"].toObject();
-    exactKeys(c, {"id", "createdAt", "source", "title", "imageFile", "width", "height", "coordinateSpace",
-                  "origin", "rectangleConvention", "screenBounds", "sha256", "pngBase64"});
+    QStringList captureFields{"id", "createdAt", "source", "title", "imageFile", "width", "height", "coordinateSpace", "origin", "rectangleConvention", "screenBounds", "sha256", "pngBase64"};
+    if (current) for (const auto &field : {"fileName", "windowTitle", "appName", "page", "pageSource"}) if (c.contains(field)) captureFields.append(field);
+    exactKeys(c, captureFields);
     if (c["coordinateSpace"] != "image-pixels" || c["origin"] != "top-left" ||
         c["rectangleConvention"] != "top-left-inclusive-bottom-right-exclusive")
         fail(tr("项目坐标约定不兼容"));
@@ -1369,6 +1417,9 @@ Document loadDocument(const QString &path) {
     d.id = c["id"].toString();
     d.createdAt = c["createdAt"].toString();
     d.imageFile = name;
+    d.capture = {{"source", d.source}, {"capturedAt", d.createdAt}};
+    for (const auto &field : {"fileName", "windowTitle", "appName", "page", "pageSource"}) if (c.contains(field)) d.capture.insert(field, c[field]);
+
     if (!c["screenBounds"].isNull())
         d.screenBounds = jsonRect(c["screenBounds"].toObject());
     if (!root["annotations"].isArray())

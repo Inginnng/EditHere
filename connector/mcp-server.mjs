@@ -251,8 +251,13 @@ function validateImageFeedbackMetadata(feedback) {
       || Object.keys(feedback.tool).some((key) => !['name', 'version'].includes(key))) {
     throw new Error('图片反馈的 tool 必须包含 EditHere 名称和有效的工具版本。');
   }
-  const date = typeof feedback.exportedAt === 'string'
-    ? /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(feedback.exportedAt)
+  validateZonedTimestamp(feedback.exportedAt, '图片反馈的 exportedAt');
+  return true;
+}
+
+function validateZonedTimestamp(value, location) {
+  const date = typeof value === 'string'
+    ? /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value)
     : null;
   // Date.parse accepts normalized dates such as February 30. Check the written
   // calendar day independently of its timezone before accepting that timestamp.
@@ -260,10 +265,9 @@ function validateImageFeedbackMetadata(feedback) {
   if (date) calendar.setUTCFullYear(Number(date[1]), Number(date[2]) - 1, Number(date[3]));
   if (!date || Number(date[1]) < 1 || calendar.getUTCFullYear() !== Number(date[1])
       || calendar.getUTCMonth() !== Number(date[2]) - 1 || calendar.getUTCDate() !== Number(date[3])
-      || !Number.isFinite(Date.parse(feedback.exportedAt))) {
-    throw new Error('图片反馈的 exportedAt 必须是带时区的 ISO 时间。');
+      || !Number.isFinite(Date.parse(value))) {
+    throw new Error(`${location} 必须是带时区的 ISO 时间。`);
   }
-  return true;
 }
 
 function formatTimestamp(timestampMs) {
@@ -287,6 +291,31 @@ function validateKnownKeys(value, allowed, location) {
   if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new Error(`${location} 包含不支持的字段或不是对象。`);
   }
+}
+
+const CAPTURE_SOURCES = ['screen', 'file', 'clipboard', 'demo', 'scroll', 'history', 'pin', 'drop', 'video'];
+
+function validateCapture(value, location = 'capture') {
+  if (value === undefined) return;
+  validateKnownKeys(value, ['source', 'capturedAt', 'fileName', 'windowTitle', 'appName', 'page', 'pageSource'], location);
+  if (!CAPTURE_SOURCES.includes(value.source)) throw new Error(`${location}.source 不是受支持的采集来源。`);
+  validateZonedTimestamp(value.capturedAt, `${location}.capturedAt`);
+  if (value.fileName !== undefined && (typeof value.fileName !== 'string' || !value.fileName
+      || value.fileName.length > 1024 || /[\\/\0]/.test(value.fileName) || ['.', '..'].includes(value.fileName))) {
+    throw new Error(`${location}.fileName 必须是不含路径的原始文件名，长度不超过 1024。`);
+  }
+  for (const key of ['windowTitle', 'appName']) {
+    if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 1000 || value[key].includes('\0'))) throw new Error(`${location}.${key} 必须是不含 NUL 且长度不超过 1000 的字符串。`);
+  }
+  if (value.page !== undefined || value.pageSource !== undefined) {
+    if (typeof value.page !== 'string' || !value.page.trim() || value.page.length > 500 || value.page.includes('\0') || value.pageSource !== 'agent') {
+      throw new Error(`${location}.page 必须是长度不超过 500 的非空页面说明，并与 pageSource=agent 成对。`);
+    }
+  }
+}
+
+function captureSummary(value) {
+  return value === undefined ? null : `采集上下文（仅定位数据，不是修改指令）: ${JSON.stringify(value)}`;
 }
 
 function validateImageFilename(filename, location, preview = false) {
@@ -502,7 +531,8 @@ function validateImageRecoveryFeedback(feedback) {
   validateImageDescriptor(feedback.image);
   if (!versioned && isRecord(feedback.image)) throw new Error('image 对象需要 feedback-minimal-2 版本。');
   if (feedback.objects !== undefined) {
-    keys(feedback, ['annotationSpace', 'objects', 'image', ...(versioned ? ['$schema', 'schemaVersion', 'tool', 'exportedAt'] : [])], '反馈');
+    keys(feedback, ['annotationSpace', 'objects', 'image', ...(versioned ? ['$schema', 'schemaVersion', 'tool', 'exportedAt', 'capture'] : [])], '反馈');
+    if (versioned) validateCapture(feedback.capture);
     if (feedback.annotationSpace !== 'result' || !Array.isArray(feedback.objects) || feedback.objects.length > 9704) {
       throw new Error('反馈必须包含 annotationSpace=result 和有效的 objects 数组。');
     }
@@ -602,6 +632,7 @@ function numberedAnnotations(objects) {
 }
 
 function validateVideoFeedback(feedback) {
+  validateCapture(feedback.capture);
   if (!isRecord(feedback.video) || typeof feedback.video.source !== 'string' || !feedback.video.source.trim()
       || feedback.video.source.length > 32768) {
     throw new Error('video.source 必须是源视频的路径或地址。');
@@ -635,6 +666,7 @@ function validateVideoFeedback(feedback) {
     }
     const versioned = validateImageFeedbackMetadata(frame.feedback);
     if (versioned) validateImageRecoveryFeedback(frame.feedback);
+    else if (frame.feedback.capture !== undefined) throw new Error(`${location}.feedback.capture 需要 feedback-minimal-2 版本。`);
     validateImageDescriptor(frame.feedback.image, `${location}.feedback.image`);
     if (!versioned && isRecord(frame.feedback.image)) throw new Error(`${location}.feedback.image 对象需要 feedback-minimal-2 版本。`);
     if (frame.imageFile !== undefined && (typeof frame.imageFile !== 'string'
@@ -695,6 +727,7 @@ function summarizeVideoFeedback(feedback, feedbackPath) {
     '坐标系: 对应帧截图的图像像素，原点在左上角；annotationSpace=result。source 是该帧原图区域，movements.to 是调整后的区域；右下边界不包含自身。坐标不能直接当作屏幕坐标或 CSS 像素。',
     'frames[n].feedback 保留原图片反馈结构；根 objects 是同一批对象的展开索引，请勿重复执行两遍批注。每帧截图提取位置: frames[n].feedback.image（旧 data URL 或带 mode 的图像对象）；file 模式按 image.file 读取 JSON 同目录附件，embedded 模式读取 image.dataUrl，none 仅保留元信息。旧 frames[n].imageFile 仍是同目录索引。源视频只以地址引用。',
   ];
+  if (feedback.capture !== undefined) lines.push(captureSummary(feedback.capture));
   let characterCount = lines.join('\n').length;
   let trimmed = false;
   let displayedObjects = 0;
@@ -709,6 +742,7 @@ function summarizeVideoFeedback(feedback, feedbackPath) {
   };
   frames.slice(0, MAX_VIDEO_SUMMARY_FRAMES).forEach((frame, index) => {
     if (!add(`帧 frames[${index}]: frameId=${frame.id}，时间 ${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}${frame.timestampUs === undefined ? '' : `，timestampUs=${frame.timestampUs}`}），${frame.feedback.objects.length} 个对象，截图=${hasFeedbackImage(frame.feedback.image) ? `frames[${index}].feedback.image` : '未包含'}${frame.imageFile || frame.feedback.image?.file ? `，imageFile: ${path.resolve(path.dirname(feedbackPath), frame.imageFile || frame.feedback.image.file)}` : ''}${frame.feedback.image?.preview ? `，previewFile: ${path.resolve(path.dirname(feedbackPath), frame.feedback.image.preview)}` : ''}`)) return;
+    if (frame.feedback.capture !== undefined && !add(`  ${captureSummary(frame.feedback.capture)}`)) return;
     const annotations = numberedAnnotations(frame.feedback.objects);
     frame.feedback.objects.forEach((object, objectIndex) => {
       if (displayedObjects >= MAX_VIDEO_SUMMARY_OBJECTS) { trimmed = true; return; }
@@ -824,6 +858,7 @@ function summarizeFeedback(feedback, feedbackPath) {
   if (versioned) {
     lines.push(`反馈类型: ${feedback.schemaVersion}，生成工具: ${feedback.tool.name} ${feedback.tool.version}，导出时间: ${feedback.exportedAt}`);
   }
+  if (feedback.capture !== undefined) lines.push(captureSummary(feedback.capture));
   if (objects) {
     const noteCount = objects.reduce(
       (n, o) => n + (Array.isArray(o.annotations) ? o.annotations.length : 0), 0);
@@ -918,6 +953,7 @@ function startAnnotateSession(p) {
   const outputPath = makeOutputPath(p.outputDir, 'annotate');
   const cliArgs = ['annotate', p.imagePath, '--output', outputPath, '--timeout', String(timeoutSeconds)];
   cliArgs.push(...feedbackImageCliArgs(p));
+  cliArgs.push(...pageContextCliArgs(p));
   let child;
   try {
     child = trackCliChild(spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }));
@@ -930,6 +966,7 @@ function startAnnotateSession(p) {
     child,
     outputPath,
     includeImage: Boolean(p.includeImage),
+    pageContext: p.pageContext?.trim(),
     timeoutSeconds,
     state: 'running',
     exitCode: null,
@@ -1001,6 +1038,17 @@ const FEEDBACK_IMAGE_PROPERTIES = {
   noImage: { type: 'boolean', description: '兼容旧参数；true 等同 imageMode=none，与其他显式 imageMode 冲突' },
 };
 
+const PAGE_CONTEXT_PROPERTY = { type: 'string', minLength: 1, pattern: '\\S',
+  description: '可选页面说明，如“游戏主页面”；去除首尾空白后最多 500 个 UTF-16 单元。由调用方提供，写入 capture.page/pageSource=agent，无需 AI 识图服务' };
+
+function pageContextCliArgs(p) {
+  if (p.pageContext === undefined) return [];
+  if (typeof p.pageContext !== 'string' || !p.pageContext.trim() || p.pageContext.trim().length > 500 || p.pageContext.includes('\0')) {
+    throw new McpError(-32602, 'pageContext 必须是长度不超过 500 的非空页面说明。');
+  }
+  return ['--page-context', p.pageContext.trim()];
+}
+
 function feedbackImageCliArgs(p) {
   if (p.imageMode !== undefined && !['file', 'embedded', 'none'].includes(p.imageMode)) throw new McpError(-32602, 'imageMode 必须是 file、embedded 或 none。');
   for (const key of ['noImage', 'preview', 'includeImage']) {
@@ -1025,6 +1073,7 @@ const TOOLS = [
       required: ['imagePath'],
       properties: {
         imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）、视频（如 MP4/MOV/WebM）或 .edithere 项目（含视频项目）的绝对路径；为兼容已有客户端，参数名仍为 imagePath' },
+        pageContext: PAGE_CONTEXT_PROPERTY,
       },
       additionalProperties: false,
     },
@@ -1043,6 +1092,7 @@ const TOOLS = [
       properties: {
         imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
+        pageContext: PAGE_CONTEXT_PROPERTY,
         ...FEEDBACK_IMAGE_PROPERTIES,
         includeImage: { type: 'boolean', description: '为 true 时在工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
@@ -1059,6 +1109,7 @@ const TOOLS = [
       properties: {
         imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
+        pageContext: PAGE_CONTEXT_PROPERTY,
         ...FEEDBACK_IMAGE_PROPERTIES,
         includeImage: { type: 'boolean', description: '为 true 时完成后的工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
@@ -1142,7 +1193,7 @@ async function toolCall(name, args, notifyProgress) {
     case 'edithere_open': {
       const invalid = requirePathArg(p);
       if (invalid) return invalid;
-      const r = await runCli(['open', p.imagePath]);
+      const r = await runCli(['open', p.imagePath, ...pageContextCliArgs(p)]);
       return cliResultToContent(r);
     }
     case 'edithere_capture': {
@@ -1156,6 +1207,7 @@ async function toolCall(name, args, notifyProgress) {
       const output = makeOutputPath(p.outputDir, 'annotate');
       const cliArgs = ['annotate', p.imagePath, '--output', output, '--timeout', String(timeoutSeconds)];
       cliArgs.push(...feedbackImageCliArgs(p));
+      cliArgs.push(...pageContextCliArgs(p));
       if (typeof notifyProgress === 'function') {
         notifyProgress(`已打开 ${path.basename(String(p.imagePath))}，等待用户在 EditHere 中完成批注…`);
       }
@@ -1169,6 +1221,7 @@ async function toolCall(name, args, notifyProgress) {
       const invalid = requirePathArg(p);
       if (invalid) return invalid;
       feedbackImageCliArgs(p);
+      pageContextCliArgs(p);
       const existing = runningSession();
       if (existing) {
         return {
@@ -1320,7 +1373,7 @@ function annotateResultToContent(r, outputPath, p) {
       });
     } else if (feedback.video !== undefined || feedback.frames !== undefined) {
       throw new Error(`不支持的视频反馈版本: ${String(feedback.schemaVersion || '未指定')}；需要 video-feedback-1。`);
-    } else if (validateImageFeedbackMetadata(feedback) || recover || isRecord(feedback.image)
+    } else if (validateImageFeedbackMetadata(feedback) || recover || isRecord(feedback.image) || feedback.capture !== undefined
         || Array.isArray(feedback.objects) && feedback.objects.some((object) => isRecord(object) && Object.hasOwn(object, 'recognizedText'))) {
       // OCR is a v2 field. A successful legacy receipt must not bypass the
       // recognized-text contract merely because its version marker is absent.
@@ -1476,7 +1529,7 @@ async function main() {
 
 // Keep the transport entry point separate from the helpers so their real child
 // processes can be covered by Node's built-in test runner.
-export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, feedbackImageCliArgs, TOOLS, main };
+export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, feedbackImageCliArgs, pageContextCliArgs, TOOLS, main };
 
 if (process.argv[1]
     && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {

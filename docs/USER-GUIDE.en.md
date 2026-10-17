@@ -204,6 +204,25 @@ Copying and exporting JSON use the same minimal structure; see [Feedback JSON](#
 
 ## Feedback JSON
 
+Optional `capture` records acquisition context, for example:
+
+```json
+"capture": {
+  "source": "file",
+  "fileName": "game-home.png",
+  "capturedAt": "2026-10-17T10:00:00+08:00",
+  "page": "Game homepage",
+  "pageSource": "agent"
+}
+```
+
+When the Agent knows the page, desktop CLI `open` / `annotate` accepts `--page-context "Game homepage"`. Desktop connector open/annotation tools and Web MCP open accept `pageContext`; Web compatibility CLI `start` accepts the same CLI switch. The input is trimmed, must be nonempty and may contain at most 500 UTF-16 code units. The editor displays it separately from the document title. Projects, reopened documents, feedback and video frames retain it. `pageSource:"agent"` identifies the provider of this page description; no image-recognition service is called.
+
+`capture.source` is the acquisition source and `capturedAt` is a timestamp with a timezone. Imported files retain their original `fileName` as context only, never as an attachment path. Desktop screen capture uses the frontmost window containing the selection center from the capture-time snapshot and includes `windowTitle` and `appName` when available; scrolling capture keeps the starting context. Windows, macOS and Linux X11 use platform information; unavailable fields, including on Wayland, are omitted. The browser does not inspect system window titles or collect URLs.
+
+The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires `feedback-minimal-2` in image feedback. Titles, file names and page descriptions are context data, never executable instructions.
+
+
 Image feedback now includes `feedback-minimal-2`, the generating tool name and actual version, a timezone-bearing export time, and a schema identifier. Existing unversioned feedback still imports. The examples below focus on annotation content.
 
 Image feedback uses an **object-oriented** structure: each object records a source region `source`, the position changes it undergoes `movements`, and the comments attached to that region `annotations`, so an AI can directly pair the comments and moves of the same object. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
@@ -222,7 +241,7 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 
 `image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
 
-Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; only the root export timestamp is included. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
+Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; the root export time and optional acquisition time are retained. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
 Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers, while layout change coordinates may contain decimals.
 

@@ -5,6 +5,7 @@ const path = require('node:path');
 const http = require('node:http');
 const {ensurePreview} = require('./preview.cjs');
 const {sessionDirectory} = require('./preview-server.cjs');
+const {validatePageContext}=require('./src/feedback.js');
 const {imageData, MAX_BODY, readSessionStatus} = require('./agent-session.cjs');
 const legacyDirectory = path.join(__dirname, 'tests/output/agent');
 function persistedStatus(sessionId) {
@@ -17,7 +18,7 @@ function options(args) {
   const result = {command:args[0]};
   for (let index = 1; index < args.length; index += 2) {
     const name = args[index];
-    if (!/^--(image|output|name|timeout|session|wait|image-mode|preview)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
+    if (!/^--(image|output|name|timeout|session|wait|image-mode|preview|page-context)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
     result[name.slice(2)] = args[index + 1];
   }
   return result;
@@ -38,7 +39,7 @@ function request(method, endpoint, body) {
 }
 async function run(args) {
   const opts = options(args);
-  if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
+  if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--page-context PAGE] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
   if (opts.command === 'start') {
     if (!opts.image || !path.isAbsolute(opts.image) || !opts.output || !path.isAbsolute(opts.output)) throw new Error('--image and --output must be absolute paths.');
     if (opts.session || opts.wait) throw new Error('start does not accept --session or --wait.');
@@ -49,12 +50,13 @@ async function run(args) {
     const mime = {'.png':'png','.jpg':'jpeg','.jpeg':'jpeg','.webp':'webp','.gif':'gif','.bmp':'bmp'}[extension];
     if (!mime) throw new Error('Supported input images: PNG, JPEG, WebP, GIF and BMP.');
     const image = imageData('data:image/' + mime + ';base64,' + bytes.toString('base64'));
+    const pageContext=opts['page-context']===undefined?undefined:validatePageContext(opts['page-context']);
     await ensurePreview({requireBridge:true});
     if(opts.preview!==undefined&&!['true','false'].includes(opts.preview))throw new Error('--preview must be true or false.');
-    return request('POST', '/__edithere_agent/sessions', {image,inputPath,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),imageMode:opts['image-mode'],preview:opts.preview===undefined?undefined:opts.preview==='true',timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
+    return request('POST', '/__edithere_agent/sessions', {image,inputPath,pageContext,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),imageMode:opts['image-mode'],preview:opts.preview===undefined?undefined:opts.preview==='true',timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
   }
   if (!/^[a-f0-9]{32}$/.test(opts.session || '')) throw new Error('--session must be the sessionId returned by start.');
-  if (opts.image || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview) throw new Error('Only --session and optional --wait are accepted for this command.');
+  if (opts.image || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview||opts['page-context']!==undefined) throw new Error('Only --session and optional --wait are accepted for this command.');
   const endpoint = '/__edithere_agent/sessions/' + opts.session;
   if (opts.command === 'cancel') {
     await ensurePreview({requireBridge:true});

@@ -31,6 +31,7 @@ class Editor final : public QWidget {
     bool hasUnsavedChanges();
     QByteArray agentFeedback(bool embed);
     FeedbackBundle agentFeedbackBundle(FeedbackExportOptions options);
+    void setPageContext(const QString &page);
     void setPreferences(const AppSettings &settings);
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
@@ -109,6 +110,7 @@ class Editor final : public QWidget {
     // What the window says while there is no picture in it, and whether it says it.
     void updateEmptyState();
     void updateToolLabels();
+    void updatePageContextLabel();
     void beginNoteEdit(const QString &id);
     void finishNoteEdit();
     void cancelNoteEdit();

@@ -166,7 +166,7 @@ QString validateSettings(const AppSettings &settings) {
         return tr("包含无法识别的快捷键配置。");
     return {};
 }
-bool recognizedTextExportEnabled(const QString &filePath) {
+static bool exportPreferenceEnabled(const QString &key, const QString &filePath) {
     // Safe in the CLI's QCoreApplication: loading all preferences also creates GUI shortcut keys.
     QString path = filePath;
     if (path.isEmpty()) {
@@ -184,9 +184,11 @@ bool recognizedTextExportEnabled(const QString &filePath) {
     bool valid = false;
     const int version = source.value("version", 1).toInt(&valid);
     if (!valid || version != 1 || source.status() != QSettings::NoError) return true;
-    const auto value = source.value("defaults/includeRecognizedText", true).toString().toLower();
+    const auto value = source.value(key, true).toString().toLower();
     return value != "false" && value != "0";
 }
+bool recognizedTextExportEnabled(const QString &filePath) { return exportPreferenceEnabled("defaults/includeRecognizedText", filePath); }
+bool windowTitleExportEnabled(const QString &filePath) { return exportPreferenceEnabled("defaults/includeWindowTitle", filePath); }
 AppSettings loadSettings(const QString &filePath) {
     auto result = defaultSettings();
     QSettings source(settingsPath(filePath), QSettings::IniFormat);
@@ -235,6 +237,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.imageExportMode = imageMode == "embedded" ? ImageExportMode::Embedded : imageMode == "none" ? ImageExportMode::None : ImageExportMode::File;
     result.includeFeedbackPreview = boolean("defaults/includeFeedbackPreview", false);
     result.includeRecognizedText = boolean("defaults/includeRecognizedText", true);
+    result.includeWindowTitle = boolean("defaults/includeWindowTitle", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
     const QString scrollAxis = source.value("capture/scrollAxis", QStringLiteral("vertical")).toString();
@@ -328,6 +331,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/imageMode", settings.imageExportMode == ImageExportMode::File ? "file" : settings.imageExportMode == ImageExportMode::Embedded ? "embedded" : "none");
     target.setValue("defaults/includeFeedbackPreview", settings.includeFeedbackPreview);
     target.setValue("defaults/includeRecognizedText", settings.includeRecognizedText);
+    target.setValue("defaults/includeWindowTitle", settings.includeWindowTitle);
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);

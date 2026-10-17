@@ -29,7 +29,7 @@ async function note(page,text) {await page.locator('#note-dialog').waitFor({stat
 async function main() {
   fs.mkdirSync(output,{recursive:true});
   const run=crypto.randomUUID(),file=path.join(output,run+'-feedback.json');
-  const session=await command('start','--image',image,'--output',file,'--name','游戏主页 · 链路测试','--timeout','1800');
+  const session=await command('start','--image',image,'--output',file,'--name','游戏主页 · 链路测试','--page-context','  游戏主页面 <b>literal</b>  ','--timeout','1800');
   assert(!fs.existsSync(file),'loading a screenshot must not create feedback');
   const wait=command('wait','--session',session.sessionId,'--wait','55');
   const browser=await chromium.launch({executablePath,headless:true});
@@ -40,6 +40,9 @@ async function main() {
     await page.goto(session.url);
     await page.waitForFunction(()=>document.body.dataset.agentState==='pending');
     await page.locator('#workspace').waitFor({state:'visible'});
+    assert.equal(await page.locator('#page-description').textContent(),'游戏主页面 <b>literal</b>');
+    assert.equal(await page.locator('#page-description b').count(),0);
+    assert.equal(await page.evaluate(()=>EditHereWeb.project().document.capture.pageSource),'agent');
     const dims=await page.locator('#canvas').evaluate(c=>({width:c.width,height:c.height}));
     const original='data:image/png;base64,'+fs.readFileSync(image).toString('base64');
     assert.equal(await page.evaluate(()=>EditHereWeb.project().document.image),original);assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image.mode),'file');
@@ -81,6 +84,8 @@ async function main() {
     await page.locator('#export').click();
     const receipt=await wait;assert.equal(receipt.state,'completed');
     const expectedReceipt=expected;
+    assert.equal(expected.capture.page,'游戏主页面 <b>literal</b>');
+    assert.equal(expected.capture.fileName,path.basename(image));
     assert.deepEqual(receipt.feedback,expectedReceipt);
     assert(!JSON.stringify(receipt.feedback).includes('data:image/'),'the conversation receipt must not dump base64');assert.equal(fs.readFileSync(receipt.imagePath).toString('base64'),original.split(',')[1]);
     const saved=fs.readFileSync(file);assert.equal(hash(saved),receipt.sha256);assert.deepEqual(JSON.parse(saved),expected);
