@@ -1,5 +1,6 @@
 #include "videoproject.h"
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -59,6 +60,70 @@ QJsonObject changedFrame(QJsonObject root, int index, const QString &key, const 
 class VideoProjectTests : public QObject {
     Q_OBJECT
   private slots:
+    void fileBundlesContainEveryFrameWithCheckedHashesAndSeparatePreviews() {
+        const auto project = sampleProject();
+        FeedbackExportOptions options; options.preview = true;
+        const auto bundle = buildVideoFeedbackBundle(project, options);
+        const auto root = QJsonDocument::fromJson(bundle.json).object();
+        QCOMPARE(bundle.files.size(), 4);
+        QTemporaryDir directory;
+        const auto path = directory.filePath("video-feedback.json");
+        saveBytes(path, bundle.json);
+        for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(directory.filePath(it.key()), it.value());
+        const auto frames = root["frames"].toArray();
+        for (const auto &value : frames) {
+            const auto frame = value.toObject();
+            const auto image = frame["feedback"].toObject()["image"].toObject();
+            QCOMPARE(image["mode"].toString(), QString("file"));
+            QCOMPARE(frame["imageFile"], image["file"]);
+            const auto png = bundle.files.value(image["file"].toString());
+            QVERIFY(!png.isEmpty()); QCOMPARE(QImage::fromData(png).size(), QSize(320, 180));
+            QCOMPARE(image["sha256"].toString(), QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex()));
+            QVERIFY(!QImage::fromData(bundle.files.value(image["preview"].toString()), "JPEG").isNull());
+        }
+        QCOMPARE(loadVideoProject(path).frames.size(), 2);
+        const auto firstImage = frames[0].toObject()["feedback"].toObject()["image"].toObject();
+        auto different = project.frames[1].document.image; different.setPixelColor(0, 0, Qt::magenta);
+        saveBytes(directory.filePath(firstImage["file"].toString()), encodePng(different));
+        QVERIFY_EXCEPTION_THROWN(loadVideoProject(path), std::runtime_error);
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QDir().mkpath(folder);
+            saveBytes(QDir(folder).filePath("video-feedback-file.json"), bundle.json);
+            for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(QDir(folder).filePath(it.key()), it.value());
+        }
+    }
+    void cliDefaultFileBundleIsCompleteAndNeverOverwritesExistingAttachments() {
+        const auto project = sampleProject();
+        QTemporaryDir directory;
+        const auto input = directory.filePath("input.edithere"); saveBytes(input, serializeVideoProject(project));
+        const auto executable = QCoreApplication::applicationDirPath() +
+#ifdef Q_OS_WIN
+            "/edithere-cli.exe";
+#else
+            "/edithere-cli";
+#endif
+        const auto output = directory.filePath("feedback.json");
+        const auto firstSidecar = directory.filePath("frame-" + project.frames[0].document.id + ".png");
+        const QByteArray preexisting("unique existing pixels"); saveBytes(firstSidecar, preexisting);
+        QProcess blocked; blocked.start(executable, {"export", input, "--output", output, "--preview"});
+        QVERIFY(blocked.waitForStarted()); QVERIFY(blocked.waitForFinished(15000)); QCOMPARE(blocked.exitCode(), 5);
+        QVERIFY(!QFileInfo::exists(output));
+        QFile existing(firstSidecar); QVERIFY(existing.open(QIODevice::ReadOnly)); QCOMPARE(existing.readAll(), preexisting); existing.close();
+        QCOMPARE(QDir(directory.path()).entryList(QDir::Files).size(), 2);
+        QVERIFY(QFile::remove(firstSidecar));
+        QProcess process; process.start(executable, {"export", input, "--output", output, "--preview"});
+        QVERIFY(process.waitForStarted()); QVERIFY(process.waitForFinished(15000)); QCOMPARE(process.exitCode(), 0);
+        const auto receipt = QJsonDocument::fromJson(process.readAllStandardOutput()).object(); QVERIFY(receipt["ok"].toBool());
+        QVERIFY(receipt["imageIncluded"].toBool());
+        QCOMPARE(loadVideoProject(output).frames.size(), 2);
+        QFile json(output); QVERIFY(json.open(QIODevice::ReadOnly)); const auto original = json.readAll(); json.close();
+        QCOMPARE(QDir(directory.path()).entryList(QDir::Files).size(), 6);
+        QProcess duplicate; duplicate.start(executable, {"export", input, "--output", output, "--preview"});
+        QVERIFY(duplicate.waitForStarted()); QVERIFY(duplicate.waitForFinished(15000)); QCOMPARE(duplicate.exitCode(), 5);
+        QVERIFY(json.open(QIODevice::ReadOnly)); QCOMPARE(json.readAll(), original);
+        QCOMPARE(QDir(directory.path()).entryList(QDir::Files).size(), 6);
+    }
     void recognizedFrameTextHasMatchingIndexAndExportSwitch() {
         auto project = sampleProject();
         auto &note = project.frames[0].document.notes[0];
@@ -72,12 +137,17 @@ class VideoProjectTests : public QObject {
         QVERIFY(!omitted["objects"].toArray()[1].toObject().contains("recognizedText"));
         QVERIFY(!omitted["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject().contains("recognizedText"));
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
-        if (!folder.isEmpty()) { QDir().mkpath(folder); saveBytes(QDir(folder).filePath("video-feedback-ocr.json"), serializeVideoFeedback(project)); }
+        if (!folder.isEmpty()) {
+            QDir().mkpath(folder);
+            const auto bundle = buildVideoFeedbackBundle(project);
+            saveBytes(QDir(folder).filePath("video-feedback-ocr.json"), bundle.json);
+            for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(QDir(folder).filePath(it.key()), it.value());
+        }
     }
 
     void sameCoordinatesAtDifferentTimesRemainSeparate() {
         const auto project = sampleProject();
-        const auto feedback = QJsonDocument::fromJson(serializeVideoFeedback(project)).object();
+        const auto feedback = QJsonDocument::fromJson(serializeVideoFeedback(project, true)).object();
         QCOMPARE(feedback["schemaVersion"].toString(), QString("video-feedback-1"));
         QCOMPARE(feedback["video"].toObject()["source"].toString(), project.source);
         QCOMPARE(feedback["video"].toObject()["width"].toInt(), 320);
@@ -98,7 +168,7 @@ class VideoProjectTests : public QObject {
             const auto object = objects[i].toObject();
             QCOMPARE(object["frameId"], frame["id"]);
             QCOMPARE(object["timestampMs"], frame["timestampMs"]);
-            QCOMPARE(frame["imageFile"].toString(), "frame-" + frame["id"].toString() + ".png");
+            QVERIFY(!frame.contains("imageFile"));
             auto existingFeedback = frame["feedback"].toObject();
             QVERIFY(existingFeedback.contains("image"));
             QCOMPARE(existingFeedback["objects"].toArray().size(), 1);
@@ -173,7 +243,9 @@ class VideoProjectTests : public QObject {
         const auto project = sampleProject();
         QTemporaryDir directory;
         const auto path = directory.filePath("video-feedback.json");
-        saveBytes(path, serializeVideoFeedback(project));
+        const auto bundle = buildVideoFeedbackBundle(project);
+        saveBytes(path, bundle.json);
+        for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(directory.filePath(it.key()), it.value());
         QVERIFY(isVideoProjectFile(path));
         const auto restored = loadVideoProject(path);
         QCOMPARE(restored.source, project.source);
@@ -196,8 +268,12 @@ class VideoProjectTests : public QObject {
         const auto path = directory.filePath("video-feedback.json");
         saveBytes(path, bytes);
         QVERIFY(!bytes.contains("data:image/"));
-        for (const auto &frame : root["frames"].toArray())
-            QVERIFY(!frame.toObject()["feedback"].toObject().contains("image"));
+        for (const auto &frame : root["frames"].toArray()) {
+            const auto image = frame.toObject()["feedback"].toObject()["image"].toObject();
+            QCOMPARE(image["mode"].toString(), QString("none"));
+            QVERIFY(!image.contains("file") && !image.contains("dataUrl"));
+            QVERIFY(!frame.toObject().contains("imageFile"));
+        }
         QVERIFY_EXCEPTION_THROWN(loadVideoProject(path), std::runtime_error);
         for (const auto &frame : project.frames)
             saveBytes(directory.filePath("frame-" + frame.document.id + ".png"), frame.document.png);
@@ -243,7 +319,7 @@ class VideoProjectTests : public QObject {
     }
 
     void rejectsInconsistentFeedbackIndexAndUnsafeImageFiles() {
-        auto root = QJsonDocument::fromJson(serializeVideoFeedback(sampleProject())).object();
+        auto root = QJsonDocument::fromJson(serializeVideoFeedback(sampleProject(), true)).object();
         auto changed = root;
         auto objects = root["objects"].toArray();
         auto object = objects[0].toObject();
@@ -331,7 +407,7 @@ class VideoProjectTests : public QObject {
         const auto restored = loadVideoProject(path);
         QCOMPARE(restored.source, QDir::cleanPath(directory.filePath(project.source)));
         const auto feedbackPath = directory.filePath("relative.json");
-        saveBytes(feedbackPath, serializeVideoFeedback(project));
+        saveBytes(feedbackPath, serializeVideoFeedback(project, true));
         QCOMPARE(loadVideoProject(feedbackPath).source, restored.source);
         project.source = "https://example.com/media.mp4";
         saveBytes(path, serializeVideoProject(project));
@@ -376,8 +452,7 @@ class VideoProjectTests : public QObject {
         for (const bool embed : {true, false}) {
             const auto output = directory.filePath(embed ? "embedded.json" : "without-images.json");
             QStringList arguments{"export", input, "--output", output};
-            if (!embed)
-                arguments.append("--no-image");
+            arguments.append(embed ? "--embed-image" : "--no-image");
             QProcess process;
             process.start(executable, arguments);
             QVERIFY2(process.waitForStarted(), qPrintable(process.errorString()));
@@ -392,10 +467,14 @@ class VideoProjectTests : public QObject {
             QFile file(output);
             QVERIFY(file.open(QIODevice::ReadOnly));
             const auto feedback = QJsonDocument::fromJson(file.readAll()).object();
-            for (const auto &frame : feedback["frames"].toArray())
-                QCOMPARE(frame.toObject()["feedback"].toObject().contains("image"), embed);
+            for (const auto &frame : feedback["frames"].toArray()) {
+                const auto image = frame.toObject()["feedback"].toObject()["image"].toObject();
+                QCOMPARE(image["mode"].toString(), embed ? QString("embedded") : QString("none"));
+                QCOMPARE(image.contains("dataUrl"), embed);
+                QVERIFY(!image.contains("file"));
+            }
         }
     }
 };
-QTEST_GUILESS_MAIN(VideoProjectTests)
+QTEST_MAIN(VideoProjectTests)
 #include "video_project_test.moc"

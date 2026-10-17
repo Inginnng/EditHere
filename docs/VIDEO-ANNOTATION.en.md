@@ -29,7 +29,7 @@ A project records the source video's address and does not put the whole video in
 
 If the video is moved or deleted, the saved screenshots and annotations can still be viewed. Click “Locate video again” to choose the matching video and restore playback and seeking; choose a video with the same content, or the old timestamps may point at different frames.
 
-On export, `frames[n].feedback.image` holds the embedded screenshot; `frames[n].imageFile`, when present, records the name of a screenshot file in the same folder as the JSON. When you export JSON without embedded images, keep those screenshot files alongside it when sharing with AI, or export a version with embedded images again.
+Each frame uses a `file` (default, a real companion original), `embedded` or `none` image descriptor. Share file-mode JSON and screenshots together. None retains metadata only. `--preview` adds a numbered JPEG per frame. Legacy string images remain readable; the example below shows that older embedded format.
 
 ## JSON structure
 

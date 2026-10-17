@@ -8,11 +8,11 @@
 
 ## 实施进度
 
-主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；每阶段单独提交并推送到 GitHub、Gitee 的 `codex/0.11.1-test` 分支。
+主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；各阶段单独提交并推送；J01/J04/J05 已通过 [PR #17](https://github.com/Inginnng/EditHere/pull/17) 合入默认分支 `codex/native`，GitHub 与 Gitee 均已核对为 `ca4a58f`。J03、J07 在后续阶段实现并合并。
 
 - [x] J01：版本号、工具标识、导出时间与 Schema 标识（本轮第 1 阶段）
 - [ ] J02：图片尺寸与缩放比例
-- [ ] J03：原图模式重构
+- [x] J03：原图模式重构（含三模式、编号预览与附件校验）
 - [x] J04：对象 ID 与界面一致的批注编号（本轮第 2 阶段）
 - [x] J05：截图区域本机 OCR、编辑与导出（本轮第 3 阶段）
 - [ ] J06：有系统控件信息时可选透传；截图导入场景暂缓
@@ -27,13 +27,14 @@
 
 ### 阶段记录
 
-查看本轮代码与提交：[GitHub 分支](https://github.com/Inginnng/EditHere/tree/codex/0.11.1-test) · [GitHub 提交记录](https://github.com/Inginnng/EditHere/commits/codex/0.11.1-test) · [Gitee 分支](https://gitee.com/InnGing/EditHere/tree/codex/0.11.1-test)。仓库默认分支为 `codex/native`，其首页时间不表示本轮分支未推送。
+查看本轮代码与提交：[GitHub 分支](https://github.com/Inginnng/EditHere/tree/codex/0.11.1-test) · [GitHub 提交记录](https://github.com/Inginnng/EditHere/commits/codex/0.11.1-test) · [Gitee 分支](https://gitee.com/InnGing/EditHere/tree/codex/0.11.1-test)。当前主分支：[GitHub](https://github.com/Inginnng/EditHere/tree/codex/native) · [Gitee](https://gitee.com/InnGing/EditHere/tree/codex/native)。
 
 | 阶段 | 实现 | 验证 | 推送记录 |
 | --- | --- | --- | --- |
 | J01 | 已完成 | 桌面 7 组、连接器 27 例、Web 单元与浏览器流程、真实导出 Schema 和打包检查通过 | `b9011b4`，GitHub / Gitee 已确认 |
 | J04 | 已完成 | 桌面 292 项、连接器 31 例、Web 68 例及真实编号/提交流程、Schema 校验通过 | `00739ea`，GitHub / Gitee 已确认 |
-| J05 | 已完成 | 桌面 9 组（含真实 Windows OCR）、连接器 36 例、Web 65 例及浏览器流程、真实导出 Schema、打包与 863 条翻译检查通过 | 本阶段独立提交，见下方分支提交记录 |
+| J03 | 已完成 | 桌面 9 组、连接器 42 例（1 项 Windows 符号链接权限跳过）、Web 87 单元及浏览器 22 项、三模式/MCP/CLI 流程、真实 Schema 和正式 Windows 包预览导出通过 | 本阶段独立提交并推送，随后合入默认分支 |
+| J05 | 已完成 | 桌面 9 组（含真实 Windows OCR）、连接器 36 例、Web 65 例及浏览器流程、真实导出 Schema、打包与 863 条翻译检查通过 | `0a4e63f`；三阶段已合入主分支（PR #17） |
 
 ---
 
@@ -112,6 +113,8 @@
 - 字段统一放在 J03 的 `image` 对象里。
 
 ### J03 原图模式重构 · P0
+
+实施状态：已完成实现与验证。默认 file，支持 embedded / none 及显式编号 JPEG；桌面、CLI、连接器和 Web 对齐，Web 多文件下载使用 ZIP。尺寸与 SHA-256 随三种模式保留，devicePixelRatio 未知时为 null。
 
 现在：
 
@@ -257,6 +260,8 @@
 - 和 J05 互补：辅助功能能拿到控件名和 ID；网页、自绘界面常常只有 OCR 有结果。AI 可以直接用 `label` 或 `automationId` 在源码里搜索组件。
 
 ### J07 窗口标题与采集上下文 · P1
+
+本轮补充需求：AI 提供图片时，可主动传入 `pageContext`（CLI 为 `--page-context`），例如“游戏主页面”。写入 `capture.page` 与 `capture.pageSource:"agent"`，在编辑器可见，随工程、重新打开和反馈保留，不覆盖文档标题。无需接入 AI 识别服务。
 
 现在：项目文件的 `capture` 里有 `source`、`title`、`createdAt`、`screenBounds`，精简反馈全部丢弃，AI 不知道截的是哪个应用、哪个页面。
 

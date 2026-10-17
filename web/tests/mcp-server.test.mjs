@@ -92,11 +92,11 @@ test('versioned image metadata reaches the saved file and MCP read receipt uncha
   assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...changes,schemaVersion:'feedback-minimal-99'}})).isError,true);
   const submitted=await call(client,'edithere_web_submit',{sessionId,token,feedback:changes});
   assert.equal(submitted.structuredContent.state,'completed');
-  assert.deepEqual(submitted.structuredContent.feedback,changes);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),{...changes,image});
+  assert.deepEqual({...submitted.structuredContent.feedback,image:undefined},{...changes,image:undefined});assert.equal(submitted.structuredContent.feedback.image.mode,'file');
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),submitted.structuredContent.feedback);assert.equal(fs.readFileSync(submitted.structuredContent.imagePath).toString('base64'),image.split(',')[1]);
   await client.close();
   const restarted=await connect(context,paths);
-  assert.deepEqual((await call(restarted,'edithere_web_read',{sessionId})).structuredContent.feedback,changes);
+  assert.deepEqual((await call(restarted,'edithere_web_read',{sessionId})).structuredContent.feedback,submitted.structuredContent.feedback);
   assert.equal(JSON.stringify(submitted.structuredContent).includes('base64'),false);
 });
 

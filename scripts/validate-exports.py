@@ -11,6 +11,8 @@ annotations/changes shape any more, so ``feedback-v0.7.json`` is gone; reading s
 file back is covered by ``tests/core_test.cpp::legacyFeedbackStillImports``.
 """
 import base64
+import copy
+import hashlib
 import json
 import os
 import struct
@@ -65,9 +67,134 @@ def check_objects(document):
             assert isinstance(annotation, str) or (set(annotation) == {"number", "text"} and 1 <= annotation["number"] <= 1000), annotation
 
 
+def image_info(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR") and len(data) >= 33:
+        return "image/png", *struct.unpack(">II", data[16:24])
+    if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+        return "image/gif", *struct.unpack("<HH", data[6:10])
+    if data[:2] == b"BM" and len(data) >= 26:
+        dib = struct.unpack("<I", data[14:18])[0]
+        if dib == 12:
+            return "image/bmp", *struct.unpack("<HH", data[18:22])
+        if dib >= 40 and len(data) >= 54:
+            width, height = struct.unpack("<ii", data[18:26])
+            return "image/bmp", width, abs(height)
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP" and len(data) >= 30:
+        chunk = data[12:16]
+        if chunk == b"VP8X":
+            return "image/webp", 1 + int.from_bytes(data[24:27], "little"), 1 + int.from_bytes(data[27:30], "little")
+        if chunk == b"VP8 " and data[23:26] == b"\x9d\x01\x2a":
+            width, height = struct.unpack("<HH", data[26:30])
+            return "image/webp", width & 0x3fff, height & 0x3fff
+        if chunk == b"VP8L" and data[20] == 0x2f:
+            bits = int.from_bytes(data[21:25], "little")
+            return "image/webp", 1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)
+    if data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9"):
+        offset = 2
+        while offset + 4 <= len(data) and data[offset] == 0xff:
+            offset += 1
+            while offset < len(data) and data[offset] == 0xff:
+                offset += 1
+            marker = data[offset]
+            offset += 1
+            if marker in (0xda, 0xd9):
+                break
+            if marker == 1 or 0xd0 <= marker <= 0xd7:
+                continue
+            length = int.from_bytes(data[offset:offset + 2], "big")
+            if length < 2 or offset + length > len(data):
+                break
+            if marker in (0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf) and length >= 8:
+                height, width = struct.unpack(">HH", data[offset + 3:offset + 7])
+                return "image/jpeg", width, height
+            offset += length
+    raise AssertionError("not a supported PNG/JPEG/WebP/GIF/BMP image")
+
+
+def attachment(filename):
+    assert isinstance(filename, str) and Path(filename).name == filename and "\\" not in filename
+    candidate = artifacts / filename
+    assert not candidate.is_symlink() and candidate.is_file(), candidate
+    assert candidate.resolve().parent == artifacts.resolve(), candidate
+    return candidate.read_bytes()
+
+
+def check_image(document):
+    image = document.get("image")
+    if image is None:
+        return None
+    if isinstance(image, str):
+        prefix, encoded = image.split(",", 1)
+        data = base64.b64decode(encoded, validate=True)
+        mime, width, height = image_info(data)
+        assert prefix == f"data:{mime};base64"
+    else:
+        if image["mode"] == "file":
+            data = attachment(image["file"])
+        elif image["mode"] == "embedded":
+            prefix, encoded = image["dataUrl"].split(",", 1)
+            assert prefix == f"data:{image['mimeType']};base64"
+            data = base64.b64decode(encoded, validate=True)
+        else:
+            assert image["mode"] == "none" and "file" not in image and "dataUrl" not in image
+            data = None
+        if data is not None:
+            assert hashlib.sha256(data).hexdigest() == image["sha256"].lower(), "image SHA-256 mismatch"
+            mime, width, height = image_info(data)
+            assert (mime, width, height) == (image["mimeType"], image["width"], image["height"])
+        else:
+            width, height = image["width"], image["height"]
+        if "preview" in image:
+            preview_mime, preview_width, preview_height = image_info(attachment(image["preview"]))
+            assert preview_mime == "image/jpeg" and 0 < preview_width <= 32767 and 0 < preview_height <= 32767
+            assert preview_width * preview_height <= 32_000_000
+    assert 0 < width <= 32767 and 0 < height <= 32767 and width * height <= 32_000_000
+    return width, height
+
+
 for name in SCHEMAS:
     Draft202012Validator.check_schema(schema(name))
 print(f"PASS: {len(SCHEMAS)} published schemas load")
+
+# Contract probes do not depend on C++ implementation helpers. Both schema
+# entry points must accept compatibility files and reject invalid new metadata.
+image_probe = {
+    "$schema": "urn:edithere:feedback-minimal:2", "schemaVersion": "feedback-minimal-2",
+    "tool": {"name": "EditHere", "version": "schema-contract"}, "exportedAt": "2026-10-17T00:00:00Z",
+    "annotationSpace": "result", "objects": [],
+}
+descriptor_probe = {"mode": "none", "mimeType": "image/png", "width": 10, "height": 20,
+                    "devicePixelRatio": None, "sha256": "0" * 64}
+for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.json"):
+    for image in (None, "data:image/png;base64,YQ==", descriptor_probe,
+                  dict(descriptor_probe, mode="file", file="feedback.png"),
+                  dict(descriptor_probe, mode="embedded", dataUrl="data:image/png;base64,YQ=="),
+                  dict(descriptor_probe, preview="feedback.annotated.jpg")):
+        validate(schema_name, dict(image_probe, **({"image": image} if image is not None else {})))
+    invalid_images = [
+        dict(descriptor_probe, mode="file"),
+        dict(descriptor_probe, mode="embedded"),
+        dict(descriptor_probe, file="feedback.png"),
+        dict(descriptor_probe, mode="file", file="../private.png"),
+        dict(descriptor_probe, mode="file", file="nul.png"),
+        dict(descriptor_probe, mode="file", file="feedback.jpg"),
+        dict(descriptor_probe, mode="embedded", dataUrl="data:image/jpeg;base64,YQ=="),
+        dict(descriptor_probe, preview="../feedback.annotated.jpg"),
+        dict(descriptor_probe, preview="feedback.png"),
+        dict(descriptor_probe, sha256="incorrect"),
+        dict(descriptor_probe, devicePixelRatio=0),
+        dict(descriptor_probe, width=0),
+        dict(descriptor_probe, height=32768),
+        dict(descriptor_probe, unsupported=True),
+    ]
+    missing = copy.deepcopy(descriptor_probe)
+    del missing["devicePixelRatio"]
+    invalid_images.append(missing)
+    validator = Draft202012Validator(schema(schema_name), format_checker=FormatChecker(),
+                                     registry=Registry(retrieve=retrieve_schema))
+    for image in invalid_images:
+        assert not validator.is_valid(dict(image_probe, image=image)), image
+print("PASS: image mode/metadata/legacy compatibility and malformed contract probes for both schemas")
 
 for version, artifact in (("v1", "feedback-v1.json"), ("v1.1", "feedback-v1.1.json"),
                           ("v2", "feedback-v2.json")):
@@ -83,7 +210,8 @@ validate("feedback-v1.schema.json",
          json.loads((root / "tests" / "fixtures" / "desktop-review.json").read_text(encoding="utf-8")))
 print("PASS: desktop 0.2 compatibility fixture")
 
-# Current compact feedback, with and without the embedded original.
+# Current compact feedback. New exports have a file/embedded/none descriptor;
+# legacy embedded strings remain covered by the same compatibility entry point.
 embedded = export("feedback.json")
 plain = export("feedback-no-image.json")
 validate("feedback-minimal.schema.json", embedded)
@@ -114,12 +242,24 @@ assert "annotationSpace" not in tagless and tagless["objects"], tagless
 check_objects(tagless)
 print(f"PASS: current feedback without the annotationSpace tag, {len(tagless['objects'])} object(s)")
 
-png = base64.b64decode(embedded["image"].removeprefix("data:image/png;base64,"), validate=True)
-assert png.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
-width, height = struct.unpack(">II", png[16:24])
-assert 0 < width <= 32767 and 0 < height <= 32767 and width * height <= 32_000_000
+width, height = check_image(embedded)
+check_image(plain)
 assert embedded["annotationSpace"] == "result"
-print(f"PASS: standalone original PNG {width}x{height}, result-coordinate notes")
+print(f"PASS: original screenshot {width}x{height}, checked bytes/hash and result-coordinate notes")
+
+for artifact in ("feedback-file.json", "feedback-embedded.json", "feedback-none.json", "feedback-preview.json"):
+    document = export(artifact)
+    validate("feedback-minimal-v2.schema.json", document)
+    validate("feedback-minimal.schema.json", document)
+    check_objects(document)
+    check_image(document)
+    assert isinstance(document["image"], dict)
+    expected_mode = {"feedback-file.json": "file", "feedback-embedded.json": "embedded", "feedback-none.json": "none"}.get(artifact)
+    if expected_mode:
+        assert document["image"]["mode"] == expected_mode
+    else:
+        assert "preview" in document["image"]
+print("PASS: real file/embedded/none/annotated-preview exports and all referenced attachments")
 
 # Real OCR-bearing exports from the model tests, including the project-only
 # deletion marker and the setting that removes evidence from feedback.
@@ -139,9 +279,18 @@ video = export("video-feedback-ocr.json")
 validate("video-feedback-v1.schema.json", video)
 for frame in video["frames"]:
     validate("feedback-minimal-v2.schema.json", frame["feedback"])
+    check_image(frame["feedback"])
     nested = frame["feedback"]["objects"]
     indexed = [{key: value for key, value in item.items()
                 if key not in ("frameId", "timestampMs")}
                for item in video["objects"] if item["frameId"] == frame["id"]]
     assert nested == indexed
 print("PASS: OCR feedback, omitted export, editable/deleted project and video index")
+
+video_bundle = export("video-feedback-file.json")
+validate("video-feedback-v1.schema.json", video_bundle)
+for frame in video_bundle["frames"]:
+    check_image(frame["feedback"])
+    if "imageFile" in frame:
+        assert frame["imageFile"] == frame["feedback"]["image"]["file"]
+print("PASS: video frame file attachments with hash/dimensions and compatible root index")

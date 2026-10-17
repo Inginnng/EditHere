@@ -48,7 +48,7 @@ async function main() {
   async function cards() { return page.locator('.note-card').evaluateAll(elements => elements.map(element => ({ id: element.dataset.note, number: element.querySelector('.note-number').textContent, text: element.querySelector('p').textContent, empty: element.classList.contains('movement-empty') }))); }
   let current = 'load';
   try {
-    await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href);
+    await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href); await page.evaluate(()=>{const el=document.querySelector('#image-mode');el.value='embedded';});
     const image = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 220; const p = c.getContext('2d'); p.fillStyle = '#edf1f8'; p.fillRect(0, 0, 400, 220); p.fillStyle = '#e74c3c'; p.fillRect(20, 30, 50, 40); p.fillStyle = '#34ad89'; p.fillRect(70, 30, 50, 40); return c.toDataURL('image/png'); });
     const layout = L.create(400, 220), left = rect(20, 30, 70, 70), right = rect(70, 30, 120, 70);
     L.addRegion(layout, left); L.addRegion(layout, right);
@@ -117,7 +117,7 @@ async function main() {
     await checkpoint('readable preview folds image bytes while compact download and clipboard preserve the entire image', async () => {
       await page.locator('#export').click(); const preview = await page.locator('#json-preview').inputValue();
       assert(!preview.includes(image), 'the desktop-style preview must fold full image bytes'); assert(preview.includes('图片编码已折叠'));
-      const downloaded = await downloadText(page), data = JSON.parse(downloaded); assert.equal(data.image, image);
+      const downloaded = await downloadText(page), data = JSON.parse(downloaded); assert.equal(data.image.dataUrl, image);
       assert(downloaded.endsWith('\n')); assert.equal(downloaded.trim().split('\n').length, 1, 'download uses the native compact encoding');
       const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
       assert.equal(downloaded, JSON.stringify(stable(data)) + '\n', 'native QJsonObject key ordering must be deterministic');
@@ -125,8 +125,8 @@ async function main() {
       await page.evaluate(() => { globalThis.copiedFeedback = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { globalThis.copiedFeedback = text; } } }); });
       await page.locator('#copy-json').click(); await page.waitForFunction(() => globalThis.copiedFeedback !== null);
       assert.equal(await page.evaluate(() => globalThis.copiedFeedback), downloaded, 'copy must never copy the folded preview');
-      await page.locator('#embed').uncheck(); const noImage = JSON.parse(await downloadText(page)); assert.equal(Object.hasOwn(noImage, 'image'), false);
-      await page.locator('#embed').check(); await page.screenshot({ path: path.join(output, 'native-feedback-preview.png') }); await page.keyboard.press('Escape');
+      await page.locator('#image-mode').selectOption('none'); const noImage = JSON.parse(await downloadText(page)); assert.equal(noImage.image.mode, 'none'); assert(!Object.hasOwn(noImage.image,'dataUrl'));
+      await page.locator('#image-mode').selectOption('embedded'); await page.screenshot({ path: path.join(output, 'native-feedback-preview.png') }); await page.keyboard.press('Escape');
       fs.writeFileSync(path.join(output, 'adjacent-native-feedback.json'), downloaded);
     });
     assert.deepEqual(errors, []); assert.deepEqual(requests, []);

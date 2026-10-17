@@ -30,6 +30,7 @@ class Editor final : public QWidget {
     void setAgentSession(bool active);
     bool hasUnsavedChanges();
     QByteArray agentFeedback(bool embed);
+    FeedbackBundle agentFeedbackBundle(FeedbackExportOptions options);
     void setPreferences(const AppSettings &settings);
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {

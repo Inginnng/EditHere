@@ -199,6 +199,8 @@ class SettingsTests : public QObject {
         changed.launchAtLogin = true;
         changed.fitImageOnOpen = false;
         changed.embedOriginal = false;
+        changed.imageExportMode = ImageExportMode::None;
+        changed.includeFeedbackPreview = true;
         changed.includeRecognizedText = false;
         changed.confirmBeforeDiscard = false;
         changed.checkUpdatesOnStartup = true;

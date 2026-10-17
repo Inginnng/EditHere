@@ -24,7 +24,7 @@ async function main(){
   async function edit(index,text){await page.locator('[data-edit-recognized]').nth(index).click();await page.locator('#recognized-text').fill(text);await page.locator('#recognized-save').click();await page.locator('#recognized-dialog').waitFor({state:'hidden'});}
   const recognized=value=>value.objects.filter(object=>object.recognizedText).map(object=>object.recognizedText);
   try{
-    await page.goto(pathToFileURL(path.join(web,'EditHere.html')).href);
+    await page.goto(pathToFileURL(path.join(web,'EditHere.html')).href);await page.evaluate(()=>document.querySelector('#image-mode').value='embedded');
     const image=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=400;c.height=200;const p=c.getContext('2d');p.fillStyle='#fff';p.fillRect(0,0,400,200);p.fillStyle='#222';p.font='24px sans-serif';p.fillText('Save',35,55);return c.toDataURL('image/png');});
     const source=rectangle(20,20,100,70),destination=rectangle(180,20,260,70);
     const current=F.exportImage({image,movements:[{source:rectangle(20,100,100,150),destination:rectangle(180,100,260,150)}],notes:[
@@ -57,7 +57,7 @@ async function main(){
     assert(saved.document.notes.some(note=>note.recognizedText?.text===''&&note.recognizedText.edited===true));
     await load(saved);assert.equal(recognized(await exported()).length,2);
     checks.push('Deleting OCR stores an explicit project marker and stays deleted after saving and reopening');
-    await page.evaluate(value=>EditHereWeb.loadAgentFeedback({image:value.image,name:'restored-feedback',feedback:value}),current);
+    await page.evaluate(value=>EditHereWeb.loadAgentFeedback({image:value.image.dataUrl,name:'restored-feedback',feedback:value,imageMode:'embedded'}),current);
     assert.deepEqual(await page.evaluate(()=>EditHereWeb.feedback()),current,'restored receipt keeps exact original snapshot');
     const disabled=await toggle(false);
     assert.equal(recognized(disabled).length,0);assert.equal(recognized(await page.evaluate(()=>EditHereWeb.feedback())).length,0);

@@ -2,6 +2,7 @@
 #include "detector.h"
 #include "model.h"
 #include <QDateTime>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QImageReader>
 #include <QJsonArray>
@@ -14,6 +15,99 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void imageBundleModesUseRealBytesAndPreserveCoordinates() {
+        auto doc = fromImage(exampleImage(), "file", "Image bundle");
+        Note note; note.point = {40, 50}; note.comment = "Change the heading"; doc.notes = {note};
+        QTemporaryDir directory;
+        const auto path = directory.filePath("feedback.json");
+        for (const auto mode : {ImageExportMode::File, ImageExportMode::Embedded, ImageExportMode::None}) {
+            FeedbackExportOptions options; options.mode = mode; options.imageFile = "feedback-file.png";
+            const auto bundle = buildFeedbackBundle(doc, options);
+            const auto root = QJsonDocument::fromJson(bundle.json).object();
+            const auto image = root["image"].toObject();
+            QCOMPARE(image["width"].toInt(), doc.image.width()); QCOMPARE(image["height"].toInt(), doc.image.height());
+            QCOMPARE(image["mimeType"].toString(), QString("image/png")); QVERIFY(image["devicePixelRatio"].isNull());
+            QCOMPARE(image["sha256"].toString(), QString::fromLatin1(QCryptographicHash::hash(doc.png, QCryptographicHash::Sha256).toHex()));
+            if (mode == ImageExportMode::File) {
+                QCOMPARE(image["mode"].toString(), QString("file"));
+                QCOMPARE(bundle.files.value("feedback-file.png"), doc.png);
+                QVERIFY(!image.contains("dataUrl"));
+                saveBytes(directory.filePath("feedback-file.png"), bundle.files.value("feedback-file.png"));
+                saveBytes(path, bundle.json);
+                QCOMPARE(loadDocument(path).notes[0].point, note.point);
+                // Same dimensions with different pixels must fail by hash.
+                auto different = doc.image; different.setPixelColor(0, 0, Qt::magenta);
+                saveBytes(directory.filePath("feedback-file.png"), encodePng(different));
+                QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+                saveBytes(directory.filePath("feedback-file.png"), doc.png);
+            } else if (mode == ImageExportMode::Embedded) {
+                QCOMPARE(image["mode"].toString(), QString("embedded")); QVERIFY(bundle.files.isEmpty());
+                QVERIFY(!image.contains("file"));
+                QCOMPARE(QByteArray::fromBase64(image["dataUrl"].toString().section(',', 1).toLatin1()), doc.png);
+                QCOMPARE(loadFeedback(root, {}).notes[0].point, note.point);
+            } else {
+                QCOMPARE(image["mode"].toString(), QString("none")); QVERIFY(bundle.files.isEmpty());
+                QVERIFY(!image.contains("file") && !image.contains("dataUrl"));
+                QVERIFY_EXCEPTION_THROWN(loadFeedback(root, {}), std::runtime_error);
+                QCOMPARE(loadFeedback(root, doc.image, doc.png).notes[0].point, note.point);
+            }
+            const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+            if (!folder.isEmpty()) {
+                QVERIFY(QDir().mkpath(folder));
+                const QString name = mode == ImageExportMode::File ? "feedback-file.json" : mode == ImageExportMode::Embedded ? "feedback-embedded.json" : "feedback-none.json";
+                saveBytes(QDir(folder).filePath(name), bundle.json);
+                for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(QDir(folder).filePath(it.key()), it.value());
+            }
+        }
+        FeedbackExportOptions preview; preview.mode = ImageExportMode::None; preview.preview = true;
+        const auto bundle = buildFeedbackBundle(doc, preview);
+        QVERIFY(bundle.imageFile.isEmpty()); QCOMPARE(bundle.previewFile, QString("feedback.annotated.jpg"));
+        QCOMPARE(bundle.files.size(), 1);
+        const auto rendered = QImage::fromData(bundle.files.value(bundle.previewFile), "JPEG");
+        QVERIFY(!rendered.isNull()); QVERIFY(rendered.width() >= doc.image.width());
+        QVERIFY(!bundle.json.contains("data:image/"));
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            saveBytes(QDir(folder).filePath("feedback-preview.json"), bundle.json);
+            saveBytes(QDir(folder).filePath(bundle.previewFile), bundle.files.value(bundle.previewFile));
+        }
+    }
+    void imageBundleRejectsMetadataTamperingAndUnsafeNames() {
+        const auto doc = fromImage(exampleImage(), "file", "Image metadata");
+        auto root = exportFeedback(doc, true);
+        auto image = root["image"].toObject();
+        for (const auto &field : {QString("sha256"), QString("width"), QString("mimeType")}) {
+            auto broken = image;
+            if (field == "sha256") broken[field] = QString(64, '0');
+            else if (field == "width") broken[field] = doc.image.width() + 1;
+            else broken[field] = "image/jpeg";
+            auto changed = root; changed["image"] = broken;
+            QVERIFY_EXCEPTION_THROWN(loadFeedback(changed, {}), std::runtime_error);
+        }
+        for (const auto &name : {QString("../private.png"), QString("C:/private.png"), QString("nul.png"), QString(".hidden.png")}) {
+            FeedbackExportOptions options; options.imageFile = name;
+            QVERIFY_EXCEPTION_THROWN(buildFeedbackBundle(doc, options), std::runtime_error);
+        }
+        FeedbackExportOptions options; options.preview = true; options.previewFile = "../private.annotated.jpg";
+        QVERIFY_EXCEPTION_THROWN(buildFeedbackBundle(doc, options), std::runtime_error);
+        auto legacy = root;
+        legacy["image"] = "data:image/png;base64," + QString::fromLatin1(doc.png.toBase64());
+        QCOMPARE(loadFeedback(legacy, {}).image, doc.image);
+        legacy.remove("image");
+        QCOMPARE(loadFeedback(legacy, doc.image).image, doc.image);
+
+        // A promised preview is part of the bundle, even when the original is
+        // embedded. Missing or mislabeled previews cannot silently disappear.
+        QTemporaryDir directory;
+        FeedbackExportOptions withPreview; withPreview.mode = ImageExportMode::Embedded; withPreview.preview = true;
+        const auto bundle = buildFeedbackBundle(doc, withPreview);
+        const auto path = directory.filePath("preview.json"); saveBytes(path, bundle.json);
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        saveBytes(directory.filePath(bundle.previewFile), doc.png);
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
+        saveBytes(directory.filePath(bundle.previewFile), bundle.files.value(bundle.previewFile));
+        QCOMPARE(loadDocument(path).image, doc.image);
+    }
     void recognizedScreenshotTextRoundTripsAndCanBeOmitted() {
         auto doc = fromImage(exampleImage(), "file", "OCR metadata");
         Note note; note.isPoint = false; note.rect = {20, 20, 300, 80}; note.comment = "Shorten this label";
@@ -99,6 +193,7 @@ class CoreTests : public QObject {
         QCOMPARE(imported.notes[0].point, note.point);
 
         auto legacy = feedback;
+        legacy["image"] = feedback["image"].toObject()["dataUrl"];
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             legacy.remove(field);
         saveBytes(path, QJsonDocument(legacy).toJson());
@@ -207,6 +302,7 @@ class CoreTests : public QObject {
         }
         earlier["objects"] = earlierObjects;
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
+        earlier["image"] = earlier["image"].toObject()["dataUrl"];
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             earlier.remove(field);
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
@@ -407,7 +503,7 @@ class CoreTests : public QObject {
         QCOMPARE(bluePixels, 0);
         QCOMPARE(doc.notes, originalNotes);
         QCOMPARE(stableFeedback(exportFeedback(doc)), stableFeedback(feedback));
-        QCOMPARE(feedback.keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 6);
         // The movement-linked object keeps the source rect, the destination,
@@ -935,7 +1031,7 @@ class CoreTests : public QObject {
         QVERIFY(imported.notes[3].isGlobal);
         QVERIFY(imported.layout.has_value());
         // Re-exporting an imported old file already uses the current structure.
-        QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(exportFeedback(imported, false).keys(), (QStringList{"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
     }
     void objectFeedbackRejectsInvalidGeometry_data() {
         QTest::addColumn<QJsonValue>("source");
@@ -983,7 +1079,7 @@ class CoreTests : public QObject {
         }
         const auto feedback = exportFeedback(document);
         QCOMPARE(feedback["objects"].toArray().size(), MaxNotes + 1);
-        const auto restored = loadFeedback(feedback, image);
+        const auto restored = loadFeedback(feedback, image, document.png);
         QCOMPARE(restored.notes.size(), MaxNotes);
         QVERIFY(restored.layout.has_value());
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
@@ -996,13 +1092,13 @@ class CoreTests : public QObject {
         objects.append(QJsonObject{{"source", QJsonValue::Null}, {"movements", QJsonArray{}},
                                    {"annotations", QJsonArray{"too many notes"}}});
         invalid["objects"] = objects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image, document.png), std::runtime_error);
         QJsonArray movements;
         for (int i = 0; i <= MaxLayoutMovements; ++i)
             movements.append(QJsonObject{{"to", rectJson({50, 50, 20, 20})}});
         invalid["objects"] = QJsonArray{QJsonObject{{"source", rectJson({10, 10, 20, 20})},
                                                    {"movements", movements}, {"annotations", QJsonArray{}}}};
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, image, document.png), std::runtime_error);
     }
     void objectFeedbackNotesUseTheFinalDestination() {
         QImage image(100, 100, QImage::Format_RGB32);

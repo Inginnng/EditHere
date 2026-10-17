@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 // EditHere binary, or third-party test package is required.
 process.env.EDITHERE_CLI = process.execPath;
 const connectorUrl = new URL('../connector/mcp-server.mjs', import.meta.url);
-const { runCli, cliResultToContent, statusContent, annotateResultToContent } = await import(connectorUrl);
+const { runCli, cliResultToContent, statusContent, annotateResultToContent, feedbackImageCliArgs, TOOLS } = await import(connectorUrl);
 
 function videoFeedback(frameCount = 2) {
   const frames = Array.from({ length: frameCount }, (_, index) => ({
@@ -63,6 +64,152 @@ function feedbackResult(feedback, options = {}, files = {}, cliResult = { exitCo
 function resultText(result) {
   return result.content.filter((item) => item.type === 'text').map((item) => item.text).join('\n');
 }
+
+const bundlePng = fs.readFileSync(new URL('./fixtures/ocr-small-url.png', import.meta.url)); // 380 x 19
+// Real 2 x 3 images encoded by Pillow, rather than fake bytes that only happen
+// to have an image filename. No decoder or external package is needed at test time.
+const encodedFixtures = {
+  jpeg: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAADAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDi6KKK+ZP3E//Z',
+  gif: 'R0lGODdhAgADAIEAAP8AAAAAAAAAAAAAACwAAAAAAgADAAAIBgABCBwYEAA7',
+  bmp: 'Qk1OAAAAAAAAADYAAAAoAAAAAgAAAAMAAAABABgAAAAAABgAAADEDgAAxA4AAAAAAAAAAAAAAAD/AAD/AAAAAP8AAP8AAAAA/wAA/wAA',
+  webp: 'UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoCAAMAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=',
+};
+
+function imageDescriptor(mode = 'file', bytes = bundlePng, mimeType = 'image/png', width = 380, height = 19) {
+  return { mode, mimeType, width, height, devicePixelRatio: null,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    ...(mode === 'file' ? { file: `feedback.${mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]}` }
+      : mode === 'embedded' ? { dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}` } : {}) };
+}
+
+test('J03 file, embedded and none preserve metadata and use identical validation after receipt loss', () => {
+  for (const mode of ['file', 'embedded', 'none']) {
+    const image = imageDescriptor(mode);
+    const feedback = versionedImageFeedback({ image });
+    const files = mode === 'file' ? { 'feedback.png': bundlePng } : {};
+    for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+      const result = feedbackResult(feedback, { recoverCompletedFeedback: true, includeImage: true }, files, receipt);
+      assert.equal(result.isError, false, resultText(result));
+      const images = result.content.filter((item) => item.type === 'image');
+      assert.equal(images.length, mode === 'none' ? 0 : 1);
+      if (images.length) assert.equal(images[0].data, bundlePng.toString('base64'));
+      assert.match(resultText(result), new RegExp(`mode=${mode}，image/png，380x19`));
+      assert.equal(resultText(result).includes(bundlePng.toString('base64')), false, 'the text summary must not print image bytes');
+      if (mode === 'file') assert.match(resultText(result), /imageFile: .*feedback\.png/);
+    }
+  }
+});
+
+test('J03 validates every supported screenshot encoding from its bytes and detects incorrect dimensions', () => {
+  for (const [format, base64] of Object.entries(encodedFixtures)) {
+    const bytes = Buffer.from(base64, 'base64');
+    const image = imageDescriptor('file', bytes, `image/${format}`, 2, 3);
+    const files = { [image.file]: bytes };
+    assert.equal(feedbackResult(versionedImageFeedback({ image }), { includeImage: true }, files).isError, false, format);
+    image.width = 3;
+    assert.match(resultText(feedbackResult(versionedImageFeedback({ image }), {}, files)), /MIME 或尺寸/);
+  }
+});
+
+test('J03 rejects tampered, missing, misplaced and malformed attachments before reporting success', () => {
+  const mutations = [
+    [(image) => { image.sha256 = '0'.repeat(64); }, /SHA-256/],
+    [(image) => { image.sha256 = 'not-a-hash'; }, /64 位十六进制/],
+    [(image) => { image.width += 1; }, /MIME 或尺寸/],
+    [(image) => { image.mimeType = 'image/jpeg'; image.file = 'feedback.jpg'; }, /MIME 或尺寸/],
+    [(image) => { image.mimeType = 'image/jpeg'; }, /后缀与 mimeType/],
+    [(image) => { image.file = '../private.png'; }, /不能包含路径/],
+    [(image) => { image.file = 'C:\\private.png'; }, /不能包含路径/],
+    [(image) => { image.file = 'nul.png'; }, /不能包含路径/],
+    [(image) => { image.dataUrl = 'data:image/png;base64,AAAA'; }, /不能含 dataUrl/],
+    [(image) => { image.mode = 'none'; }, /none 模式不能含/],
+    [(image) => { image.mode = 'embedded'; }, /dataUrl 不是/],
+    [(image) => { delete image.devicePixelRatio; }, /devicePixelRatio/],
+    [(image) => { image.devicePixelRatio = 0; }, /devicePixelRatio/],
+    [(image) => { image.height = 32768; }, /像素尺寸/],
+    [(image) => { image.instructions = 'something'; }, /不支持的字段/],
+  ];
+  for (const [mutate, error] of mutations) {
+    const image = imageDescriptor();
+    mutate(image);
+    for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+      const result = feedbackResult(versionedImageFeedback({ image }), { recoverCompletedFeedback: true }, { 'feedback.png': bundlePng, 'feedback.jpg': bundlePng }, receipt);
+      assert.equal(result.isError, true);
+      assert.match(resultText(result), error);
+    }
+  }
+  assert.equal(feedbackResult(versionedImageFeedback({ image: imageDescriptor() })).isError, true, 'a successful receipt cannot hide a missing screenshot');
+  const image = imageDescriptor('embedded', Buffer.from('not-an-image'));
+  assert.match(resultText(feedbackResult(versionedImageFeedback({ image }))), /图片内容不是有效/);
+});
+
+test('J03 annotated previews are separate JPEG attachments and survive metadata-only exports', () => {
+  const jpeg = Buffer.from(encodedFixtures.jpeg, 'base64');
+  const image = { ...imageDescriptor('none'), preview: 'feedback.annotated.jpg' };
+  const result = feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: jpeg });
+  assert.equal(result.isError, false);
+  assert.match(resultText(result), /previewFile: .*feedback\.annotated\.jpg/);
+  assert.equal(result.content.filter((item) => item.type === 'image').length, 0, 'preview must never silently replace the source image');
+  assert.equal(feedbackResult(versionedImageFeedback({ image })).isError, true, 'a promised preview must exist');
+  assert.match(resultText(feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: bundlePng })), /JPEG/);
+  image.preview = '../private.annotated.jpg';
+  assert.match(resultText(feedbackResult(versionedImageFeedback({ image }))), /不能包含路径/);
+});
+
+test('J03 all video frames validate independently of tool attachment limits and root index remains frame-local', () => {
+  const feedback = videoFeedback(11);
+  const files = {};
+  feedback.frames.forEach((frame, index) => {
+    const image = imageDescriptor(index === 0 ? 'none' : index === 1 ? 'embedded' : 'file');
+    if (image.mode === 'file') { image.file = `frame-${index}.png`; files[image.file] = bundlePng; frame.imageFile = image.file; }
+    frame.feedback = versionedImageFeedback({ ...frame.feedback, image });
+  });
+  let result = feedbackResult(feedback, { includeImage: true }, files);
+  assert.equal(result.isError, false, resultText(result));
+  assert.equal(result.content.filter((item) => item.type === 'image').length, 8);
+  feedback.frames[10].feedback.image.sha256 = '0'.repeat(64);
+  result = feedbackResult(feedback, { includeImage: true }, files);
+  assert.equal(result.isError, true, 'an unattached frame must still have its sidecar verified');
+  assert.match(resultText(result), /SHA-256/);
+  feedback.frames[10].feedback.image.sha256 = imageDescriptor().sha256;
+  feedback.frames[10].imageFile = 'different.png';
+  assert.match(resultText(feedbackResult(feedback, {}, files)), /imageFile 与 feedback.image.file 不一致/);
+});
+
+test('J03 refuses image and preview symlinks even when they point inside the same directory', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-bundle-links-'));
+  try {
+    const filename = path.join(directory, 'feedback.json');
+    const target = path.join(directory, 'target.png');
+    fs.writeFileSync(target, bundlePng);
+    try { fs.symlinkSync(target, path.join(directory, 'feedback.png'), 'file'); }
+    catch (error) { if (['EPERM', 'EACCES'].includes(error.code)) { t.skip('host does not grant symlink creation'); return; } throw error; }
+    const image = imageDescriptor();
+    fs.writeFileSync(filename, JSON.stringify(versionedImageFeedback({ image })));
+    for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+      const result = annotateResultToContent(receipt, filename, { recoverCompletedFeedback: true });
+      assert.equal(result.isError, true);
+      assert.match(resultText(result), /符号链接/);
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('J03 connector options retain includeImage transport semantics and map old noImage explicitly', () => {
+  assert.deepEqual(feedbackImageCliArgs({}), []);
+  assert.deepEqual(feedbackImageCliArgs({ includeImage: true }), []);
+  assert.deepEqual(feedbackImageCliArgs({ imageMode: 'file' }), []);
+  assert.deepEqual(feedbackImageCliArgs({ imageMode: 'embedded', preview: true }), ['--embed-image', '--preview']);
+  assert.deepEqual(feedbackImageCliArgs({ noImage: true, preview: true }), ['--no-image', '--preview']);
+  assert.deepEqual(feedbackImageCliArgs({ noImage: true, imageMode: 'none' }), ['--no-image']);
+  for (const args of [{ imageMode: 'wrong' }, { noImage: true, imageMode: 'file' }, { noImage: true, imageMode: 'embedded' }, { preview: 'yes' }, { includeImage: 1 }]) assert.throws(() => feedbackImageCliArgs(args));
+  for (const name of ['edithere_annotate', 'edithere_annotate_start', 'edithere_export']) {
+    const properties = TOOLS.find((tool) => tool.name === name).inputSchema.properties;
+    assert.deepEqual(properties.imageMode.enum, ['file', 'embedded', 'none']);
+    assert.equal(properties.imageMode.default, 'file');
+    assert.equal(properties.preview.default, false);
+    assert.equal(properties.includeImage.type, 'boolean');
+  }
+});
 
 test('video summaries keep different edits at identical coordinates in their own frames', () => {
   const result = feedbackResult(videoFeedback());

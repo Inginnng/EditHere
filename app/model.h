@@ -1,5 +1,6 @@
 #pragma once
 #include "layout.h"
+#include "feedbackexport.h"
 #include <QImage>
 #include <QJsonObject>
 #include <QLineF>
@@ -66,15 +67,19 @@ QByteArray encodePng(const QImage &image);
 QByteArray encodeOpaquePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque = false);
 Document loadDocument(const QString &path);
-QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false, bool includeRecognizedText = true);
-QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false, bool includeRecognizedText = true);
+QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &options = {});
+QJsonObject exportFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);
+QByteArray serializeFeedback(const Document &doc, const FeedbackExportOptions &options = {});
+QByteArray serializeFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);
+FeedbackBundle buildFeedbackBundle(const Document &doc, const FeedbackExportOptions &options = {});
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
 QLineF movementMarkerLine(const MovementMarker &marker);
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);
-Document loadFeedback(const QJsonObject &feedback, const QImage &original);
+Document loadFeedback(const QJsonObject &feedback, const QImage &original, const QByteArray &originalBytes = {});
+Document loadFeedbackFile(const QJsonObject &feedback, const QString &jsonPath, const QString &legacyImageName = {});
 QJsonObject exportDocument(const Document &doc, bool embed = false);
 void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0);
 QByteArray serializeDocument(const Document &doc, bool embed = false);

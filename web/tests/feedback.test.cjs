@@ -8,7 +8,8 @@ const version = /project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/.exec(fs.rea
 const exportedAt = '2026-10-16T16:30:00+08:00';
 const metadata = {$schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2', tool:{name:'EditHere', version}, exportedAt};
 const rectangle = (x1, y1, x2, y2) => ({x1, y1, x2, y2});
-const image = 'data:image/png;base64,b3JpZ2luYWw=';
+const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+const imageDescriptor=mode=>feedback.imageFormat.descriptor(image,mode,'feedback.png');
 const source = rectangle(10, 10, 70, 50);
 const destination = rectangle(50, 50, 140, 110);
 
@@ -18,7 +19,7 @@ test('native minimalFeedbackRoundTrips fixture keeps movement and independent re
     movements:[{source, destination}],
     notes:[{source:rectangle(20, 20, 20, 20), text:'加大标题'}, {source, text:'表格右移'}]
   }, false, exportedAt);
-  assert.deepEqual(actual, {...metadata, annotationSpace:'result', objects:[
+  assert.deepEqual(actual, {...metadata, annotationSpace:'result', image:imageDescriptor('none'), objects:[
     {id:'o1', source, movements:[{to:destination}], annotations:[]},
     {id:'o2', source:rectangle(20, 20, 20, 20), movements:[], annotations:[{number:1,text:'加大标题'}]},
     {id:'o3', source, movements:[], annotations:[{number:2,text:'表格右移'}]}
@@ -42,7 +43,7 @@ test('native movementSource notes merge with their exact source without exportin
     {id:'o2', source, movements:[], annotations:[{number:3,text:'独立框批注'}]},
     {id:'o3', source:null, movements:[], annotations:[{number:4,text:'整体采用杂志风格'}]}
   ]);
-  assert.equal(actual.image, image, 'the embedded image is the unchanged original');
+  assert.equal(actual.image.mode, 'file');assert.equal(actual.image.sha256,feedback.imageFormat.inspect(image).sha256);
 });
 
 test('native tracked parent and child sources stay nested instead of exporting pixel fragments', () => {
@@ -92,9 +93,9 @@ test('native compact export and folded image preview carry separate complete byt
   const bytes = feedback.serialize(actual);
   assert(!bytes.includes('\n '), 'serialization stays compact');
   assert(bytes.endsWith('\n'));
-  assert.deepEqual(JSON.parse(feedback.preview(actual)), {...actual, image:'data:image/png;base64,[图片编码已折叠]'});
+  assert.deepEqual(JSON.parse(feedback.preview(actual)), {...actual, image:{...actual.image,dataUrl:'data:image/png;base64,[图片编码已折叠]'}});
   assert.deepEqual(JSON.parse(bytes), actual);
-  assert.equal(actual.image, image, 'preview cannot replace original bytes');
+  assert.equal(actual.image.dataUrl, image, 'preview cannot replace original bytes');
   assert.equal(feedback.summary(actual).schemaVersion, 'feedback-minimal-2');
 });
 
@@ -117,15 +118,15 @@ test('native video fixtures keep microseconds and chronological frame/image refe
   assert.equal(actual.objects.length, 3);
   for (const frame of actual.frames) {
     assert.equal(frame.imageFile, 'frame-' + frame.id + '.png');
-    assert.equal(frame.feedback.image, image);
+    assert.equal(frame.feedback.image.dataUrl, image);
     assert.deepEqual(feedback.imageMetadata(frame.feedback), {...metadata, exportedAt:actual.exportedAt});
     assert.deepEqual(actual.objects.filter(object => object.frameId === frame.id),
       frame.feedback.objects.map(object => ({...object, timestampMs:frame.timestampMs, frameId:frame.id})));
   }
   assert.equal(actual.frames[2].feedback.objects[0].annotations.length, 0);
   assert.equal(feedback.serialize(actual).split(image).length - 1, 3, 'one original per frame, none in the root index');
-  assert(!feedback.preview(actual).includes('b3JpZ2luYWw='));
-  assert(feedback.serialize(actual).includes('b3JpZ2luYWw='));
+  assert(!feedback.preview(actual).includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'));
+  assert(feedback.serialize(actual).includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'));
 });
 
 test('versioned image metadata uses the actual product build and remains valid without image encoding', () => {
@@ -134,7 +135,7 @@ test('versioned image metadata uses the actual product build and remains valid w
     assert.equal(actual.tool.version, version);
     assert.equal(actual.tool.name, 'EditHere');
     assert.match(actual.exportedAt, /^\d{4}-\d{2}-\d{2}T.*Z$/);
-    assert.equal(Object.hasOwn(actual, 'image'), embed);
+    assert.equal(actual.image.mode,embed?'embedded':'none');
     assert.deepEqual(feedback.normalizeImage(actual), actual);
     assert.deepEqual(JSON.parse(feedback.preview(actual)).tool, actual.tool);
   }

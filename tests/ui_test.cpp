@@ -527,7 +527,7 @@ class UiTests : public QObject {
         auto preferences = defaultSettings();
         preferences.defaultTool = Canvas::Rectangle;
         preferences.fitImageOnOpen = false;
-        preferences.embedOriginal = false;
+        preferences.imageExportMode = ImageExportMode::None;
         editor.setPreferences(preferences);
         editor.setDocument(gridDocument());
         QTest::qWait(100);
@@ -537,9 +537,9 @@ class UiTests : public QObject {
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             QVERIFY(dialog);
-            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(embed);
-            QVERIFY(!embed->isChecked());
+            auto imageMode = dialog->findChild<QComboBox *>("feedbackImageMode");
+            QVERIFY(imageMode);
+            QCOMPARE(imageMode->currentIndex(), 2);
             inspected = true;
             dialog->reject();
         });
@@ -1781,7 +1781,7 @@ class UiTests : public QObject {
         };
         QApplication::clipboard()->clear();
         triggerMore("copyJson");
-        QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(exportFeedback(editor.document(), true)));
+        QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(exportFeedback(editor.document())));
         QVERIFY(QApplication::activeModalWidget() == nullptr);
         triggerMore("capture");
         QCOMPARE(captures.size(), 2);
@@ -1939,7 +1939,7 @@ class UiTests : public QObject {
         QVERIFY(QApplication::clipboard()->mimeData()->hasText());
         QVERIFY(!QApplication::clipboard()->mimeData()->hasUrls());
         auto expected = QJsonDocument::fromJson(QApplication::clipboard()->text().toUtf8());
-        QVERIFY(expected.object().value("image").toString().startsWith("data:image/"));
+        QVERIFY(expected.object().value("image").toObject()["mode"] == "file");
         file->click();
         QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
         QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(expected));
@@ -1961,17 +1961,17 @@ class UiTests : public QObject {
             auto copyText = dialog->findChild<QPushButton *>("copyJsonText");
             auto copyFile = dialog->findChild<QPushButton *>("copyJsonFile");
             auto saveBundle = dialog->findChild<QPushButton *>("saveFeedbackBundle");
-            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(copyText && copyFile && saveBundle && embed);
+            auto imageMode = dialog->findChild<QComboBox *>("feedbackImageMode");
+            QVERIFY(copyText && copyFile && saveBundle && imageMode);
             QCOMPARE(copyText->property("glyphName"), text->property("glyphName"));
             QCOMPARE(copyFile->property("glyphName"), file->property("glyphName"));
             QCOMPARE(saveBundle->property("glyphName").toString(), QString("feedback-save"));
             copyText->click();
             QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(expected));
-            embed->setChecked(false);
+            imageMode->setCurrentIndex(2);
             copyText->click();
             auto withoutImage = clipboardJson();
-            QVERIFY(!withoutImage.object().contains("image"));
+            QCOMPARE(withoutImage.object()["image"].toObject()["mode"].toString(), QString("none"));
             copyFile->click();
             QVERIFY(QApplication::clipboard()->mimeData()->hasUrls());
             QCOMPARE(stableFeedback(clipboardJson()), stableFeedback(withoutImage));
@@ -1991,6 +1991,29 @@ class UiTests : public QObject {
             }
         });
         editor.findChild<QPushButton *>("jsonHelp")->click();
+        editor.hide();
+    }
+    void feedbackFileClipboardIncludesOriginalAndExplicitPreview() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        Editor editor; auto preferences = defaultSettings(); preferences.feedbackDir = temporary.path();
+        preferences.imageExportMode = ImageExportMode::File; preferences.includeFeedbackPreview = true;
+        editor.setPreferences(preferences);
+        auto document = gridDocument(); Note note; note.point = {100, 100}; note.comment = "Move this control"; document.notes.append(note);
+        editor.setDocument(document);
+        editor.findChild<QPushButton *>("copyJson")->click();
+        const auto urls = QApplication::clipboard()->mimeData()->urls(); QCOMPARE(urls.size(), 3);
+        const QString jsonPath = urls.first().toLocalFile();
+        QFile json(jsonPath); QVERIFY(json.open(QIODevice::ReadOnly));
+        const auto feedback = QJsonDocument::fromJson(json.readAll()).object(); const auto image = feedback["image"].toObject();
+        QCOMPARE(image["mode"].toString(), QString("file")); QVERIFY(image["preview"].toString().endsWith(".annotated.jpg"));
+        const QDir directory = QFileInfo(jsonPath).dir();
+        for (const auto &url : urls) { QVERIFY(QFileInfo::exists(url.toLocalFile())); QCOMPARE(QFileInfo(url.toLocalFile()).absolutePath(), directory.absolutePath()); }
+        QVERIFY(!QImage(directory.filePath(image["preview"].toString())).isNull());
+        const auto restored = loadDocument(jsonPath); QCOMPARE(restored.image, document.image); QCOMPARE(restored.notes.first().comment, note.comment);
+        // A second copy must not overwrite the first bundle's image references.
+        editor.findChild<QPushButton *>("copyJson")->click();
+        QVERIFY(QApplication::clipboard()->mimeData()->urls().first().toLocalFile() != jsonPath);
+        QVERIFY(QFileInfo::exists(jsonPath));
         editor.hide();
     }
     void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {
@@ -2017,21 +2040,21 @@ class UiTests : public QObject {
         QVERIFY(QApplication::activeModalWidget() == nullptr);
         QCOMPARE(editor.document().notes.size(), 1);
         QCOMPARE(editor.document().notes[0].comment, QString("复制按钮应当提交正在编辑的意见，并包含完整原图。"));
-        const auto expected = exportFeedback(editor.document(), true);
+        const auto expected = exportFeedback(editor.document());
         QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expected));
-        const QString image = expected["image"].toString();
-        QVERIFY(image.startsWith("data:image/png;base64,"));
-        QCOMPARE(QByteArray::fromBase64(image.mid(QString("data:image/png;base64,").size()).toLatin1()),
-                 editor.document().png);
+        QCOMPARE(QApplication::clipboard()->mimeData()->urls().size(), 2);
+        const QString imagePath = QApplication::clipboard()->mimeData()->urls().at(1).toLocalFile();
+        QFile imageFile(imagePath); QVERIFY(imageFile.open(QIODevice::ReadOnly));
+        QCOMPARE(imageFile.readAll(), editor.document().png);
         bool opened = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             QVERIFY(dialog);
             auto preview = dialog->findChild<QPlainTextEdit *>();
-            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(preview && embed && embed->isChecked());
+            auto imageMode = dialog->findChild<QComboBox *>("feedbackImageMode");
+            QVERIFY(preview && imageMode && imageMode->currentIndex() == 0);
             auto json = QJsonDocument::fromJson(preview->toPlainText().toUtf8()).object();
-            QVERIFY(json["image"].toString().startsWith("data:image/png;base64,"));
+            QCOMPARE(json["image"].toObject()["mode"].toString(), QString("file"));
             json.remove("image"); // The readable preview abbreviates only the base64 value.
             auto withoutImage = expected;
             withoutImage.remove("image");
@@ -2371,7 +2394,7 @@ class UiTests : public QObject {
         const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         bool foundMovement = false;
         for (const auto &value : objects) {
@@ -2708,14 +2731,16 @@ class UiTests : public QObject {
             const auto parsed = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QVERIFY(parsed.isObject());
-            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(embed && embed->isChecked());
-            auto preview = parsed.object();
+            auto imageMode = dialog->findChild<QComboBox *>("feedbackImageMode");
+            QVERIFY(imageMode && imageMode->currentIndex() == 0);
+            imageMode->setCurrentIndex(1);
+            auto preview = QJsonDocument::fromJson(text->toPlainText().toUtf8()).object();
             QCOMPARE(preview.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
-            QVERIFY(preview["image"].toString().startsWith("data:image/png;base64,"));
+            QVERIFY(preview["image"].toObject()["dataUrl"].toString().startsWith("data:image/png;base64,"));
             QVERIFY(preview["image"] != expectedEmbedded["image"]);
             preview.remove("image");
-            QCOMPARE(stableFeedback(preview), stableFeedback(expectedFeedback));
+            auto expectedWithoutImage = expectedFeedback; expectedWithoutImage.remove("image");
+            QCOMPARE(stableFeedback(preview), stableFeedback(expectedWithoutImage));
             QPushButton *copy = nullptr;
             for (auto button : dialog->findChildren<QPushButton *>())
                 if (button->text() == "复制 JSON 文件")
@@ -2726,9 +2751,9 @@ class UiTests : public QObject {
             const auto copied = clipboardJson(&error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(stableFeedback(copied.object()), stableFeedback(expectedEmbedded));
-            QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 文件已复制"));
+            QTRY_VERIFY(dialog->findChild<QLabel *>("exportStatus")->text().startsWith("JSON 与配套图片文件已复制"));
             const auto encoded =
-                copied.object()["image"].toString().mid(QString("data:image/png;base64,").size());
+                copied.object()["image"].toObject()["dataUrl"].toString().mid(QString("data:image/png;base64,").size());
             QCOMPARE(QByteArray::fromBase64(encoded.toLatin1()), document.png);
             QApplication::clipboard()->clear();
             dialog->raise();
@@ -2743,16 +2768,16 @@ class UiTests : public QObject {
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(stableFeedback(keyboardCopy.object()), stableFeedback(expectedEmbedded));
             const auto keyboardImage =
-                keyboardCopy.object()["image"].toString().mid(QString("data:image/png;base64,").size());
+                keyboardCopy.object()["image"].toObject()["dataUrl"].toString().mid(QString("data:image/png;base64,").size());
             QCOMPARE(QByteArray::fromBase64(keyboardImage.toLatin1()), document.png);
             text->moveCursor(QTextCursor::Start);
             artifact(*dialog, "embedded-export.png");
-            embed->click();
-            QVERIFY(!embed->isChecked());
+            imageMode->setCurrentIndex(0);
+            QCOMPARE(imageMode->currentIndex(), 0);
             const auto compact = QJsonDocument::fromJson(text->toPlainText().toUtf8(), &error);
             QCOMPARE(error.error, QJsonParseError::NoError);
             QCOMPARE(stableFeedback(compact.object()), stableFeedback(expectedFeedback));
-            QVERIFY(!compact.object().contains("image"));
+            QCOMPARE(compact.object()["image"].toObject()["mode"].toString(), QString("file"));
             copy->click();
             QTRY_COMPARE(stableFeedback(clipboardJson().object()), stableFeedback(expectedFeedback));
             artifact(*dialog, "compact-export.png");
@@ -2858,11 +2883,17 @@ class UiTests : public QObject {
             QVERIFY(dialog);
             auto save = dialog->findChild<QPushButton *>("saveFeedbackBundle");
             auto status = dialog->findChild<QLabel *>("exportStatus");
-            auto embed = dialog->findChild<QCheckBox *>("embedOriginal");
-            QVERIFY(save && status && embed);
+            auto imageMode = dialog->findChild<QComboBox *>("feedbackImageMode");
+            auto withPreview = dialog->findChild<QCheckBox *>("feedbackPreview");
+            QVERIFY(save && status && imageMode && withPreview);
+            withPreview->setChecked(true);
+            QVERIFY(!save->isEnabled());
+            QVERIFY(!status->text().isEmpty());
+            withPreview->setChecked(false);
+            QVERIFY(save->isEnabled());
             // Exercise both standalone and paired-image feedback.
             for (bool embedded : {true, false}) {
-                embed->setChecked(embedded);
+                imageMode->setCurrentIndex(embedded ? 1 : 0);
                 QTimer::singleShot(60, dialog, [&] {
                     auto chooser = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
                     QVERIFY(chooser);
@@ -2872,16 +2903,16 @@ class UiTests : public QObject {
                 });
                 save->click();
                 QVERIFY(choseDirectory);
-                QVERIFY(status->text().contains("JSON 与原图已保存"));
-                QVERIFY(status->text().contains("批注预览未保存"));
+                QVERIFY(status->text().contains("已保存到："));
             }
             auto folders = QDir(directory.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
             QCOMPARE(folders.size(), 2);
             for (const auto &folder : folders) {
                 const QDir output(QDir(directory.path()).filePath(folder));
                 QVERIFY(output.exists("feedback.json"));
-                QVERIFY(output.exists("feedback.png"));
-                QVERIFY(!output.exists("annotations.png"));
+                const auto saved = QJsonDocument::fromJson([&]{QFile f(output.filePath("feedback.json")); f.open(QIODevice::ReadOnly); return f.readAll();}()).object();
+                QCOMPARE(output.exists("feedback.png"), saved["image"].toObject()["mode"] == "file");
+                QVERIFY(!output.exists("feedback.annotated.jpg"));
                 const auto restored = loadDocument(output.filePath("feedback.json"));
                 QCOMPARE(restored.image, document.image);
                 QCOMPARE(restored.notes.size(), 1);

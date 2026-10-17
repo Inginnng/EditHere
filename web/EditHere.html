@@ -787,11 +787,11 @@ SOFTWARE.
 </main>
 <div class="utility-dock surface"><button id="utility-toggle" class="icon-button" title="更多工具" aria-label="更多工具" aria-expanded="false" aria-controls="utility-actions"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button><div id="utility-actions" class="utility-actions"><span class="local-badge" title="素材不上传到服务器"><span></span><span class="local-label">本地</span></span><button id="save-project" class="icon-button" title="保存项目：包含原图、批注和布局" aria-label="保存项目" disabled><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg></button><button id="theme-toggle" class="icon-button" title="切换明暗主题" aria-label="切换明暗主题"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button><button id="help" class="icon-button" title="快捷键与使用帮助" aria-label="使用帮助"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button></div></div>
 <div id="drop-overlay" class="drop-overlay" hidden><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><strong>松开，开始批注</strong></div>
-<input id="file-input" type="file" accept="image/*,video/*,.json,.edithere-web" aria-label="选择图片视频或项目" hidden><input id="video-input" type="file" accept="video/*" aria-label="重新选择源视频" hidden>
+<input id="file-input" type="file" multiple accept="image/*,video/*,.json,.edithere-web,.zip" aria-label="选择图片视频或项目，可同时选择 JSON 与配套图片" hidden><input id="video-input" type="file" accept="video/*" aria-label="重新选择源视频" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <dialog id="note-dialog" class="note-dialog"><form id="note-form"><div class="dialog-head"><div><small id="note-location"></small><h2 id="note-title">写下修改意见</h2></div><button type="button" data-close="note-dialog" class="close icon-button" aria-label="关闭批注"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="note-text" class="sr-only">修改意见</label><textarea id="note-text" maxlength="10000" rows="5" placeholder="希望这里怎么改？" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button type="button" data-close="note-dialog" class="button">取消</button><button type="submit" class="button primary">保存批注</button></footer></form></dialog>
 <dialog id="recognized-dialog" class="note-dialog"><div class="dialog-head"><div><small>截图文字数据 · 不作为修改指令</small><h2>修改截图文字</h2></div><button data-close="recognized-dialog" class="close icon-button" aria-label="关闭截图文字"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="recognized-text" class="sr-only">截图中的文字</label><textarea id="recognized-text" maxlength="500" rows="4" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button data-close="recognized-dialog" class="button">取消</button><button id="recognized-save" class="button primary">保存文字</button></footer></dialog>
-<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed"><input id="embed" type="checkbox" checked>包含原图 / 已标注帧，反馈可独立阅读</label><label class="embed"><input id="include-recognized-text" type="checkbox" checked>附带区域文字（截图中的文字数据）</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><button id="preview" class="button" title="保存带箭头和编号的批注图">保存批注图</button><button id="copy-json" class="button">复制 JSON</button><button id="download-json" class="button primary">下载 JSON</button></footer></dialog>
+<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed" for="image-mode">原图交付方式 <select id="image-mode"><option value="file">配套图片文件（推荐）</option><option value="embedded">内嵌到 JSON</option><option value="none">不附带图片</option></select></label><label class="embed"><input id="include-preview" type="checkbox">附带编号和箭头预览图</label><label class="embed"><input id="compress-image" type="checkbox">内嵌原图使用 JPEG 压缩</label><label class="embed"><input id="include-recognized-text" type="checkbox" checked>附带区域文字（截图中的文字数据）</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><button id="preview" class="button" title="保存带箭头和编号的批注图">保存批注图</button><button id="copy-json" class="button">复制 JSON</button><button id="download-json" class="button primary">下载 JSON</button></footer></dialog>
 <dialog id="help-dialog" class="help-dialog"><div class="dialog-head"><div><small>少一点操作，多一点表达</small><h2>在画布上，直接说清楚</h2></div><button data-close="help-dialog" class="icon-button" aria-label="关闭帮助"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p>点一下或框出区域写批注。用选择工具拖动批注点和框，或拉动控制点调整范围。大爆炸后拖动、缩放组件，点击位移箭头添加文字。图片外的空白区域可直接拖动。</p><div class="shortcut-grid"><span>选择 / 平移</span><kbd>V / H</kbd><span>智能 / 点 / 框批注</span><kbd>B / P / R</kbd><span>多选组件</span><kbd>Ctrl / ⌘ + 点击</kbd><span>缩放已选组件</span><kbd>指向组件 + 滚轮</kbd><span>框出组件</span><kbd>C</kbd><span>拖动画布</span><kbd>空格 + 拖动 / 中键</kbd><span>缩放画布</span><kbd>Ctrl / ⌘ + 滚轮</kbd><span>适应画布</span><kbd>Ctrl / ⌘ + 0</kbd><span>撤销 / 重做</span><kbd>Ctrl / ⌘ + Z / Y</kbd><span>打开 / 保存 / 导出</span><kbd>Ctrl / ⌘ + O / S / E</kbd><span>微调组件 / 加速</span><kbd>方向键 / Shift</kbd><span>删除批注 / 取消</span><kbd>Delete / Esc</kbd></div><p class="help-footnote">移动和缩放使用原图像素坐标。系统截图与 OCR 仍需桌面 EditHere；网页可导入图片、视频和网页项目。</p></dialog>
 <script>(function (root, factory) {
   'use strict';
@@ -1228,13 +1228,63 @@ SOFTWARE.
   }
   return { create, addRegion, bounds, originalBounds, trackedMovements, transform, paint, movements, hit, validate, remapNotes };
 });
+</script><script>(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.EditHereImage=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+  'use strict';
+  const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+  const safeName=value=>typeof value==='string'&&value.length>0&&value.length<=255&&!value.startsWith('.')&&!/[\\/:*?"<>|\u0000-\u001f]/.test(value)&&!/[. ]$/.test(value)&&!/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value);
+  function sha256(bytes){
+    const constants=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    const state=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19],length=Math.ceil((bytes.length+9)/64)*64,data=new Uint8Array(length),words=new Int32Array(64);
+    data.set(bytes);data[bytes.length]=128;const view=new DataView(data.buffer),bits=bytes.length*8;view.setUint32(length-8,Math.floor(bits/4294967296));view.setUint32(length-4,bits>>>0);
+    const rotate=(value,count)=>(value>>>count)|(value<<(32-count));
+    for(let offset=0;offset<length;offset+=64){for(let i=0;i<16;i++)words[i]=view.getInt32(offset+i*4);for(let i=16;i<64;i++){const a=words[i-15],b=words[i-2];words[i]=(words[i-16]+(rotate(a,7)^rotate(a,18)^(a>>>3))+words[i-7]+(rotate(b,17)^rotate(b,19)^(b>>>10)))|0;}let[a,b,c,d,e,f,g,h]=state;for(let i=0;i<64;i++){const one=(h+(rotate(e,6)^rotate(e,11)^rotate(e,25))+((e&f)^(~e&g))+constants[i]+words[i])|0,two=((rotate(a,2)^rotate(a,13)^rotate(a,22))+((a&b)^(a&c)^(b&c)))|0;h=g;g=f;f=e;e=(d+one)|0;d=c;c=b;b=a;a=(one+two)|0;}for(const[i,value]of[a,b,c,d,e,f,g,h].entries())state[i]=(state[i]+value)|0;}
+    return state.map(value=>(value>>>0).toString(16).padStart(8,'0')).join('');
+  }
+  function dataBytes(value){
+    const match=typeof value==='string'&&/^data:(image\/(?:png|jpeg|webp|gif|bmp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+    if(!match||match[2].length%4||match[2].length>96*1024*1024)throw new Error('Invalid image data URL.');
+    const binary=typeof atob==='function'?atob(match[2]):Buffer.from(match[2],'base64').toString('binary'),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    const canonical=typeof btoa==='function'?btoa(binary):Buffer.from(bytes).toString('base64');if(canonical!==match[2])throw new Error('Invalid image base64.');
+    return{mimeType:match[1],bytes};
+  }
+  function dimensions(bytes,mimeType){
+    const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let width,height;
+    if(mimeType==='image/png'&&bytes.length>=33&&[137,80,78,71,13,10,26,10].every((value,index)=>bytes[index]===value)&&view.getUint32(12)===0x49484452){width=view.getUint32(16);height=view.getUint32(20);}
+    else if(mimeType==='image/jpeg'&&bytes.length>=4&&bytes[0]===255&&bytes[1]===216){let offset=2;while(offset+4<=bytes.length){if(bytes[offset++]!==255)throw new Error('Invalid JPEG marker.');while(bytes[offset]===255)offset++;const marker=bytes[offset++];if(marker===217||marker===218)break;if(marker===1||(marker>=208&&marker<=215))continue;const length=view.getUint16(offset);if(length<2||offset+length>bytes.length)throw new Error('Invalid JPEG segment.');if([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker)){if(length<8)throw new Error('Invalid JPEG dimensions.');height=view.getUint16(offset+3);width=view.getUint16(offset+5);break;}offset+=length;}}
+    else if(mimeType==='image/gif'&&bytes.length>=10&&String.fromCharCode(...bytes.subarray(0,6)).match(/^GIF8[79]a$/)){width=view.getUint16(6,true);height=view.getUint16(8,true);}
+    else if(mimeType==='image/bmp'&&bytes.length>=26&&bytes[0]===66&&bytes[1]===77){if(view.getUint32(14,true)===12){width=view.getUint16(18,true);height=view.getUint16(20,true);}else{width=view.getInt32(18,true);height=Math.abs(view.getInt32(22,true));}}
+    else if(mimeType==='image/webp'&&bytes.length>=25&&String.fromCharCode(...bytes.subarray(0,4))==='RIFF'&&String.fromCharCode(...bytes.subarray(8,12))==='WEBP'){
+      const chunk=String.fromCharCode(...bytes.subarray(12,16));if(chunk==='VP8X'&&bytes.length>=30){width=1+bytes[24]+(bytes[25]<<8)+(bytes[26]<<16);height=1+bytes[27]+(bytes[28]<<8)+(bytes[29]<<16);}else if(chunk==='VP8L'&&bytes[20]===47){const bits=view.getUint32(21,true);width=1+(bits&16383);height=1+((bits>>>14)&16383);}else if(chunk==='VP8 '&&bytes.length>=30&&bytes[23]===157&&bytes[24]===1&&bytes[25]===42){width=view.getUint16(26,true)&16383;height=view.getUint16(28,true)&16383;}}
+    if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>32767||height>32767||width*height>32000000)throw new Error('Invalid or unsupported image dimensions.');
+    return{width,height};
+  }
+  function inspect(dataUrl){const{bytes,mimeType}=dataBytes(dataUrl);return{bytes,mimeType,...dimensions(bytes,mimeType),sha256:sha256(bytes)};}
+  function descriptor(dataUrl,mode='file',file='feedback.png',options={}){
+    if(typeof mode==='boolean')mode=mode?'embedded':'none';if(!['file','embedded','none'].includes(mode))throw new Error('Invalid image mode.');
+    const info=inspect(dataUrl),value={mode,mimeType:info.mimeType,width:info.width,height:info.height,devicePixelRatio:options.devicePixelRatio??null,sha256:info.sha256};
+    if(mode==='file')value.file=file;if(mode==='embedded')value.dataUrl=dataUrl;if(options.preview)value.preview=options.preview;validate(value);return value;
+  }
+  function validate(value){
+    if(!record(value))throw new Error('Invalid image descriptor.');const fields=['mode','mimeType','width','height','devicePixelRatio','sha256',...(value.mode==='file'?['file']:value.mode==='embedded'?['dataUrl']:[]),...(Object.hasOwn(value,'preview')?['preview']:[])];
+    if(Object.keys(value).sort().join(',')!==fields.sort().join(',')||!['file','embedded','none'].includes(value.mode)||!['image/png','image/jpeg','image/webp','image/gif','image/bmp'].includes(value.mimeType)||!Number.isInteger(value.width)||!Number.isInteger(value.height)||value.width<1||value.height<1||value.width>32767||value.height>32767||value.width*value.height>32000000||!(value.devicePixelRatio===null||Number.isFinite(value.devicePixelRatio)&&value.devicePixelRatio>0)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(value.sha256))throw new Error('Invalid image descriptor fields.');
+    if(value.mode==='file'&&(!safeName(value.file)||!({'image/png':/\.png$/i,'image/jpeg':/\.jpe?g$/i,'image/webp':/\.webp$/i,'image/gif':/\.gif$/i,'image/bmp':/\.bmp$/i}[value.mimeType]).test(value.file)))throw new Error('Invalid original image filename.');
+    if(Object.hasOwn(value,'preview')&&(!safeName(value.preview)||!/^.+\.annotated\.jpg$/i.test(value.preview)))throw new Error('Invalid annotated preview filename.');
+    if(value.mode==='embedded')verify(value,value.dataUrl);return value;
+  }
+  function verify(value,dataUrl){const info=inspect(dataUrl);if(info.mimeType!==value.mimeType||info.width!==value.width||info.height!==value.height||info.sha256!==value.sha256?.toLowerCase())throw new Error('Original image MIME, dimensions or SHA-256 do not match.');return info;}
+  function dataUrlOf(value){return typeof value==='string'?value:record(value)&&value.mode==='embedded'?(validate(value),value.dataUrl):undefined;}
+  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,validate,verify,dataUrlOf};
+});
 </script><script>(function (root, factory) {
   'use strict';
+
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.EditHereFeedback = api;
 })(typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
+
+  const imageFormat=typeof module==='object'&&module.exports?require('./image-format.js'):globalThis.EditHereImage;
 
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
@@ -1327,6 +1377,7 @@ SOFTWARE.
     if (!exactKeys(value, fields) || (modern && (!objectFormat || !Object.hasOwn(value, 'annotationSpace'))) ||
         Object.hasOwn(value, 'annotationSpace') && value.annotationSpace !== 'result') throw new Error('Invalid image feedback fields.');
     const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
+    if(Object.hasOwn(value,'image')&&typeof value.image!=='string')imageFormat.validate(value.image);
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
       if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
@@ -1359,7 +1410,7 @@ SOFTWARE.
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
-  function exportImage(document, embed = true, exportedAt = new Date().toISOString()) {
+  function exportImage(document, mode = 'file', exportedAt = new Date().toISOString()) {
     const objects = [], bySource = new Map();
     function ensureEntry(source) {
       const key = sourceKey(source);
@@ -1394,12 +1445,13 @@ SOFTWARE.
     }
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
-      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})), ...(embed ? {image:document.image} : {})};
+      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})),
+      image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
-  function exportVideo(project, embed = true, exportedAt = new Date().toISOString()) {
+  function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
     const documents = project.frames.filter(document => document.notes.length ||
       document.movements.some(movement => !sameRectangle(movement.source, movement.destination)))
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
@@ -1407,8 +1459,8 @@ SOFTWARE.
       id:document.id,
       timestampMs:Math.floor(document.timestampUs / 1000),
       timestampUs:document.timestampUs,
-      imageFile:'frame-' + document.id + '.png',
-      feedback:exportImage(document, embed, exportedAt)
+      imageFile:document.imageFile||'frame-' + document.id + '.png',
+      feedback:exportImage({...document,imageFile:document.imageFile||'frame-'+document.id+'.png'}, mode, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
       id:object.id,
@@ -1461,9 +1513,9 @@ SOFTWARE.
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
     return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
       movements:objects.reduce((sum,object)=>sum+object.movements.length,0), recognizedTexts:objects.filter(object=>object.recognizedText).length,
-      bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
+      bytes:byteLength(serialized),imageBytes:images.map(image=>imageFormat.dataUrlOf(image)).filter(Boolean).reduce((sum,image)=>sum+byteLength(image),0)};
   }
-  const foldedImage = image => image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]';
+  const foldedImage = image => typeof image==='string'?image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]':image?.mode==='embedded'?{...image,dataUrl:foldedImage(image.dataUrl)}:image;
 
   // The desktop export dialog folds image bytes only in its readable preview.
   // Clipboard and file downloads must always use serialize(), never this text.
@@ -1492,7 +1544,27 @@ SOFTWARE.
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, imageFormat};
+});
+</script><script>(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.EditHereBundle=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+  'use strict';
+  const table=Uint32Array.from({length:256},(_,n)=>{for(let bit=0;bit<8;bit++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
+  function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=table[(crc^byte)&255]^(crc>>>8);return(crc^0xffffffff)>>>0;}
+  function zip(files){
+    const entries=[],parts=[],encoder=new TextEncoder();let offset=0;
+    for(const[name,data]of files){const filename=encoder.encode(name),bytes=typeof data==='string'?encoder.encode(data):data;if(!filename.length||filename.length>65535||bytes.length>160*1024*1024)throw new Error('Feedback bundle entry is too large.');const header=new Uint8Array(30+filename.length),view=new DataView(header.buffer),crc=crc32(bytes);view.setUint32(0,0x04034b50,true);view.setUint16(4,20,true);view.setUint16(6,0x800,true);view.setUint32(14,crc,true);view.setUint32(18,bytes.length,true);view.setUint32(22,bytes.length,true);view.setUint16(26,filename.length,true);header.set(filename,30);parts.push(header,bytes);entries.push({filename,bytes,crc,offset});offset+=header.length+bytes.length;}
+    const directoryOffset=offset;
+    for(const entry of entries){const header=new Uint8Array(46+entry.filename.length),view=new DataView(header.buffer);view.setUint32(0,0x02014b50,true);view.setUint16(4,20,true);view.setUint16(6,20,true);view.setUint16(8,0x800,true);view.setUint32(16,entry.crc,true);view.setUint32(20,entry.bytes.length,true);view.setUint32(24,entry.bytes.length,true);view.setUint16(28,entry.filename.length,true);view.setUint32(42,entry.offset,true);header.set(entry.filename,46);parts.push(header);offset+=header.length;}
+    const end=new Uint8Array(22),view=new DataView(end.buffer);view.setUint32(0,0x06054b50,true);view.setUint16(8,entries.length,true);view.setUint16(10,entries.length,true);view.setUint32(12,offset-directoryOffset,true);view.setUint32(16,directoryOffset,true);parts.push(end);return parts;
+  }
+  // Only uncompressed archives produced by this editor are accepted. No path
+  // is ever resolved or fetched: names are matched to user-supplied files.
+  function unzip(bytes){
+    if(bytes.length>160*1024*1024)throw new Error('Feedback bundle is too large.');const files=new Map(),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),decoder=new TextDecoder();let offset=0;
+    while(offset+4<=bytes.length&&view.getUint32(offset,true)===0x04034b50){if(offset+30>bytes.length)throw new Error('Invalid feedback ZIP.');const flags=view.getUint16(offset+6,true),method=view.getUint16(offset+8,true),crc=view.getUint32(offset+14,true),length=view.getUint32(offset+18,true),original=view.getUint32(offset+22,true),nameLength=view.getUint16(offset+26,true),extra=view.getUint16(offset+28,true),start=offset+30+nameLength+extra;if(flags&~0x800||method!==0||length!==original||start+length>bytes.length)throw new Error('Open a ZIP downloaded by EditHere, or extract and select its JSON and images.');const name=decoder.decode(bytes.subarray(offset+30,offset+30+nameLength));if(!name||/[\\/\u0000]/.test(name)||files.has(name))throw new Error('Invalid or duplicate feedback ZIP filename.');const data=bytes.slice(start,start+length);if(crc32(data)!==crc)throw new Error('Feedback ZIP checksum does not match.');files.set(name,data);offset=start+length;}
+    if(!files.size||offset+4>bytes.length||view.getUint32(offset,true)!==0x02014b50)throw new Error('Invalid feedback ZIP.');return files;
+  }
+  return{zip,unzip,crc32};
 });
 </script><script id="detector-code">(function (root) {
   'use strict';
@@ -1590,8 +1662,8 @@ function dilate(input,w,h,rx,ry) {
           <article><h3>${icon('send')}反馈 JSON</h3><p>给 Agent 读取的修改意见、坐标与位移。展开顶栏保存按钮，选择「保存 JSON 文件」「复制 JSON 内容」「保存项目」或「查看 JSON 文件」；选择只记住方式，不会复制、下载或打开窗口。点击主保存按钮才执行，以后保留你上次的选择。</p></article>
           <article><h3>${icon('save')}项目文件</h3><p>保留原图或批注帧、布局与可编辑状态。顶栏保存菜单选「保存项目」后点击主按钮，或点击左下「更多工具」里的「保存项目」备份。下次通过「打开」继续编辑；视频继续播放需重新选择源视频。</p></article>
         </div>
-        <div class="help-callout"><strong>图片要不要一起保存？</strong><p>在保存菜单选「查看 JSON 文件」后点击主按钮，打开查看窗口并选择是否包含图片，默认包含。关闭后，发 JSON 时请同时提供对应原图，或确认 Agent 已有这张图。预览中折叠图片只是方便阅读；复制内容和保存文件仍遵循「包含图片」选项。</p></div>
-        <p>JSON 文件和复制内容包含相同的反馈。把文件上传给 Agent，或直接粘贴内容，并说明「按照这些批注修改」。</p>
+        <div class="help-callout"><strong>图片怎么交付？</strong><p>在「查看 JSON 文件」中选择原图方式，默认「配套图片文件」：下载 ZIP 包含 JSON 与原图；复制 JSON 时还需交付引用的图片。「内嵌到 JSON」可单文件交付，并可选 JPEG 压缩；「不附带图片」适合 Agent 已持有相同原图。还可附带带编号和箭头的预览图。</p></div>
+        <p>下载文件和复制内容包含相同的修改意见。重新导入可打开反馈 ZIP，或同时选择 JSON 与配套图片；校验值不一致的图片不会用于恢复批注。把文件交给 Agent，并说明「按照这些批注修改」。</p>
         <p class="help-footnote">显示「已保存」只代表反馈落盘；显示「已发送」代表宿主接收消息。Agent 是否已继续，以对话中的回复和修改结果为准。</p>
       </section>
       <section id="help-panel-recover" class="help-panel" role="tabpanel" aria-labelledby="help-tab-recover" tabindex="0" hidden>
@@ -1774,7 +1846,7 @@ function dilate(input,w,h,rx,ry) {
 </script><script>/* EditHere Web. Offline editing with an optional local Agent session. */
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback;
+  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback,I=globalThis.EditHereImage,B=globalThis.EditHereBundle;
   const clone = value => JSON.parse(JSON.stringify(value));
   const uid = () => 'id-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
   const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1786,6 +1858,7 @@ function dilate(input,w,h,rx,ry) {
   const video = $('video'), canvas = $('canvas'), stage = $('stage'), ctx = canvas.getContext('2d');
   let session = null, doc = null, mode = 'smart', selected = null, selectedNote = null, zoom = 1, fitMode = true;
   let agentBound = false, projectRevision = 0;
+  let agentOptions={imageMode:'file',preview:false},pendingImport=null;
   const projectListeners = new Set();
   const selectedGroups = new Set();
   let drag = null, hover = null, hoverIndex = 0, draftNote = null, recognizedNoteId = null, busy = false, dirty = false, toastTimer, mediaURL = null;
@@ -1921,8 +1994,8 @@ function dilate(input,w,h,rx,ry) {
   function hitMovement(p) {if(!annotationsVisible||!doc?.layout)return null;const markers=movementMarkers();for(let i=markers.length-1;i>=0;i--){const m=markers[i],{start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=dx*dx+dy*dy,t=length?clamp(((p.x-start.x)*dx+(p.y-start.y)*dy)/length,0,1):0;if(Math.hypot(p.x-start.x-dx*t,p.y-start.y-dy*t)*zoom<8)return m;}return null;}
   function componentNoteBounds(n,d=doc) {return !d?.layout?null:(n.groupIds||[n.groupId]).filter(Boolean).map(id=>L.bounds(d.layout,id)).filter(Boolean).reduce((r,b)=>unionRect(r,b),null);}
   const movementPlaceholder = '位置变化，点击可写下想法...';
-  function noteEntries() {if(!doc)return [];const out=doc.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource)||n.source}:{})}));for(const m of movementMarkers())if(!m.noteId)out.push({...m,text:'',kind:'布局调整',movement:true,draft:true});return out;}
-  function noteRect(n) {return n.movementSource?movementDestination(n.movementSource)||n.source:componentNoteBounds(n)||n.source;}
+  function noteEntries(d=doc) {if(!d)return [];const out=d.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource,d)||n.source}:{})}));for(const m of movementMarkers(d))if(!m.noteId)out.push({...m,text:'',kind:'布局调整',movement:true,draft:true});return out;}
+  function noteRect(n,d=doc) {return n.movementSource?movementDestination(n.movementSource,d)||n.source:componentNoteBounds(n,d)||n.source;}
   function render() {
     if(!session)return;
     if(doc){canvas.hidden=false;video.hidden=true;ctx.clearRect(0,0,canvas.width,canvas.height);if(doc.image.complete&&doc.image.naturalWidth){if(doc.layout)L.paint(ctx,doc.image,doc.layout);else ctx.drawImage(doc.image,0,0);}}
@@ -2147,16 +2220,22 @@ function dilate(input,w,h,rx,ry) {
   $('gh').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gw').value=Math.max(1,Math.round(Number($('gh').value)*(b.x2-b.x1)/(b.y2-b.y1)));}};
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
-  function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};}
-  function exportDoc(d,embed=true,exportedAt) {return F.exportImage(feedbackDocument(d),embed,exportedAt);}
-  function feedback(embed=true) {
+  const imageExtension=data=>({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[I.dataBytes(data).mimeType]);
+  function outputStem(agent=false){const filename=agent&&agentOptions.outputFileName?agentOptions.outputFileName:baseName()+'-feedback.json';return filename.replace(/\.[^.]+$/,'');}
+  function feedbackDocument(d,mode='file',includePreview=false,agent=false) {
+    let data=d.data;if(mode==='embedded'&&$('compress-image').checked&&!agent){if(!d.jpeg){const c=makeCanvas(d.image.naturalWidth,d.image.naturalHeight);c.getContext('2d').drawImage(d.image,0,0);d.jpeg=c.toDataURL('image/jpeg',.85);}data=d.jpeg;}
+    const stem=session.kind==='video'?'frame-'+d.id:outputStem(agent);
+    return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:data,imageFile:stem+'.'+imageExtension(data),previewFile:includePreview?stem+'.annotated.jpg':undefined,devicePixelRatio:d.devicePixelRatio??null,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};
+  }
+  function feedback(mode=$('image-mode').value,includePreview=$('include-preview').checked,agent=false) {
+    if(typeof mode==='boolean')mode=mode?'embedded':'none';
     if(!session)throw new Error('请先打开素材');
     // All delivery paths share one export time until the document changes, so
     // a saved backup and an idempotent Agent submission identify the same snapshot.
     if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
-    if(feedbackStamp.snapshot){const {image,...withoutImage}=feedbackStamp.snapshot,value=clone(embed?feedbackStamp.snapshot:withoutImage);if(!$('include-recognized-text').checked){for(const object of value.objects)delete object.recognizedText;for(const frame of value.frames||[])for(const object of frame.feedback.objects)delete object.recognizedText;}return value;}
+    if(feedbackStamp.snapshot){const value=clone(feedbackStamp.snapshot),d=feedbackDocument(session.document,mode,includePreview,agent);value.image=I.descriptor(d.image,mode,d.imageFile,{devicePixelRatio:d.devicePixelRatio,preview:d.previewFile});if(!$('include-recognized-text').checked)for(const object of value.objects)delete object.recognizedText;return value;}
     const exportedAt=feedbackStamp.exportedAt;
-    const value=session.kind==='image'?exportDoc(session.document,embed,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed,exportedAt);
+    const value=session.kind==='image'?F.exportImage(feedbackDocument(session.document,mode,includePreview,agent),mode,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(d=>feedbackDocument(d,mode,includePreview,agent))},mode,exportedAt);
     return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
   }
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
@@ -2166,7 +2245,9 @@ function dilate(input,w,h,rx,ry) {
   const preference=(key,fallback)=>{try{return localStorage.getItem('edithere.'+key)??fallback;}catch{return fallback;}};
   const rememberPreference=(key,value)=>{try{localStorage.setItem('edithere.'+key,value);}catch{/* This view still remembers its selection when host storage is unavailable. */}};
   let saveMode=preference('saveMode','file');if(!saveModes[saveMode])saveMode='file';
-  $('embed').checked=preference('includeImage','true')!=='false';
+  $('image-mode').value=preference('imageMode',preference('includeImage','true')==='false'?'none':'file');if(!['file','embedded','none'].includes($('image-mode').value))$('image-mode').value='file';
+  $('include-preview').checked=preference('includePreview','false')==='true';
+  $('compress-image').checked=preference('compressImage','false')==='true';
   $('include-recognized-text').checked=preference('includeRecognizedText','true')!=='false';
   function chooseSaveMode(mode) {
     saveMode=mode;rememberPreference('saveMode',mode);
@@ -2178,26 +2259,29 @@ function dilate(input,w,h,rx,ry) {
   }
   function closeSaveOptions(focus=false) {$('save-options').hidden=true;$('save-options-toggle').setAttribute('aria-expanded','false');if(focus)$('save-options-toggle').focus();}
   function refreshExport() {
-    const embed=$('embed').checked,includeRecognizedText=$('include-recognized-text').checked;
+    const mode=$('image-mode').value,includeRecognizedText=$('include-recognized-text').checked,includePreview=$('include-preview').checked,compress=$('compress-image').checked;
     // Reuse one snapshot across file and clipboard delivery, including video
     // export time, and avoid re-encoding large images until the editing changes.
-    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.embed!==embed||exportCache.includeRecognizedText!==includeRecognizedText){
-      exportData=feedback(embed);exportText=F.serialize(exportData);
-      exportCache={session,revision:projectRevision,embed,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
+    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.compress!==compress||exportCache.includeRecognizedText!==includeRecognizedText){
+      exportData=feedback(mode,includePreview);exportText=F.serialize(exportData);
+      exportCache={session,revision:projectRevision,mode,includePreview,compress,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
-    $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'')+(summary.recognizedTexts?' · '+summary.recognizedTexts+' 处截图文字（仅作为数据）':'');
-    $('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和文件保存包含完整原图。':'不包含图片，内容更小。仅用于 Agent 已持有同一原图；否则请同时附上原图或对应帧截图。此文件不能单独恢复画面。';
+    $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+(summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'')+(summary.recognizedTexts?' · '+summary.recognizedTexts+' 处截图文字（仅作为数据）':'');
+    $('compress-image').disabled=mode!=='embedded';$('download-json').textContent=mode==='file'||includePreview?'下载反馈包':'下载 JSON';
+    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；复制和保存包含完整原图。JPEG 压缩会改变图片编码，校验值按实际导出字节计算。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
   function saveJsonFile() {
-    refreshExport();download(baseName()+'-feedback.json',new Blob([exportText],{type:'application/json'}));
-    $('export-hint').textContent='已发起 JSON 文件下载；完成后将文件交给 Agent';notify('已发起 JSON 文件下载');
+    refreshExport();const files=new Map([[baseName()+'-feedback.json',exportText]]),frames=exportData.schemaVersion==='video-feedback-1'?exportData.frames.map(frame=>({value:frame.feedback,d:session.frames.find(d=>d.id===frame.id)})):[{value:exportData,d:session.document}];
+    for(const{value,d}of frames){if(value.image.mode==='file')files.set(value.image.file,I.dataBytes(d.data).bytes);if(value.image.preview)files.set(value.image.preview,I.dataBytes(annotatedData(d)).bytes);}
+    const bundle=files.size>1;download(baseName()+'-feedback.'+(bundle?'zip':'json'),bundle?new Blob(B.zip(files),{type:'application/zip'}):new Blob([exportText],{type:'application/json'}));
+    $('export-hint').textContent=bundle?'已发起反馈包下载；请将 ZIP 内的 JSON 和图片一起交给 Agent':'已发起 JSON 文件下载；完成后将文件交给 Agent';notify(bundle?'已发起反馈包下载':'已发起 JSON 文件下载');
   }
   async function copyJson() {
     refreshExport();const complete=exportText;
-    try{await navigator.clipboard.writeText(complete);$('export-hint').textContent='完整反馈 JSON 已复制';notify('JSON 内容已复制，可粘贴到 Agent 对话');}
+    try{await navigator.clipboard.writeText(complete);const external=$('image-mode').value==='file'||$('include-preview').checked;$('export-hint').textContent=external?'JSON 已复制，配套图片仍需从反馈包交付':'完整反馈 JSON 已复制';notify(external?'JSON 已复制；请下载反馈包，同时交付配套图片':'JSON 内容已复制，可粘贴到 Agent 对话');}
     catch{openExport();$('json-preview').value=complete;$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='剪贴板不可用。请按 Ctrl+C / ⌘C 复制选中的完整 JSON，或保存 JSON 文件';}
   }
   async function performSave() {if(!session)return;try{if(saveMode==='project')$('save-project').click();else if(saveMode==='content')await copyJson();else if(saveMode==='view')openExport();else saveJsonFile();}catch(error){notify(error.message);}}
@@ -2227,16 +2311,20 @@ function dilate(input,w,h,rx,ry) {
   document.addEventListener('pointerdown',event=>{if(!event.target.closest('.save-control,#save-options'))closeSaveOptions();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSaveOptions();});
   $('export').onclick=openExport;
-  $('embed').onchange=()=>{rememberPreference('includeImage',String($('embed').checked));refreshExport();};
+  $('image-mode').onchange=()=>{rememberPreference('imageMode',$('image-mode').value);refreshExport();};
+  $('include-preview').onchange=()=>{rememberPreference('includePreview',String($('include-preview').checked));refreshExport();};
+  $('compress-image').onchange=()=>{rememberPreference('compressImage',String($('compress-image').checked));refreshExport();};
   $('include-recognized-text').onchange=()=>{rememberPreference('includeRecognizedText',String($('include-recognized-text').checked));refreshExport();};
   $('download-json').onclick=()=>{chooseSaveMode('file');saveJsonFile();};
   $('copy-json').onclick=()=>{chooseSaveMode('content');copyJson();};
   function serializedDoc(d) {return {id:d.id,timestampUs:d.timestampUs,image:d.data,notes:clone(d.notes),layout:clone(d.layout)};}
   function project() {return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:session.kind,name:session.name,width:session.width,height:session.height,...(session.kind==='image'?{document:serializedDoc(session.document)}:{video:clone(session.video),signature:clone(session.signature),frames:session.frames.filter(hasContent).map(serializedDoc)})};}
   $('save-project').onclick=()=>{try{download(baseName()+'.edithere-web.json',jsonBlob(project()));dirty=false;notify(session.kind==='video'?'已发起项目下载；重开后重新选择源视频即可继续播放':'已发起项目下载，包含原图、批注和组件布局');}catch(error){notify(error.message);}};
-  $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(doc.layout)L.paint(p,doc.image,doc.layout);else p.drawImage(doc.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers();p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
+  function annotatedCanvas(d) {const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(d.layout)L.paint(p,d.image,d.layout);else p.drawImage(d.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers(d);p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
     for(const m of markers){const {start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);if(length<.0001)continue;const ux=dx/length,uy=dy/length,head=Math.min(9*line,length*.35);p.strokeStyle='white';p.lineWidth=4*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.stroke();p.strokeStyle='#346df1';p.lineWidth=1.5*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.moveTo(end.x-ux*head-uy*head*.5,end.y-uy*head+ux*head*.5);p.lineTo(end.x,end.y);p.lineTo(end.x-ux*head+uy*head*.5,end.y-uy*head-ux*head*.5);p.stroke();p.fillStyle='white';p.beginPath();p.arc(start.x,start.y,3*line,0,Math.PI*2);p.fill();p.stroke();}
-    p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries().entries()){if(n.draft)continue;const r=noteRect(n);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
+    p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries(d).entries()){if(n.draft)continue;const r=noteRect(n,d);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}return c;}
+  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/jpeg',.85);}
+  $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=annotatedCanvas(doc),blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
   function validateRect(r,w,h,pointAllowed=true) {if(r===null)return;if(!r||Object.keys(r).sort().join(',')!=='x1,x2,y1,y2'||Object.values(r).some(v=>!Number.isFinite(v))||r.x1<0||r.y1<0||r.x2>w||r.y2>h||r.x2<r.x1||r.y2<r.y1||((r.x1===r.x2)!==(r.y1===r.y2))||!pointAllowed&&(r.x1===r.x2))throw new Error('项目区域坐标无效');if(r.x1===r.x2&&(r.x1>=w||r.y1>=h))throw new Error('项目点坐标越界');}
   function validateSources(sources,source,w,h) {
     if(sources===undefined)return;
@@ -2263,11 +2351,19 @@ function dilate(input,w,h,rx,ry) {
     }
   }
   async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
-  async function docFromFeedback(f,w,h,timestampUs=null,id=uid()) {
+  async function docFromFeedback(f,w,h,timestampUs=null,id=uid(),companions=[]) {
     f=F.normalizeImage(f);
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
-    const image=await decode(f.image);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
-    const d=makeDoc(image,f.image,timestampUs,id),groups=new Map();
+    if(f.image&&typeof f.image==='object'&&f.image.preview){
+      const file=companions.find(file=>file.name===f.image.preview);if(!file){const error=new Error('请同时选择预览图 '+f.image.preview+'，或打开完整反馈 ZIP');error.missingCompanion=true;throw error;}
+      const bytes=new Uint8Array(await file.arrayBuffer()),dimensions=I.dimensions(bytes,'image/jpeg');if(dimensions.width!==f.image.width||dimensions.height!==f.image.height)throw new Error('预览图尺寸与原图不匹配');let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));await decode('data:image/jpeg;base64,'+btoa(binary));
+    }
+    let data=I.dataUrlOf(f.image);
+    if(!data){const descriptor=f.image;if(descriptor)I.validate(descriptor);const candidates=descriptor?.mode==='file'?companions.filter(file=>file.name===descriptor.file):companions.filter(file=>file.type?.startsWith('image/')||/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name));for(const file of candidates){try{const bytes=new Uint8Array(await file.arrayBuffer()),mime=descriptor?.mimeType||({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[file.name.split('.').pop().toLowerCase()]);let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const candidate='data:'+mime+';base64,'+btoa(binary);if(descriptor)I.verify(descriptor,candidate);data=candidate;break;}catch(error){if(descriptor?.mode==='file')throw error;}}
+      if(!data){const error=new Error(descriptor?.mode==='file'?'请同时选择 JSON 和配套图片 '+descriptor.file+'，或打开反馈 ZIP':'请同时选择 JSON 和相同原图以恢复编辑');error.missingCompanion=true;throw error;}}
+    if(f.image&&typeof f.image!=='string')I.verify(f.image,data);
+    const image=await decode(data);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
+    const d=makeDoc(image,data,timestampUs,id),groups=new Map();if(f.image&&typeof f.image!=='string')d.devicePixelRatio=f.image.devicePixelRatio;
     // Partition every source before moving any piece: destinations may cover later sources.
     for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations))throw new Error('反馈对象格式无效');
       if(obj.movements.length){if(!obj.source)throw new Error('全局意见不能包含移动');validateRect(obj.source,w,h,false);for(const movement of obj.movements)validateRect(movement.to,w,h,false);if(!d.layout)d.layout=L.create(w,h);const groupId=L.addRegion(d.layout,obj.source);if(!groupId)throw new Error('无法还原反馈的移动区域');groups.set(obj,groupId);}}
@@ -2291,7 +2387,7 @@ function dilate(input,w,h,rx,ry) {
       ids.add(f.id);times.add(f.timestampUs);
     }
   }
-  async function importJSON(file) {
+  async function importJSON(file,companions=[]) {
     if(file.size>160*1024*1024)throw new Error('项目过大，最多支持 160 MB');
     const data=JSON.parse(await file.text());let next,nextDoc;
     if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('项目格式无效');
@@ -2314,16 +2410,21 @@ function dilate(input,w,h,rx,ry) {
       next={kind:'video',name:data.video.source,width:data.video.width||640,height:data.video.height||360,video:clone(data.video),signature:null,frames:[]};
       for(const f of data.frames){
         if(f.timestampMs!==Math.floor(f.timestampUs/1000))throw new Error('视频反馈时间无效');
-        const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id);next.frames.push(item.doc);
+        const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id,companions);next.frames.push(item.doc);
       }
       nextDoc=next.frames[0]||null;
     }else if(Object.hasOwn(data,'schemaVersion')||data.objects||data.annotations&&data.changes){
-      const result=await docFromFeedback(data);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
+      const result=await docFromFeedback(data,undefined,undefined,null,uid(),companions);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
     }else throw new Error('请选择网页项目或含内嵌图片的反馈 JSON；桌面 .edithere 项目暂不支持');
     releaseVideo();session=next;doc=nextDoc;activate();if(doc)detect(doc);if(session.kind==='video')notify('批注帧已恢复；继续播放请重新选择源视频');
   }
-  async function openFile(file) {if(!file||!replaceOK())return;if(/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json')await importJSON(file);else if(file.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|ogv)$/i.test(file.name))await openVideo(file);else if(file.type.startsWith('image/'))await openImage(file);else throw new Error('请选择浏览器支持的图片、视频或 JSON 项目');}
-  $('open').onclick=$('drop-card').onclick=()=>$('file-input').click();$('file-input').onchange=()=>{const file=$('file-input').files[0];$('file-input').value='';run(()=>openFile(file));};
+  async function openFiles(files){files=[...files];if(!files.length)return;
+    if(files.length===1&&/\.zip$/i.test(files[0].name)){const entries=B.unzip(new Uint8Array(await files[0].arrayBuffer()));files=[...entries].map(([name,data])=>new File([data],name,{type:/\.json$/i.test(name)?'application/json':({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[name.split('.').pop().toLowerCase()]||'application/octet-stream')}));}
+    const json=files.find(file=>/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json');if(json){if(!replaceOK())return;try{await importJSON(json,files.filter(file=>file!==json));pendingImport=null;}catch(error){if(error.missingCompanion)pendingImport=json;throw error;}return;}
+    if(pendingImport){await importJSON(pendingImport,files);pendingImport=null;return;}await openFile(files[0]);
+  }
+  async function openFile(file) {if(!file||!replaceOK())return;if(/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json')await importJSON(file);else if(file.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|ogv)$/i.test(file.name))await openVideo(file);else if(file.type.startsWith('image/'))await openImage(file);else throw new Error('请选择浏览器支持的图片、视频、反馈 ZIP 或 JSON 项目');}
+  $('open').onclick=$('drop-card').onclick=()=>$('file-input').click();$('file-input').onchange=()=>{const files=[...$('file-input').files];$('file-input').value='';run(()=>openFiles(files));};
   $('relink').onclick=()=>$('video-input').click();$('video-input').onchange=()=>{const file=$('video-input').files[0];$('video-input').value='';if(!file||session?.kind!=='video')return;run(async()=>{
     const prepared=await prepareVideo(file),signature=session.signature;
     const emptyFeedback=!session.frames.length&&session.video.width===0&&session.video.height===0;
@@ -2336,7 +2437,7 @@ function dilate(input,w,h,rx,ry) {
     if(emptyFeedback)activate();
     if(previous){doc=previous;refresh();}else liveFrame();updateTime();notify('源视频已关联，可以继续播放和批注');
   });};
-  let dropDepth=0;document.addEventListener('dragenter',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();dropDepth++;$('drop-overlay').hidden=false;}});document.addEventListener('dragover',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',event=>{event.preventDefault();if(--dropDepth<=0){dropDepth=0;$('drop-overlay').hidden=true;}});document.addEventListener('drop',event=>{event.preventDefault();dropDepth=0;$('drop-overlay').hidden=true;const files=event.dataTransfer.files;if(files.length>1)notify('每次编辑一个素材，已打开第一个文件');if(files[0])run(()=>openFile(files[0]));});
+  let dropDepth=0;document.addEventListener('dragenter',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();dropDepth++;$('drop-overlay').hidden=false;}});document.addEventListener('dragover',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',event=>{event.preventDefault();if(--dropDepth<=0){dropDepth=0;$('drop-overlay').hidden=true;}});document.addEventListener('drop',event=>{event.preventDefault();dropDepth=0;$('drop-overlay').hidden=true;const files=[...event.dataTransfer.files];if(files.length)run(()=>openFiles(files));});
   document.addEventListener('paste',event=>{if(event.target.closest('textarea,input,[contenteditable]'))return;const image=[...event.clipboardData?.items||[]].find(i=>i.type.startsWith('image/'));if(image){event.preventDefault();run(()=>openFile(image.getAsFile()));}});
   $('demo').onclick=()=>run(async()=>{if(!replaceOK())return;const brand=document.querySelector('.brand-lockup-light');await brand.decode();const c=makeCanvas(1100,700),p=c.getContext('2d');p.fillStyle='#f2f5fb';p.fillRect(0,0,1100,700);p.fillStyle='#fff';p.fillRect(0,0,190,700);p.fillRect(225,35,835,90);p.fillStyle='#346df1';p.fillRect(245,170,245,150);p.fillStyle='#36ae95';p.fillRect(520,170,245,150);p.fillStyle='#8a6add';p.fillRect(795,170,245,150);p.fillStyle='#fff';p.fillRect(245,355,795,270);p.fillStyle='#243149';p.font='bold 25px sans-serif';p.drawImage(brand,24,29,142,142*128/722);p.fillText('Overview',245,88);p.font='16px sans-serif';p.fillStyle='#7b879a';for(const [i,t] of ['Dashboard','Projects','Analytics','Settings'].entries())p.fillText(t,30,150+i*55);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Visitors',266,205);p.fillText('Conversions',541,205);p.fillText('Revenue',816,205);p.font='bold 38px sans-serif';p.fillText('24,680',266,265);p.fillText('1,842',541,265);p.fillText('$38,420',816,265);p.fillStyle='#346df1';p.fillRect(910,60,110,38);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Export',940,85);p.fillStyle='#243149';p.font='bold 18px sans-serif';p.fillText('Traffic over time',270,397);p.strokeStyle='#346df1';p.lineWidth=3;p.beginPath();p.moveTo(275,580);p.bezierCurveTo(420,420,480,630,620,470);p.bezierCurveTo(740,350,850,540,1000,430);p.stroke();const data=c.toDataURL('image/png'),image=await decode(data);releaseVideo();session={kind:'image',name:'示例仪表盘.png',width:1100,height:700,document:makeDoc(image,data)};doc=session.document;activate();detect(doc);});
   $('play').onclick=()=>run(async()=>{if(!mediaURL)throw new Error('请重新选择源视频');if(video.paused){const at=doc?doc.timestampUs/1000000:video.currentTime;await seekTo(at);await video.play();liveFrame();}else video.pause();updateTime();});
@@ -2378,28 +2479,31 @@ function dilate(input,w,h,rx,ry) {
     async loadAgentImage(value) {
       if(session)throw new Error('当前页面已有素材，请为批注会话打开新页面');
       const image=await decode(value.image);
-      releaseVideo();agentBound=true;
+      releaseVideo();agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
       session={kind:'image',name:value.name,width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(image,value.image)};
       doc=session.document;activate();detect(doc);
     },
     async loadAgentProject(value) {
       if(!value.project||value.project.kind!=='image'||value.project.document?.image!==value.image)throw new Error('批注草稿与会话原图不匹配');
       await importJSON({name:value.name||value.project.name,size:JSON.stringify(value.project).length,text:async()=>JSON.stringify(value.project)});
-      agentBound=true;
+      agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
     },
     async loadAgentFeedback(value) {
-      if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
-      await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
+      const descriptor=value.feedback?.image;
+      if(descriptor&&typeof descriptor==='object')I.verify(descriptor,value.image);else if(descriptor!==value.image)throw new Error('反馈与会话原图不匹配');
+      const complete={...value.feedback,image:typeof descriptor==='object'?I.descriptor(value.image,'embedded','feedback.png',{devicePixelRatio:descriptor.devicePixelRatio}):value.image};
+      await importJSON({name:value.name,size:JSON.stringify(complete).length,text:async()=>JSON.stringify(complete)});
       const metadata=F.imageMetadata(value.feedback);
       feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt||new Date().toISOString(),metadata,snapshot:clone(value.feedback)};
       exportCache=null;
-      agentBound=true;
+      agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
     },
     project() {if(!session)throw new Error('请先打开素材');return clone(project());},
     projectRevision() {return projectRevision;},
     onProjectChange(listener) {projectListeners.add(listener);return ()=>projectListeners.delete(listener);},
     markAgentDraftSaved(revision) {if(revision===projectRevision)dirty=false;},
-    feedback() {return clone(feedback(true));},
+    feedback() {return clone(feedback(agentOptions.imageMode,agentOptions.preview,true));},
+    feedbackSubmission() {return {feedback:clone(feedback(agentOptions.imageMode,agentOptions.preview,true)),...(agentOptions.preview?{previewDataUrl:annotatedData(session.document)}:{})};},
     notify,
     canCancel() {return !dirty||confirm('取消这次 AI 批注会话？当前编辑仍会保留在页面中，可保存项目。');},
     releaseAgent() {agentBound=false;},
@@ -2463,7 +2567,7 @@ function dilate(input,w,h,rx,ry) {
     if (sending || document.body.dataset.agentState !== 'pending') return;
     if ($('note-dialog').open) { app.notify('请先保存或关闭正在编辑的批注');return; }
     sending=true;submit.disabled=true;cancel.disabled=true;label(submit,'返回中');
-    pendingFeedback ||= app.feedback();$('workspace').inert=true;document.body.dataset.agentLocked='true';
+    pendingFeedback ||= app.feedbackSubmission();$('workspace').inert=true;document.body.dataset.agentLocked='true';
     try {
       const receipt=await request('feedback',pendingFeedback);
       if (receipt.state !== 'completed') throw new Error('反馈尚未完成，请重试');

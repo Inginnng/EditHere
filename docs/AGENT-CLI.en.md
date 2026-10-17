@@ -75,7 +75,7 @@ The 0.9.6 and 0.9.7 command lines inferred the communication endpoint from their
 | `export <image-video-project-or-feedback> --output <new.json>` | Convert a saved project (including video projects), image or valid feedback JSON into feedback JSON | No |
 | `annotate <image-video-or-project> --output <new.json>` | Open a user annotation session and wait for an explicit submission | **Yes** |
 
-`export` and `annotate` include the source image by default; add `--no-image` to omit it. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
+`export` and `annotate` default to `file`: a same-basename PNG beside the JSON. Use `--embed-image` for embedded data or `--no-image` for metadata only; these switches are mutually exclusive. `--preview` adds a numbered JPEG in any mode. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
 
 `open` and `annotate` take images (PNG/JPEG/WebP/BMP), videos (MP4/MOV/WebM and others) and `.edithere` projects, including video projects. A video plays inside EditHere and the user pauses on the picture they mean before annotating; notes about the same position at different times are kept apart rather than merged. The `export` receipt for a video project also carries the frame count `frames` and `schemaVersion` (`video-feedback-1`).
 
@@ -112,7 +112,7 @@ An existing unsaved document, an in-progress capture or an annotation session ma
 & $EditHereCli export 'C:\absolute\review.edithere' --output 'C:\absolute\review-feedback.json'
 ```
 
-This step reads a saved project and does not wait for new user input. `export` can also read PNG, JPEG, WebP and BMP images or valid feedback JSON; external image feedback needs a companion PNG with the same name. `--no-image` suits cases where the receiver already has the corresponding source image; when a feedback file without an image is re-imported as a standalone file, it needs a companion source-image PNG with the same name. A complete `.edithere` project and a minimal feedback JSON are two different formats, so changing the extension is not a substitute for exporting.
+This reads a saved project without waiting for new user input. `export` also accepts images or valid feedback JSON. Keep the default JSON and companion image together; importing `none` needs the matching original. Neither the JSON nor any companion file may already exist; failed exports do not overwrite them. A complete `.edithere` project and a minimal feedback JSON are two different formats, so changing the extension is not a substitute for exporting.
 
 ## Responses and errors
 
@@ -121,7 +121,7 @@ Except for `--help` and `--version`, the commands write a single line of UTF-8 J
 The success receipt for `annotate` / `export` looks like this; `annotations` is a count, and the actual annotation content is in the file that `output` points to:
 
 ```json
-{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
 ```
 
 The responses for `open` / `capture` carry `accepted: true`, which only means the request was accepted; `open` also returns the absolute path `input`. A common failure response:
@@ -159,7 +159,7 @@ The file names under `schema/` denote the data format, not the application versi
 
 | Field | What it really means |
 | --- | --- |
-| `image` | The PNG or JPEG data URL of the source image before any adjustment; may be omitted, but the source image then has to be supplied separately |
+| `image` | Descriptor of the original before adjustment, using `file` / `embedded` / `none`; see below |
 | `annotationSpace` | Fixed to `result`; annotations sit on the adjusted image |
 | `objects[].source` | Original-image region for a moved component; ordinary notes refer to the adjusted image. `null` for a global note; a zero-area region for a point (`x1 == x2`, `y1 == y2`) |
 | `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final region |
@@ -168,6 +168,8 @@ The file names under `schema/` denote the data format, not the application versi
 | `objects[].recognizedText` | Optional screenshot text: required nonempty `text` (at most 500 characters) and local `engine`; optional `language`, `confidence` (0–1) and `edited`; `lines` is not supported in this stage |
 | Legacy `annotations` | Text annotations, located with `point` or `rectangle`; an annotation with only `text` applies to the whole image; `change` is a zero-based index into `changes` |
 | Legacy `changes` | The actual position and size changes; each entry's `from` is the source region and `to` is the final region |
+
+`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
 
 All coordinates take the image's top-left corner as the origin, are measured in image pixels, and are unaffected by the editor window's position or the current zoom. A rectangle's bottom-right boundary is exclusive, so the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers; change coordinates may contain decimals. Do not treat these values as web CSS pixels or absolute screen coordinates without conversion.
 
@@ -186,11 +188,11 @@ A video project exports [video-feedback-v1.schema.json](../schema/video-feedback
 | `video.source` | Path or address of the source video, referenced only; the saved frame screenshots and notes stay readable after the source file moves or disappears |
 | `video.durationMs` | Total video duration, used to check every frame timestamp |
 | `frames[].id` / `frames[].timestampMs` | Unique id and picture time of that frame (a microsecond counterpart `timestampUs` is written too) |
-| `frames[].imageFile` | Frame screenshot next to the feedback JSON (`frame-*.png`); whether it is embedded follows `--no-image` |
+| `frames[].imageFile` | A real companion frame screenshot in file mode (`frame-*.png`), matching the frame image descriptor |
 | `frames[].feedback` | That frame's image feedback, with the same shape as [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) |
 | `objects[]` | The same objects expanded with `frameId` and `timestampMs`, so they can be read in time order |
 
-`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. `--no-image` omits every embedded frame screenshot while the external `imageFile` and the note text stay; re-importing feedback without images as a standalone file needs the frame screenshots to still sit next to the JSON.
+`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. Each frame follows the selected mode: file writes real screenshots, `--embed-image` embeds them, and `--no-image` retains descriptors without originals. `--preview` adds a numbered JPEG per frame.
 
 Project files follow [video-project-v1.schema.json](../schema/video-project-v1.schema.json): each annotated picture keeps its screenshot and editing state, the source video is referenced by address only, and moving or losing it does not affect the saved content.
 

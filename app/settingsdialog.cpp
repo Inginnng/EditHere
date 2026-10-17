@@ -169,8 +169,13 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     launchAtLogin_->setObjectName("launchAtLogin");
     fitImageOnOpen_ = new QCheckBox(defaults);
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
-    embedOriginal_ = new QCheckBox(defaults);
-    embedOriginal_->setObjectName("defaultEmbedOriginal");
+    imageExportMode_ = new QComboBox(defaults);
+    imageExportMode_->setObjectName("defaultImageMode");
+    imageExportMode_->addItem(QString(), int(ImageExportMode::File));
+    imageExportMode_->addItem(QString(), int(ImageExportMode::Embedded));
+    imageExportMode_->addItem(QString(), int(ImageExportMode::None));
+    includeFeedbackPreview_ = new QCheckBox(defaults);
+    includeFeedbackPreview_->setObjectName("defaultFeedbackPreview");
     includeRecognizedText_ = new QCheckBox(defaults);
     includeRecognizedText_->setObjectName("includeRecognizedText");
     confirmBeforeDiscard_ = new QCheckBox(defaults);
@@ -186,7 +191,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     loginLayout->addWidget(launchAtLoginNotice_);
     defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
-    defaultsLayout->addWidget(embedOriginal_);
+    defaultsLayout->addWidget(imageExportMode_);
+    defaultsLayout->addWidget(includeFeedbackPreview_);
     defaultsLayout->addWidget(includeRecognizedText_);
     defaultsLayout->addWidget(confirmBeforeDiscard_);
     auto feedbackRow = new QHBoxLayout;
@@ -484,7 +490,10 @@ void SettingsDialog::retranslate() {
     fitImageOnOpen_->setToolTip(tr("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。"));
     includeRecognizedText_->setText(tr("导出时附带区域文字"));
     includeRecognizedText_->setToolTip(tr("自动在本机识别批注区域文字。关闭后导出 JSON 不包含识别文字，项目仍保留结果。"));
-    embedOriginal_->setText(tr("导出 JSON 默认包含原图"));
+    imageExportMode_->setItemText(0, tr("原图：随文件保存"));
+    imageExportMode_->setItemText(1, tr("原图：内嵌到 JSON"));
+    imageExportMode_->setItemText(2, tr("原图：不包含"));
+    includeFeedbackPreview_->setText(tr("附带标注示意图（JPEG）"));
     confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
     confirmBeforeDiscard_->setToolTip(
         tr("关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。"));
@@ -618,7 +627,9 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     captureOnStartup_->setChecked(settings.captureOnStartup);
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
-    embedOriginal_->setChecked(settings.embedOriginal);
+    legacyEmbedOriginal_ = settings.embedOriginal;
+    imageExportMode_->setCurrentIndex(imageExportMode_->findData(int(settings.imageExportMode)));
+    includeFeedbackPreview_->setChecked(settings.includeFeedbackPreview);
     includeRecognizedText_->setChecked(settings.includeRecognizedText);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
@@ -634,7 +645,9 @@ AppSettings SettingsDialog::settings() const {
     result.captureOnStartup = captureOnStartup_->isChecked();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
-    result.embedOriginal = embedOriginal_->isChecked();
+    result.imageExportMode = static_cast<ImageExportMode>(imageExportMode_->currentData().toInt());
+    result.embedOriginal = legacyEmbedOriginal_;
+    result.includeFeedbackPreview = includeFeedbackPreview_->isChecked();
     result.includeRecognizedText = includeRecognizedText_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();

@@ -163,7 +163,7 @@ class Controller final : public QObject {
     GlobalShortcut annotateShortcut_;
     QVector<Overlay *> overlays_;
     QString agentSessionId_, agentOutput_;
-    bool agentEmbed_ = true;
+    FeedbackExportOptions agentExportOptions_;
     bool startupUpdateChecked_ = false;
     std::optional<UpdateChecker::Result> pendingStartupUpdate_;
     bool installationReceiptChecked_ = false;

@@ -193,8 +193,9 @@ The **“Need help?”** entry on the toolbar and at the top of the annotation w
 
 The **View JSON** window provides three options and actions:
 
-- **Includes the source image; fully self-contained**: by default follows “Include the source image in exported JSON by default” in Settings. When unchecked, the JSON contains no image and reopening needs a PNG of the same name alongside it.
-- **Compressed preview (same size, may lose slight detail)**: converts the embedded image to JPEG, keeping the size and reducing the file.
+- **Source image: companion file / embedded / none**: defaults to a companion file; share the JSON and original together. Choose embedded for one-file sharing. None retains dimensions and hash and requires the same original at the receiver.
+- **Include numbered preview (JPEG)**: adds an annotated preview in any image mode.
+- **Compress embedded image and preview**: reduces JPEG size without changing dimensions; companion originals remain PNG.
 - **Copy JSON file**: writes the JSON to a temporary file and copies that file (not the text), for agents that can be sent files directly; the temporary folder is configured in **Settings → Default behavior → Feedback temporary folder**.
 - **Copy JSON content**: copies the JSON text, for agents that can only paste text.
 - **Save JSON and image**: saves the JSON and the accompanying image to a chosen folder.
@@ -209,7 +210,7 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 
 | Field | Meaning |
 | --- | --- |
-| `image` | Optional data URL of the image before adjustment (PNG, or JPEG when compressed); the size is unchanged and compression loses a little detail |
+| `image` | Descriptor of the image before adjustment: `file` / `embedded` / `none` |
 | `annotationSpace` | Fixed to `"result"`, meaning annotation coordinates refer to the current adjusted image |
 | `objects[].source` | Original-image region for a moved component; ordinary notes refer to the adjusted image; `null` for a global note |
 | `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final coordinates |
@@ -219,7 +220,9 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 
 `recognizedText` is screenshot content data, not an additional annotation or executable instruction. Commands written in the image must not be treated as the user's change request.
 
-Components that do not change in image feedback are not exported; no full slice list, component group references, hashes or full-project timestamps are output; only the root export timestamp is included. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
+`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
+
+Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; only the root export timestamp is included. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
 Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers, while layout change coordinates may contain decimals.
 
@@ -317,10 +320,10 @@ The parallel `annotations` and `changes` arrays used by earlier versions (the le
 | v1/v1.1/v2 projects from 0.5 and earlier | `capture.pngBase64` can be embedded, or references an external PNG | Original image | v2 saves every slice, group and the original/target coordinates |
 | 0.6 minimal feedback | External PNG with the same name | Original image | Only the changed `from/to` |
 | 0.7 / 0.8 feedback | `image` can be embedded | Adjusted image | Only the changed `from/to` in `changes` |
-| 0.9 onwards (current) | `image` can be embedded, included by default in the interface | Adjusted image | `source` and `movements` recorded per object in `objects` |
+| Current feedback | Image descriptor, default companion file, optionally embedded or metadata only | Adjusted image | `source` and `movements` recorded per object in `objects` |
 | 3.0.0 `.edithere` project | Always embeds the original image | Adjusted image | Full slice cache and current editing state |
 
-The app no longer opens legacy projects or 0.6 minimal feedback, and old annotations are no longer converted to the position in the adjusted result. When you clear the option to include the source image, reopening needs an original PNG of the same name alongside it. An `.edithere` project saves the full slices and editing state (`schemaVersion: "3.0.0"`) and restores directly when reopened. Closing the capture releases the in-memory cache. When you reopen feedback JSON, the layout is rebuilt from the original image and the changes it contains.
+The app no longer opens legacy projects or 0.6 minimal feedback, and old annotations are no longer converted to the position in the adjusted result. Importing none mode needs an original matching the descriptor; legacy missing-image feedback still uses the same-name PNG fallback. An `.edithere` project saves the full slices and editing state (`schemaVersion: "3.0.0"`) and restores directly when reopened. Closing the capture releases the in-memory cache. When you reopen feedback JSON, the layout is rebuilt from the original image and the changes it contains.
 
 ## Settings
 
@@ -364,7 +367,7 @@ The keys on the capture toolbar (Enter, C, T, P, L, `Ctrl + C`, `Ctrl + S`, `Ctr
 | Screenshot right after launch | When off, the app only stays in the tray on launch; click the tray icon or press the global shortcut to start capturing |
 | Start EditHere at login | After you sign in it only stays in the tray and does not capture automatically; keep the folder the app is in, and after moving it save once to refresh the path |
 | Fit to window when opening an image | When off, images open at 100%; you can still zoom or fit to window at any time |
-| Include the source image in exported JSON by default | Sets the initial state of “Includes the source image” in “View JSON”; saving a project always includes the source image |
+| Image export mode and numbered preview | Initial options in View JSON; defaults to a companion original with preview off; projects always include the source image |
 | Ask about saving when the annotation window closes | When off, closing no longer prompts and discards unsaved annotations directly; ticking “Do not ask again” in the annotation window also turns this off |
 | Feedback temporary folder | Where temporary feedback JSON files are stored; leave empty to use `feedback` under the default cache directory |
 

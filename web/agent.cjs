@@ -17,7 +17,7 @@ function options(args) {
   const result = {command:args[0]};
   for (let index = 1; index < args.length; index += 2) {
     const name = args[index];
-    if (!/^--(image|output|name|timeout|session|wait)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
+    if (!/^--(image|output|name|timeout|session|wait|image-mode|preview)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
     result[name.slice(2)] = args[index + 1];
   }
   return result;
@@ -50,10 +50,11 @@ async function run(args) {
     if (!mime) throw new Error('Supported input images: PNG, JPEG, WebP, GIF and BMP.');
     const image = imageData('data:image/' + mime + ';base64,' + bytes.toString('base64'));
     await ensurePreview({requireBridge:true});
-    return request('POST', '/__edithere_agent/sessions', {image,inputPath,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
+    if(opts.preview!==undefined&&!['true','false'].includes(opts.preview))throw new Error('--preview must be true or false.');
+    return request('POST', '/__edithere_agent/sessions', {image,inputPath,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),imageMode:opts['image-mode'],preview:opts.preview===undefined?undefined:opts.preview==='true',timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
   }
   if (!/^[a-f0-9]{32}$/.test(opts.session || '')) throw new Error('--session must be the sessionId returned by start.');
-  if (opts.image || opts.output || opts.name || opts.timeout) throw new Error('Only --session and optional --wait are accepted for this command.');
+  if (opts.image || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview) throw new Error('Only --session and optional --wait are accepted for this command.');
   const endpoint = '/__edithere_agent/sessions/' + opts.session;
   if (opts.command === 'cancel') {
     await ensurePreview({requireBridge:true});

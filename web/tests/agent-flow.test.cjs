@@ -42,7 +42,7 @@ async function main() {
     await page.locator('#workspace').waitFor({state:'visible'});
     const dims=await page.locator('#canvas').evaluate(c=>({width:c.width,height:c.height}));
     const original='data:image/png;base64,'+fs.readFileSync(image).toString('base64');
-    assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image),original);
+    assert.equal(await page.evaluate(()=>EditHereWeb.project().document.image),original);assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image.mode),'file');
     assert.equal(await page.locator('#export').getAttribute('aria-label'),'完成并返回 AI');
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('original image automatically loads from the session; no feedback before explicit submit');
@@ -50,7 +50,7 @@ async function main() {
     assert.equal(await page.locator('#actual-size').count(),0);
     const backup=JSON.parse(await downloadText(page,'#save-json'));
     assert.equal(backup.schemaVersion,'feedback-minimal-2');assert.equal(backup.tool.name,'EditHere');
-    assert.deepEqual({annotationSpace:backup.annotationSpace,image:backup.image,objects:backup.objects},{annotationSpace:'result',image:original,objects:[]},'manual JSON backup preserves the immutable original without submitting the session');
+    assert.equal(backup.image.mode,'file');assert.deepEqual(backup.objects,[]);assert.equal(backup.image.sha256,hash(fs.readFileSync(image)));
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('manual JSON backup retains the complete original and never submits feedback');
     if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
@@ -80,9 +80,9 @@ async function main() {
     await page.route('**/__edithere_agent/feedback?*',async route=>{if(loseResponse){loseResponse=false;await route.fetch();await route.abort('failed');}else await route.continue();});
     await page.locator('#export').click();
     const receipt=await wait;assert.equal(receipt.state,'completed');
-    const {image:expectedImage,...expectedReceipt}=expected;
+    const expectedReceipt=expected;
     assert.deepEqual(receipt.feedback,expectedReceipt);
-    assert(!Object.hasOwn(receipt.feedback,'image'),'the conversation receipt must not dump base64');
+    assert(!JSON.stringify(receipt.feedback).includes('data:image/'),'the conversation receipt must not dump base64');assert.equal(fs.readFileSync(receipt.imagePath).toString('base64'),original.split(',')[1]);
     const saved=fs.readFileSync(file);assert.equal(hash(saved),receipt.sha256);assert.deepEqual(JSON.parse(saved),expected);
     await page.waitForFunction(()=>!document.querySelector('#export').disabled);
     const documentBefore=await page.evaluate(()=>EditHereWeb.feedback());await page.keyboard.press('ArrowRight');assert.deepEqual(await page.evaluate(()=>EditHereWeb.feedback()),documentBefore,'unconfirmed delivery keeps the exact submitted snapshot');

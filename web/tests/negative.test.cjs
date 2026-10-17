@@ -59,7 +59,7 @@ async function main() {
     return page.locator('#stage').evaluate((stage, p) => { const b = stage.getBoundingClientRect(), c = document.querySelector('#canvas'); return { x: b.x + p.x * b.width / c.width, y: b.y + p.y * b.height / c.height }; }, { x, y });
   }
   try {
-    await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href);
+    await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href); await page.evaluate(()=>{const el=document.querySelector('#image-mode');el.value='embedded';});
     const image = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 200; c.height = 100; const p = c.getContext('2d'); p.fillStyle = '#edf1f8'; p.fillRect(0, 0, 200, 100); p.fillStyle = '#df513f'; p.fillRect(10, 10, 30, 30); return c.toDataURL('image/png'); });
     const layout = L.create(200, 100), source = rect(10, 10, 40, 40), destination = rect(90, 20, 120, 50);
     const groupId = L.addRegion(layout, source); L.transform(layout, groupId, destination);
@@ -75,7 +75,7 @@ async function main() {
     await restore();
     await checkpoint('valid video project and feedback remain importable with accurate timestamps', async () => {
       for (const value of [videoProject, videoFeedback]) {
-        await importValue(value); const data = await feedback(); assert.equal(data.schemaVersion, 'video-feedback-1'); assert.equal(data.frames.length, 1); assert.equal(data.frames[0].timestampUs, 200000); assert.equal(data.frames[0].feedback.image, image); assert.equal(await page.locator('#play').isDisabled(), true);
+        await importValue(value); const data = await feedback(); assert.equal(data.schemaVersion, 'video-feedback-1'); assert.equal(data.frames.length, 1); assert.equal(data.frames[0].timestampUs, 200000); assert.equal(data.frames[0].feedback.image.dataUrl, image); assert.equal(await page.locator('#play').isDisabled(), true);
       }
       await importValue({ ...clone(videoProject), frames: [] }); const empty = await feedback(); assert.equal(empty.frames.length, 0); assert.equal(empty.objects.length, 0);
       await restore();

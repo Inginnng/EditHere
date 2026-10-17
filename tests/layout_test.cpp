@@ -608,7 +608,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
@@ -631,13 +631,13 @@ class LayoutTests : public QObject {
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             payload.remove(field);
         const auto payloadBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-        QVERIFY(payloadBytes.size() < 450); // IDs and two numbered notes add less than 100 bytes.
+        QVERIFY(payloadBytes.size() < 750); // Bounded image metadata, IDs and notes; never encoded image bytes.
         QVERIFY(compact.size() - payloadBytes.size() < 250); // Metadata stays bounded too.
         const auto path = directory.filePath("feedback-minimal.json");
         saveBytes(path, compact);
         QVERIFY_EXCEPTION_THROWN(loadDocument(path),
                                  std::runtime_error); // The matching source image is required.
-        saveBytes(directory.filePath("feedback-minimal.png"), document.png);
+        saveBytes(directory.filePath("feedback.png"), document.png);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
@@ -651,13 +651,14 @@ class LayoutTests : public QObject {
             for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
                 notag.remove(field);
             notag.remove("annotationSpace");
+            notag.remove("image");
             saveBytes(QDir(folder).filePath("feedback-notag.json"),
                       QJsonDocument(notag).toJson(QJsonDocument::Compact));
             saveBytes(QDir(folder).filePath("feedback-notag.png"), document.png);
         }
         auto invalid = feedback;
         invalid["tool"] = "unexpected";
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         // 对象包含未知字段时被拒绝。
         auto badObjects = feedback["objects"].toArray();
@@ -665,7 +666,7 @@ class LayoutTests : public QObject {
         badObject["extra"] = true;
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         // 移动目标坐标超出限制时被拒绝。
         badObjects = feedback["objects"].toArray();
@@ -677,7 +678,7 @@ class LayoutTests : public QObject {
         badObject["movements"] = movements;
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         // 移动目标尺寸为负或零时被拒绝。
         badObjects = feedback["objects"].toArray();
@@ -689,7 +690,7 @@ class LayoutTests : public QObject {
         badObject["movements"] = movements;
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         // 移动目标与源区域相同时被跳过，导致布局为空但批注仍存在，不算损坏。
         // 此处改用移动 "to" 不是对象来触发拒绝。
@@ -698,7 +699,7 @@ class LayoutTests : public QObject {
         badObject["movements"] = QJsonArray{QJsonObject{{"to", "not-an-object"}}};
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
     }
     void centeredResizeSurvivesFeedbackRoundTrip() {
         auto document = fromImage(sourceImage(), "demo", "centered resize");
@@ -709,7 +710,7 @@ class LayoutTests : public QObject {
         QCOMPARE(feedback["objects"].toArray().size(), 1);
         const auto object = feedback["objects"].toArray()[0].toObject();
         QCOMPARE(object["movements"].toArray().size(), 1);
-        const auto restored = loadFeedback(feedback, document.image);
+        const auto restored = loadFeedback(feedback, document.image, document.png);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
@@ -744,7 +745,7 @@ class LayoutTests : public QObject {
         const auto original = loadFeedback(legacy, image);
         const auto feedback = exportFeedback(original);
         QCOMPARE(feedback["objects"].toArray().size(), MaxLayoutGroups);
-        const auto restored = loadFeedback(feedback, image);
+        const auto restored = loadFeedback(feedback, image, original.png);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(restored.layout->groups.size(), MaxLayoutGroups);
         QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
@@ -790,7 +791,8 @@ class LayoutTests : public QObject {
         QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
         QCOMPARE(feedback["objects"].toArray().size(), 3);
-        QCOMPARE(feedback["image"],
+        QCOMPARE(feedback["image"].toObject()["mode"].toString(), QString("embedded"));
+        QCOMPARE(feedback["image"].toObject()["dataUrl"],
                  QJsonValue("data:image/png;base64," + QString::fromLatin1(document.png.toBase64())));
         const auto path = directory.filePath("embedded.json");
         saveBytes(path, serializeFeedback(document, true));
@@ -809,8 +811,10 @@ class LayoutTests : public QObject {
         const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            saveBytes(QDir(folder).filePath("feedback.json"), serializeFeedback(document, true));
-            saveBytes(QDir(folder).filePath("feedback-no-image.json"), serializeFeedback(document));
+            const auto bundle = buildFeedbackBundle(document);
+            saveBytes(QDir(folder).filePath("feedback.json"), bundle.json);
+            for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(QDir(folder).filePath(it.key()), it.value());
+            saveBytes(QDir(folder).filePath("feedback-no-image.json"), serializeFeedback(document, false));
         }
         for (const auto &invalidImage :
              {QJsonValue(true), QJsonValue("data:image/jpeg;base64,AA=="),
@@ -823,10 +827,10 @@ class LayoutTests : public QObject {
         }
         auto invalid = feedback;
         invalid["annotationSpace"] = "original";
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         invalid["extra"] = true;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         auto badPng = document.png;
         for (int i = 16; i < 24; ++i)
             badPng[i] = char(0xff); // Reject absurd dimensions before PNG decoding allocates pixels.
@@ -925,6 +929,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "旧矩形";
         document.notes = {point, rectangle};
         auto legacy = exportFeedback(document);
+        legacy.remove("image");
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             legacy.remove(field);
         legacy.remove("annotationSpace");
