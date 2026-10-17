@@ -123,3 +123,7 @@ CLI 在线验收使用同一份生产 CLI 实现的隔离测试入口，真实�
 两处精确 PTS 候选均为各自五帧窗口中整帧误差最低者；三处标注区域在 `±2px` 位移比较中的最低误差均为 `(0,0)`。图像存在轻微颜色数值差，因此这一比对证明时间和位置对应，不声称源视频解码截图与导出 PNG 逐像素完全相同。
 
 详细证据见 [独立 AI 验收报告](../artifacts/video-independent-reader/report.md) 和 [逐对象定位及 PTS 比对结果](../artifacts/video-independent-reader/result.json)，其中保留源码/资产版本 SHA-256、抽帧记录和比较数值。独立报告的输入 JSON SHA-256 与当前实际导出文件一致。
+
+## 页面上下文
+
+打开视频或视频项目时，可由 AI 通过 `--page-context "游戏主页面"`（连接器为 pageContext）说明当前标注的页面。说明显示在编辑器且不替换标题；根级 capture 是新帧的默认值，各帧反馈/项目保存自己的 capture，重开与导出不丢失。关闭窗口标题导出会同时过滤视频根和各帧的 windowTitle，工程仍保留原值；page/appName 不受影响。旧视频没有 capture 仍可读，不调用额外识图服务。

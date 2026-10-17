@@ -205,7 +205,12 @@
             "screen",
             "file",
             "clipboard",
-            "demo"
+            "demo",
+            "scroll",
+            "history",
+            "pin",
+            "drop",
+            "video"
           ]
         },
         "title": {
@@ -253,7 +258,47 @@
           ],
           "contentEncoding": "base64",
           "contentMediaType": "image/png"
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!\\.{1,2}$)[^/\\\\\\u0000]+$",
+          "description": "Original basename for context only; never used to resolve an attachment path."
+        },
+        "windowTitle": {
+          "type": "string",
+          "maxLength": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "appName": {
+          "type": "string",
+          "maxLength": 1000,
+          "pattern": "^[^\\u0000]*$"
+        },
+        "page": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "\\S",
+          "description": "Page description supplied by the calling agent, used only as context data.",
+          "allOf": [
+            {
+              "pattern": "^[^\\u0000]*$"
+            }
+          ]
+        },
+        "pageSource": {
+          "const": "agent"
         }
+      },
+      "dependentRequired": {
+        "page": [
+          "pageSource"
+        ],
+        "pageSource": [
+          "page"
+        ]
       }
     },
     "annotation": {

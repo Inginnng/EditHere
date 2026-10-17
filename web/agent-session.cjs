@@ -84,8 +84,21 @@ function outputImage(session,name,mimeType){
   if(stat.isSymbolicLink()||!stat.isFile()||stat.size>64*1024*1024)fail('Invalid companion image file.');
   return'data:'+mimeType+';base64,'+fs.readFileSync(file).toString('base64');
 }
+function bindCapture(value,session){
+  if(!value||typeof value!=='object'||Array.isArray(value))return value;
+  if(Object.hasOwn(value,'capture')){try{feedbackFormat.validateCapture(value.capture);}catch(error){fail(error.message);}}
+  if(!session.capture)return value;
+  if(Object.hasOwn(value,'capture')&&feedbackFormat.serialize(value.capture)!==feedbackFormat.serialize(session.capture))fail('Capture context must match this session.');
+  return {...value,capture:{...session.capture}};
+}
+function bindFeedbackCapture(value,session){
+  if(session.capture && value && !Object.hasOwn(value,'schemaVersion')){
+    try{value=feedbackFormat.upgradeImage(value,session.createdAt);}catch(error){fail(error.message);}
+  }
+  return bindCapture(value,session);
+}
 function validateSavedFeedback(session,feedback){
-  const valid=validateFeedback(feedback,session.image,(name,mime)=>outputImage(session,name,mime));
+  const valid=validateFeedback(bindFeedbackCapture(feedback,session),session.image,(name,mime)=>outputImage(session,name,mime));
   if(valid.image?.preview){const data=outputImage(session,valid.image.preview,'image/jpeg'),info=imageFormat.inspect(data);if(info.width!==valid.image.width||info.height!==valid.image.height)fail('Annotated preview dimensions do not match.');if(session.previewSha256&&digest(info.bytes)!==session.previewSha256)fail('Annotated preview SHA-256 does not match.');}
   return valid;
 }
@@ -103,12 +116,13 @@ function allowedKeys(value, keys, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !keys.includes(key))) fail('Invalid ' + name + ' fields.');
 }
 function validateDraft(value, session) {
+  if(value?.document)value={...value,document:bindCapture(value.document,session)};
   const serialized = boundedJSON(value, MAX_BODY, 'Draft');
   allowedKeys(value, ['schemaVersion','tool','savedAt','kind','name','width','height','document'], 'draft');
   if (value.schemaVersion !== 'edithere-web-project-1' || value.tool !== 'EditHere Web' || value.kind !== 'image' || value.name !== session.name || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))) fail('Invalid image draft project.');
   const {width, height, document:documentValue} = value;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 32767 || height > 32767 || width * height > 32000000) fail('Invalid draft dimensions.');
-  allowedKeys(documentValue, ['id','timestampUs','image','notes','layout'], 'draft document');
+  allowedKeys(documentValue, ['id','timestampUs','image','notes','layout','capture'], 'draft document');
   if (documentValue.image !== session.image || typeof documentValue.id !== 'string' || !documentValue.id || documentValue.id.length > 256 || /[\\/:*?"<>|\u0000-\u001f]/.test(documentValue.id) || documentValue.timestampUs !== null) fail('Draft must contain this session\'s original image.');
   if (!Array.isArray(documentValue.notes) || documentValue.notes.length > 1000) fail('Invalid draft annotation list.');
   const layout = documentValue.layout;
@@ -150,7 +164,7 @@ function validateDraft(value, session) {
   return draft;
 }
 function hydratedDraft(session) {
-  return session.draft ? {...session.draft, document:{...session.draft.document, image:session.image}} : undefined;
+  return session.draft ? {...session.draft, document:{...bindCapture(session.draft.document,session), image:session.image}} : undefined;
 }
 function flushDirectory(directory) {
   let descriptor;
@@ -201,6 +215,7 @@ function persistedSession(directory, id) {
   } catch (error) { if (error.code === 'ENOENT') fail('Session not found.', 404); throw error; }
   if (session.id !== id || !/^[a-f0-9]{64}$/.test(session.token) || typeof session.output !== 'string' || !path.isAbsolute(session.output) || typeof session.inputPath !== 'string' || !path.isAbsolute(session.inputPath) || !['pending','submitting','completed','cancelled','expired'].includes(session.state) || !Number.isFinite(session.expiresAt)) fail('Invalid persisted session.');
   imageData(session.image);
+  if(Object.hasOwn(session,'capture')){try{feedbackFormat.validateCapture(session.capture);}catch(error){fail(error.message);}}
   if (session.state === 'submitting') {
     let matchingOutput;
     try {
@@ -218,7 +233,7 @@ function persistedSession(directory, id) {
 }
 function receipt(session, now = Date.now()) {
   const state = session.state === 'pending' && now >= session.expiresAt ? 'expired' : session.state;
-  return {tool:'EditHere', sessionId:session.id, state, name:session.name, inputPath:session.inputPath, output:session.output, expiresAt:session.expiresAt,
+  return {tool:'EditHere', sessionId:session.id, state, name:session.name, inputPath:session.inputPath, output:session.output, expiresAt:session.expiresAt,...(session.capture?{capture:{...session.capture}}:{}),
     ...(state === 'completed' ? {completedAt:session.completedAt, sha256:session.sha256, feedback:session.result,
       ...(session.result?.image?.mode==='file'?{imagePath:path.join(path.dirname(session.output),session.result.image.file)}:{}),
       ...(session.result?.image?.preview?{previewPath:path.join(path.dirname(session.output),session.result.image.preview)}:{})} : {})};
@@ -269,10 +284,14 @@ class AgentSessions {
     const name = input.name ?? path.basename(input.inputPath);
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Invalid image name.');
     const imageMode=input.imageMode??'file';if(!['file','embedded','none'].includes(imageMode)||input.preview!==undefined&&typeof input.preview!=='boolean')fail('Invalid image export options.');
+    const createdAt=new Date(this.now()).toISOString();
+    let page;try{page=input.pageContext===undefined?undefined:feedbackFormat.validatePageContext(input.pageContext);}catch(error){fail(error.message);}
+    const capture={source:'file',fileName:path.basename(input.inputPath),capturedAt:createdAt,...(page?{page,pageSource:'agent'}:{})};
+    try{feedbackFormat.validateCapture(capture);}catch(error){fail(error.message);}
     const session = {id:crypto.randomBytes(16).toString('hex'), token:randomToken(), state:'pending', image, name,imageMode,preview:input.preview??false,
-      inputPath:path.resolve(input.inputPath), output, createdAt:new Date(this.now()).toISOString(), expiresAt:this.now() + timeout * 1000};
+      inputPath:path.resolve(input.inputPath), output, createdAt,capture, expiresAt:this.now() + timeout * 1000};
     this.sessions.set(session.id, session); this.persist(session);
-    return {sessionId:session.id, url:this.origin + '/EditHere.html?agent=' + session.token, output, expiresAt:session.expiresAt};
+    return {sessionId:session.id, url:this.origin + '/EditHere.html?agent=' + session.token, output, expiresAt:session.expiresAt,capture:{...session.capture}};
   }
   byId(id) { const session = persistedSession(this.directory, id); this.sessions.set(id, session); return this.expire(session); }
   byToken(token) {
@@ -294,7 +313,7 @@ class AgentSessions {
   }
   browser(token) {
     const session = this.byToken(token);
-    return {sessionId:session.id, name:session.name, state:session.state, expiresAt:session.expiresAt,imageMode:session.imageMode??'file',preview:session.preview??false,outputFileName:path.basename(session.output),
+    return {sessionId:session.id, name:session.name, state:session.state, expiresAt:session.expiresAt,imageMode:session.imageMode??'file',preview:session.preview??false,outputFileName:path.basename(session.output),...(session.capture?{capture:{...session.capture}}:{}),
       ...(session.state === 'pending' ? {image:session.image} : {})};
   }
   submit(token, input, previewDataUrl) {
@@ -303,7 +322,7 @@ class AgentSessions {
   }
   submitLocked(token, input,previewDataUrl) {
     const session = this.byToken(token);
-    const feedback = validateFeedback(input, session.image);
+    const feedback = validateFeedback(bindFeedbackCapture(input,session), session.image);
     const serialized = feedbackFormat.serialize(feedback), sha256 = digest(serialized);
     if (session.state === 'completed') {
       if (session.sha256 !== sha256) fail('This session already received different feedback.', 409);

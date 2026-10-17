@@ -6,6 +6,11 @@
 #include <functional>
 class QWidget;
 namespace h2d {
+struct CaptureWindow {
+    QRect bounds; // Image pixels, front-to-back order; independent of component targets.
+    QString windowTitle;
+    QString appName;
+};
 struct ScreenFrame {
     QString name;
     QRect logicalGeometry;
@@ -18,6 +23,8 @@ struct ScreenFrame {
     // native pixels. Empty means use nativeGeometry, as on Windows and X11.
     QRect elementGeometry;
     bool elementProbingAllowed = true;
+    QVector<CaptureWindow> captureWindows; // Captured before opening our overlay.
+    QString capturedAt; // Snapshot time, before interactive region selection.
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 // A scrolling session keeps the original window and its owner, rather than

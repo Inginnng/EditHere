@@ -64,10 +64,10 @@ int main(int argc, char **argv) {
                   "Usage:\n"
                   "  edithere-cli --help | --version\n"
                   "  edithere-cli status\n"
-                  "  edithere-cli open <image-video-or-project>\n"
+                  "  edithere-cli open <image-video-or-project> [--page-context <page>]\n"
                   "  edithere-cli capture\n"
                   "  edithere-cli export <project> --output <new.json> [--embed-image | --no-image] [--preview]\n"
-                  "  edithere-cli annotate <image-video-or-project> --output <new.json> [--embed-image | --no-image] [--preview] [--timeout <seconds>]\n\n"
+                  "  edithere-cli annotate <image-video-or-project> --output <new.json> [--embed-image | --no-image] [--preview] [--timeout <seconds>] [--page-context <page>]\n\n"
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
                   "Feedback saves the original beside JSON by default. Output and sidecars must not exist; their parent must exist.\n"
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
@@ -82,16 +82,17 @@ int main(int argc, char **argv) {
     const bool withPath = command == "open" || command == "export" || command == "annotate";
     if (!withPath && command != "status" && command != "capture")
         return printResult(agentError("invalid_arguments", "Unknown command. Run edithere-cli --help."));
-    QString input, output;
+    QString input, output, pageContext;
     FeedbackExportOptions options;
     options.includeRecognizedText = recognizedTextExportEnabled();
+    options.includeWindowTitle = windowTitleExportEnabled();
     int timeoutSeconds = 1800;
     if (withPath) {
         if (args.isEmpty() || args.first().startsWith("--"))
             return printResult(agentError("invalid_arguments", "An image, video or project path is required."));
         input = QFileInfo(args.takeFirst()).absoluteFilePath();
     }
-    bool outputSeen = false, imageSeen = false, timeoutSeen = false, previewSeen = false;
+    bool outputSeen = false, imageSeen = false, timeoutSeen = false, previewSeen = false, pageSeen = false;
     while (!args.isEmpty()) {
         const auto option = args.takeFirst();
         if (option == "--output" && !outputSeen && (command == "export" || command == "annotate") && !args.isEmpty()) {
@@ -101,6 +102,9 @@ int main(int argc, char **argv) {
             imageSeen = true; options.mode = option == "--embed-image" ? ImageExportMode::Embedded : ImageExportMode::None;
         } else if (option == "--preview" && !previewSeen && (command == "export" || command == "annotate")) {
             previewSeen = true; options.preview = true;
+        } else if (option == "--page-context" && !pageSeen && (command == "open" || command == "annotate") && !args.isEmpty()) {
+            pageSeen = true; pageContext = args.takeFirst().trimmed();
+            try { validatePageContext(pageContext); } catch (const std::exception &error) { return printResult(agentError("invalid_arguments", QString::fromUtf8(error.what()))); }
         } else if (option == "--timeout" && !timeoutSeen && command == "annotate" && !args.isEmpty()) {
             timeoutSeen = true;
             bool ok = false; timeoutSeconds = args.takeFirst().toInt(&ok);
@@ -156,6 +160,7 @@ int main(int argc, char **argv) {
     if (!connection.isEmpty()) return printResult(connection);
     QJsonObject request{{"protocol", 1}, {"command", command}};
     if (withPath) request["input"] = input;
+    if (pageSeen) request["pageContext"] = pageContext;
     if (outputSeen) { request["output"] = output; request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"; request["preview"] = options.preview; }
     if (command == "annotate") request["timeout"] = timeoutSeconds;
     const auto message = encodeAgentMessage(request);

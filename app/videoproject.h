@@ -15,6 +15,7 @@ struct VideoFrame {
 };
 struct VideoProject {
     QString source;
+    QJsonObject capture;
     qint64 durationMs = 0;
     qint64 positionMs = 0;
     QVector<VideoFrame> frames;

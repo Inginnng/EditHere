@@ -8,7 +8,7 @@
 
 ## 实施进度
 
-主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；各阶段单独提交并推送；J01/J04/J05 已通过 [PR #17](https://github.com/Inginnng/EditHere/pull/17) 合入默认分支 `codex/native`，GitHub 与 Gitee 均已核对为 `ca4a58f`。J03、J07 在后续阶段实现并合并。
+主要使用场景：导入截图后批注。以下勾选表示已完成实现及相关验证；各阶段单独提交并推送；J01/J04/J05 已通过 [PR #17](https://github.com/Inginnng/EditHere/pull/17) 合入默认分支 `codex/native`，J03 已通过 [PR #18](https://github.com/Inginnng/EditHere/pull/18) 合入默认分支，GitHub 与 Gitee 均已核对为 `533b0e9`。J07 已完成实现及验证，提交与合入状态见下方记录。
 
 - [x] J01：版本号、工具标识、导出时间与 Schema 标识（本轮第 1 阶段）
 - [ ] J02：图片尺寸与缩放比例
@@ -16,25 +16,26 @@
 - [x] J04：对象 ID 与界面一致的批注编号（本轮第 2 阶段）
 - [x] J05：截图区域本机 OCR、编辑与导出（本轮第 3 阶段）
 - [ ] J06：有系统控件信息时可选透传；截图导入场景暂缓
-- [ ] J07：窗口标题与采集上下文
+- [x] J07：窗口标题、采集上下文与 AI 主动提供页面说明
 - [ ] J08：显式标注类型
 - [ ] J09：移动与缩放结果
 - [ ] J10：坐标约定（实施前需修正普通批注与移动源的空间区别）
 - [ ] J11：视频反馈去重
 - [ ] J12：多轮反馈关联
-- [ ] J13：完整 Schema、CLI 回执与文档同步；本轮同步完成 J01/J04/J05 所需部分
+- [ ] J13：完整 Schema、CLI 回执与文档同步；本轮同步完成 J01/J03/J04/J05/J07 所需部分
 - [ ] J14：可选纯文本摘要
 
 ### 阶段记录
 
-查看本轮代码与提交：[GitHub 分支](https://github.com/Inginnng/EditHere/tree/codex/0.11.1-test) · [GitHub 提交记录](https://github.com/Inginnng/EditHere/commits/codex/0.11.1-test) · [Gitee 分支](https://gitee.com/InnGing/EditHere/tree/codex/0.11.1-test)。当前主分支：[GitHub](https://github.com/Inginnng/EditHere/tree/codex/native) · [Gitee](https://gitee.com/InnGing/EditHere/tree/codex/native)。
+J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Inginnng/EditHere/tree/codex/0.11.1-test) · [GitHub 提交记录](https://github.com/Inginnng/EditHere/commits/codex/0.11.1-test) · [Gitee 分支](https://gitee.com/InnGing/EditHere/tree/codex/0.11.1-test)。当前主分支：[GitHub](https://github.com/Inginnng/EditHere/tree/codex/native) · [Gitee](https://gitee.com/InnGing/EditHere/tree/codex/native)。
 
 | 阶段 | 实现 | 验证 | 推送记录 |
 | --- | --- | --- | --- |
 | J01 | 已完成 | 桌面 7 组、连接器 27 例、Web 单元与浏览器流程、真实导出 Schema 和打包检查通过 | `b9011b4`，GitHub / Gitee 已确认 |
 | J04 | 已完成 | 桌面 292 项、连接器 31 例、Web 68 例及真实编号/提交流程、Schema 校验通过 | `00739ea`，GitHub / Gitee 已确认 |
-| J03 | 已完成 | 桌面 9 组、连接器 42 例（1 项 Windows 符号链接权限跳过）、Web 87 单元及浏览器 22 项、三模式/MCP/CLI 流程、真实 Schema 和正式 Windows 包预览导出通过 | 本阶段独立提交并推送，随后合入默认分支 |
+| J03 | 已完成 | 桌面 9 组、连接器 42 例（1 项 Windows 符号链接权限跳过）、Web 87 单元及浏览器 22 项、三模式/MCP/CLI 流程、真实 Schema 和正式 Windows 包预览导出通过 | `47ef76d`；已合入主分支（PR #18） |
 | J05 | 已完成 | 桌面 9 组（含真实 Windows OCR）、连接器 36 例、Web 65 例及浏览器流程、真实导出 Schema、打包与 863 条翻译检查通过 | `0a4e63f`；三阶段已合入主分支（PR #17） |
+| J07 | 已完成 | 桌面 11 组、Windows 独立窗口快照、连接器 47 例（1 项权限跳过）、Web 96 单元及离线/CLI 6 项/MCP 9 项回传、真实 Schema、21 项打包与 897 条翻译检查通过 | 实现与验证完成；独立提交、推送并通过 PR 合入 |
 
 ---
 
@@ -261,6 +262,8 @@
 
 ### J07 窗口标题与采集上下文 · P1
 
+实施说明：已实现并验证。页面说明与采集上下文已接入桌面、Web、CLI 和连接器；Windows 真机快照测试通过，macOS/Linux 的平台运行验证以 CI 为准。
+
 本轮补充需求：AI 提供图片时，可主动传入 `pageContext`（CLI 为 `--page-context`），例如“游戏主页面”。写入 `capture.page` 与 `capture.pageSource:"agent"`，在编辑器可见，随工程、重新打开和反馈保留，不覆盖文档标题。无需接入 AI 识别服务。
 
 现在：项目文件的 `capture` 里有 `source`、`title`、`createdAt`、`screenBounds`，精简反馈全部丢弃，AI 不知道截的是哪个应用、哪个页面。
@@ -288,8 +291,10 @@
 }
 ```
 
-- 选区跨多个窗口时，取选区中心点所在的窗口。
-- 设置项「导出时附带窗口标题」可以关闭（标题里可能有文档名、邮箱等信息）。
+- 选区跨多个窗口时，取抓取时选区中心点所在的前方窗口；滚动截图沿用开始时的快照。Linux X11 同样读取可用窗口信息；Wayland 无法获取时省略，不用当前前台窗口补造。
+- 页面说明通过 `pageContext` / `--page-context` 主动传入，去除首尾空白后最多 500 个 UTF-16 单元；写入 `page` 与 `pageSource:"agent"`，随图片工程与视频各帧保留。
+- `fileName` 只保存导入文件的原始名称，作为来源数据，不用于附件读取；旧文件没有 capture 仍可读。
+- 设置项「导出时附带窗口标题」默认开启，可以关闭（标题里可能有文档名、邮箱等信息）。关闭时所有反馈出口只移除 windowTitle；工程保留原值，page 与 appName 不受影响。
 - 浏览器网址暂不采集（隐私敏感、实现复杂），后续再评估。
 
 ### J08 显式标注类型 · P1

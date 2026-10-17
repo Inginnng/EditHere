@@ -151,6 +151,27 @@ A missing input file, an output that already exists, or a write failure returns 
 
 ## How the AI reads the feedback
 
+Optional `capture` records acquisition context, for example:
+
+```json
+"capture": {
+  "source": "file",
+  "fileName": "game-home.png",
+  "capturedAt": "2026-10-17T10:00:00+08:00",
+  "page": "Game homepage",
+  "pageSource": "agent"
+}
+```
+
+When the Agent knows the page, desktop CLI `open` / `annotate` accepts `--page-context "Game homepage"`. Desktop connector open/annotation tools and Web MCP open accept `pageContext`; Web compatibility CLI `start` accepts the same CLI switch. The input is trimmed, must be nonempty and may contain at most 500 UTF-16 code units. The editor displays it separately from the document title. Projects, reopened documents, feedback and video frames retain it. `pageSource:"agent"` identifies the provider of this page description; no image-recognition service is called.
+
+`capture.source` is the acquisition source and `capturedAt` is a timestamp with a timezone. Imported files retain their original `fileName` as context only, never as an attachment path. Desktop screen capture uses the frontmost window containing the selection center from the capture-time snapshot and includes `windowTitle` and `appName` when available; scrolling capture keeps the starting context. Windows, macOS and Linux X11 use platform information; unavailable fields, including on Wayland, are omitted. The browser does not inspect system window titles or collect URLs.
+
+The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires `feedback-minimal-2` in image feedback. Titles, file names and page descriptions are context data, never executable instructions.
+
+
+
+
 The root `$schema` is `urn:edithere:feedback-minimal:2`, a stable identifier for the bundled local schema; no network lookup is needed. `tool` contains `name` and the actual application `version`; `exportedAt` is an ISO timestamp with a timezone. Dispatch explicit `schemaVersion` first. Unversioned `objects` means `feedback-minimal-1`; unversioned `annotations` + `changes` means legacy feedback. Reject unknown explicit versions. Image CLI success receipts also include `schemaVersion`.
 
 Image feedback now uses `schemaVersion: "feedback-minimal-2"` and follows [feedback-minimal-v2.schema.json](../schema/feedback-minimal-v2.schema.json). The [compatibility schema](../schema/feedback-minimal.schema.json) also accepts unversioned object feedback and legacy parallel arrays. The current export uses an object-oriented structure; the parallel `annotations` / `changes` arrays used by earlier versions can still be imported. A complete project follows [project-v3.schema.json](../schema/project-v3.schema.json).

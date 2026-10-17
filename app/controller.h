@@ -97,6 +97,7 @@ class Controller final : public QObject {
         bool dragging = false;
         Qt::Orientation axis = Qt::Vertical;
         QString notice;
+        QJsonObject capture;
     };
     ScrollRun scrollRun_;
     quint64 scrollGeneration_ = 0;

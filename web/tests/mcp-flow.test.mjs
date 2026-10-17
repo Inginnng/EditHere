@@ -109,10 +109,13 @@ try {
   await connect();await page.goto('http://127.0.0.1:'+server.address().port);
   const tools=await client.listTools();
   assert.equal(tools.tools.find(t=>t.name==='edithere_web_open')._meta.ui.resourceUri,'ui://edithere/annotation.html');
-  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试'},{damageInlineImage:true});
+  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试',pageContext:'  游戏主页面 <b>literal</b>  '},{damageInlineImage:true});
   const sessionId=view.result.structuredContent.sessionId;
   await view.frame.locator('body[data-mcp-display-request="accepted"]').waitFor();
   await view.frame.locator('body[data-image-state="ready"]').waitFor();
+  assert.equal(await view.frame.locator('#page-description').textContent(),'游戏主页面 <b>literal</b>');
+  assert.equal(await view.frame.locator('#page-description b').count(),0);
+  assert.equal(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.project().document.capture.pageSource),'agent');
   assert.equal(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.project().document.image),view.result._meta.edithere.image);
   assert((await page.evaluate(()=>window.calls)).includes('edithere_web_image'));
   checks.push('Original image loads through app-only chunks even when the agent result contains a damaged image encoding');

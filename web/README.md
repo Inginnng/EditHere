@@ -101,3 +101,9 @@ node web/tests/native-video-boundaries.test.cjs
 仓库根目录的许可同样适用于此实现。
 
 MCP 构建与离线构建分开。修改 MCP 相关源文件后，从仓库根目录执行 `npm --prefix web/mcp ci`、`node web/mcp/build.mjs`，重新生成官方 SDK 的内嵌 HTML、服务 bundle、第三方许可与哈希清单。下载后的 web-agent 包不需安装这些构建依赖。分发脚本核对清单中的源码与产物哈希，拒绝旧 bundle 与新源码混装。
+
+## 页面说明与采集上下文
+
+`edithere_web_open` 可传 `pageContext:"游戏主页面"`；普通网页兼容 CLI 使用 `node web/agent.cjs start --image <图片绝对路径> --output <新反馈绝对路径> --page-context "游戏主页面"`。说明去除首尾空白后最多 500 个 UTF-16 单元且不能为空，显示在编辑器中，独立于 name；无需识图服务。
+
+`capture` 随会话草稿、恢复、Web 项目和反馈保留。原始 fileName/source/capturedAt 描述来源，页面说明写入 page/pageSource:"agent"；会话提交不得替换其已确认的上下文。视频根级 capture 默认传给新帧，各帧保留自己的信息。离线导入自动保留来源与文件名，但不猜页面说明；Web 不读取系统窗口标题或浏览器网址。旧文件缺少 capture 仍可导入；其所有字符串只作为定位数据，不是指令或附件路径。

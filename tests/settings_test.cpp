@@ -37,14 +37,19 @@ class SettingsTests : public QObject {
     }
     void recognizedTextExportPreferencePersistsAndDefaultsOn() {
         QVERIFY(defaultSettings().includeRecognizedText);
+        QVERIFY(defaultSettings().includeWindowTitle);
         QTemporaryDir directory; const auto path = directory.filePath("settings.ini");
-        auto settings = defaultSettings(); settings.includeRecognizedText = false;
+        auto settings = defaultSettings(); settings.includeRecognizedText = false; settings.includeWindowTitle = false;
         QString error; QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
         QVERIFY(!loadSettings(path).includeRecognizedText);
         QVERIFY(!recognizedTextExportEnabled(path));
+        QVERIFY(!loadSettings(path).includeWindowTitle);
+        QVERIFY(!windowTitleExportEnabled(path));
         SettingsDialog dialog(settings);
         auto checkbox = dialog.findChild<QCheckBox *>("includeRecognizedText"); QVERIFY(checkbox); QVERIFY(!checkbox->isChecked());
         checkbox->setChecked(true); QVERIFY(dialog.settings().includeRecognizedText);
+        auto title = dialog.findChild<QCheckBox *>("includeWindowTitle"); QVERIFY(title); QVERIFY(!title->isChecked());
+        title->setChecked(true); QVERIFY(dialog.settings().includeWindowTitle);
     }
     void consoleIdentityUsesTheDesktopRecognizedTextPreference() {
         const auto application = QCoreApplication::applicationName();
@@ -66,13 +71,15 @@ class SettingsTests : public QObject {
             }
         } restore{path, application, organization, bytes, existed, testMode};
         QDir().mkpath(folder);
-        { QSettings values(path, QSettings::IniFormat); values.setValue("version", 1); values.setValue("defaults/includeRecognizedText", false); values.sync(); }
+        { QSettings values(path, QSettings::IniFormat); values.setValue("version", 1); values.setValue("defaults/includeRecognizedText", false); values.setValue("defaults/includeWindowTitle", false); values.sync(); }
         QCoreApplication::setApplicationName("edithere-cli"); QCoreApplication::setOrganizationName({});
         QVERIFY(!recognizedTextExportEnabled());
+        QVERIFY(!windowTitleExportEnabled());
         QCOMPARE(QCoreApplication::applicationName(), QString("edithere-cli"));
         QVERIFY(QCoreApplication::organizationName().isEmpty());
-        { QSettings values(path, QSettings::IniFormat); values.setValue("defaults/includeRecognizedText", true); values.sync(); }
+        { QSettings values(path, QSettings::IniFormat); values.setValue("defaults/includeRecognizedText", true); values.setValue("defaults/includeWindowTitle", true); values.sync(); }
         QVERIFY(recognizedTextExportEnabled());
+        QVERIFY(windowTitleExportEnabled());
     }
     void diagnosticsAreAccessibleWithoutChangingSettings() {
         QTemporaryDir directory;
@@ -202,6 +209,7 @@ class SettingsTests : public QObject {
         changed.imageExportMode = ImageExportMode::None;
         changed.includeFeedbackPreview = true;
         changed.includeRecognizedText = false;
+        changed.includeWindowTitle = false;
         changed.confirmBeforeDiscard = false;
         changed.checkUpdatesOnStartup = true;
         changed.defaultTool = 2;

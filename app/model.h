@@ -53,6 +53,7 @@ struct Document {
     QString createdAt = timestamp();
     QString title;
     QString source = "file";
+    QJsonObject capture; // Optional acquisition and Agent-provided page context.
     QString imageFile;
     QImage image;
     QByteArray png;
@@ -85,6 +86,9 @@ void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0)
 QByteArray serializeDocument(const Document &doc, bool embed = false);
 void validateDocument(const Document &doc);
 void validateRecognizedText(const QJsonObject &value, bool allowCleared = false);
+void validateCaptureContext(const QJsonObject &capture);
+void validatePageContext(const QString &page);
+QJsonObject exportCaptureContext(const QJsonObject &capture, bool includeWindowTitle = true);
 void saveBytes(const QString &path, const QByteArray &bytes);
 QImage exampleImage();
 QImage previewImage(const Document &doc);

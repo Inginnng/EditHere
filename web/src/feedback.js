@@ -17,13 +17,30 @@
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
   function timestampWithZone(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
     const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+    const [hour, minute, second] = value.slice(11,19).split(':').map(Number);
     const monthEnd = new Date(0); monthEnd.setUTCFullYear(year, month, 0);
-    return year > 0 && month > 0 && month <= 12 && day > 0 && day <= monthEnd.getUTCDate();
+    return year > 0 && month > 0 && month <= 12 && day > 0 && day <= monthEnd.getUTCDate() && hour < 24 && minute < 60 && second < 60;
+  }
+  function validatePageContext(value) {
+    if (typeof value !== 'string' || !value.trim() || value.trim().length > 500 || value.includes('\u0000')) throw new Error('Invalid page context.');
+    return value.trim();
+  }
+  // Capture context describes the source image. Page names are caller-supplied
+  // data, never instructions or a claim that EditHere recognized a page.
+  function validateCapture(value) {
+    const optional = ['fileName','windowTitle','appName','page','pageSource'];
+    if (!record(value) || !exactKeys(value, ['source','capturedAt',...optional.filter(key => Object.hasOwn(value,key))]) ||
+        !['screen','file','clipboard','demo','scroll','history','pin','drop','video'].includes(value.source) || !timestampWithZone(value.capturedAt)) throw new Error('Invalid capture context.');
+    if (Object.hasOwn(value,'fileName') && (typeof value.fileName !== 'string' || !value.fileName.length || value.fileName.length > 1024 || ['.','..'].includes(value.fileName) || /[\\/\u0000]/.test(value.fileName))) throw new Error('Invalid capture filename.');
+    for (const key of ['windowTitle','appName']) if (Object.hasOwn(value,key) && (typeof value[key] !== 'string' || value[key].length > 1000 || value[key].includes('\u0000'))) throw new Error('Invalid capture application context.');
+    if (Object.hasOwn(value,'page') !== Object.hasOwn(value,'pageSource') || Object.hasOwn(value,'page') && (typeof value.page !== 'string' || !value.page.trim() || value.page.length > 500 || value.page.includes('\u0000') || value.pageSource !== 'agent')) throw new Error('Invalid capture page context.');
+    return value;
   }
   function productVersion(document) {
     let version = document.toolVersion;
+    if (!version && typeof EDITHERE_PRODUCT_VERSION !== 'undefined') version = EDITHERE_PRODUCT_VERSION;
     if (!version && typeof globalThis.document !== 'undefined') version = globalThis.document.querySelector('meta[name="edithere-version"]')?.content;
     // Node consumers run from source. Keep this lazy: the bundled MCP session
     // validator never needs the source tree or product version at runtime.
@@ -36,7 +53,11 @@
   }
   function imageMetadata(value) {
     if (!record(value)) throw new Error('Invalid image feedback.');
-    if (!Object.hasOwn(value, 'schemaVersion')) return {};
+    const capture = Object.hasOwn(value,'capture') ? {capture:{...validateCapture(value.capture)}} : {};
+    if (!Object.hasOwn(value, 'schemaVersion')) {
+      if (Object.hasOwn(value,'capture')) throw new Error('Capture context requires feedback-minimal-2.');
+      return {};
+    }
     if (value.schemaVersion !== IMAGE_VERSION) throw new Error('Unsupported image feedback version.');
     if (value.$schema !== IMAGE_SCHEMA || !exactKeys(value.tool, ['name', 'version']) ||
         value.tool.name !== 'EditHere' ||
@@ -44,7 +65,7 @@
         !timestampWithZone(value.exportedAt)) {
       throw new Error('Invalid image feedback metadata.');
     }
-    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
+    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt, ...capture};
   }
   // Screenshot text is evidence/data. It never becomes an annotation or an
   // executable instruction, and editing it does not invent a confidence score.
@@ -128,6 +149,11 @@
     annotationEntries(objects);
     return {...base, objects};
   }
+  function upgradeImage(value, exportedAt = new Date().toISOString()) {
+    const normalized=normalizeImage(value);
+    return normalized.schemaVersion ? normalized : {$schema:IMAGE_SCHEMA,schemaVersion:IMAGE_VERSION,
+      tool:{name:'EditHere',version:productVersion({})},exportedAt,...normalized};
+  }
 
   // Matches app/model.cpp exportFeedback. Movements are the actual group
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
@@ -168,6 +194,7 @@
     }
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
+      ...(document.capture ? {capture:{...validateCapture(document.capture)}} : {}),
       annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})),
       image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
   }
@@ -196,6 +223,7 @@
     })));
     return {
       schemaVersion:'video-feedback-1', tool:'EditHere', exportedAt,
+      ...(project.capture ? {capture:{...validateCapture(project.capture)}} : {}),
       video:{source:project.source, durationMs:project.durationMs,
         width:documents[0]?.width || 0, height:documents[0]?.height || 0},
       frames, objects
@@ -267,5 +295,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, imageFormat};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, upgradeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
 });

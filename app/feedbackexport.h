@@ -10,6 +10,7 @@ struct FeedbackExportOptions {
     ImageExportMode mode = ImageExportMode::File;
     bool compress = false;
     bool includeRecognizedText = true;
+    bool includeWindowTitle = true;
     bool preview = false;
     QString imageFile = "feedback.png";
     QString previewFile;

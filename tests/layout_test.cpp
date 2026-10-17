@@ -608,7 +608,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
@@ -631,7 +631,7 @@ class LayoutTests : public QObject {
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             payload.remove(field);
         const auto payloadBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-        QVERIFY(payloadBytes.size() < 750); // Bounded image metadata, IDs and notes; never encoded image bytes.
+        QVERIFY(payloadBytes.size() < 950); // Bounded image/capture metadata, IDs and notes; never encoded image bytes.
         QVERIFY(compact.size() - payloadBytes.size() < 250); // Metadata stays bounded too.
         const auto path = directory.filePath("feedback-minimal.json");
         saveBytes(path, compact);
@@ -652,6 +652,7 @@ class LayoutTests : public QObject {
                 notag.remove(field);
             notag.remove("annotationSpace");
             notag.remove("image");
+            notag.remove("capture");
             saveBytes(QDir(folder).filePath("feedback-notag.json"),
                       QJsonDocument(notag).toJson(QJsonDocument::Compact));
             saveBytes(QDir(folder).filePath("feedback-notag.png"), document.png);
@@ -788,7 +789,7 @@ class LayoutTests : public QObject {
         rectangle.comment = "这里加大文字";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document, true);
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
         QCOMPARE(feedback["objects"].toArray().size(), 3);
         QCOMPARE(feedback["image"].toObject()["mode"].toString(), QString("embedded"));
@@ -930,6 +931,7 @@ class LayoutTests : public QObject {
         document.notes = {point, rectangle};
         auto legacy = exportFeedback(document);
         legacy.remove("image");
+        legacy.remove("capture");
         for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
             legacy.remove(field);
         legacy.remove("annotationSpace");
@@ -947,7 +949,9 @@ class LayoutTests : public QObject {
         const auto fullRestored = loadDocument(path);
         QCOMPARE(fullRestored.notes, restored.notes);
         QCOMPARE(fullRestored.image, document.image);
-        QCOMPARE(stableFeedback(exportFeedback(fullRestored)), stableFeedback(exportFeedback(restored)));
+        auto reexported = exportFeedback(fullRestored), importedLegacy = exportFeedback(restored);
+        reexported.remove("capture"); importedLegacy.remove("capture"); // The old format had no acquisition metadata to preserve.
+        QCOMPARE(stableFeedback(reexported), stableFeedback(importedLegacy));
 
         Note inHole;
         inHole.point = {20, 20};

@@ -191,6 +191,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     brand->setObjectName("brand");
     header->addWidget(brand);
     meta_ = mutedLabel({}, bar);
+    meta_->setObjectName("captureContextLabel"); meta_->setTextFormat(Qt::PlainText);
+    meta_->setMaximumWidth(360); meta_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     header->addSpacing(10);
     header->addWidget(meta_);
     header->addStretch();
@@ -627,6 +629,33 @@ void Editor::retranslate() {
     }
     updateLayoutControls();
 }
+void Editor::updatePageContextLabel() {
+    const QJsonObject context = video_ && (videoPreview_ || !hasDocument() || !doc_.capture.contains("page"))
+                                    ? video_->capture : doc_.capture;
+    const QString page = context["page"].toString();
+    const QSize size = hasDocument() ? doc_.image.size() : videoPreview_ ? canvas_->imageSize() : QSize();
+    QString base = size.isEmpty() ? QString() : QString("%1 × %2").arg(size.width()).arg(size.height());
+    if (video_) base += " · " + videoTimeLabel(videoPreview_ ? video_->positionMs : std::max<qint64>(0, videoFrameUs_) / 1000);
+    const QString full = page.isEmpty() ? base : base.isEmpty() ? page : base + " · " + page;
+    meta_->setText(QFontMetrics(meta_->font()).elidedText(full, Qt::ElideRight, 350));
+    meta_->setToolTip(full);
+    meta_->setProperty("pageContext", page);
+}
+void Editor::setPageContext(const QString &page) {
+    const QString trimmed = page.trimmed();
+    validatePageContext(trimmed);
+    auto apply = [&](QJsonObject &capture, const QString &source, const QString &at) {
+        if (capture.isEmpty()) capture = {{"source", source}, {"capturedAt", at}};
+        capture["page"] = trimmed; capture["pageSource"] = "agent"; validateCaptureContext(capture);
+    };
+    if (video_) {
+        apply(video_->capture, "video", timestamp());
+        for (auto &frame : video_->frames) { apply(frame.document.capture, frame.document.source, frame.document.createdAt); frame.document.dirty = true; }
+        video_->dirty = true;
+    }
+    if (hasDocument()) { apply(doc_.capture, doc_.source, doc_.createdAt); doc_.dirty = true; commitVideoFrame(); }
+    updatePageContextLabel();
+}
 void Editor::showGuide() {
     finishNoteEdit();
     if (!hasDocument()) setDocument(fromImage(exampleImage(), "demo", tr("引导示例")));
@@ -697,6 +726,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     if (!preserveView) detailsStack_->show();
     detailsStack_->setCurrentWidget(notesPanel_);
     meta_->setText(QString("%1 × %2").arg(doc_.image.width()).arg(doc_.image.height()));
+    updatePageContextLabel();
     renderNotes();
     if (!preserveView) {
         if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
@@ -767,6 +797,7 @@ void Editor::loadMedia(const QString &path) {
         if (!QFileInfo(path).isFile()) throw std::runtime_error(tr("视频文件不存在").toStdString());
         VideoProject project;
         project.source = QFileInfo(path).absoluteFilePath();
+        project.capture = {{"source", "video"}, {"capturedAt", timestamp()}, {"fileName", QFileInfo(path).fileName().left(1024)}};
         setVideoProject(std::move(project));
     } else if (isVideoProjectFile(path)) {
         setVideoProject(loadVideoProject(path), path.endsWith(".edithere", Qt::CaseInsensitive) ? path : QString());
@@ -804,6 +835,7 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
         videoPlayback_->open(video_->source, video_->positionMs);
     else toast(tr("源视频未找到，可查看已保存的批注画面，或重新指定视频。"));
     updateVideoFrames();
+    updatePageContextLabel();
 }
 void Editor::commitVideoFrame() {
     if (!video_ || videoFrameUs_ < 0 || doc_.image.isNull()) return;
@@ -846,6 +878,7 @@ void Editor::showVideoPreview(const QSize &size, qint64 timestampUs) {
     }
     video_->positionMs = std::max<qint64>(0, timestampUs / 1000);
     meta_->setText(tr("%1 × %2 · %3").arg(size.width()).arg(size.height()).arg(videoTimeLabel(video_->positionMs)));
+    updatePageContextLabel();
     syncVideoGeometry();
     auto view = videoPlayback_->videoWidget();
     if (!view->isVisible()) { view->show(); view->raise(); }
@@ -874,14 +907,19 @@ void Editor::displayVideoFrame(const QImage &image, qint64 timestampUs) {
             return frame.timestampUs == timestampUs;
         });
         if (it != video_->frames.cend()) next = it->document;
-        else next = fromImage(image.convertToFormat(QImage::Format_RGB32), "file",
-                              tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)), true);
+        else {
+            next = fromImage(image.convertToFormat(QImage::Format_RGB32), "video", tr("视频画面 %1").arg(videoTimeLabel(timestampUs / 1000)), true);
+            if (!video_->capture.isEmpty()) {
+                const auto capturedAt = next.createdAt; next.capture = video_->capture; next.capture["capturedAt"] = capturedAt;
+            }
+        }
         switchingVideoFrame_ = true;
         setDocument(std::move(next));
         switchingVideoFrame_ = false;
         videoFrameUs_ = timestampUs;
         video_->positionMs = timestampUs / 1000;
         meta_->setText(tr("%1 × %2 · %3").arg(doc_.image.width()).arg(doc_.image.height()).arg(videoTimeLabel(timestampUs / 1000)));
+        updatePageContextLabel();
         updateVideoFrames();
     } catch (const std::exception &error) {
         switchingVideoFrame_ = false;
@@ -900,6 +938,7 @@ void Editor::reviewVideoFrame(qint64 timestampUs) {
     switchingVideoFrame_ = true; setDocument(document); switchingVideoFrame_ = false;
     videoFrameUs_ = timestampUs; video_->positionMs = timestampUs / 1000;
     meta_->setText(tr("%1 × %2 · %3").arg(doc_.image.width()).arg(doc_.image.height()).arg(videoTimeLabel(timestampUs / 1000)));
+    updatePageContextLabel();
     updateVideoFrames();
 }
 void Editor::updateVideoFrames() {
@@ -930,8 +969,9 @@ QByteArray Editor::projectBytes() {
 }
 QByteArray Editor::feedbackBytes(bool embed, bool compress) {
     finishNoteEdit(); commitVideoFrame();
-    return video_ ? serializeVideoFeedback(*video_, embed, compress, preferences_.includeRecognizedText)
-                  : serializeFeedback(doc_, embed, compress, preferences_.includeRecognizedText);
+    FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
+    options.compress = compress; options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
+    return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
 }
 void Editor::toggleFullscreen() {
     stopViewportPan();
@@ -1999,6 +2039,7 @@ QByteArray Editor::agentFeedback(bool embed) {
 FeedbackBundle Editor::agentFeedbackBundle(FeedbackExportOptions options) {
     finishNoteEdit(); commitVideoFrame();
     options.includeRecognizedText = preferences_.includeRecognizedText;
+    options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? buildVideoFeedbackBundle(*video_, options) : buildFeedbackBundle(doc_, options);
 }
 

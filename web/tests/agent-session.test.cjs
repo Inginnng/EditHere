@@ -31,7 +31,7 @@ test('explicit submit writes native complete JSON; receipt omits image; retry is
   assert.equal(receipt.state, 'completed');
   assert.equal(receipt.feedback.image, undefined);
   assert.deepEqual(receipt.feedback.objects, feedback.objects);
-  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize(feedback));
+  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize({...format.upgradeImage(feedback,session.capture.capturedAt),capture:session.capture}));
   assert.equal(receipt.sha256, crypto.createHash('sha256').update(fs.readFileSync(paths.output)).digest('hex'));
   assert.deepEqual(store.submit(token(session), feedback), receipt);
   assert.throws(() => store.submit(token(session), {...feedback,objects:[]}), /different feedback/);
@@ -43,8 +43,8 @@ test('versioned metadata survives submission, restart, disk verification and cra
   const current = {...metadata, ...feedback};
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
   const receipt = store.submit(token(session), current);
-  assert.deepEqual(receipt.feedback, {...metadata, annotationSpace:'result', objects:feedback.objects});
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output, 'utf8')), current);
+  assert.deepEqual(receipt.feedback, {...metadata, capture:session.capture, annotationSpace:'result', objects:feedback.objects});
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output, 'utf8')), {...current,capture:session.capture});
   assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}), receipt);
   const raw = store.byId(session.sessionId); raw.state = 'submitting'; raw.result = {objects:[]}; store.persist(raw);
   const restarted = new AgentSessions(paths);
@@ -57,7 +57,7 @@ test('recognized screenshot text survives Agent submission, receipts and restart
   const current=format.exportImage({image,movements:[],notes:[{source:rectangle,text:'按钮更醒目',recognizedText:{text:'开始',engine:'windows-ocr',language:'zh-Hans'}}]});
   const receipt=store.submit(token(session),current);
   assert.deepEqual(receipt.feedback.objects,current.objects);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),current);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
   assert.deepEqual(new AgentSessions(paths).status(store.byId(session.sessionId)),receipt);
   const otherPaths=fixture(),otherStore=new AgentSessions(otherPaths),otherSession=create(otherStore,otherPaths);
   const invalid=structuredClone(current);invalid.objects[0].recognizedText.lines=[];
@@ -88,7 +88,7 @@ test('numbered feedback retains file object IDs and sparse numbers in the persis
   ])assert.throws(()=>store.submit(token(session),{...current,objects}),/duplicate/);
   const receipt=store.submit(token(session),current);
   assert.deepEqual(receipt.feedback.objects,current.objects);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),current);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
   assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}),receipt);
   assert.deepEqual(new AgentSessions(paths).submit(token(session),current),receipt);
 });
@@ -212,7 +212,7 @@ test('drafts restore without duplicating the image and do not overwrite a comple
   assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
   first.saveDraft(token(opened),draftProject());
   const resumed = second.byId(opened.sessionId);
-  assert.deepEqual(hydratedDraft(resumed),draftProjectWithDate(resumed.draft.savedAt));
+  const expected=draftProjectWithDate(resumed.draft.savedAt);expected.document.capture=opened.capture;assert.deepEqual(hydratedDraft(resumed),expected);
   assert.equal(resumed.draft.document.image,undefined);
   second.submit(token(opened),feedback);
   assert.throws(() => first.saveDraft(token(opened),draftProject()),/completed/);

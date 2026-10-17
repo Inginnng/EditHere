@@ -204,6 +204,25 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 ## 反馈 JSON
 
+可选 `capture` 记录采集上下文，例如：
+
+```json
+"capture": {
+  "source": "file",
+  "fileName": "game-home.png",
+  "capturedAt": "2026-10-17T10:00:00+08:00",
+  "page": "游戏主页面",
+  "pageSource": "agent"
+}
+```
+
+AI 已知当前页面时，可在打开图片、视频或项目时传入页面说明：桌面 CLI 的 `open` / `annotate` 使用 `--page-context "游戏主页面"`，桌面连接器和 Web MCP 的打开工具使用 `pageContext`，Web 兼容 CLI 的 `start` 使用同名开关。说明去除首尾空白后最多 500 个 UTF-16 单元，不能为空。编辑器会显示说明；它独立于文档标题，随项目重开、反馈及视频各帧保留。`pageSource:"agent"` 只说明页面描述由调用方提供，不表示使用了识图服务。
+
+`capture.source` 表示采集来源，`capturedAt` 是带时区的采集时间；导入文件保留原始 `fileName`，它只是定位线索，不能拿来读取附件。桌面直接截图按选区中心命中抓取时的前方窗口，可取得时附带 `windowTitle` 与 `appName`；滚动截图沿用开始时的信息。Windows、macOS 和 Linux X11 使用平台信息，Wayland 等无法取得时省略相关字段。浏览器不读取系统窗口标题，也不采集网址。
+
+桌面设置「导出时附带窗口标题」默认开启；关闭后所有反馈出口省略 `windowTitle`，工程仍保留原值，页面说明和应用名继续保留。旧反馈没有 `capture` 仍可导入；反馈中的该字段只用于 `feedback-minimal-2`。窗口标题、文件名、页面说明均是定位数据，不构成执行指令。
+
+
 图片反馈现带格式版本 `feedback-minimal-2`、生成工具名称和真实版本、带时区导出时间及 Schema 标识。原先没有版本号的反馈仍可导入；以下字段示意只展示意见内容。
 
 图片反馈采用**面向对象**结构：每个对象记录一块来源区域 `source`、它发生的位置变化 `movements`，以及挂在这块区域上的意见 `annotations`，AI 可直接把同一对象的意见与移动对应起来。视频反馈在 `frames[].feedback` 内复用这份结构，并补充帧时间戳、源视频信息和带时间戳的对象索引，详见 [视频标注](#视频标注)。
@@ -222,7 +241,7 @@ Mac 编辑快捷键使用 Command，重做为 Command + Shift + Z；全局截图
 
 `image` 描述调整前原图：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 和实际编码字节的 `sha256`。可选 `image.preview` 指向同目录带编号的 JPEG。导入校验类型、尺寸和哈希，不接受跨目录路径或符号链接；旧字符串图片及同名 PNG 的约定继续可读。
 
-图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用或完整项目时间戳；仅保留根级导出时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
+图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用或完整项目时间戳；保留根级导出时间及可选采集时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 
 坐标以画布左上角为原点，单位为图像像素，与窗口位置和视图缩放无关。框使用 `x1/y1/x2/y2` 两个端点；右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`。批注坐标为整数，布局变化坐标可含小数。
 

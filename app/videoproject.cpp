@@ -62,6 +62,7 @@ bool annotated(const Document &document) {
     return false;
 }
 QVector<const VideoFrame *> orderedFrames(const VideoProject &project) {
+    if (!project.capture.isEmpty()) validateCaptureContext(project.capture);
     if (project.source.trimmed().isEmpty() || project.source.size() > 32768 || project.source.contains(QChar::Null))
         fail(tr("视频地址不能为空或超出限制"));
     if (project.durationMs < 0 || project.durationMs > MaxJsonInteger / 1000 ||
@@ -124,7 +125,9 @@ QJsonObject readRoot(const QString &path) {
     return parsed.object();
 }
 VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path) {
-    exactKeys(root, {"schemaVersion", "tool", "exportedAt", "video", "frames", "objects"});
+    QStringList rootFields{"schemaVersion", "tool", "exportedAt", "video", "frames", "objects"};
+    if (root.contains("capture")) rootFields.append("capture");
+    exactKeys(root, rootFields);
     if (root["tool"] != "EditHere" ||
         !QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
         fail(tr("视频反馈工具或导出日期不正确"));
@@ -136,6 +139,7 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
         fail(tr("视频地址必须是字符串"));
     VideoProject project;
     project.source = video["source"].toString();
+    if (root.contains("capture")) { if (!root["capture"].isObject()) fail(tr("采集上下文必须是对象")); project.capture = root["capture"].toObject(); validateCaptureContext(project.capture); }
     project.durationMs = integer(video["durationMs"], "durationMs", MaxJsonInteger / 1000);
     orderedFrames(project);
     const qint64 width = integer(video["width"], "width", 32767);
@@ -241,7 +245,9 @@ VideoProject loadVideoProject(const QString &path) {
     const auto root = readRoot(path);
     if (root["schemaVersion"] == "video-feedback-1")
         return loadVideoFeedbackRoot(root, path);
-    exactKeys(root, {"schemaVersion", "tool", "exportedAt", "video", "frames"});
+    QStringList rootFields{"schemaVersion", "tool", "exportedAt", "video", "frames"};
+    if (root.contains("capture")) rootFields.append("capture");
+    exactKeys(root, rootFields);
     if (root["schemaVersion"] != "video-project-1" || root["tool"] != "EditHere")
         fail(tr("不支持这个视频项目版本"));
     if (!QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
@@ -254,6 +260,7 @@ VideoProject loadVideoProject(const QString &path) {
         fail(tr("视频地址必须是字符串"));
     VideoProject project;
     project.source = video["source"].toString();
+    if (root.contains("capture")) { if (!root["capture"].isObject()) fail(tr("采集上下文必须是对象")); project.capture = root["capture"].toObject(); validateCaptureContext(project.capture); }
     project.durationMs = integer(video["durationMs"], "durationMs", MaxJsonInteger / 1000);
     project.positionMs = integer(video["positionMs"], "positionMs", MaxJsonInteger / 1000);
     // Validate the video before allocating or decoding any screenshots. A missing
@@ -333,10 +340,11 @@ QByteArray serializeVideoProject(const VideoProject &project) {
         frames.append(QJsonObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
                                   {"timestampUs", frame->timestampUs}, {"document", document}});
     }
-    const QJsonObject root{{"schemaVersion", "video-project-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
+    QJsonObject root{{"schemaVersion", "video-project-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"positionMs", project.positionMs}}},
                            {"frames", frames}};
+    if (!project.capture.isEmpty()) root.insert("capture", project.capture);
     auto bytes = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
     storageSize(bytes.size());
     return bytes;
@@ -366,10 +374,11 @@ FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const Feedb
         }
     }
     const QSize dimensions = ordered.isEmpty() ? QSize(0, 0) : ordered.first()->document.image.size();
-    const QJsonObject root{{"schemaVersion", "video-feedback-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
+    QJsonObject root{{"schemaVersion", "video-feedback-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"width", dimensions.width()}, {"height", dimensions.height()}}},
                            {"frames", frames}, {"objects", objects}};
+    if (!project.capture.isEmpty()) root.insert("capture", exportCaptureContext(project.capture, options.includeWindowTitle));
     bundle.json = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
     qint64 total = bundle.json.size();
     for (const auto &bytes : bundle.files) total += bytes.size();

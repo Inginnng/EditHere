@@ -285,6 +285,7 @@ void screenshotFallback(CaptureCallback callback) {
             image.setDevicePixelRatio(1);
             ScreenFrame frame;
             frame.name = "portal"; frame.image = image;
+            frame.capturedAt = timestamp();
             frame.elementProbingAllowed = false;
             const auto size = image.size().scaled(screen->availableGeometry().size(), Qt::KeepAspectRatio);
             frame.logicalGeometry = QRect(screen->availableGeometry().topLeft(), size);
@@ -494,6 +495,7 @@ void WaylandCaptureSession::receiveFrame(QImage image, qint64 producedAt) {
         state_->initialDelivered = true;
         ScreenFrame frame;
         frame.name = state_->frameName; frame.image = image;
+        frame.capturedAt = timestamp();
         frame.logicalGeometry = state_->logical; frame.nativeGeometry = state_->native;
         frame.nativePixels = true;
         frame.elementProbingAllowed = false;

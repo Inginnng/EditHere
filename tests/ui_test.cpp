@@ -343,6 +343,29 @@ class UiTests : public QObject {
         QVERIFY(QFontMetrics(qApp->font()).inFontUcs4(0x4e2d));
     }
 
+    void suppliedPageContextDisplaysAsTextAndPrivacyAppliesEverywhere() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        auto document = gridDocument();
+        document.capture["windowTitle"] = "private@example.com - Editor";
+        document.capture["appName"] = "game.exe";
+        Editor editor; auto settings = defaultSettings(); settings.feedbackDir = temporary.path(); settings.includeWindowTitle = false;
+        editor.setPreferences(settings); editor.setDocument(document); editor.setPageContext("<b>游戏主页面</b>\n只作页面说明");
+        const auto label = editor.findChild<QLabel *>("captureContextLabel"); QVERIFY(label); QCOMPARE(label->textFormat(), Qt::PlainText);
+        QCOMPARE(label->property("pageContext").toString(), QString("<b>游戏主页面</b>\n只作页面说明"));
+        const auto check = [&](const QJsonObject &value) {
+            const auto capture = value["capture"].toObject();
+            QVERIFY(!capture.contains("windowTitle")); QCOMPARE(capture["appName"].toString(), QString("game.exe"));
+            QCOMPARE(capture["page"].toString(), QString("<b>游戏主页面</b>\n只作页面说明")); QCOMPARE(capture["pageSource"].toString(), QString("agent"));
+        };
+        check(QJsonDocument::fromJson(editor.agentFeedback(true)).object());
+        editor.findChild<QPushButton *>("copyJsonText")->click(); check(clipboardJson().object());
+        editor.findChild<QPushButton *>("copyJson")->click(); check(clipboardJson().object());
+        const auto project = QJsonDocument::fromJson(editor.projectBytes()).object();
+        QCOMPARE(project["capture"].toObject()["windowTitle"].toString(), QString("private@example.com - Editor"));
+        const auto path = temporary.filePath("page.edithere"); saveBytes(path, editor.projectBytes());
+        QCOMPARE(loadDocument(path).capture, editor.document().capture);
+        editor.hide();
+    }
     void settingsAreAvailableFromTrayWithoutAScreenshot() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
@@ -2394,7 +2417,7 @@ class UiTests : public QObject {
         const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         bool foundMovement = false;
         for (const auto &value : objects) {
@@ -2735,7 +2758,7 @@ class UiTests : public QObject {
             QVERIFY(imageMode && imageMode->currentIndex() == 0);
             imageMode->setCurrentIndex(1);
             auto preview = QJsonDocument::fromJson(text->toPlainText().toUtf8()).object();
-            QCOMPARE(preview.keys(), QStringList({"$schema", "annotationSpace", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+            QCOMPARE(preview.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
             QVERIFY(preview["image"].toObject()["dataUrl"].toString().startsWith("data:image/png;base64,"));
             QVERIFY(preview["image"] != expectedEmbedded["image"]);
             preview.remove("image");

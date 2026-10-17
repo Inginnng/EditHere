@@ -12,9 +12,11 @@ file back is covered by ``tests/core_test.cpp::legacyFeedbackStillImports``.
 """
 import base64
 import copy
+from datetime import datetime
 import hashlib
 import json
 import os
+import re
 import struct
 from pathlib import Path
 
@@ -24,6 +26,21 @@ from referencing.exceptions import NoSuchResource
 
 root = Path(__file__).resolve().parents[1]
 artifacts = Path(os.environ.get("H2D_TEST_ARTIFACTS", root / "artifacts" / "native-ui"))
+FORMAT_CHECKER = FormatChecker()
+
+
+@FORMAT_CHECKER.checks("date-time")
+def valid_date_time(value):
+    # jsonschema's RFC3339 checker is an optional dependency. Keep these
+    # offline checks effective even on a minimal Python installation.
+    if not isinstance(value, str):
+        return True  # The schema's type assertion handles non-strings.
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)", value):
+        return False
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).utcoffset() is not None
+    except ValueError:
+        return False
 
 SCHEMAS = (
     "feedback-minimal.schema.json",
@@ -55,7 +72,7 @@ def retrieve_schema(uri):
 
 
 def validate(name, document):
-    Draft202012Validator(schema(name), format_checker=FormatChecker(),
+    Draft202012Validator(schema(name), format_checker=FORMAT_CHECKER,
                          registry=Registry(retrieve=retrieve_schema)).validate(document)
 
 
@@ -190,11 +207,41 @@ for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.
     missing = copy.deepcopy(descriptor_probe)
     del missing["devicePixelRatio"]
     invalid_images.append(missing)
-    validator = Draft202012Validator(schema(schema_name), format_checker=FormatChecker(),
+    validator = Draft202012Validator(schema(schema_name), format_checker=FORMAT_CHECKER,
                                      registry=Registry(retrieve=retrieve_schema))
     for image in invalid_images:
         assert not validator.is_valid(dict(image_probe, image=image)), image
 print("PASS: image mode/metadata/legacy compatibility and malformed contract probes for both schemas")
+
+capture_probe = {"source": "file", "capturedAt": "2026-10-17T00:00:00Z", "fileName": "game.png",
+                 "page": "Game home", "pageSource": "agent"}
+invalid_capture_probes = [None, {}, dict(capture_probe, source="unknown"),
+                          dict(capture_probe, capturedAt="2026-10-17T00:00:00"),
+                          dict(capture_probe, capturedAt="2026-02-30T00:00:00Z"),
+                          dict(capture_probe, fileName="../private.png"),
+                          dict(capture_probe, fileName="C:\\private.png"),
+                          dict(capture_probe, fileName="\0private.png"),
+                          dict(capture_probe, fileName=".."),
+                          dict(capture_probe, page=" \n\t"), dict(capture_probe, page="p" * 501),
+                          dict(capture_probe, page="page\0value"), dict(capture_probe, windowTitle="title\0value"),
+                          dict(capture_probe, pageSource="guessed"), dict(capture_probe, windowTitle=3),
+                          dict(capture_probe, appName="a" * 1001), dict(capture_probe, instructions="extra")]
+missing_page = dict(capture_probe)
+del missing_page["page"]
+invalid_capture_probes.append(missing_page)
+missing_page_source = dict(capture_probe)
+del missing_page_source["pageSource"]
+invalid_capture_probes.append(missing_page_source)
+for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.json"):
+    validator = Draft202012Validator(schema(schema_name), format_checker=FORMAT_CHECKER,
+                                     registry=Registry(retrieve=retrieve_schema))
+    validate(schema_name, dict(image_probe, capture=capture_probe))
+    for source in ("screen", "file", "clipboard", "demo", "scroll", "history", "pin", "drop", "video"):
+        validate(schema_name, dict(image_probe, capture=dict(capture_probe, source=source)))
+    validate(schema_name, dict(image_probe, capture={"source": "screen", "capturedAt": "2026-10-17T08:00:00+08:00"}))
+    for capture in invalid_capture_probes:
+        assert not validator.is_valid(dict(image_probe, capture=capture)), capture
+print("PASS: optional capture compatibility, acquisition sources, paired agent page fields and invalid context probes")
 
 for version, artifact in (("v1", "feedback-v1.json"), ("v1.1", "feedback-v1.1.json"),
                           ("v2", "feedback-v2.json")):
@@ -294,3 +341,28 @@ for frame in video_bundle["frames"]:
     if "imageFile" in frame:
         assert frame["imageFile"] == frame["feedback"]["image"]["file"]
 print("PASS: video frame file attachments with hash/dimensions and compatible root index")
+
+# Actual acquisition context and the user's title-privacy setting, rather than
+# a synthesized file that merely repeats the schema's allowed keys.
+capture_feedback = export("feedback-capture.json")
+private_feedback = export("feedback-capture-private.json")
+for document in (capture_feedback, private_feedback):
+    validate("feedback-minimal-v2.schema.json", document)
+    validate("feedback-minimal.schema.json", document)
+    check_image(document)
+    capture = document["capture"]
+    assert capture["page"].strip() and capture["pageSource"] == "agent"
+assert capture_feedback["capture"]["windowTitle"]
+assert "windowTitle" not in private_feedback["capture"]
+assert {key: value for key, value in capture_feedback["capture"].items() if key != "windowTitle"} == private_feedback["capture"]
+validate("project-v3.schema.json", export("project-capture.json"))
+capture_video = export("video-feedback-capture.json")
+validate("video-feedback-v1.schema.json", capture_video)
+assert capture_video["capture"]["pageSource"] == "agent"
+for frame in capture_video["frames"]:
+    validate("feedback-minimal-v2.schema.json", frame["feedback"])
+    check_image(frame["feedback"])
+capture_video_project = export("video-project-capture.json")
+validate("video-project-v1.schema.json", capture_video_project)
+assert capture_video_project["capture"] == capture_video["capture"]
+print("PASS: real acquisition/agent page context, privacy-filtered title, editable project and per-frame video context")

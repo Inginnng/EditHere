@@ -570,6 +570,13 @@ void Controller::startScrollCapture(Overlay *source) {
         return;
     }
     scrollRun_ = {};
+    scrollRun_.capture = {{"source", "scroll"}, {"capturedAt", frame.capturedAt.isEmpty() ? timestamp() : frame.capturedAt}};
+    for (const auto &window : frame.captureWindows) {
+        if (!window.bounds.contains(area.center())) continue;
+        if (!window.windowTitle.isEmpty()) scrollRun_.capture.insert("windowTitle", window.windowTitle.left(1000));
+        if (!window.appName.isEmpty()) scrollRun_.capture.insert("appName", window.appName.left(1000));
+        break;
+    }
     scrollRun_.axis = settings_.scrollAxis;
     scrollRun_.nativeRegion = nativeRegion;
     diagnostics::write(diagnostics::Level::Info, "long_capture.begin", "Long capture started",
@@ -1204,6 +1211,7 @@ void Controller::finishScrollCapture() {
         return;
     try {
         auto doc = fromImage(picture, "scroll", tr("长截图"));
+        doc.capture = scrollRun_.capture; doc.createdAt = doc.capture["capturedAt"].toString();
         // Long screenshots carry the exact stitched pixels. Decorations can push
         // an image at the capture limit beyond the editor's supported dimensions.
         remember(picture, selection);
@@ -1523,6 +1531,16 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     try {
         const ScreenFrame frame = source->frame();
         auto doc = fromImage(frame.image.copy(area), "screen", tr("屏幕截图"));
+        if (!frame.capturedAt.isEmpty()) {
+            doc.createdAt = frame.capturedAt;
+            doc.capture["capturedAt"] = frame.capturedAt;
+        }
+        for (const auto &window : frame.captureWindows) {
+            if (!window.bounds.contains(area.center())) continue;
+            if (!window.windowTitle.isEmpty()) doc.capture.insert("windowTitle", window.windowTitle.left(1000));
+            if (!window.appName.isEmpty()) doc.capture.insert("appName", window.appName.left(1000));
+            break;
+        }
         if (frame.nativePixels && !frame.nativeGeometry.isEmpty())
             doc.screenBounds = area.translated(frame.nativeGeometry.topLeft());
         for (auto c : candidates) {
@@ -1559,6 +1577,12 @@ void Controller::quit() {
 }
 QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     const auto command = request["command"].toString();
+    if (request.contains("pageContext")) {
+        if ((command != "open" && command != "annotate") || !request["pageContext"].isString())
+            return agentError("invalid_arguments", "pageContext must be a page description for open or annotate.");
+        try { validatePageContext(request["pageContext"].toString().trimmed()); }
+        catch (const std::exception &error) { return agentError("invalid_arguments", QString::fromUtf8(error.what())); }
+    }
     if (command == "status") {
         QString startupError;
         const bool startupRegistered = launchAtLoginEnabled(&startupError);
@@ -1607,6 +1631,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     try {
         guidePending_ = false;
         editor_.loadMedia(input);
+        if (request.contains("pageContext")) editor_.setPageContext(request["pageContext"].toString());
     } catch (const std::exception &error) {
         diagnostics::write(diagnostics::Level::Error, "agent.load_media", QString::fromUtf8(error.what()));
         return agentError("io_error", QString::fromUtf8(error.what()));
