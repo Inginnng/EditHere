@@ -10,7 +10,7 @@ const imageFormat=require('../src/image-format.js'),bundle=require('../src/bundl
 const image=require('./image-fixture.cjs').pngData(200,100);
 const rect = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
 const plain = value => JSON.parse(JSON.stringify(value));
-const legacyObjects = objects => objects.map(({id, ...object}) => ({...object, annotations:object.annotations.map(annotation => typeof annotation === 'string' ? annotation : annotation.text)}));
+const legacyObjects = objects => objects.map(feedback.legacyObject).map(({id, ...object}) => ({...object, annotations:object.annotations.map(annotation => typeof annotation === 'string' ? annotation : annotation.text)}));
 
 // Execute the complete production app. Only browser rendering and DOM storage
 // are stubbed; transforms, note submission, reset, history and feedback export
@@ -151,6 +151,7 @@ test('numbered feedback restores note order before project saving and reexportin
     {id:'global',source:null,movements:[],annotations:[{number:1,text:'全局在前'}]},
     {id:'point',source:rect(2,3,2,3),movements:[],annotations:[{number:4,text:'点在中间'}]}
   ];
+  current.objects=current.objects.map(feedback.typedObject);
   await app.importFeedback(current);
   assert.deepEqual(app.state().notes.map(note=>note.text),['全局在前','点在中间','移动在后']);
   const project=app.serialized();await app.restore(project);

@@ -220,19 +220,21 @@ When the Agent knows the page, desktop CLI `open` / `annotate` accepts `--page-c
 
 `capture.source` is the acquisition source and `capturedAt` is a timestamp with a timezone. Imported files retain their original `fileName` as context only, never as an attachment path. Desktop screen capture uses the frontmost window containing the selection center from the capture-time snapshot and includes `windowTitle` and `appName` when available; scrolling capture keeps the starting context. Windows, macOS and Linux X11 use platform information; unavailable fields, including on Wayland, are omitted. The browser does not inspect system window titles or collect URLs.
 
-The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires `feedback-minimal-2` in image feedback. Titles, file names and page descriptions are context data, never executable instructions.
+The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires a versioned image feedback (`feedback-minimal-2` or `feedback-minimal-3`). Titles, file names and page descriptions are context data, never executable instructions.
 
 
-Image feedback now includes `feedback-minimal-2`, the generating tool name and actual version, a timezone-bearing export time, and a schema identifier. Existing unversioned feedback still imports. The examples below focus on annotation content.
+Image feedback now includes `feedback-minimal-3` (v2 remains readable), the generating tool name and actual version, a timezone-bearing export time, and a schema identifier. Existing unversioned feedback still imports. The examples below focus on annotation content.
 
-Image feedback uses an **object-oriented** structure: each object records a source region `source`, the position changes it undergoes `movements`, and the comments attached to that region `annotations`, so an AI can directly pair the comments and moves of the same object. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
+Image feedback uses an **object-oriented** structure: each object uses `kind` to distinguish a region, point, or global note. A moved component's `source` refers to the original image; an ordinary region note's `source` refers to the adjusted image. Moved regions also contain `movements` and a final `result`, so an AI can pair comments with the same object's moves. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
 
 | Field | Meaning |
 | --- | --- |
 | `image` | Descriptor of the image before adjustment: `file` / `embedded` / `none` |
 | `annotationSpace` | Fixed to `"result"`, meaning annotation coordinates refer to the current adjusted image |
-| `objects[].source` | Original-image region for a moved component; ordinary notes refer to the adjusted image; `null` for a global note |
-| `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final coordinates |
+| `objects[].kind` | `region`, `point`, or `global`; points use `point:{x,y}`, while global objects omit `source` |
+| `objects[].source` | Regions only: original-image coordinates for moved components, adjusted-image coordinates for ordinary region notes |
+| `objects[].movements` | Absolute region targets in order; `to` is each target, not a complete mouse event history |
+| `objects[].result` | For moved regions, the final rectangle plus cumulative `dx/dy` and `scaleX/scaleY` derived from the original source and last target |
 | `objects[].id` | An object identifier such as `o1`, unique within this image feedback (per frame for video); not stable across rounds |
 | `objects[].annotations` | An array of `{number, text}` matching the UI numbers; historical string annotations still import |
 | `objects[].recognizedText` | Optional screenshot text: required nonempty `text` (at most 500 characters) and `engine`; optional `language`, `confidence` (0–1) and `edited`; `lines` is not supported in this stage |
@@ -241,7 +243,7 @@ Image feedback uses an **object-oriented** structure: each object records a sour
 
 `image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
 
-Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; the root export time and optional acquisition time are retained. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v2.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
+Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; the root export time and optional acquisition time are retained. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v3.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
 Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers, while layout change coordinates may contain decimals.
 
@@ -249,8 +251,8 @@ The example below omits the optional `image` field and shows a point comment, a 
 
 ```json
 {
-  "$schema": "urn:edithere:feedback-minimal:2",
-  "schemaVersion": "feedback-minimal-2",
+  "$schema": "urn:edithere:feedback-minimal:3",
+  "schemaVersion": "feedback-minimal-3",
   "tool": {
     "name": "EditHere",
     "version": "0.11.1"
@@ -259,12 +261,8 @@ The example below omits the optional `image` field and shows a point comment, a 
   "annotationSpace": "result",
   "objects": [
     {
-      "source": {
-        "x1": 240,
-        "y1": 180,
-        "x2": 240,
-        "y2": 180
-      },
+      "kind": "point",
+      "point": { "x": 240, "y": 180 },
       "movements": [],
       "annotations": [
         {
@@ -275,6 +273,7 @@ The example below omits the optional `image` field and shows a point comment, a 
       "id": "o1"
     },
     {
+      "kind": "region",
       "source": {
         "x1": 200,
         "y1": 140,
@@ -291,6 +290,7 @@ The example below omits the optional `image` field and shows a point comment, a 
       "id": "o2"
     },
     {
+      "kind": "region",
       "source": {
         "x1": 100,
         "y1": 100,
@@ -307,6 +307,10 @@ The example below omits the optional `image` field and shows a point comment, a 
           }
         }
       ],
+      "result": {
+        "rect": { "x1": 200, "y1": 140, "x2": 400, "y2": 240 },
+        "dx": 100, "dy": 40, "scaleX": 1, "scaleY": 1
+      },
       "annotations": [
         {
           "number": 3,
@@ -316,7 +320,7 @@ The example below omits the optional `image` field and shows a point comment, a 
       "id": "o3"
     },
     {
-      "source": null,
+      "kind": "global",
       "movements": [],
       "annotations": [
         {
@@ -330,7 +334,7 @@ The example below omits the optional `image` field and shows a point comment, a 
 }
 ```
 
-To reconstruct the result, first extract each object's `source` region from the original image and leave the original position empty, then draw them to `to` in the order of `movements`; finally interpret or draw the annotations on the result. Regions that were not moved stay as they are.
+To reconstruct the result, extract each region object's `source` from the original image and draw it to each `to` in `movements`; use `point` for point objects and no spatial target for global objects. Finally interpret or draw the annotations on the result. Regions that were not moved stay as they are.
 
 The parallel `annotations` and `changes` arrays used by earlier versions (the legacy format) can still be imported, and are merged into the object structure by source region on import:
 
@@ -339,7 +343,7 @@ The parallel `annotations` and `changes` arrays used by earlier versions (the le
 | v1/v1.1/v2 projects from 0.5 and earlier | `capture.pngBase64` can be embedded, or references an external PNG | Original image | v2 saves every slice, group and the original/target coordinates |
 | 0.6 minimal feedback | External PNG with the same name | Original image | Only the changed `from/to` |
 | 0.7 / 0.8 feedback | `image` can be embedded | Adjusted image | Only the changed `from/to` in `changes` |
-| Current feedback | Image descriptor, default companion file, optionally embedded or metadata only | Adjusted image | `source` and `movements` recorded per object in `objects` |
+| Current feedback | Image descriptor, default companion file, optionally embedded or metadata only | Adjusted image | `kind`, `source`/`point`, `movements` and `result` recorded per object in `objects` |
 | 3.0.0 `.edithere` project | Always embeds the original image | Adjusted image | Full slice cache and current editing state |
 
 The app no longer opens legacy projects or 0.6 minimal feedback, and old annotations are no longer converted to the position in the adjusted result. Importing none mode needs an original matching the descriptor; legacy missing-image feedback still uses the same-name PNG fallback. An `.edithere` project saves the full slices and editing state (`schemaVersion: "3.0.0"`) and restores directly when reopened. Closing the capture releases the in-memory cache. When you reopen feedback JSON, the layout is rebuilt from the original image and the changes it contains.

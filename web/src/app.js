@@ -510,6 +510,7 @@
   async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id,value.capture);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
   async function docFromFeedback(f,w,h,timestampUs=null,id=uid(),companions=[]) {
     f=F.normalizeImage(f);
+    f={...f,objects:f.objects.map(F.legacyObject)};
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     if(f.image&&typeof f.image==='object'&&f.image.preview){
       const file=companions.find(file=>file.name===f.image.preview);if(!file){const error=new Error('请同时选择预览图 '+f.image.preview+'，或打开完整反馈 ZIP');error.missingCompanion=true;throw error;}

@@ -187,7 +187,7 @@ test('caller-provided page context survives MCP draft, completion, restart and J
   assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...feedbackFormat.upgradeImage(feedback),capture:{...capture,page:'账户页'}}})).isError,true);
   const project=draft('测试任务');await call(client,'edithere_web_draft',{sessionId,token,project});await client.close();
   const restarted=await connect(context,paths),resumed=await call(restarted,'edithere_web_open',{sessionId});assert.deepEqual(resumed._meta.edithere.draft.document.capture,capture);
-  const saved=await call(restarted,'edithere_web_submit',{sessionId,token,feedback});assert.equal(saved.structuredContent.feedback.schemaVersion,'feedback-minimal-2');assert.deepEqual(saved.structuredContent.feedback.capture,capture);assert.deepEqual(JSON.parse(saved.content[0].text).feedback.capture,capture);
+  const saved=await call(restarted,'edithere_web_submit',{sessionId,token,feedback});assert.equal(saved.structuredContent.feedback.schemaVersion,'feedback-minimal-3');assert.deepEqual(saved.structuredContent.feedback.capture,capture);assert.deepEqual(JSON.parse(saved.content[0].text).feedback.capture,capture);
   await restarted.close();const finalClient=await connect(context,paths),read=await call(finalClient,'edithere_web_read',{sessionId});assert.deepEqual(read.structuredContent.feedback.capture,capture);assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')).capture,capture);
 });
 

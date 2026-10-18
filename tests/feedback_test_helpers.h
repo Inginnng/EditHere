@@ -8,7 +8,7 @@
 inline QJsonValue withoutFeedbackExportTime(QJsonValue value) {
     if (value.isObject()) {
         auto object = value.toObject();
-        if (object["schemaVersion"] == "feedback-minimal-2")
+        if (object.value("schemaVersion") == "feedback-minimal-2" || object.value("schemaVersion") == "feedback-minimal-3")
             object.remove("exportedAt");
         for (auto it = object.begin(); it != object.end(); ++it)
             it.value() = withoutFeedbackExportTime(it.value());
@@ -30,4 +30,27 @@ inline QJsonDocument stableFeedback(const QJsonDocument &document) {
 }
 inline QJsonObject stableFeedback(const QByteArray &bytes) {
     return stableFeedback(QJsonDocument::fromJson(bytes).object());
+}
+
+// Convert a current typed export to the unversioned object shape used by
+// compatibility fixtures. This keeps those tests about old-reader behavior
+// instead of accidentally presenting a v3 payload without its header.
+inline QJsonObject unversionedLegacyFeedback(QJsonObject value) {
+    value.remove("$schema"); value.remove("schemaVersion"); value.remove("tool"); value.remove("exportedAt");
+    auto objects = value["objects"].toArray();
+    for (qsizetype i = 0; i < objects.size(); ++i) {
+        auto object = objects[i].toObject();
+        const auto kind = object["kind"].toString();
+        if (kind == "point") {
+            const auto point = object["point"].toObject();
+            object.insert("source", QJsonObject{{"x1", point["x"]}, {"y1", point["y"]},
+                                                {"x2", point["x"]}, {"y2", point["y"]}});
+        } else if (kind == "global") {
+            object.insert("source", QJsonValue(QJsonValue::Null));
+        }
+        object.remove("kind"); object.remove("point"); object.remove("result");
+        objects[i] = object;
+    }
+    value["objects"] = objects;
+    return value;
 }

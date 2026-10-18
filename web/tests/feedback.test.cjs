@@ -19,7 +19,7 @@ test('native minimalFeedbackRoundTrips fixture keeps movement and independent re
     movements:[{source, destination}],
     notes:[{source:rectangle(20, 20, 20, 20), text:'加大标题'}, {source, text:'表格右移'}]
   }, false, exportedAt);
-  assert.deepEqual(actual, {...metadata, annotationSpace:'result', image:imageDescriptor('none'), objects:[
+  assert.deepEqual(feedback.legacyImage(actual), {...metadata, annotationSpace:'result', image:imageDescriptor('none'), objects:[
     {id:'o1', source, movements:[{to:destination}], annotations:[]},
     {id:'o2', source:rectangle(20, 20, 20, 20), movements:[], annotations:[{number:1,text:'加大标题'}]},
     {id:'o3', source, movements:[], annotations:[{number:2,text:'表格右移'}]}
@@ -38,7 +38,7 @@ test('native movementSource notes merge with their exact source without exportin
       {source:null, text:'整体采用杂志风格'}
     ]
   });
-  assert.deepEqual(actual.objects, [
+  assert.deepEqual(actual.objects.map(feedback.legacyObject), [
     {id:'o1', source, movements:[{to:destination}, {to:rectangle(60, 60, 150, 120)}], annotations:[{number:2,text:'保持这个位置，视觉更轻盈'}]},
     {id:'o2', source, movements:[], annotations:[{number:3,text:'独立框批注'}]},
     {id:'o3', source:null, movements:[], annotations:[{number:4,text:'整体采用杂志风格'}]}
@@ -60,7 +60,7 @@ test('native tracked parent and child sources stay nested instead of exporting p
       {source:rectangle(20, 10, 60, 90), movementSource:child, text:'子区域'}
     ]
   }, false);
-  assert.deepEqual(actual.objects, [
+  assert.deepEqual(actual.objects.map(feedback.legacyObject), [
     {id:'o1', source:parent, movements:[{to:rectangle(100, 10, 180, 90)}], annotations:[{number:1,text:'父区域'}]},
     {id:'o2', source:child, movements:[{to:rectangle(20, 10, 60, 90)}], annotations:[{number:2,text:'子区域'}]}
   ]);
@@ -71,7 +71,7 @@ test('native returning home drops movement while retaining its text on the origi
   const actual = feedback.exportImage({image, movements:[{source, destination:source}],
     notes:[{source, movementSource:source, text:'回到原位后保留'}]
   }, false);
-  assert.deepEqual(actual.objects, [{id:'o1', source, movements:[], annotations:[{number:1,text:'回到原位后保留'}]}]);
+  assert.deepEqual(actual.objects.map(feedback.legacyObject), [{id:'o1', source, movements:[], annotations:[{number:1,text:'回到原位后保留'}]}]);
 });
 
 test('native fractional sources remain distinct even when nearly equal', () => {
@@ -96,7 +96,7 @@ test('native compact export and folded image preview carry separate complete byt
   assert.deepEqual(JSON.parse(feedback.preview(actual)), {...actual, image:{...actual.image,dataUrl:'data:image/png;base64,[图片编码已折叠]'}});
   assert.deepEqual(JSON.parse(bytes), actual);
   assert.equal(actual.image.dataUrl, image, 'preview cannot replace original bytes');
-  assert.equal(feedback.summary(actual).schemaVersion, 'feedback-minimal-2');
+  assert.equal(feedback.summary(actual).schemaVersion, 'feedback-minimal-3');
 });
 
 test('native video fixtures keep microseconds and chronological frame/image references', () => {
@@ -119,7 +119,7 @@ test('native video fixtures keep microseconds and chronological frame/image refe
   for (const frame of actual.frames) {
     assert.equal(frame.imageFile, 'frame-' + frame.id + '.png');
     assert.equal(frame.feedback.image.dataUrl, image);
-    assert.deepEqual(feedback.imageMetadata(frame.feedback), {...metadata, exportedAt:actual.exportedAt});
+    assert.deepEqual(feedback.imageMetadata(feedback.legacyImage(frame.feedback)), {...metadata, exportedAt:actual.exportedAt});
     assert.deepEqual(actual.objects.filter(object => object.frameId === frame.id),
       frame.feedback.objects.map(object => ({...object, timestampMs:frame.timestampMs, frameId:frame.id})));
   }
@@ -252,9 +252,9 @@ test('recognized text contract validates exact boundaries, optional confidence a
 test('OCR requires v2 and a local target; deleting OCR omits metadata without changing annotation text', () => {
   const recognizedText={text:'按钮',engine:'windows-ocr'};
   const value=feedback.exportImage({image,movements:[],notes:[{source,text:'变蓝',recognizedText}]},true,exportedAt);
-  const {$schema,schemaVersion,tool,exportedAt:time,...legacy}=value;
+  const {$schema,schemaVersion,tool,exportedAt:time,...legacy}=feedback.legacyImage(value);
   assert.throws(()=>feedback.normalizeImage(legacy),/requires feedback-minimal-2/);
-  const global=structuredClone(value);global.objects[0].source=null;
+  const global=structuredClone(value);delete global.objects[0].source;global.objects[0].kind='global';
   assert.throws(()=>feedback.normalizeImage(global),/Global/);
   const deleted=feedback.exportImage({image,movements:[],notes:[{source,text:'变蓝',recognizedText:{text:'',edited:true}}]},true,exportedAt);
   assert.equal(Object.hasOwn(deleted.objects[0],'recognizedText'),false);

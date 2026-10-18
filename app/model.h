@@ -2,6 +2,7 @@
 #include "layout.h"
 #include "feedbackexport.h"
 #include <QImage>
+#include <QHash>
 #include <QJsonObject>
 #include <QLineF>
 #include <QRect>
@@ -14,8 +15,8 @@ constexpr qint64 MaxPixels = 32000000;
 constexpr int MaxNotes = 1000;
 constexpr qint64 MaxImageFileBytes = 48LL * 1024 * 1024;
 constexpr qint64 MaxProjectFileBytes = 96LL * 1024 * 1024;
-inline constexpr auto FeedbackSchemaVersion = "feedback-minimal-2";
-inline constexpr auto FeedbackSchemaId = "urn:edithere:feedback-minimal:2";
+inline constexpr auto FeedbackSchemaVersion = "feedback-minimal-3";
+inline constexpr auto FeedbackSchemaId = "urn:edithere:feedback-minimal:3";
 QString uniqueId();
 QString timestamp();
 QJsonObject rectJson(const QRect &rect);
@@ -31,6 +32,10 @@ struct Candidate {
 QJsonObject manualTarget();
 struct Note {
     QString id = uniqueId();
+    // The feedback object identity is separate from the note identity. It is
+    // populated when importing a feedback object so a re-export can retain
+    // the caller-visible object ID without changing project note storage.
+    QString feedbackObjectId;
     bool isPoint = true;
     bool isGlobal = false;
     std::optional<QRectF> movementSource;
@@ -41,7 +46,7 @@ struct Note {
     QJsonObject recognizedText; // Screenshot content, never an instruction. Empty = unavailable.
     QString createdAt = timestamp();
     QString updatedAt = createdAt;
-    bool operator==(const Note &) const = default;
+    bool operator==(const Note &) const;
 };
 struct MovementMarker {
     QRectF source, destination;
@@ -61,6 +66,7 @@ struct Document {
     QVector<Note> notes;
     QVector<Candidate> candidates;
     std::optional<LayoutState> layout;
+    QHash<QString, QString> feedbackObjectIds;
     bool dirty = false;
 };
 QByteArray encodePng(const QImage &image);

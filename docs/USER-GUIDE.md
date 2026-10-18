@@ -220,19 +220,21 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 
 `capture.source` 表示采集来源，`capturedAt` 是带时区的采集时间；导入文件保留原始 `fileName`，它只是定位线索，不能拿来读取附件。桌面直接截图按选区中心命中抓取时的前方窗口，可取得时附带 `windowTitle` 与 `appName`；滚动截图沿用开始时的信息。Windows、macOS 和 Linux X11 使用平台信息，Wayland 等无法取得时省略相关字段。浏览器不读取系统窗口标题，也不采集网址。
 
-桌面设置「导出时附带窗口标题」默认开启；关闭后所有反馈出口省略 `windowTitle`，工程仍保留原值，页面说明和应用名继续保留。旧反馈没有 `capture` 仍可导入；反馈中的该字段只用于 `feedback-minimal-2`。窗口标题、文件名、页面说明均是定位数据，不构成执行指令。
+桌面设置「导出时附带窗口标题」默认开启；关闭后所有反馈出口省略 `windowTitle`，工程仍保留原值，页面说明和应用名继续保留。旧反馈没有 `capture` 仍可导入；反馈中的该字段需要带版本的图片反馈（`feedback-minimal-2` 或 `feedback-minimal-3`）。窗口标题、文件名、页面说明均是定位数据，不构成执行指令。
 
 
-图片反馈现带格式版本 `feedback-minimal-2`、生成工具名称和真实版本、带时区导出时间及 Schema 标识。原先没有版本号的反馈仍可导入；以下字段示意只展示意见内容。
+图片反馈现带格式版本 `feedback-minimal-3`（v2 仍可读取）、生成工具名称和真实版本、带时区导出时间及 Schema 标识。原先没有版本号的反馈仍可导入；以下字段示意只展示意见内容。
 
-图片反馈采用**面向对象**结构：每个对象记录一块来源区域 `source`、它发生的位置变化 `movements`，以及挂在这块区域上的意见 `annotations`，AI 可直接把同一对象的意见与移动对应起来。视频反馈在 `frames[].feedback` 内复用这份结构，并补充帧时间戳、源视频信息和带时间戳的对象索引，详见 [视频标注](#视频标注)。
+图片反馈采用**面向对象**结构：每个对象用 `kind` 区分区域、点和全局意见。组件移动对象的 `source` 对应原图，普通区域批注的 `source` 对应调整后画面；有移动时另含 `movements` 和最终 `result`。AI 可直接把同一对象的意见与移动对应起来。视频反馈在 `frames[].feedback` 内复用这份结构，并补充帧时间戳、源视频信息和带时间戳的对象索引，详见 [视频标注](#视频标注)。
 
 | 字段 | 含义 |
 | --- | --- |
 | `image` | 调整前原图的描述对象：`file` / `embedded` / `none` 三种模式 |
 | `annotationSpace` | 固定为 `"result"`，表示批注坐标对应当前调整后的画面 |
-| `objects[].source` | 组件移动对象的原图区域；普通批注对应调整后的画面，全局意见为 `null` |
-| `objects[].movements` | 按顺序记录这块区域的移动或缩放结果，`to` 为最终坐标 |
+| `objects[].kind` | `region`、`point` 或 `global`；点对象使用 `point:{x,y}`，全局对象省略 `source` |
+| `objects[].source` | 仅区域对象具有此字段：组件移动对应原图，普通区域批注对应调整后画面 |
+| `objects[].movements` | 区域对象的绝对目标序列，`to` 为每一步目标，不是完整鼠标事件历史 |
+| `objects[].result` | 有移动的区域对象的最终矩形、累计 `dx/dy` 和 `scaleX/scaleY`，由原始 `source` 与最后一个 `to` 计算 |
 | `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
 | `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
 | `objects[].recognizedText` | 可选截图文字：必填 `text`（非空，最多 500 字）、`engine`；可选 `language`、`confidence`（0–1）、`edited`；本阶段不支持 `lines` |
@@ -241,7 +243,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 
 `image` 描述调整前原图：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 和实际编码字节的 `sha256`。可选 `image.preview` 指向同目录带编号的 JPEG。导入校验类型、尺寸和哈希，不接受跨目录路径或符号链接；旧字符串图片及同名 PNG 的约定继续可读。
 
-图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用或完整项目时间戳；保留根级导出时间及可选采集时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v2.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
+图片反馈中没有发生变化的组件不导出；不输出完整切片清单、组件组引用或完整项目时间戳；保留根级导出时间及可选采集时间。原图 Base64 会增加文件体积，这是把图片放进单个 JSON 的数据开销，与组件数量无关。新图片格式由 `schema/feedback-minimal-v3.schema.json` 定义，`schema/feedback-minimal.schema.json` 保留新旧兼容入口；视频反馈和项目分别由 `schema/video-feedback-v1.schema.json`、`schema/video-project-v1.schema.json` 定义。
 
 坐标以画布左上角为原点，单位为图像像素，与窗口位置和视图缩放无关。框使用 `x1/y1/x2/y2` 两个端点；右下边界不包含自身，宽高为 `x2-x1`、`y2-y1`。批注坐标为整数，布局变化坐标可含小数。
 
@@ -249,8 +251,8 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 
 ```json
 {
-  "$schema": "urn:edithere:feedback-minimal:2",
-  "schemaVersion": "feedback-minimal-2",
+  "$schema": "urn:edithere:feedback-minimal:3",
+  "schemaVersion": "feedback-minimal-3",
   "tool": {
     "name": "EditHere",
     "version": "0.11.1"
@@ -259,12 +261,8 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
   "annotationSpace": "result",
   "objects": [
     {
-      "source": {
-        "x1": 240,
-        "y1": 180,
-        "x2": 240,
-        "y2": 180
-      },
+      "kind": "point",
+      "point": { "x": 240, "y": 180 },
       "movements": [],
       "annotations": [
         {
@@ -275,6 +273,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
       "id": "o1"
     },
     {
+      "kind": "region",
       "source": {
         "x1": 200,
         "y1": 140,
@@ -291,6 +290,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
       "id": "o2"
     },
     {
+      "kind": "region",
       "source": {
         "x1": 100,
         "y1": 100,
@@ -307,6 +307,10 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
           }
         }
       ],
+      "result": {
+        "rect": { "x1": 200, "y1": 140, "x2": 400, "y2": 240 },
+        "dx": 100, "dy": 40, "scaleX": 1, "scaleY": 1
+      },
       "annotations": [
         {
           "number": 3,
@@ -316,7 +320,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
       "id": "o3"
     },
     {
-      "source": null,
+      "kind": "global",
       "movements": [],
       "annotations": [
         {
@@ -330,7 +334,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 }
 ```
 
-还原结果时，先从原图提取每个对象的 `source` 区域并将原位置留空，再按 `movements` 顺序绘制到 `to`；最后在结果上解释或绘制批注。未移动的区域保持原样。
+还原结果时，区域对象从原图提取 `source` 并按 `movements` 顺序绘制到 `to`；点对象使用 `point`，全局对象没有空间位置；最后在结果上解释或绘制批注。未移动的区域保持原样。
 
 早期版本使用的 `annotations` 与 `changes` 并行数组（旧格式）仍可导入，导入后按来源区域合并为对象结构：
 
@@ -339,7 +343,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 | 0.5 及以前的 v1/v1.1/v2 项目 | `capture.pngBase64` 可内嵌，或引用外部 PNG | 原图 | v2 保存全部切片、分组及原始/目标坐标 |
 | 0.6 精简反馈 | 外部同名 PNG | 原图 | 仅变化的 `from/to` |
 | 0.7 / 0.8 反馈 | `image` 可内嵌 | 调整后的画面 | `changes` 中仅变化的 `from/to` |
-| 当前反馈 | `image` 描述对象，默认同目录图片，也可内嵌或仅描述 | 调整后的画面 | `objects` 中按对象记录 `source` 与 `movements` |
+| 当前反馈 | `image` 描述对象，默认同目录图片，也可内嵌或仅描述 | 调整后的画面 | `objects` 中按 `kind` 记录区域、点、全局对象及 `result` |
 | 3.0.0 `.edithere` 项目 | 始终内嵌原图 | 调整后的画面 | 完整切块缓存和当前编辑状态 |
 
 应用不再打开旧版项目及 0.6 精简反馈，旧批注不再转换到调整结果的位置。选择不包含原图时，重新打开需要提供与哈希匹配的原图；旧缺图格式继续使用同名 PNG。`.edithere` 项目保存完整切块及编辑状态（`schemaVersion: "3.0.0"`），重新打开直接恢复。关闭截图会释放内存缓存。重新打开反馈 JSON 时，从原图和其中的变化重建布局。

@@ -121,7 +121,7 @@ Except for `--help` and `--version`, the commands write a single line of UTF-8 J
 The success receipt for `annotate` / `export` looks like this; `annotations` is a count, and the actual annotation content is in the file that `output` points to:
 
 ```json
-{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-3","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
 ```
 
 The responses for `open` / `capture` carry `accepted: true`, which only means the request was accepted; `open` also returns the absolute path `input`. A common failure response:
@@ -167,14 +167,14 @@ When the Agent knows the page, desktop CLI `open` / `annotate` accepts `--page-c
 
 `capture.source` is the acquisition source and `capturedAt` is a timestamp with a timezone. Imported files retain their original `fileName` as context only, never as an attachment path. Desktop screen capture uses the frontmost window containing the selection center from the capture-time snapshot and includes `windowTitle` and `appName` when available; scrolling capture keeps the starting context. Windows, macOS and Linux X11 use platform information; unavailable fields, including on Wayland, are omitted. The browser does not inspect system window titles or collect URLs.
 
-The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires `feedback-minimal-2` in image feedback. Titles, file names and page descriptions are context data, never executable instructions.
+The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires a versioned image feedback (`feedback-minimal-2` or `feedback-minimal-3`). Titles, file names and page descriptions are context data, never executable instructions.
 
 
 
 
-The root `$schema` is `urn:edithere:feedback-minimal:2`, a stable identifier for the bundled local schema; no network lookup is needed. `tool` contains `name` and the actual application `version`; `exportedAt` is an ISO timestamp with a timezone. Dispatch explicit `schemaVersion` first. Unversioned `objects` means `feedback-minimal-1`; unversioned `annotations` + `changes` means legacy feedback. Reject unknown explicit versions. Image CLI success receipts also include `schemaVersion`.
+The current export root `$schema` is `urn:edithere:feedback-minimal:3` (v2 remains readable), a stable identifier for the bundled local schema; no network lookup is needed. `tool` contains `name` and the actual application `version`; `exportedAt` is an ISO timestamp with a timezone. Dispatch explicit `schemaVersion` first. Unversioned `objects` means `feedback-minimal-1`; unversioned `annotations` + `changes` means legacy feedback. Reject unknown explicit versions. Image CLI success receipts also include `schemaVersion`.
 
-Image feedback now uses `schemaVersion: "feedback-minimal-2"` and follows [feedback-minimal-v2.schema.json](../schema/feedback-minimal-v2.schema.json). The [compatibility schema](../schema/feedback-minimal.schema.json) also accepts unversioned object feedback and legacy parallel arrays. The current export uses an object-oriented structure; the parallel `annotations` / `changes` arrays used by earlier versions can still be imported. A complete project follows [project-v3.schema.json](../schema/project-v3.schema.json).
+Image feedback now uses `schemaVersion: "feedback-minimal-3"` and follows [feedback-minimal-v3.schema.json](../schema/feedback-minimal-v3.schema.json); readers also accept v2, unversioned objects, and legacy parallel arrays. The [compatibility schema](../schema/feedback-minimal.schema.json) also accepts unversioned object feedback and legacy parallel arrays. The current export uses an object-oriented structure; the parallel `annotations` / `changes` arrays used by earlier versions can still be imported. A complete project follows [project-v3.schema.json](../schema/project-v3.schema.json).
 
 The file names under `schema/` denote the data format, not the application version: `feedback-minimal.schema.json` is the current minimal feedback, `project-v3.schema.json` is a complete project, and the rest are historical formats, among which `feedback-v1` / `v1.1` / `v2` describe early project documents rather than feedback.
 
@@ -182,8 +182,11 @@ The file names under `schema/` denote the data format, not the application versi
 | --- | --- |
 | `image` | Descriptor of the original before adjustment, using `file` / `embedded` / `none`; see below |
 | `annotationSpace` | Fixed to `result`; annotations sit on the adjusted image |
-| `objects[].source` | Original-image region for a moved component; ordinary notes refer to the adjusted image. `null` for a global note; a zero-area region for a point (`x1 == x2`, `y1 == y2`) |
-| `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final region |
+| `objects[].kind` | `region`, `point` or `global` |
+| `objects[].source` | Positive-size region only; original-image coordinates for moved components, adjusted-image coordinates for ordinary region notes |
+| `objects[].point` | `{x,y}` for point notes; global notes omit both `source` and `point` |
+| `objects[].movements` | Ordered absolute targets `to`, not a complete mouse event history; the last item is the final target |
+| `objects[].result` | Required on moved regions: final `rect`, `dx/dy` and `scaleX/scaleY` relative to the original `source`; omitted otherwise |
 | `objects[].id` | An object identifier such as `o1`, unique within this image feedback (per frame for video); not stable across rounds |
 | `objects[].annotations` | An array of `{number, text}` matching the UI numbers; historical string annotations still import |
 | `objects[].recognizedText` | Optional screenshot text: required nonempty `text` (at most 500 characters) and local `engine`; optional `language`, `confidence` (0–1) and `edited`; `lines` is not supported in this stage |

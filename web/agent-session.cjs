@@ -55,6 +55,8 @@ function validateFeedback(value, image, resolveFile) {
   if (value.annotationSpace !== 'result') fail('Feedback must include this session\'s original image.');
   if (!Array.isArray(value.objects) || value.objects.length > 1000) fail('Invalid feedback objects.');
   const objects = value.objects.map(object => {
+    const original=object;
+    object=feedbackFormat.legacyObject(object);
     if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== ['annotations','movements','source',...(Object.hasOwn(object,'id')?['id']:[]),...(Object.hasOwn(object,'recognizedText')?['recognizedText']:[])].sort().join(',')) fail('Invalid feedback object fields.');
     const source = object.source === null ? null : rectangle(object.source);
     if (!Array.isArray(object.movements) || object.movements.length > 1000 || !Array.isArray(object.annotations) || object.annotations.length > 1000) fail('Invalid movement or annotation list.');
@@ -67,6 +69,7 @@ function validateFeedback(value, image, resolveFile) {
     });
     const annotations = object.annotations.map(annotation => typeof annotation === 'string' ? annotation : {...annotation});
     if (!movements.length && !annotations.length) fail('Empty feedback objects are not valid.');
+    if (value.schemaVersion==='feedback-minimal-3') return original;
     return {...(Object.hasOwn(object, 'id') ? {id:object.id} : {}), source, movements, annotations,
       ...(Object.hasOwn(object,'recognizedText')?{recognizedText:{...object.recognizedText}}:{})};
   });

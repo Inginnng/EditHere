@@ -15,6 +15,7 @@ import copy
 from datetime import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import struct
@@ -45,6 +46,7 @@ def valid_date_time(value):
 SCHEMAS = (
     "feedback-minimal.schema.json",
     "feedback-minimal-v2.schema.json",
+    "feedback-minimal-v3.schema.json",
     "feedback-v0.7.schema.json",
     "feedback-v1.schema.json",
     "feedback-v1.1.schema.json",
@@ -65,6 +67,8 @@ def export(name):
 
 def retrieve_schema(uri):
     # Resolve only bundled schemas; validation must never fetch a network URL.
+    if uri == "urn:edithere:feedback-minimal:3":
+        return Resource.from_contents(schema("feedback-minimal-v3.schema.json"))
     name = uri.rsplit("/", 1)[-1]
     if name not in SCHEMAS:
         raise NoSuchResource(ref=uri)
@@ -78,6 +82,31 @@ def validate(name, document):
 
 def check_objects(document):
     for item in document["objects"]:
+        if "kind" in item:
+            assert item["kind"] in ("region", "point", "global"), item
+            assert {"kind", "movements", "annotations"} <= set(item)
+            if item["kind"] == "region":
+                assert {"source"} <= set(item) and "point" not in item
+                source = item["source"]
+                assert source["x2"] > source["x1"] and source["y2"] > source["y1"]
+                if item["movements"]:
+                    assert set(item["result"]) == {"rect", "dx", "dy", "scaleX", "scaleY"}
+                    assert item["result"]["rect"] == item["movements"][-1]["to"]
+                    final = item["result"]["rect"]
+                    expected = {"dx": final["x1"] - source["x1"], "dy": final["y1"] - source["y1"],
+                                "scaleX": (final["x2"] - final["x1"]) / (source["x2"] - source["x1"]),
+                                "scaleY": (final["y2"] - final["y1"]) / (source["y2"] - source["y1"])}
+                    for key, number in expected.items():
+                        assert math.isclose(item["result"][key], number, rel_tol=1e-9, abs_tol=1e-7)
+                else:
+                    assert "result" not in item
+            elif item["kind"] == "point":
+                assert {"point"} <= set(item) and "source" not in item and "result" not in item and not item["movements"]
+            else:
+                assert not ({"source", "point", "result", "recognizedText"} & set(item)) and not item["movements"]
+            for annotation in item["annotations"]:
+                assert set(annotation) == {"number", "text"} and 1 <= annotation["number"] <= 1000, annotation
+            continue
         assert {"source", "movements", "annotations"} <= set(item) <= {
             "id", "source", "movements", "annotations", "recognizedText"}, item
         for annotation in item["annotations"]:
@@ -180,6 +209,18 @@ image_probe = {
     "tool": {"name": "EditHere", "version": "schema-contract"}, "exportedAt": "2026-10-17T00:00:00Z",
     "annotationSpace": "result", "objects": [],
 }
+v3_image_probe = {
+    "$schema": "urn:edithere:feedback-minimal:3", "schemaVersion": "feedback-minimal-3",
+    "tool": {"name": "EditHere", "version": "schema-contract"}, "exportedAt": "2026-10-17T00:00:00Z",
+    "annotationSpace": "result", "objects": [
+        {"kind": "region", "source": {"x1": 1, "y1": 2, "x2": 5, "y2": 6},
+         "movements": [{"to": {"x1": 2, "y1": 3, "x2": 10, "y2": 9}}],
+         "result": {"rect": {"x1": 2, "y1": 3, "x2": 10, "y2": 9}, "dx": 1, "dy": 1, "scaleX": 2, "scaleY": 1.5},
+         "annotations": [{"number": 1, "text": "region"}]},
+        {"kind": "point", "point": {"x": 12, "y": 8}, "movements": [], "annotations": [{"number": 2, "text": "point"}]},
+        {"kind": "global", "movements": [], "annotations": [{"number": 3, "text": "global"}]},
+    ],
+}
 descriptor_probe = {"mode": "none", "mimeType": "image/png", "width": 10, "height": 20,
                     "devicePixelRatio": None, "sha256": "0" * 64}
 for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.json"):
@@ -211,6 +252,22 @@ for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.
                                      registry=Registry(retrieve=retrieve_schema))
     for image in invalid_images:
         assert not validator.is_valid(dict(image_probe, image=image)), image
+for schema_name in ("feedback-minimal-v3.schema.json", "feedback-minimal.schema.json"):
+    validate(schema_name, v3_image_probe)
+    validator = Draft202012Validator(schema(schema_name), format_checker=FORMAT_CHECKER,
+                                     registry=Registry(retrieve=retrieve_schema))
+    invalid_objects = [
+        dict(v3_image_probe["objects"][0], point={"x": 1, "y": 2}),
+        {key: value for key, value in v3_image_probe["objects"][0].items() if key != "result"},
+        dict(v3_image_probe["objects"][1], source={"x1": 1, "y1": 2, "x2": 1, "y2": 2}),
+        dict(v3_image_probe["objects"][1], point={"x": 1}),
+        dict(v3_image_probe["objects"][2], source=None),
+        dict(v3_image_probe["objects"][2], recognizedText={"text": "global OCR", "engine": "probe"}),
+        dict(v3_image_probe["objects"][2], result=v3_image_probe["objects"][0]["result"]),
+    ]
+    for object_probe in invalid_objects:
+        assert not validator.is_valid(dict(v3_image_probe, objects=[object_probe])), object_probe
+print("PASS: feedback-minimal-3 discriminated region/point/global probe and result fields")
 print("PASS: image mode/metadata/legacy compatibility and malformed contract probes for both schemas")
 
 capture_probe = {"source": "file", "capturedAt": "2026-10-17T00:00:00Z", "fileName": "game.png",
@@ -265,11 +322,11 @@ validate("feedback-minimal.schema.json", embedded)
 validate("feedback-minimal.schema.json", plain)
 assert {key: value for key, value in embedded.items() if key not in ("image", "exportedAt")} == \
        {key: value for key, value in plain.items() if key not in ("image", "exportedAt")}
-assert embedded["schemaVersion"] == "feedback-minimal-2"
+assert embedded["schemaVersion"] == "feedback-minimal-3"
 assert len({item["id"] for item in embedded["objects"]}) == len(embedded["objects"])
 assert all(isinstance(annotation, dict) for item in embedded["objects"] for annotation in item["annotations"])
 assert embedded["tool"]["name"] == "EditHere"
-validate("feedback-minimal-v2.schema.json", embedded)
+validate("feedback-minimal-v3.schema.json", embedded)
 check_objects(embedded)
 print(f"PASS: current feedback, {len(embedded['objects'])} object(s), with and without the image")
 
@@ -296,7 +353,7 @@ print(f"PASS: original screenshot {width}x{height}, checked bytes/hash and resul
 
 for artifact in ("feedback-file.json", "feedback-embedded.json", "feedback-none.json", "feedback-preview.json"):
     document = export(artifact)
-    validate("feedback-minimal-v2.schema.json", document)
+    validate("feedback-minimal-v3.schema.json", document)
     validate("feedback-minimal.schema.json", document)
     check_objects(document)
     check_image(document)
@@ -311,12 +368,12 @@ print("PASS: real file/embedded/none/annotated-preview exports and all reference
 # Real OCR-bearing exports from the model tests, including the project-only
 # deletion marker and the setting that removes evidence from feedback.
 ocr = export("feedback-ocr.json")
-validate("feedback-minimal-v2.schema.json", ocr)
+validate("feedback-minimal-v3.schema.json", ocr)
 validate("feedback-minimal.schema.json", ocr)
 check_objects(ocr)
 assert ocr["objects"][0]["recognizedText"]["text"] == "Export JSON"
 disabled = export("feedback-ocr-disabled.json")
-validate("feedback-minimal-v2.schema.json", disabled)
+validate("feedback-minimal-v3.schema.json", disabled)
 assert all("recognizedText" not in item for item in disabled["objects"])
 for artifact in ("project-ocr.json", "project-ocr-deleted.json"):
     validate("project-v3.schema.json", export(artifact))
@@ -325,7 +382,7 @@ assert export("project-ocr-deleted.json")["annotations"][0]["recognizedText"] ==
 video = export("video-feedback-ocr.json")
 validate("video-feedback-v1.schema.json", video)
 for frame in video["frames"]:
-    validate("feedback-minimal-v2.schema.json", frame["feedback"])
+    validate("feedback-minimal-v3.schema.json", frame["feedback"])
     check_image(frame["feedback"])
     nested = frame["feedback"]["objects"]
     indexed = [{key: value for key, value in item.items()
@@ -347,7 +404,7 @@ print("PASS: video frame file attachments with hash/dimensions and compatible ro
 capture_feedback = export("feedback-capture.json")
 private_feedback = export("feedback-capture-private.json")
 for document in (capture_feedback, private_feedback):
-    validate("feedback-minimal-v2.schema.json", document)
+    validate("feedback-minimal-v3.schema.json", document)
     validate("feedback-minimal.schema.json", document)
     check_image(document)
     capture = document["capture"]
@@ -360,7 +417,7 @@ capture_video = export("video-feedback-capture.json")
 validate("video-feedback-v1.schema.json", capture_video)
 assert capture_video["capture"]["pageSource"] == "agent"
 for frame in capture_video["frames"]:
-    validate("feedback-minimal-v2.schema.json", frame["feedback"])
+    validate("feedback-minimal-v3.schema.json", frame["feedback"])
     check_image(frame["feedback"])
 capture_video_project = export("video-project-capture.json")
 validate("video-project-v1.schema.json", capture_video_project)

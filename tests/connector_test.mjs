@@ -536,7 +536,7 @@ test('versioned image feedback preserves annotations and images on success and r
 
 test('explicit image versions and their required metadata are checked before returning feedback', () => {
   const cases = [
-    [(feedback) => { feedback.schemaVersion = 'feedback-minimal-3'; }, /不支持的图片反馈版本/],
+    [(feedback) => { feedback.schemaVersion = 'feedback-minimal-99'; }, /不支持的图片反馈版本/],
     [(feedback) => { feedback.schemaVersion = null; }, /不支持的图片反馈版本/],
     [(feedback) => { feedback.$schema = 'urn:other'; }, /\$schema 必须是/],
     [(feedback) => { delete feedback.tool; }, /tool 必须包含/],
@@ -576,6 +576,58 @@ test('video-feedback-1 accepts versioned frame feedback while preserving its con
   const rejected = feedbackResult(feedback);
   assert.equal(rejected.isError, true);
   assert.match(resultText(rejected), /不支持的图片反馈版本/);
+});
+
+function typedImageFeedback() {
+  const source = { x1: 10, y1: 2, x2: 50, y2: 10 };
+  const target = { x1: 20, y1: 3, x2: 100, y2: 15 };
+  return {
+    $schema: 'urn:edithere:feedback-minimal:3', schemaVersion: 'feedback-minimal-3',
+    tool: { name: 'EditHere', version: '0.11.1-test' }, exportedAt: '2026-10-17T10:00:00+08:00',
+    annotationSpace: 'result', image: `data:image/png;base64,${bundlePng.toString('base64')}`,
+    objects: [
+      { id: 'region-1', kind: 'region', source, movements: [{ to: target }],
+        result: { rect: target, dx: 10, dy: 1, scaleX: 2, scaleY: 1.5 },
+        annotations: [{ number: 4, text: '移动区域' }] },
+      { id: 'point-1', kind: 'point', point: { x: 120, y: 8 }, movements: [],
+        annotations: [{ number: 9, text: '点击这里' }] },
+      { id: 'global-1', kind: 'global', movements: [], annotations: [{ number: 12, text: '整体修改' }] },
+    ],
+  };
+}
+
+test('feedback-minimal-3 validates typed targets and cumulative movement results on success and recovery', () => {
+  const feedback = typedImageFeedback();
+  for (const receipt of [{ exitCode: 0, json: { ok: true } }, { exitCode: 9, json: null }]) {
+    const result = feedbackResult(feedback, { recoverCompletedFeedback: true, includeImage: true }, {}, receipt);
+    assert.equal(result.isError, false, resultText(result));
+    const text = resultText(result);
+    assert.match(text, /feedback-minimal-3/);
+    assert.match(text, /最终结果: \(20, 3\) 80x12，累计位移 dx=10, dy=1，缩放 scaleX=2, scaleY=1\.5/);
+    assert.match(text, /点\(120, 8\)/);
+    assert.match(text, /全局对象（无 source）/);
+    assert.equal(result.content.filter((item) => item.type === 'image').length, 1);
+  }
+  const forged = typedImageFeedback();
+  forged.objects[0].result.dx = 99;
+  assert.equal(feedbackResult(forged).isError, true);
+  assert.match(resultText(feedbackResult(forged)), /最终结果|Movement result/);
+});
+
+test('video-feedback-1 preserves v3 typed frame objects and rejects altered root results', () => {
+  const image = typedImageFeedback();
+  const feedback = {
+    schemaVersion: 'video-feedback-1', tool: 'EditHere', exportedAt: '2026-10-17T10:00:00+08:00',
+    video: { source: 'demo.mp4', durationMs: 2000, width: 380, height: 19 },
+    frames: [{ id: 'f1', timestampMs: 1000, timestampUs: 1000123, feedback: image }],
+    objects: image.objects.map((object) => ({ ...JSON.parse(JSON.stringify(object)), frameId: 'f1', timestampMs: 1000 })),
+  };
+  assert.equal(feedbackResult(feedback).isError, false);
+  const changed = JSON.parse(JSON.stringify(feedback));
+  changed.objects[0].result.scaleX = 3;
+  const result = feedbackResult(changed);
+  assert.equal(result.isError, true);
+  assert.match(resultText(result), /与对应帧的批注内容不一致|Movement result/);
 });
 
 test('numbered image annotations keep UI numbers independently of object ordering and legacy strings', () => {

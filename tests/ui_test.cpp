@@ -1401,7 +1401,8 @@ class UiTests : public QObject {
         QCOMPARE(objects.size(), 8);
         for (const auto &value : objects) {
             const auto obj = value.toObject();
-            QVERIFY(obj["source"].isNull()); // 全局意见没有坐标源
+            QCOMPARE(obj["kind"].toString(), QString("global")); // 全局意见省略坐标源
+            QVERIFY(!obj.contains("source"));
             QVERIFY(obj["movements"].toArray().isEmpty());
             QCOMPARE(obj["annotations"].toArray().size(), 1);
         }
