@@ -945,7 +945,7 @@ static QJsonObject feedbackForImport(QJsonObject feedback) {
         auto object = value.toObject();
         QStringList fields{"kind", "movements", "annotations"};
         for (const auto &key : {"id", "recognizedText"}) if (object.contains(key)) fields.append(key);
-        if (!object["movements"].isArray()) fail(tr("对象移动格式不正确"));
+        if (!object["movements"].isArray()) fail(tr("移动格式不正确"));
         const auto movements = object["movements"].toArray();
         const auto kind = object["kind"].toString();
         if (kind == "region") {
@@ -954,13 +954,13 @@ static QJsonObject feedbackForImport(QJsonObject feedback) {
             if (source.width() <= 1e-7 || source.height() <= 1e-7) fail(tr("对象源区域尺寸不正确"));
             if (!movements.isEmpty()) {
                 fields.append("result");
-                if (!object["result"].isObject()) fail(tr("移动缺少最终结果"));
+                if (!object["result"].isObject()) fail(tr("移动格式不正确"));
                 const auto result = object["result"].toObject();
                 exactKeys(result, {"rect", "dx", "dy", "scaleX", "scaleY"});
                 const auto destination = movements.last().toObject()["to"].toObject();
                 floatingJsonRect(destination);
                 const auto expected = movementResult(object["source"].toObject(), destination);
-                if (!result["rect"].isObject()) fail(tr("移动最终区域不正确"));
+                if (!result["rect"].isObject()) fail(tr("移动格式不正确"));
                 const auto rect = result["rect"].toObject();
                 exactKeys(rect, {"x1", "y1", "x2", "y2"});
                 const auto close = [](QJsonValue actual, double wanted) {
@@ -968,13 +968,13 @@ static QJsonObject feedbackForImport(QJsonObject feedback) {
                         std::abs(actual.toDouble() - wanted) <= std::max(1e-7, std::abs(wanted) * 1e-9);
                 };
                 for (const auto &key : {"x1", "y1", "x2", "y2"})
-                    if (!close(rect[key], destination[key].toDouble())) fail(tr("移动最终区域与目标不一致"));
+                    if (!close(rect[key], destination[key].toDouble())) fail(tr("移动格式不正确"));
                 for (const auto &key : {"dx", "dy", "scaleX", "scaleY"})
-                    if (!close(result[key], expected[key].toDouble())) fail(tr("累计位移或缩放结果不正确"));
+                    if (!close(result[key], expected[key].toDouble())) fail(tr("移动格式不正确"));
             }
         } else if (kind == "point") {
             fields.append("point");
-            if (!object["point"].isObject()) fail(tr("点标注位置不正确"));
+            if (!object["point"].isObject()) fail(tr("点标注格式不正确"));
             const auto point = object["point"].toObject();
             exactKeys(point, {"x", "y"});
             const auto validCoordinate = [](const QJsonValue &value) {
@@ -983,12 +983,13 @@ static QJsonObject feedbackForImport(QJsonObject feedback) {
                     value.toDouble() <= 32767;
             };
             if (!validCoordinate(point["x"]) || !validCoordinate(point["y"]))
-                fail(tr("点标注位置不正确"));
+                fail(tr("点标注格式不正确"));
         } else if (kind != "global") {
             fail(tr("批注类型不正确"));
         }
         exactKeys(object, fields);
-        if (kind != "region" && !movements.isEmpty()) fail(tr("全局或点批注不能关联移动"));
+        if (kind != "region" && !movements.isEmpty())
+            fail(tr(kind == "global" ? "全局批注不能关联移动" : "点标注不能关联移动"));
         if (kind == "global" && object.contains("recognizedText")) fail(tr("全局批注不能包含识别文字"));
         if (kind == "point") {
             const auto point = object.take("point").toObject();

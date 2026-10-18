@@ -771,41 +771,6 @@
         <translation>Object movement or annotation format is invalid</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="950"/>
-        <source>对象移动格式不正确</source>
-        <translation>Object movement format is invalid</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="957"/>
-        <source>移动缺少最终结果</source>
-        <translation>Movement is missing its final result</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="961"/>
-        <source>移动最终区域不正确</source>
-        <translation>Movement final region is invalid</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="974"/>
-        <source>移动最终区域与目标不一致</source>
-        <translation>Movement final region does not match its target</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="976"/>
-        <source>累计位移或缩放结果不正确</source>
-        <translation>Accumulated movement or scale result is invalid</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="980"/>
-        <source>点标注位置不正确</source>
-        <translation>Point annotation position is invalid</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="991"/>
-        <source>全局或点批注不能关联移动</source>
-        <translation>Global or point annotations cannot reference a movement</translation>
-    </message>
-    <message>
         <location filename="../model.cpp" line="1103"/>
         <source>批注或移动数量超出限制</source>
         <translation>Too many annotations or movements</translation>
