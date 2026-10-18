@@ -52,6 +52,51 @@ test('J09 empty and returned-home movements do not invent identity results',()=>
   assert.deepEqual(value.objects[0].annotations,[{number:1,text:'移动并缩放'}]);
 });
 
+test('J09 drops a trajectory whose final target returns home',()=>{
+  const value=F.exportImage({image,toolVersion:'0.11.1',movements:[
+    {source,destination:middle},
+    {source,destination:source}
+  ],notes:[]},'embedded','2026-10-17T10:00:00+08:00');
+  assert.deepEqual(value.objects,[]);
+});
+
+test('J09 keeps a returned-home region when its movement note has content',()=>{
+  const value=F.exportImage({image,toolVersion:'0.11.1',movements:[
+    {source,destination:middle},
+    {source,destination:source}
+  ],notes:[{source,movementSource:source,text:'回到原位后保留'}]},'embedded','2026-10-17T10:00:00+08:00');
+  assert.deepEqual(value.objects,[
+    {id:'o1',kind:'region',source,movements:[],annotations:[{number:1,text:'回到原位后保留'}]}
+  ]);
+});
+
+test('J09 uses the final target after a trajectory returns home and moves again',()=>{
+  const value=F.exportImage({image,toolVersion:'0.11.1',movements:[
+    {source,destination:middle},
+    {source,destination:source},
+    {source,destination:final}
+  ],notes:[]},'embedded','2026-10-17T10:00:00+08:00');
+  assert.equal(value.objects.length,1);
+  assert.deepEqual(value.objects[0].movements,[{to:middle},{to:source},{to:final}]);
+  assert.deepEqual(value.objects[0].result,{rect:final,dx:50,dy:10,scaleX:2,scaleY:.5});
+});
+
+test('J09 omits video frames whose final movement target returns home',()=>{
+  const value=F.exportVideo({source:'source.mp4',durationMs:1000,frames:[{
+    id:'f1',timestampUs:100000,width:200,height:100,image,movements:[
+      {source,destination:middle}, {source,destination:source}
+    ],notes:[]
+  }]},'embedded','2026-10-17T10:00:00+08:00');
+  assert.deepEqual(value.frames,[]);
+  assert.deepEqual(value.objects,[]);
+});
+
+test('J08 rejects non-integer point coordinates in v3 feedback',()=>{
+  const value=exported();
+  value.objects[1].point.x=3.5;
+  assert.throws(()=>F.normalizeImage(value),/Invalid feedback point/);
+});
+
 test('J09 nested parent and child use their own composed destinations without double transforms',()=>{
   const parent=rect(10,10,90,90),child=rect(10,10,50,90);
   const value=F.exportImage({image,movements:[

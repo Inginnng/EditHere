@@ -700,6 +700,17 @@ class LayoutTests : public QObject {
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
+        // v3 point coordinates are integer pixel positions; importing a
+        // fractional value must not silently round it into a different point.
+        invalid = feedback;
+        badObjects = invalid["objects"].toArray();
+        badObject = badObjects[1].toObject();
+        auto badPoint = badObject["point"].toObject();
+        badPoint["x"] = 20.5;
+        badObject["point"] = badPoint;
+        badObjects[1] = badObject;
+        invalid["objects"] = badObjects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
     }
     void centeredResizeSurvivesFeedbackRoundTrip() {
         auto document = fromImage(sourceImage(), "demo", "centered resize");

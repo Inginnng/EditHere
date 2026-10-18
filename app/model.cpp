@@ -660,10 +660,15 @@ QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &opt
         return entries.size() - 1;
     };
     for (const auto &m : movements) {
-        if (sameMovementRect(m.source, m.destination))
-            continue;
         const int idx = ensureEntry(m.source);
         entries[idx].dests.append(m.destination);
+    }
+    // Movement targets are absolute and chronological. A final target equal to
+    // the source cancels the whole trajectory; keep the entry only if a note or
+    // recognized text is attached to it.
+    for (auto &entry : entries) {
+        if (!entry.dests.isEmpty() && sameMovementRect(entry.source, entry.dests.last()))
+            entry.dests.clear();
     }
     int number = 0;
     for (const auto &note : doc.notes) {
@@ -700,6 +705,10 @@ QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &opt
     QHash<QString, int> byId;
     QSet<QString> reservedIds;
     for (const auto &entry : entries) {
+        const bool hasRecognizedText = options.includeRecognizedText &&
+            !entry.recognizedText["text"].toString().trimmed().isEmpty();
+        if (entry.dests.isEmpty() && entry.texts.isEmpty() && !hasRecognizedText)
+            continue;
         if (!entry.id.isEmpty()) {
             reservedIds.insert(entry.id);
             if (byId.contains(entry.id)) {
@@ -968,7 +977,13 @@ static QJsonObject feedbackForImport(QJsonObject feedback) {
             if (!object["point"].isObject()) fail(tr("点标注位置不正确"));
             const auto point = object["point"].toObject();
             exactKeys(point, {"x", "y"});
-            if (!point["x"].isDouble() || !point["y"].isDouble()) fail(tr("点标注位置不正确"));
+            const auto validCoordinate = [](const QJsonValue &value) {
+                return value.isDouble() && std::isfinite(value.toDouble()) &&
+                    std::floor(value.toDouble()) == value.toDouble() && value.toDouble() >= 0 &&
+                    value.toDouble() <= 32767;
+            };
+            if (!validCoordinate(point["x"]) || !validCoordinate(point["y"]))
+                fail(tr("点标注位置不正确"));
         } else if (kind != "global") {
             fail(tr("批注类型不正确"));
         }

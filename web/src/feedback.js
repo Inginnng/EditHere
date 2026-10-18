@@ -24,7 +24,10 @@
   function typedObject(object) {
     const {source, ...value} = object;
     if (source === null) return {...value, kind:'global'};
-    if (source.x1 === source.x2 && source.y1 === source.y2) return {...value, kind:'point', point:{x:source.x1,y:source.y1}};
+    if (source.x1 === source.x2 && source.y1 === source.y2) {
+      if (![source.x1, source.y1].every(value => Number.isFinite(value) && value >= 0 && value <= 32767 && Number.isInteger(value))) throw new Error('Invalid feedback point.');
+      return {...value, kind:'point', point:{x:source.x1,y:source.y1}};
+    }
     return {...value, kind:'region', source:rectangle(source),
       ...(value.movements.length ? {result:movementResult(source,value.movements.at(-1).to)} : {})};
   }
@@ -34,7 +37,7 @@
     if (!record(object) || !Object.hasOwn(object,'kind')) return object;
     const fields=['kind','movements','annotations',...['id','recognizedText'].filter(key=>Object.hasOwn(object,key))];
     if (!Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object lists.');
-    const coordinate=value=>Number.isFinite(value)&&value>=0&&value<=10000000;
+    const coordinate=value=>Number.isFinite(value)&&value>=0&&value<=32767;
     const rect=value=>exactKeys(value,['x1','y1','x2','y2'])&&Object.values(value).every(coordinate)&&value.x2-value.x1>1e-7&&value.y2-value.y1>1e-7;
     if (object.kind==='region') {
       fields.push('source');
@@ -49,7 +52,7 @@
       }
     } else if (object.kind==='point') {
       fields.push('point');
-      if (!exactKeys(object.point,['x','y'])||!Object.values(object.point).every(coordinate)) throw new Error('Invalid feedback point.');
+      if (!exactKeys(object.point,['x','y'])||!Object.values(object.point).every(value=>coordinate(value)&&Number.isInteger(value))) throw new Error('Invalid feedback point.');
     } else if (object.kind!=='global') throw new Error('Invalid feedback kind.');
     if (!exactKeys(object,fields)) throw new Error('Invalid typed feedback object fields.');
     if (object.kind!=='region'&&object.movements.length) throw new Error('Point and global feedback cannot move.');
@@ -228,8 +231,12 @@
       else delete entry.recognizedText;
     }
     for (const movement of document.movements || []) {
-      if (sameRectangle(movement.source, movement.destination)) continue;
       ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
+    }
+    // The last absolute target is authoritative. A trajectory that returns to
+    // its source has no net movement and must not retain an earlier destination.
+    for (const entry of objects) {
+      if (entry.movements.length && sameRectangle(entry.source, entry.movements.at(-1).to)) entry.movements=[];
     }
     for (const [index, note] of (document.notes || []).entries()) {
       const annotation = {number:index + 1, text:note.text};
@@ -243,18 +250,24 @@
         attachRecognition(entry, note); objects.push(entry);
       }
     }
+    const outputObjects=objects.filter(entry=>entry.movements.length||entry.annotations.length||Object.hasOwn(entry,'recognizedText'));
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
       ...(document.capture ? {capture:{...validateCapture(document.capture)}} : {}),
-      annotationSpace:'result', objects:objects.map((object, index) => typedObject({id:'o' + (index + 1), ...object})),
+      annotationSpace:'result', objects:outputObjects.map((object, index) => typedObject({id:'o' + (index + 1), ...object})),
       image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
   function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
+    const hasNetMovement = movements => {
+      const lastBySource = new Map();
+      for (const movement of movements || []) lastBySource.set(sourceKey(movement.source), movement);
+      return [...lastBySource.values()].some(movement => !sameRectangle(movement.source, movement.destination));
+    };
     const documents = project.frames.filter(document => document.notes.length ||
-      document.movements.some(movement => !sameRectangle(movement.source, movement.destination)))
+      hasNetMovement(document.movements))
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
     const frames = documents.map(document => ({
       id:document.id,

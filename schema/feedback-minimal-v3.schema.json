@@ -501,12 +501,12 @@
       ],
       "properties": {
         "x": {
-          "type": "number",
+          "type": "integer",
           "minimum": 0,
           "maximum": 32767
         },
         "y": {
-          "type": "number",
+          "type": "integer",
           "minimum": 0,
           "maximum": 32767
         }
