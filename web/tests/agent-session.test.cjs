@@ -30,7 +30,7 @@ test('explicit submit writes native complete JSON; receipt omits image; retry is
   const receipt = store.submit(token(session), feedback);
   assert.equal(receipt.state, 'completed');
   assert.equal(receipt.feedback.image, undefined);
-  assert.deepEqual(receipt.feedback.objects, feedback.objects);
+  assert.deepEqual(receipt.feedback.objects, format.upgradeImage(feedback, session.capture.capturedAt).objects);
   assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize({...format.upgradeImage(feedback,session.capture.capturedAt),capture:session.capture}));
   assert.equal(receipt.sha256, crypto.createHash('sha256').update(fs.readFileSync(paths.output)).digest('hex'));
   assert.deepEqual(store.submit(token(session), feedback), receipt);
@@ -80,8 +80,8 @@ test('a declared image version cannot omit or replace its metadata', () => {
 test('numbered feedback retains file object IDs and sparse numbers in the persisted MCP receipt', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
   const current = format.exportImage({image,movements:[],notes:[{source:null,text:'意见'}]});
-  current.objects=[{id:'first-object',source:null,movements:[],annotations:[{number:3,text:'较早'}]},
-    {id:'second-object',source:rectangle,movements:[],annotations:[{number:1000,text:'较晚'}]}];
+  current.objects=[{id:'first-object',kind:'global',movements:[],annotations:[{number:3,text:'较早'}]},
+    {id:'second-object',kind:'region',source:rectangle,movements:[],annotations:[{number:1000,text:'较晚'}]}];
   for(const objects of [
     [current.objects[0],{...current.objects[1],id:'first-object'}],
     [current.objects[0],{...current.objects[1],annotations:[{number:3,text:'重复编号'}]}]
@@ -135,13 +135,14 @@ test('restart restores pending sessions, original tokens and completed receipts'
 
 test('a crash after output write recovers only the recorded matching feedback', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const raw = store.byId(session.sessionId), serialized = format.serialize(feedback);
+  const current = format.upgradeImage(feedback, session.capture.capturedAt);
+  const raw = store.byId(session.sessionId), serialized = format.serialize(current);
   raw.state = 'submitting'; raw.sha256 = crypto.createHash('sha256').update(serialized).digest('hex');
-  raw.result = {annotationSpace:'result',objects:feedback.objects}; store.persist(raw);
+  raw.result = {...current, image:undefined}; delete raw.result.image; store.persist(raw);
   fs.writeFileSync(paths.output, serialized);
   const restarted = new AgentSessions(paths);
   assert.equal(restarted.status(restarted.byId(session.sessionId)).state, 'completed');
-  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, feedback.objects);
+  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, current.objects);
 });
 
 test('existing output is never overwritten, including a file created after session start', () => {
@@ -255,7 +256,7 @@ test('reading a completed receipt checks the file and needs neither HTTP nor ser
   const key=fs.readFileSync(path.join(paths.directory,'server-key'),'utf8');
   const stat=fs.statSync(path.join(paths.directory,opened.sessionId+'.json'));
   const saved=readSessionStatus({directory:paths.directory,sessionId:opened.sessionId});
-  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,feedback.objects);
+  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,format.upgradeImage(feedback,opened.capture.capturedAt).objects);
   assert.equal(fs.readFileSync(path.join(paths.directory,'server-key'),'utf8'),key);
   assert.equal(fs.statSync(path.join(paths.directory,opened.sessionId+'.json')).mtimeMs,stat.mtimeMs);
   fs.writeFileSync(paths.output,'external edit');

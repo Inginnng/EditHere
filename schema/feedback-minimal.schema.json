@@ -88,6 +88,9 @@
         },
         {
           "$ref": "#/$defs/versionedObjectFormat"
+        },
+        {
+          "$ref": "urn:edithere:feedback-minimal:3"
         }
       ]
     },

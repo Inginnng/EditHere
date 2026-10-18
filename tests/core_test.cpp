@@ -15,6 +15,82 @@ using namespace h2d;
 class CoreTests : public QObject {
     Q_OBJECT
   private slots:
+    void feedbackV3TypesAndMovementResultsRoundTrip() {
+        const auto image = exampleImage();
+        const auto source = QJsonObject{{"x1", 100}, {"y1", 100}, {"x2", 300}, {"y2", 200}};
+        const auto target = QJsonObject{{"x1", 200}, {"y1", 140}, {"x2", 400}, {"y2", 240}};
+        const auto png = encodePng(image);
+        QJsonObject feedback{
+            {"$schema", FeedbackSchemaId}, {"schemaVersion", FeedbackSchemaVersion},
+            {"tool", QJsonObject{{"name", "EditHere"}, {"version", EDITHERE_VERSION}}},
+            {"exportedAt", "2026-10-17T10:00:00+08:00"}, {"annotationSpace", "result"},
+            {"image", "data:image/png;base64," + QString::fromLatin1(png.toBase64())},
+            {"objects", QJsonArray{
+                QJsonObject{{"id", "region"}, {"kind", "region"}, {"source", source},
+                            {"movements", QJsonArray{QJsonObject{{"to", target}}}},
+                            {"result", QJsonObject{{"rect", target}, {"dx", 100}, {"dy", 40}, {"scaleX", 1}, {"scaleY", 1}}},
+                            {"annotations", QJsonArray{QJsonObject{{"number", 3}, {"text", "移动区域"}}}}},
+                QJsonObject{{"id", "point"}, {"kind", "point"}, {"point", QJsonObject{{"x", 240}, {"y", 180}}},
+                            {"movements", QJsonArray{}}, {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", "点意见"}}}}},
+                QJsonObject{{"id", "global"}, {"kind", "global"}, {"movements", QJsonArray{}},
+                            {"annotations", QJsonArray{QJsonObject{{"number", 2}, {"text", "全局意见"}}}}},
+            }},
+        };
+        const auto restored = loadFeedback(feedback, {});
+        QCOMPARE(restored.notes.size(), 3);
+        const auto exported = exportFeedback(restored, true);
+        QCOMPARE(exported["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
+        const auto objects = exported["objects"].toArray();
+        QCOMPARE(objects.size(), 3);
+        QJsonObject byKind;
+        for (const auto &value : objects) byKind.insert(value.toObject()["kind"].toString(), value);
+        QCOMPARE(byKind["point"].toObject()["point"].toObject()["x"].toInt(), 240);
+        QCOMPARE(byKind["point"].toObject()["id"].toString(), QString("point"));
+        QCOMPARE(byKind["region"].toObject()["id"].toString(), QString("region"));
+        QCOMPARE(byKind["global"].toObject()["id"].toString(), QString("global"));
+        QCOMPARE(byKind["global"].toObject().contains("source"), false);
+        const auto region = byKind["region"].toObject();
+        QCOMPARE(region["result"].toObject()["rect"].toObject(), target);
+        QCOMPARE(region["result"].toObject()["dx"].toDouble(), 100.0);
+        QCOMPARE(region["result"].toObject()["scaleX"].toDouble(), 1.0);
+        auto forged = feedback; auto forgedObjects = forged["objects"].toArray();
+        auto forgedRegion = forgedObjects[0].toObject(); auto result = forgedRegion["result"].toObject(); result["dx"] = 99; forgedRegion["result"] = result; forgedObjects[0] = forgedRegion; forged["objects"] = forgedObjects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(forged, {}), std::runtime_error);
+    }
+    void feedbackV3KeepsMultiAnnotationObjectsAndAllocatesUniqueIds() {
+        auto doc = fromImage(exampleImage(), "demo", "typed objects");
+        Note point;
+        point.point = {20, 20}; point.comment = "point";
+        Note region;
+        region.isPoint = false; region.rect = {30, 30, 80, 40}; region.comment = "region";
+        Note global;
+        global.isGlobal = true; global.comment = "global";
+        doc.notes = {point, region, global};
+        auto feedback = exportFeedback(doc, true);
+        auto objects = feedback["objects"].toArray();
+        for (qsizetype i = 0; i < objects.size(); ++i) {
+            auto object = objects[i].toObject();
+            auto annotations = object["annotations"].toArray();
+            annotations.append(QJsonObject{{"number", int(i) + 4}, {"text", "another annotation"}});
+            object["annotations"] = annotations;
+            objects[i] = object;
+        }
+        feedback["objects"] = objects;
+        auto restored = loadFeedback(feedback, {});
+        QCOMPARE(restored.notes.size(), 6);
+        restored.notes.prepend(point); // Fresh notes must not reuse an imported object's ID.
+        const auto exported = exportFeedback(restored, true);
+        const auto exportedObjects = exported["objects"].toArray();
+        QCOMPARE(exportedObjects.size(), 4);
+        for (qsizetype i = 1; i < exportedObjects.size(); ++i)
+            QCOMPARE(exportedObjects[i].toObject()["annotations"].toArray().size(), 2);
+        QVERIFY_THROWS_NO_EXCEPTION(loadFeedback(exported, {}));
+        restored.notes.last().isGlobal = false;
+        restored.notes.last().point = {60, 60}; // Splitting a target also needs a fresh ID.
+        const auto split = exportFeedback(restored, true);
+        QCOMPARE(split["objects"].toArray().size(), 5);
+        QVERIFY_THROWS_NO_EXCEPTION(loadFeedback(split, {}));
+    }
     void captureContextAndAgentPageRoundTripWithoutGuessingScreenshotIdentity() {
         auto doc = fromImage(exampleImage(), "screen", "Screenshot");
         doc.capture.insert("windowTitle", "Game - user document");
@@ -255,8 +331,7 @@ class CoreTests : public QObject {
         auto legacy = feedback;
         legacy.remove("capture");
         legacy["image"] = feedback["image"].toObject()["dataUrl"];
-        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
-            legacy.remove(field);
+        legacy = unversionedLegacyFeedback(legacy);
         saveBytes(path, QJsonDocument(legacy).toJson());
         QVERIFY_THROWS_NO_EXCEPTION(imported = loadDocument(path));
         QCOMPARE(imported.notes[0].comment, note.comment);
@@ -365,8 +440,7 @@ class CoreTests : public QObject {
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
         earlier["image"] = earlier["image"].toObject()["dataUrl"];
         earlier.remove("capture");
-        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
-            earlier.remove(field);
+        earlier = unversionedLegacyFeedback(earlier);
         QCOMPARE(loadFeedback(earlier, {}).notes.size(), 4);
 
         // Mixed notes allocate old strings around explicit numbers without collisions.
@@ -474,7 +548,8 @@ class CoreTests : public QObject {
         const auto feedback = exportFeedback(doc, true);
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 1);
-        QCOMPARE(objects[0].toObject()["source"], QJsonValue(QJsonValue::Null));
+        QCOMPARE(objects[0].toObject()["kind"].toString(), QString("global"));
+        QVERIFY(!objects[0].toObject().contains("source"));
         QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QVERIFY(imported.notes[0].isGlobal);

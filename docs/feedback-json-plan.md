@@ -17,12 +17,12 @@
 - [x] J05：截图区域本机 OCR、编辑与导出（本轮第 3 阶段）
 - [ ] J06：有系统控件信息时可选透传；截图导入场景暂缓
 - [x] J07：窗口标题、采集上下文与 AI 主动提供页面说明
-- [ ] J08：显式标注类型
-- [ ] J09：移动与缩放结果
+- [x] J08：显式标注类型（`feedback-minimal-3` 已实现并验证，待合入默认分支）
+- [x] J09：移动与缩放结果（`result` 已实现并验证，待合入默认分支）
 - [ ] J10：坐标约定（实施前需修正普通批注与移动源的空间区别）
 - [ ] J11：视频反馈去重
 - [ ] J12：多轮反馈关联
-- [ ] J13：完整 Schema、CLI 回执与文档同步；本轮同步完成 J01/J03/J04/J05/J07 所需部分
+- [ ] J13：完整 Schema、CLI 回执与文档同步；已同步完成 J01/J03/J04/J05/J07/J08/J09 所需部分
 - [ ] J14：可选纯文本摘要
 
 ### 阶段记录
@@ -60,7 +60,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ## 命名约定
 
-- 新格式命名为 `feedback-minimal-2`，Schema 文件为 `schema/feedback-minimal-v2.schema.json`，`$id` 为 `urn:edithere:feedback-minimal:2`。
+- 新导出格式命名为 `feedback-minimal-3`，Schema 文件为 `schema/feedback-minimal-v3.schema.json`，`$id` 为 `urn:edithere:feedback-minimal:3`；`feedback-minimal-2`、无版本对象格式和旧并行数组继续可读。
 - 不使用 `feedback-2` / `feedback-v2`：仓库中的 `feedback-v2.schema.json` 是早期**项目文档**格式，重名会混淆。
 - 当前没有版本号的对象格式追认为 `feedback-minimal-1`；更早的 `annotations` + `changes` 并行数组仍称「旧格式」。
 
@@ -70,7 +70,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ### J01 版本号与工具标识 · P0
 
-实施说明：已落地。`$schema` 使用稳定标识 `urn:edithere:feedback-minimal:2`，对应随包 Schema，无需联网；工具版本来自实际构建。视频容器版本保持不变，帧内图片反馈支持新格式。
+实施说明：已落地。`$schema` 使用稳定标识 `urn:edithere:feedback-minimal:3`，对应随包 Schema，无需联网；工具版本来自实际构建。视频容器版本保持不变，帧内图片反馈支持新格式。
 
 | 项目 | 现在 | 修改后 |
 | --- | --- | --- |
@@ -190,7 +190,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ### J05 框选区域文字识别（OCR）· P0
 
-实施范围：桌面版使用现有本机 OCR 自动识别批注区域；独立 Web 与 MCP 内嵌页支持导入、保留、修改、删除及关闭导出，暂不自动识字。`recognizedText` 只随 `feedback-minimal-2` 输出，不会凭图片生成 DOM、组件名或源码位置。下方原方案示例中的 `kind` 属于 J08，本阶段不增加该字段。
+实施范围：桌面版使用现有本机 OCR 自动识别批注区域；独立 Web 与 MCP 内嵌页支持导入、保留、修改、删除及关闭导出，暂不自动识字。`recognizedText` 随当前 `feedback-minimal-3` 输出，v2 读取兼容；不会凭图片生成 DOM、组件名或源码位置。
 
 现在：反馈只记录坐标。文档也写明「图像反馈本身不提供 DOM、组件名或源码位置」，AI 只能自己看图猜文字，没看图时完全不知道框住的是什么。
 
@@ -324,7 +324,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 现在：`movements` 只给每一步的 `to`；文档里「按顺序记录」和「`to` 为最终区域」两句并列，有歧义；位移和缩放比要 AI 自己算。
 
-修改后：保留 `movements` 作为历史记录，新增 `result`。
+修改后：保留 `movements` 作为绝对目标序列，新增 `result`；它不是完整鼠标事件历史。
 
 现在：
 
@@ -410,8 +410,8 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ### J13 Schema、CLI 回执与文档同步 · P1
 
-- 新增 `schema/feedback-minimal-v2.schema.json`，旧 Schema 保留。
-- 导入兼容旧格式、`feedback-minimal-1`、`feedback-minimal-2` 三种；字符串批注和字符串 `image` 自动转换。
+- 新增 `schema/feedback-minimal-v3.schema.json`，保留 v2 Schema 与兼容入口。
+- 导入兼容旧格式、无版本对象、`feedback-minimal-2` 和 `feedback-minimal-3`；字符串批注和字符串 `image` 自动转换。
 - CLI 成功回执统一带 `schemaVersion`、`imageFile`、`previewFile`（现在只有视频导出回执带 `schemaVersion`）。
 - 过渡期提供 `--format feedback-minimal-1` 输出旧格式，给已经写死解析逻辑的旧 skill 和脚本使用。
 - 同步更新：使用指南「反馈 JSON」、AI 与命令行文档「AI 如何理解反馈」、`skills/edithere/SKILL.md` 的读取说明。
@@ -530,9 +530,9 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ## 迁移与兼容
 
-- 写入：只写 `feedback-minimal-2`；过渡期可用 `--format feedback-minimal-1` 输出旧格式。
-- 读取顺序：先看 `schemaVersion`；没有时有 `objects` 按 `feedback-minimal-1` 处理；有 `annotations` + `changes` 按旧格式处理。
-- 自动转换：字符串批注 → `{ number, text }`；字符串 `image` → `embedded` 模式；零面积矩形 → `kind: "point"`；`source: null` → `kind: "global"`。
+- 写入：只写 `feedback-minimal-3`；不提供新的 CLI 降级开关。
+- 读取顺序：先看 `schemaVersion`；`feedback-minimal-2` 按旧对象格式读取；没有时有 `objects` 按旧对象格式处理；有 `annotations` + `changes` 按旧格式处理。
+- 自动转换：字符串批注 → `{ number, text }`；字符串 `image` → `embedded` 模式；零面积矩形 → `kind: "point"`；`source: null` → `kind: "global"`；移动区域补充 `result`。
 
 ## 实施批次
 

@@ -592,7 +592,8 @@ class AgentCliTests : public QObject {
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 1);
         const auto object = objects[0].toObject();
-        QVERIFY(object["source"].isNull());
+        QCOMPARE(object["kind"].toString(), QString("global"));
+        QVERIFY(!object.contains("source"));
         QCOMPARE(object["movements"].toArray().size(), 0);
         QCOMPARE(object["annotations"].toArray().size(), 1);
         QCOMPARE(object["annotations"].toArray()[0].toObject()["text"].toString(), QString("Move the button"));

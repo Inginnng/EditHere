@@ -12,10 +12,59 @@
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
   const sourceKey = r => JSON.stringify([r.x1, r.y1, r.x2, r.y2]);
-  const IMAGE_VERSION = 'feedback-minimal-2';
-  const IMAGE_SCHEMA = 'urn:edithere:feedback-minimal:2';
+  const IMAGE_VERSION = 'feedback-minimal-3';
+  const IMAGE_SCHEMA = 'urn:edithere:feedback-minimal:3';
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
+  const closeNumber = (actual, expected) => Number.isFinite(actual) && Math.abs(actual - expected) <= Math.max(1e-7, Math.abs(expected) * 1e-9);
+  function movementResult(source, rect) {
+    return {rect:rectangle(rect), dx:rect.x1-source.x1, dy:rect.y1-source.y1,
+      scaleX:(rect.x2-rect.x1)/(source.x2-source.x1), scaleY:(rect.y2-rect.y1)/(source.y2-source.y1)};
+  }
+  function typedObject(object) {
+    const {source, ...value} = object;
+    if (source === null) return {...value, kind:'global'};
+    if (source.x1 === source.x2 && source.y1 === source.y2) {
+      if (![source.x1, source.y1].every(value => Number.isFinite(value) && value >= 0 && value <= 32767 && Number.isInteger(value))) throw new Error('Invalid feedback point.');
+      return {...value, kind:'point', point:{x:source.x1,y:source.y1}};
+    }
+    return {...value, kind:'region', source:rectangle(source),
+      ...(value.movements.length ? {result:movementResult(source,value.movements.at(-1).to)} : {})};
+  }
+  // Internal bridge to the established layout importer. Never write this shape
+  // under a v3 version, and validate derived numbers before removing them.
+  function legacyObject(object) {
+    if (!record(object) || !Object.hasOwn(object,'kind')) return object;
+    const fields=['kind','movements','annotations',...['id','recognizedText'].filter(key=>Object.hasOwn(object,key))];
+    if (!Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object lists.');
+    const coordinate=value=>Number.isFinite(value)&&value>=0&&value<=32767;
+    const rect=value=>exactKeys(value,['x1','y1','x2','y2'])&&Object.values(value).every(coordinate)&&value.x2-value.x1>1e-7&&value.y2-value.y1>1e-7;
+    if (object.kind==='region') {
+      fields.push('source');
+      if (!rect(object.source)) throw new Error('Invalid region source.');
+      for (const movement of object.movements) if (!exactKeys(movement,['to'])||!rect(movement.to)) throw new Error('Invalid movement target.');
+      if (object.movements.length) {
+        fields.push('result');
+        const expected=movementResult(object.source,object.movements.at(-1).to),actual=object.result;
+        if (!exactKeys(actual,['rect','dx','dy','scaleX','scaleY'])||!rect(actual.rect)||
+            ['x1','y1','x2','y2'].some(key=>!closeNumber(actual.rect[key],expected.rect[key]))||
+            ['dx','dy','scaleX','scaleY'].some(key=>!closeNumber(actual[key],expected[key]))) throw new Error('Movement result does not match its final target.');
+      }
+    } else if (object.kind==='point') {
+      fields.push('point');
+      if (!exactKeys(object.point,['x','y'])||!Object.values(object.point).every(value=>coordinate(value)&&Number.isInteger(value))) throw new Error('Invalid feedback point.');
+    } else if (object.kind!=='global') throw new Error('Invalid feedback kind.');
+    if (!exactKeys(object,fields)) throw new Error('Invalid typed feedback object fields.');
+    if (object.kind!=='region'&&object.movements.length) throw new Error('Point and global feedback cannot move.');
+    if (object.kind==='global'&&Object.hasOwn(object,'recognizedText')) throw new Error('Global feedback cannot contain recognized screenshot text.');
+    const {kind,point,result,...value}=object;
+    return {...value,source:kind==='global'?null:kind==='point'?{x1:point.x,y1:point.y,x2:point.x,y2:point.y}:rectangle(value.source)};
+  }
+  function legacyImage(value) {
+    const normalized=normalizeImage(value);
+    if (normalized.schemaVersion!==IMAGE_VERSION) return normalized;
+    return {...normalized,$schema:'urn:edithere:feedback-minimal:2',schemaVersion:'feedback-minimal-2',objects:normalized.objects.map(legacyObject)};
+  }
   function timestampWithZone(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
     const [year, month, day] = value.slice(0, 10).split('-').map(Number);
@@ -58,8 +107,8 @@
       if (Object.hasOwn(value,'capture')) throw new Error('Capture context requires feedback-minimal-2.');
       return {};
     }
-    if (value.schemaVersion !== IMAGE_VERSION) throw new Error('Unsupported image feedback version.');
-    if (value.$schema !== IMAGE_SCHEMA || !exactKeys(value.tool, ['name', 'version']) ||
+    if (![IMAGE_VERSION,'feedback-minimal-2'].includes(value.schemaVersion)) throw new Error('Unsupported image feedback version.');
+    if (value.$schema !== (value.schemaVersion===IMAGE_VERSION?IMAGE_SCHEMA:'urn:edithere:feedback-minimal:2') || !exactKeys(value.tool, ['name', 'version']) ||
         value.tool.name !== 'EditHere' ||
         typeof value.tool.version !== 'string' || !value.tool.version.trim() || value.tool.version.length > 100 ||
         !timestampWithZone(value.exportedAt)) {
@@ -83,10 +132,11 @@
     if (!Array.isArray(objects) || objects.length > 9704) throw new Error('Invalid feedback objects.');
     const ids = new Set(), numbers = new Set(), entries = [];
     for (const object of objects) {
-      if (!exactKeys(object, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(object || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
+      const legacy=legacyObject(object);
+      if (!exactKeys(legacy, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(object || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
           !Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object fields.');
       if (Object.hasOwn(object, 'recognizedText')) {
-        if (object.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
+        if (legacy.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
         validateRecognizedText(object.recognizedText);
       }
       if (Object.hasOwn(object, 'id')) {
@@ -124,6 +174,7 @@
     if(Object.hasOwn(value,'image')&&typeof value.image!=='string')imageFormat.validate(value.image);
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
+      if (value.schemaVersion===IMAGE_VERSION ? value.objects.some(object=>!record(object)||!Object.hasOwn(object,'kind')) : value.objects.some(object=>Object.hasOwn(object||{},'kind'))) throw new Error('Feedback object kinds require feedback-minimal-3.');
       if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
       annotationEntries(value.objects);
       return {...base, objects:value.objects};
@@ -151,8 +202,11 @@
   }
   function upgradeImage(value, exportedAt = new Date().toISOString()) {
     const normalized=normalizeImage(value);
-    return normalized.schemaVersion ? normalized : {$schema:IMAGE_SCHEMA,schemaVersion:IMAGE_VERSION,
-      tool:{name:'EditHere',version:productVersion({})},exportedAt,...normalized};
+    if (normalized.schemaVersion===IMAGE_VERSION) return normalized;
+    const upgraded={...normalized,$schema:IMAGE_SCHEMA,schemaVersion:IMAGE_VERSION,
+      tool:normalized.tool||{name:'EditHere',version:productVersion({})},exportedAt:normalized.exportedAt||exportedAt,
+      objects:normalized.objects.map(typedObject)};
+    return normalizeImage(upgraded);
   }
 
   // Matches app/model.cpp exportFeedback. Movements are the actual group
@@ -177,8 +231,12 @@
       else delete entry.recognizedText;
     }
     for (const movement of document.movements || []) {
-      if (sameRectangle(movement.source, movement.destination)) continue;
       ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
+    }
+    // The last absolute target is authoritative. A trajectory that returns to
+    // its source has no net movement and must not retain an earlier destination.
+    for (const entry of objects) {
+      if (entry.movements.length && sameRectangle(entry.source, entry.movements.at(-1).to)) entry.movements=[];
     }
     for (const [index, note] of (document.notes || []).entries()) {
       const annotation = {number:index + 1, text:note.text};
@@ -192,18 +250,24 @@
         attachRecognition(entry, note); objects.push(entry);
       }
     }
+    const outputObjects=objects.filter(entry=>entry.movements.length||entry.annotations.length||Object.hasOwn(entry,'recognizedText'));
     return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
       ...(document.capture ? {capture:{...validateCapture(document.capture)}} : {}),
-      annotationSpace:'result', objects:objects.map((object, index) => ({id:'o' + (index + 1), ...object})),
+      annotationSpace:'result', objects:outputObjects.map((object, index) => typedObject({id:'o' + (index + 1), ...object})),
       image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
   function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
+    const hasNetMovement = movements => {
+      const lastBySource = new Map();
+      for (const movement of movements || []) lastBySource.set(sourceKey(movement.source), movement);
+      return [...lastBySource.values()].some(movement => !sameRectangle(movement.source, movement.destination));
+    };
     const documents = project.frames.filter(document => document.notes.length ||
-      document.movements.some(movement => !sameRectangle(movement.source, movement.destination)))
+      hasNetMovement(document.movements))
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
     const frames = documents.map(document => ({
       id:document.id,
@@ -213,11 +277,7 @@
       feedback:exportImage({...document,imageFile:document.imageFile||'frame-'+document.id+'.png'}, mode, exportedAt)
     }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
-      id:object.id,
-      source:rectangle(object.source),
-      movements:object.movements.map(movement => ({to:rectangle(movement.to)})),
-      annotations:object.annotations.slice(),
-      ...(object.recognizedText ? {recognizedText:{...object.recognizedText}} : {}),
+      ...JSON.parse(JSON.stringify(object)),
       timestampMs:frame.timestampMs,
       frameId:frame.id
     })));
@@ -230,17 +290,17 @@
     };
   }
 
-  // OCR is duplicated in the video's lightweight index. Validate that evidence
-  // against the frame payload instead of silently discarding a conflicting copy.
+  // The root index repeats frame data, including v3 kinds/results. Compare all
+  // fields so an index cannot silently alter the final target or annotation.
   function validateVideoRecognitionIndex(value) {
-    const signature = (object, frameId, timestampMs) => serialize({frameId, timestampMs,
-      source:object.source, movements:object.movements, annotations:object.annotations, recognizedText:object.recognizedText});
+    const signature = (object, frameId, timestampMs) => serialize({...object,frameId,timestampMs});
     const expected = value.frames.flatMap(frame => normalizeImage(frame.feedback).objects
-      .filter(object => Object.hasOwn(object, 'recognizedText')).map(object => signature(object, frame.id, frame.timestampMs))).sort();
-    const actual = value.objects.filter(object => Object.hasOwn(object || {}, 'recognizedText')).map(object => {
-      if (object.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
-      validateRecognizedText(object.recognizedText);
-      return signature(object, object.frameId, object.timestampMs);
+      .map(object => signature(object, frame.id, frame.timestampMs))).sort();
+    const actual = value.objects.map(object => {
+      if (!record(object)) throw new Error('Invalid video feedback index.');
+      const {frameId,timestampMs,...payload}=object;
+      annotationEntries([payload]);
+      return signature(payload,frameId,timestampMs);
     }).sort();
     if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Video recognized screenshot text index does not match its frames.');
   }
@@ -295,5 +355,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, upgradeImage, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
+  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, upgradeImage, legacyImage, legacyObject, typedObject, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
 });

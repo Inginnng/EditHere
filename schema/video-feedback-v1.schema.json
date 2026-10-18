@@ -101,93 +101,307 @@
       "type": "array",
       "maxItems": 10000,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "timestampMs",
-          "frameId",
-          "source",
-          "movements",
-          "annotations"
-        ],
-        "properties": {
-          "timestampMs": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740
-          },
-          "frameId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "source": {
-            "oneOf": [
-              {
-                "type": "null"
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "timestampMs",
+              "frameId",
+              "source",
+              "movements",
+              "annotations"
+            ],
+            "properties": {
+              "timestampMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740
               },
+              "frameId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "feedback-minimal.schema.json#/$defs/rectangle"
+                  }
+                ]
+              },
+              "movements": {
+                "type": "array",
+                "maxItems": 8704,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "to"
+                  ],
+                  "properties": {
+                    "to": {
+                      "$ref": "feedback-minimal.schema.json#/$defs/rectangle"
+                    }
+                  }
+                }
+              },
+              "annotations": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/text"
+                    },
+                    {
+                      "$ref": "#/$defs/numberedAnnotation"
+                    }
+                  ]
+                }
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "\\S"
+              },
+              "recognizedText": {
+                "$ref": "#/$defs/recognizedText"
+              }
+            },
+            "allOf": [
               {
-                "$ref": "feedback-minimal.schema.json#/$defs/rectangle"
+                "if": {
+                  "properties": {
+                    "source": {
+                      "type": "null"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "recognizedText"
+                    ]
+                  }
+                }
               }
             ]
           },
-          "movements": {
-            "type": "array",
-            "maxItems": 8704,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "to"
-              ],
-              "properties": {
-                "to": {
-                  "$ref": "feedback-minimal.schema.json#/$defs/rectangle"
-                }
-              }
-            }
-          },
-          "annotations": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/text"
-                },
-                {
-                  "$ref": "#/$defs/numberedAnnotation"
-                }
-              ]
-            }
-          },
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256,
-            "pattern": "\\S"
-          },
-          "recognizedText": {
-            "$ref": "#/$defs/recognizedText"
-          }
-        },
-        "allOf": [
           {
-            "if": {
-              "properties": {
-                "source": {
-                  "type": "null"
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "movements",
+              "annotations",
+              "frameId",
+              "timestampMs"
+            ],
+            "properties": {
+              "movements": {
+                "type": "array",
+                "maxItems": 8704,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "to"
+                  ],
+                  "properties": {
+                    "to": {
+                      "$ref": "urn:edithere:feedback-minimal:3#/$defs/rectangle"
+                    }
+                  }
                 }
               },
-              "required": [
-                "source"
-              ]
-            },
-            "then": {
-              "not": {
-                "required": [
-                  "recognizedText"
+              "annotations": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "urn:edithere:feedback-minimal:3#/$defs/text"
+                    },
+                    {
+                      "$ref": "urn:edithere:feedback-minimal:3#/$defs/numberedAnnotation"
+                    }
+                  ]
+                }
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "\\S",
+                "description": "Unique within this feedback file. Not a cross-round component identity."
+              },
+              "recognizedText": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/recognizedText"
+              },
+              "kind": {
+                "enum": [
+                  "region",
+                  "point",
+                  "global"
                 ]
+              },
+              "source": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/rectangle"
+              },
+              "point": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/point"
+              },
+              "result": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/movementResult"
+              },
+              "frameId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "timestampMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "region"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "source"
+                  ],
+                  "not": {
+                    "required": [
+                      "point"
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "point"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "point"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "movements": {
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "global"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "point"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "movements": {
+                            "minItems": 1
+                          }
+                        }
+                      },
+                      {
+                        "required": [
+                          "recognizedText"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "movements": {
+                      "minItems": 1
+                    }
+                  },
+                  "required": [
+                    "movements"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "result"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "movements": {
+                      "maxItems": 0
+                    }
+                  },
+                  "required": [
+                    "movements"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "result"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         ]
       }

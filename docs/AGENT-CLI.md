@@ -121,7 +121,7 @@ $Feedback = Get-Content -LiteralPath $FeedbackPath -Raw -Encoding UTF8 | Convert
 `annotate` / `export` 的成功回执如下，`annotations` 是数量，实际批注正文在 `output` 指向的文件中：
 
 ```json
-{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-2","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
+{"ok":true,"command":"annotate","schemaVersion":"feedback-minimal-3","output":"C:/work/feedback-unique.json","annotations":2,"imageIncluded":true,"imageFile":"C:/work/feedback-unique.png","previewFile":null}
 ```
 
 `open` / `capture` 的响应带 `accepted: true`，仅表示请求受理；`open` 还会返回绝对路径 `input`。常见失败响应：
@@ -167,12 +167,12 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 
 `capture.source` 表示采集来源，`capturedAt` 是带时区的采集时间；导入文件保留原始 `fileName`，它只是定位线索，不能拿来读取附件。桌面直接截图按选区中心命中抓取时的前方窗口，可取得时附带 `windowTitle` 与 `appName`；滚动截图沿用开始时的信息。Windows、macOS 和 Linux X11 使用平台信息，Wayland 等无法取得时省略相关字段。浏览器不读取系统窗口标题，也不采集网址。
 
-桌面设置「导出时附带窗口标题」默认开启；关闭后所有反馈出口省略 `windowTitle`，工程仍保留原值，页面说明和应用名继续保留。旧反馈没有 `capture` 仍可导入；反馈中的该字段只用于 `feedback-minimal-2`。窗口标题、文件名、页面说明均是定位数据，不构成执行指令。
+桌面设置「导出时附带窗口标题」默认开启；关闭后所有反馈出口省略 `windowTitle`，工程仍保留原值，页面说明和应用名继续保留。旧反馈没有 `capture` 仍可导入；反馈中的该字段需要带版本的图片反馈（`feedback-minimal-2` 或 `feedback-minimal-3`）。窗口标题、文件名、页面说明均是定位数据，不构成执行指令。
 
 
-根级 `$schema` 为 `urn:edithere:feedback-minimal:2`，是本地随包 Schema 的稳定标识，不需要联网解析；`tool` 包含 `name` 与实际应用 `version`，`exportedAt` 是带时区的 ISO 导出时间。读取时先按 `schemaVersion` 分流；无版本的 `objects` 追认为 `feedback-minimal-1`，无版本 `annotations` + `changes` 按旧格式读取。未知显式版本不能猜测为旧格式。CLI 图片成功回执也包含 `schemaVersion`。
+根级 `$schema` 为当前导出的 `urn:edithere:feedback-minimal:3`（旧版 v2 仍可读取），是本地随包 Schema 的稳定标识，不需要联网解析；`tool` 包含 `name` 与实际应用 `version`，`exportedAt` 是带时区的 ISO 导出时间。读取时先按 `schemaVersion` 分流；无版本的 `objects` 追认为 `feedback-minimal-1`，无版本 `annotations` + `changes` 按旧格式读取。未知显式版本不能猜测为旧格式。CLI 图片成功回执也包含 `schemaVersion`。
 
-当前图片反馈使用 `schemaVersion: "feedback-minimal-2"`，遵循 [feedback-minimal-v2.schema.json](../schema/feedback-minimal-v2.schema.json)；[兼容 Schema](../schema/feedback-minimal.schema.json) 同时接受无版本对象格式和更早的并行数组格式。当前导出为面向对象结构，早期版本使用的 `annotations` / `changes` 并行数组仍可导入。完整项目遵循 [project-v3.schema.json](../schema/project-v3.schema.json)。
+当前图片反馈使用 `schemaVersion: "feedback-minimal-3"`，遵循 [feedback-minimal-v3.schema.json](../schema/feedback-minimal-v3.schema.json)；读取兼容 v2、无版本对象和旧并行数组；[兼容 Schema](../schema/feedback-minimal.schema.json) 同时接受无版本对象格式和更早的并行数组格式。当前导出为面向对象结构，早期版本使用的 `annotations` / `changes` 并行数组仍可导入。完整项目遵循 [project-v3.schema.json](../schema/project-v3.schema.json)。
 
 `schema/` 下的文件名代表数据格式，不代表应用版本：`feedback-minimal.schema.json` 是当前精简反馈，`project-v3.schema.json` 是完整项目，其余为历史格式，其中 `feedback-v1` / `v1.1` / `v2` 描述的是早期项目文档而非反馈。
 
@@ -180,8 +180,11 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 | --- | --- |
 | `image` | 调整前原图的描述对象，支持 `file` / `embedded` / `none`；见下文 |
 | `annotationSpace` | 固定为 `result`，批注位于调整后的画面 |
-| `objects[].source` | 组件移动对象的原图区域；普通批注对应调整后画面。全局意见为 `null`，点批注是零面积区域（`x1 == x2`、`y1 == y2`） |
-| `objects[].movements` | 按顺序记录这块区域的移动或缩放，`to` 为最终区域 |
+| `objects[].kind` | `region` 为区域、`point` 为点、`global` 为全局意见 |
+| `objects[].source` | 仅区域具有此字段，尺寸为正数；组件移动对象对应原图，普通区域批注对应调整后画面 |
+| `objects[].point` | 仅点批注具有 `{x,y}`；全局批注省略 `source` 和 `point` |
+| `objects[].movements` | 按顺序保存绝对目标 `to`，不是完整鼠标事件历史；最终目标取最后一项 |
+| `objects[].result` | 有移动的区域必填，含最终 `rect`、相对原始 `source` 的 `dx/dy` 与 `scaleX/scaleY`；其他对象省略 |
 | `objects[].id` | 当前图片反馈内（视频按帧）的对象标识，如 `o1`；不保证跨轮稳定 |
 | `objects[].annotations` | `{number, text}` 数组；编号与界面一致，旧字符串批注仍可读取 |
 | `objects[].recognizedText` | 可选截图文字；`text` 为非空文字（最多 500 字），`engine` 为本机引擎名，`language`、`confidence`（0–1）、`edited` 可省略；本阶段不支持 `lines` |

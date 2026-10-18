@@ -10,7 +10,7 @@ test('capture describes imports without requiring page identification, paths or 
   for(const source of ['screen','file','clipboard','demo','scroll','history','pin','drop','video'])assert.deepEqual(F.validateCapture({source,capturedAt:capture.capturedAt}),{source,capturedAt:capture.capturedAt});
   const complete={...capture,windowTitle:'',appName:'游戏',fileName:'C:标题'};assert.equal(F.validateCapture(complete),complete);
   assert.equal(F.validateCapture({...capture,page:' 游戏主页 '}).page,' 游戏主页 ');
-  for(const mode of ['file','embedded','none']){const value=F.exportImage({...document,capture},mode);assert.equal(value.schemaVersion,'feedback-minimal-2');assert.deepEqual(value.capture,capture);assert.deepEqual(F.normalizeImage(value).capture,capture);assert.deepEqual(JSON.parse(F.preview(value)).capture,capture);}
+  for(const mode of ['file','embedded','none']){const value=F.exportImage({...document,capture},mode);assert.equal(value.schemaVersion,'feedback-minimal-3');assert.deepEqual(value.capture,capture);assert.deepEqual(F.normalizeImage(value).capture,capture);assert.deepEqual(JSON.parse(F.preview(value)).capture,capture);}
   assert.equal(F.normalizeImage(F.exportImage(document)).capture,undefined);assert.deepEqual(F.normalizeImage({objects:[]}),{annotationSpace:'result',objects:[]});assert.throws(()=>F.normalizeImage({objects:[],capture}),/requires feedback-minimal-2/);
 });
 

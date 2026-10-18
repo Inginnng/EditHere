@@ -613,17 +613,18 @@ class LayoutTests : public QObject {
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
         QCOMPARE(objects[0].toObject(),
-                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o1"}, {"kind", "region"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({50, 50, 90, 60})}}}},
+                              {"result", QJsonObject{{"rect", rectJson({50, 50, 90, 60})}, {"dx", 40}, {"dy", 40}, {"scaleX", 1.5}, {"scaleY", 1.5}}},
                               {"annotations", QJsonArray{}}}));
-        // 点批注：(20,20) 处的 "加大标题"，源区域为零尺寸。
+        // 点批注：(20,20) 处的 "加大标题"。
         QCOMPARE(objects[1].toObject(),
-                 (QJsonObject{{"id", "o2"}, {"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
+                 (QJsonObject{{"id", "o2"}, {"kind", "point"}, {"point", QJsonObject{{"x", 20}, {"y", 20}}},
                               {"movements", QJsonArray{}},
                               {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", "加大标题"}}}}}));
         // 矩形批注：(10,10,60x40) 处的 "表格右移"。
         QCOMPARE(objects[2].toObject(),
-                 (QJsonObject{{"id", "o3"}, {"source", rectJson({10, 10, 60, 40})},
+                 (QJsonObject{{"id", "o3"}, {"kind", "region"}, {"source", rectJson({10, 10, 60, 40})},
                               {"movements", QJsonArray{}},
                               {"annotations", QJsonArray{QJsonObject{{"number", 2}, {"text", "表格右移"}}}}}));
         const auto compact = serializeFeedback(document);
@@ -647,9 +648,7 @@ class LayoutTests : public QObject {
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
             // Unversioned feedback also imports without the optional coordinate tag.
-            auto notag = feedback;
-            for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
-                notag.remove(field);
+            auto notag = unversionedLegacyFeedback(feedback);
             notag.remove("annotationSpace");
             notag.remove("image");
             notag.remove("capture");
@@ -699,6 +698,17 @@ class LayoutTests : public QObject {
         badObject = badObjects[0].toObject();
         badObject["movements"] = QJsonArray{QJsonObject{{"to", "not-an-object"}}};
         badObjects[0] = badObject;
+        invalid["objects"] = badObjects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
+        // v3 point coordinates are integer pixel positions; importing a
+        // fractional value must not silently round it into a different point.
+        invalid = feedback;
+        badObjects = invalid["objects"].toArray();
+        badObject = badObjects[1].toObject();
+        auto badPoint = badObject["point"].toObject();
+        badPoint["x"] = 20.5;
+        badObject["point"] = badPoint;
+        badObjects[1] = badObject;
         invalid["objects"] = badObjects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
     }
@@ -868,10 +878,12 @@ class LayoutTests : public QObject {
         const auto feedbackObjects = feedback["objects"].toArray();
         QCOMPARE(feedbackObjects.size(), 3);
         QCOMPARE(feedbackObjects[0].toObject(),
-                 (QJsonObject{{"id", "o1"}, {"source", rectJson({10, 10, 30, 20})},
+                 (QJsonObject{{"id", "o1"}, {"kind", "region"}, {"source", rectJson({10, 10, 30, 20})},
                               {"movements", QJsonArray{QJsonObject{{"to", rectJson({90, 70, 30, 20})}}}},
+                              {"result", QJsonObject{{"rect", rectJson({90, 70, 30, 20})}, {"dx", 80}, {"dy", 60}, {"scaleX", 1}, {"scaleY", 1}}},
                               {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", movement.comment}}}}}));
-        QCOMPARE(feedbackObjects[1].toObject()["source"], QJsonValue(QJsonValue::Null));
+        QCOMPARE(feedbackObjects[1].toObject()["kind"].toString(), QString("global"));
+        QVERIFY(!feedbackObjects[1].toObject().contains("source"));
         QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
@@ -930,10 +942,9 @@ class LayoutTests : public QObject {
         rectangle.comment = "旧矩形";
         document.notes = {point, rectangle};
         auto legacy = exportFeedback(document);
+        legacy = unversionedLegacyFeedback(legacy);
         legacy.remove("image");
         legacy.remove("capture");
-        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
-            legacy.remove(field);
         legacy.remove("annotationSpace");
         auto restored = loadFeedback(legacy, document.image);
         QCOMPARE(restored.notes[0].point, QPoint(100, 80));

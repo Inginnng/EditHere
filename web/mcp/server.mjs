@@ -116,7 +116,7 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
     // by the unchanged strict native validator below.
     const extension={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(session.image).mimeType];
     const base=path.basename(session.output,path.extname(session.output)),file=base+'.'+extension;
-    let complete = feedback && typeof feedback === 'object' && !Array.isArray(feedback) && !Object.hasOwn(feedback, 'image') ? {...feedback, image:feedback.schemaVersion==='feedback-minimal-2'?imageFormat.descriptor(session.image,session.imageMode??'file',file,{preview:session.preview?base+'.annotated.jpg':undefined}):session.image} : feedback;
+    let complete = feedback && typeof feedback === 'object' && !Array.isArray(feedback) && !Object.hasOwn(feedback, 'image') ? {...feedback, image:['feedback-minimal-2','feedback-minimal-3'].includes(feedback.schemaVersion)?imageFormat.descriptor(session.image,session.imageMode??'file',file,{preview:session.preview?base+'.annotated.jpg':undefined}):session.image} : feedback;
     if(complete?.image?.mode==='embedded'&&!Object.hasOwn(complete.image,'dataUrl'))complete={...complete,image:{...complete.image,dataUrl:session.image}};
     return result(publicReceipt(sessions.submit(token, complete,previewDataUrl)));
   });
