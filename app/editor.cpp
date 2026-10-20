@@ -14,6 +14,7 @@
 #include "settings.h"
 #include "ui.h"
 #include "fonts.h"
+#include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -1166,8 +1167,16 @@ QString Editor::coords(const Note &n) const {
 void Editor::renderNotes() {
     if (renderingNotes_) return;
     renderingNotes_ = true;
+    const auto markers = doc_.layout ? movementMarkers(*doc_.layout, doc_.notes) : QVector<MovementMarker>{};
+    const auto orphanKey = [](const QRectF &source) {
+        return "__mv_" + QString::number(qint64(source.left())) + "_" + QString::number(qint64(source.top()));
+    };
     QSet<QString> retained;
     for (const auto &note : doc_.notes) retained.insert(note.id);
+    // A focus-out or OCR refresh can happen between a button press and release.
+    // Keep movement-only cards alive while their movement still exists.
+    for (const auto &marker : markers)
+        if (marker.noteIndex < 0) retained.insert(orphanKey(marker.source));
     for (auto it = noteCards_.begin(); it != noteCards_.end();) {
         if (!retained.contains(it.key())) {
             if (it.value()) { noteLayout_->removeWidget(it.value()); it.value()->hide(); it.value()->deleteLater(); }
@@ -1325,12 +1334,10 @@ void Editor::renderNotes() {
     }
     // Display movements without text annotations as orphan cards.
     if (doc_.layout) {
-        const auto markers = movementMarkers(*doc_.layout, doc_.notes);
         for (const auto &marker : markers) {
             if (marker.noteIndex >= 0)
                 continue; // already shown as a note card
-            const QString key = "__mv_" + QString::number(qint64(marker.source.left())) + "_"
-                                + QString::number(qint64(marker.source.top()));
+            const QString key = orphanKey(marker.source);
             QWidget *card = noteCards_.value(key);
             if (!card) {
                 auto frame = new QFrame(noteContainer_);
@@ -1616,7 +1623,15 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress &&
         static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
         auto card = qobject_cast<QWidget *>(object);
-        while (card && card->objectName() != "noteCard") card = card->parentWidget();
+        while (card && card->objectName() != "noteCard") {
+            // Let buttons and text editors receive their own mouse events.
+            // The card shortcut must not consume a delete press or text selection.
+            if (qobject_cast<QAbstractButton *>(card) || qobject_cast<QPlainTextEdit *>(card)) {
+                card = nullptr;
+                break;
+            }
+            card = card->parentWidget();
+        }
         if (card && card->property("movementSource").isValid()) {
             const auto source = card->property("movementSource").toRectF();
             const auto destination = card->property("movementDestination").toRectF();

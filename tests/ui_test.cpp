@@ -277,7 +277,8 @@ class UiTests : public QObject {
         const auto cards = editor.findChildren<QWidget *>("noteCard");
         QWidget *firstCard = nullptr;
         for (auto card : cards) if (card->property("noteId").toString() == first.id) firstCard = card;
-        QVERIFY(firstCard); auto clear = firstCard->findChild<QPushButton *>("clearRecognizedText"); QVERIFY(clear); clear->click();
+        QVERIFY(firstCard); auto clear = firstCard->findChild<QPushButton *>("clearRecognizedText"); QVERIFY(clear);
+        QTest::mouseClick(clear, Qt::LeftButton);
         feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
         QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("ocrtext"));
         for (const auto &note : editor.document().notes) QCOMPARE(note.recognizedText, (QJsonObject{{"text", ""}, {"edited", true}}));
@@ -1983,11 +1984,15 @@ class UiTests : public QObject {
     }
     void deletingMovementRestoresLayoutAndSupportsHistory_data() {
         QTest::addColumn<bool>("withText");
-        QTest::newRow("empty movement") << false;
-        QTest::newRow("written movement") << true;
+        QTest::addColumn<bool>("focused");
+        QTest::newRow("empty movement") << false << false;
+        QTest::newRow("written movement") << true << false;
+        QTest::newRow("empty movement while editing") << false << true;
+        QTest::newRow("written movement while editing") << true << true;
     }
     void deletingMovementRestoresLayoutAndSupportsHistory() {
         QFETCH(bool, withText);
+        QFETCH(bool, focused);
         Editor editor;
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), document.candidates);
@@ -2017,10 +2022,23 @@ class UiTests : public QObject {
         QCOMPARE(imported.notes[1].comment.isEmpty(), !withText);
         const auto movedLayout = editor.document().layout;
         const auto movedNotes = editor.document().notes;
+        QTest::qWait(20); // Aim after the initial show/resize has laid out the visible buttons.
         auto card = editor.findChild<QWidget *>("noteText_" + movementId)->parentWidget();
         QPushButton *remove = nullptr;
         for (auto button : card->findChildren<QPushButton *>()) if (button->toolTip() == "删除批注") remove = button;
-        QVERIFY(remove); remove->click();
+        QVERIFY(remove);
+        if (focused) {
+            auto input = editor.findChild<QPlainTextEdit *>("noteText_" + movementId);
+            input->setFocus(); QTRY_VERIFY(input->hasFocus());
+        }
+        QPointer<QPushButton> heldButton = remove;
+        QSignalSpy clicks(remove, &QPushButton::clicked);
+        const QPoint pressedAt = remove->mapToGlobal(remove->rect().center());
+        QTest::mousePress(remove, Qt::LeftButton, Qt::NoModifier, remove->mapFromGlobal(pressedAt));
+        QTest::qWait(25); // Focus-out and layout updates can run before release.
+        QVERIFY(heldButton); QVERIFY(heldButton->isDown());
+        QTest::mouseRelease(heldButton, Qt::LeftButton, Qt::NoModifier, heldButton->mapFromGlobal(pressedAt));
+        QCOMPARE(clicks.size(), 1);
         QCOMPARE(editor.document().notes, document.notes);
         QCOMPARE(renderLayout(editor.document().image, *editor.document().layout).convertToFormat(QImage::Format_ARGB32), document.image);
         QVERIFY(movementMarkers(*editor.document().layout, editor.document().notes).isEmpty());
@@ -2043,13 +2061,47 @@ class UiTests : public QObject {
         QVERIFY(card);
         QPushButton *remove = nullptr;
         for (auto button : card->findChildren<QPushButton *>()) if (button->toolTip() == "删除批注") remove = button;
-        QVERIFY(remove); remove->click();
+        QVERIFY(remove); QTest::mouseClick(remove, Qt::LeftButton);
         QVERIFY(editor.document().notes.isEmpty());
         QCOMPARE(renderLayout(editor.document().image, *editor.document().layout).convertToFormat(QImage::Format_ARGB32), document.image);
         QVERIFY(exportFeedback(editor.document())["objects"].toArray().isEmpty());
         toolButton(editor, "撤销")->click();
         QCOMPARE(editor.document().layout, document.layout);
         QVERIFY(editor.document().notes.isEmpty());
+    }
+    void deletingOrphanMovementWhileAnotherNoteIsBeingEdited() {
+        Editor editor; auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        const auto group = document.layout->groups.first().id;
+        transformLayoutGroup(*document.layout, group, {440, 60, 180, 135});
+        Note ordinary; ordinary.isGlobal = true; ordinary.comment = "先前的意见";
+        document.notes = {ordinary};
+        editor.setDocument(document); editor.resize(1240, 820);
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + ordinary.id); QVERIFY(input);
+        input->setFocus(); QTRY_VERIFY(input->hasFocus());
+        input->setPlainText("刚刚修改的意见");
+        QCOMPARE(editor.document().notes.first().comment, QString("刚刚修改的意见"));
+        QWidget *card = nullptr;
+        for (auto candidate : editor.findChildren<QWidget *>("noteCard"))
+            if (candidate->property("orphanMovement").toBool() && candidate->isVisible()) card = candidate;
+        QVERIFY(card);
+        QPushButton *remove = nullptr;
+        for (auto button : card->findChildren<QPushButton *>()) if (button->toolTip() == "删除批注") remove = button;
+        QVERIFY(remove);
+        QPointer<QPushButton> heldButton = remove;
+        QSignalSpy clicks(remove, &QPushButton::clicked);
+        const QPoint pressedAt = remove->mapToGlobal(remove->rect().center());
+        QTest::mousePress(remove, Qt::LeftButton, Qt::NoModifier, remove->mapFromGlobal(pressedAt));
+        QTest::qWait(25);
+        QVERIFY(heldButton); QVERIFY(heldButton->isDown());
+        QTest::mouseRelease(heldButton, Qt::LeftButton, Qt::NoModifier, heldButton->mapFromGlobal(pressedAt));
+        QCOMPARE(clicks.size(), 1);
+        QCOMPARE(editor.document().notes.size(), 1);
+        QCOMPARE(editor.document().notes.first().comment, QString("刚刚修改的意见"));
+        QCOMPARE(renderLayout(editor.document().image, *editor.document().layout).convertToFormat(QImage::Format_ARGB32), document.image);
+        toolButton(editor, "撤销")->click();
+        QCOMPARE(editor.document().layout, document.layout);
+        QCOMPARE(editor.document().notes.first().comment, QString("刚刚修改的意见"));
     }
     void emptyMovementAnnotationFollowsItsBlock() {
         Editor editor;
