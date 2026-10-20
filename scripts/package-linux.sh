@@ -80,7 +80,8 @@ export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so;libqoff
 export VERSION="$version" ARCH=x86_64 OUTPUT="EditHere-linux-x86_64.AppImage"
 export LDAI_RUNTIME_FILE="$project_root/.tools/linuxdeploy/runtime-x86_64"
 [[ -f "$LDAI_RUNTIME_FILE" ]] || { echo 'Run scripts/fetch-linuxdeploy.py first' >&2; exit 1; }
-echo '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074 '"$LDAI_RUNTIME_FILE" | sha256sum --check --status
+# Official AppImage/type2-runtime release 20251108; must match fetch-linuxdeploy.py.
+echo '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d '"$LDAI_RUNTIME_FILE" | sha256sum --check --status
 plugin_directory="$(dirname "$LINUXDEPLOY_PLUGIN_QT")"
 export PATH="$plugin_directory:$QT_ROOT/bin:$PATH"
 cd "$output"
