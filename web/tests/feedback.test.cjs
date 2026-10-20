@@ -8,7 +8,7 @@ const version = /project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/.exec(fs.rea
 const exportedAt = '2026-10-16T16:30:00+08:00';
 const metadata = {$schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2', tool:{name:'EditHere', version}, exportedAt};
 const rectangle = (x1, y1, x2, y2) => ({x1, y1, x2, y2});
-const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+const image = require('./image-fixture.cjs').pngData(320,180);
 const imageDescriptor=mode=>feedback.imageFormat.descriptor(image,mode,'feedback.png');
 const source = rectangle(10, 10, 70, 50);
 const destination = rectangle(50, 50, 140, 110);
@@ -20,9 +20,9 @@ test('native minimalFeedbackRoundTrips fixture keeps movement and independent re
     notes:[{source:rectangle(20, 20, 20, 20), text:'加大标题'}, {source, text:'表格右移'}]
   }, false, exportedAt);
   assert.deepEqual(feedback.legacyImage(actual), {...metadata, annotationSpace:'result', image:imageDescriptor('none'), objects:[
-    {id:'o1', source, movements:[{to:destination}], annotations:[]},
-    {id:'o2', source:rectangle(20, 20, 20, 20), movements:[], annotations:[{number:1,text:'加大标题'}]},
-    {id:'o3', source, movements:[], annotations:[{number:2,text:'表格右移'}]}
+    {id:'o1', source:rectangle(20, 20, 20, 20), movements:[], annotations:[{number:1,text:'加大标题'}]},
+    {id:'o2', source, movements:[], annotations:[{number:2,text:'表格右移'}]},
+    {id:'o3', source, movements:[{to:destination}], annotations:[]}
   ]});
 });
 
@@ -39,7 +39,7 @@ test('native movementSource notes merge with their exact source without exportin
     ]
   });
   assert.deepEqual(actual.objects.map(feedback.legacyObject), [
-    {id:'o1', source, movements:[{to:destination}, {to:rectangle(60, 60, 150, 120)}], annotations:[{number:2,text:'保持这个位置，视觉更轻盈'}]},
+    {id:'o1', source, movements:[{to:rectangle(60, 60, 150, 120)}], annotations:[{number:2,text:'保持这个位置，视觉更轻盈'}]},
     {id:'o2', source, movements:[], annotations:[{number:3,text:'独立框批注'}]},
     {id:'o3', source:null, movements:[], annotations:[{number:4,text:'整体采用杂志风格'}]}
   ]);
@@ -74,17 +74,19 @@ test('native returning home drops movement while retaining its text on the origi
   assert.deepEqual(actual.objects.map(feedback.legacyObject), [{id:'o1', source, movements:[], annotations:[{number:1,text:'回到原位后保留'}]}]);
 });
 
-test('native fractional sources remain distinct even when nearly equal', () => {
-  // tests/layout_test.cpp feedbackKeepsDistinctFractionalSourceRegions.
+test('native fractional sources that round to the same pixels merge their absolute trajectory', () => {
+  // tests/layout_test.cpp feedbackMergesSourcesThatRoundToTheSamePixels.
   const actual = feedback.exportImage({image,
     movements:[
       {source:rectangle(10.000001, 10, 30.000001, 30), destination:rectangle(50, 30, 70, 50)},
       {source:rectangle(10.000002, 10, 30.000002, 30), destination:rectangle(80, 50, 100, 70)}
     ], notes:[]
   }, false);
-  assert.equal(actual.objects.length, 2);
-  assert.equal(actual.objects[0].source.x1, 10.000001);
-  assert.equal(actual.objects[1].source.x1, 10.000002);
+  assert.equal(actual.objects.length, 1);
+  assert.equal(actual.objects[0].source.x1, 10);
+  assert.equal(Object.hasOwn(actual.objects[0],'movements'),false);
+  assert.deepEqual(actual.objects[0].movement,{rect:rectangle(80,50,100,70),dx:70,dy:40});
+  feedback.normalizeImage(actual);
 });
 
 test('native compact export and folded image preview carry separate complete bytes', () => {
@@ -126,7 +128,7 @@ test('native video fixtures keep microseconds and chronological frame/image refe
   assert.equal(actual.frames[2].feedback.objects[0].annotations.length, 0);
   assert.equal(feedback.serialize(actual).split(image).length - 1, 3, 'one original per frame, none in the root index');
   assert(!feedback.preview(actual).includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'));
-  assert(feedback.serialize(actual).includes('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'));
+  assert(feedback.serialize(actual).includes(image));
 });
 
 test('versioned image metadata uses the actual product build and remains valid without image encoding', () => {
@@ -189,7 +191,7 @@ test('annotation numbers follow original note order across object grouping and o
   ]});
   assert.deepEqual(actual.objects.map(object=>object.id),['o1','o2','o3','o4']);
   assert.deepEqual(actual.objects.flatMap(object=>object.annotations),[
-    {number:4,text:'第四条是移动'}, {number:1,text:'先写全局'}, {number:2,text:'再写点'}, {number:5,text:'第五条是区域'}
+    {number:1,text:'先写全局'}, {number:2,text:'再写点'}, {number:4,text:'第四条是移动'}, {number:5,text:'第五条是区域'}
   ]);
   assert.deepEqual(feedback.annotationEntries(actual.objects).sort((a,b)=>a.number-b.number).map(({number,text})=>({number,text})),[
     {number:1,text:'先写全局'}, {number:2,text:'再写点'}, {number:4,text:'第四条是移动'}, {number:5,text:'第五条是区域'}
@@ -220,15 +222,16 @@ test('recognized text stays optional screenshot data through region, point and m
     {source:null,text:'整体留白'}
   ]};
   const value=feedback.exportImage(document,true,exportedAt);
-  assert.deepEqual(value.objects[0].recognizedText,recognizedText);
+  assert.equal(value.objects[0].ocrtext,recognizedText.text);
+  assert(value.objects.every(object=>!Object.hasOwn(object,'recognizedText')));
   assert.deepEqual(value.objects[0].annotations,[],'OCR does not become a user annotation');
-  assert.equal(value.objects[1].recognizedText.text,'标题');
-  assert.equal(Object.hasOwn(value.objects[2],'recognizedText'),false);
+  assert.equal(value.objects[1].ocrtext,'标题');
+  assert.equal(Object.hasOwn(value.objects[2],'ocrtext'),false);
   assert.deepEqual(feedback.normalizeImage(value),value);
   assert.equal(feedback.summary(value).recognizedTexts,2);
   assert.deepEqual(JSON.parse(feedback.preview(value)).objects,value.objects);
   const disabled=feedback.exportImage({...document,includeRecognizedText:false},true,exportedAt);
-  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')));
+  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')&&!Object.hasOwn(object,'ocrtext')));
   assert.equal(document.notes[0].recognizedText.text,'保存按钮','export preference never destroys the editable project data');
 });
 
@@ -258,6 +261,7 @@ test('OCR requires v2 and a local target; deleting OCR omits metadata without ch
   assert.throws(()=>feedback.normalizeImage(global),/Global/);
   const deleted=feedback.exportImage({image,movements:[],notes:[{source,text:'变蓝',recognizedText:{text:'',edited:true}}]},true,exportedAt);
   assert.equal(Object.hasOwn(deleted.objects[0],'recognizedText'),false);
+  assert.equal(Object.hasOwn(deleted.objects[0],'ocrtext'),false);
   assert.deepEqual(deleted.objects[0].annotations,[{number:1,text:'变蓝'}]);
 });
 
@@ -265,15 +269,18 @@ test('video OCR agrees between the root index and frame, and disabled export omi
   const recognizedText={text:'导出',engine:'windows-ocr',language:'zh-Hans'};
   const document={id:'f1',timestampUs:100000,width:200,height:100,image,movements:[],notes:[{source,text:'变蓝',recognizedText}]};
   const value=feedback.exportVideo({source:'source.mp4',durationMs:1000,frames:[document]},true,exportedAt);
-  assert.deepEqual(value.objects[0].recognizedText,value.frames[0].feedback.objects[0].recognizedText);
+  assert.equal(value.objects[0].ocrtext,'导出');
+  assert.equal(value.objects[0].ocrtext,value.frames[0].feedback.objects[0].ocrtext);
   feedback.validateVideoRecognitionIndex(value);
-  const reordered=structuredClone(value);reordered.objects[0].recognizedText={language:'zh-Hans',engine:'windows-ocr',text:'导出'};
+  const reordered=structuredClone(value);
+  for(const object of [...reordered.objects,...reordered.frames[0].feedback.objects]) {object.recognizedText={...recognizedText};delete object.ocrtext;}
+  reordered.objects[0].recognizedText={language:'zh-Hans',engine:'windows-ocr',text:'导出'};
   feedback.validateVideoRecognitionIndex(reordered);
-  for(const mutate of [v=>delete v.objects[0].recognizedText,v=>v.objects[0].recognizedText.text='其他',v=>v.objects[0].frameId='wrong',v=>v.objects[0].timestampMs++]){
+  for(const mutate of [v=>delete v.objects[0].ocrtext,v=>v.objects[0].ocrtext='其他',v=>v.objects[0].frameId='wrong',v=>v.objects[0].timestampMs++]){
     const invalid=structuredClone(value);mutate(invalid);assert.throws(()=>feedback.validateVideoRecognitionIndex(invalid),/index/);
   }
   const disabled=feedback.exportVideo({source:'source.mp4',durationMs:1000,frames:[{...document,includeRecognizedText:false}]},true,exportedAt);
-  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')));
-  assert(disabled.frames.every(frame=>frame.feedback.objects.every(object=>!Object.hasOwn(object,'recognizedText'))));
+  assert(disabled.objects.every(object=>!Object.hasOwn(object,'recognizedText')&&!Object.hasOwn(object,'ocrtext')));
+  assert(disabled.frames.every(frame=>frame.feedback.objects.every(object=>!Object.hasOwn(object,'recognizedText')&&!Object.hasOwn(object,'ocrtext'))));
   feedback.validateVideoRecognitionIndex(disabled);
 });

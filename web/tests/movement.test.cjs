@@ -63,6 +63,7 @@ function appHarness() {
       },
       annotateSelection(text) { $('component-note').onclick(); $('note-text').value = text; $('note-form').onsubmit({ preventDefault() {} }); },
       reset() { $('reset-component').onclick(); },
+      removeNote(id) { deleteNote(id); },
       undo() { travelHistory('undo'); }, redo() { travelHistory('redo'); },
       state() { return clone({ layout: doc.layout, notes: doc.notes, raw: rawMovements(), markers: movementMarkers() }); },
       noteBounds(id) { return noteRect(doc.notes.find(note => note.id === id)); },
@@ -102,6 +103,46 @@ function groupPieces(value, id) {
   const members = new Set(value.groups.find(group => group.id === id).pieces);
   return value.pieces.filter(piece => members.has(piece.id));
 }
+
+test('importing single-movement JSON restores an empty movement between ordinary notes',async()=>{
+  const app=appHarness(),source=rect(10,10,30,30),destination=rect(60,20,100,30);
+  const value=feedback.exportImage({image,movements:[{source,destination}],notes:[
+    {source:null,text:'先写普通批注'}, {source:destination,movementSource:source,text:''}, {source:null,text:'后写普通批注'}
+  ]},true);
+  await app.importFeedback(value);
+  assert.deepEqual(app.state().notes.map(n=>n.text),['先写普通批注','','后写普通批注']);
+  assert.deepEqual(app.state().notes[1].movementSource,source);
+});
+
+test('deleting empty or written movement notes restores position and size in one undo step',()=>{
+  for(const text of ['', '恢复这条位移']) {
+    const app=appHarness(),{parent}=fixture(app);
+    app.select(parent);app.transform(rect(100,10,196,98));
+    if(text)app.annotate(parent,text);
+    const moved=app.state(),note=moved.notes.find(n=>n.movementSource);
+    app.removeNote(note.id);
+    const restored=app.state();
+    assert.deepEqual(layout.bounds(restored.layout,parent),rect(10,10,90,90));
+    assert.deepEqual(restored.notes,[]);assert.deepEqual(restored.markers,[]);
+    assert.deepEqual(app.feedback().objects,[]);
+    app.undo();assert.deepEqual(app.state(),moved);
+    app.redo();assert.deepEqual(app.state(),restored);
+  }
+});
+
+test('deleting a parent movement preserves an independently moved child and its opinion',()=>{
+  const app=appHarness(),{parent,child}=fixture(app);
+  app.select(parent);app.transform(rect(100,10,180,90));app.annotate(parent,'删除父位移');
+  app.select(child);app.transform(rect(20,10,60,90));app.annotate(child,'保留子位移');
+  const moved=app.state(),childPieces=groupPieces(moved.layout,child);
+  app.removeNote(moved.notes.find(n=>n.text==='删除父位移').id);
+  const restored=app.state();
+  assert.deepEqual(groupPieces(restored.layout,child),childPieces);
+  for(const piece of groupPieces(restored.layout,parent))assert.deepEqual(piece.to,piece.source);
+  assert.equal(restored.notes.filter(n=>n.text==='保留子位移').length,1);
+  assert.equal(restored.markers.length,1);
+  app.undo();assert.deepEqual(app.state(),moved);
+});
 
 test('native nested parent and child feedback imports and reexports the same original source frames and targets', async () => {
   const app = appHarness();

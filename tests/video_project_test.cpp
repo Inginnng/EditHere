@@ -172,13 +172,13 @@ class VideoProjectTests : public QObject {
         auto &note = project.frames[0].document.notes[0];
         note.recognizedText = {{"text", "Frame title"}, {"engine", "windows-ocr"}};
         const auto root = QJsonDocument::fromJson(serializeVideoFeedback(project, true)).object();
-        const auto indexed = root["objects"].toArray()[1].toObject()["recognizedText"].toObject();
-        QCOMPARE(indexed, note.recognizedText);
-        const auto nested = root["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject()["recognizedText"].toObject();
+        const auto indexed = root["objects"].toArray()[1].toObject()["ocrtext"].toString();
+        QCOMPARE(indexed, note.recognizedText["text"].toString());
+        const auto nested = root["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject()["ocrtext"].toString();
         QCOMPARE(nested, indexed);
         const auto omitted = QJsonDocument::fromJson(serializeVideoFeedback(project, true, false, false)).object();
-        QVERIFY(!omitted["objects"].toArray()[1].toObject().contains("recognizedText"));
-        QVERIFY(!omitted["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject().contains("recognizedText"));
+        QVERIFY(!omitted["objects"].toArray()[1].toObject().contains("ocrtext"));
+        QVERIFY(!omitted["frames"].toArray()[1].toObject()["feedback"].toObject()["objects"].toArray()[0].toObject().contains("ocrtext"));
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QDir().mkpath(folder);
@@ -278,10 +278,25 @@ class VideoProjectTests : public QObject {
         QCOMPARE(feedback["frames"].toArray().size(), 3);
         QCOMPARE(feedback["objects"].toArray().size(), 3);
         const auto last = feedback["frames"].toArray().last().toObject()["feedback"].toObject();
-        QCOMPARE(last["objects"].toArray()[0].toObject()["movements"].toArray().size(), 1);
+        QVERIFY(last["objects"].toArray()[0].toObject().contains("movement"));
         QCOMPARE(last["objects"].toArray()[0].toObject()["annotations"].toArray().size(), 0);
     }
 
+    void feedbackOmitsFramesContainingOnlyResizeJitter() {
+        auto project = sampleProject();
+        project.frames.clear();
+        auto document = frameDocument({});
+        document.layout = importLayoutSequences({{QRectF(10, 10, 200, 100), {QRectF(10.2, 10.2, 200.6, 99.7)}}}, document.image.size());
+        project.frames.append({100000, document});
+        QCOMPARE(projectRoot(project)["frames"].toArray().size(), 1); // Editable storage remains lossless.
+        const auto bundle = buildVideoFeedbackBundle(project);
+        const auto feedback = QJsonDocument::fromJson(bundle.json).object();
+        QVERIFY(feedback["frames"].toArray().isEmpty());
+        QVERIFY(feedback["objects"].toArray().isEmpty());
+        QVERIFY(bundle.files.isEmpty());
+        QCOMPARE(feedback["video"].toObject()["width"].toInt(), 0);
+        QCOMPARE(feedback["video"].toObject()["height"].toInt(), 0);
+    }
     void feedbackRoundTripUsesOneImageAndDoesNotDuplicateIndexNotes() {
         const auto project = sampleProject();
         QTemporaryDir directory;

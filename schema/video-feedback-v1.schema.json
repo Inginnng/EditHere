@@ -198,7 +198,6 @@
             "additionalProperties": false,
             "required": [
               "kind",
-              "movements",
               "annotations",
               "frameId",
               "timestampMs"
@@ -218,7 +217,9 @@
                       "$ref": "urn:edithere:feedback-minimal:3#/$defs/rectangle"
                     }
                   }
-                }
+                },
+                "description": "Absolute movement targets. Omitted when there are no movements; older empty arrays remain readable.",
+                "deprecated": true
               },
               "annotations": {
                 "type": "array",
@@ -241,7 +242,8 @@
                 "description": "Unique within this feedback file. Not a cross-round component identity."
               },
               "recognizedText": {
-                "$ref": "urn:edithere:feedback-minimal:3#/$defs/recognizedText"
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/recognizedText",
+                "deprecated": true
               },
               "kind": {
                 "enum": [
@@ -257,7 +259,8 @@
                 "$ref": "urn:edithere:feedback-minimal:3#/$defs/point"
               },
               "result": {
-                "$ref": "urn:edithere:feedback-minimal:3#/$defs/movementResult"
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/movementResult",
+                "deprecated": true
               },
               "frameId": {
                 "type": "string",
@@ -267,6 +270,13 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740
+              },
+              "ocrtext": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/ocrtext"
+              },
+              "movement": {
+                "$ref": "urn:edithere:feedback-minimal:3#/$defs/movementResult",
+                "description": "Final absolute target and displacement, stored once. Omitted when unchanged."
               }
             },
             "allOf": [
@@ -319,7 +329,10 @@
                           "movements": {
                             "minItems": 1
                           }
-                        }
+                        },
+                        "required": [
+                          "movements"
+                        ]
                       }
                     ]
                   }
@@ -354,11 +367,19 @@
                           "movements": {
                             "minItems": 1
                           }
-                        }
+                        },
+                        "required": [
+                          "movements"
+                        ]
                       },
                       {
                         "required": [
                           "recognizedText"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "ocrtext"
                         ]
                       }
                     ]
@@ -388,15 +409,48 @@
                     "movements": {
                       "maxItems": 0
                     }
-                  },
-                  "required": [
-                    "movements"
-                  ]
+                  }
                 },
                 "then": {
                   "not": {
                     "required": [
                       "result"
+                    ]
+                  }
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "ocrtext",
+                    "recognizedText"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "movement"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "kind": {
+                      "const": "region"
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "movements"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "result"
+                        ]
+                      }
                     ]
                   }
                 }

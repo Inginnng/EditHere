@@ -14,14 +14,13 @@
 #include "settings.h"
 #include "ui.h"
 #include "fonts.h"
+#include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QContextMenuEvent>
 #include <QDateTime>
-#include <QDataStream>
-#include <QCryptographicHash>
 #include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -492,8 +491,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         remember();
         for (auto &stored : doc_.notes)
             if (stored.id == n.id) {
-                if (!n.movementSource && (stored.isPoint != n.isPoint || stored.point != n.point || stored.rect != n.rect))
+                if (!n.movementSource && (stored.isPoint != n.isPoint || stored.point != n.point || stored.rect != n.rect)) {
                     n.recognizedText = {};
+                    recognizedRegions_.remove(n.id);
+                }
                 stored = n;
                 break;
             }
@@ -1166,8 +1167,16 @@ QString Editor::coords(const Note &n) const {
 void Editor::renderNotes() {
     if (renderingNotes_) return;
     renderingNotes_ = true;
+    const auto markers = doc_.layout ? movementMarkers(*doc_.layout, doc_.notes) : QVector<MovementMarker>{};
+    const auto orphanKey = [](const QRectF &source) {
+        return "__mv_" + QString::number(qint64(source.left())) + "_" + QString::number(qint64(source.top()));
+    };
     QSet<QString> retained;
     for (const auto &note : doc_.notes) retained.insert(note.id);
+    // A focus-out or OCR refresh can happen between a button press and release.
+    // Keep movement-only cards alive while their movement still exists.
+    for (const auto &marker : markers)
+        if (marker.noteIndex < 0) retained.insert(orphanKey(marker.source));
     for (auto it = noteCards_.begin(); it != noteCards_.end();) {
         if (!retained.contains(it.key())) {
             if (it.value()) { noteLayout_->removeWidget(it.value()); it.value()->hide(); it.value()->deleteLater(); }
@@ -1292,9 +1301,7 @@ void Editor::renderNotes() {
             });
             connect(edit, &QPushButton::clicked, this, [this,id=n.id] { focusNote(id); });
             connect(remove, &QPushButton::clicked, this, [this,id=n.id] {
-                finishNoteEdit(); remember();
-                doc_.notes.removeIf([&](const Note &note) { return note.id==id; });
-                canvas_->select({}); changed();
+                deleteNote(id);
             });
         }
         if (n.movementSource) {
@@ -1303,6 +1310,10 @@ void Editor::renderNotes() {
             card->setProperty("movementDestination", QRectF(n.rect));
             card->setCursor(Qt::PointingHandCursor);
             for (auto label : card->findChildren<QLabel *>()) label->installEventFilter(this);
+        } else {
+            card->setProperty("movementSource", QVariant());
+            card->setProperty("movementDestination", QVariant());
+            card->setCursor(Qt::ArrowCursor);
         }
         card->setProperty("selected", canvas_->selected().contains(n.id));
         card->style()->unpolish(card); card->style()->polish(card);
@@ -1323,12 +1334,10 @@ void Editor::renderNotes() {
     }
     // Display movements without text annotations as orphan cards.
     if (doc_.layout) {
-        const auto markers = movementMarkers(*doc_.layout, doc_.notes);
         for (const auto &marker : markers) {
             if (marker.noteIndex >= 0)
                 continue; // already shown as a note card
-            const QString key = "__mv_" + QString::number(qint64(marker.source.left())) + "_"
-                                + QString::number(qint64(marker.source.top()));
+            const QString key = orphanKey(marker.source);
             QWidget *card = noteCards_.value(key);
             if (!card) {
                 auto frame = new QFrame(noteContainer_);
@@ -1352,6 +1361,11 @@ void Editor::renderNotes() {
                 position->setObjectName("noteCoordinates");
                 position->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
                 row->addWidget(position, 1);
+                auto remove = iconButton("trash", tr("删除批注"), card);
+                remove->setFixedSize(24, 24); row->addWidget(remove);
+                connect(remove, &QPushButton::clicked, this, [this,card,key] {
+                    deleteNote(key, card->property("movementSource").toRectF());
+                });
                 l->addLayout(row);
                 auto text = mutedLabel(tr("点击此处为这次移动添加文字…"), card);
                 text->setWordWrap(true);
@@ -1475,11 +1489,6 @@ QByteArray Editor::recognitionKey(const Note &note) const {
     if (note.movementSource) {
         const auto r = *note.movementSource;
         value = {{"sourceX", r.x()}, {"sourceY", r.y()}, {"sourceW", r.width()}, {"sourceH", r.height()}};
-    } else if (!note.isGlobal && doc_.layout) {
-        QByteArray geometry;
-        QDataStream stream(&geometry, QIODevice::WriteOnly);
-        for (const auto &piece : doc_.layout->pieces) stream << piece.id << piece.source << piece.destination;
-        value.insert("layout", QString::fromLatin1(QCryptographicHash::hash(geometry, QCryptographicHash::Sha256).toHex()));
     }
     return QJsonDocument(value).toJson(QJsonDocument::Compact);
 }
@@ -1502,14 +1511,11 @@ void Editor::scheduleRegionRecognition() {
 void Editor::recognizeNextRegion() {
     if (!hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
     for (auto &note : doc_.notes) {
-        if (note.isGlobal || note.recognizedText.value("edited") == true) continue;
+        // OCR belongs to the selected screenshot content. Rearranging that
+        // content must preserve both saved text and an in-flight first result.
+        if (note.isGlobal || !note.recognizedText.isEmpty() || recognizedRegions_.contains(note.id)) continue;
         const auto key = recognitionKey(note);
-        if (recognizedRegions_.contains(note.id) && recognizedRegions_.value(note.id) == key) continue;
-        if (!recognizedRegions_.contains(note.id) && !note.recognizedText.isEmpty()) {
-            recognizedRegions_.insert(note.id, key); continue;
-        }
         recognizedRegions_.insert(note.id, key);
-        note.recognizedText = {};
         QImage picture;
         try { picture = noteRecognitionImage(doc_, note); }
         catch (const std::exception &) { continue; }
@@ -1522,7 +1528,8 @@ void Editor::recognizeNextRegion() {
             [self, generation, documentId, id, key](OcrResult result) {
                 if (!self || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
                 for (auto &current : self->doc_.notes) {
-                    if (current.id != id || current.recognizedText.value("edited") == true || self->recognitionKey(current) != key) continue;
+                    if (current.id != id || current.recognizedText.value("edited") == true ||
+                        !self->recognizedRegions_.contains(id) || self->recognizedRegions_.value(id) != key) continue;
                     QString text = result.text().trimmed().left(500);
                     if (!text.isEmpty() && text.back().isHighSurrogate()) text.chop(1);
                     if (result.ok && !text.isEmpty()) {
@@ -1616,7 +1623,15 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress &&
         static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
         auto card = qobject_cast<QWidget *>(object);
-        while (card && card->objectName() != "noteCard") card = card->parentWidget();
+        while (card && card->objectName() != "noteCard") {
+            // Let buttons and text editors receive their own mouse events.
+            // The card shortcut must not consume a delete press or text selection.
+            if (qobject_cast<QAbstractButton *>(card) || qobject_cast<QPlainTextEdit *>(card)) {
+                card = nullptr;
+                break;
+            }
+            card = card->parentWidget();
+        }
         if (card && card->property("movementSource").isValid()) {
             const auto source = card->property("movementSource").toRectF();
             const auto destination = card->property("movementDestination").toRectF();
@@ -1973,10 +1988,20 @@ void Editor::removeSelected() {
     const auto id = canvas_->selected();
     if (id.isEmpty())
         return;
+    deleteNote(id);
+}
+void Editor::deleteNote(const QString &id, std::optional<QRectF> movementSource) {
+    finishNoteEdit();
     remember();
-    doc_.notes.removeIf([&](const Note &n) { return n.id == id; });
+    if (movementSource) {
+        Note note; note.id = id; note.isPoint = false; note.movementSource = movementSource;
+        note.rect = movementSource->toAlignedRect(); doc_.notes.append(note);
+    }
+    removeNote(doc_, id);
+    if (layoutCanvas_ && doc_.layout) layoutCanvas_->setState(*doc_.layout);
     canvas_->select({});
     changed();
+    updateLayoutControls();
 }
 void Editor::copyImage() {
     finishNoteEdit();

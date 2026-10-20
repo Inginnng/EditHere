@@ -17,48 +17,86 @@
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
   const closeNumber = (actual, expected) => Number.isFinite(actual) && Math.abs(actual - expected) <= Math.max(1e-7, Math.abs(expected) * 1e-9);
-  function movementResult(source, rect) {
-    return {rect:rectangle(rect), dx:rect.x1-source.x1, dy:rect.y1-source.y1,
-      scaleX:(rect.x2-rect.x1)/(source.x2-source.x1), scaleY:(rect.y2-rect.y1)/(source.y2-source.y1)};
+  const feedbackScale = value => Math.max(.01, Math.floor(value * 100 + .5 + 1e-9) / 100);
+  function feedbackRectangle(rect, bounds) {
+    if (rect === null) return null;
+    if (rect.x1 === rect.x2 && rect.y1 === rect.y2) {
+      const x=Math.round(rect.x1),y=Math.round(rect.y1);
+      return {x1:x,y1:y,x2:x,y2:y};
+    }
+    const x1=Math.min(bounds.width-1,Math.max(0,Math.round(rect.x1)));
+    const y1=Math.min(bounds.height-1,Math.max(0,Math.round(rect.y1)));
+    return {x1,y1,x2:Math.min(bounds.width,Math.max(x1+1,Math.round(rect.x2))),
+      y2:Math.min(bounds.height,Math.max(y1+1,Math.round(rect.y2)))};
+  }
+  function feedbackDestination(original, source, destination, bounds) {
+    const rect=feedbackRectangle(destination,bounds);
+    for (const [start,end,limit] of [['x1','x2',bounds.width],['y1','y2',bounds.height]]) {
+      const size=source[end]-source[start];
+      if (feedbackScale((destination[end]-destination[start])/(original[end]-original[start]))===1 ||
+          feedbackScale((rect[end]-rect[start])/size)===1) {
+        rect[start]=Math.min(rect[start],limit-size);
+        rect[end]=rect[start]+size;
+      }
+    }
+    return rect;
+  }
+  function movementResult(source, rect, compact = true) {
+    const result={rect:rectangle(rect), dx:rect.x1-source.x1, dy:rect.y1-source.y1};
+    for (const [key,start,end] of [['scaleX','x1','x2'],['scaleY','y1','y2']]) {
+      const ratio=(rect[end]-rect[start])/(source[end]-source[start]);
+      const scale=compact?feedbackScale(ratio):ratio;
+      if (!compact || scale!==1) result[key]=scale;
+    }
+    return result;
   }
   function typedObject(object) {
-    const {source, ...value} = object;
+    const {source, movements = [], recognizedText, result, ...value} = object;
+    if (recognizedText) value.ocrtext = recognizedText.text;
     if (source === null) return {...value, kind:'global'};
     if (source.x1 === source.x2 && source.y1 === source.y2) {
       if (![source.x1, source.y1].every(value => Number.isFinite(value) && value >= 0 && value <= 32767 && Number.isInteger(value))) throw new Error('Invalid feedback point.');
       return {...value, kind:'point', point:{x:source.x1,y:source.y1}};
     }
     return {...value, kind:'region', source:rectangle(source),
-      ...(value.movements.length ? {result:movementResult(source,value.movements.at(-1).to)} : {})};
+      ...(movements.length ? {movement:movementResult(source,movements.at(-1).to)} : {})};
   }
   // Internal bridge to the established layout importer. Never write this shape
   // under a v3 version, and validate derived numbers before removing them.
   function legacyObject(object) {
     if (!record(object) || !Object.hasOwn(object,'kind')) return object;
-    const fields=['kind','movements','annotations',...['id','recognizedText'].filter(key=>Object.hasOwn(object,key))];
-    if (!Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object lists.');
+    const fields=['kind','annotations',...['id','recognizedText','ocrtext','movements','movement'].filter(key=>Object.hasOwn(object,key))];
+    if (Object.hasOwn(object,'ocrtext') && Object.hasOwn(object,'recognizedText')) throw new Error('Invalid recognized screenshot text fields.');
+    const singleMovement=Object.hasOwn(object,'movement');
+    if(singleMovement&&(!record(object.movement)||Object.hasOwn(object,'movements')||Object.hasOwn(object,'result'))) throw new Error('Invalid movement fields.');
+    const movements = singleMovement ? [{to:object.movement.rect}] : Object.hasOwn(object,'movements') ? object.movements : [];
+    if (!Array.isArray(movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object lists.');
     const coordinate=value=>Number.isFinite(value)&&value>=0&&value<=32767;
     const rect=value=>exactKeys(value,['x1','y1','x2','y2'])&&Object.values(value).every(coordinate)&&value.x2-value.x1>1e-7&&value.y2-value.y1>1e-7;
     if (object.kind==='region') {
       fields.push('source');
       if (!rect(object.source)) throw new Error('Invalid region source.');
-      for (const movement of object.movements) if (!exactKeys(movement,['to'])||!rect(movement.to)) throw new Error('Invalid movement target.');
-      if (object.movements.length) {
-        fields.push('result');
-        const expected=movementResult(object.source,object.movements.at(-1).to),actual=object.result;
-        if (!exactKeys(actual,['rect','dx','dy','scaleX','scaleY'])||!rect(actual.rect)||
+      for (const movement of movements) if (!exactKeys(movement,['to'])||!rect(movement.to)) throw new Error('Invalid movement target.');
+      if (movements.length) {
+        if(!singleMovement) fields.push('result');
+        const expected=movementResult(object.source,movements.at(-1).to,false),actual=singleMovement?object.movement:object.result;
+        if (!record(actual) || !exactKeys(actual,['rect','dx','dy',...['scaleX','scaleY'].filter(key=>Object.hasOwn(actual,key))])||!rect(actual.rect)||
             ['x1','y1','x2','y2'].some(key=>!closeNumber(actual.rect[key],expected.rect[key]))||
-            ['dx','dy','scaleX','scaleY'].some(key=>!closeNumber(actual[key],expected[key]))) throw new Error('Movement result does not match its final target.');
+            ['dx','dy'].some(key=>!closeNumber(actual[key],expected[key])) ||
+            ['scaleX','scaleY'].some(key=>Object.hasOwn(actual,key)
+              ? !closeNumber(actual[key],expected[key])&&!closeNumber(actual[key],feedbackScale(expected[key]))
+              : feedbackScale(expected[key])!==1)) throw new Error('Movement result does not match its final target.');
       }
     } else if (object.kind==='point') {
       fields.push('point');
       if (!exactKeys(object.point,['x','y'])||!Object.values(object.point).every(value=>coordinate(value)&&Number.isInteger(value))) throw new Error('Invalid feedback point.');
     } else if (object.kind!=='global') throw new Error('Invalid feedback kind.');
     if (!exactKeys(object,fields)) throw new Error('Invalid typed feedback object fields.');
-    if (object.kind!=='region'&&object.movements.length) throw new Error('Point and global feedback cannot move.');
-    if (object.kind==='global'&&Object.hasOwn(object,'recognizedText')) throw new Error('Global feedback cannot contain recognized screenshot text.');
-    const {kind,point,result,...value}=object;
-    return {...value,source:kind==='global'?null:kind==='point'?{x1:point.x,y1:point.y,x2:point.x,y2:point.y}:rectangle(value.source)};
+    if (object.kind!=='region'&&movements.length) throw new Error('Point and global feedback cannot move.');
+    if (object.kind==='global'&&(Object.hasOwn(object,'recognizedText')||Object.hasOwn(object,'ocrtext'))) throw new Error('Global feedback cannot contain recognized screenshot text.');
+    const {kind,point,result,movement,ocrtext,...value}=object;
+    if (Object.hasOwn(object,'ocrtext')) value.recognizedText = validateRecognizedText({text:ocrtext,engine:'imported'});
+    return {...value,movements,source:kind==='global'?null:kind==='point'?{x1:point.x,y1:point.y,x2:point.x,y2:point.y}:rectangle(value.source)};
   }
   function legacyImage(value) {
     const normalized=normalizeImage(value);
@@ -108,13 +146,13 @@
       return {};
     }
     if (![IMAGE_VERSION,'feedback-minimal-2'].includes(value.schemaVersion)) throw new Error('Unsupported image feedback version.');
-    if (value.$schema !== (value.schemaVersion===IMAGE_VERSION?IMAGE_SCHEMA:'urn:edithere:feedback-minimal:2') || !exactKeys(value.tool, ['name', 'version']) ||
+    if ((value.schemaVersion!==IMAGE_VERSION || Object.hasOwn(value,'$schema')) && value.$schema !== (value.schemaVersion===IMAGE_VERSION?IMAGE_SCHEMA:'urn:edithere:feedback-minimal:2') || !exactKeys(value.tool, ['name', 'version']) ||
         value.tool.name !== 'EditHere' ||
         typeof value.tool.version !== 'string' || !value.tool.version.trim() || value.tool.version.length > 100 ||
         !timestampWithZone(value.exportedAt)) {
       throw new Error('Invalid image feedback metadata.');
     }
-    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt, ...capture};
+    return {...(Object.hasOwn(value,'$schema') ? {$schema:value.$schema} : {}), schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt, ...capture};
   }
   // Screenshot text is evidence/data. It never becomes an annotation or an
   // executable instruction, and editing it does not invent a confidence score.
@@ -133,11 +171,11 @@
     const ids = new Set(), numbers = new Set(), entries = [];
     for (const object of objects) {
       const legacy=legacyObject(object);
-      if (!exactKeys(legacy, ['source', 'movements', 'annotations', ...(Object.hasOwn(object || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(object || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
-          !Array.isArray(object.movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object fields.');
-      if (Object.hasOwn(object, 'recognizedText')) {
+      if (!exactKeys(legacy, ['source', 'movements', 'annotations', ...(Object.hasOwn(legacy || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(legacy || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
+          !Array.isArray(legacy.movements) || !Array.isArray(legacy.annotations)) throw new Error('Invalid feedback object fields.');
+      if (Object.hasOwn(legacy, 'recognizedText')) {
         if (legacy.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
-        validateRecognizedText(object.recognizedText);
+        validateRecognizedText(legacy.recognizedText);
       }
       if (Object.hasOwn(object, 'id')) {
         if (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256 || ids.has(object.id)) throw new Error('Invalid or duplicate feedback object ID.');
@@ -175,7 +213,7 @@
     if (objectFormat) {
       if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
       if (value.schemaVersion===IMAGE_VERSION ? value.objects.some(object=>!record(object)||!Object.hasOwn(object,'kind')) : value.objects.some(object=>Object.hasOwn(object||{},'kind'))) throw new Error('Feedback object kinds require feedback-minimal-3.');
-      if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
+      if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText') || Object.hasOwn(object || {}, 'ocrtext'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
       annotationEntries(value.objects);
       return {...base, objects:value.objects};
     }
@@ -203,7 +241,8 @@
   function upgradeImage(value, exportedAt = new Date().toISOString()) {
     const normalized=normalizeImage(value);
     if (normalized.schemaVersion===IMAGE_VERSION) return normalized;
-    const upgraded={...normalized,$schema:IMAGE_SCHEMA,schemaVersion:IMAGE_VERSION,
+    const {$schema, ...data}=normalized;
+    const upgraded={...data,schemaVersion:IMAGE_VERSION,
       tool:normalized.tool||{name:'EditHere',version:productVersion({})},exportedAt:normalized.exportedAt||exportedAt,
       objects:normalized.objects.map(typedObject)};
     return normalizeImage(upgraded);
@@ -214,11 +253,19 @@
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
   function exportImage(document, mode = 'file', exportedAt = new Date().toISOString()) {
+    const image=imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile});
+    const bounds=image;
     const objects = [], bySource = new Map();
+    const destinations=new Map();
+    for(const movement of document.movements||[]) {
+      const source=feedbackRectangle(movement.source,bounds);
+      destinations.set(sourceKey(source),feedbackDestination(movement.source,source,movement.destination,bounds));
+    }
     function ensureEntry(source) {
-      const key = sourceKey(source);
+      const rounded=feedbackRectangle(source,bounds),key=sourceKey(rounded);
       if (!bySource.has(key)) {
-        const entry = {source:rectangle(source), movements:[], annotations:[]};
+        const target=destinations.get(key);
+        const entry = {source:rounded, annotations:[],...(target&&!sameRectangle(rounded,target)?{movement:movementResult(rounded,target)}:{})};
         bySource.set(key, entry);
         objects.push(entry);
       }
@@ -230,14 +277,6 @@
       if (recognized.text && entry.source !== null) entry.recognizedText = {...recognized};
       else delete entry.recognizedText;
     }
-    for (const movement of document.movements || []) {
-      ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
-    }
-    // The last absolute target is authoritative. A trajectory that returns to
-    // its source has no net movement and must not retain an earlier destination.
-    for (const entry of objects) {
-      if (entry.movements.length && sameRectangle(entry.source, entry.movements.at(-1).to)) entry.movements=[];
-    }
     for (const [index, note] of (document.notes || []).entries()) {
       const annotation = {number:index + 1, text:note.text};
       if (note.movementSource) {
@@ -246,28 +285,26 @@
         if (note.text.trim()) entry.annotations.push(annotation);
       } else {
         // Independent notes stay independent even when their rectangles match.
-        const entry = {source:rectangle(note.source), movements:[], annotations:[annotation]};
+        const entry = {source:rectangle(note.source), annotations:[annotation]};
         attachRecognition(entry, note); objects.push(entry);
       }
     }
-    const outputObjects=objects.filter(entry=>entry.movements.length||entry.annotations.length||Object.hasOwn(entry,'recognizedText'));
-    return {$schema:IMAGE_SCHEMA, schemaVersion:IMAGE_VERSION,
+    for(const movement of document.movements||[]) ensureEntry(movement.source);
+    for (const entry of objects) {
+      entry.source=feedbackRectangle(entry.source,bounds);
+    }
+    const outputObjects=objects.filter(entry=>entry.movement||entry.annotations.length||Object.hasOwn(entry,'recognizedText'));
+    return {schemaVersion:IMAGE_VERSION,
       tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
       ...(document.capture ? {capture:{...validateCapture(document.capture)}} : {}),
       annotationSpace:'result', objects:outputObjects.map((object, index) => typedObject({id:'o' + (index + 1), ...object})),
-      image:imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile})};
+      image};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
   function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
-    const hasNetMovement = movements => {
-      const lastBySource = new Map();
-      for (const movement of movements || []) lastBySource.set(sourceKey(movement.source), movement);
-      return [...lastBySource.values()].some(movement => !sameRectangle(movement.source, movement.destination));
-    };
-    const documents = project.frames.filter(document => document.notes.length ||
-      hasNetMovement(document.movements))
+    const documents = project.frames.filter(document => document.notes.length || document.movements?.length)
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
     const frames = documents.map(document => ({
       id:document.id,
@@ -275,7 +312,7 @@
       timestampUs:document.timestampUs,
       imageFile:document.imageFile||'frame-' + document.id + '.png',
       feedback:exportImage({...document,imageFile:document.imageFile||'frame-'+document.id+'.png'}, mode, exportedAt)
-    }));
+    })).filter(frame=>frame.feedback.objects.length);
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
       ...JSON.parse(JSON.stringify(object)),
       timestampMs:frame.timestampMs,
@@ -285,7 +322,7 @@
       schemaVersion:'video-feedback-1', tool:'EditHere', exportedAt,
       ...(project.capture ? {capture:{...validateCapture(project.capture)}} : {}),
       video:{source:project.source, durationMs:project.durationMs,
-        width:documents[0]?.width || 0, height:documents[0]?.height || 0},
+        width:frames[0]?.feedback.image.width || 0, height:frames[0]?.feedback.image.height || 0},
       frames, objects
     };
   }
@@ -323,7 +360,7 @@
     const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
     return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
-      movements:objects.reduce((sum,object)=>sum+object.movements.length,0), recognizedTexts:objects.filter(object=>object.recognizedText).length,
+      movements:objects.reduce((sum,object)=>sum+(object.movement?1:(object.movements||[]).length),0), recognizedTexts:objects.filter(object=>object.ocrtext||object.recognizedText).length,
       bytes:byteLength(serialized),imageBytes:images.map(image=>imageFormat.dataUrlOf(image)).filter(Boolean).reduce((sum,image)=>sum+byteLength(image),0)};
   }
   const foldedImage = image => typeof image==='string'?image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]':image?.mode==='embedded'?{...image,dataUrl:foldedImage(image.dataUrl)}:image;

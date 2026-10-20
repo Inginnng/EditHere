@@ -85,6 +85,7 @@ QLineF movementMarkerLine(const MovementMarker &marker);
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);
+void removeNote(Document &document, const QString &id);
 Document loadFeedback(const QJsonObject &feedback, const QImage &original, const QByteArray &originalBytes = {});
 Document loadFeedbackFile(const QJsonObject &feedback, const QString &jsonPath, const QString &legacyImageName = {});
 QJsonObject exportDocument(const Document &doc, bool embed = false);

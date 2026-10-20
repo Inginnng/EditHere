@@ -353,13 +353,16 @@ FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const Feedb
     FeedbackBundle bundle;
     const auto ordered = orderedFrames(project);
     QJsonArray frames, objects;
+    QSize dimensions;
     for (const auto *frame : ordered) {
         auto frameOptions = options;
         frameOptions.imageFile = "frame-" + frame->document.id + ".png";
         frameOptions.previewFile = "frame-" + frame->document.id + ".annotated.jpg";
         const auto frameBundle = buildFeedbackBundle(frame->document, frameOptions);
-        for (auto it = frameBundle.files.cbegin(); it != frameBundle.files.cend(); ++it) bundle.files.insert(it.key(), it.value());
         const auto feedback = QJsonDocument::fromJson(frameBundle.json).object();
+        if (feedback["objects"].toArray().isEmpty()) continue;
+        if (frames.isEmpty()) dimensions = frame->document.image.size();
+        for (auto it = frameBundle.files.cbegin(); it != frameBundle.files.cend(); ++it) bundle.files.insert(it.key(), it.value());
         QJsonObject frameObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
                                 {"timestampUs", frame->timestampUs}, {"feedback", feedback}};
         if (options.mode == ImageExportMode::File) frameObject.insert("imageFile", frameOptions.imageFile);
@@ -373,7 +376,7 @@ FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const Feedb
             objects.append(object);
         }
     }
-    const QSize dimensions = ordered.isEmpty() ? QSize(0, 0) : ordered.first()->document.image.size();
+    if (frames.isEmpty()) dimensions = QSize(0, 0);
     QJsonObject root{{"schemaVersion", "video-feedback-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"width", dimensions.width()}, {"height", dimensions.height()}}},

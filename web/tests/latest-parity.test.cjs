@@ -86,7 +86,7 @@ async function main() {
       await page.mouse.move(anchor.x, anchor.y);
       assert.equal(await page.evaluate(at => document.elementFromPoint(at.x, at.y)?.closest('.pin')?.dataset.note, anchor), movementId, 'the restored canvas pin must be reachable by an ordinary pointer');
       await page.mouse.click(anchor.x, anchor.y); assert.equal(await page.locator('#note-text').inputValue(), ''); await page.keyboard.press('Escape');
-      const feedback = await exported(); const object = feedback.objects.find(object => object.source && Object.keys(left).every(key => object.source[key] === left[key])); assert.deepEqual(object.annotations, []); assert.equal(object.movements.length, 1);
+      const feedback = await exported(); const object = feedback.objects.find(object => object.source && Object.keys(left).every(key => object.source[key] === left[key])); assert.deepEqual(object.annotations, []); assert(object.movement);assert(!Object.hasOwn(object,'movements'));
     });
     current = 'empty reset';
     await checkpoint('returning an empty movement to its source removes its slot; undo/redo restores the same ID', async () => {
@@ -101,15 +101,15 @@ async function main() {
       await importProject(textProject); await select(240, 130); await page.locator('#reset-component').click();
       const ordered = await cards(); assert.equal(ordered.length, 3); assert.equal(ordered[1].id, movementId); assert.equal(ordered[1].text, '移动的说明');
       assert.equal(await page.locator('path[data-movement]').count(), 0);
-      const object = (await exported()).objects.find(object => object.annotations.some(annotation => annotation.text === '移动的说明')); assert.deepEqual(object, { id:'o2',source: left, movements: [], annotations: [{number:2,text:'移动的说明'}] });
+      const object = (await exported()).objects.find(object => object.annotations.some(annotation => annotation.text === '移动的说明')); assert.deepEqual(object, { id:'o2',kind:'region',source: left, annotations: [{number:2,text:'移动的说明'}] });
     });
     current = 'adjacent source export';
     await checkpoint('two adjacent equal-distance moves remain separate native source objects', async () => {
       await importProject(fixture); await select(45, 50); await move(200, 100); await select(95, 50); await move(250, 100);
       const feedback = await exported(); assert.equal(feedback.objects.length, 2, 'equal transforms must not merge neighboring sources into one object');
       assert.deepEqual(feedback.objects, [
-        { id:'o1',source: left, movements: [{ to: rect(200, 100, 250, 140) }], annotations: [] },
-        { id:'o2',source: right, movements: [{ to: rect(250, 100, 300, 140) }], annotations: [] }
+        { id:'o1',kind:'region',source: left, movement:{rect:rect(200,100,250,140),dx:180,dy:70}, annotations: [] },
+        { id:'o2',kind:'region',source: right, movement:{rect:rect(250,100,300,140),dx:180,dy:70}, annotations: [] }
       ]);
       assert.deepEqual((await cards()).map(card => card.number), ['1', '2']);
     });
@@ -128,6 +128,68 @@ async function main() {
       await page.locator('#image-mode').selectOption('none'); const noImage = JSON.parse(await downloadText(page)); assert.equal(noImage.image.mode, 'none'); assert(!Object.hasOwn(noImage.image,'dataUrl'));
       await page.locator('#image-mode').selectOption('embedded'); await page.screenshot({ path: path.join(output, 'native-feedback-preview.png') }); await page.keyboard.press('Escape');
       fs.writeFileSync(path.join(output, 'adjacent-native-feedback.json'), downloaded);
+    });
+    current = 'fractional precision export';
+    await checkpoint('fractional project geometry exports integer targets and omits debounced scale axes', async () => {
+      const precise=L.create(400,220),source=rect(10.2,20.7,310.4,120.9);
+      const id=L.addRegion(precise,source);
+      L.transform(precise,id,rect(41.6,15.2,41.6+300.2*1.1263,15.2+100.2*1.003));
+      await importProject({...fixture,document:{...fixture.document,id:'precision',layout:precise,notes:[]}});
+      const feedback=await exported();
+      assert.deepEqual(feedback.objects[0].source,rect(10,21,310,121));
+      assert.deepEqual(feedback.objects[0].movement,{rect:rect(42,15,380,115),dx:32,dy:-6,scaleX:1.13});
+      assert.deepEqual((await savedProject()).document.layout,precise,'feedback rounding does not alter editable geometry');
+      fs.writeFileSync(path.join(output,'integer-feedback.json'),JSON.stringify(feedback));
+    });
+    current='ordinary then movement export and deletion';
+    await checkpoint('ordinary notes and movement share export order; deleting an empty movement restores layout with undo and redo',async()=>{
+      await importProject(fixture);await globalNote('先写的普通批注');await select(45,50);await move(200,100);await globalNote('后写的普通批注');
+      const before=await cards(),id=before[1].id,value=await exported();
+      assert.deepEqual(value.objects.map(o=>o.annotations.map(a=>a.number)),[[1],[],[3]]);
+      assert.deepEqual(value.objects.map(o=>!!o.movement),[false,true,false]);
+      assert(value.objects.every(o=>!Object.hasOwn(o,'movements')&&!Object.hasOwn(o,'result')));
+      await page.locator(`[data-delete="${id}"]`).click();
+      assert.deepEqual((await cards()).map(n=>n.text),['先写的普通批注','后写的普通批注']);
+      assert.equal(await page.locator('path[data-movement]').count(),0);
+      const saved=await savedProject();assert.deepEqual(L.bounds(saved.document.layout,layout.groups[0].id),left);
+      assert((await exported()).objects.every(o=>!o.movement));
+      await page.locator('#undo').click();assert.deepEqual(await cards(),before);
+      assert.deepEqual((await exported()).objects,value.objects);
+      await page.locator('#redo').click();assert.equal(await page.locator('path[data-movement]').count(),0);
+    });
+    current='written movement deletion';
+    await checkpoint('deleting a written movement removes its transform and one undo restores its text and identity',async()=>{
+      await page.locator('#undo').click();const before=await cards(),id=before[1].id;
+      await page.locator(`[data-edit="${id}"]`).click();await note('写过文字的位移批注');
+      await page.locator(`[data-delete="${id}"]`).click();
+      assert.equal(await page.locator('path[data-movement]').count(),0);
+      assert.equal((await cards()).length,2);
+      await page.locator('#undo').click();const restored=await cards();
+      assert.equal(restored[1].id,id);assert.equal(restored[1].text,'写过文字的位移批注');
+      assert.equal(await page.locator('path[data-movement]').count(),1);
+    });
+    current='orphan movement deletion';
+    await checkpoint('older movement-only projects expose a working delete button and preserve history',async()=>{
+      const moved=L.create(400,220),id=L.addRegion(moved,left);L.transform(moved,id,rect(200,100,275,160));
+      await importProject({...fixture,document:{...fixture.document,id:'orphan',layout:moved,notes:[]}});
+      const before=await cards();assert.equal(before.length,1);
+      await page.locator(`[data-delete="${before[0].id}"]`).click();
+      assert.equal(await page.locator('path[data-movement]').count(),0);assert.deepEqual((await exported()).objects,[]);
+      assert.deepEqual(L.bounds((await savedProject()).document.layout,id),left);
+      await page.locator('#undo').click();assert.equal(await page.locator('path[data-movement]').count(),1);
+      await page.locator('#redo').click();assert.equal(await page.locator('path[data-movement]').count(),0);
+    });
+    current='empty movement JSON roundtrip order';
+    await checkpoint('reopening new JSON retains the empty movement between earlier and later ordinary notes',async()=>{
+      await importProject(fixture);await globalNote('之前的普通批注');await select(45,50);await move(200,100);await globalNote('之后的普通批注');
+      const value=await exported(),previousIds=(await cards()).map(card=>card.id);
+      await page.locator('#file-input').setInputFiles({name:'ordered-feedback.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});
+      await page.waitForFunction(()=>document.body.dataset.busy!=='true');
+      const reopened=await cards();
+      assert.notDeepEqual(reopened.map(card=>card.id),previousIds,'the JSON must actually replace the open document');
+      assert.equal(reopened.length,3);assert.equal(reopened[0].text,'之前的普通批注');
+      assert.equal(reopened[1].empty,true);assert.equal(reopened[2].text,'之后的普通批注');
+      assert.deepEqual((await exported()).objects,value.objects);
     });
     assert.deepEqual(errors, []); assert.deepEqual(requests, []);
     fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify({ results, errors, requests, desktopReferences: ['REG-110', 'movementKeepsCreationOrderWithoutText', 'emptyMovementAnnotationFollowsItsBlock', 'app/model.cpp exportFeedback'] }, null, 2));

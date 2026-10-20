@@ -84,26 +84,35 @@ def check_objects(document):
     for item in document["objects"]:
         if "kind" in item:
             assert item["kind"] in ("region", "point", "global"), item
-            assert {"kind", "movements", "annotations"} <= set(item)
+            assert {"kind", "annotations"} <= set(item)
+            assert "recognizedText" not in item
+            if "ocrtext" in item:
+                assert isinstance(item["ocrtext"], str) and item["ocrtext"].strip() and len(item["ocrtext"]) <= 500
+            assert "movements" not in item and "result" not in item
+            movement = item.get("movement")
             if item["kind"] == "region":
                 assert {"source"} <= set(item) and "point" not in item
                 source = item["source"]
+                assert all(isinstance(value, (int, float)) and value == int(value) for value in source.values())
                 assert source["x2"] > source["x1"] and source["y2"] > source["y1"]
-                if item["movements"]:
-                    assert set(item["result"]) == {"rect", "dx", "dy", "scaleX", "scaleY"}
-                    assert item["result"]["rect"] == item["movements"][-1]["to"]
-                    final = item["result"]["rect"]
+                if movement:
+                    assert {"rect", "dx", "dy"} <= set(movement) <= {"rect", "dx", "dy", "scaleX", "scaleY"}
+                    assert all(value == int(value) for value in movement["rect"].values())
+                    final = movement["rect"]
                     expected = {"dx": final["x1"] - source["x1"], "dy": final["y1"] - source["y1"],
                                 "scaleX": (final["x2"] - final["x1"]) / (source["x2"] - source["x1"]),
                                 "scaleY": (final["y2"] - final["y1"]) / (source["y2"] - source["y1"])}
                     for key, number in expected.items():
-                        assert math.isclose(item["result"][key], number, rel_tol=1e-9, abs_tol=1e-7)
-                else:
-                    assert "result" not in item
+                        if key.startswith("scale"):
+                            number = max(.01, math.floor(number * 100 + .5 + 1e-9) / 100)
+                            if number == 1:
+                                assert key not in movement
+                                continue
+                        assert math.isclose(movement[key], number, rel_tol=1e-9, abs_tol=1e-7)
             elif item["kind"] == "point":
-                assert {"point"} <= set(item) and "source" not in item and "result" not in item and not item["movements"]
+                assert {"point"} <= set(item) and "source" not in item and not movement
             else:
-                assert not ({"source", "point", "result", "recognizedText"} & set(item)) and not item["movements"]
+                assert not ({"source", "point", "movement", "recognizedText", "ocrtext"} & set(item))
             for annotation in item["annotations"]:
                 assert set(annotation) == {"number", "text"} and 1 <= annotation["number"] <= 1000, annotation
             continue
@@ -210,15 +219,14 @@ image_probe = {
     "annotationSpace": "result", "objects": [],
 }
 v3_image_probe = {
-    "$schema": "urn:edithere:feedback-minimal:3", "schemaVersion": "feedback-minimal-3",
+    "schemaVersion": "feedback-minimal-3",
     "tool": {"name": "EditHere", "version": "schema-contract"}, "exportedAt": "2026-10-17T00:00:00Z",
     "annotationSpace": "result", "objects": [
         {"kind": "region", "source": {"x1": 1, "y1": 2, "x2": 5, "y2": 6},
-         "movements": [{"to": {"x1": 2, "y1": 3, "x2": 10, "y2": 9}}],
-         "result": {"rect": {"x1": 2, "y1": 3, "x2": 10, "y2": 9}, "dx": 1, "dy": 1, "scaleX": 2, "scaleY": 1.5},
+         "movement": {"rect": {"x1": 2, "y1": 3, "x2": 10, "y2": 9}, "dx": 1, "dy": 1, "scaleX": 2, "scaleY": 1.5},
          "annotations": [{"number": 1, "text": "region"}]},
-        {"kind": "point", "point": {"x": 12, "y": 8}, "movements": [], "annotations": [{"number": 2, "text": "point"}]},
-        {"kind": "global", "movements": [], "annotations": [{"number": 3, "text": "global"}]},
+        {"kind": "point", "point": {"x": 12, "y": 8}, "ocrtext": "保存", "annotations": [{"number": 2, "text": "point"}]},
+        {"kind": "global", "annotations": [{"number": 3, "text": "global"}]},
     ],
 }
 descriptor_probe = {"mode": "none", "mimeType": "image/png", "width": 10, "height": 20,
@@ -254,20 +262,36 @@ for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.
         assert not validator.is_valid(dict(image_probe, image=image)), image
 for schema_name in ("feedback-minimal-v3.schema.json", "feedback-minimal.schema.json"):
     validate(schema_name, v3_image_probe)
+    older_v3 = copy.deepcopy(v3_image_probe)
+    older_v3["$schema"] = "urn:edithere:feedback-minimal:3"
+    for item in older_v3["objects"]:
+        if "movement" in item:
+            item["result"] = item.pop("movement")
+            item["movements"] = [{"to": item["result"]["rect"]}]
+        item.setdefault("movements", [])
+        if "ocrtext" in item:
+            item["recognizedText"] = {"text": item.pop("ocrtext"), "engine": "legacy-probe", "language": "zh-Hans"}
+    validate(schema_name, older_v3)
     validator = Draft202012Validator(schema(schema_name), format_checker=FORMAT_CHECKER,
                                      registry=Registry(retrieve=retrieve_schema))
     invalid_objects = [
         dict(v3_image_probe["objects"][0], point={"x": 1, "y": 2}),
-        {key: value for key, value in v3_image_probe["objects"][0].items() if key != "result"},
+        dict(v3_image_probe["objects"][0], movement=None),
+        dict(v3_image_probe["objects"][0], movements=[]),
+        dict(v3_image_probe["objects"][0], result=v3_image_probe["objects"][0]["movement"]),
         dict(v3_image_probe["objects"][1], source={"x1": 1, "y1": 2, "x2": 1, "y2": 2}),
         dict(v3_image_probe["objects"][1], point={"x": 1}),
+        dict(v3_image_probe["objects"][1], movements=None),
+        *[dict(v3_image_probe["objects"][1], ocrtext=text) for text in (None, 7, {}, [], "", " \n\t", "x" * 501)],
+        dict(v3_image_probe["objects"][1], recognizedText={"text": "ambiguous", "engine": "legacy"}),
         dict(v3_image_probe["objects"][2], source=None),
         dict(v3_image_probe["objects"][2], recognizedText={"text": "global OCR", "engine": "probe"}),
-        dict(v3_image_probe["objects"][2], result=v3_image_probe["objects"][0]["result"]),
+        dict(v3_image_probe["objects"][2], ocrtext="global OCR"),
+        dict(v3_image_probe["objects"][2], movement=v3_image_probe["objects"][0]["movement"]),
     ]
     for object_probe in invalid_objects:
         assert not validator.is_valid(dict(v3_image_probe, objects=[object_probe])), object_probe
-print("PASS: feedback-minimal-3 discriminated region/point/global probe and result fields")
+print("PASS: feedback-minimal-3 single movement, legacy compatibility, discriminated targets and ambiguous-field rejection")
 print("PASS: image mode/metadata/legacy compatibility and malformed contract probes for both schemas")
 
 capture_probe = {"source": "file", "capturedAt": "2026-10-17T00:00:00Z", "fileName": "game.png",
@@ -371,10 +395,11 @@ ocr = export("feedback-ocr.json")
 validate("feedback-minimal-v3.schema.json", ocr)
 validate("feedback-minimal.schema.json", ocr)
 check_objects(ocr)
-assert ocr["objects"][0]["recognizedText"]["text"] == "Export JSON"
+assert ocr["objects"][0]["ocrtext"] == "Export JSON"
+assert "recognizedText" not in ocr["objects"][0]
 disabled = export("feedback-ocr-disabled.json")
 validate("feedback-minimal-v3.schema.json", disabled)
-assert all("recognizedText" not in item for item in disabled["objects"])
+assert all("recognizedText" not in item and "ocrtext" not in item for item in disabled["objects"])
 for artifact in ("project-ocr.json", "project-ocr-deleted.json"):
     validate("project-v3.schema.json", export(artifact))
 assert export("project-ocr-deleted.json")["annotations"][0]["recognizedText"] == {
