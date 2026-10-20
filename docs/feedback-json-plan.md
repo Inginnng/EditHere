@@ -17,8 +17,8 @@
 - [x] J05：截图区域本机 OCR、编辑与导出（本轮第 3 阶段）
 - [ ] J06：有系统控件信息时可选透传；截图导入场景暂缓
 - [x] J07：窗口标题、采集上下文与 AI 主动提供页面说明
-- [x] J08：显式标注类型（`feedback-minimal-3` 已实现并验证，待合入默认分支）
-- [x] J09：移动与缩放结果（`result` 已实现并验证，待合入默认分支）
+- [x] J08：显式标注类型（`feedback-minimal-3` 已通过 [PR #20](https://github.com/Inginnng/EditHere/pull/20) 合入 GitHub 默认分支）
+- [x] J09：移动与缩放结果（初版 `result` 已通过 PR #20 合入 GitHub 默认分支；本轮精简为单个 `movement`，下文示例保留早期方案）
 - [ ] J10：坐标约定（实施前需修正普通批注与移动源的空间区别）
 - [ ] J11：视频反馈去重
 - [ ] J12：多轮反馈关联
@@ -70,7 +70,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ### J01 版本号与工具标识 · P0
 
-实施说明：已落地。`$schema` 使用稳定标识 `urn:edithere:feedback-minimal:3`，对应随包 Schema，无需联网；工具版本来自实际构建。视频容器版本保持不变，帧内图片反馈支持新格式。
+实施说明：已落地。当前导出只保留 `schemaVersion: "feedback-minimal-3"`，省略重复的根级 `$schema`；旧文件里的 `$schema` 仍可读取，本地 Schema 保留稳定标识 `urn:edithere:feedback-minimal:3`。工具版本来自实际构建。视频容器版本保持不变，帧内图片反馈支持新格式。以下方案示例中的旧元数据仅用于说明演进过程；实际导出仅在有位移或缩放时写入单个 `movement`，不再输出 `result` 或 `movements`，读取兼容旧字段。
 
 | 项目 | 现在 | 修改后 |
 | --- | --- | --- |
@@ -190,7 +190,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 
 ### J05 框选区域文字识别（OCR）· P0
 
-实施范围：桌面版使用现有本机 OCR 自动识别批注区域；独立 Web 与 MCP 内嵌页支持导入、保留、修改、删除及关闭导出，暂不自动识字。`recognizedText` 随当前 `feedback-minimal-3` 输出，v2 读取兼容；不会凭图片生成 DOM、组件名或源码位置。
+实施范围：桌面版使用现有本机 OCR 自动识别批注区域；独立 Web 与 MCP 内嵌页支持导入、保留、修改、删除及关闭导出，暂不自动识字。当前 `feedback-minimal-3` 只导出与 `kind` 同级的 `ocrtext` 字符串，省略引擎、语言、置信度和编辑标记；旧 `recognizedText` 封装继续可读。已有结果随内容保留，不因大爆炸调整而重跑。不会凭图片生成 DOM、组件名或源码位置。下文的封装字段及示例记录早期方案，当前输出以 `ocrtext` 为准。
 
 现在：反馈只记录坐标。文档也写明「图像反馈本身不提供 DOM、组件名或源码位置」，AI 只能自己看图猜文字，没看图时完全不知道框住的是什么。
 
@@ -339,9 +339,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
 "result": {
   "rect": { "x1": 160, "y1": 80, "x2": 400, "y2": 128 },
   "dx": 40,
-  "dy": 0,
-  "scaleX": 1,
-  "scaleY": 1
+  "dy": 0
 }
 ```
 
@@ -507,7 +505,7 @@ J01/J04/J05 原始阶段代码与提交：[GitHub 分支](https://github.com/Ing
       "recognizedText": { "text": "导出为 JSON 文件", "confidence": 0.97, "engine": "windows-ocr", "language": "zh-Hans" },
       "target": { "source": "uia", "role": "button", "label": "导出为 JSON 文件", "automationId": "exportButton" },
       "movements": [{ "to": { "x1": 160, "y1": 80, "x2": 400, "y2": 128 } }],
-      "result": { "rect": { "x1": 160, "y1": 80, "x2": 400, "y2": 128 }, "dx": 40, "dy": 0, "scaleX": 1, "scaleY": 1 },
+      "result": { "rect": { "x1": 160, "y1": 80, "x2": 400, "y2": 128 }, "dx": 40, "dy": 0 },
       "annotations": [{ "number": 1, "text": "按钮往右，与输入框对齐" }]
     },
     {

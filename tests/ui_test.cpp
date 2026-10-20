@@ -269,7 +269,7 @@ class UiTests : public QObject {
         auto text = editor.findChild<QPlainTextEdit *>("recognizedText_" + first.id); QVERIFY(text && text->isVisible());
         text->setFocus(); text->setPlainText("Edited title");
         auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
-        QCOMPARE(feedback["objects"].toArray()[0].toObject()["recognizedText"].toObject()["text"].toString(), QString("Edited title"));
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["ocrtext"].toString(), QString("Edited title"));
         for (const auto &note : editor.document().notes) {
             QCOMPARE(note.recognizedText["text"].toString(), QString("Edited title"));
             QVERIFY(note.recognizedText["edited"] == true); QVERIFY(!note.recognizedText.contains("confidence"));
@@ -279,7 +279,7 @@ class UiTests : public QObject {
         for (auto card : cards) if (card->property("noteId").toString() == first.id) firstCard = card;
         QVERIFY(firstCard); auto clear = firstCard->findChild<QPushButton *>("clearRecognizedText"); QVERIFY(clear); clear->click();
         feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
-        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("recognizedText"));
+        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("ocrtext"));
         for (const auto &note : editor.document().notes) QCOMPARE(note.recognizedText, (QJsonObject{{"text", ""}, {"edited", true}}));
         artifact(editor, "recognized-text-deleted.png");
     }
@@ -289,13 +289,78 @@ class UiTests : public QObject {
         note.recognizedText = {{"text", "Screenshot label"}, {"engine", "windows-ocr"}}; document.notes = {note};
         Editor editor; auto settings = defaultSettings(); settings.includeRecognizedText = false; editor.setPreferences(settings); editor.setDocument(document);
         auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
-        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("recognizedText"));
+        QVERIFY(!feedback["objects"].toArray()[0].toObject().contains("ocrtext"));
         const auto project = QJsonDocument::fromJson(editor.projectBytes()).object();
         QCOMPARE(project["annotations"].toArray()[0].toObject()["recognizedText"].toObject(), note.recognizedText);
         settings.includeRecognizedText = true; editor.setPreferences(settings);
         feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
-        QCOMPARE(feedback["objects"].toArray()[0].toObject()["recognizedText"].toObject(), note.recognizedText);
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["ocrtext"].toString(), note.recognizedText["text"].toString());
         artifact(editor, "recognized-text-editor.png");
+    }
+    void newManualRegionKeepsExistingRecognition_data() {
+        QTest::addColumn<bool>("existingLayout");
+        QTest::addColumn<bool>("pointNote");
+        QTest::addColumn<bool>("translucent");
+        QTest::newRow("first-manual-region") << false << false << false;
+        QTest::newRow("additional-manual-region") << true << false << false;
+        QTest::newRow("point-in-existing-region") << true << true << false;
+        QTest::newRow("translucent-image") << false << false << true;
+    }
+    void newManualRegionKeepsExistingRecognition() {
+        QFETCH(bool, existingLayout);
+        QFETCH(bool, pointNote);
+        QFETCH(bool, translucent);
+        auto document = gridDocument();
+        if (translucent) {
+            auto image = document.image; image.fill(QColor(47, 83, 151, 37));
+            auto replacement = fromImage(image, "file", "Transparent OCR region");
+            replacement.candidates = document.candidates; document = std::move(replacement);
+        }
+        if (existingLayout) document.layout = createLayout(document.image.size(), document.candidates);
+        Note note; note.isPoint = pointNote; note.point = {90, 90}; note.rect = {60, 60, 120, 90};
+        note.comment = "Keep this annotation";
+        note.recognizedText = {{"text", "Previously recognized text"}, {"engine", "windows-ocr"}};
+        document.notes = {note};
+        Editor editor; editor.setDocument(document);
+        editor.canvas()->regionRequested({500, 350, 100, 80});
+        finishInlineNote(editor, "New annotation");
+        QCOMPARE(editor.document().notes.size(), 2);
+        // Wait past the OCR debounce. Previously the new layout invalidated the
+        // old note and cleared its text before recognizing the new annotation.
+        QTest::qWait(350);
+        QCOMPARE(editor.document().notes[0].recognizedText, note.recognizedText);
+        QCOMPARE(editor.document().notes[0].comment, note.comment);
+    }
+    void layoutAdjustmentsKeepExistingRecognition_data() {
+        QTest::addColumn<QString>("operation");
+        for (const auto &operation : {"unrelated", "inside-region", "move-region", "move-point", "scale-region", "scale-point"})
+            QTest::newRow(operation) << QString(operation);
+    }
+    void layoutAdjustmentsKeepExistingRecognition() {
+        QFETCH(QString, operation);
+        auto document = gridDocument();
+        const QRect source = operation == "unrelated" ? QRect(180, 240, 120, 90) : QRect(60, 60, 120, 90);
+        document.candidates = {{source, manualTarget()}};
+        document.layout = createLayout(document.image.size(), document.candidates);
+        QString group;
+        for (const auto &item : document.layout->groups) if (item.originalBounds == source) group = item.id;
+        QVERIFY(!group.isEmpty());
+        Note note; note.isPoint = false; note.rect = {40, 40, 280, 140}; note.comment = "Keep this region";
+        if (operation.startsWith("move-") || operation.startsWith("scale-")) note.rect = source;
+        note.isPoint = operation.endsWith("point"); note.point = source.center();
+        note.recognizedText = {{"text", "Previously recognized text"}, {"engine", "windows-ocr"}};
+        document.notes = {note};
+        Editor editor; editor.setDocument(document); editor.explode();
+        auto text = editor.findChild<QPlainTextEdit *>("recognizedText_" + note.id); QVERIFY(text);
+        QSignalSpy textChanges(text, &QPlainTextEdit::textChanged);
+        auto canvas = editor.layoutCanvas(); QVERIFY(canvas);
+        auto state = canvas->state();
+        transformLayoutGroup(state, group, operation.startsWith("scale-") ? QRectF(60, 60, 180, 135) : QRectF(500, 350, 120, 90));
+        canvas->setState(state); canvas->changed();
+        QTest::qWait(350);
+        QCOMPARE(editor.document().notes[0].recognizedText, note.recognizedText);
+        QCOMPARE(text->toPlainText(), QString("Previously recognized text"));
+        QVERIFY(textChanges.isEmpty());
     }
     void newScreenshotAnnotationRunsSystemOcrAndCancelsStaleResults() {
 #ifndef Q_OS_WIN
@@ -1403,7 +1468,7 @@ class UiTests : public QObject {
             const auto obj = value.toObject();
             QCOMPARE(obj["kind"].toString(), QString("global")); // 全局意见省略坐标源
             QVERIFY(!obj.contains("source"));
-            QVERIFY(obj["movements"].toArray().isEmpty());
+            QVERIFY(!obj.contains("movement"));
             QCOMPARE(obj["annotations"].toArray().size(), 1);
         }
         QVERIFY(!editor.document().layout.has_value() ||
@@ -1916,6 +1981,76 @@ class UiTests : public QObject {
         QCOMPARE(loaded.notes[1].id, movementId);
         editor.hide();
     }
+    void deletingMovementRestoresLayoutAndSupportsHistory_data() {
+        QTest::addColumn<bool>("withText");
+        QTest::newRow("empty movement") << false;
+        QTest::newRow("written movement") << true;
+    }
+    void deletingMovementRestoresLayoutAndSupportsHistory() {
+        QFETCH(bool, withText);
+        Editor editor;
+        auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        Note ordinary; ordinary.point = {100, 110}; ordinary.comment = "先添加的普通批注";
+        ordinary.recognizedText = {{"text", "保留识别"}, {"engine", "fixture"}};
+        document.notes = {ordinary};
+        editor.setDocument(document); editor.resize(1240, 820);
+        editor.findChild<QPushButton *>("explodeButton")->click();
+        auto layout = editor.layoutCanvas(); layout->zoomRequested(1.0);
+        QTest::mouseClick(layout, Qt::LeftButton, Qt::NoModifier, canvasPoint(layout, {140, 90}));
+        QVERIFY(!layout->selected().isEmpty());
+        layout->transformSelection(QRectF(440, 60, 180, 135));
+        QCOMPARE(editor.document().notes.size(), 2);
+        const auto movementId = editor.document().notes[1].id;
+        if (withText) finishInlineNote(editor, "后添加的位移批注", movementId);
+        const auto objects = exportFeedback(editor.document())["objects"].toArray();
+        QCOMPARE(objects.size(), 2);
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toObject()["number"].toInt(), 1);
+        QVERIFY(objects[1].toObject().contains("movement"));
+        for (const auto &object : objects) {
+            QVERIFY(!object.toObject().contains("movements")); QVERIFY(!object.toObject().contains("result"));
+        }
+        const auto imported = loadFeedback(exportFeedback(editor.document(), true), {});
+        QCOMPARE(imported.notes.size(), 2);
+        QCOMPARE(imported.notes[0].comment, ordinary.comment);
+        QVERIFY(imported.notes[1].movementSource.has_value());
+        QCOMPARE(imported.notes[1].comment.isEmpty(), !withText);
+        const auto movedLayout = editor.document().layout;
+        const auto movedNotes = editor.document().notes;
+        auto card = editor.findChild<QWidget *>("noteText_" + movementId)->parentWidget();
+        QPushButton *remove = nullptr;
+        for (auto button : card->findChildren<QPushButton *>()) if (button->toolTip() == "删除批注") remove = button;
+        QVERIFY(remove); remove->click();
+        QCOMPARE(editor.document().notes, document.notes);
+        QCOMPARE(renderLayout(editor.document().image, *editor.document().layout).convertToFormat(QImage::Format_ARGB32), document.image);
+        QVERIFY(movementMarkers(*editor.document().layout, editor.document().notes).isEmpty());
+        QVERIFY(!exportFeedback(editor.document())["objects"].toArray()[0].toObject().contains("movement"));
+        toolButton(editor, "撤销")->click();
+        QCOMPARE(editor.document().layout, movedLayout); QCOMPARE(editor.document().notes, movedNotes);
+        toolButton(editor, "重做")->click();
+        QCOMPARE(editor.document().notes, document.notes);
+        QVERIFY(movementMarkers(*editor.document().layout, editor.document().notes).isEmpty());
+    }
+    void deletingOrphanMovementRestoresLayout() {
+        Editor editor; auto document = gridDocument();
+        document.layout = createLayout(document.image.size(), document.candidates);
+        const auto group = document.layout->groups.first().id;
+        transformLayoutGroup(*document.layout, group, {440, 60, 180, 135});
+        editor.setDocument(document); editor.resize(1240, 820);
+        QWidget *card = nullptr;
+        for (auto candidate : editor.findChildren<QWidget *>("noteCard"))
+            if (candidate->property("orphanMovement").toBool()) card = candidate;
+        QVERIFY(card);
+        QPushButton *remove = nullptr;
+        for (auto button : card->findChildren<QPushButton *>()) if (button->toolTip() == "删除批注") remove = button;
+        QVERIFY(remove); remove->click();
+        QVERIFY(editor.document().notes.isEmpty());
+        QCOMPARE(renderLayout(editor.document().image, *editor.document().layout).convertToFormat(QImage::Format_ARGB32), document.image);
+        QVERIFY(exportFeedback(editor.document())["objects"].toArray().isEmpty());
+        toolButton(editor, "撤销")->click();
+        QCOMPARE(editor.document().layout, document.layout);
+        QVERIFY(editor.document().notes.isEmpty());
+    }
     void emptyMovementAnnotationFollowsItsBlock() {
         Editor editor;
         auto document = gridDocument();
@@ -2418,19 +2553,18 @@ class UiTests : public QObject {
         const auto appliedNotes = editor.document().notes;
         const auto appliedLayout = *editor.document().layout;
         const auto feedback = exportFeedback(editor.document());
-        QCOMPARE(feedback.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         bool foundMovement = false;
         for (const auto &value : objects) {
             const auto obj = value.toObject();
-            const auto movements = obj["movements"].toArray();
-            if (!movements.isEmpty()) {
+            const auto movement = obj["movement"].toObject();
+            if (!movement.isEmpty()) {
                 foundMovement = true;
-                QCOMPARE(movements.size(), 1);
                 // 源坐标 = from，movements[0].to = to
                 QCOMPARE(obj["source"].toObject(),
                          (QJsonObject{{"x1", 60.}, {"y1", 60.}, {"x2", 180.}, {"y2", 150.}}));
-                QCOMPARE(movements[0].toObject()["to"].toObject(),
+                QCOMPARE(movement["rect"].toObject(),
                          (QJsonObject{{"x1", 440.}, {"y1", 60.}, {"x2", 560.}, {"y2", 150.}}));
             }
         }
@@ -2678,11 +2812,11 @@ class UiTests : public QObject {
         bool foundMovement = false;
         for (const auto &value : objects) {
             const auto obj = value.toObject();
-            if (!obj["movements"].toArray().isEmpty()) {
+            if (obj.contains("movement")) {
                 foundMovement = true;
                 QCOMPARE(obj["source"].toObject(),
                          (QJsonObject{{"x1", 60.}, {"y1", 60.}, {"x2", 180.}, {"y2", 150.}}));
-                QCOMPARE(obj["movements"].toArray()[0].toObject()["to"].toObject(),
+                QCOMPARE(obj["movement"].toObject()["rect"].toObject(),
                          (QJsonObject{{"x1", 600.}, {"y1", 240.}, {"x2", 720.}, {"y2", 330.}}));
             }
         }
@@ -2759,7 +2893,7 @@ class UiTests : public QObject {
             QVERIFY(imageMode && imageMode->currentIndex() == 0);
             imageMode->setCurrentIndex(1);
             auto preview = QJsonDocument::fromJson(text->toPlainText().toUtf8()).object();
-            QCOMPARE(preview.keys(), QStringList({"$schema", "annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
+            QCOMPARE(preview.keys(), QStringList({"annotationSpace", "capture", "exportedAt", "image", "objects", "schemaVersion", "tool"}));
             QVERIFY(preview["image"].toObject()["dataUrl"].toString().startsWith("data:image/png;base64,"));
             QVERIFY(preview["image"] != expectedEmbedded["image"]);
             preview.remove("image");

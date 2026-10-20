@@ -135,6 +135,7 @@ class Editor final : public QWidget {
     void copyImage();
     void saveImage(bool annotated = false);
     void removeSelected();
+    void deleteNote(const QString &id, std::optional<QRectF> movementSource = {});
     void setMode(Canvas::Mode mode);
     void updateControls();
     void clearVideo();

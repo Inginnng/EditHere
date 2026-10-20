@@ -48,6 +48,10 @@ inline QJsonObject unversionedLegacyFeedback(QJsonObject value) {
         } else if (kind == "global") {
             object.insert("source", QJsonValue(QJsonValue::Null));
         }
+        if (object.contains("movement")) {
+            const auto movement = object.take("movement").toObject();
+            object.insert("movements", QJsonArray{QJsonObject{{"to", movement["rect"]}}});
+        } else object.insert("movements", object["movements"].toArray());
         object.remove("kind"); object.remove("point"); object.remove("result");
         objects[i] = object;
     }

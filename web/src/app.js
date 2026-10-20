@@ -180,7 +180,7 @@
   }
   function renderNotes() {
     const entries=noteEntries();$('count').textContent=entries.length;globalThis.EditHereChrome?.refreshCount(entries.length);
-    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p>${recognitionCard(n)}</article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
+    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button><button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button></div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p>${recognitionCard(n)}</article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
@@ -232,17 +232,40 @@
     const previous=rawMovements({layout:before.layout});
     remapMovementNotes(before,previous);synchronizeMovementNotes(pending);
   }
-  function resetComponent() {
-    if(!selected||!doc?.layout)return;
-    const before=snapshot(doc),previous=rawMovements({layout:before.layout});doc.layout=clone(before.layout);
-    const ids=selectionIds(doc.layout),members=new Set(doc.layout.groups.filter(g=>ids.includes(g.id)).flatMap(g=>g.pieces));
+  function restoreMembers(members,previous) {
     // Restore each surviving source slice exactly. Fitting the remaining
     // bounds into the parent's former frame would stretch or move its pixels.
     for(const piece of doc.layout.pieces)if(members.has(piece.id))piece.to=clone(piece.source);
     doc.layout.movements=clone(previous);
     for(const movement of doc.layout.movements){const group=doc.layout.groups.find(g=>g.id===movement.groupId),included=group?group.pieces.every(id=>members.has(id)):doc.layout.pieces.filter(p=>Math.min(p.source.x2,movement.source.x2)>Math.max(p.source.x1,movement.source.x1)&&Math.min(p.source.y2,movement.source.y2)>Math.max(p.source.y1,movement.source.y1)).every(p=>members.has(p.id));if(included)movement.destination=clone(movement.source);}
-    remapMovementNotes(before,previous);synchronizeMovementNotes();
+  }
+  function resetComponent() {
+    if(!selected||!doc?.layout)return;
+    const before=snapshot(doc),previous=rawMovements({layout:before.layout});doc.layout=clone(before.layout);
+    const ids=selectionIds(doc.layout),members=new Set(doc.layout.groups.filter(g=>ids.includes(g.id)).flatMap(g=>g.pieces));
+    restoreMembers(members,previous);remapMovementNotes(before,previous);synchronizeMovementNotes();
     if(!same(before,snapshot(doc))){remember(before);commit();}else refresh();
+  }
+  function deleteNote(id) {
+    const marker=movementMarkers().find(m=>m.id===id);
+    const note=doc?.notes.find(n=>n.id===id)||(marker?{id,text:'',movementSource:marker.source}:null);if(!note)return;
+    const before=snapshot(doc);
+    if(note.movementSource&&doc.layout) {
+      const previous=rawMovements(),target=previous.find(m=>equalRect(m.source,note.movementSource))||
+        previous.filter(m=>coversRect(m.source,note.movementSource)).sort((a,b)=>areaOf(a.source)-areaOf(b.source))[0];
+      if(target) {
+        doc.layout=clone(before.layout);
+        const group=doc.layout.groups.find(g=>g.id===target.groupId);
+        const members=new Set(group?group.pieces:doc.layout.pieces.filter(p=>coversRect(target.source,p.source)).map(p=>p.id));
+        restoreMembers(members,previous);remapMovementNotes(before,previous);
+        for(const n of doc.notes)if(n.movementSource&&n.text.trim()&&equalRect(n.movementSource,movementDestination(n.movementSource))) {
+          delete n.movementSource;delete n.movementSources;
+        }
+        chooseGroup(null);
+      }
+    }
+    doc.notes=doc.notes.filter(n=>n.id!==id);
+    synchronizeMovementNotes();selectedNote=null;remember(before);commit();
   }
   function cancelDrag() {if(drag?.before){doc.layout=drag.before.layout;doc.notes=drag.before.notes;}drag=null;render();renderGeometry();}
   function resizeHandles(b) {const x=(b.x1+b.x2)/2,y=(b.y1+b.y2)/2;return {nw:{x:b.x1,y:b.y1},n:{x,y:b.y1},ne:{x:b.x2,y:b.y1},e:{x:b.x2,y},se:{x:b.x2,y:b.y2},s:{x,y:b.y2},sw:{x:b.x1,y:b.y2},w:{x:b.x1,y}};}
@@ -331,7 +354,7 @@
   };
   $('recognized-text').oninput=()=>$('recognized-text').setCustomValidity('');
   $('recognized-dialog').addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();$('recognized-save').click();}});
-  $('notes').onclick=event=>{const deleteRecognized=event.target.closest('[data-delete-recognized]')?.dataset.deleteRecognized,editRecognized=event.target.closest('[data-edit-recognized]')?.dataset.editRecognized;if(deleteRecognized){setRecognizedText(deleteRecognized,{text:'',edited:true});return;}if(editRecognized){editRecognizedText(editRecognized);return;}const del=event.target.closest('[data-delete]')?.dataset.delete,edit=event.target.closest('[data-edit]')?.dataset.edit,id=event.target.closest('[data-note]')?.dataset.note;if(del){remember();doc.notes=doc.notes.filter(n=>n.id!==del);selectedNote=null;commit();}else if(edit)editEntry(edit);else if(id){selectedNote=id;refresh();if(noteEntries().find(n=>n.id===id)?.movement)editEntry(id);}};
+  $('notes').onclick=event=>{const deleteRecognized=event.target.closest('[data-delete-recognized]')?.dataset.deleteRecognized,editRecognized=event.target.closest('[data-edit-recognized]')?.dataset.editRecognized;if(deleteRecognized){setRecognizedText(deleteRecognized,{text:'',edited:true});return;}if(editRecognized){editRecognizedText(editRecognized);return;}const del=event.target.closest('[data-delete]')?.dataset.delete,edit=event.target.closest('[data-edit]')?.dataset.edit,id=event.target.closest('[data-note]')?.dataset.note;if(del)deleteNote(del);else if(edit)editEntry(edit);else if(id){selectedNote=id;refresh();if(noteEntries().find(n=>n.id===id)?.movement)editEntry(id);}};
   $('notes').addEventListener('keydown',event=>{if(event.key==='Enter'){const id=event.target.closest('[data-note]')?.dataset.note;if(id){event.preventDefault();editEntry(id);}}});
   document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>changeMode(button.dataset.mode));
   $('global').onclick=()=>editNote(null);
@@ -390,7 +413,7 @@
     // All delivery paths share one export time until the document changes, so
     // a saved backup and an idempotent Agent submission identify the same snapshot.
     if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
-    if(feedbackStamp.snapshot){const value=clone(feedbackStamp.snapshot),d=feedbackDocument(session.document,mode,includePreview,agent);value.image=I.descriptor(d.image,mode,d.imageFile,{devicePixelRatio:d.devicePixelRatio,preview:d.previewFile});if(!$('include-recognized-text').checked)for(const object of value.objects)delete object.recognizedText;return value;}
+    if(feedbackStamp.snapshot){const value=clone(feedbackStamp.snapshot),d=feedbackDocument(session.document,mode,includePreview,agent);value.image=I.descriptor(d.image,mode,d.imageFile,{devicePixelRatio:d.devicePixelRatio,preview:d.previewFile});if(!$('include-recognized-text').checked)for(const object of value.objects){delete object.recognizedText;delete object.ocrtext;}return value;}
     const exportedAt=feedbackStamp.exportedAt;
     const value=session.kind==='image'?F.exportImage(feedbackDocument(session.document,mode,includePreview,agent),mode,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,capture:session.capture,frames:session.frames.map(d=>feedbackDocument(d,mode,includePreview,agent))},mode,exportedAt);
     return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
@@ -510,6 +533,7 @@
   async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id,value.capture);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
   async function docFromFeedback(f,w,h,timestampUs=null,id=uid(),companions=[]) {
     f=F.normalizeImage(f);
+    const currentMovements=f.objects.map(object=>Object.hasOwn(object,'movement'));
     f={...f,objects:f.objects.map(F.legacyObject)};
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     if(f.image&&typeof f.image==='object'&&f.image.preview){
@@ -526,8 +550,13 @@
     for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations))throw new Error('反馈对象格式无效');
       if(obj.movements.length){if(!obj.source)throw new Error('全局意见不能包含移动');validateRect(obj.source,w,h,false);for(const movement of obj.movements)validateRect(movement.to,w,h,false);if(!d.layout)d.layout=L.create(w,h);const groupId=L.addRegion(d.layout,obj.source);if(!groupId)throw new Error('无法还原反馈的移动区域');groups.set(obj,groupId);}}
     const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}}if(d.layout)d.layout.movements=importedMovements;
-    for(const {object:obj,text} of F.annotationEntries(f.objects).sort((a,b)=>a.number-b.number)){const groupId=groups.get(obj);d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{}),...(obj.recognizedText?{recognizedText:clone(obj.recognizedText)}:{})});}
-    for(const obj of f.objects)if(obj.recognizedText&&!obj.annotations.length){const groupId=groups.get(obj);if(!groupId)throw new Error('截图文字缺少批注或布局目标');d.notes.push({id:uid(),source:clone(obj.movements.at(-1).to),text:'',groupId,movementSource:clone(obj.source),recognizedText:clone(obj.recognizedText)});}
+    const entries=F.annotationEntries(f.objects),usedNumbers=new Set(entries.map(e=>e.number));let nextNumber=1;
+    for(const [index,obj] of f.objects.entries())if(!obj.annotations.length&&(obj.recognizedText||currentMovements[index]&&entries.length<1000)) {
+      if(!groups.has(obj))throw new Error('截图文字缺少批注或布局目标');
+      while(usedNumbers.has(nextNumber))nextNumber++;
+      entries.push({object:obj,text:'',number:nextNumber});usedNumbers.add(nextNumber++);
+    }
+    for(const {object:obj,text} of entries.sort((a,b)=>a.number-b.number)){const groupId=groups.get(obj);d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{}),...(obj.recognizedText?{recognizedText:clone(obj.recognizedText)}:{})});}
     validateNotes(d.notes,w,h,d.layout);return {doc:d,width:w,height:h};
   }
   function validateVideoMetadata(value,w=value?.width,h=value?.height,empty=false) {
@@ -613,7 +642,7 @@
     if(key==='0'){event.preventDefault();viewportFit();return;}if(key==='1'&&!ctrl){event.preventDefault();setZoom(1);return;}
     if(event.key==='Escape'){event.preventDefault();cancelDrag();finishPan();selected=null;selectedNote=null;hover=null;hoveredMovement=null;refresh();return;}
     if(event.code==='Space'){event.preventDefault();if(!event.repeat){spaceDown=true;spaceUsed=false;stage.style.cursor='grab';}return;}
-    if(event.key==='Delete'||event.key==='Backspace'){if(selectedNote&&doc?.notes.some(n=>n.id===selectedNote)){event.preventDefault();remember();doc.notes=doc.notes.filter(n=>n.id!==selectedNote);selectedNote=null;commit();}return;}
+    if(event.key==='Delete'||event.key==='Backspace'){if(selectedNote&&doc?.notes.some(n=>n.id===selectedNote)){event.preventDefault();deleteNote(selectedNote);}return;}
     if(ctrl)return;
     const tools={v:'select',b:'smart',p:'point',r:'rect',c:'cut',h:'pan'};
     if(tools[key]){if(key==='c'&&!explodeEnabled)return;event.preventDefault();changeMode(tools[key]);return;}

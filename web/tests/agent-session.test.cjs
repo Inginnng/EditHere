@@ -60,7 +60,7 @@ test('recognized screenshot text survives Agent submission, receipts and restart
   assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
   assert.deepEqual(new AgentSessions(paths).status(store.byId(session.sessionId)),receipt);
   const otherPaths=fixture(),otherStore=new AgentSessions(otherPaths),otherSession=create(otherStore,otherPaths);
-  const invalid=structuredClone(current);invalid.objects[0].recognizedText.lines=[];
+  const invalid=structuredClone(current);invalid.objects[0].ocrtext={lines:[]};
   assert.throws(()=>otherStore.submit(token(otherSession),invalid),/recognized screenshot text/);
   assert.equal(fs.existsSync(otherPaths.output),false);
 });
