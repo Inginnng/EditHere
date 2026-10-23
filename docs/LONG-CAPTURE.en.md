@@ -112,6 +112,15 @@ Scrolling too fast to find an overlap does not end the capture: it asks you to s
 little, and once you return to already-captured content the stitching recovers by relocating.
 Sampling no longer repeatedly hides the progress window while it is excluded from screen capture.
 
+On Windows, the shade and running selection frame use native window shapes that leave the
+sampled region uncovered, with clearance for fractional scaling. They stay visible even when
+capture exclusion is unavailable, avoiding the flashing caused by repeatedly hiding a screen-sized
+shade. A full-screen selection uses a nonempty shape outside the window so an empty mask cannot
+accidentally remove clipping. Stopping restores the frame's resize hit area. Overlapping controls,
+previews, menus and handles still hide briefly when needed; other platforms retain their existing
+fallback. Diagnostics record Windows capture-exclusion results, error codes and the control fallback,
+without repeating the same configuration state every frame.
+
 The capture selection uses the screen's native pixels, so logical coordinates cannot misalign
 the result on a display with high scaling. After the page scrolls, consecutive samples confirm
 that it has settled before the stitcher is handed the frame. Manual mode sends no wheel events
