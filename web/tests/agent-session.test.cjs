@@ -30,67 +30,11 @@ test('explicit submit writes native complete JSON; receipt omits image; retry is
   const receipt = store.submit(token(session), feedback);
   assert.equal(receipt.state, 'completed');
   assert.equal(receipt.feedback.image, undefined);
-  assert.deepEqual(receipt.feedback.objects, format.upgradeImage(feedback, session.capture.capturedAt).objects);
-  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize({...format.upgradeImage(feedback,session.capture.capturedAt),capture:session.capture}));
+  assert.deepEqual(receipt.feedback.objects, feedback.objects);
+  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize(feedback));
   assert.equal(receipt.sha256, crypto.createHash('sha256').update(fs.readFileSync(paths.output)).digest('hex'));
   assert.deepEqual(store.submit(token(session), feedback), receipt);
   assert.throws(() => store.submit(token(session), {...feedback,objects:[]}), /different feedback/);
-});
-
-test('versioned metadata survives submission, restart, disk verification and crash recovery', () => {
-  const metadata = {$schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
-    tool:{name:'EditHere', version:'0.11.1'}, exportedAt:'2026-10-16T16:30:00+08:00'};
-  const current = {...metadata, ...feedback};
-  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const receipt = store.submit(token(session), current);
-  assert.deepEqual(receipt.feedback, {...metadata, capture:session.capture, annotationSpace:'result', objects:feedback.objects});
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output, 'utf8')), {...current,capture:session.capture});
-  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}), receipt);
-  const raw = store.byId(session.sessionId); raw.state = 'submitting'; raw.result = {objects:[]}; store.persist(raw);
-  const restarted = new AgentSessions(paths);
-  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)), receipt);
-  assert.deepEqual(restarted.submit(token(session), current), receipt);
-});
-
-test('recognized screenshot text survives Agent submission, receipts and restart as data', () => {
-  const paths=fixture(),store=new AgentSessions(paths),session=create(store,paths);
-  const current=format.exportImage({image,movements:[],notes:[{source:rectangle,text:'按钮更醒目',recognizedText:{text:'开始',engine:'windows-ocr',language:'zh-Hans'}}]});
-  const receipt=store.submit(token(session),current);
-  assert.deepEqual(receipt.feedback.objects,current.objects);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
-  assert.deepEqual(new AgentSessions(paths).status(store.byId(session.sessionId)),receipt);
-  const otherPaths=fixture(),otherStore=new AgentSessions(otherPaths),otherSession=create(otherStore,otherPaths);
-  const invalid=structuredClone(current);invalid.objects[0].ocrtext={lines:[]};
-  assert.throws(()=>otherStore.submit(token(otherSession),invalid),/recognized screenshot text/);
-  assert.equal(fs.existsSync(otherPaths.output),false);
-});
-
-test('a declared image version cannot omit or replace its metadata', () => {
-  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const current = {...feedback, $schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
-    tool:{name:'EditHere',version:'0.11.1'}, exportedAt:'2026-10-16T08:30:00Z'};
-  for (const invalid of [
-    {...current,schemaVersion:'feedback-minimal-3'}, {...current,$schema:null},
-    {...current,tool:{name:'Another tool',version:'0.11.1'}}, {...current,exportedAt:'2026-10-16T08:30:00'}
-  ]) assert.throws(() => store.submit(token(session), invalid));
-  assert.equal(fs.existsSync(paths.output), false);
-  assert.equal(store.byId(session.sessionId).state, 'pending');
-});
-
-test('numbered feedback retains file object IDs and sparse numbers in the persisted MCP receipt', () => {
-  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const current = format.exportImage({image,movements:[],notes:[{source:null,text:'意见'}]});
-  current.objects=[{id:'first-object',kind:'global',movements:[],annotations:[{number:3,text:'较早'}]},
-    {id:'second-object',kind:'region',source:rectangle,movements:[],annotations:[{number:1000,text:'较晚'}]}];
-  for(const objects of [
-    [current.objects[0],{...current.objects[1],id:'first-object'}],
-    [current.objects[0],{...current.objects[1],annotations:[{number:3,text:'重复编号'}]}]
-  ])assert.throws(()=>store.submit(token(session),{...current,objects}),/duplicate/);
-  const receipt=store.submit(token(session),current);
-  assert.deepEqual(receipt.feedback.objects,current.objects);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
-  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}),receipt);
-  assert.deepEqual(new AgentSessions(paths).submit(token(session),current),receipt);
 });
 
 test('feedback rejects a replaced image, empty text, invalid coordinates and incompatible fields', () => {
@@ -135,14 +79,13 @@ test('restart restores pending sessions, original tokens and completed receipts'
 
 test('a crash after output write recovers only the recorded matching feedback', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const current = format.upgradeImage(feedback, session.capture.capturedAt);
-  const raw = store.byId(session.sessionId), serialized = format.serialize(current);
+  const raw = store.byId(session.sessionId), serialized = format.serialize(feedback);
   raw.state = 'submitting'; raw.sha256 = crypto.createHash('sha256').update(serialized).digest('hex');
-  raw.result = {...current, image:undefined}; delete raw.result.image; store.persist(raw);
+  raw.result = {annotationSpace:'result',objects:feedback.objects}; store.persist(raw);
   fs.writeFileSync(paths.output, serialized);
   const restarted = new AgentSessions(paths);
   assert.equal(restarted.status(restarted.byId(session.sessionId)).state, 'completed');
-  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, current.objects);
+  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, feedback.objects);
 });
 
 test('existing output is never overwritten, including a file created after session start', () => {
@@ -213,7 +156,7 @@ test('drafts restore without duplicating the image and do not overwrite a comple
   assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
   first.saveDraft(token(opened),draftProject());
   const resumed = second.byId(opened.sessionId);
-  const expected=draftProjectWithDate(resumed.draft.savedAt);expected.document.capture=opened.capture;assert.deepEqual(hydratedDraft(resumed),expected);
+  assert.deepEqual(hydratedDraft(resumed),draftProjectWithDate(resumed.draft.savedAt));
   assert.equal(resumed.draft.document.image,undefined);
   second.submit(token(opened),feedback);
   assert.throws(() => first.saveDraft(token(opened),draftProject()),/completed/);
@@ -235,28 +178,13 @@ test('draft validation rejects another image, unknown fields and invalid layout 
   assert.equal(fs.existsSync(paths.output),false);
 });
 
-test('Agent drafts preserve recognized text and explicit deletion while rejecting malformed or global OCR', () => {
-  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),project=draftProject();
-  project.document.notes=[{id:'ocr-note',source:rectangle,text:'放大按钮',recognizedText:{text:'开始',engine:'windows-ocr'}}];
-  store.saveDraft(token(opened),project);
-  const restarted=new AgentSessions(paths);
-  assert.deepEqual(hydratedDraft(restarted.byId(opened.sessionId)).document.notes,project.document.notes);
-  const deleted=structuredClone(project);deleted.document.notes[0].recognizedText={text:'',edited:true};
-  store.saveDraft(token(opened),deleted);
-  assert.deepEqual(hydratedDraft(new AgentSessions(paths).byId(opened.sessionId)).document.notes,deleted.document.notes);
-  for(const mutate of [v=>v.document.notes[0].source=null,v=>v.document.notes[0].recognizedText.edited=false,v=>v.document.notes[0].recognizedText.lines=[]]){
-    const invalid=structuredClone(deleted);mutate(invalid);assert.throws(()=>store.saveDraft(token(opened),invalid));
-    assert.deepEqual(hydratedDraft(store.byId(opened.sessionId)).document.notes,deleted.document.notes);
-  }
-});
-
 test('reading a completed receipt checks the file and needs neither HTTP nor server credentials', () => {
   const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
   store.submit(token(opened),feedback);
   const key=fs.readFileSync(path.join(paths.directory,'server-key'),'utf8');
   const stat=fs.statSync(path.join(paths.directory,opened.sessionId+'.json'));
   const saved=readSessionStatus({directory:paths.directory,sessionId:opened.sessionId});
-  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,format.upgradeImage(feedback,opened.capture.capturedAt).objects);
+  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,feedback.objects);
   assert.equal(fs.readFileSync(path.join(paths.directory,'server-key'),'utf8'),key);
   assert.equal(fs.statSync(path.join(paths.directory,opened.sessionId+'.json')).mtimeMs,stat.mtimeMs);
   fs.writeFileSync(paths.output,'external edit');

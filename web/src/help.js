@@ -38,8 +38,8 @@
           <article><h3>${icon('send')}反馈 JSON</h3><p>给 Agent 读取的修改意见、坐标与位移。展开顶栏保存按钮，选择「保存 JSON 文件」「复制 JSON 内容」「保存项目」或「查看 JSON 文件」；选择只记住方式，不会复制、下载或打开窗口。点击主保存按钮才执行，以后保留你上次的选择。</p></article>
           <article><h3>${icon('save')}项目文件</h3><p>保留原图或批注帧、布局与可编辑状态。顶栏保存菜单选「保存项目」后点击主按钮，或点击左下「更多工具」里的「保存项目」备份。下次通过「打开」继续编辑；视频继续播放需重新选择源视频。</p></article>
         </div>
-        <div class="help-callout"><strong>图片怎么交付？</strong><p>在「查看 JSON 文件」中选择原图方式，默认「配套图片文件」：下载 ZIP 包含 JSON 与原图；复制 JSON 时还需交付引用的图片。「内嵌到 JSON」可单文件交付，并可选 JPEG 压缩；「不附带图片」适合 Agent 已持有相同原图。还可附带带编号和箭头的预览图。</p></div>
-        <p>下载文件和复制内容包含相同的修改意见。重新导入可打开反馈 ZIP，或同时选择 JSON 与配套图片；校验值不一致的图片不会用于恢复批注。把文件交给 Agent，并说明「按照这些批注修改」。</p>
+        <div class="help-callout"><strong>图片要不要一起保存？</strong><p>在保存菜单选「查看 JSON 文件」后点击主按钮，打开查看窗口并选择是否包含图片，默认包含。关闭后，发 JSON 时请同时提供对应原图，或确认 Agent 已有这张图。预览中折叠图片只是方便阅读；复制内容和保存文件仍遵循「包含图片」选项。</p></div>
+        <p>JSON 文件和复制内容包含相同的反馈。把文件上传给 Agent，或直接粘贴内容，并说明「按照这些批注修改」。</p>
         <p class="help-footnote">显示「已保存」只代表反馈落盘；显示「已发送」代表宿主接收消息。Agent 是否已继续，以对话中的回复和修改结果为准。</p>
       </section>
       <section id="help-panel-recover" class="help-panel" role="tabpanel" aria-labelledby="help-tab-recover" tabindex="0" hidden>

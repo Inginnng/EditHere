@@ -1,5 +1,4 @@
 #pragma once
-#include "feedbackexport.h"
 #include <QByteArray>
 #include <QJsonObject>
 #include <QString>
@@ -19,5 +18,4 @@ int agentExitCode(const QJsonObject &response);
 QString validateNewFeedbackPath(const QString &path);
 // Publishes a fully written file without replacing any existing destination.
 void writeNewFeedback(const QString &path, const QByteArray &bytes);
-void writeNewFeedbackBundle(const QString &path, const FeedbackBundle &bundle);
 } // namespace h2d

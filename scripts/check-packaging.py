@@ -662,7 +662,7 @@ FEEDBACK_DOCS = (
     ROOT / "connector" / "skills" / "edithere" / "SKILL.md",
     ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
 )
-FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movement", "annotations")
+FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movements", "annotations")
 # The three skills are the copies an agent actually loads; the release that added video
 # projects is what a version check has to be able to compare against. This stays 0.10.0
 # after later releases: it is the first version with the feature, not the current one.
@@ -685,8 +685,7 @@ def check_feedback_docs() -> list[Problem]:
             "app/model.cpp: exportFeedback is no longer recognisable, so the shipped pages cannot be "
             "checked against it."
         ]
-    helper = source.find("static QJsonObject typedFeedbackObject")
-    exporter = source[helper if 0 <= helper < start else start:end]
+    exporter = source[start:end]
     for key in FEEDBACK_PRODUCER_KEYS:
         if f'"{key}"' not in exporter:
             problems.append(
@@ -702,7 +701,7 @@ def check_feedback_docs() -> list[Problem]:
                 f"exporter writes objects, so a reader following this page finds no notes at all."
             )
     guide = read(ROOT / "docs" / "AGENT-CLI.md")
-    for token in ("objects[].source", "objects[].movement", "objects[].annotations"):
+    for token in ("objects[].source", "objects[].movements", "objects[].annotations"):
         if token not in guide:
             problems.append(
                 f"docs/AGENT-CLI.md: the field table no longer documents {token}; it is the page AI "

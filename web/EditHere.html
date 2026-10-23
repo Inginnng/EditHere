@@ -47,9 +47,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 .quiet { display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--muted);padding:7px 8px;border-radius:7px;white-space:nowrap; }
 .app,.workspace,.editor-column { position:absolute;inset:0;min-width:0;min-height:0; }
 .app { background-image:radial-gradient(var(--dot) .7px,transparent .7px);background-size:20px 20px; }
-.page-context { position:absolute;top:76px;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:9px;max-width:min(500px,calc(100% - 40px));padding:8px 12px;font-size:12px; }
-.page-context>span { color:var(--muted);flex:none;font-size:10px; }
-.page-context>strong { font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .empty { position:absolute;inset:76px 20px 74px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:auto; }
 .eyebrow { display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;letter-spacing:1.5px; }
 .eyebrow>span { width:5px;height:5px;background:var(--blue);border-radius:50%; }
@@ -149,11 +146,6 @@ input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .note-actions .icon { width:16px;height:16px; }
 .note-card p { grid-column:2;grid-row:1;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0; }
 .note-card.movement-empty p { color:var(--muted); }
-.recognized-text { grid-column:2 / -1;margin-top:5px;padding-top:5px;border-top:1px solid var(--border);font-size:11px;color:var(--muted); }
-.recognized-text small { display:block;font-size:10px; }
-.recognized-text span { display:block;white-space:pre-wrap;overflow-wrap:anywhere;max-height:7em;overflow:auto; }
-.recognized-actions { display:flex;gap:10px;margin-top:3px; }
-.recognized-actions button { padding:0;border:0;background:none;color:var(--blue);font-size:11px;cursor:pointer; }
 .status-bar { display:none; }
 .explosion-preview { position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden;border-radius:8px; }
 .explosion-reflection { position:absolute;inset:0;background:radial-gradient(ellipse at 100% 0,#b4d0ff55, #aca1f818 20%,transparent 55%); }
@@ -760,7 +752,6 @@ SOFTWARE.
   </section>
   <section id="workspace" class="workspace" hidden>
     <div class="editor-column">
-      <div id="page-context" class="page-context surface" hidden><span>页面</span><strong id="page-description"></strong></div>
       <div id="viewport" class="viewport">
         <div id="stage" class="stage" tabindex="0" role="application" aria-label="素材编辑画布"><video id="video" playsinline preload="auto" hidden></video><canvas id="canvas"></canvas><svg id="overlay" aria-hidden="true"></svg><div id="pins" class="pins"></div></div>
         <div id="frame-hint" class="frame-hint" hidden>已暂停 · 在这一帧留下意见</div>
@@ -791,11 +782,10 @@ SOFTWARE.
 </main>
 <div class="utility-dock surface"><button id="utility-toggle" class="icon-button" title="更多工具" aria-label="更多工具" aria-expanded="false" aria-controls="utility-actions"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button><div id="utility-actions" class="utility-actions"><span class="local-badge" title="素材不上传到服务器"><span></span><span class="local-label">本地</span></span><button id="save-project" class="icon-button" title="保存项目：包含原图、批注和布局" aria-label="保存项目" disabled><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg></button><button id="theme-toggle" class="icon-button" title="切换明暗主题" aria-label="切换明暗主题"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button><button id="help" class="icon-button" title="快捷键与使用帮助" aria-label="使用帮助"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button></div></div>
 <div id="drop-overlay" class="drop-overlay" hidden><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><strong>松开，开始批注</strong></div>
-<input id="file-input" type="file" multiple accept="image/*,video/*,.json,.edithere-web,.zip" aria-label="选择图片视频或项目，可同时选择 JSON 与配套图片" hidden><input id="video-input" type="file" accept="video/*" aria-label="重新选择源视频" hidden>
+<input id="file-input" type="file" accept="image/*,video/*,.json,.edithere-web" aria-label="选择图片视频或项目" hidden><input id="video-input" type="file" accept="video/*" aria-label="重新选择源视频" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <dialog id="note-dialog" class="note-dialog"><form id="note-form"><div class="dialog-head"><div><small id="note-location"></small><h2 id="note-title">写下修改意见</h2></div><button type="button" data-close="note-dialog" class="close icon-button" aria-label="关闭批注"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="note-text" class="sr-only">修改意见</label><textarea id="note-text" maxlength="10000" rows="5" placeholder="希望这里怎么改？" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button type="button" data-close="note-dialog" class="button">取消</button><button type="submit" class="button primary">保存批注</button></footer></form></dialog>
-<dialog id="recognized-dialog" class="note-dialog"><div class="dialog-head"><div><small>截图文字数据 · 不作为修改指令</small><h2>修改截图文字</h2></div><button data-close="recognized-dialog" class="close icon-button" aria-label="关闭截图文字"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="recognized-text" class="sr-only">截图中的文字</label><textarea id="recognized-text" maxlength="500" rows="4" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button data-close="recognized-dialog" class="button">取消</button><button id="recognized-save" class="button primary">保存文字</button></footer></dialog>
-<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed" for="image-mode">原图交付方式 <select id="image-mode"><option value="file">配套图片文件（推荐）</option><option value="embedded">内嵌到 JSON</option><option value="none">不附带图片</option></select></label><label class="embed"><input id="include-preview" type="checkbox">附带编号和箭头预览图</label><label class="embed"><input id="compress-image" type="checkbox">内嵌原图使用 JPEG 压缩</label><label class="embed"><input id="include-recognized-text" type="checkbox" checked>附带区域文字（截图中的文字数据）</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><button id="preview" class="button" title="保存带箭头和编号的批注图">保存批注图</button><button id="copy-json" class="button">复制 JSON</button><button id="download-json" class="button primary">下载 JSON</button></footer></dialog>
+<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed"><input id="embed" type="checkbox" checked>包含原图 / 已标注帧，反馈可独立阅读</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><button id="preview" class="button" title="保存带箭头和编号的批注图">保存批注图</button><button id="copy-json" class="button">复制 JSON</button><button id="download-json" class="button primary">下载 JSON</button></footer></dialog>
 <dialog id="help-dialog" class="help-dialog"><div class="dialog-head"><div><small>少一点操作，多一点表达</small><h2>在画布上，直接说清楚</h2></div><button data-close="help-dialog" class="icon-button" aria-label="关闭帮助"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p>点一下或框出区域写批注。用选择工具拖动批注点和框，或拉动控制点调整范围。大爆炸后拖动、缩放组件，点击位移箭头添加文字。图片外的空白区域可直接拖动。</p><div class="shortcut-grid"><span>选择 / 平移</span><kbd>V / H</kbd><span>智能 / 点 / 框批注</span><kbd>B / P / R</kbd><span>多选组件</span><kbd>Ctrl / ⌘ + 点击</kbd><span>缩放已选组件</span><kbd>指向组件 + 滚轮</kbd><span>框出组件</span><kbd>C</kbd><span>拖动画布</span><kbd>空格 + 拖动 / 中键</kbd><span>缩放画布</span><kbd>Ctrl / ⌘ + 滚轮</kbd><span>适应画布</span><kbd>Ctrl / ⌘ + 0</kbd><span>撤销 / 重做</span><kbd>Ctrl / ⌘ + Z / Y</kbd><span>打开 / 保存 / 导出</span><kbd>Ctrl / ⌘ + O / S / E</kbd><span>微调组件 / 加速</span><kbd>方向键 / Shift</kbd><span>删除批注 / 取消</span><kbd>Delete / Esc</kbd></div><p class="help-footnote">移动和缩放使用原图像素坐标。系统截图与 OCR 仍需桌面 EditHere；网页可导入图片、视频和网页项目。</p></dialog>
 <script>(function (root, factory) {
   'use strict';
@@ -1232,395 +1222,75 @@ SOFTWARE.
   }
   return { create, addRegion, bounds, originalBounds, trackedMovements, transform, paint, movements, hit, validate, remapNotes };
 });
-</script><script>(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.EditHereImage=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
-  'use strict';
-  const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-  const safeName=value=>typeof value==='string'&&value.length>0&&value.length<=255&&!value.startsWith('.')&&!/[\\/:*?"<>|\u0000-\u001f]/.test(value)&&!/[. ]$/.test(value)&&!/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value);
-  function sha256(bytes){
-    const constants=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
-    const state=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19],length=Math.ceil((bytes.length+9)/64)*64,data=new Uint8Array(length),words=new Int32Array(64);
-    data.set(bytes);data[bytes.length]=128;const view=new DataView(data.buffer),bits=bytes.length*8;view.setUint32(length-8,Math.floor(bits/4294967296));view.setUint32(length-4,bits>>>0);
-    const rotate=(value,count)=>(value>>>count)|(value<<(32-count));
-    for(let offset=0;offset<length;offset+=64){for(let i=0;i<16;i++)words[i]=view.getInt32(offset+i*4);for(let i=16;i<64;i++){const a=words[i-15],b=words[i-2];words[i]=(words[i-16]+(rotate(a,7)^rotate(a,18)^(a>>>3))+words[i-7]+(rotate(b,17)^rotate(b,19)^(b>>>10)))|0;}let[a,b,c,d,e,f,g,h]=state;for(let i=0;i<64;i++){const one=(h+(rotate(e,6)^rotate(e,11)^rotate(e,25))+((e&f)^(~e&g))+constants[i]+words[i])|0,two=((rotate(a,2)^rotate(a,13)^rotate(a,22))+((a&b)^(a&c)^(b&c)))|0;h=g;g=f;f=e;e=(d+one)|0;d=c;c=b;b=a;a=(one+two)|0;}for(const[i,value]of[a,b,c,d,e,f,g,h].entries())state[i]=(state[i]+value)|0;}
-    return state.map(value=>(value>>>0).toString(16).padStart(8,'0')).join('');
-  }
-  function dataBytes(value){
-    const match=typeof value==='string'&&/^data:(image\/(?:png|jpeg|webp|gif|bmp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
-    if(!match||match[2].length%4||match[2].length>96*1024*1024)throw new Error('Invalid image data URL.');
-    const binary=typeof atob==='function'?atob(match[2]):Buffer.from(match[2],'base64').toString('binary'),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
-    const canonical=typeof btoa==='function'?btoa(binary):Buffer.from(bytes).toString('base64');if(canonical!==match[2])throw new Error('Invalid image base64.');
-    return{mimeType:match[1],bytes};
-  }
-  function dimensions(bytes,mimeType){
-    const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let width,height;
-    if(mimeType==='image/png'&&bytes.length>=33&&[137,80,78,71,13,10,26,10].every((value,index)=>bytes[index]===value)&&view.getUint32(12)===0x49484452){width=view.getUint32(16);height=view.getUint32(20);}
-    else if(mimeType==='image/jpeg'&&bytes.length>=4&&bytes[0]===255&&bytes[1]===216){let offset=2;while(offset+4<=bytes.length){if(bytes[offset++]!==255)throw new Error('Invalid JPEG marker.');while(bytes[offset]===255)offset++;const marker=bytes[offset++];if(marker===217||marker===218)break;if(marker===1||(marker>=208&&marker<=215))continue;const length=view.getUint16(offset);if(length<2||offset+length>bytes.length)throw new Error('Invalid JPEG segment.');if([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker)){if(length<8)throw new Error('Invalid JPEG dimensions.');height=view.getUint16(offset+3);width=view.getUint16(offset+5);break;}offset+=length;}}
-    else if(mimeType==='image/gif'&&bytes.length>=10&&String.fromCharCode(...bytes.subarray(0,6)).match(/^GIF8[79]a$/)){width=view.getUint16(6,true);height=view.getUint16(8,true);}
-    else if(mimeType==='image/bmp'&&bytes.length>=26&&bytes[0]===66&&bytes[1]===77){if(view.getUint32(14,true)===12){width=view.getUint16(18,true);height=view.getUint16(20,true);}else{width=view.getInt32(18,true);height=Math.abs(view.getInt32(22,true));}}
-    else if(mimeType==='image/webp'&&bytes.length>=25&&String.fromCharCode(...bytes.subarray(0,4))==='RIFF'&&String.fromCharCode(...bytes.subarray(8,12))==='WEBP'){
-      const chunk=String.fromCharCode(...bytes.subarray(12,16));if(chunk==='VP8X'&&bytes.length>=30){width=1+bytes[24]+(bytes[25]<<8)+(bytes[26]<<16);height=1+bytes[27]+(bytes[28]<<8)+(bytes[29]<<16);}else if(chunk==='VP8L'&&bytes[20]===47){const bits=view.getUint32(21,true);width=1+(bits&16383);height=1+((bits>>>14)&16383);}else if(chunk==='VP8 '&&bytes.length>=30&&bytes[23]===157&&bytes[24]===1&&bytes[25]===42){width=view.getUint16(26,true)&16383;height=view.getUint16(28,true)&16383;}}
-    if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>32767||height>32767||width*height>32000000)throw new Error('Invalid or unsupported image dimensions.');
-    return{width,height};
-  }
-  function inspect(dataUrl){const{bytes,mimeType}=dataBytes(dataUrl);return{bytes,mimeType,...dimensions(bytes,mimeType),sha256:sha256(bytes)};}
-  function descriptor(dataUrl,mode='file',file='feedback.png',options={}){
-    if(typeof mode==='boolean')mode=mode?'embedded':'none';if(!['file','embedded','none'].includes(mode))throw new Error('Invalid image mode.');
-    const info=inspect(dataUrl),value={mode,mimeType:info.mimeType,width:info.width,height:info.height,devicePixelRatio:options.devicePixelRatio??null,sha256:info.sha256};
-    if(mode==='file')value.file=file;if(mode==='embedded')value.dataUrl=dataUrl;if(options.preview)value.preview=options.preview;validate(value);return value;
-  }
-  function validate(value){
-    if(!record(value))throw new Error('Invalid image descriptor.');const fields=['mode','mimeType','width','height','devicePixelRatio','sha256',...(value.mode==='file'?['file']:value.mode==='embedded'?['dataUrl']:[]),...(Object.hasOwn(value,'preview')?['preview']:[])];
-    if(Object.keys(value).sort().join(',')!==fields.sort().join(',')||!['file','embedded','none'].includes(value.mode)||!['image/png','image/jpeg','image/webp','image/gif','image/bmp'].includes(value.mimeType)||!Number.isInteger(value.width)||!Number.isInteger(value.height)||value.width<1||value.height<1||value.width>32767||value.height>32767||value.width*value.height>32000000||!(value.devicePixelRatio===null||Number.isFinite(value.devicePixelRatio)&&value.devicePixelRatio>0)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(value.sha256))throw new Error('Invalid image descriptor fields.');
-    if(value.mode==='file'&&(!safeName(value.file)||!({'image/png':/\.png$/i,'image/jpeg':/\.jpe?g$/i,'image/webp':/\.webp$/i,'image/gif':/\.gif$/i,'image/bmp':/\.bmp$/i}[value.mimeType]).test(value.file)))throw new Error('Invalid original image filename.');
-    if(Object.hasOwn(value,'preview')&&(!safeName(value.preview)||!/^.+\.annotated\.jpg$/i.test(value.preview)))throw new Error('Invalid annotated preview filename.');
-    if(value.mode==='embedded')verify(value,value.dataUrl);return value;
-  }
-  function verify(value,dataUrl){const info=inspect(dataUrl);if(info.mimeType!==value.mimeType||info.width!==value.width||info.height!==value.height||info.sha256!==value.sha256?.toLowerCase())throw new Error('Original image MIME, dimensions or SHA-256 do not match.');return info;}
-  function dataUrlOf(value){return typeof value==='string'?value:record(value)&&value.mode==='embedded'?(validate(value),value.dataUrl):undefined;}
-  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,validate,verify,dataUrlOf};
-});
 </script><script>(function (root, factory) {
   'use strict';
-
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.EditHereFeedback = api;
 })(typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const imageFormat=typeof module==='object'&&module.exports?require('./image-format.js'):globalThis.EditHereImage;
-
   const rectangle = r => r === null ? null : ({x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2});
   const sameRectangle = (a, b) => ['x1', 'y1', 'x2', 'y2'].every(key => Math.abs(a[key] - b[key]) < 1e-7);
   const sourceKey = r => JSON.stringify([r.x1, r.y1, r.x2, r.y2]);
-  const IMAGE_VERSION = 'feedback-minimal-3';
-  const IMAGE_SCHEMA = 'urn:edithere:feedback-minimal:3';
-  const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
-  const closeNumber = (actual, expected) => Number.isFinite(actual) && Math.abs(actual - expected) <= Math.max(1e-7, Math.abs(expected) * 1e-9);
-  const feedbackScale = value => Math.max(.01, Math.floor(value * 100 + .5 + 1e-9) / 100);
-  function feedbackRectangle(rect, bounds) {
-    if (rect === null) return null;
-    if (rect.x1 === rect.x2 && rect.y1 === rect.y2) {
-      const x=Math.round(rect.x1),y=Math.round(rect.y1);
-      return {x1:x,y1:y,x2:x,y2:y};
-    }
-    const x1=Math.min(bounds.width-1,Math.max(0,Math.round(rect.x1)));
-    const y1=Math.min(bounds.height-1,Math.max(0,Math.round(rect.y1)));
-    return {x1,y1,x2:Math.min(bounds.width,Math.max(x1+1,Math.round(rect.x2))),
-      y2:Math.min(bounds.height,Math.max(y1+1,Math.round(rect.y2)))};
-  }
-  function feedbackDestination(original, source, destination, bounds) {
-    const rect=feedbackRectangle(destination,bounds);
-    for (const [start,end,limit] of [['x1','x2',bounds.width],['y1','y2',bounds.height]]) {
-      const size=source[end]-source[start];
-      if (feedbackScale((destination[end]-destination[start])/(original[end]-original[start]))===1 ||
-          feedbackScale((rect[end]-rect[start])/size)===1) {
-        rect[start]=Math.min(rect[start],limit-size);
-        rect[end]=rect[start]+size;
-      }
-    }
-    return rect;
-  }
-  function movementResult(source, rect, compact = true) {
-    const result={rect:rectangle(rect), dx:rect.x1-source.x1, dy:rect.y1-source.y1};
-    for (const [key,start,end] of [['scaleX','x1','x2'],['scaleY','y1','y2']]) {
-      const ratio=(rect[end]-rect[start])/(source[end]-source[start]);
-      const scale=compact?feedbackScale(ratio):ratio;
-      if (!compact || scale!==1) result[key]=scale;
-    }
-    return result;
-  }
-  function typedObject(object) {
-    const {source, movements = [], recognizedText, result, ...value} = object;
-    if (recognizedText) value.ocrtext = recognizedText.text;
-    if (source === null) return {...value, kind:'global'};
-    if (source.x1 === source.x2 && source.y1 === source.y2) {
-      if (![source.x1, source.y1].every(value => Number.isFinite(value) && value >= 0 && value <= 32767 && Number.isInteger(value))) throw new Error('Invalid feedback point.');
-      return {...value, kind:'point', point:{x:source.x1,y:source.y1}};
-    }
-    return {...value, kind:'region', source:rectangle(source),
-      ...(movements.length ? {movement:movementResult(source,movements.at(-1).to)} : {})};
-  }
-  // Internal bridge to the established layout importer. Never write this shape
-  // under a v3 version, and validate derived numbers before removing them.
-  function legacyObject(object) {
-    if (!record(object) || !Object.hasOwn(object,'kind')) return object;
-    const fields=['kind','annotations',...['id','recognizedText','ocrtext','movements','movement'].filter(key=>Object.hasOwn(object,key))];
-    if (Object.hasOwn(object,'ocrtext') && Object.hasOwn(object,'recognizedText')) throw new Error('Invalid recognized screenshot text fields.');
-    const singleMovement=Object.hasOwn(object,'movement');
-    if(singleMovement&&(!record(object.movement)||Object.hasOwn(object,'movements')||Object.hasOwn(object,'result'))) throw new Error('Invalid movement fields.');
-    const movements = singleMovement ? [{to:object.movement.rect}] : Object.hasOwn(object,'movements') ? object.movements : [];
-    if (!Array.isArray(movements) || !Array.isArray(object.annotations)) throw new Error('Invalid feedback object lists.');
-    const coordinate=value=>Number.isFinite(value)&&value>=0&&value<=32767;
-    const rect=value=>exactKeys(value,['x1','y1','x2','y2'])&&Object.values(value).every(coordinate)&&value.x2-value.x1>1e-7&&value.y2-value.y1>1e-7;
-    if (object.kind==='region') {
-      fields.push('source');
-      if (!rect(object.source)) throw new Error('Invalid region source.');
-      for (const movement of movements) if (!exactKeys(movement,['to'])||!rect(movement.to)) throw new Error('Invalid movement target.');
-      if (movements.length) {
-        if(!singleMovement) fields.push('result');
-        const expected=movementResult(object.source,movements.at(-1).to,false),actual=singleMovement?object.movement:object.result;
-        if (!record(actual) || !exactKeys(actual,['rect','dx','dy',...['scaleX','scaleY'].filter(key=>Object.hasOwn(actual,key))])||!rect(actual.rect)||
-            ['x1','y1','x2','y2'].some(key=>!closeNumber(actual.rect[key],expected.rect[key]))||
-            ['dx','dy'].some(key=>!closeNumber(actual[key],expected[key])) ||
-            ['scaleX','scaleY'].some(key=>Object.hasOwn(actual,key)
-              ? !closeNumber(actual[key],expected[key])&&!closeNumber(actual[key],feedbackScale(expected[key]))
-              : feedbackScale(expected[key])!==1)) throw new Error('Movement result does not match its final target.');
-      }
-    } else if (object.kind==='point') {
-      fields.push('point');
-      if (!exactKeys(object.point,['x','y'])||!Object.values(object.point).every(value=>coordinate(value)&&Number.isInteger(value))) throw new Error('Invalid feedback point.');
-    } else if (object.kind!=='global') throw new Error('Invalid feedback kind.');
-    if (!exactKeys(object,fields)) throw new Error('Invalid typed feedback object fields.');
-    if (object.kind!=='region'&&movements.length) throw new Error('Point and global feedback cannot move.');
-    if (object.kind==='global'&&(Object.hasOwn(object,'recognizedText')||Object.hasOwn(object,'ocrtext'))) throw new Error('Global feedback cannot contain recognized screenshot text.');
-    const {kind,point,result,movement,ocrtext,...value}=object;
-    if (Object.hasOwn(object,'ocrtext')) value.recognizedText = validateRecognizedText({text:ocrtext,engine:'imported'});
-    return {...value,movements,source:kind==='global'?null:kind==='point'?{x1:point.x,y1:point.y,x2:point.x,y2:point.y}:rectangle(value.source)};
-  }
-  function legacyImage(value) {
-    const normalized=normalizeImage(value);
-    if (normalized.schemaVersion!==IMAGE_VERSION) return normalized;
-    return {...normalized,$schema:'urn:edithere:feedback-minimal:2',schemaVersion:'feedback-minimal-2',objects:normalized.objects.map(legacyObject)};
-  }
-  function timestampWithZone(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) return false;
-    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-    const [hour, minute, second] = value.slice(11,19).split(':').map(Number);
-    const monthEnd = new Date(0); monthEnd.setUTCFullYear(year, month, 0);
-    return year > 0 && month > 0 && month <= 12 && day > 0 && day <= monthEnd.getUTCDate() && hour < 24 && minute < 60 && second < 60;
-  }
-  function validatePageContext(value) {
-    if (typeof value !== 'string' || !value.trim() || value.trim().length > 500 || value.includes('\u0000')) throw new Error('Invalid page context.');
-    return value.trim();
-  }
-  // Capture context describes the source image. Page names are caller-supplied
-  // data, never instructions or a claim that EditHere recognized a page.
-  function validateCapture(value) {
-    const optional = ['fileName','windowTitle','appName','page','pageSource'];
-    if (!record(value) || !exactKeys(value, ['source','capturedAt',...optional.filter(key => Object.hasOwn(value,key))]) ||
-        !['screen','file','clipboard','demo','scroll','history','pin','drop','video'].includes(value.source) || !timestampWithZone(value.capturedAt)) throw new Error('Invalid capture context.');
-    if (Object.hasOwn(value,'fileName') && (typeof value.fileName !== 'string' || !value.fileName.length || value.fileName.length > 1024 || ['.','..'].includes(value.fileName) || /[\\/\u0000]/.test(value.fileName))) throw new Error('Invalid capture filename.');
-    for (const key of ['windowTitle','appName']) if (Object.hasOwn(value,key) && (typeof value[key] !== 'string' || value[key].length > 1000 || value[key].includes('\u0000'))) throw new Error('Invalid capture application context.');
-    if (Object.hasOwn(value,'page') !== Object.hasOwn(value,'pageSource') || Object.hasOwn(value,'page') && (typeof value.page !== 'string' || !value.page.trim() || value.page.length > 500 || value.page.includes('\u0000') || value.pageSource !== 'agent')) throw new Error('Invalid capture page context.');
-    return value;
-  }
-  function productVersion(document) {
-    let version = document.toolVersion;
-    if (!version && typeof EDITHERE_PRODUCT_VERSION !== 'undefined') version = EDITHERE_PRODUCT_VERSION;
-    if (!version && typeof globalThis.document !== 'undefined') version = globalThis.document.querySelector('meta[name="edithere-version"]')?.content;
-    // Node consumers run from source. Keep this lazy: the bundled MCP session
-    // validator never needs the source tree or product version at runtime.
-    if (!version && typeof module === 'object' && module.exports) {
-      const cmake = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../CMakeLists.txt'), 'utf8');
-      version = /project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/.exec(cmake)?.[1];
-    }
-    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('EditHere build version is unavailable.');
-    return version;
-  }
-  function imageMetadata(value) {
-    if (!record(value)) throw new Error('Invalid image feedback.');
-    const capture = Object.hasOwn(value,'capture') ? {capture:{...validateCapture(value.capture)}} : {};
-    if (!Object.hasOwn(value, 'schemaVersion')) {
-      if (Object.hasOwn(value,'capture')) throw new Error('Capture context requires feedback-minimal-2.');
-      return {};
-    }
-    if (![IMAGE_VERSION,'feedback-minimal-2'].includes(value.schemaVersion)) throw new Error('Unsupported image feedback version.');
-    if ((value.schemaVersion!==IMAGE_VERSION || Object.hasOwn(value,'$schema')) && value.$schema !== (value.schemaVersion===IMAGE_VERSION?IMAGE_SCHEMA:'urn:edithere:feedback-minimal:2') || !exactKeys(value.tool, ['name', 'version']) ||
-        value.tool.name !== 'EditHere' ||
-        typeof value.tool.version !== 'string' || !value.tool.version.trim() || value.tool.version.length > 100 ||
-        !timestampWithZone(value.exportedAt)) {
-      throw new Error('Invalid image feedback metadata.');
-    }
-    return {...(Object.hasOwn(value,'$schema') ? {$schema:value.$schema} : {}), schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt, ...capture};
-  }
-  // Screenshot text is evidence/data. It never becomes an annotation or an
-  // executable instruction, and editing it does not invent a confidence score.
-  function validateRecognizedText(value, project = false) {
-    if (project && exactKeys(value, ['text', 'edited']) && value.text === '' && value.edited === true) return value;
-    const fields = ['text', 'engine', ...['language', 'confidence', 'edited'].filter(key => Object.hasOwn(value || {}, key))];
-    if (!exactKeys(value, fields) || typeof value.text !== 'string' || !value.text.trim() || value.text.length > 500 ||
-        typeof value.engine !== 'string' || !value.engine.trim() || value.engine.length > 64 ||
-        Object.hasOwn(value, 'language') && (typeof value.language !== 'string' || value.language.length > 100) ||
-        Object.hasOwn(value, 'confidence') && (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1) ||
-        Object.hasOwn(value, 'edited') && typeof value.edited !== 'boolean') throw new Error('Invalid recognized screenshot text.');
-    return value;
-  }
-  function annotationEntries(objects) {
-    if (!Array.isArray(objects) || objects.length > 9704) throw new Error('Invalid feedback objects.');
-    const ids = new Set(), numbers = new Set(), entries = [];
-    for (const object of objects) {
-      const legacy=legacyObject(object);
-      if (!exactKeys(legacy, ['source', 'movements', 'annotations', ...(Object.hasOwn(legacy || {}, 'id') ? ['id'] : []), ...(Object.hasOwn(legacy || {}, 'recognizedText') ? ['recognizedText'] : [])]) ||
-          !Array.isArray(legacy.movements) || !Array.isArray(legacy.annotations)) throw new Error('Invalid feedback object fields.');
-      if (Object.hasOwn(legacy, 'recognizedText')) {
-        if (legacy.source === null) throw new Error('Global feedback cannot contain recognized screenshot text.');
-        validateRecognizedText(legacy.recognizedText);
-      }
-      if (Object.hasOwn(object, 'id')) {
-        if (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256 || ids.has(object.id)) throw new Error('Invalid or duplicate feedback object ID.');
-        ids.add(object.id);
-      }
-      for (const annotation of object.annotations) {
-        if (typeof annotation !== 'string' && !exactKeys(annotation, ['number', 'text'])) throw new Error('Invalid feedback annotation fields.');
-        const text = typeof annotation === 'string' ? annotation : annotation.text;
-        if (typeof text !== 'string' || !text.trim() || text.length > 10000) throw new Error('Invalid feedback annotation text.');
-        const number = typeof annotation === 'string' ? null : annotation.number;
-        if (typeof annotation !== 'string') {
-          if (!Number.isInteger(number) || number < 1 || number > 1000 || numbers.has(number)) throw new Error('Invalid or duplicate feedback annotation number.');
-          numbers.add(number);
-        }
-        entries.push({object, text, number});
-        if (entries.length > 1000) throw new Error('Too many feedback annotations.');
-      }
-    }
-    let next = 1;
-    for (const entry of entries) if (entry.number === null) {
-      while (numbers.has(next)) next++;
-      entry.number = next++; numbers.add(entry.number);
-    }
-    return entries;
-  }
-  function normalizeImage(value) {
-    const metadata = imageMetadata(value), modern = Object.hasOwn(value, 'schemaVersion');
-    const objectFormat = Object.hasOwn(value, 'objects');
-    const fields = [...Object.keys(metadata), ...(objectFormat ? ['objects'] : ['annotations', 'changes']),
-      ...(Object.hasOwn(value, 'annotationSpace') ? ['annotationSpace'] : []), ...(Object.hasOwn(value, 'image') ? ['image'] : [])];
-    if (!exactKeys(value, fields) || (modern && (!objectFormat || !Object.hasOwn(value, 'annotationSpace'))) ||
-        Object.hasOwn(value, 'annotationSpace') && value.annotationSpace !== 'result') throw new Error('Invalid image feedback fields.');
-    const base = {...metadata, annotationSpace:'result', ...(Object.hasOwn(value, 'image') ? {image:value.image} : {})};
-    if(Object.hasOwn(value,'image')&&typeof value.image!=='string')imageFormat.validate(value.image);
-    if (objectFormat) {
-      if (!Array.isArray(value.objects)) throw new Error('Invalid feedback objects.');
-      if (value.schemaVersion===IMAGE_VERSION ? value.objects.some(object=>!record(object)||!Object.hasOwn(object,'kind')) : value.objects.some(object=>Object.hasOwn(object||{},'kind'))) throw new Error('Feedback object kinds require feedback-minimal-3.');
-      if (!modern && value.objects.some(object => Object.hasOwn(object || {}, 'recognizedText') || Object.hasOwn(object || {}, 'ocrtext'))) throw new Error('Recognized screenshot text requires feedback-minimal-2.');
-      annotationEntries(value.objects);
-      return {...base, objects:value.objects};
-    }
-    if (!Array.isArray(value.annotations) || value.annotations.length > 1000 || !Array.isArray(value.changes) || value.changes.length > 8704) throw new Error('Invalid legacy feedback lists.');
-    const objects = value.changes.map(change => {
-      if (!exactKeys(change, ['from', 'to'])) throw new Error('Invalid legacy feedback change.');
-      return {source:change.from, movements:[{to:change.to}], annotations:[]};
-    });
-    for (const [index, annotation] of value.annotations.entries()) {
-      if (!record(annotation)) throw new Error('Invalid legacy feedback annotation.');
-      const kind = ['point', 'rectangle', 'change'].find(key => Object.hasOwn(annotation, key));
-      if (!exactKeys(annotation, kind ? [kind, 'text'] : ['text'])) throw new Error('Invalid legacy feedback annotation fields.');
-      if (kind === 'change') {
-        if (!Number.isInteger(annotation.change) || annotation.change < 0 || annotation.change >= value.changes.length) throw new Error('Legacy annotation references a missing change.');
-        objects[annotation.change].annotations.push({number:index + 1, text:annotation.text});
-      } else {
-        if (kind === 'point' && !exactKeys(annotation.point, ['x', 'y'])) throw new Error('Invalid legacy feedback point.');
-        const source = kind === 'point' ? {x1:annotation.point.x, y1:annotation.point.y, x2:annotation.point.x, y2:annotation.point.y} : kind === 'rectangle' ? annotation.rectangle : null;
-        objects.push({source, movements:[], annotations:[{number:index + 1, text:annotation.text}]});
-      }
-    }
-    annotationEntries(objects);
-    return {...base, objects};
-  }
-  function upgradeImage(value, exportedAt = new Date().toISOString()) {
-    const normalized=normalizeImage(value);
-    if (normalized.schemaVersion===IMAGE_VERSION) return normalized;
-    const {$schema, ...data}=normalized;
-    const upgraded={...data,schemaVersion:IMAGE_VERSION,
-      tool:normalized.tool||{name:'EditHere',version:productVersion({})},exportedAt:normalized.exportedAt||exportedAt,
-      objects:normalized.objects.map(typedObject)};
-    return normalizeImage(upgraded);
-  }
 
   // Matches app/model.cpp exportFeedback. Movements are the actual group
   // trajectories (layoutMovements), not merged or split rendered pixel pieces.
   // The caller supplies current result coordinates for ordinary notes and the
   // original movementSource for a note attached to a trajectory.
-  function exportImage(document, mode = 'file', exportedAt = new Date().toISOString()) {
-    const image=imageFormat.descriptor(document.image,mode,document.imageFile||'feedback.'+({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(document.image).mimeType]),{devicePixelRatio:document.devicePixelRatio??null,preview:document.previewFile});
-    const bounds=image;
+  function exportImage(document, embed = true) {
     const objects = [], bySource = new Map();
-    const destinations=new Map();
-    for(const movement of document.movements||[]) {
-      const source=feedbackRectangle(movement.source,bounds);
-      destinations.set(sourceKey(source),feedbackDestination(movement.source,source,movement.destination,bounds));
-    }
     function ensureEntry(source) {
-      const rounded=feedbackRectangle(source,bounds),key=sourceKey(rounded);
+      const key = sourceKey(source);
       if (!bySource.has(key)) {
-        const target=destinations.get(key);
-        const entry = {source:rounded, annotations:[],...(target&&!sameRectangle(rounded,target)?{movement:movementResult(rounded,target)}:{})};
+        const entry = {source:rectangle(source), movements:[], annotations:[]};
         bySource.set(key, entry);
         objects.push(entry);
       }
       return bySource.get(key);
     }
-    function attachRecognition(entry, note) {
-      if (document.includeRecognizedText === false || !Object.hasOwn(note, 'recognizedText')) return;
-      const recognized = validateRecognizedText(note.recognizedText, true);
-      if (recognized.text && entry.source !== null) entry.recognizedText = {...recognized};
-      else delete entry.recognizedText;
+    for (const movement of document.movements || []) {
+      if (sameRectangle(movement.source, movement.destination)) continue;
+      ensureEntry(movement.source).movements.push({to:rectangle(movement.destination)});
     }
-    for (const [index, note] of (document.notes || []).entries()) {
-      const annotation = {number:index + 1, text:note.text};
+    for (const note of document.notes || []) {
       if (note.movementSource) {
         const entry = ensureEntry(note.movementSource);
-        attachRecognition(entry, note);
-        if (note.text.trim()) entry.annotations.push(annotation);
+        if (note.text.trim()) entry.annotations.push(note.text);
       } else {
         // Independent notes stay independent even when their rectangles match.
-        const entry = {source:rectangle(note.source), annotations:[annotation]};
-        attachRecognition(entry, note); objects.push(entry);
+        objects.push({source:rectangle(note.source), movements:[], annotations:[note.text]});
       }
     }
-    for(const movement of document.movements||[]) ensureEntry(movement.source);
-    for (const entry of objects) {
-      entry.source=feedbackRectangle(entry.source,bounds);
-    }
-    const outputObjects=objects.filter(entry=>entry.movement||entry.annotations.length||Object.hasOwn(entry,'recognizedText'));
-    return {schemaVersion:IMAGE_VERSION,
-      tool:{name:'EditHere', version:productVersion(document)}, exportedAt,
-      ...(document.capture ? {capture:{...validateCapture(document.capture)}} : {}),
-      annotationSpace:'result', objects:outputObjects.map((object, index) => typedObject({id:'o' + (index + 1), ...object})),
-      image};
+    return {annotationSpace:'result', objects, ...(embed ? {image:document.image} : {})};
   }
 
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
-  function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
-    const documents = project.frames.filter(document => document.notes.length || document.movements?.length)
+  function exportVideo(project, embed = true, exportedAt = new Date().toISOString()) {
+    const documents = project.frames.filter(document => document.notes.length ||
+      document.movements.some(movement => !sameRectangle(movement.source, movement.destination)))
       .slice().sort((a, b) => a.timestampUs - b.timestampUs);
     const frames = documents.map(document => ({
       id:document.id,
       timestampMs:Math.floor(document.timestampUs / 1000),
       timestampUs:document.timestampUs,
-      imageFile:document.imageFile||'frame-' + document.id + '.png',
-      feedback:exportImage({...document,imageFile:document.imageFile||'frame-'+document.id+'.png'}, mode, exportedAt)
-    })).filter(frame=>frame.feedback.objects.length);
+      imageFile:'frame-' + document.id + '.png',
+      feedback:exportImage(document, embed)
+    }));
     const objects = frames.flatMap(frame => frame.feedback.objects.map(object => ({
-      ...JSON.parse(JSON.stringify(object)),
+      source:rectangle(object.source),
+      movements:object.movements.map(movement => ({to:rectangle(movement.to)})),
+      annotations:object.annotations.slice(),
       timestampMs:frame.timestampMs,
       frameId:frame.id
     })));
     return {
       schemaVersion:'video-feedback-1', tool:'EditHere', exportedAt,
-      ...(project.capture ? {capture:{...validateCapture(project.capture)}} : {}),
       video:{source:project.source, durationMs:project.durationMs,
-        width:frames[0]?.feedback.image.width || 0, height:frames[0]?.feedback.image.height || 0},
+        width:documents[0]?.width || 0, height:documents[0]?.height || 0},
       frames, objects
     };
-  }
-
-  // The root index repeats frame data, including v3 kinds/results. Compare all
-  // fields so an index cannot silently alter the final target or annotation.
-  function validateVideoRecognitionIndex(value) {
-    const signature = (object, frameId, timestampMs) => serialize({...object,frameId,timestampMs});
-    const expected = value.frames.flatMap(frame => normalizeImage(frame.feedback).objects
-      .map(object => signature(object, frame.id, frame.timestampMs))).sort();
-    const actual = value.objects.map(object => {
-      if (!record(object)) throw new Error('Invalid video feedback index.');
-      const {frameId,timestampMs,...payload}=object;
-      annotationEntries([payload]);
-      return signature(payload,frameId,timestampMs);
-    }).sort();
-    if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Video recognized screenshot text index does not match its frames.');
   }
 
   // QJsonObject serializes keys in sorted order. Array order remains significant.
@@ -1640,11 +1310,11 @@ SOFTWARE.
     const objects=feedback.objects;
     const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
-    return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
-      movements:objects.reduce((sum,object)=>sum+(object.movement?1:(object.movements||[]).length),0), recognizedTexts:objects.filter(object=>object.ocrtext||object.recognizedText).length,
-      bytes:byteLength(serialized),imageBytes:images.map(image=>imageFormat.dataUrlOf(image)).filter(Boolean).reduce((sum,image)=>sum+byteLength(image),0)};
+    return {objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
+      movements:objects.reduce((sum,object)=>sum+object.movements.length,0),
+      bytes:byteLength(serialized),imageBytes:images.filter(image=>typeof image==='string').reduce((sum,image)=>sum+byteLength(image),0)};
   }
-  const foldedImage = image => typeof image==='string'?image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]':image?.mode==='embedded'?{...image,dataUrl:foldedImage(image.dataUrl)}:image;
+  const foldedImage = image => image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]';
 
   // The desktop export dialog folds image bytes only in its readable preview.
   // Clipboard and file downloads must always use serialize(), never this text.
@@ -1659,13 +1329,10 @@ SOFTWARE.
       return JSON.stringify(readable, null, 4) + '\n';
     }
     const lines = ['{'];
-    for (const [key, value] of Object.entries(ordered(feedback))) {
-      if (key !== 'image' && key !== 'objects') lines.push('  ' + JSON.stringify(key) + ': ' + JSON.stringify(value) + ',');
-    }
     if (Object.prototype.hasOwnProperty.call(feedback, 'image')) {
       lines.push('  "image": ' + JSON.stringify(foldedImage(feedback.image)) + ',');
     }
-    lines.push('  "objects": [');
+    lines.push('  "annotationSpace": "result",', '  "objects": [');
     feedback.objects.forEach((object, index) => {
       lines.push('    ' + JSON.stringify(ordered(object)) + (index + 1 < feedback.objects.length ? ',' : ''));
     });
@@ -1673,27 +1340,7 @@ SOFTWARE.
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, upgradeImage, legacyImage, legacyObject, typedObject, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
-});
-</script><script>(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.EditHereBundle=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
-  'use strict';
-  const table=Uint32Array.from({length:256},(_,n)=>{for(let bit=0;bit<8;bit++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
-  function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=table[(crc^byte)&255]^(crc>>>8);return(crc^0xffffffff)>>>0;}
-  function zip(files){
-    const entries=[],parts=[],encoder=new TextEncoder();let offset=0;
-    for(const[name,data]of files){const filename=encoder.encode(name),bytes=typeof data==='string'?encoder.encode(data):data;if(!filename.length||filename.length>65535||bytes.length>160*1024*1024)throw new Error('Feedback bundle entry is too large.');const header=new Uint8Array(30+filename.length),view=new DataView(header.buffer),crc=crc32(bytes);view.setUint32(0,0x04034b50,true);view.setUint16(4,20,true);view.setUint16(6,0x800,true);view.setUint32(14,crc,true);view.setUint32(18,bytes.length,true);view.setUint32(22,bytes.length,true);view.setUint16(26,filename.length,true);header.set(filename,30);parts.push(header,bytes);entries.push({filename,bytes,crc,offset});offset+=header.length+bytes.length;}
-    const directoryOffset=offset;
-    for(const entry of entries){const header=new Uint8Array(46+entry.filename.length),view=new DataView(header.buffer);view.setUint32(0,0x02014b50,true);view.setUint16(4,20,true);view.setUint16(6,20,true);view.setUint16(8,0x800,true);view.setUint32(16,entry.crc,true);view.setUint32(20,entry.bytes.length,true);view.setUint32(24,entry.bytes.length,true);view.setUint16(28,entry.filename.length,true);view.setUint32(42,entry.offset,true);header.set(entry.filename,46);parts.push(header);offset+=header.length;}
-    const end=new Uint8Array(22),view=new DataView(end.buffer);view.setUint32(0,0x06054b50,true);view.setUint16(8,entries.length,true);view.setUint16(10,entries.length,true);view.setUint32(12,offset-directoryOffset,true);view.setUint32(16,directoryOffset,true);parts.push(end);return parts;
-  }
-  // Only uncompressed archives produced by this editor are accepted. No path
-  // is ever resolved or fetched: names are matched to user-supplied files.
-  function unzip(bytes){
-    if(bytes.length>160*1024*1024)throw new Error('Feedback bundle is too large.');const files=new Map(),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),decoder=new TextDecoder();let offset=0;
-    while(offset+4<=bytes.length&&view.getUint32(offset,true)===0x04034b50){if(offset+30>bytes.length)throw new Error('Invalid feedback ZIP.');const flags=view.getUint16(offset+6,true),method=view.getUint16(offset+8,true),crc=view.getUint32(offset+14,true),length=view.getUint32(offset+18,true),original=view.getUint32(offset+22,true),nameLength=view.getUint16(offset+26,true),extra=view.getUint16(offset+28,true),start=offset+30+nameLength+extra;if(flags&~0x800||method!==0||length!==original||start+length>bytes.length)throw new Error('Open a ZIP downloaded by EditHere, or extract and select its JSON and images.');const name=decoder.decode(bytes.subarray(offset+30,offset+30+nameLength));if(!name||/[\\/\u0000]/.test(name)||files.has(name))throw new Error('Invalid or duplicate feedback ZIP filename.');const data=bytes.slice(start,start+length);if(crc32(data)!==crc)throw new Error('Feedback ZIP checksum does not match.');files.set(name,data);offset=start+length;}
-    if(!files.size||offset+4>bytes.length||view.getUint32(offset,true)!==0x02014b50)throw new Error('Invalid feedback ZIP.');return files;
-  }
-  return{zip,unzip,crc32};
+  return {exportImage, exportVideo, serialize, preview, summary};
 });
 </script><script id="detector-code">(function (root) {
   'use strict';
@@ -1791,8 +1438,8 @@ function dilate(input,w,h,rx,ry) {
           <article><h3>${icon('send')}反馈 JSON</h3><p>给 Agent 读取的修改意见、坐标与位移。展开顶栏保存按钮，选择「保存 JSON 文件」「复制 JSON 内容」「保存项目」或「查看 JSON 文件」；选择只记住方式，不会复制、下载或打开窗口。点击主保存按钮才执行，以后保留你上次的选择。</p></article>
           <article><h3>${icon('save')}项目文件</h3><p>保留原图或批注帧、布局与可编辑状态。顶栏保存菜单选「保存项目」后点击主按钮，或点击左下「更多工具」里的「保存项目」备份。下次通过「打开」继续编辑；视频继续播放需重新选择源视频。</p></article>
         </div>
-        <div class="help-callout"><strong>图片怎么交付？</strong><p>在「查看 JSON 文件」中选择原图方式，默认「配套图片文件」：下载 ZIP 包含 JSON 与原图；复制 JSON 时还需交付引用的图片。「内嵌到 JSON」可单文件交付，并可选 JPEG 压缩；「不附带图片」适合 Agent 已持有相同原图。还可附带带编号和箭头的预览图。</p></div>
-        <p>下载文件和复制内容包含相同的修改意见。重新导入可打开反馈 ZIP，或同时选择 JSON 与配套图片；校验值不一致的图片不会用于恢复批注。把文件交给 Agent，并说明「按照这些批注修改」。</p>
+        <div class="help-callout"><strong>图片要不要一起保存？</strong><p>在保存菜单选「查看 JSON 文件」后点击主按钮，打开查看窗口并选择是否包含图片，默认包含。关闭后，发 JSON 时请同时提供对应原图，或确认 Agent 已有这张图。预览中折叠图片只是方便阅读；复制内容和保存文件仍遵循「包含图片」选项。</p></div>
+        <p>JSON 文件和复制内容包含相同的反馈。把文件上传给 Agent，或直接粘贴内容，并说明「按照这些批注修改」。</p>
         <p class="help-footnote">显示「已保存」只代表反馈落盘；显示「已发送」代表宿主接收消息。Agent 是否已继续，以对话中的回复和修改结果为准。</p>
       </section>
       <section id="help-panel-recover" class="help-panel" role="tabpanel" aria-labelledby="help-tab-recover" tabindex="0" hidden>
@@ -1975,7 +1622,7 @@ function dilate(input,w,h,rx,ry) {
 </script><script>/* EditHere Web. Offline editing with an optional local Agent session. */
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback,I=globalThis.EditHereImage,B=globalThis.EditHereBundle;
+  const $ = id => document.getElementById(id), L = globalThis.EditHereLayout, F = globalThis.EditHereFeedback;
   const clone = value => JSON.parse(JSON.stringify(value));
   const uid = () => 'id-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
   const esc = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1987,13 +1634,12 @@ function dilate(input,w,h,rx,ry) {
   const video = $('video'), canvas = $('canvas'), stage = $('stage'), ctx = canvas.getContext('2d');
   let session = null, doc = null, mode = 'smart', selected = null, selectedNote = null, zoom = 1, fitMode = true;
   let agentBound = false, projectRevision = 0;
-  let agentOptions={imageMode:'file',preview:false},pendingImport=null;
   const projectListeners = new Set();
   const selectedGroups = new Set();
-  let drag = null, hover = null, hoverIndex = 0, draftNote = null, recognizedNoteId = null, busy = false, dirty = false, toastTimer, mediaURL = null;
+  let drag = null, hover = null, hoverIndex = 0, draftNote = null, busy = false, dirty = false, toastTimer, mediaURL = null;
   let explodeEnabled = false, explosionPreview = null;
   let panX = 0, panY = 0, pan = null, spaceDown = false, spaceUsed = false, annotationsVisible = true, hoveredMovement = null;
-  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null, feedbackStamp = null;
+  let suppressPinClickUntil = 0, componentWheel = null, exportData = null, exportText = '', exportCache = null;
   let seeking = false, presentedTime = null, frameCallback = null, linkSignature = null, detectionId = 0;
   const histories = new WeakMap(), detections = new WeakMap(), pendingDetections = new Map();
   let worker;
@@ -2016,9 +1662,7 @@ function dilate(input,w,h,rx,ry) {
   function sizeOK(w,h) {if(!Number.isInteger(w)||!Number.isInteger(h)||w<1||h<1||w>32767||h>32767||w*h>32000000)throw new Error('素材尺寸过大或无效，最多支持 3200 万像素');}
   function makeCanvas(w,h) {sizeOK(w,h);const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
   async function decode(data) {if(typeof data!=='string'||!/^data:image\/(png|jpeg|webp|bmp|gif|avif);base64,/i.test(data))throw new Error('项目必须包含本地内嵌图片');const image=new Image();image.src=data;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);return image;}
-  function makeDoc(image,data,timestampUs=null,id=uid(),capture) {return {id,image,data,timestampUs,notes:[],layout:null,...(capture!==undefined?{capture:clone(F.validateCapture(capture))}:{})};}
-  const captureAt=(source,fileName)=>({source,capturedAt:new Date().toISOString(),...(fileName?{fileName}:{})});
-  function refreshPageContext(){const page=(doc?.capture||session?.capture)?.page||'';$('page-context').hidden=!page;$('page-description').textContent=page;$('page-description').title=page;}
+  function makeDoc(image,data,timestampUs=null,id=uid()) {return {id,image,data,timestampUs,notes:[],layout:null};}
   function history(d=doc) {if(!histories.has(d))histories.set(d,{undo:[],redo:[]});return histories.get(d);}
   const snapshot = d => ({notes:clone(d.notes),layout:clone(d.layout)});
   function remember(before=snapshot(doc)) {const h=history();h.undo.push(before);if(h.undo.length>40)h.undo.shift();h.redo=[];componentWheel=null;}
@@ -2030,7 +1674,7 @@ function dilate(input,w,h,rx,ry) {
     const v=$('viewport'),origin=v.getBoundingClientRect(),gap=v.clientWidth>=900?12:8;
     const bounds={x1:gap,y1:gap,x2:Math.max(gap+1,v.clientWidth-gap),y2:Math.max(gap+1,v.clientHeight-gap)};
     const blockers=[];
-    for(const selector of ['.header','.page-context','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){
+    for(const selector of ['.header','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){
       const element=document.querySelector(selector);if(!element||element.hidden)continue;
       const style=getComputedStyle(element),r=element.getBoundingClientRect();
       if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity)===0||r.width<=0||r.height<=0)continue;
@@ -2045,7 +1689,7 @@ function dilate(input,w,h,rx,ry) {
     function consider(x1,x2,y1,y2){const w=x2-x1,h=y2-y1;if(w<=0||h<=0)return;const scale=Math.min(1,w/session.width,h/session.height),area=w*h;if(!best||scale>best.scale+1e-9||Math.abs(scale-best.scale)<=1e-9&&area>best.area)best={x1,x2,y1,y2,scale,area};}
     const compact=v.clientWidth<900||v.clientWidth/v.clientHeight<=1.2;
     if(compact&&v.clientHeight>430){
-      const top=Math.max(bounds.y1,...blockers.filter(b=>['.header','.page-context','.media-bar','.view-controls'].includes(b.selector)||b.selector==='.utility-dock'&&b.y1<v.clientHeight/2).map(b=>b.y2));
+      const top=Math.max(bounds.y1,...blockers.filter(b=>['.header','.media-bar','.view-controls'].includes(b.selector)||b.selector==='.utility-dock'&&b.y1<v.clientHeight/2).map(b=>b.y2));
       const bottom=Math.min(bounds.y2,...blockers.filter(b=>['.sidebar','.tools','#video-controls'].includes(b.selector)||b.selector==='.utility-dock'&&b.y1>=v.clientHeight/2).map(b=>b.y1));
       consider(bounds.x1,bounds.x2,top,bottom);
     }else for(let i=0;i<edges.length-1;i++)for(let j=i+1;j<edges.length;j++){
@@ -2070,13 +1714,13 @@ function dilate(input,w,h,rx,ry) {
   function activate() {annotationsVisible=true;syncAnnotationVisibility();endExplosion();explodeEnabled=!!doc?.layout;$('empty').hidden=true;$('workspace').hidden=false;$('save-project').disabled=false;$('save-json').disabled=false;$('export').disabled=false;$('media-name').textContent=session.name;$('media-meta').textContent=session.width+' × '+session.height+' · '+(session.kind==='video'?'视频':'图片');canvas.width=session.width;canvas.height=session.height;$('overlay').setAttribute('viewBox',`0 0 ${session.width} ${session.height}`);$('video-controls').hidden=session.kind!=='video';selected=null;selectedNote=null;hover=null;dirty=false;changeMode('smart');refresh();viewportFit();if(doc?.notes.length)globalThis.EditHereChrome?.revealNote(null);}
   function releaseVideo() {if(frameCallback!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(frameCallback);frameCallback=null;video.pause();video.removeAttribute('src');video.load();if(mediaURL)URL.revokeObjectURL(mediaURL);mediaURL=null;presentedTime=null;linkSignature=null;seeking=false;}
   function replaceOK() {if(agentBound){notify('当前素材由 AI 批注会话传入；完成或取消后再打开其他素材');return false;}return !dirty||confirm('当前编辑还没有保存。要替换素材吗？可先取消并保存项目。');}
-  async function openImage(file,source='file') {const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);const c=makeCanvas(image.naturalWidth,image.naturalHeight);c.getContext('2d').drawImage(image,0,0);const data=c.toDataURL('image/png'),decoded=await decode(data);releaseVideo();session={kind:'image',name:file.name||'粘贴的图片',width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(decoded,data,null,uid(),captureAt(source,file.name))};doc=session.document;activate();detect(doc);}finally{URL.revokeObjectURL(url);}}
+  async function openImage(file) {const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();sizeOK(image.naturalWidth,image.naturalHeight);const c=makeCanvas(image.naturalWidth,image.naturalHeight);c.getContext('2d').drawImage(image,0,0);const data=c.toDataURL('image/png'),decoded=await decode(data);releaseVideo();session={kind:'image',name:file.name||'粘贴的图片',width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(decoded,data)};doc=session.document;activate();detect(doc);}finally{URL.revokeObjectURL(url);}}
   function waitEvent(target,event,timeout=15000) {return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{clean();reject(new Error('读取素材超时，请换一个浏览器支持的文件'));},timeout);const good=()=>{clean();resolve();},bad=()=>{clean();reject(new Error('浏览器无法解码这个视频，请使用 H.264 MP4 或 WebM'));};const clean=()=>{clearTimeout(timer);target.removeEventListener(event,good);target.removeEventListener('error',bad);};target.addEventListener(event,good,{once:true});target.addEventListener('error',bad,{once:true});});}
   function trackFrames() {if(!video.requestVideoFrameCallback)return;frameCallback=video.requestVideoFrameCallback((now,info)=>{presentedTime=info.mediaTime;trackFrames();});}
   async function prepareVideo(file) {const probe=document.createElement('video'),url=URL.createObjectURL(file);probe.preload='auto';try{const ready=waitEvent(probe,'loadeddata');probe.src=url;await ready;sizeOK(probe.videoWidth,probe.videoHeight);if(!Number.isFinite(probe.duration))throw new Error('视频时长无效');return {url,width:probe.videoWidth,height:probe.videoHeight,durationMs:Math.round(probe.duration*1000)};}catch(error){URL.revokeObjectURL(url);throw error;}finally{probe.removeAttribute('src');probe.load();}}
   async function attachVideo(file,prepared) {mediaURL=prepared.url;const ready=waitEvent(video,'loadeddata');video.src=mediaURL;await ready;linkSignature={name:file.name,size:file.size,lastModified:file.lastModified};trackFrames();}
-  async function openVideo(file) {const prepared=await prepareVideo(file);releaseVideo();session={kind:'video',name:file.name,width:prepared.width,height:prepared.height,video:{source:file.name,durationMs:prepared.durationMs,width:prepared.width,height:prepared.height},signature:{name:file.name,size:file.size,lastModified:file.lastModified},capture:captureAt('video',file.name),frames:[]};doc=null;await attachVideo(file,prepared);activate();updateTime();}
-  function liveFrame() {endExplosion();explodeEnabled=false;doc=null;refreshPageContext();selected=null;selectedNote=null;hover=null;canvas.hidden=true;video.hidden=false;render();renderNotes();renderGeometry();renderFrames();}
+  async function openVideo(file) {const prepared=await prepareVideo(file);releaseVideo();session={kind:'video',name:file.name,width:prepared.width,height:prepared.height,video:{source:file.name,durationMs:prepared.durationMs,width:prepared.width,height:prepared.height},signature:{name:file.name,size:file.size,lastModified:file.lastModified},frames:[]};doc=null;await attachVideo(file,prepared);activate();updateTime();}
+  function liveFrame() {endExplosion();explodeEnabled=false;doc=null;selected=null;selectedNote=null;hover=null;canvas.hidden=true;video.hidden=false;render();renderNotes();renderGeometry();renderFrames();}
   function ensureDoc() {
     if(!session)throw new Error('请先打开素材');
     if(doc)return doc;
@@ -2085,7 +1729,7 @@ function dilate(input,w,h,rx,ry) {
     if(!video.paused)throw new Error('请先暂停视频，再开始批注');
     const timestampUs=Math.round((presentedTime??video.currentTime)*1000000);
     const existing=session.frames.find(f=>f.timestampUs===timestampUs);
-    if(existing){doc=existing;}else{const c=makeCanvas(session.width,session.height);c.getContext('2d').drawImage(video,0,0);const data=c.toDataURL('image/png');const image=new Image();image.src=data;doc=makeDoc(image,data,timestampUs,'t-'+timestampUs,session.capture?{...session.capture,capturedAt:new Date().toISOString()}:undefined);image.decode().then(()=>{if(doc?.image===image)render();}).catch(()=>{});}
+    if(existing){doc=existing;}else{const c=makeCanvas(session.width,session.height);c.getContext('2d').drawImage(video,0,0);const data=c.toDataURL('image/png');const image=new Image();image.src=data;doc=makeDoc(image,data,timestampUs,'t-'+timestampUs);image.decode().then(()=>{if(doc?.image===image)render();}).catch(()=>{});}
     canvas.hidden=false;video.hidden=true;detect(doc);refresh();return doc;
   }
   async function seekTo(seconds) {if(!mediaURL){notify('已保存的批注帧可查看；继续播放需要重新选择源视频');return;}video.pause();liveFrame();const target=clamp(seconds,0,video.duration);if(Math.abs(video.currentTime-target)<.00001){updateTime();return;}const ready=waitEvent(video,'seeked');video.currentTime=target;await ready;updateTime();}
@@ -2125,8 +1769,8 @@ function dilate(input,w,h,rx,ry) {
   function hitMovement(p) {if(!annotationsVisible||!doc?.layout)return null;const markers=movementMarkers();for(let i=markers.length-1;i>=0;i--){const m=markers[i],{start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=dx*dx+dy*dy,t=length?clamp(((p.x-start.x)*dx+(p.y-start.y)*dy)/length,0,1):0;if(Math.hypot(p.x-start.x-dx*t,p.y-start.y-dy*t)*zoom<8)return m;}return null;}
   function componentNoteBounds(n,d=doc) {return !d?.layout?null:(n.groupIds||[n.groupId]).filter(Boolean).map(id=>L.bounds(d.layout,id)).filter(Boolean).reduce((r,b)=>unionRect(r,b),null);}
   const movementPlaceholder = '位置变化，点击可写下想法...';
-  function noteEntries(d=doc) {if(!d)return [];const out=d.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource,d)||n.source}:{})}));for(const m of movementMarkers(d))if(!m.noteId)out.push({...m,text:'',kind:'布局调整',movement:true,draft:true});return out;}
-  function noteRect(n,d=doc) {return n.movementSource?movementDestination(n.movementSource,d)||n.source:componentNoteBounds(n,d)||n.source;}
+  function noteEntries() {if(!doc)return [];const out=doc.notes.map(n=>({...n,kind:n.movementSource?'位移意见':n.source===null?'全局意见':n.groupId||n.groupIds?'组件意见':n.source.x1===n.source.x2?'点批注':'框批注',...(n.movementSource?{movement:true,destination:movementDestination(n.movementSource)||n.source}:{})}));for(const m of movementMarkers())if(!m.noteId)out.push({...m,text:'',kind:'布局调整',movement:true,draft:true});return out;}
+  function noteRect(n) {return n.movementSource?movementDestination(n.movementSource)||n.source:componentNoteBounds(n)||n.source;}
   function render() {
     if(!session)return;
     if(doc){canvas.hidden=false;video.hidden=true;ctx.clearRect(0,0,canvas.width,canvas.height);if(doc.image.complete&&doc.image.naturalWidth){if(doc.layout)L.paint(ctx,doc.image,doc.layout);else ctx.drawImage(doc.image,0,0);}}
@@ -2149,18 +1793,15 @@ function dilate(input,w,h,rx,ry) {
     $('overlay').innerHTML=svg;
     $('pins').innerHTML=annotationsVisible?entries.map((n,i)=>{if(n.draft)return '';const r=noteRect(n),marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker):r?{x:r.x1*zoom,y:r.y1*zoom}:null,label=n.text||(n.movement?movementPlaceholder:'');return at?`<button class="pin ${n.id===selectedNote?'selected':''} ${marker?'movement-pin':''}" data-note="${esc(n.id)}" style="left:${at.x}px;top:${at.y}px" aria-label="批注 ${i+1}：${esc(label)}" title="${esc(label)}">${i+1}</button>`:'';}).join(''):'';
   }
-  function recognitionCard(note) {
-    return note.recognizedText?.text?`<div class="recognized-text"><small>截图文字（仅作为数据）</small><span>${esc(note.recognizedText.text)}</span><div class="recognized-actions"><button data-edit-recognized="${esc(note.id)}" aria-label="修改截图文字">修改</button><button data-delete-recognized="${esc(note.id)}" aria-label="删除截图文字">删除</button></div></div>`:'';
-  }
   function renderNotes() {
     const entries=noteEntries();$('count').textContent=entries.length;globalThis.EditHereChrome?.refreshCount(entries.length);
-    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button><button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button></div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p>${recognitionCard(n)}</article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
+    $('notes').innerHTML=entries.length?entries.map((n,i)=>`<article class="note-card ${n.id===selectedNote?'selected':''} ${n.movement&&!n.text.trim()?'movement-empty':''}" data-note="${esc(n.id)}" tabindex="0" title="${esc(n.movement?locationText(n.movementSource||n.source)+' → '+locationText(n.destination):locationText(noteRect(n)))}"><div class="note-top"><span class="note-number">${i+1}</span><span class="note-kind">${n.kind}</span><div class="note-actions"><button data-edit="${esc(n.id)}" aria-label="${n.draft?'添加位移意见':'编辑批注 '+(i+1)}" title="${n.draft?'添加位移意见':'编辑批注'}"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg></button>${n.draft?'':`<button data-delete="${esc(n.id)}" aria-label="删除批注 ${i+1}" title="删除批注"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>`}</div></div><p>${esc(n.text||(n.movement?movementPlaceholder:''))}</p></article>`).join(''):'<div class="note-empty">点选画面，添加意见</div>';
     $('preview').disabled=!doc;
   }
   function locationText(source) {if(source===null)return '整个画面';return source.x1===source.x2?`点 (${Math.round(source.x1)}, ${Math.round(source.y1)})`:`(${Math.round(source.x1)}, ${Math.round(source.y1)}) · ${Math.round(source.x2-source.x1)} × ${Math.round(source.y2-source.y1)}`;}
   function renderGeometry() {const b=explodeEnabled?selectionBounds():null;globalThis.EditHereChrome?.syncGeometry(b?doc.id+':'+selectionIds().join(','):null);if(b){$('gx').value=Math.round(b.x1);$('gy').value=Math.round(b.y1);$('gw').value=Math.round(b.x2-b.x1);$('gh').value=Math.round(b.y2-b.y1);const title=document.querySelector('.geometry-head strong');if(title)title.textContent=selectionIds().length>1?selectionIds().length+' 个组件':'组件布局';}}
   function renderFrames() {if(session?.kind!=='video')return;$('frame-list').innerHTML=session.frames.filter(hasContent).map(f=>{const count=f.notes.length+movementMarkers(f).filter(m=>!m.noteId).length;return `<button data-frame="${esc(f.id)}" class="${f===doc?'active':''}" title="${count} 条意见">${timeText(f.timestampUs/1000000)} · ${count}</button>`;}).join('');}
-  function refresh() {refreshPageContext();if(!doc?.layout)explodeEnabled=false;if(!selected)selectedGroups.clear();render();renderNotes();renderGeometry();renderFrames();const h=doc?history():null;$('undo').disabled=!h?.undo.length;$('redo').disabled=!h?.redo.length;$('explode').classList.toggle('active',explodeEnabled);$('explode').setAttribute('aria-pressed',String(explodeEnabled));$('explode').title=explodeEnabled?'收起组件模式（保留修改）':'大爆炸 · 拆成可移动的组件';document.querySelector('[data-mode="cut"]').hidden=!explodeEnabled;if($('reset-component'))$('reset-component').disabled=!selected||!doc?.layout;if(session?.kind==='video')updateTime();}
+  function refresh() {if(!doc?.layout)explodeEnabled=false;if(!selected)selectedGroups.clear();render();renderNotes();renderGeometry();renderFrames();const h=doc?history():null;$('undo').disabled=!h?.undo.length;$('redo').disabled=!h?.redo.length;$('explode').classList.toggle('active',explodeEnabled);$('explode').setAttribute('aria-pressed',String(explodeEnabled));$('explode').title=explodeEnabled?'收起组件模式（保留修改）':'大爆炸 · 拆成可移动的组件';document.querySelector('[data-mode="cut"]').hidden=!explodeEnabled;if($('reset-component'))$('reset-component').disabled=!selected||!doc?.layout;if(session?.kind==='video')updateTime();}
   function editNote(source=null,id=null,groupId=null,movementSource=null,groupIds=null) {if(!session)return;try{ensureDoc();}catch(error){notify(error.message);return;}const existing=id?doc.notes.find(n=>n.id===id):null;if(id&&!existing)return;draftNote=existing?clone(existing):{id:uid(),source:clone(source),text:'',...(groupId?{groupId}:{}),...(groupIds?{groupIds:clone(groupIds)}:{}),...(movementSource?{movementSource:clone(movementSource)}:{})};$('note-location').textContent=(session.kind==='video'?timeText(doc.timestampUs/1000000)+' · ':'')+(draftNote.groupIds?draftNote.groupIds.length+' 个组件 · ':'')+(draftNote.movementSource?locationText(draftNote.movementSource)+' → ':'')+locationText(noteRect(draftNote));$('note-title').textContent=existing?'编辑修改意见':movementSource?'说明这次位移或缩放':'写下修改意见';$('note-text').value=draftNote.text;$('note-text').required=!draftNote.movementSource;$('note-text').setCustomValidity('');$('note-dialog').showModal();$('note-text').focus();}
   function editMovement(marker) {if(!marker)return;if(marker.noteId){selectedNote=marker.noteId;refresh();editNote(null,marker.noteId);if(marker.groupId&&equalRect(draftNote.movementSource,marker.source))draftNote.groupId=marker.groupId;}else{editNote(marker.destination,null,marker.groupId,marker.source);if(marker.sources)draftNote.movementSources=clone(marker.sources);}}
   function editEntry(id) {const marker=movementMarkers().find(m=>m.id===id);if(marker)editMovement(marker);else editNote(null,id);}
@@ -2206,40 +1847,17 @@ function dilate(input,w,h,rx,ry) {
     const previous=rawMovements({layout:before.layout});
     remapMovementNotes(before,previous);synchronizeMovementNotes(pending);
   }
-  function restoreMembers(members,previous) {
+  function resetComponent() {
+    if(!selected||!doc?.layout)return;
+    const before=snapshot(doc),previous=rawMovements({layout:before.layout});doc.layout=clone(before.layout);
+    const ids=selectionIds(doc.layout),members=new Set(doc.layout.groups.filter(g=>ids.includes(g.id)).flatMap(g=>g.pieces));
     // Restore each surviving source slice exactly. Fitting the remaining
     // bounds into the parent's former frame would stretch or move its pixels.
     for(const piece of doc.layout.pieces)if(members.has(piece.id))piece.to=clone(piece.source);
     doc.layout.movements=clone(previous);
     for(const movement of doc.layout.movements){const group=doc.layout.groups.find(g=>g.id===movement.groupId),included=group?group.pieces.every(id=>members.has(id)):doc.layout.pieces.filter(p=>Math.min(p.source.x2,movement.source.x2)>Math.max(p.source.x1,movement.source.x1)&&Math.min(p.source.y2,movement.source.y2)>Math.max(p.source.y1,movement.source.y1)).every(p=>members.has(p.id));if(included)movement.destination=clone(movement.source);}
-  }
-  function resetComponent() {
-    if(!selected||!doc?.layout)return;
-    const before=snapshot(doc),previous=rawMovements({layout:before.layout});doc.layout=clone(before.layout);
-    const ids=selectionIds(doc.layout),members=new Set(doc.layout.groups.filter(g=>ids.includes(g.id)).flatMap(g=>g.pieces));
-    restoreMembers(members,previous);remapMovementNotes(before,previous);synchronizeMovementNotes();
+    remapMovementNotes(before,previous);synchronizeMovementNotes();
     if(!same(before,snapshot(doc))){remember(before);commit();}else refresh();
-  }
-  function deleteNote(id) {
-    const marker=movementMarkers().find(m=>m.id===id);
-    const note=doc?.notes.find(n=>n.id===id)||(marker?{id,text:'',movementSource:marker.source}:null);if(!note)return;
-    const before=snapshot(doc);
-    if(note.movementSource&&doc.layout) {
-      const previous=rawMovements(),target=previous.find(m=>equalRect(m.source,note.movementSource))||
-        previous.filter(m=>coversRect(m.source,note.movementSource)).sort((a,b)=>areaOf(a.source)-areaOf(b.source))[0];
-      if(target) {
-        doc.layout=clone(before.layout);
-        const group=doc.layout.groups.find(g=>g.id===target.groupId);
-        const members=new Set(group?group.pieces:doc.layout.pieces.filter(p=>coversRect(target.source,p.source)).map(p=>p.id));
-        restoreMembers(members,previous);remapMovementNotes(before,previous);
-        for(const n of doc.notes)if(n.movementSource&&n.text.trim()&&equalRect(n.movementSource,movementDestination(n.movementSource))) {
-          delete n.movementSource;delete n.movementSources;
-        }
-        chooseGroup(null);
-      }
-    }
-    doc.notes=doc.notes.filter(n=>n.id!==id);
-    synchronizeMovementNotes();selectedNote=null;remember(before);commit();
   }
   function cancelDrag() {if(drag?.before){doc.layout=drag.before.layout;doc.notes=drag.before.notes;}drag=null;render();renderGeometry();}
   function resizeHandles(b) {const x=(b.x1+b.x2)/2,y=(b.y1+b.y2)/2;return {nw:{x:b.x1,y:b.y1},n:{x,y:b.y1},ne:{x:b.x2,y:b.y1},e:{x:b.x2,y},se:{x:b.x2,y:b.y2},s:{x,y:b.y2},sw:{x:b.x1,y:b.y2},w:{x:b.x1,y}};}
@@ -2259,7 +1877,7 @@ function dilate(input,w,h,rx,ry) {
     if(d.type==='note-resize'){const to=resizeDestination(d,p),x1=clamp(Math.round(to.x1),0,session.width-1),y1=clamp(Math.round(to.y1),0,session.height-1);note.source={x1,y1,x2:clamp(Math.round(to.x2),x1+1,session.width),y2:clamp(Math.round(to.y2),y1+1,session.height)};}
     else if(r.x1===r.x2){const x=clamp(Math.round(r.x1+p.x-d.start.x),0,session.width-1),y=clamp(Math.round(r.y1+p.y-d.start.y),0,session.height-1);note.source={x1:x,y1:y,x2:x,y2:y};}
     else{const width=r.x2-r.x1,height=r.y2-r.y1,x=clamp(r.x1+Math.round(p.x-d.start.x),0,session.width-width),y=clamp(r.y1+Math.round(p.y-d.start.y),0,session.height-height);note.source={x1:x,y1:y,x2:x+width,y2:y+height};}
-    if(!equalRect(note.source,r)){delete note.groupId;delete note.groupIds;if(note.recognizedText?.text)delete note.recognizedText;}
+    if(!equalRect(note.source,r)){delete note.groupId;delete note.groupIds;}
   }
   const viewport=$('viewport');
   function startPan(event) {if(pan||drag||!session||busy)return;event.preventDefault();if(spaceDown)spaceUsed=true;pan={pointerId:event.pointerId,x:event.clientX,y:event.clientY,panX,panY};fitMode=false;viewport.setPointerCapture(event.pointerId);stage.style.cursor='grabbing';viewport.style.cursor='grabbing';}
@@ -2309,26 +1927,7 @@ function dilate(input,w,h,rx,ry) {
     else setZoom(zoom*Math.exp(-event.deltaY*.002),event);
   },{passive:false});
   $('pins').onclick=event=>{if(Date.now()<suppressPinClickUntil)return;const id=event.target.closest('[data-note]')?.dataset.note;if(!id)return;selectedNote=id;refresh();editEntry(id);};
-  function setRecognizedText(id,value) {
-    const note=doc?.notes.find(note=>note.id===id);if(!note?.recognizedText||note.source===null)return;
-    remember();const source=note.movementSource||note.source;
-    for(const other of doc.notes)if(other.id===id||note.movementSource&&other.movementSource&&equalRect(other.movementSource,source))other.recognizedText=clone(value);
-    commit();
-  }
-  function editRecognizedText(id) {
-    const note=doc?.notes.find(note=>note.id===id);if(!note?.recognizedText?.text)return;
-    recognizedNoteId=id;$('recognized-text').value=note.recognizedText.text;$('recognized-text').setCustomValidity('');$('recognized-dialog').showModal();$('recognized-text').focus();
-  }
-  $('recognized-save').onclick=()=>{
-    const note=doc?.notes.find(note=>note.id===recognizedNoteId),text=$('recognized-text').value.trim();
-    if(!text){$('recognized-text').setCustomValidity('请填写截图中的文字，或取消后删除识别结果');$('recognized-text').reportValidity();return;}
-    if(!note?.recognizedText||text.length>500)return;
-    const value={...note.recognizedText,text,edited:true};delete value.confidence;
-    setRecognizedText(note.id,value);$('recognized-dialog').close();
-  };
-  $('recognized-text').oninput=()=>$('recognized-text').setCustomValidity('');
-  $('recognized-dialog').addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();$('recognized-save').click();}});
-  $('notes').onclick=event=>{const deleteRecognized=event.target.closest('[data-delete-recognized]')?.dataset.deleteRecognized,editRecognized=event.target.closest('[data-edit-recognized]')?.dataset.editRecognized;if(deleteRecognized){setRecognizedText(deleteRecognized,{text:'',edited:true});return;}if(editRecognized){editRecognizedText(editRecognized);return;}const del=event.target.closest('[data-delete]')?.dataset.delete,edit=event.target.closest('[data-edit]')?.dataset.edit,id=event.target.closest('[data-note]')?.dataset.note;if(del)deleteNote(del);else if(edit)editEntry(edit);else if(id){selectedNote=id;refresh();if(noteEntries().find(n=>n.id===id)?.movement)editEntry(id);}};
+  $('notes').onclick=event=>{const del=event.target.closest('[data-delete]')?.dataset.delete,edit=event.target.closest('[data-edit]')?.dataset.edit,id=event.target.closest('[data-note]')?.dataset.note;if(del){remember();doc.notes=doc.notes.filter(n=>n.id!==del);selectedNote=null;commit();}else if(edit)editEntry(edit);else if(id){selectedNote=id;refresh();if(noteEntries().find(n=>n.id===id)?.movement)editEntry(id);}};
   $('notes').addEventListener('keydown',event=>{if(event.key==='Enter'){const id=event.target.closest('[data-note]')?.dataset.note;if(id){event.preventDefault();editEntry(id);}}});
   document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>changeMode(button.dataset.mode));
   $('global').onclick=()=>editNote(null);
@@ -2374,24 +1973,9 @@ function dilate(input,w,h,rx,ry) {
   $('gh').onchange=()=>{if($('lock-ratio').checked&&selected){const b=selectionBounds();$('gw').value=Math.max(1,Math.round(Number($('gh').value)*(b.x2-b.x1)/(b.y2-b.y1)));}};
   function travelHistory(which) {if(!doc)return;const hadLayout=!!doc.layout,h=history(),from=h[which],to=h[which==='undo'?'redo':'undo'];if(!from.length)return;to.push(snapshot(doc));const data=from.pop();doc.notes=data.notes;doc.layout=data.layout;if(!hadLayout&&doc.layout)explodeEnabled=true;selected=null;selectedNote=null;componentWheel=null;changed();refresh();}
   $('undo').onclick=()=>travelHistory('undo');$('redo').onclick=()=>travelHistory('redo');$('fit').onclick=viewportFit;$('zoom-in').onclick=()=>setZoom(zoom*1.2);$('zoom-out').onclick=()=>setZoom(zoom/1.2);
-  const imageExtension=data=>({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[I.dataBytes(data).mimeType]);
-  function outputStem(agent=false){const filename=agent&&agentOptions.outputFileName?agentOptions.outputFileName:baseName()+'-feedback.json';return filename.replace(/\.[^.]+$/,'');}
-  function feedbackDocument(d,mode='file',includePreview=false,agent=false) {
-    let data=d.data;if(mode==='embedded'&&$('compress-image').checked&&!agent){if(!d.jpeg){const c=makeCanvas(d.image.naturalWidth,d.image.naturalHeight);c.getContext('2d').drawImage(d.image,0,0);d.jpeg=c.toDataURL('image/jpeg',.85);}data=d.jpeg;}
-    const stem=session.kind==='video'?'frame-'+d.id:outputStem(agent);
-    return {id:d.id,timestampUs:d.timestampUs,...(d.capture?{capture:clone(d.capture)}:{}),width:d.image.naturalWidth,height:d.image.naturalHeight,image:data,imageFile:stem+'.'+imageExtension(data),previewFile:includePreview?stem+'.annotated.jpg':undefined,devicePixelRatio:d.devicePixelRatio??null,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};
-  }
-  function feedback(mode=$('image-mode').value,includePreview=$('include-preview').checked,agent=false) {
-    if(typeof mode==='boolean')mode=mode?'embedded':'none';
-    if(!session)throw new Error('请先打开素材');
-    // All delivery paths share one export time until the document changes, so
-    // a saved backup and an idempotent Agent submission identify the same snapshot.
-    if(!feedbackStamp||feedbackStamp.session!==session||feedbackStamp.revision!==projectRevision)feedbackStamp={session,revision:projectRevision,exportedAt:new Date().toISOString()};
-    if(feedbackStamp.snapshot){const value=clone(feedbackStamp.snapshot),d=feedbackDocument(session.document,mode,includePreview,agent);value.image=I.descriptor(d.image,mode,d.imageFile,{devicePixelRatio:d.devicePixelRatio,preview:d.previewFile});if(!$('include-recognized-text').checked)for(const object of value.objects){delete object.recognizedText;delete object.ocrtext;}return value;}
-    const exportedAt=feedbackStamp.exportedAt;
-    const value=session.kind==='image'?F.exportImage(feedbackDocument(session.document,mode,includePreview,agent),mode,exportedAt):F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,capture:session.capture,frames:session.frames.map(d=>feedbackDocument(d,mode,includePreview,agent))},mode,exportedAt);
-    return feedbackStamp.metadata?{...value,...feedbackStamp.metadata}:value;
-  }
+  function feedbackDocument(d) {return {id:d.id,timestampUs:d.timestampUs,width:d.image.naturalWidth,height:d.image.naturalHeight,image:d.data,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{})}))};}
+  function exportDoc(d,embed=true) {return F.exportImage(feedbackDocument(d),embed);}
+  function feedback(embed=true) {if(!session)throw new Error('请先打开素材');if(session.kind==='image')return exportDoc(session.document,embed);return F.exportVideo({source:session.video.source,durationMs:session.video.durationMs,frames:session.frames.map(feedbackDocument)},embed);}
   function download(name,blob) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function jsonBlob(data) {return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});}
   const baseName = () => (session?.name||'EditHere').replace(/\.[^.]+$/,'').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'-');
@@ -2399,10 +1983,7 @@ function dilate(input,w,h,rx,ry) {
   const preference=(key,fallback)=>{try{return localStorage.getItem('edithere.'+key)??fallback;}catch{return fallback;}};
   const rememberPreference=(key,value)=>{try{localStorage.setItem('edithere.'+key,value);}catch{/* This view still remembers its selection when host storage is unavailable. */}};
   let saveMode=preference('saveMode','file');if(!saveModes[saveMode])saveMode='file';
-  $('image-mode').value=preference('imageMode',preference('includeImage','true')==='false'?'none':'file');if(!['file','embedded','none'].includes($('image-mode').value))$('image-mode').value='file';
-  $('include-preview').checked=preference('includePreview','false')==='true';
-  $('compress-image').checked=preference('compressImage','false')==='true';
-  $('include-recognized-text').checked=preference('includeRecognizedText','true')!=='false';
+  $('embed').checked=preference('includeImage','true')!=='false';
   function chooseSaveMode(mode) {
     saveMode=mode;rememberPreference('saveMode',mode);
     $('save-json').querySelector('use').setAttribute('href',saveModes[mode].icon);
@@ -2413,29 +1994,26 @@ function dilate(input,w,h,rx,ry) {
   }
   function closeSaveOptions(focus=false) {$('save-options').hidden=true;$('save-options-toggle').setAttribute('aria-expanded','false');if(focus)$('save-options-toggle').focus();}
   function refreshExport() {
-    const mode=$('image-mode').value,includeRecognizedText=$('include-recognized-text').checked,includePreview=$('include-preview').checked,compress=$('compress-image').checked;
+    const embed=$('embed').checked;
     // Reuse one snapshot across file and clipboard delivery, including video
     // export time, and avoid re-encoding large images until the editing changes.
-    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.compress!==compress||exportCache.includeRecognizedText!==includeRecognizedText){
-      exportData=feedback(mode,includePreview);exportText=F.serialize(exportData);
-      exportCache={session,revision:projectRevision,mode,includePreview,compress,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
+    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.embed!==embed){
+      exportData=feedback(embed);exportText=F.serialize(exportData);
+      exportCache={session,revision:projectRevision,embed,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
-    $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+(summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'')+(summary.recognizedTexts?' · '+summary.recognizedTexts+' 处截图文字（仅作为数据）':'');
-    $('compress-image').disabled=mode!=='embedded';$('download-json').textContent=mode==='file'||includePreview?'下载反馈包':'下载 JSON';
-    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；复制和保存包含完整原图。JPEG 压缩会改变图片编码，校验值按实际导出字节计算。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
+    $('json-summary').textContent=summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+($('embed').checked&&summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'');
+    $('export-hint').textContent=$('embed').checked?'预览已折叠图片编码；复制和文件保存包含完整原图。':'不包含图片，内容更小。仅用于 Agent 已持有同一原图；否则请同时附上原图或对应帧截图。此文件不能单独恢复画面。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
   function saveJsonFile() {
-    refreshExport();const files=new Map([[baseName()+'-feedback.json',exportText]]),frames=exportData.schemaVersion==='video-feedback-1'?exportData.frames.map(frame=>({value:frame.feedback,d:session.frames.find(d=>d.id===frame.id)})):[{value:exportData,d:session.document}];
-    for(const{value,d}of frames){if(value.image.mode==='file')files.set(value.image.file,I.dataBytes(d.data).bytes);if(value.image.preview)files.set(value.image.preview,I.dataBytes(annotatedData(d)).bytes);}
-    const bundle=files.size>1;download(baseName()+'-feedback.'+(bundle?'zip':'json'),bundle?new Blob(B.zip(files),{type:'application/zip'}):new Blob([exportText],{type:'application/json'}));
-    $('export-hint').textContent=bundle?'已发起反馈包下载；请将 ZIP 内的 JSON 和图片一起交给 Agent':'已发起 JSON 文件下载；完成后将文件交给 Agent';notify(bundle?'已发起反馈包下载':'已发起 JSON 文件下载');
+    refreshExport();download(baseName()+'-feedback.json',new Blob([exportText],{type:'application/json'}));
+    $('export-hint').textContent='已发起 JSON 文件下载；完成后将文件交给 Agent';notify('已发起 JSON 文件下载');
   }
   async function copyJson() {
     refreshExport();const complete=exportText;
-    try{await navigator.clipboard.writeText(complete);const external=$('image-mode').value==='file'||$('include-preview').checked;$('export-hint').textContent=external?'JSON 已复制，配套图片仍需从反馈包交付':'完整反馈 JSON 已复制';notify(external?'JSON 已复制；请下载反馈包，同时交付配套图片':'JSON 内容已复制，可粘贴到 Agent 对话');}
+    try{await navigator.clipboard.writeText(complete);$('export-hint').textContent='完整反馈 JSON 已复制';notify('JSON 内容已复制，可粘贴到 Agent 对话');}
     catch{openExport();$('json-preview').value=complete;$('json-preview').focus();$('json-preview').select();$('export-hint').textContent='剪贴板不可用。请按 Ctrl+C / ⌘C 复制选中的完整 JSON，或保存 JSON 文件';}
   }
   async function performSave() {if(!session)return;try{if(saveMode==='project')$('save-project').click();else if(saveMode==='content')await copyJson();else if(saveMode==='view')openExport();else saveJsonFile();}catch(error){notify(error.message);}}
@@ -2465,20 +2043,15 @@ function dilate(input,w,h,rx,ry) {
   document.addEventListener('pointerdown',event=>{if(!event.target.closest('.save-control,#save-options'))closeSaveOptions();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSaveOptions();});
   $('export').onclick=openExport;
-  $('image-mode').onchange=()=>{rememberPreference('imageMode',$('image-mode').value);refreshExport();};
-  $('include-preview').onchange=()=>{rememberPreference('includePreview',String($('include-preview').checked));refreshExport();};
-  $('compress-image').onchange=()=>{rememberPreference('compressImage',String($('compress-image').checked));refreshExport();};
-  $('include-recognized-text').onchange=()=>{rememberPreference('includeRecognizedText',String($('include-recognized-text').checked));refreshExport();};
+  $('embed').onchange=()=>{rememberPreference('includeImage',String($('embed').checked));refreshExport();};
   $('download-json').onclick=()=>{chooseSaveMode('file');saveJsonFile();};
   $('copy-json').onclick=()=>{chooseSaveMode('content');copyJson();};
-  function serializedDoc(d) {return {id:d.id,timestampUs:d.timestampUs,image:d.data,notes:clone(d.notes),layout:clone(d.layout),...(d.capture?{capture:clone(d.capture)}:{})};}
-  function project() {return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:session.kind,name:session.name,width:session.width,height:session.height,...(session.kind==='image'?{document:serializedDoc(session.document)}:{video:clone(session.video),signature:clone(session.signature),...(session.capture?{capture:clone(session.capture)}:{}),frames:session.frames.filter(hasContent).map(serializedDoc)})};}
+  function serializedDoc(d) {return {id:d.id,timestampUs:d.timestampUs,image:d.data,notes:clone(d.notes),layout:clone(d.layout)};}
+  function project() {return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:session.kind,name:session.name,width:session.width,height:session.height,...(session.kind==='image'?{document:serializedDoc(session.document)}:{video:clone(session.video),signature:clone(session.signature),frames:session.frames.filter(hasContent).map(serializedDoc)})};}
   $('save-project').onclick=()=>{try{download(baseName()+'.edithere-web.json',jsonBlob(project()));dirty=false;notify(session.kind==='video'?'已发起项目下载；重开后重新选择源视频即可继续播放':'已发起项目下载，包含原图、批注和组件布局');}catch(error){notify(error.message);}};
-  function annotatedCanvas(d) {const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(d.layout)L.paint(p,d.image,d.layout);else p.drawImage(d.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers(d);p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
+  $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(doc.layout)L.paint(p,doc.image,doc.layout);else p.drawImage(doc.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers();p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
     for(const m of markers){const {start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);if(length<.0001)continue;const ux=dx/length,uy=dy/length,head=Math.min(9*line,length*.35);p.strokeStyle='white';p.lineWidth=4*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.stroke();p.strokeStyle='#346df1';p.lineWidth=1.5*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.moveTo(end.x-ux*head-uy*head*.5,end.y-uy*head+ux*head*.5);p.lineTo(end.x,end.y);p.lineTo(end.x-ux*head+uy*head*.5,end.y-uy*head-ux*head*.5);p.stroke();p.fillStyle='white';p.beginPath();p.arc(start.x,start.y,3*line,0,Math.PI*2);p.fill();p.stroke();}
-    p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries(d).entries()){if(n.draft)continue;const r=noteRect(n,d);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}return c;}
-  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/jpeg',.85);}
-  $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=annotatedCanvas(doc),blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
+    p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries().entries()){if(n.draft)continue;const r=noteRect(n);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
   function validateRect(r,w,h,pointAllowed=true) {if(r===null)return;if(!r||Object.keys(r).sort().join(',')!=='x1,x2,y1,y2'||Object.values(r).some(v=>!Number.isFinite(v))||r.x1<0||r.y1<0||r.x2>w||r.y2>h||r.x2<r.x1||r.y2<r.y1||((r.x1===r.x2)!==(r.y1===r.y2))||!pointAllowed&&(r.x1===r.x2))throw new Error('项目区域坐标无效');if(r.x1===r.x2&&(r.x1>=w||r.y1>=h))throw new Error('项目点坐标越界');}
   function validateSources(sources,source,w,h) {
     if(sources===undefined)return;
@@ -2489,7 +2062,7 @@ function dilate(input,w,h,rx,ry) {
       const a=sorted[i],b=sorted[j];if(Math.min(a.y2,b.y2)>Math.max(a.y1,b.y1)+1e-7)throw new Error('位移原始切片重复');
     }
   }
-  function validateNotes(notes,w,h,layout) {if(!Array.isArray(notes)||notes.length>1000)throw new Error('项目批注数量无效');const ids=new Set();for(const n of notes){if(typeof n.id!=='string'||!n.id||ids.has(n.id)||typeof n.text!=='string'||(!n.text.trim()&&!n.movementSource)||n.text.length>10000)throw new Error('项目批注格式无效');ids.add(n.id);validateRect(n.source,w,h);if(Object.hasOwn(n,'recognizedText')){if(n.source===null)throw new Error('全局意见不能包含截图识别文字');F.validateRecognizedText(n.recognizedText,true);}if(n.groupId&&(!layout||!layout.groups.some(g=>g.id===n.groupId)))throw new Error('项目引用了不存在的组件');if(n.groupIds!==undefined){if(!layout||n.source===null||n.groupId||n.movementSource||!Array.isArray(n.groupIds)||!n.groupIds.length||n.groupIds.length>512||new Set(n.groupIds).size!==n.groupIds.length||n.groupIds.some(id=>typeof id!=='string'||!layout.groups.some(g=>g.id===id)))throw new Error('项目多选组件引用无效');validateRect(n.source,w,h,false);}if(n.movementSource){if(!layout||n.source===null)throw new Error('位移意见缺少布局或目标区域');validateRect(n.movementSource,w,h,false);validateSources(n.movementSources,n.movementSource,w,h);if(n.groupId){if(!equalRect(n.movementSource,sourceBounds(layout,n.groupId))||!equalRect(n.source,rawMovements({layout}).find(m=>m.groupId===n.groupId)?.destination||L.bounds(layout,n.groupId)))throw new Error('位移意见与组件布局不一致');}}else if(n.movementSources!==undefined)throw new Error('位移切片缺少原始范围');}}
+  function validateNotes(notes,w,h,layout) {if(!Array.isArray(notes)||notes.length>1000)throw new Error('项目批注数量无效');const ids=new Set();for(const n of notes){if(typeof n.id!=='string'||!n.id||ids.has(n.id)||typeof n.text!=='string'||(!n.text.trim()&&!n.movementSource)||n.text.length>10000)throw new Error('项目批注格式无效');ids.add(n.id);validateRect(n.source,w,h);if(n.groupId&&(!layout||!layout.groups.some(g=>g.id===n.groupId)))throw new Error('项目引用了不存在的组件');if(n.groupIds!==undefined){if(!layout||n.source===null||n.groupId||n.movementSource||!Array.isArray(n.groupIds)||!n.groupIds.length||n.groupIds.length>512||new Set(n.groupIds).size!==n.groupIds.length||n.groupIds.some(id=>typeof id!=='string'||!layout.groups.some(g=>g.id===id)))throw new Error('项目多选组件引用无效');validateRect(n.source,w,h,false);}if(n.movementSource){if(!layout||n.source===null)throw new Error('位移意见缺少布局或目标区域');validateRect(n.movementSource,w,h,false);validateSources(n.movementSources,n.movementSource,w,h);if(n.groupId){if(!equalRect(n.movementSource,sourceBounds(layout,n.groupId))||!equalRect(n.source,rawMovements({layout}).find(m=>m.groupId===n.groupId)?.destination||L.bounds(layout,n.groupId)))throw new Error('位移意见与组件布局不一致');}}else if(n.movementSources!==undefined)throw new Error('位移切片缺少原始范围');}}
   function validateLayoutMovements(layout,w,h) {
     if(layout.movements===undefined)return;
     if(!Array.isArray(layout.movements)||layout.movements.length>8192)throw new Error('项目位移数量无效');
@@ -2504,33 +2077,15 @@ function dilate(input,w,h,rx,ry) {
       }
     }
   }
-  async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id,value.capture);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
-  async function docFromFeedback(f,w,h,timestampUs=null,id=uid(),companions=[]) {
-    f=F.normalizeImage(f);
-    const currentMovements=f.objects.map(object=>Object.hasOwn(object,'movement'));
-    f={...f,objects:f.objects.map(F.legacyObject)};
+  async function restoredDoc(value,w,h,isVideo) {const image=await decode(value.image);if(image.naturalWidth!==w||image.naturalHeight!==h)throw new Error('项目画面尺寸不匹配');if(typeof value.id!=='string'||!/^[^\\/:*?"<>|\u0000-\u001f]+$/.test(value.id)||value.id.length>256)throw new Error('项目画面编号无效');if(isVideo&&(!Number.isSafeInteger(value.timestampUs)||value.timestampUs<0))throw new Error('项目时间点无效');if(value.layout){L.validate(value.layout,w,h);validateLayoutMovements(value.layout,w,h);}validateNotes(value.notes,w,h,value.layout);const d=makeDoc(image,value.image,value.timestampUs,value.id);d.notes=clone(value.notes);d.layout=clone(value.layout);return d;}
+  async function docFromFeedback(f,w,h,timestampUs=null,id=uid()) {
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
-    if(f.image&&typeof f.image==='object'&&f.image.preview){
-      const file=companions.find(file=>file.name===f.image.preview);if(!file){const error=new Error('请同时选择预览图 '+f.image.preview+'，或打开完整反馈 ZIP');error.missingCompanion=true;throw error;}
-      const bytes=new Uint8Array(await file.arrayBuffer()),dimensions=I.dimensions(bytes,'image/jpeg');if(dimensions.width!==f.image.width||dimensions.height!==f.image.height)throw new Error('预览图尺寸与原图不匹配');let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));await decode('data:image/jpeg;base64,'+btoa(binary));
-    }
-    let data=I.dataUrlOf(f.image);
-    if(!data){const descriptor=f.image;if(descriptor)I.validate(descriptor);const candidates=descriptor?.mode==='file'?companions.filter(file=>file.name===descriptor.file):companions.filter(file=>file.type?.startsWith('image/')||/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name));for(const file of candidates){try{const bytes=new Uint8Array(await file.arrayBuffer()),mime=descriptor?.mimeType||({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[file.name.split('.').pop().toLowerCase()]);let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const candidate='data:'+mime+';base64,'+btoa(binary);if(descriptor)I.verify(descriptor,candidate);data=candidate;break;}catch(error){if(descriptor?.mode==='file')throw error;}}
-      if(!data){const error=new Error(descriptor?.mode==='file'?'请同时选择 JSON 和配套图片 '+descriptor.file+'，或打开反馈 ZIP':'请同时选择 JSON 和相同原图以恢复编辑');error.missingCompanion=true;throw error;}}
-    if(f.image&&typeof f.image!=='string')I.verify(f.image,data);
-    const image=await decode(data);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
-    const d=makeDoc(image,data,timestampUs,id,f.capture),groups=new Map();if(f.image&&typeof f.image!=='string')d.devicePixelRatio=f.image.devicePixelRatio;
+    const image=await decode(f.image);w=w||image.naturalWidth;h=h||image.naturalHeight;if(w!==image.naturalWidth||h!==image.naturalHeight)throw new Error('反馈图片尺寸不匹配');
+    const d=makeDoc(image,f.image,timestampUs,id),groups=new Map();
     // Partition every source before moving any piece: destinations may cover later sources.
-    for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations))throw new Error('反馈对象格式无效');
+    for(const obj of f.objects){validateRect(obj.source,w,h);if(!Array.isArray(obj.movements)||!Array.isArray(obj.annotations)||obj.annotations.some(t=>typeof t!=='string'||!t.trim()||t.length>10000))throw new Error('反馈对象格式无效');
       if(obj.movements.length){if(!obj.source)throw new Error('全局意见不能包含移动');validateRect(obj.source,w,h,false);for(const movement of obj.movements)validateRect(movement.to,w,h,false);if(!d.layout)d.layout=L.create(w,h);const groupId=L.addRegion(d.layout,obj.source);if(!groupId)throw new Error('无法还原反馈的移动区域');groups.set(obj,groupId);}}
-    const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}}if(d.layout)d.layout.movements=importedMovements;
-    const entries=F.annotationEntries(f.objects),usedNumbers=new Set(entries.map(e=>e.number));let nextNumber=1;
-    for(const [index,obj] of f.objects.entries())if(!obj.annotations.length&&(obj.recognizedText||currentMovements[index]&&entries.length<1000)) {
-      if(!groups.has(obj))throw new Error('截图文字缺少批注或布局目标');
-      while(usedNumbers.has(nextNumber))nextNumber++;
-      entries.push({object:obj,text:'',number:nextNumber});usedNumbers.add(nextNumber++);
-    }
-    for(const {object:obj,text} of entries.sort((a,b)=>a.number-b.number)){const groupId=groups.get(obj);d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{}),...(obj.recognizedText?{recognizedText:clone(obj.recognizedText)}:{})});}
+    const importedMovements=[];for(const obj of f.objects){const groupId=groups.get(obj);if(groupId){for(const movement of obj.movements)L.transform(d.layout,groupId,movement.to);importedMovements.push({groupId,source:clone(obj.source),destination:clone(obj.movements.at(-1).to)});}for(const text of obj.annotations)d.notes.push({id:uid(),source:clone(groupId?obj.movements.at(-1).to:obj.source),text,...(groupId?{groupId,movementSource:clone(obj.source)}:{})});}if(d.layout)d.layout.movements=importedMovements;
     validateNotes(d.notes,w,h,d.layout);return {doc:d,width:w,height:h};
   }
   function validateVideoMetadata(value,w=value?.width,h=value?.height,empty=false) {
@@ -2548,14 +2103,14 @@ function dilate(input,w,h,rx,ry) {
       ids.add(f.id);times.add(f.timestampUs);
     }
   }
-  async function importJSON(file,companions=[]) {
+  async function importJSON(file) {
     if(file.size>160*1024*1024)throw new Error('项目过大，最多支持 160 MB');
     const data=JSON.parse(await file.text());let next,nextDoc;
     if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('项目格式无效');
     if(data.schemaVersion==='edithere-web-project-1'){
       sizeOK(data.width,data.height);
       if(typeof data.name!=='string'||!['image','video'].includes(data.kind))throw new Error('项目类型无效');
-      next={kind:data.kind,name:data.name,width:data.width,height:data.height,...(Object.hasOwn(data,'capture')?{capture:clone(F.validateCapture(data.capture))}:{})};
+      next={kind:data.kind,name:data.name,width:data.width,height:data.height};
       if(data.kind==='image'){
         nextDoc=await restoredDoc(data.document,data.width,data.height,false);next.document=nextDoc;
       }else{
@@ -2565,27 +2120,20 @@ function dilate(input,w,h,rx,ry) {
         nextDoc=next.frames[0]||null;
       }
     }else if(data.schemaVersion==='video-feedback-1'){
-      if(!Array.isArray(data.objects))throw new Error('视频反馈索引格式无效');
       validateVideoMetadata(data.video,data.video?.width,data.video?.height,Array.isArray(data.frames)&&data.frames.length===0);validateFrameMetadata(data.frames,data.video.durationMs);
-      F.validateVideoRecognitionIndex(data);
-      next={kind:'video',name:data.video.source,width:data.video.width||640,height:data.video.height||360,video:clone(data.video),signature:null,...(Object.hasOwn(data,'capture')?{capture:clone(F.validateCapture(data.capture))}:{}),frames:[]};
+      next={kind:'video',name:data.video.source,width:data.video.width||640,height:data.video.height||360,video:clone(data.video),signature:null,frames:[]};
       for(const f of data.frames){
         if(f.timestampMs!==Math.floor(f.timestampUs/1000))throw new Error('视频反馈时间无效');
-        const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id,companions);next.frames.push(item.doc);
+        const item=await docFromFeedback(f.feedback,next.width,next.height,f.timestampUs,f.id);next.frames.push(item.doc);
       }
       nextDoc=next.frames[0]||null;
-    }else if(Object.hasOwn(data,'schemaVersion')||data.objects||data.annotations&&data.changes){
-      const result=await docFromFeedback(data,undefined,undefined,null,uid(),companions);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
+    }else if(data.objects){
+      const result=await docFromFeedback(data);nextDoc=result.doc;next={kind:'image',name:file.name,width:result.width,height:result.height,document:nextDoc};
     }else throw new Error('请选择网页项目或含内嵌图片的反馈 JSON；桌面 .edithere 项目暂不支持');
     releaseVideo();session=next;doc=nextDoc;activate();if(doc)detect(doc);if(session.kind==='video')notify('批注帧已恢复；继续播放请重新选择源视频');
   }
-  async function openFiles(files,source='file'){files=[...files];if(!files.length)return;
-    if(files.length===1&&/\.zip$/i.test(files[0].name)){const entries=B.unzip(new Uint8Array(await files[0].arrayBuffer()));files=[...entries].map(([name,data])=>new File([data],name,{type:/\.json$/i.test(name)?'application/json':({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[name.split('.').pop().toLowerCase()]||'application/octet-stream')}));}
-    const json=files.find(file=>/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json');if(json){if(!replaceOK())return;try{await importJSON(json,files.filter(file=>file!==json));pendingImport=null;}catch(error){if(error.missingCompanion)pendingImport=json;throw error;}return;}
-    if(pendingImport){await importJSON(pendingImport,files);pendingImport=null;return;}await openFile(files[0],source);
-  }
-  async function openFile(file,source='file') {if(!file||!replaceOK())return;if(/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json')await importJSON(file);else if(file.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|ogv)$/i.test(file.name))await openVideo(file);else if(file.type.startsWith('image/'))await openImage(file,source);else throw new Error('请选择浏览器支持的图片、视频、反馈 ZIP 或 JSON 项目');}
-  $('open').onclick=$('drop-card').onclick=()=>$('file-input').click();$('file-input').onchange=()=>{const files=[...$('file-input').files];$('file-input').value='';run(()=>openFiles(files));};
+  async function openFile(file) {if(!file||!replaceOK())return;if(/\.(json|edithere-web)$/i.test(file.name)||file.type==='application/json')await importJSON(file);else if(file.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|ogv)$/i.test(file.name))await openVideo(file);else if(file.type.startsWith('image/'))await openImage(file);else throw new Error('请选择浏览器支持的图片、视频或 JSON 项目');}
+  $('open').onclick=$('drop-card').onclick=()=>$('file-input').click();$('file-input').onchange=()=>{const file=$('file-input').files[0];$('file-input').value='';run(()=>openFile(file));};
   $('relink').onclick=()=>$('video-input').click();$('video-input').onchange=()=>{const file=$('video-input').files[0];$('video-input').value='';if(!file||session?.kind!=='video')return;run(async()=>{
     const prepared=await prepareVideo(file),signature=session.signature;
     const emptyFeedback=!session.frames.length&&session.video.width===0&&session.video.height===0;
@@ -2598,9 +2146,9 @@ function dilate(input,w,h,rx,ry) {
     if(emptyFeedback)activate();
     if(previous){doc=previous;refresh();}else liveFrame();updateTime();notify('源视频已关联，可以继续播放和批注');
   });};
-  let dropDepth=0;document.addEventListener('dragenter',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();dropDepth++;$('drop-overlay').hidden=false;}});document.addEventListener('dragover',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',event=>{event.preventDefault();if(--dropDepth<=0){dropDepth=0;$('drop-overlay').hidden=true;}});document.addEventListener('drop',event=>{event.preventDefault();dropDepth=0;$('drop-overlay').hidden=true;const files=[...event.dataTransfer.files];if(files.length)run(()=>openFiles(files,'drop'));});
-  document.addEventListener('paste',event=>{if(event.target.closest('textarea,input,[contenteditable]'))return;const image=[...event.clipboardData?.items||[]].find(i=>i.type.startsWith('image/'));if(image){event.preventDefault();run(()=>openFile(image.getAsFile(),'clipboard'));}});
-  $('demo').onclick=()=>run(async()=>{if(!replaceOK())return;const brand=document.querySelector('.brand-lockup-light');await brand.decode();const c=makeCanvas(1100,700),p=c.getContext('2d');p.fillStyle='#f2f5fb';p.fillRect(0,0,1100,700);p.fillStyle='#fff';p.fillRect(0,0,190,700);p.fillRect(225,35,835,90);p.fillStyle='#346df1';p.fillRect(245,170,245,150);p.fillStyle='#36ae95';p.fillRect(520,170,245,150);p.fillStyle='#8a6add';p.fillRect(795,170,245,150);p.fillStyle='#fff';p.fillRect(245,355,795,270);p.fillStyle='#243149';p.font='bold 25px sans-serif';p.drawImage(brand,24,29,142,142*128/722);p.fillText('Overview',245,88);p.font='16px sans-serif';p.fillStyle='#7b879a';for(const [i,t] of ['Dashboard','Projects','Analytics','Settings'].entries())p.fillText(t,30,150+i*55);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Visitors',266,205);p.fillText('Conversions',541,205);p.fillText('Revenue',816,205);p.font='bold 38px sans-serif';p.fillText('24,680',266,265);p.fillText('1,842',541,265);p.fillText('$38,420',816,265);p.fillStyle='#346df1';p.fillRect(910,60,110,38);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Export',940,85);p.fillStyle='#243149';p.font='bold 18px sans-serif';p.fillText('Traffic over time',270,397);p.strokeStyle='#346df1';p.lineWidth=3;p.beginPath();p.moveTo(275,580);p.bezierCurveTo(420,420,480,630,620,470);p.bezierCurveTo(740,350,850,540,1000,430);p.stroke();const data=c.toDataURL('image/png'),image=await decode(data);releaseVideo();session={kind:'image',name:'示例仪表盘.png',width:1100,height:700,document:makeDoc(image,data,null,uid(),captureAt('demo','示例仪表盘.png'))};doc=session.document;activate();detect(doc);});
+  let dropDepth=0;document.addEventListener('dragenter',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();dropDepth++;$('drop-overlay').hidden=false;}});document.addEventListener('dragover',event=>{if([...event.dataTransfer?.types||[]].includes('Files')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});document.addEventListener('dragleave',event=>{event.preventDefault();if(--dropDepth<=0){dropDepth=0;$('drop-overlay').hidden=true;}});document.addEventListener('drop',event=>{event.preventDefault();dropDepth=0;$('drop-overlay').hidden=true;const files=event.dataTransfer.files;if(files.length>1)notify('每次编辑一个素材，已打开第一个文件');if(files[0])run(()=>openFile(files[0]));});
+  document.addEventListener('paste',event=>{if(event.target.closest('textarea,input,[contenteditable]'))return;const image=[...event.clipboardData?.items||[]].find(i=>i.type.startsWith('image/'));if(image){event.preventDefault();run(()=>openFile(image.getAsFile()));}});
+  $('demo').onclick=()=>run(async()=>{if(!replaceOK())return;const brand=document.querySelector('.brand-lockup-light');await brand.decode();const c=makeCanvas(1100,700),p=c.getContext('2d');p.fillStyle='#f2f5fb';p.fillRect(0,0,1100,700);p.fillStyle='#fff';p.fillRect(0,0,190,700);p.fillRect(225,35,835,90);p.fillStyle='#346df1';p.fillRect(245,170,245,150);p.fillStyle='#36ae95';p.fillRect(520,170,245,150);p.fillStyle='#8a6add';p.fillRect(795,170,245,150);p.fillStyle='#fff';p.fillRect(245,355,795,270);p.fillStyle='#243149';p.font='bold 25px sans-serif';p.drawImage(brand,24,29,142,142*128/722);p.fillText('Overview',245,88);p.font='16px sans-serif';p.fillStyle='#7b879a';for(const [i,t] of ['Dashboard','Projects','Analytics','Settings'].entries())p.fillText(t,30,150+i*55);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Visitors',266,205);p.fillText('Conversions',541,205);p.fillText('Revenue',816,205);p.font='bold 38px sans-serif';p.fillText('24,680',266,265);p.fillText('1,842',541,265);p.fillText('$38,420',816,265);p.fillStyle='#346df1';p.fillRect(910,60,110,38);p.fillStyle='#fff';p.font='14px sans-serif';p.fillText('Export',940,85);p.fillStyle='#243149';p.font='bold 18px sans-serif';p.fillText('Traffic over time',270,397);p.strokeStyle='#346df1';p.lineWidth=3;p.beginPath();p.moveTo(275,580);p.bezierCurveTo(420,420,480,630,620,470);p.bezierCurveTo(740,350,850,540,1000,430);p.stroke();const data=c.toDataURL('image/png'),image=await decode(data);releaseVideo();session={kind:'image',name:'示例仪表盘.png',width:1100,height:700,document:makeDoc(image,data)};doc=session.document;activate();detect(doc);});
   $('play').onclick=()=>run(async()=>{if(!mediaURL)throw new Error('请重新选择源视频');if(video.paused){const at=doc?doc.timestampUs/1000000:video.currentTime;await seekTo(at);await video.play();liveFrame();}else video.pause();updateTime();});
   $('back').onclick=()=>run(()=>seekTo((doc?doc.timestampUs/1000000:video.currentTime)-1));$('forward').onclick=()=>run(()=>seekTo((doc?doc.timestampUs/1000000:video.currentTime)+1));$('timeline').oninput=()=>{if(!mediaURL)return;video.pause();liveFrame();video.currentTime=Number($('timeline').value);updateTime();};$('frame-list').onclick=event=>{const id=event.target.closest('[data-frame]')?.dataset.frame;if(id)run(()=>selectFrame(id));};
   video.addEventListener('seeking',()=>{seeking=true;presentedTime=null;});video.addEventListener('seeked',()=>{seeking=false;updateTime();});for(const event of ['timeupdate','pause','play','ended'])video.addEventListener(event,updateTime);
@@ -2616,7 +2164,7 @@ function dilate(input,w,h,rx,ry) {
     if(key==='0'){event.preventDefault();viewportFit();return;}if(key==='1'&&!ctrl){event.preventDefault();setZoom(1);return;}
     if(event.key==='Escape'){event.preventDefault();cancelDrag();finishPan();selected=null;selectedNote=null;hover=null;hoveredMovement=null;refresh();return;}
     if(event.code==='Space'){event.preventDefault();if(!event.repeat){spaceDown=true;spaceUsed=false;stage.style.cursor='grab';}return;}
-    if(event.key==='Delete'||event.key==='Backspace'){if(selectedNote&&doc?.notes.some(n=>n.id===selectedNote)){event.preventDefault();deleteNote(selectedNote);}return;}
+    if(event.key==='Delete'||event.key==='Backspace'){if(selectedNote&&doc?.notes.some(n=>n.id===selectedNote)){event.preventDefault();remember();doc.notes=doc.notes.filter(n=>n.id!==selectedNote);selectedNote=null;commit();}return;}
     if(ctrl)return;
     const tools={v:'select',b:'smart',p:'point',r:'rect',c:'cut',h:'pan'};
     if(tools[key]){if(key==='c'&&!explodeEnabled)return;event.preventDefault();changeMode(tools[key]);return;}
@@ -2631,7 +2179,7 @@ function dilate(input,w,h,rx,ry) {
   window.addEventListener('blur',()=>{spaceDown=false;finishPan();cancelDrag();});
   window.addEventListener('edithere:layout',()=>{if(session&&fitMode)viewportFit();});
   const fitObserver=new ResizeObserver(()=>{if(session&&fitMode)viewportFit();});
-  for(const selector of ['#viewport','.header','.page-context','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){const element=document.querySelector(selector);if(element)fitObserver.observe(element);}
+  for(const selector of ['#viewport','.header','.media-bar','.view-controls','.tools','.status-bar','#video-controls','.sidebar','.utility-dock']){const element=document.querySelector(selector);if(element)fitObserver.observe(element);}
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
   // Editing stays independent of HTTP and MCP transports. A draft is considered
   // saved only when the transport acknowledges this exact editing revision.
@@ -2640,33 +2188,25 @@ function dilate(input,w,h,rx,ry) {
     async loadAgentImage(value) {
       if(session)throw new Error('当前页面已有素材，请为批注会话打开新页面');
       const image=await decode(value.image);
-      releaseVideo();agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
-      session={kind:'image',name:value.name,width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(image,value.image,null,uid(),value.capture)};
+      releaseVideo();agentBound=true;
+      session={kind:'image',name:value.name,width:image.naturalWidth,height:image.naturalHeight,document:makeDoc(image,value.image)};
       doc=session.document;activate();detect(doc);
     },
     async loadAgentProject(value) {
       if(!value.project||value.project.kind!=='image'||value.project.document?.image!==value.image)throw new Error('批注草稿与会话原图不匹配');
-      if(value.capture){F.validateCapture(value.capture);if(value.project.document.capture&&F.serialize(value.project.document.capture)!==F.serialize(value.capture))throw new Error('批注草稿与会话页面信息不匹配');value={...value,project:{...value.project,document:{...value.project.document,capture:clone(value.capture)}}};}
       await importJSON({name:value.name||value.project.name,size:JSON.stringify(value.project).length,text:async()=>JSON.stringify(value.project)});
-      agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
+      agentBound=true;
     },
     async loadAgentFeedback(value) {
-      if(value.capture){F.validateCapture(value.capture);if(value.feedback?.capture&&F.serialize(value.feedback.capture)!==F.serialize(value.capture))throw new Error('反馈与会话页面信息不匹配');value={...value,feedback:{...value.feedback,capture:clone(value.capture)}};}
-      const descriptor=value.feedback?.image;
-      if(descriptor&&typeof descriptor==='object')I.verify(descriptor,value.image);else if(descriptor!==value.image)throw new Error('反馈与会话原图不匹配');
-      const complete={...value.feedback,image:typeof descriptor==='object'?I.descriptor(value.image,'embedded','feedback.png',{devicePixelRatio:descriptor.devicePixelRatio}):value.image};
-      await importJSON({name:value.name,size:JSON.stringify(complete).length,text:async()=>JSON.stringify(complete)});
-      const metadata=F.imageMetadata(value.feedback);
-      feedbackStamp={session,revision:projectRevision,exportedAt:metadata.exportedAt||new Date().toISOString(),metadata,snapshot:clone(value.feedback)};
-      exportCache=null;
-      agentBound=true;agentOptions={imageMode:value.imageMode??'file',preview:value.preview??false,outputFileName:value.outputFileName};
+      if(value.feedback?.image!==value.image)throw new Error('反馈与会话原图不匹配');
+      await importJSON({name:value.name,size:JSON.stringify(value.feedback).length,text:async()=>JSON.stringify(value.feedback)});
+      agentBound=true;
     },
     project() {if(!session)throw new Error('请先打开素材');return clone(project());},
     projectRevision() {return projectRevision;},
     onProjectChange(listener) {projectListeners.add(listener);return ()=>projectListeners.delete(listener);},
     markAgentDraftSaved(revision) {if(revision===projectRevision)dirty=false;},
-    feedback() {return clone(feedback(agentOptions.imageMode,agentOptions.preview,true));},
-    feedbackSubmission() {return {feedback:clone(feedback(agentOptions.imageMode,agentOptions.preview,true)),...(agentOptions.preview?{previewDataUrl:annotatedData(session.document)}:{})};},
+    feedback() {return clone(feedback(true));},
     notify,
     canCancel() {return !dirty||confirm('取消这次 AI 批注会话？当前编辑仍会保留在页面中，可保存项目。');},
     releaseAgent() {agentBound=false;},
@@ -2730,7 +2270,7 @@ function dilate(input,w,h,rx,ry) {
     if (sending || document.body.dataset.agentState !== 'pending') return;
     if ($('note-dialog').open) { app.notify('请先保存或关闭正在编辑的批注');return; }
     sending=true;submit.disabled=true;cancel.disabled=true;label(submit,'返回中');
-    pendingFeedback ||= app.feedbackSubmission();$('workspace').inert=true;document.body.dataset.agentLocked='true';
+    pendingFeedback ||= app.feedback();$('workspace').inert=true;document.body.dataset.agentLocked='true';
     try {
       const receipt=await request('feedback',pendingFeedback);
       if (receipt.state !== 'completed') throw new Error('反馈尚未完成，请重试');

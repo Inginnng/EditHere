@@ -42,7 +42,7 @@ for (const [name, file] of [
   const data = fs.readFileSync(path.join(dir, '../assets', file));
   html = html.replaceAll('/*__' + name + '__*/', 'data:image/svg+xml;base64,' + data.toString('base64'));
 }
-for (const [name, file] of [['STYLE', 'style.css'], ['LAYOUT', 'layout.js'], ['IMAGE_FORMAT','image-format.js'], ['FEEDBACK', 'feedback.js'], ['BUNDLE','bundle.js'], ['DETECTOR', 'detector.js'], ['HELP', 'help.js'], ['UI', 'ui.js'], ['APP', 'app.js'], ['AGENT', 'agent.js']]) {
+for (const [name, file] of [['STYLE', 'style.css'], ['LAYOUT', 'layout.js'], ['FEEDBACK', 'feedback.js'], ['DETECTOR', 'detector.js'], ['HELP', 'help.js'], ['UI', 'ui.js'], ['APP', 'app.js'], ['AGENT', 'agent.js']]) {
   const source = fs.readFileSync(path.join(dir, 'src', file), 'utf8') + (name === 'STYLE' ? '\n' + fs.readFileSync(path.join(dir,'src/help.css'),'utf8') : '');
   if (name !== 'STYLE') new (require('node:vm').Script)(source, {filename: file});
   html = html.replace('/*__' + name + '__*/', () => source.replace(/<\/script/gi, '<\\/script'));

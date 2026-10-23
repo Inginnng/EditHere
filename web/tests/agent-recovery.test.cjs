@@ -19,7 +19,7 @@ test('CLI reads a completed native receipt from disk with no server credential o
   for(const command of ['poll','wait']){
     const result=JSON.parse(execFileSync(process.execPath,[path.join(__dirname,'../agent.cjs'),command,'--session',session.sessionId,...(command==='wait'?['--wait','0']:[])],{env:{...process.env,EDITHERE_WEB_DATA_DIR:directory},windowsHide:true,encoding:'utf8'}));
     assert.equal(result.state,'completed');assert.equal(result.sha256,receipt.sha256);
-    assert.deepEqual(result.feedback,receipt.feedback);
+    assert.deepEqual(result.feedback,{annotationSpace:'result',objects:feedback.objects});
   }
   assert(!fs.existsSync(path.join(directory,'server-key')),'read-only commands must not start a server or rotate credentials');
   assert.deepEqual(fs.readFileSync(metadata),before,'reading receipt does not rewrite stored metadata');

@@ -51,7 +51,7 @@
     if (sending || document.body.dataset.agentState !== 'pending') return;
     if ($('note-dialog').open) { app.notify('请先保存或关闭正在编辑的批注');return; }
     sending=true;submit.disabled=true;cancel.disabled=true;label(submit,'返回中');
-    pendingFeedback ||= app.feedbackSubmission();$('workspace').inert=true;document.body.dataset.agentLocked='true';
+    pendingFeedback ||= app.feedback();$('workspace').inert=true;document.body.dataset.agentLocked='true';
     try {
       const receipt=await request('feedback',pendingFeedback);
       if (receipt.state !== 'completed') throw new Error('反馈尚未完成，请重试');

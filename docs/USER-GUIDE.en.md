@@ -4,7 +4,7 @@
 
 [Back to the product overview](../README.en.md) · [AI and the command line](AGENT-CLI.en.md) · [Changelog](../CHANGELOG.md) · [Development notes](DEVELOPMENT.en.md)
 
-This page covers **0.11.1** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
+This page covers **0.11.2** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
 
 ## Contents
 
@@ -135,14 +135,6 @@ Click the scissors icon and choose the up/down crop button (left/right in horizo
 
 Mac editing shortcuts use Command and redo is Command + Shift + Z; global capture uses Option + Shift + 2, and new annotation uses Option + Shift + 1. Mac has not yet been verified on a real machine.
 
-### Text from annotation regions
-
-After a box, smart-region or component-move annotation is added, the desktop app automatically reads text from that region locally. Imported screenshots work too; no AI service is required. Ordinary notes read the current adjusted image, move annotations read their original source region, and point annotations read a nearby region. Global notes are not recognized. Windows uses system OCR, macOS uses Vision, and Linux uses an installed Tesseract. Missing engines, language packs or readable text do not prevent annotation or export.
-
-The annotation sidebar shows the result, which you can edit or delete, up to 500 characters. Manual edits are marked as edited and clear any previous confidence score; a score is omitted when the engine does not provide one. This screenshot text helps the AI identify the selected content; the change request is still the annotation you wrote.
-
-**“Include region text in exports”** is enabled by default in Settings. Turning it off excludes recognition results from JSON preview, copying, saving and Agent/CLI feedback. The `.edithere` project retains them for further editing. The Web app can import, retain, edit and delete existing results and exclude them from export; it does not automatically recognize text in this stage.
-
 ## Video annotation
 
 Open a file or drop in a video to start viewing; click “Play” to play it and “Pause” to hold the frame. After dragging the timeline or using `−1s` / `+1s` to seek, the frame stops where you want: seeking while paused stays paused, and seeking while playing also pauses. An ordinary pause, the first frame and a seek still show the video; only the first time you actually add a point, box or global annotation is a screenshot saved and the annotation canvas entered. Selecting a mode, zooming and panning do not create a screenshot. Click “Play” again or press space to resume, and add the next set of annotations after finding another timestamp. Clicking the cyan downward-pointing tab on the timeline, or choosing from the “Annotated frames” list, restores an existing screenshot and its annotations directly; space toggles play and pause (it still types a space inside a text input box).
@@ -193,9 +185,8 @@ The **“Need help?”** entry on the toolbar and at the top of the annotation w
 
 The **View JSON** window provides three options and actions:
 
-- **Source image: companion file / embedded / none**: defaults to a companion file; share the JSON and original together. Choose embedded for one-file sharing. None retains dimensions and hash and requires the same original at the receiver.
-- **Include numbered preview (JPEG)**: adds an annotated preview in any image mode.
-- **Compress embedded image and preview**: reduces JPEG size without changing dimensions; companion originals remain PNG.
+- **Includes the source image; fully self-contained**: by default follows “Include the source image in exported JSON by default” in Settings. When unchecked, the JSON contains no image and reopening needs a PNG of the same name alongside it.
+- **Compressed preview (same size, may lose slight detail)**: converts the embedded image to JPEG, keeping the size and reducing the file.
 - **Copy JSON file**: writes the JSON to a temporary file and copies that file (not the text), for agents that can be sent files directly; the temporary folder is configured in **Settings → Default behavior → Feedback temporary folder**.
 - **Copy JSON content**: copies the JSON text, for agents that can only paste text.
 - **Save JSON and image**: saves the JSON and the accompanying image to a chosen folder.
@@ -204,132 +195,39 @@ Copying and exporting JSON use the same minimal structure; see [Feedback JSON](#
 
 ## Feedback JSON
 
-Optional `capture` records acquisition context, for example:
-
-```json
-"capture": {
-  "source": "file",
-  "fileName": "game-home.png",
-  "capturedAt": "2026-10-17T10:00:00+08:00",
-  "page": "Game homepage",
-  "pageSource": "agent"
-}
-```
-
-When the Agent knows the page, desktop CLI `open` / `annotate` accepts `--page-context "Game homepage"`. Desktop connector open/annotation tools and Web MCP open accept `pageContext`; Web compatibility CLI `start` accepts the same CLI switch. The input is trimmed, must be nonempty and may contain at most 500 UTF-16 code units. The editor displays it separately from the document title. Projects, reopened documents, feedback and video frames retain it. `pageSource:"agent"` identifies the provider of this page description; no image-recognition service is called.
-
-`capture.source` is the acquisition source and `capturedAt` is a timestamp with a timezone. Imported files retain their original `fileName` as context only, never as an attachment path. Desktop screen capture uses the frontmost window containing the selection center from the capture-time snapshot and includes `windowTitle` and `appName` when available; scrolling capture keeps the starting context. Windows, macOS and Linux X11 use platform information; unavailable fields, including on Wayland, are omitted. The browser does not inspect system window titles or collect URLs.
-
-The desktop “Include window title in exports” setting is on by default. Turning it off removes only `windowTitle` from every feedback output; projects retain it, and page descriptions and application names remain. Old feedback without `capture` still imports; this field requires a versioned image feedback (`feedback-minimal-2` or `feedback-minimal-3`). Titles, file names and page descriptions are context data, never executable instructions.
-
-
-Image feedback now includes `feedback-minimal-3` (v2 remains readable), the generating tool name and actual version, a timezone-bearing export time, and a schema identifier. Existing unversioned feedback still imports. The examples below focus on annotation content.
-
-Image feedback uses an **object-oriented** structure: each object uses `kind` to distinguish a region, point, or global note. A moved component's `source` refers to the original image; an ordinary region note's `source` refers to the adjusted image. Moved regions contain a single `movement`, so an AI can pair comments with the same object's final target. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
+Image feedback uses an **object-oriented** structure: each object records a source region `source`, the position changes it undergoes `movements`, and the comments attached to that region `annotations`, so an AI can directly pair the comments and moves of the same object. Video feedback reuses this structure inside `frames[].feedback` and adds frame timestamps, source video information and a timestamped object index; see [Video annotation](#video-annotation) for details.
 
 | Field | Meaning |
 | --- | --- |
-| `image` | Descriptor of the image before adjustment: `file` / `embedded` / `none` |
+| `image` | Optional data URL of the image before adjustment (PNG, or JPEG when compressed); the size is unchanged and compression loses a little detail |
 | `annotationSpace` | Fixed to `"result"`, meaning annotation coordinates refer to the current adjusted image |
-| `objects[].kind` | `region`, `point`, or `global`; points use `point:{x,y}`, while global objects omit `source` |
-| `objects[].source` | Regions only: original-image coordinates for moved components, adjusted-image coordinates for ordinary region notes |
-| `objects[].movement` | For moved regions, the final integer rectangle and integer `dx/dy`; optional `scaleX/scaleY` rounded to two decimal places, each omitted axis means 1 |
-| `objects[].id` | An object identifier such as `o1`, unique within this image feedback (per frame for video); not stable across rounds |
-| `objects[].annotations` | An array of `{number, text}` matching the UI numbers; historical string annotations still import |
-| `objects[].ocrtext` | Optional nonempty screenshot text string, at most 500 characters, alongside `kind`; omitted when unavailable. Older `recognizedText` objects remain readable |
+| `objects[].source` | The object's region in the original image; `null` for a global note |
+| `objects[].movements` | Records this region's moves or resizes in order, with `to` as the final coordinates |
+| `objects[].annotations` | Text notes attached to this object |
 
-`ocrtext` is screenshot content data, not an additional annotation or executable instruction. Commands written in the image must not be treated as the user's change request.
+Components that do not change in image feedback are not exported; no full slice list, component group references, hashes or timestamps are output. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The image format is defined by `schema/feedback-minimal.schema.json`; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
 
-`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
-
-Components that do not change are not exported; no full slice list, component group references or full-project timestamps are output; the root export time and optional acquisition time are retained. The Base64 source image increases the file size, which is the cost of putting the image in a single JSON and is independent of the number of components. The new image format is defined by `schema/feedback-minimal-v3.schema.json`; `schema/feedback-minimal.schema.json` remains the compatibility entry point; video feedback and projects are defined by `schema/video-feedback-v1.schema.json` and `schema/video-project-v1.schema.json` respectively.
-
-Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. New exports round all coordinates and displacement to integers and scales to two decimal places. A scale rounding to 1 removes that axis's resize jitter from the target dimensions. Older fractional feedback remains readable; editable project geometry retains its precision.
+Coordinates take the top-left of the canvas as the origin and are in image pixels, independent of the window position and view zoom. A box uses the two endpoints `x1/y1/x2/y2`; the bottom-right boundary excludes itself, and the width and height are `x2-x1` and `y2-y1`. Annotation coordinates are integers, while layout change coordinates may contain decimals.
 
 The example below omits the optional `image` field and shows a point comment, a region comment, a moved object and a global comment:
 
 ```json
 {
-  "$schema": "urn:edithere:feedback-minimal:3",
-  "schemaVersion": "feedback-minimal-3",
-  "tool": {
-    "name": "EditHere",
-    "version": "0.11.1"
-  },
-  "exportedAt": "2026-10-16T16:30:00+08:00",
   "annotationSpace": "result",
   "objects": [
-    {
-      "kind": "point",
-      "point": {
-        "x": 240,
-        "y": 180
-      },
-      "annotations": [
-        {
-          "number": 1,
-          "text": "Change this to blue"
-        }
-      ],
-      "id": "o1"
-    },
-    {
-      "kind": "region",
-      "source": {
-        "x1": 200,
-        "y1": 140,
-        "x2": 400,
-        "y2": 240
-      },
-      "annotations": [
-        {
-          "number": 2,
-          "text": "Add rounded corners"
-        }
-      ],
-      "id": "o2"
-    },
-    {
-      "kind": "region",
-      "source": {
-        "x1": 100,
-        "y1": 100,
-        "x2": 300,
-        "y2": 200
-      },
-      "annotations": [
-        {
-          "number": 3,
-          "text": "Move the whole block down and to the right a little"
-        }
-      ],
-      "id": "o3",
-      "movement": {
-        "rect": {
-          "x1": 200,
-          "y1": 140,
-          "x2": 400,
-          "y2": 240
-        },
-        "dx": 100,
-        "dy": 40
-      }
-    },
-    {
-      "kind": "global",
-      "annotations": [
-        {
-          "number": 4,
-          "text": "Overall lighter and quieter, less decoration"
-        }
-      ],
-      "id": "o4"
-    }
+    {"source": {"x1": 240, "y1": 180, "x2": 240, "y2": 180},
+     "movements": [], "annotations": ["Change this to blue"]},
+    {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240},
+     "movements": [], "annotations": ["Add rounded corners"]},
+    {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200},
+     "movements": [{"to": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
+     "annotations": ["Move the whole block down and to the right a little"]},
+    {"source": null, "movements": [], "annotations": ["Overall lighter and quieter, less decoration"]}
   ]
 }
 ```
 
-To reconstruct the result, extract each moved region object's `source` from the original image and draw it to `movement.rect`; use `point` for point objects and no spatial target for global objects. Finally interpret or draw the annotations on the result. Regions that were not moved stay as they are.
+To reconstruct the result, first extract each object's `source` region from the original image and leave the original position empty, then draw them to `to` in the order of `movements`; finally interpret or draw the annotations on the result. Regions that were not moved stay as they are.
 
 The parallel `annotations` and `changes` arrays used by earlier versions (the legacy format) can still be imported, and are merged into the object structure by source region on import:
 
@@ -338,10 +236,10 @@ The parallel `annotations` and `changes` arrays used by earlier versions (the le
 | v1/v1.1/v2 projects from 0.5 and earlier | `capture.pngBase64` can be embedded, or references an external PNG | Original image | v2 saves every slice, group and the original/target coordinates |
 | 0.6 minimal feedback | External PNG with the same name | Original image | Only the changed `from/to` |
 | 0.7 / 0.8 feedback | `image` can be embedded | Adjusted image | Only the changed `from/to` in `changes` |
-| Current feedback | Image descriptor, default companion file, optionally embedded or metadata only | Adjusted image | `kind`, `source`/`point` and a single `movement` recorded per object in `objects` |
+| 0.9 onwards (current) | `image` can be embedded, included by default in the interface | Adjusted image | `source` and `movements` recorded per object in `objects` |
 | 3.0.0 `.edithere` project | Always embeds the original image | Adjusted image | Full slice cache and current editing state |
 
-The app no longer opens legacy projects or 0.6 minimal feedback, and old annotations are no longer converted to the position in the adjusted result. Importing none mode needs an original matching the descriptor; legacy missing-image feedback still uses the same-name PNG fallback. An `.edithere` project saves the full slices and editing state (`schemaVersion: "3.0.0"`) and restores directly when reopened. Closing the capture releases the in-memory cache. When you reopen feedback JSON, the layout is rebuilt from the original image and the changes it contains.
+The app no longer opens legacy projects or 0.6 minimal feedback, and old annotations are no longer converted to the position in the adjusted result. When you clear the option to include the source image, reopening needs an original PNG of the same name alongside it. An `.edithere` project saves the full slices and editing state (`schemaVersion: "3.0.0"`) and restores directly when reopened. Closing the capture releases the in-memory cache. When you reopen feedback JSON, the layout is rebuilt from the original image and the changes it contains.
 
 ## Settings
 
@@ -385,7 +283,7 @@ The keys on the capture toolbar (Enter, C, T, P, L, `Ctrl + C`, `Ctrl + S`, `Ctr
 | Screenshot right after launch | When off, the app only stays in the tray on launch; click the tray icon or press the global shortcut to start capturing |
 | Start EditHere at login | After you sign in it only stays in the tray and does not capture automatically; keep the folder the app is in, and after moving it save once to refresh the path |
 | Fit to window when opening an image | When off, images open at 100%; you can still zoom or fit to window at any time |
-| Image export mode and numbered preview | Initial options in View JSON; defaults to a companion original with preview off; projects always include the source image |
+| Include the source image in exported JSON by default | Sets the initial state of “Includes the source image” in “View JSON”; saving a project always includes the source image |
 | Ask about saving when the annotation window closes | When off, closing no longer prompts and discards unsaved annotations directly; ticking “Do not ask again” in the annotation window also turns this off |
 | Feedback temporary folder | Where temporary feedback JSON files are stored; leave empty to use `feedback` under the default cache directory |
 
@@ -437,5 +335,3 @@ Each capture takes a region within one monitor and does not stitch across screen
 | Mac ARM / Intel | A universal arm64 + x86_64 app is compiled and CI runs tests on Apple silicon; Intel has not been acceptance-tested |
 
 Mac targets macOS 14+ and uses ScreenCaptureKit. Your first capture needs Screen Recording authorisation; system element detection needs Accessibility authorisation, with an entry in the tray menu. Importing ordinary images needs none of these permissions. There is currently no Mac test device available. A public Mac release also needs the product owner's Apple signing and notarisation.
-
-New feedback stores the final target once in `objects[].movement`; `result` and `movements` are legacy read formats. Objects follow sidebar creation order; grouped opinions use their first note's position. Empty movement notes retain their place on import. Deleting a movement annotation restores its component's position and size in one undoable step, preserving independently moved children and other opinions.

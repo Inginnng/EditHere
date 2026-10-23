@@ -45,7 +45,7 @@ function createPreviewServer({port = 7330, directory = sessionDirectory} = {}) {
         if (pathname === '/__edithere_agent/session' && req.method === 'GET') { json(res, 200, sessions.browser(url.searchParams.get('token'))); return; }
         if (pathname === '/__edithere_agent/feedback' && req.method === 'POST') {
           if (req.headers.origin !== currentOrigin) { json(res, 403, {error:'Same-origin browser submission is required.'}); return; }
-          const body=await readBody(req);json(res, 200, sessions.submit(url.searchParams.get('token'),body?.feedback||body,body?.feedback?body.previewDataUrl:undefined)); return;
+          json(res, 200, sessions.submit(url.searchParams.get('token'), await readBody(req))); return;
         }
         if (pathname === '/__edithere_agent/cancel' && req.method === 'POST') {
           if (req.headers.origin !== currentOrigin) { json(res, 403, {error:'Same-origin browser cancellation is required.'}); return; }

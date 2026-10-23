@@ -21,6 +21,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QWindow>
 #include <memory>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -28,6 +29,11 @@
 #endif
 
 namespace h2d {
+#ifdef Q_OS_WIN
+constexpr bool keepsCaptureSurfacesVisible = true;
+#else
+constexpr bool keepsCaptureSurfacesVisible = false;
+#endif
 class ScrollControllerTests final : public QObject {
     Q_OBJECT
     std::unique_ptr<QTemporaryDir> temporary_;
@@ -337,28 +343,8 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(owner_->scroller_->frames(), 1);
         QVERIFY(!owner_->editor_.hasDocument());
     }
-    void normalCaptureKeepsSnapshotTimeAndTheFrontWindowAtSelectionCenter() {
-        ScreenFrame frame;
-        frame.capturedAt = "2026-10-17T02:30:00.000Z";
-        frame.captureWindows = {{{0, 0, 80, 80}, "outside", "outside.exe"},
-                                {{80, 100, 400, 300}, "游戏主页面", "game.exe"},
-                                {{0, 0, 640, 480}, "background", "background.exe"}};
-        const QRect selected(40, 60, 240, 180);
-        auto *source = overlay(selected, frame);
-        owner_->completeCapture(source, selected, {});
-        QVERIFY(owner_->editor_.hasDocument());
-        const auto &result = owner_->editor_.document();
-        QCOMPARE(result.createdAt, frame.capturedAt);
-        QCOMPARE(result.capture["capturedAt"].toString(), frame.capturedAt);
-        QCOMPARE(result.capture["source"].toString(), QString("screen"));
-        QCOMPARE(result.capture["windowTitle"].toString(), QString("游戏主页面"));
-        QCOMPARE(result.capture["appName"].toString(), QString("game.exe"));
-    }
     void manualCaptureFinishesWhileRunningAndRejectsLateFrames() {
-        ScreenFrame frame;
-        frame.capturedAt = "2026-10-17T02:30:00.000Z";
-        frame.captureWindows = {{{0, 0, 640, 480}, "采集前窗口", "game.exe"}};
-        auto *source = overlay({40, 60, 240, 180}, frame);
+        auto *source = overlay();
         const QImage whole = document();
         const QImage first = whole.copy(0, 0, 240, 180);
         const QImage next = whole.copy(0, 60, 240, 180);
@@ -379,11 +365,6 @@ class ScrollControllerTests final : public QObject {
         QTest::mouseClick(button("scrollFinish"), Qt::LeftButton);
         QVERIFY(owner_->editor_.hasDocument());
         QVERIFY(!owner_->capturing_);
-        const auto capture = owner_->editor_.document().capture;
-        QCOMPARE(capture["source"].toString(), QString("scroll"));
-        QCOMPARE(capture["capturedAt"].toString(), frame.capturedAt);
-        QCOMPARE(capture["windowTitle"].toString(), QString("采集前窗口"));
-        QCOMPARE(capture["appName"].toString(), QString("game.exe"));
         QCOMPARE(wheelSteps_, 0);
         const QImage result = owner_->editor_.document().image;
         QCOMPARE(result, whole.copy(0, 0, 240, 240).convertToFormat(QImage::Format_ARGB32));
@@ -482,6 +463,9 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(preview->geometry().intersects(region));
         QVERIFY(cropMenu->geometry().intersects(region));
         QVERIFY(!excludedFromCapture(cropMenu));
+        QSignalSpy regionVisibility(liveRegion->windowHandle(), &QWindow::visibleChanged);
+        QSignalSpy shadeVisibility(shade->windowHandle(), &QWindow::visibleChanged);
+        const bool handleOverlaps = liveRegion->moveHandle()->geometry().intersects(region);
 
         bool grabbed = false;
         bool previewHidden = false;
@@ -508,9 +492,9 @@ class ScrollControllerTests final : public QObject {
         QTRY_VERIFY(grabbed);
         QVERIFY(previewHidden);
         QVERIFY(cropHidden);
-        QVERIFY(regionHidden);
-        QVERIFY(shadeHidden);
-        QVERIFY(handleHidden);
+        QCOMPARE(regionHidden, !keepsCaptureSurfacesVisible);
+        QCOMPARE(shadeHidden, !keepsCaptureSurfacesVisible);
+        QCOMPARE(handleHidden, handleOverlaps || !keepsCaptureSurfacesVisible);
         QCOMPARE(toolbarHidden, toolbarOverlaps);
         QCOMPARE(capturedRegion_, owner_->scrollRun_.nativeRegion);
         QVERIFY(!pending_.isEmpty());
@@ -522,6 +506,10 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(liveRegion->isVisible());
         QVERIFY(shade->isVisible());
         QVERIFY(liveRegion->moveHandle()->isVisible());
+        if (keepsCaptureSurfacesVisible) {
+            QCOMPARE(regionVisibility.count(), 0);
+            QCOMPARE(shadeVisibility.count(), 0);
+        }
         QVERIFY(!owner_->scrollRun_.paused);
         QCOMPARE(owner_->scroller_->picture(), first.convertToFormat(QImage::Format_ARGB32));
         QCOMPARE(owner_->history_.count(), 0);
@@ -550,8 +538,8 @@ class ScrollControllerTests final : public QObject {
         auto *shade = owner_->scrollShade_.data();
         QVERIFY(region && shade);
         QTRY_VERIFY(!pending_.isEmpty());
-        QVERIFY(!region->isVisible());
-        QVERIFY(!shade->isVisible());
+        QCOMPARE(region->isVisible(), keepsCaptureSurfacesVisible);
+        QCOMPARE(shade->isVisible(), keepsCaptureSurfacesVisible);
         auto stale = pending_.takeFirst();
         owner_->pauseScrollCapture(QStringLiteral("采样时暂停"));
         QVERIFY(owner_->scrollRun_.paused);
@@ -565,8 +553,8 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(owner_->scrollRun_.axis, Qt::Horizontal);
         QVERIFY(!owner_->scrollRun_.paused);
         QTRY_VERIFY(!pending_.isEmpty());
-        QVERIFY(!region->isVisible());
-        QVERIFY(!shade->isVisible());
+        QCOMPARE(region->isVisible(), keepsCaptureSurfacesVisible);
+        QCOMPARE(shade->isVisible(), keepsCaptureSurfacesVisible);
         auto current = pending_.takeFirst();
         current(first, {});
         QVERIFY(region->isVisible());

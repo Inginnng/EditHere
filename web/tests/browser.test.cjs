@@ -165,17 +165,11 @@ async function run() {
     await targetPage.mouse.move(at.x, at.y); await targetPage.mouse.down();
     await targetPage.mouse.move(at.x + dx * scale, at.y + dy * scale, { steps: 10 }); await targetPage.mouse.up();
   }
-  function stableFeedback(data) {
-    if(Object.hasOwn(data,'exportedAt'))data.exportedAt='2026-10-16T00:00:00.000Z';
-    for (const frame of data.frames || []) if(Object.hasOwn(frame.feedback,'exportedAt'))frame.feedback.exportedAt='2026-10-16T00:00:00.000Z';
-    return data;
-  }
   async function readFeedback(targetPage = page) {
-    await targetPage.evaluate(()=>document.querySelector('#image-mode').value='embedded');
     await targetPage.locator('#export').click();
     const data = await readExportJson(targetPage);
     await targetPage.locator('[data-close="export-dialog"]').click();
-    return stableFeedback(data);
+    return data;
   }
   async function downloadBy(selector, name) {
     if (selector === '#save-project') await ensureUtility();
@@ -219,7 +213,7 @@ async function run() {
   }
   try {
     await checkpoint('file:// opens with an offline context', async () => {
-      await page.goto(pathToFileURL(bundle).href); await page.evaluate(()=>{const el=document.querySelector('#image-mode');el.value='embedded';});
+      await page.goto(pathToFileURL(bundle).href);
       await visible('#empty');
       assert.equal(await page.title(), 'EditHere · 改这里');
       await page.screenshot({ path: path.join(output, '01-empty.png'), fullPage: true });
@@ -241,7 +235,7 @@ async function run() {
       assert.deepEqual(originalFeedback.objects[0].source, { x1: 60, y1: 65, x2: 60, y2: 65 });
       assert.deepEqual(originalFeedback.objects[1].source, { x1: 750, y1: 380, x2: 1000, y2: 480 });
       assert.equal(originalFeedback.objects[2].source, null);
-      assert.match(originalFeedback.image.dataUrl, /^data:image\/png;base64,/);
+      assert.match(originalFeedback.image, /^data:image\/png;base64,/);
     });
     await checkpoint('annotated PNG downloads at original resolution', async () => {
       const filename = await downloadBy('#preview', 'image-annotations.png'), bytes = fs.readFileSync(filename);
@@ -288,7 +282,7 @@ async function run() {
         JSON.stringify(object.source) === JSON.stringify(moved.source)
         && JSON.stringify(object.movements) === JSON.stringify(moved.movements));
       assert(sameMovement(added), 'the annotated arrow must preserve its original source and destination');
-      assert.deepEqual(sameMovement(added).annotations.map(annotation=>annotation.text), ['位移意见：按钮往右下调整，保持文字清晰']);
+      assert.deepEqual(sameMovement(added).annotations, ['位移意见：按钮往右下调整，保持文字清晰']);
       assert.equal(added.objects.length, original.objects.length, 'arrow text belongs to the movement, rather than an extra located object');
       validateSchema(added, path.join(root, 'schema/feedback-minimal.schema.json'));
       await clickMovementArrow();
@@ -297,7 +291,7 @@ async function run() {
       movementText = '位移意见已修改：保留这个目标位置，加大字重';
       await note(movementText);
       resizedFeedback = await readFeedback();
-      assert.deepEqual(sameMovement(resizedFeedback).annotations.map(annotation=>annotation.text), [movementText]);
+      assert.deepEqual(sameMovement(resizedFeedback).annotations, [movementText]);
       await page.locator('#undo').click(); assert.deepEqual(await readFeedback(), added);
       await page.locator('#redo').click(); assert.deepEqual(await readFeedback(), resizedFeedback);
       await page.locator('#undo').click(); await page.locator('#undo').click();
@@ -340,7 +334,7 @@ async function run() {
       await page.locator('#export').click();
       const filename = await downloadBy('#download-json', 'image-feedback.json');
       await page.locator('[data-close="export-dialog"]').click();
-      assert.deepEqual(stableFeedback(JSON.parse(fs.readFileSync(filename, 'utf8'))), resizedFeedback);
+      assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')), resizedFeedback);
       const saved = await savedProject('image-project.json');
       assert.equal(saved.data.document.notes.length, 4); assert(saved.data.document.layout.pieces.length);
       await page.locator('#file-input').setInputFiles(saved.filename);
@@ -394,7 +388,7 @@ async function run() {
         const pieces = layout.create(1100, 700);
         layout.addRegion(pieces, { x1: 520, y1: 170, x2: 765, y2: 320 });
         const fixture = { schemaVersion: 'edithere-web-project-1', tool: 'EditHere Web', kind: 'image', name: 'annotation-adjustment.png', width: 1100, height: 700,
-          document: { id: 'annotation-adjustment', timestampUs: null, image: originalFeedback.image.dataUrl, layout: pieces, notes: [
+          document: { id: 'annotation-adjustment', timestampUs: null, image: originalFeedback.image, layout: pieces, notes: [
             { id: 'point-to-adjust', source: { x1: 50, y1: 70, x2: 50, y2: 70 }, text: 'point to adjust' },
             { id: 'rectangle-to-adjust', source: { x1: 250, y1: 180, x2: 450, y2: 300 }, text: 'rectangle to adjust' }
           ] } };
@@ -407,16 +401,16 @@ async function run() {
         await editor.locator('#lock-ratio').uncheck();
         await drag(350, 240, 390, 270, editor);
         let changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'rectangle to adjust')).source, { x1: 290, y1: 210, x2: 490, y2: 330 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 490, y2: 330 });
         await editor.locator('[data-note-handle="se"]').waitFor({ state: 'visible' });
         await dragSvgHandle(editor, '[data-note-handle="se"]', 30, 20);
         changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'rectangle to adjust')).source, { x1: 290, y1: 210, x2: 520, y2: 350 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.includes('rectangle to adjust')).source, { x1: 290, y1: 210, x2: 520, y2: 350 });
         const beforePoint = changed;
         await drag(50, 70, 85, 95, editor);
         assert.equal(await editor.locator('#note-dialog').isVisible(), false, 'dragging a point should adjust its location without opening text editing');
         changed = await readFeedback(editor);
-        assert.deepEqual(changed.objects.find(object => object.annotations.some(annotation => annotation.text === 'point to adjust')).source, { x1: 85, y1: 95, x2: 85, y2: 95 });
+        assert.deepEqual(changed.objects.find(object => object.annotations.includes('point to adjust')).source, { x1: 85, y1: 95, x2: 85, y2: 95 });
         assert.equal(changed.objects.length, 2); assert(changed.objects.every(object => object.movements.length === 0));
         validateSchema(changed, path.join(root, 'schema/feedback-minimal.schema.json'));
         await editor.locator('#undo').click(); assert.deepEqual(await readFeedback(editor), beforePoint);
@@ -435,7 +429,7 @@ async function run() {
         layout.addRegion(pieces, { x1: 245, y1: 170, x2: 490, y2: 320 });
         layout.addRegion(pieces, { x1: 520, y1: 170, x2: 765, y2: 320 });
         const fixture = { schemaVersion: 'edithere-web-project-1', tool: 'EditHere Web', kind: 'image', name: 'multi-selection.png', width: 1100, height: 700,
-          document: { id: 'multi-selection', timestampUs: null, image: originalFeedback.image.dataUrl, notes: [], layout: pieces } };
+          document: { id: 'multi-selection', timestampUs: null, image: originalFeedback.image, notes: [], layout: pieces } };
         await editor.locator('#file-input').setInputFiles({ name: 'multi-selection.edithere-web.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
         await editor.locator('#workspace').waitFor({ state: 'visible' });
         await editor.locator('[data-mode="select"]').click();
@@ -500,19 +494,19 @@ async function run() {
       assert(videoFeedback.frames[0].timestampUs >= 400000 && videoFeedback.frames[0].timestampUs <= 600000);
       assert(videoFeedback.frames[1].timestampUs >= 1400000 && videoFeedback.frames[1].timestampUs <= 1600000);
       for (const [i, captured] of [first, second].entries()) {
-        assert.equal(videoFeedback.frames[i].feedback.image.dataUrl, captured.image, 'exported frame must match the paused video pixels');
+        assert.equal(videoFeedback.frames[i].feedback.image, captured.image, 'exported frame must match the paused video pixels');
         if (captured.presented !== null) assert.equal(videoFeedback.frames[i].timestampUs, Math.round(captured.presented * 1000000), 'timestamp must use the presented media frame');
       }
       for (const frame of videoFeedback.frames) {
         assert.equal(frame.timestampMs, Math.floor(frame.timestampUs / 1000));
-        assert.match(frame.feedback.image.dataUrl, /^data:image\/png;base64,/);
+        assert.match(frame.feedback.image, /^data:image\/png;base64,/);
         assert(videoFeedback.objects.some(o => o.frameId === frame.id && o.timestampMs === frame.timestampMs));
       }
       await page.locator('#export').click();
       const filename = await downloadBy('#download-json', 'video-feedback.json');
       await page.locator('[data-close="export-dialog"]').click();
       const downloaded = JSON.parse(fs.readFileSync(filename, 'utf8')); validateSchema(downloaded, path.join(root, 'schema/video-feedback-v1.schema.json'));
-      assert.deepEqual(stableFeedback(downloaded).frames, videoFeedback.frames);
+      assert.deepEqual(downloaded.frames, videoFeedback.frames);
       videoProject = await savedProject('video-project.json');
       assert.equal(videoProject.data.frames.length, 2); assert(!Object.hasOwn(videoProject.data, 'videoData'));
       await page.screenshot({ path: path.join(output, '03-video-annotated.png'), fullPage: true });
@@ -558,15 +552,11 @@ async function run() {
       assert.deepEqual(pixels, [[255, 0, 0, 255], [0, 255, 0, 255]]);
       const exported = await readFeedback();
       validateSchema(exported, path.join(root, 'schema/feedback-minimal.schema.json'));
-      assert.equal(exported.schemaVersion, 'feedback-minimal-2');
-      assert.equal(exported.tool.name, 'EditHere');
-      const legacyObjects=objects=>objects.map(({id,...object})=>({...object,annotations:object.annotations.map(annotation=>annotation.text)}));
-      assert.deepEqual({annotationSpace:exported.annotationSpace,image:exported.image.dataUrl,objects:legacyObjects(exported.objects)}, feedback);
+      assert.deepEqual(exported, feedback);
       const project = await savedProject('overlap-project.json');
       await page.locator('#file-input').setInputFiles(project.filename);
       await page.waitForFunction(() => document.querySelector('#notes').textContent.includes('B 绿色组件'));
-      const restored = await readFeedback();
-      assert.deepEqual({annotationSpace:restored.annotationSpace,image:restored.image.dataUrl,objects:legacyObjects(restored.objects)}, feedback);
+      assert.deepEqual(await readFeedback(), feedback);
     });
     await checkpoint('distributed offline HTML independently reopens, edits and restores a project', async () => {
       assert.equal(await page.locator('#offline').count(), 0);
@@ -680,7 +670,7 @@ async function run() {
           await workspace.locator('#note-dialog').waitFor({ state: 'hidden' });
           await workspace.locator('#export').click();
           const feedback = await readExportJson(workspace);
-          assert.equal(feedback.objects[0].annotations[0].text, `视口 ${width} × ${height}：工具和批注都可操作`);
+          assert.equal(feedback.objects[0].annotations[0], `视口 ${width} × ${height}：工具和批注都可操作`);
           await workspace.locator('[data-close="export-dialog"]').click();
           // Video controls add another floating layer, so check the same fit budget.
           await workspace.locator('#file-input').setInputFiles(videoFixture);
@@ -763,7 +753,7 @@ async function run() {
             }
             await workspace.locator('#export').click();
             const feedback = await readExportJson(workspace);
-            assert.deepEqual(feedback.objects, []); assert.equal(feedback.image.mode,'file'); assert.match(feedback.image.sha256,/^[a-f0-9]{64}$/);
+            assert.deepEqual(feedback.objects, []); assert.match(feedback.image, /^data:image\/png;base64,/);
             await workspace.locator('[data-close="export-dialog"]').click();
             await workspace.screenshot({ path: path.join(output, `material-${ratio}-${width}x${height}.png`), fullPage: true });
             materialRatioReports.push({ width, height, imageWidth, imageHeight, ratio, ...measured });
@@ -796,7 +786,7 @@ async function run() {
         await web.locator('#export').click();
         const feedback = await readExportJson(web);
         validateSchema(feedback, path.join(root, 'schema/feedback-minimal.schema.json'));
-        assert.equal(feedback.objects[0].annotations[0].text, '网页获取后断网本地处理');
+        assert.equal(feedback.objects[0].annotations[0], '网页获取后断网本地处理');
         const pending = web.waitForEvent('download'); await web.locator('#download-json').click();
         const downloaded = await pending; await downloaded.saveAs(path.join(output, 'http-then-offline-feedback.json'));
         assert.equal(await downloaded.failure(), null);

@@ -4,11 +4,12 @@
 #include <dwmapi.h>
 #include <uiautomation.h>
 #include "platform.h"
+#include "diagnostics.h"
 #include <QApplication>
 #include <QCoreApplication>
-#include <QFileInfo>
 #include <QScreen>
 #include <QTimer>
+#include <QVariant>
 #include <QWidget>
 #include <QtGui/qscreen_platform.h>
 #include <atomic>
@@ -316,7 +317,6 @@ void captureScreens(CaptureCallback callback) {
                           info.rcMonitor.bottom - info.rcMonitor.top);
         }
         ScreenFrame frame{screen->name(), screen->geometry(), native, image, !native.isEmpty()};
-        frame.capturedAt = timestamp();
         frame.windowScopeAvailable = true;
         struct Windows { ScreenFrame *frame; DWORD excluded; } data{&frame, GetCurrentProcessId()};
         EnumWindows([](HWND hwnd, LPARAM param)->BOOL {
@@ -340,23 +340,6 @@ void captureScreens(CaptureCallback callback) {
                 target["source"]="window";
                 target["windowId"]=QString::number(quintptr(hwnd));
                 f.frontWindows.append({bounds,target});
-                // Window titles are separate capture metadata, never an accessibility
-                // component label. Read while the desktop snapshot still precedes us.
-                const int titleLength = qMin(GetWindowTextLengthW(hwnd), 1000);
-                QString title;
-                if (titleLength > 0) {
-                    wchar_t text[1001]{};
-                    const int copied = GetWindowTextW(hwnd, text, titleLength + 1);
-                    if (copied > 0) title = QString::fromWCharArray(text, copied);
-                }
-                QString appName;
-                if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
-                    wchar_t executable[32768]{}; DWORD length = 32768;
-                    if (QueryFullProcessImageNameW(process, 0, executable, &length))
-                        appName = QFileInfo(QString::fromWCharArray(executable, int(length))).fileName().left(1000);
-                    CloseHandle(process);
-                }
-                f.captureWindows.append({bounds, title, appName});
             }
             return TRUE;
         },reinterpret_cast<LPARAM>(&data));
@@ -460,8 +443,33 @@ void configureNativeWindow(QWidget *window, bool overlay) {
     DWORD preference = overlay ? 1 : 2;
     DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
     // Keep our overlay out of capture sources where Windows supports it.
-    if (overlay)
-        SetWindowDisplayAffinity(hwnd, 0x00000011);
+    if (overlay) {
+        SetLastError(ERROR_SUCCESS);
+        const bool applied = SetWindowDisplayAffinity(hwnd, 0x00000011);
+        const DWORD setError = applied ? ERROR_SUCCESS : GetLastError();
+        DWORD affinity = 0;
+        SetLastError(ERROR_SUCCESS);
+        const bool queried = GetWindowDisplayAffinity(hwnd, &affinity);
+        const DWORD queryError = queried ? ERROR_SUCCESS : GetLastError();
+        // Preview updates configure the same HWND repeatedly. Keep one record
+        // per state change, including a recreated HWND, rather than one per frame.
+        const QString state = QStringLiteral("%1:%2:%3:%4:%5:%6")
+                                  .arg(quintptr(hwnd), 0, 16).arg(applied).arg(setError)
+                                  .arg(queried).arg(queryError).arg(affinity);
+        if (window->property("_edithereDisplayAffinityState").toString() != state) {
+            window->setProperty("_edithereDisplayAffinityState", state);
+            const bool excluded = queried && affinity == 0x00000011;
+            diagnostics::write(applied && excluded ? diagnostics::Level::Info : diagnostics::Level::Warning,
+                "capture.display_affinity", "Window capture exclusion configured",
+                {{"object", window->objectName().isEmpty()
+                                ? QString::fromLatin1(window->metaObject()->className()) : window->objectName()},
+                 {"window", QString::number(quintptr(hwnd), 16)},
+                 {"setSucceeded", applied}, {"setError", double(setError)},
+                 {"querySucceeded", queried}, {"queryError", double(queryError)},
+                 {"affinity", QStringLiteral("0x%1").arg(affinity, 8, 16, QLatin1Char('0'))},
+                 {"excluded", excluded}});
+        }
+    }
 }
 bool excludedFromCapture(const QWidget *window) {
     DWORD affinity = 0;

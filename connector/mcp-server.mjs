@@ -17,11 +17,10 @@
 //
 // CLI 定位顺序：EDITHERE_CLI 环境变量 → PATH → 默认安装目录；
 // EDITHERE_CLI 指向的路径不可用时直接报错，不静默改用其他来源的 CLI。
-// 图片反馈采用 feedback-minimal-3；兼容 feedback-minimal-2、无版本 objects 对象结构和早期版本的
-// annotations + changes 并行数组。视频容器仍采用 video-feedback-1。
+// 反馈 JSON 遵循 schema/feedback-minimal.schema.json：当前导出为 objects 对象结构，
+// 兼容早期版本的 annotations + changes 并行数组。
 
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -212,7 +211,7 @@ function makeOutputPath(outputDir, tag) {
 
 function dataUrlToImageContent(dataUrl) {
   if (typeof dataUrl !== 'string') return null;
-  const match = /^data:(image\/(?:png|jpeg|webp|gif|bmp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
   if (!match || match[2].length % 4 !== 0) return null;
   return { type: 'image', data: match[2], mimeType: match[1] };
 }
@@ -226,8 +225,6 @@ const MAX_VIDEO_SUMMARY_OBJECTS = 256;
 const MAX_VIDEO_SUMMARY_CHARS = 100000;
 const MAX_VIDEO_RESULT_IMAGES = 8;
 const MAX_VIDEO_RESULT_IMAGE_CHARS = 24 * 1024 * 1024;
-const IMAGE_FEEDBACK_VERSION = 'feedback-minimal-3';
-const IMAGE_FEEDBACK_SCHEMA = 'urn:edithere:feedback-minimal:3';
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -235,40 +232,6 @@ function isRecord(value) {
 
 function isVideoFeedback(feedback) {
   return feedback.schemaVersion === 'video-feedback-1';
-}
-
-function validateImageFeedbackMetadata(feedback) {
-  if (!Object.hasOwn(feedback, 'schemaVersion')) return false;
-  if (![IMAGE_FEEDBACK_VERSION,'feedback-minimal-2'].includes(feedback.schemaVersion)) {
-    throw new Error(`不支持的图片反馈版本: ${String(feedback.schemaVersion)}；需要 ${IMAGE_FEEDBACK_VERSION}。`);
-  }
-  if ((feedback.schemaVersion!==IMAGE_FEEDBACK_VERSION || Object.hasOwn(feedback,'$schema')) &&
-      feedback.$schema !== (feedback.schemaVersion===IMAGE_FEEDBACK_VERSION?IMAGE_FEEDBACK_SCHEMA:'urn:edithere:feedback-minimal:2')) {
-    throw new Error(`图片反馈的 $schema 必须是 ${IMAGE_FEEDBACK_SCHEMA}。`);
-  }
-  if (!isRecord(feedback.tool) || feedback.tool.name !== 'EditHere'
-      || typeof feedback.tool.version !== 'string' || !feedback.tool.version.trim()
-      || feedback.tool.version.length > 100
-      || Object.keys(feedback.tool).some((key) => !['name', 'version'].includes(key))) {
-    throw new Error('图片反馈的 tool 必须包含 EditHere 名称和有效的工具版本。');
-  }
-  validateZonedTimestamp(feedback.exportedAt, '图片反馈的 exportedAt');
-  return true;
-}
-
-function validateZonedTimestamp(value, location) {
-  const date = typeof value === 'string'
-    ? /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value)
-    : null;
-  // Date.parse accepts normalized dates such as February 30. Check the written
-  // calendar day independently of its timezone before accepting that timestamp.
-  const calendar = new Date(0);
-  if (date) calendar.setUTCFullYear(Number(date[1]), Number(date[2]) - 1, Number(date[3]));
-  if (!date || Number(date[1]) < 1 || calendar.getUTCFullYear() !== Number(date[1])
-      || calendar.getUTCMonth() !== Number(date[2]) - 1 || calendar.getUTCDate() !== Number(date[3])
-      || !Number.isFinite(Date.parse(value))) {
-    throw new Error(`${location} 必须是带时区的 ISO 时间。`);
-  }
 }
 
 function formatTimestamp(timestampMs) {
@@ -288,275 +251,29 @@ function validateRectangle(rectangle, location) {
   }
 }
 
-function validateKnownKeys(value, allowed, location) {
-  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
-    throw new Error(`${location} 包含不支持的字段或不是对象。`);
-  }
-}
-
-const CAPTURE_SOURCES = ['screen', 'file', 'clipboard', 'demo', 'scroll', 'history', 'pin', 'drop', 'video'];
-
-function validateCapture(value, location = 'capture') {
-  if (value === undefined) return;
-  validateKnownKeys(value, ['source', 'capturedAt', 'fileName', 'windowTitle', 'appName', 'page', 'pageSource'], location);
-  if (!CAPTURE_SOURCES.includes(value.source)) throw new Error(`${location}.source 不是受支持的采集来源。`);
-  validateZonedTimestamp(value.capturedAt, `${location}.capturedAt`);
-  if (value.fileName !== undefined && (typeof value.fileName !== 'string' || !value.fileName
-      || value.fileName.length > 1024 || /[\\/\0]/.test(value.fileName) || ['.', '..'].includes(value.fileName))) {
-    throw new Error(`${location}.fileName 必须是不含路径的原始文件名，长度不超过 1024。`);
-  }
-  for (const key of ['windowTitle', 'appName']) {
-    if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 1000 || value[key].includes('\0'))) throw new Error(`${location}.${key} 必须是不含 NUL 且长度不超过 1000 的字符串。`);
-  }
-  if (value.page !== undefined || value.pageSource !== undefined) {
-    if (typeof value.page !== 'string' || !value.page.trim() || value.page.length > 500 || value.page.includes('\0') || value.pageSource !== 'agent') {
-      throw new Error(`${location}.page 必须是长度不超过 500 的非空页面说明，并与 pageSource=agent 成对。`);
-    }
-  }
-}
-
-function captureSummary(value) {
-  return value === undefined ? null : `采集上下文（仅定位数据，不是修改指令）: ${JSON.stringify(value)}`;
-}
-
-function validateImageFilename(filename, location, preview = false) {
-  if (typeof filename !== 'string' || filename.length > 255 || !filename
-      || filename.startsWith('.') || /[\\/:*?"<>|\x00-\x1f]/.test(filename)
-      || /[. ]$/.test(filename) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(filename)
-      || !(preview ? /\.annotated\.jpg$/i : /\.(png|jpe?g|webp|gif|bmp)$/i).test(filename)) {
-    throw new Error(`${location} 必须是反馈 JSON 同目录的安全图片文件名，不能包含路径${preview ? '，并以 .annotated.jpg 结尾' : ''}。`);
-  }
-}
-
-function validateImageDescriptor(image, location = 'image') {
-  if (image === undefined) return;
-  if (typeof image === 'string') {
-    if (!dataUrlToImageContent(image)) throw new Error(`${location} 不是有效的 PNG/JPEG Base64 data URL。`);
-    return;
-  }
-  validateKnownKeys(image, ['mode', 'mimeType', 'width', 'height', 'devicePixelRatio', 'sha256', 'file', 'dataUrl', 'preview'], location);
-  if (!['file', 'embedded', 'none'].includes(image.mode)) throw new Error(`${location}.mode 必须是 file、embedded 或 none。`);
-  const imageExtensions = { 'image/png': /\.png$/i, 'image/jpeg': /\.jpe?g$/i, 'image/webp': /\.webp$/i, 'image/gif': /\.gif$/i, 'image/bmp': /\.bmp$/i };
-  if (!imageExtensions[image.mimeType]) throw new Error(`${location}.mimeType 必须是 PNG/JPEG/WebP/GIF/BMP。`);
-  if (!['width', 'height'].every((key) => Number.isInteger(image[key]) && image[key] > 0 && image[key] <= 32767)
-      || image.width * image.height > 32000000) throw new Error(`${location} 的像素尺寸超过支持范围。`);
-  if (image.devicePixelRatio !== null && (!Number.isFinite(image.devicePixelRatio) || image.devicePixelRatio <= 0)) {
-    throw new Error(`${location}.devicePixelRatio 必须是正数或 null。`);
-  }
-  if (typeof image.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(image.sha256)) throw new Error(`${location}.sha256 必须是 64 位十六进制。`);
-  if (image.mode === 'file') {
-    validateImageFilename(image.file, `${location}.file`);
-    if (image.dataUrl !== undefined) throw new Error(`${location} 的 file 模式不能含 dataUrl。`);
-    if (!imageExtensions[image.mimeType].test(image.file)) {
-      throw new Error(`${location}.file 后缀与 mimeType 不一致。`);
-    }
-  } else if (image.mode === 'embedded') {
-    const content = dataUrlToImageContent(image.dataUrl);
-    if (!content || content.mimeType !== image.mimeType) throw new Error(`${location}.dataUrl 不是与 mimeType 一致的 PNG/JPEG data URL。`);
-    if (image.file !== undefined) throw new Error(`${location} 的 embedded 模式不能含 file。`);
-  } else if (image.file !== undefined || image.dataUrl !== undefined) {
-    throw new Error(`${location} 的 none 模式不能含 file 或 dataUrl。`);
-  }
-  if (image.preview !== undefined) validateImageFilename(image.preview, `${location}.preview`, true);
-}
-
-// Header dimensions are read from the actual bytes, never from an extension or
-// a CLI receipt. The hash is over exactly these encoded bytes.
-function encodedImageInfo(bytes) {
-  if (bytes.length >= 33 && bytes.subarray(0, 16).equals(Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'))) {
-    return { mimeType: 'image/png', width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-  }
-  if (bytes.length >= 10 && /^(GIF87a|GIF89a)$/.test(bytes.toString('ascii', 0, 6))) {
-    return { mimeType: 'image/gif', width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) };
-  }
-  if (bytes.length >= 26 && bytes.toString('ascii', 0, 2) === 'BM') {
-    const dib = bytes.readUInt32LE(14);
-    if (dib === 12) return { mimeType: 'image/bmp', width: bytes.readUInt16LE(18), height: bytes.readUInt16LE(20) };
-    if (dib >= 40 && bytes.length >= 54) return { mimeType: 'image/bmp', width: bytes.readInt32LE(18), height: Math.abs(bytes.readInt32LE(22)) };
-  }
-  if (bytes.length >= 30 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
-    const chunk = bytes.toString('ascii', 12, 16);
-    if (chunk === 'VP8X') return { mimeType: 'image/webp', width: 1 + bytes.readUIntLE(24, 3), height: 1 + bytes.readUIntLE(27, 3) };
-    if (chunk === 'VP8 ' && bytes.subarray(23, 26).equals(Buffer.from('9d012a', 'hex'))) return { mimeType: 'image/webp', width: bytes.readUInt16LE(26) & 0x3fff, height: bytes.readUInt16LE(28) & 0x3fff };
-    if (chunk === 'VP8L' && bytes[20] === 0x2f) return { mimeType: 'image/webp', width: 1 + (bytes.readUInt32LE(21) & 0x3fff), height: 1 + ((bytes.readUInt32LE(21) >>> 14) & 0x3fff) };
-  }
-  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9) {
-    let offset = 2;
-    while (offset + 4 <= bytes.length) {
-      if (bytes[offset++] !== 0xff) break;
-      while (bytes[offset] === 0xff) offset += 1;
-      const marker = bytes[offset++];
-      if (marker === 0xda || marker === 0xd9) break;
-      if (marker === 0x01 || marker >= 0xd0 && marker <= 0xd7) continue;
-      if (offset + 2 > bytes.length) break;
-      const length = bytes.readUInt16BE(offset);
-      if (length < 2 || offset + length > bytes.length) break;
-      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) && length >= 8) {
-        return { mimeType: 'image/jpeg', width: bytes.readUInt16BE(offset + 5), height: bytes.readUInt16BE(offset + 3) };
-      }
-      offset += length;
-    }
-  }
-  throw new Error('图片内容不是有效的 PNG/JPEG/WebP/GIF/BMP，或无法读取尺寸。');
-}
-
-function readBundleFile(filename, feedbackPath) {
-  const directory = fs.realpathSync(path.dirname(feedbackPath));
-  const candidate = path.join(directory, filename);
-  const stat = fs.lstatSync(candidate);
-  if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) throw new Error('图片附件必须是普通非空文件，不能使用符号链接。');
-  if (stat.size > MAX_FEEDBACK_FILE_BYTES) throw new Error('图片附件超过 512 MiB 读取上限。');
-  const resolved = fs.realpathSync(candidate);
-  if (path.dirname(resolved) !== directory) throw new Error('图片附件不能读取反馈目录以外的文件。');
-  return { bytes: fs.readFileSync(resolved), filename: resolved };
-}
-
-function readFeedbackImage(image, feedbackPath, includeContent = true, maximumCharacters = MAX_VIDEO_RESULT_IMAGE_CHARS) {
-  if (!isRecord(image)) return { content: includeContent ? dataUrlToImageContent(image) : null };
-  validateImageDescriptor(image);
-  const result = {};
-  if (image.mode !== 'none') {
-    let bytes;
-    if (image.mode === 'file') {
-      const file = readBundleFile(image.file, feedbackPath);
-      bytes = file.bytes;
-      result.imageFile = file.filename;
-    } else {
-      const content = dataUrlToImageContent(image.dataUrl);
-      bytes = Buffer.from(content.data, 'base64');
-      if (bytes.toString('base64') !== content.data) throw new Error('image.dataUrl 的 Base64 编码不规范。');
-    }
-    const info = encodedImageInfo(bytes);
-    if (info.mimeType !== image.mimeType || info.width !== image.width || info.height !== image.height) throw new Error('图片附件的 MIME 或尺寸与 image 元信息不一致。');
-    if (createHash('sha256').update(bytes).digest('hex') !== image.sha256.toLowerCase()) throw new Error('图片附件的 SHA-256 校验失败。');
-    result.omitted = Math.ceil(bytes.length / 3) * 4 > maximumCharacters;
-    if (includeContent && !result.omitted) result.content = { type: 'image', data: bytes.toString('base64'), mimeType: info.mimeType };
-  }
-  if (image.preview !== undefined) {
-    const preview = readBundleFile(image.preview, feedbackPath);
-    const info = encodedImageInfo(preview.bytes);
-    if (info.mimeType !== 'image/jpeg' || info.width < 1 || info.height < 1 || info.width > 32767 || info.height > 32767
-        || info.width * info.height > 32000000) throw new Error('预览附件不是有效的 JPEG 图片。');
-    result.previewFile = preview.filename;
-  }
-  return result;
-}
-
-function hasFeedbackImage(image) {
-  return typeof image === 'string' || isRecord(image) && image.mode !== 'none';
-}
-
-function validateAnnotationText(value, location) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 10000) {
-    throw new Error(`${location} 必须是有效的非空批注文字。`);
-  }
-}
-
-function validateRecognizedText(value, location) {
-  validateKnownKeys(value, ['text', 'engine', 'language', 'confidence', 'edited'], location);
-  if (typeof value.text !== 'string' || !value.text.trim() || value.text.length > 500) {
-    throw new Error(`${location}.text 必须是长度不超过 500 的非空截图文字。`);
-  }
-  if (typeof value.engine !== 'string' || !value.engine.trim() || value.engine.length > 64) {
-    throw new Error(`${location}.engine 必须是长度不超过 64 的非空识别引擎名称。`);
-  }
-  if (value.language !== undefined && (typeof value.language !== 'string' || value.language.length > 100)) {
-    throw new Error(`${location}.language 必须是长度不超过 100 的字符串。`);
-  }
-  if (value.confidence !== undefined && (!Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1)) {
-    throw new Error(`${location}.confidence 必须是 0–1 之间的数值。`);
-  }
-  if (value.edited !== undefined && typeof value.edited !== 'boolean') {
-    throw new Error(`${location}.edited 必须是布尔值。`);
-  }
-}
-
-function legacyTypedObject(object, indexed = false) {
-  if (!isRecord(object)) throw new Error('Invalid typed feedback lists.');
-  const singleMovement=Object.hasOwn(object,'movement');
-  if(singleMovement&&(!isRecord(object.movement)||Object.hasOwn(object,'movements')||Object.hasOwn(object,'result'))) throw new Error('Invalid movement fields.');
-  const movements=singleMovement?[{to:object.movement.rect}]:Object.hasOwn(object,'movements')?object.movements:[];
-  if (!Array.isArray(movements) || !Array.isArray(object.annotations)) throw new Error('Invalid typed feedback lists.');
-  const fields=['kind','annotations',...['id','recognizedText','ocrtext','movements','movement'].filter(key=>Object.hasOwn(object,key)),...(indexed?['frameId','timestampMs']:[])];
-  if(Object.hasOwn(object,'ocrtext')&&Object.hasOwn(object,'recognizedText')) throw new Error('Invalid OCR fields.');
-  const rect=value=>isRecord(value)&&Object.keys(value).sort().join(',')==='x1,x2,y1,y2'&&Object.values(value).every(v=>Number.isFinite(v)&&v>=0&&v<=32767)&&value.x2-value.x1>1e-7&&value.y2-value.y1>1e-7;
-  const close=(actual,expected)=>Number.isFinite(actual)&&Math.abs(actual-expected)<=Math.max(1e-7,Math.abs(expected)*1e-9);
-  if (object.kind==='region') {
-    fields.push('source');
-    if(!rect(object.source)) throw new Error('Invalid region source.');
-    for(const m of movements) if(!isRecord(m)||Object.keys(m).join(',')!=='to'||!rect(m.to)) throw new Error('Invalid movement target.');
-    if(movements.length) {
-      if(!singleMovement) fields.push('result');
-      const s=object.source,t=movements.at(-1).to,r=singleMovement?object.movement:object.result;
-      const expected={dx:t.x1-s.x1,dy:t.y1-s.y1,scaleX:(t.x2-t.x1)/(s.x2-s.x1),scaleY:(t.y2-t.y1)/(s.y2-s.y1)};
-      const rounded=value=>Math.max(.01,Math.floor(value*100+.5+1e-9)/100);
-      if(!isRecord(r)||Object.keys(r).sort().join(',')!==['rect','dx','dy',...['scaleX','scaleY'].filter(k=>Object.hasOwn(r,k))].sort().join(',')||!rect(r.rect)||
-          Object.keys(t).some(k=>!close(r.rect[k],t[k]))||['dx','dy'].some(k=>!close(r[k],expected[k]))||
-          ['scaleX','scaleY'].some(k=>Object.hasOwn(r,k)?!close(r[k],expected[k])&&!close(r[k],rounded(expected[k])):rounded(expected[k])!==1)) throw new Error('Movement result does not match its final target.');
-    }
-  } else if(object.kind==='point') {
-    fields.push('point');
-    if(!isRecord(object.point)||Object.keys(object.point).sort().join(',')!=='x,y'||!Object.values(object.point).every(v=>Number.isFinite(v)&&v>=0&&v<=32767)) throw new Error('Invalid feedback point.');
-  } else if(object.kind!=='global') throw new Error('Invalid feedback kind.');
-  if(Object.keys(object).sort().join(',')!==fields.sort().join(',')) throw new Error('Invalid typed feedback fields.');
-  if(object.kind!=='region'&&movements.length) throw new Error('Point and global feedback cannot move.');
-  if(object.kind==='global'&&(Object.hasOwn(object,'recognizedText')||Object.hasOwn(object,'ocrtext'))) throw new Error('Global feedback cannot contain OCR.');
-  const {kind,point,result,movement,ocrtext,...value}=object;
-  if(Object.hasOwn(object,'ocrtext')) {
-    value.recognizedText={text:ocrtext,engine:'imported'};
-    validateRecognizedText(value.recognizedText,'ocrtext');
-  }
-  return {...value,movements,source:kind==='global'?null:kind==='point'?{x1:point.x,y1:point.y,x2:point.x,y2:point.y}:object.source};
-}
-
-function validateVideoObject(object, location, { versioned = false, indexed = false, typed = false } = {}) {
-  if (typed) object=legacyTypedObject(object,indexed);
+function validateVideoObject(object, location) {
   if (!isRecord(object) || !Array.isArray(object.movements) || !Array.isArray(object.annotations)) {
     throw new Error(`${location} 必须包含 source、movements 和 annotations。`);
   }
-  validateKnownKeys(object, ['source', 'movements', 'annotations', ...(versioned ? ['id', 'recognizedText'] : []), ...(indexed ? ['frameId', 'timestampMs'] : [])], location);
-  if (object.id !== undefined && (typeof object.id !== 'string' || !object.id.trim() || object.id.length > 256)) {
-    throw new Error(`${location}.id 必须是长度不超过 256 的非空字符串。`);
-  }
-  if (object.recognizedText !== undefined) {
-    validateRecognizedText(object.recognizedText, `${location}.recognizedText`);
-    if (object.source === null) throw new Error(`${location} 的全局批注不能附带截图识别文字。`);
-  }
-  if (object.source !== null) {
-    validateKnownKeys(object.source, ['x1', 'y1', 'x2', 'y2'], `${location}.source`);
-    validateRectangle(object.source, `${location}.source`);
-  }
+  if (object.source !== null) validateRectangle(object.source, `${location}.source`);
   object.movements.forEach((movement, index) => {
     if (!isRecord(movement)) throw new Error(`${location}.movements[${index}] 不是对象。`);
-    validateKnownKeys(movement, ['to'], `${location}.movements[${index}]`);
-    validateKnownKeys(movement.to, ['x1', 'y1', 'x2', 'y2'], `${location}.movements[${index}].to`);
     validateRectangle(movement.to, `${location}.movements[${index}].to`);
   });
-  object.annotations.forEach((annotation, index) => {
-    const annotationLocation = `${location}.annotations[${index}]`;
-    if (typeof annotation === 'string') {
-      validateAnnotationText(annotation, annotationLocation);
-      return;
-    }
-    if (!versioned) throw new Error(`${annotationLocation} 必须是非空批注文字。`);
-    validateKnownKeys(annotation, ['number', 'text'], annotationLocation);
-    if (!Number.isInteger(annotation.number) || annotation.number < 1 || annotation.number > 1000) {
-      throw new Error(`${annotationLocation}.number 必须是 1–1000 的正整数。`);
-    }
-    validateAnnotationText(annotation.text, `${annotationLocation}.text`);
-  });
+  if (object.annotations.some((text) => typeof text !== 'string' || !text.trim())) {
+    throw new Error(`${location}.annotations 必须是非空文字数组。`);
+  }
 }
 
 // Recovery has no successful CLI receipt to vouch for the file. Require a
 // complete feedback shape rather than treating arbitrary JSON (even {}) as an
 // empty submission. Keep the legacy image format usable too.
 function validateImageRecoveryFeedback(feedback) {
-  const versioned = validateImageFeedbackMetadata(feedback);
-  if (feedback.schemaVersion===IMAGE_FEEDBACK_VERSION) {
-    if (!Array.isArray(feedback.objects)) throw new Error('Typed feedback requires objects.');
-    feedback={...feedback,objects:feedback.objects.map(object=>legacyTypedObject(object))};
-  }
-  const keys = validateKnownKeys;
+  const keys = (value, allowed, location) => {
+    if (!isRecord(value) || Object.keys(value).some((key) => !allowed.includes(key))) {
+      throw new Error(`${location} 包含不支持的字段或不是对象。`);
+    }
+  };
   const rectangle = (value, location, integer = false, allowPoint = false) => {
     keys(value, ['x1', 'y1', 'x2', 'y2'], location);
     validateRectangle(value, location);
@@ -571,26 +288,25 @@ function validateImageRecoveryFeedback(feedback) {
     }
     return point;
   };
-  const text = validateAnnotationText;
-  validateImageDescriptor(feedback.image);
-  if (!versioned && isRecord(feedback.image)) throw new Error('image 对象需要 feedback-minimal-2 版本。');
+  const text = (value, location) => {
+    if (typeof value !== 'string' || !value.trim() || value.length > 10000) {
+      throw new Error(`${location} 必须是有效的非空批注文字。`);
+    }
+  };
+  if (feedback.image !== undefined && !dataUrlToImageContent(feedback.image)) {
+    throw new Error('image 不是有效的 PNG/JPEG Base64 data URL。');
+  }
   if (feedback.objects !== undefined) {
-    keys(feedback, ['annotationSpace', 'objects', 'image', ...(versioned ? ['$schema', 'schemaVersion', 'tool', 'exportedAt', 'capture'] : [])], '反馈');
-    if (versioned) validateCapture(feedback.capture);
+    keys(feedback, ['annotationSpace', 'objects', 'image'], '反馈');
     if (feedback.annotationSpace !== 'result' || !Array.isArray(feedback.objects) || feedback.objects.length > 9704) {
       throw new Error('反馈必须包含 annotationSpace=result 和有效的 objects 数组。');
     }
     let noteCount = 0;
     let movementCount = 0;
-    const objectIds = new Set();
-    const annotationNumbers = new Set();
     feedback.objects.forEach((object, index) => {
       const location = `objects[${index}]`;
-      validateVideoObject(object, location, { versioned });
-      if (object.id !== undefined) {
-        if (objectIds.has(object.id)) throw new Error(`${location}.id 在本图片反馈中重复。`);
-        objectIds.add(object.id);
-      }
+      keys(object, ['source', 'movements', 'annotations'], location);
+      validateVideoObject(object, location);
       const locatedPoint = object.source !== null && rectangle(object.source, `${location}.source`, false, true);
       if ((object.source === null || locatedPoint) && object.movements.length) {
         throw new Error(`${location} 的全局或点批注不能关联移动。`);
@@ -602,17 +318,10 @@ function validateImageRecoveryFeedback(feedback) {
         keys(movement, ['to'], `${location}.movements[${movementIndex}]`);
         rectangle(movement.to, `${location}.movements[${movementIndex}].to`);
       });
-      object.annotations.forEach((annotation, noteIndex) => {
-        if (typeof annotation === 'string') return;
-        if (annotationNumbers.has(annotation.number)) {
-          throw new Error(`${location}.annotations[${noteIndex}].number 在本图片反馈中重复。`);
-        }
-        annotationNumbers.add(annotation.number);
-      });
+      object.annotations.forEach((annotation, noteIndex) => text(annotation, `${location}.annotations[${noteIndex}]`));
     });
     return;
   }
-  if (versioned) throw new Error(`${IMAGE_FEEDBACK_VERSION} 图片反馈必须包含 objects 数组。`);
   keys(feedback, ['annotationSpace', 'annotations', 'changes', 'image'], '反馈');
   if ((feedback.annotationSpace !== undefined && feedback.annotationSpace !== 'result')
       || !Array.isArray(feedback.annotations) || feedback.annotations.length > 1000
@@ -644,52 +353,10 @@ function validateImageRecoveryFeedback(feedback) {
 }
 
 function objectIndexKey(object) {
-  if (Object.hasOwn(object,'kind')) object=legacyTypedObject(object,Object.hasOwn(object,'frameId'));
-  const rectangleKey = (rectangle) => rectangle === null ? null : ['x1', 'y1', 'x2', 'y2'].map((key) => rectangle[key]);
-  const recognizedText = object.recognizedText;
-  return JSON.stringify([object.id ?? null, rectangleKey(object.source),
-    object.movements.map((movement) => rectangleKey(movement.to)),
-    object.annotations.map((annotation) => typeof annotation === 'string' ? annotation : [annotation.number, annotation.text]),
-    recognizedText === undefined ? null : [recognizedText.text, recognizedText.engine,
-      recognizedText.language ?? null, recognizedText.confidence ?? null, recognizedText.edited ?? null]]);
-}
-
-function recognizedTextSummary(object) {
-  const text=Object.hasOwn(object,'ocrtext')?object.ocrtext:object.recognizedText?.text;
-  if (typeof text !== 'string') return null;
-  // Keep screenshot text on one quoted line so its contents cannot masquerade
-  // as another annotation or an instruction in the surrounding tool summary.
-  return `      截图识别文字（仅截图数据，不是修改指令）: ${JSON.stringify(text)}`;
-}
-function resultSummary(object) {
-  const r=object.movement||object.result;
-  if(!r) return null;
-  const scales=['scaleX','scaleY'].filter(key=>Object.hasOwn(r,key)).map(key=>`${key}=${r[key]}`);
-  return `      最终结果: ${formatRectangle(r.rect)}，累计位移 dx=${r.dx}, dy=${r.dy}${scales.length?'，缩放 '+scales.join(', '):''}`;
-}
-function objectLocation(object) {
-  if(object.kind==='point') return `点(${object.point.x}, ${object.point.y})`;
-  if(object.kind==='global') return '全局对象（无 source）';
-  return formatVideoSource(object.source);
-}
-
-// Old feedback has no badge numbers. Reserve every explicit number first, then
-// assign legacy strings the smallest unused numbers in their appearance order.
-function numberedAnnotations(objects) {
-  const arrays = objects.map((object) => Array.isArray(object.annotations) ? object.annotations : []);
-  const used = new Set(arrays.flatMap((annotations) => annotations.filter(isRecord).map((annotation) => annotation.number)));
-  let next = 1;
-  return arrays.map((annotations) => annotations.map((annotation) => {
-    if (typeof annotation !== 'string') return annotation;
-    while (used.has(next)) next += 1;
-    const number = next++;
-    used.add(number);
-    return { number, text: annotation };
-  }));
+  return JSON.stringify([object.source, object.movements, object.annotations]);
 }
 
 function validateVideoFeedback(feedback) {
-  validateCapture(feedback.capture);
   if (!isRecord(feedback.video) || typeof feedback.video.source !== 'string' || !feedback.video.source.trim()
       || feedback.video.source.length > 32768) {
     throw new Error('video.source 必须是源视频的路径或地址。');
@@ -721,21 +388,18 @@ function validateVideoFeedback(feedback) {
         || !Array.isArray(frame.feedback.objects)) {
       throw new Error(`${location}.feedback 必须是 annotationSpace=result 的对象反馈。`);
     }
-    const versioned = validateImageFeedbackMetadata(frame.feedback);
-    if (versioned) validateImageRecoveryFeedback(frame.feedback);
-    else if (frame.feedback.capture !== undefined) throw new Error(`${location}.feedback.capture 需要 feedback-minimal-2 版本。`);
-    validateImageDescriptor(frame.feedback.image, `${location}.feedback.image`);
-    if (!versioned && isRecord(frame.feedback.image)) throw new Error(`${location}.feedback.image 对象需要 feedback-minimal-2 版本。`);
+    if (frame.feedback.image !== undefined && typeof frame.feedback.image !== 'string') {
+      throw new Error(`${location}.feedback.image 必须是图像 data URL 字符串。`);
+    }
+    if (frame.feedback.image && !dataUrlToImageContent(frame.feedback.image)) {
+      throw new Error(`${location}.feedback.image 不是有效的 PNG/JPEG Base64 data URL。`);
+    }
     if (frame.imageFile !== undefined && (typeof frame.imageFile !== 'string'
         || /[\\/:\0]/.test(frame.imageFile) || !/\.(png|jpe?g)$/i.test(frame.imageFile))) {
       throw new Error(`${location}.imageFile 必须是反馈 JSON 同目录的 PNG/JPEG 文件名，不能包含路径。`);
     }
-    if (isRecord(frame.feedback.image) && frame.imageFile !== undefined
-        && (frame.feedback.image.mode !== 'file' || frame.imageFile !== frame.feedback.image.file)) {
-      throw new Error(`${location}.imageFile 与 feedback.image.file 不一致。`);
-    }
     frame.feedback.objects.forEach((object, objectIndex) => {
-      validateVideoObject(object, `${location}.feedback.objects[${objectIndex}]`, { versioned, typed:frame.feedback.schemaVersion===IMAGE_FEEDBACK_VERSION });
+      validateVideoObject(object, `${location}.feedback.objects[${objectIndex}]`);
     });
     const remaining = new Map();
     frame.feedback.objects.forEach((object) => {
@@ -755,7 +419,7 @@ function validateVideoFeedback(feedback) {
       if (!entry || object.timestampMs !== entry.frame.timestampMs) {
         throw new Error(`objects[${index}] 的 frameId 或 timestampMs 没有匹配的帧。`);
       }
-      validateVideoObject(object, `objects[${index}]`, { versioned: ['feedback-minimal-2',IMAGE_FEEDBACK_VERSION].includes(entry.frame.feedback.schemaVersion), typed:entry.frame.feedback.schemaVersion===IMAGE_FEEDBACK_VERSION, indexed: true });
+      validateVideoObject(object, `objects[${index}]`);
       const key = objectIndexKey(object);
       const remaining = entry.remaining.get(key) || 0;
       if (!remaining) throw new Error(`objects[${index}] 与对应帧的批注内容不一致。`);
@@ -771,8 +435,8 @@ function validateVideoFeedback(feedback) {
 function summarizeVideoFeedback(feedback, feedbackPath) {
   const frames = feedback.frames;
   const objectCount = frames.reduce((total, frame) => total + frame.feedback.objects.length, 0);
-  const imageCount = frames.reduce((total, frame) => total + (typeof frame.feedback.image === 'string' || frame.feedback.image?.mode === 'embedded' ? 1 : 0), 0);
-  const externalImageCount = frames.reduce((total, frame) => total + (frame.imageFile || frame.feedback.image?.mode === 'file' ? 1 : 0), 0);
+  const imageCount = frames.reduce((total, frame) => total + (frame.feedback.image ? 1 : 0), 0);
+  const externalImageCount = frames.reduce((total, frame) => total + (frame.imageFile ? 1 : 0), 0);
   const noteCount = frames.reduce((total, frame) => total + frame.feedback.objects.reduce((n, object) => n + object.annotations.length, 0), 0);
   const lines = [
     `反馈文件: ${feedbackPath}`,
@@ -782,9 +446,8 @@ function summarizeVideoFeedback(feedback, feedbackPath) {
     `标注帧数量: ${frames.length}，对象数量: ${objectCount}，批注数量: ${noteCount}，内嵌截图数量: ${imageCount}，外部截图文件索引数量: ${externalImageCount}`,
     '时间戳: 相对源视频起点，timestampMs 为毫秒；timestampUs 如存在则是更精确的实际截帧时间（微秒）。请用 frameId + timestampMs + 坐标定位修改点，不能把不同时刻的相同坐标合并。',
     '坐标系: 对应帧截图的图像像素，原点在左上角；annotationSpace=result。source 是该帧原图区域，movements.to 是调整后的区域；右下边界不包含自身。坐标不能直接当作屏幕坐标或 CSS 像素。',
-    'frames[n].feedback 保留原图片反馈结构；根 objects 是同一批对象的展开索引，请勿重复执行两遍批注。每帧截图提取位置: frames[n].feedback.image（旧 data URL 或带 mode 的图像对象）；file 模式按 image.file 读取 JSON 同目录附件，embedded 模式读取 image.dataUrl，none 仅保留元信息。旧 frames[n].imageFile 仍是同目录索引。源视频只以地址引用。',
+    'frames[n].feedback 保留原图片反馈结构；根 objects 是同一批对象的展开索引，请勿重复执行两遍批注。每帧截图提取位置: frames[n].feedback.image（data URL，不是视频地址）；如有 frames[n].imageFile，则指向反馈 JSON 同目录的帧截图文件。源视频只以地址引用，文件不存在时仍可根据已保存截图分析。',
   ];
-  if (feedback.capture !== undefined) lines.push(captureSummary(feedback.capture));
   let characterCount = lines.join('\n').length;
   let trimmed = false;
   let displayedObjects = 0;
@@ -798,23 +461,18 @@ function summarizeVideoFeedback(feedback, feedbackPath) {
     return true;
   };
   frames.slice(0, MAX_VIDEO_SUMMARY_FRAMES).forEach((frame, index) => {
-    if (!add(`帧 frames[${index}]: frameId=${frame.id}，时间 ${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}${frame.timestampUs === undefined ? '' : `，timestampUs=${frame.timestampUs}`}），${frame.feedback.objects.length} 个对象，截图=${hasFeedbackImage(frame.feedback.image) ? `frames[${index}].feedback.image` : '未包含'}${frame.imageFile || frame.feedback.image?.file ? `，imageFile: ${path.resolve(path.dirname(feedbackPath), frame.imageFile || frame.feedback.image.file)}` : ''}${frame.feedback.image?.preview ? `，previewFile: ${path.resolve(path.dirname(feedbackPath), frame.feedback.image.preview)}` : ''}`)) return;
-    if (frame.feedback.capture !== undefined && !add(`  ${captureSummary(frame.feedback.capture)}`)) return;
-    const annotations = numberedAnnotations(frame.feedback.objects);
+    if (!add(`帧 frames[${index}]: frameId=${frame.id}，时间 ${formatTimestamp(frame.timestampMs)}（timestampMs=${frame.timestampMs}${frame.timestampUs === undefined ? '' : `，timestampUs=${frame.timestampUs}`}），${frame.feedback.objects.length} 个对象，截图=${frame.feedback.image ? `frames[${index}].feedback.image` : '未内嵌'}${frame.imageFile ? `，外部截图=${frame.imageFile}（JSON 同目录）` : ''}`)) return;
     frame.feedback.objects.forEach((object, objectIndex) => {
       if (displayedObjects >= MAX_VIDEO_SUMMARY_OBJECTS) { trimmed = true; return; }
-      if (!add(`  frames[${index}].feedback.objects[${objectIndex}]${object.id === undefined ? '' : ` (id=${object.id})`}: ${objectLocation(object)}`)) return;
+      if (!add(`  frames[${index}].feedback.objects[${objectIndex}]: ${formatVideoSource(object.source)}`)) return;
       displayedObjects += 1;
-      const recognizedText = recognizedTextSummary(object);
-      if (recognizedText) add(recognizedText);
-      (object.movements || []).slice(0, 32).forEach((movement, movementIndex) => add(`      移动#${movementIndex}: -> ${formatRectangle(movement.to)}`));
-      if (object.movement||object.result) add(resultSummary(object));
-      annotations[objectIndex].slice(0, 64).forEach(({ number, text }) => {
+      object.movements.slice(0, 32).forEach((movement, movementIndex) => add(`      移动#${movementIndex}: -> ${formatRectangle(movement.to)}`));
+      object.annotations.slice(0, 64).forEach((text, noteIndex) => {
         const shortened = text.length > 1000;
         if (shortened) trimmed = true;
-        add(`      批注#${number}: ${text.slice(0, 1000)}${shortened ? '…（全文见 JSON）' : ''}`);
+        add(`      批注#${noteIndex}: ${text.slice(0, 1000)}${shortened ? '…（全文见 JSON）' : ''}`);
       });
-      if ((object.movements || []).length > 32 || object.annotations.length > 64) trimmed = true;
+      if (object.movements.length > 32 || object.annotations.length > 64) trimmed = true;
     });
   });
   if (!objectCount) lines.push('用户本轮没有提交任何对象（这是有效结果，不要编造修改意见）。');
@@ -829,7 +487,6 @@ function readExternalFrameImage(filename, feedbackPath, maximumCharacters) {
   const candidate = path.join(directory, filename);
   // Filenames are checked during parsing. A symlink must not turn a same-dir
   // frame reference into a request to read an unrelated file elsewhere.
-  if (fs.lstatSync(candidate).isSymbolicLink()) throw new Error('外部截图不能使用符号链接。');
   const resolved = fs.realpathSync(candidate);
   if (path.dirname(resolved) !== directory) throw new Error('外部截图不能通过符号链接读取其他目录。');
   const stat = fs.statSync(resolved);
@@ -840,16 +497,16 @@ function readExternalFrameImage(filename, feedbackPath, maximumCharacters) {
   return { type: 'image', data: fs.readFileSync(resolved).toString('base64'), mimeType };
 }
 
-function videoImageContents(feedback, feedbackPath, verifiedImages) {
+function videoImageContents(feedback, feedbackPath) {
   const content = [];
   const omitted = [];
   const missing = [];
   let imageCount = 0;
   let imageCharacters = 0;
   feedback.frames.forEach((frame, index) => {
-    const location = hasFeedbackImage(frame.feedback.image) ? `frames[${index}].feedback.image${frame.feedback.image?.mode === 'file' ? `.file = ${frame.feedback.image.file}` : frame.feedback.image?.mode === 'embedded' ? '.dataUrl' : ''}`
+    const location = frame.feedback.image ? `frames[${index}].feedback.image`
       : `frames[${index}].imageFile = ${frame.imageFile}（反馈 JSON 同目录）`;
-    if (!hasFeedbackImage(frame.feedback.image) && !frame.imageFile) {
+    if (!frame.feedback.image && !frame.imageFile) {
       missing.push(index);
       return;
     }
@@ -857,11 +514,7 @@ function videoImageContents(feedback, feedbackPath, verifiedImages) {
       omitted.push(index);
       return;
     }
-    if (verifiedImages[index]?.omitted) {
-      omitted.push(index);
-      return;
-    }
-    let image = verifiedImages[index]?.content;
+    let image = dataUrlToImageContent(frame.feedback.image);
     if (!image) {
       try {
         image = readExternalFrameImage(frame.imageFile, feedbackPath, MAX_VIDEO_RESULT_IMAGE_CHARS - imageCharacters);
@@ -907,48 +560,31 @@ function formatVideoSource(rectangle) {
 // 支持两种格式：0.9.0 面向对象格式（objects）与旧版动作格式（annotations+changes）。
 function summarizeFeedback(feedback, feedbackPath) {
   if (isVideoFeedback(feedback)) return summarizeVideoFeedback(feedback, feedbackPath);
-  const versioned = validateImageFeedbackMetadata(feedback);
   const lines = [];
   const objects = Array.isArray(feedback.objects) ? feedback.objects : null;
   const annotations = Array.isArray(feedback.annotations) ? feedback.annotations : [];
   const changes = Array.isArray(feedback.changes) ? feedback.changes : [];
   lines.push(`反馈文件: ${feedbackPath}`);
-  if (versioned) {
-    lines.push(`反馈类型: ${feedback.schemaVersion}，生成工具: ${feedback.tool.name} ${feedback.tool.version}，导出时间: ${feedback.exportedAt}`);
-  }
-  if (feedback.capture !== undefined) lines.push(captureSummary(feedback.capture));
   if (objects) {
     const noteCount = objects.reduce(
       (n, o) => n + (Array.isArray(o.annotations) ? o.annotations.length : 0), 0);
     const moveCount = objects.reduce(
       (n, o) => n + (Array.isArray(o.movements) ? o.movements.length : 0), 0);
-    lines.push(`对象数量: ${objects.length}，批注数量: ${noteCount}，移动数量: ${moveCount}，包含原图: ${hasFeedbackImage(feedback.image) ? '是' : '否'}`);
-    if (isRecord(feedback.image)) {
-      lines.push(`图像: mode=${feedback.image.mode}，${feedback.image.mimeType}，${feedback.image.width}x${feedback.image.height}，devicePixelRatio=${feedback.image.devicePixelRatio}，sha256=${feedback.image.sha256}`);
-      if (feedback.image.file) lines.push(`imageFile: ${path.resolve(path.dirname(feedbackPath), feedback.image.file)}`);
-      if (feedback.image.preview) lines.push(`previewFile: ${path.resolve(path.dirname(feedbackPath), feedback.image.preview)}`);
-    }
+    lines.push(`对象数量: ${objects.length}，批注数量: ${noteCount}，移动数量: ${moveCount}，包含原图: ${feedback.image ? '是' : '否'}`);
     lines.push('坐标系: 图像像素，原点在左上角；批注位于调整后的画面（annotationSpace=result）。矩形右下边界不包含自身，宽高为 x2-x1、y2-y1。坐标不能直接当作屏幕坐标或 CSS 像素。');
     if (objects.length) {
       lines.push('对象列表 (source=原图区域，movements=移动到的位置，annotations=修改意见):');
-      const objectAnnotations = numberedAnnotations(objects);
       objects.forEach((o, i) => {
-        const objectLabel = `objects[${i}]${o.id === undefined ? '' : ` (id=${o.id})`}`;
-        if (o.kind==='point') {
-          lines.push(`  ${objectLabel} 点(${o.point.x}, ${o.point.y})`);
-        } else if (o.source) {
-          lines.push(`  ${objectLabel} 原图区域${formatRectangle(o.source)}`);
+        if (o.source) {
+          lines.push(`  [${i}] 原图区域${formatRectangle(o.source)}`);
         } else {
-          lines.push(`  ${objectLabel} 全局对象（无 source）`);
+          lines.push(`  [${i}] 全局对象（无 source）`);
         }
-        const recognizedText = recognizedTextSummary(o);
-        if (recognizedText) lines.push(recognizedText);
         (Array.isArray(o.movements) ? o.movements : []).forEach((m, j) => {
           lines.push(`      移动#${j}: -> ${formatRectangle(m.to)}`);
         });
-        if (o.movement||o.result) lines.push(resultSummary(o));
-        objectAnnotations[i].forEach(({ number, text }) => {
-          lines.push(`      批注#${number}: ${text}`);
+        (Array.isArray(o.annotations) ? o.annotations : []).forEach((t, j) => {
+          lines.push(`      批注#${j}: ${t}`);
         });
       });
     } else {
@@ -1013,8 +649,7 @@ function startAnnotateSession(p) {
   const timeoutSeconds = clampTimeout(p.timeoutSeconds);
   const outputPath = makeOutputPath(p.outputDir, 'annotate');
   const cliArgs = ['annotate', p.imagePath, '--output', outputPath, '--timeout', String(timeoutSeconds)];
-  cliArgs.push(...feedbackImageCliArgs(p));
-  cliArgs.push(...pageContextCliArgs(p));
+  if (p.noImage) cliArgs.push('--no-image');
   let child;
   try {
     child = trackCliChild(spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }));
@@ -1027,7 +662,6 @@ function startAnnotateSession(p) {
     child,
     outputPath,
     includeImage: Boolean(p.includeImage),
-    pageContext: p.pageContext?.trim(),
     timeoutSeconds,
     state: 'running',
     exitCode: null,
@@ -1091,34 +725,7 @@ function finishSessionContent(session) {
 
 // ---------------------------------------------------------------- MCP 工具定义
 
-const FEEDBACK_NOTE = '返回结构化反馈摘要；视频反馈按帧提供时间戳、坐标及修改意见，同坐标的不同时间点不会合并。默认 imageMode=file，原图/帧截图作为 JSON 同目录附件；请一起保留。imageMode=embedded 使用 data URL，none 仅保留元信息。preview 可另存带标注的 JPEG 预览。includeImage 仅控制工具返回附图（视频最多 8 张），不改变保存格式。';
-
-const FEEDBACK_IMAGE_PROPERTIES = {
-  imageMode: { type: 'string', enum: ['file', 'embedded', 'none'], default: 'file', description: '反馈截图保存方式：file 同目录附件（默认）、embedded 内嵌、none 仅元信息' },
-  preview: { type: 'boolean', default: false, description: '另存带标注预览 JPEG，位置记录在 image.preview' },
-  noImage: { type: 'boolean', description: '兼容旧参数；true 等同 imageMode=none，与其他显式 imageMode 冲突' },
-};
-
-const PAGE_CONTEXT_PROPERTY = { type: 'string', minLength: 1, pattern: '\\S',
-  description: '可选页面说明，如“游戏主页面”；去除首尾空白后最多 500 个 UTF-16 单元。由调用方提供，写入 capture.page/pageSource=agent，无需 AI 识图服务' };
-
-function pageContextCliArgs(p) {
-  if (p.pageContext === undefined) return [];
-  if (typeof p.pageContext !== 'string' || !p.pageContext.trim() || p.pageContext.trim().length > 500 || p.pageContext.includes('\0')) {
-    throw new McpError(-32602, 'pageContext 必须是长度不超过 500 的非空页面说明。');
-  }
-  return ['--page-context', p.pageContext.trim()];
-}
-
-function feedbackImageCliArgs(p) {
-  if (p.imageMode !== undefined && !['file', 'embedded', 'none'].includes(p.imageMode)) throw new McpError(-32602, 'imageMode 必须是 file、embedded 或 none。');
-  for (const key of ['noImage', 'preview', 'includeImage']) {
-    if (p[key] !== undefined && typeof p[key] !== 'boolean') throw new McpError(-32602, `${key} 必须是布尔值。`);
-  }
-  if (p.noImage && p.imageMode !== undefined && p.imageMode !== 'none') throw new McpError(-32602, 'noImage=true 与显式 imageMode 冲突。');
-  const mode = p.noImage ? 'none' : p.imageMode || 'file';
-  return [...(mode === 'embedded' ? ['--embed-image'] : mode === 'none' ? ['--no-image'] : []), ...(p.preview ? ['--preview'] : [])];
-}
+const FEEDBACK_NOTE = '返回结构化反馈摘要；视频反馈按帧提供时间戳、坐标及修改意见，同坐标的不同时间点不会合并。反馈 JSON 原文保存在输出的反馈文件路径，需要原图或帧截图 data URL 时可用文件工具读取该文件。includeImage 最多附带 8 张视频帧截图，未附图的帧会明确给出提取索引。';
 
 const TOOLS = [
   {
@@ -1134,7 +741,6 @@ const TOOLS = [
       required: ['imagePath'],
       properties: {
         imagePath: { type: 'string', description: '图片（PNG/JPEG/WebP/BMP）、视频（如 MP4/MOV/WebM）或 .edithere 项目（含视频项目）的绝对路径；为兼容已有客户端，参数名仍为 imagePath' },
-        pageContext: PAGE_CONTEXT_PROPERTY,
       },
       additionalProperties: false,
     },
@@ -1153,8 +759,7 @@ const TOOLS = [
       properties: {
         imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
-        pageContext: PAGE_CONTEXT_PROPERTY,
-        ...FEEDBACK_IMAGE_PROPERTIES,
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
         includeImage: { type: 'boolean', description: '为 true 时在工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
@@ -1170,8 +775,7 @@ const TOOLS = [
       properties: {
         imagePath: { type: 'string', description: '图片、视频或 .edithere 项目（含视频项目）的绝对路径' },
         timeoutSeconds: { type: 'number', description: '等待用户提交的最长秒数，1–86400，默认 1800' },
-        pageContext: PAGE_CONTEXT_PROPERTY,
-        ...FEEDBACK_IMAGE_PROPERTIES,
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
         includeImage: { type: 'boolean', description: '为 true 时完成后的工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
@@ -1197,7 +801,7 @@ const TOOLS = [
       required: ['imagePath'],
       properties: {
         imagePath: { type: 'string', description: '.edithere 项目（含视频项目）、图片或有效图片/视频反馈 JSON 的绝对路径' },
-        ...FEEDBACK_IMAGE_PROPERTIES,
+        noImage: { type: 'boolean', description: '为 true 时反馈 JSON 不内嵌原图或视频帧截图（默认内嵌）' },
         includeImage: { type: 'boolean', description: '为 true 时工具结果附原图或视频帧截图（最多 8 张并标明对应时间；其余截图仍保留于 JSON）' },
         outputDir: { type: 'string', description: '反馈 JSON 输出目录（默认系统临时目录下的 edithere-feedback）' },
       },
@@ -1254,7 +858,7 @@ async function toolCall(name, args, notifyProgress) {
     case 'edithere_open': {
       const invalid = requirePathArg(p);
       if (invalid) return invalid;
-      const r = await runCli(['open', p.imagePath, ...pageContextCliArgs(p)]);
+      const r = await runCli(['open', p.imagePath]);
       return cliResultToContent(r);
     }
     case 'edithere_capture': {
@@ -1267,8 +871,7 @@ async function toolCall(name, args, notifyProgress) {
       const timeoutSeconds = clampTimeout(p.timeoutSeconds);
       const output = makeOutputPath(p.outputDir, 'annotate');
       const cliArgs = ['annotate', p.imagePath, '--output', output, '--timeout', String(timeoutSeconds)];
-      cliArgs.push(...feedbackImageCliArgs(p));
-      cliArgs.push(...pageContextCliArgs(p));
+      if (p.noImage) cliArgs.push('--no-image');
       if (typeof notifyProgress === 'function') {
         notifyProgress(`已打开 ${path.basename(String(p.imagePath))}，等待用户在 EditHere 中完成批注…`);
       }
@@ -1281,8 +884,6 @@ async function toolCall(name, args, notifyProgress) {
     case 'edithere_annotate_start': {
       const invalid = requirePathArg(p);
       if (invalid) return invalid;
-      feedbackImageCliArgs(p);
-      pageContextCliArgs(p);
       const existing = runningSession();
       if (existing) {
         return {
@@ -1334,7 +935,7 @@ async function toolCall(name, args, notifyProgress) {
       if (invalid) return invalid;
       const output = makeOutputPath(p.outputDir, 'export');
       const cliArgs = ['export', p.imagePath, '--output', output];
-      cliArgs.push(...feedbackImageCliArgs(p));
+      if (p.noImage) cliArgs.push('--no-image');
       const r = await runCli(cliArgs, { timeoutMs: 120_000 });
       return annotateResultToContent(r, output, { includeImage: p.includeImage });
     }
@@ -1412,9 +1013,8 @@ function annotateResultToContent(r, outputPath, p) {
 
   const content = [];
   let feedback = null;
-  let verifiedImages = [];
   try {
-    const file = fs.lstatSync(outputPath);
+    const file = recover ? fs.lstatSync(outputPath) : fs.statSync(outputPath);
     if (!file.isFile()) throw new Error('反馈路径不是普通文件。');
     if (file.size > MAX_FEEDBACK_FILE_BYTES) {
       throw new Error('反馈文件超过 512 MiB 的连接器读取上限。请拆分标注项目或压缩帧截图。');
@@ -1424,23 +1024,9 @@ function annotateResultToContent(r, outputPath, p) {
     if (isVideoFeedback(feedback)) {
       validateVideoFeedback(feedback);
       if (recover) feedback.frames.forEach((frame) => validateImageRecoveryFeedback(frame.feedback));
-      let imageBudget = MAX_VIDEO_RESULT_IMAGE_CHARS;
-      let attachedImages = 0;
-      verifiedImages = feedback.frames.map((frame) => {
-        const verified = readFeedbackImage(frame.feedback.image, outputPath, Boolean(p.includeImage) && attachedImages < MAX_VIDEO_RESULT_IMAGES, imageBudget);
-        imageBudget -= verified.content?.data.length || 0;
-        if (verified.content) attachedImages += 1;
-        return verified;
-      });
     } else if (feedback.video !== undefined || feedback.frames !== undefined) {
       throw new Error(`不支持的视频反馈版本: ${String(feedback.schemaVersion || '未指定')}；需要 video-feedback-1。`);
-    } else if (validateImageFeedbackMetadata(feedback) || recover || isRecord(feedback.image) || feedback.capture !== undefined
-        || Array.isArray(feedback.objects) && feedback.objects.some((object) => isRecord(object) && (Object.hasOwn(object, 'recognizedText') || Object.hasOwn(object, 'ocrtext')))) {
-      // Screenshot text requires a versioned format. A successful legacy receipt
-      // must not bypass validation for either old metadata or compact strings.
-      validateImageRecoveryFeedback(feedback);
-    }
-    if (!isVideoFeedback(feedback)) verifiedImages = [readFeedbackImage(feedback.image, outputPath, Boolean(p.includeImage))];
+    } else if (recover) validateImageRecoveryFeedback(feedback);
   } catch (error) {
     if (recover) {
       const failure = cliResultToContent(r);
@@ -1455,11 +1041,11 @@ function annotateResultToContent(r, outputPath, p) {
   if (recover) content.push({ type: 'text', text: 'CLI 完成回执中断；已从本轮输出路径的完整有效反馈文件恢复结果。该结果仅确认反馈文件已保存，不代表桌面程序仍在运行。' });
   content.push({ type: 'text', text: summarizeFeedback(feedback, outputPath) });
   if (p.includeImage) {
-    if (isVideoFeedback(feedback)) content.push(...videoImageContents(feedback, outputPath, verifiedImages));
+    if (isVideoFeedback(feedback)) content.push(...videoImageContents(feedback, outputPath));
     else {
-      const imageContent = verifiedImages[0]?.content;
+      const imageContent = dataUrlToImageContent(feedback.image);
       if (imageContent) content.push(imageContent);
-      else content.push({ type: 'text', text: verifiedImages[0]?.omitted ? '原图超出工具附图大小上限；请从反馈 JSON 的 image 索引读取。' : '反馈中未包含原图（none 模式只保留元信息）。' });
+      else content.push({ type: 'text', text: '反馈中未包含原图 data URL。' });
     }
   }
   return { content, isError: false };
@@ -1590,7 +1176,7 @@ async function main() {
 
 // Keep the transport entry point separate from the helpers so their real child
 // processes can be covered by Node's built-in test runner.
-export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, feedbackImageCliArgs, pageContextCliArgs, TOOLS, main };
+export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, main };
 
 if (process.argv[1]
     && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {

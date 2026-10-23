@@ -181,12 +181,11 @@ async function complete() {
   setBusy(true);label(submit,'保存中');clearTimeout(draftTimer);
   $('workspace').inert=true;document.body.dataset.agentLocked='true';
   try{
-    snapshot ||= editor.feedbackSubmission();
+    snapshot ||= editor.feedback();
     // A draft failure must not prevent the final, idempotent feedback save.
     await persistDraft().catch(()=>{});
-    const {feedback,previewDataUrl}=snapshot;
-    if(feedback.image?.mode==='embedded')delete feedback.image.dataUrl;
-    receipt=await call('edithere_web_submit',{sessionId:session.sessionId,token:session.token,feedback,...(previewDataUrl?{previewDataUrl}:{})});
+    const {image:originalImage,...feedback}=snapshot;
+    receipt=await call('edithere_web_submit',{sessionId:session.sessionId,token:session.token,feedback});
     if(receipt.state!=='completed'){receipt=null;throw new Error('反馈尚未保存，请重试');}
     if(!alive)return;
     editor.completedAgent();document.body.dataset.messageState='unsent';label(submit,'已保存');
@@ -224,11 +223,11 @@ async function openResult(result) {
   session={...privateData,image,state:value.state||privateData.state};receipt=privateData.receipt||null;
   editor.bindAgent();
   if(receipt?.state==='completed'&&receipt.feedback){
-    await editor.loadAgentFeedback({...session,feedback:receipt.feedback});
+    await editor.loadAgentFeedback({image:session.image,name:session.name,feedback:{...receipt.feedback,image:session.image}});
   }else if(session.draft){
     const draft=session.draft;
     if(draft.document?.image!==undefined&&draft.document.image!==image)throw new Error('批注草稿与会话原图不匹配');
-    await editor.loadAgentProject({...session,image,name:session.name,project:{...draft,document:{...draft.document,image}}});
+    await editor.loadAgentProject({image,name:session.name,project:{...draft,document:{...draft.document,image}}});
     lastDraftRevision=editor.projectRevision();
   }else await editor.loadAgentImage(session);
   document.body.dataset.agentState=session.state;document.body.dataset.mcpState='ready';

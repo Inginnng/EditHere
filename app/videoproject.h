@@ -15,7 +15,6 @@ struct VideoFrame {
 };
 struct VideoProject {
     QString source;
-    QJsonObject capture;
     qint64 durationMs = 0;
     qint64 positionMs = 0;
     QVector<VideoFrame> frames;
@@ -26,9 +25,7 @@ bool isVideoFile(const QString &path);
 bool isVideoProjectFile(const QString &path);
 VideoProject loadVideoProject(const QString &path);
 QByteArray serializeVideoProject(const VideoProject &project);
-QByteArray serializeVideoFeedback(const VideoProject &project, const FeedbackExportOptions &options = {});
-QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress = false, bool includeRecognizedText = true);
-FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const FeedbackExportOptions &options = {});
+QByteArray serializeVideoFeedback(const VideoProject &project, bool embed = true, bool compress = false);
 int videoAnnotationCount(const VideoProject &project);
 QString videoTimeLabel(qint64 ms);
 } // namespace h2d

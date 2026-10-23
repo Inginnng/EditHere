@@ -181,6 +181,7 @@ class ScrollCaptureRegion final : public QWidget {
     void hideEvent(QHideEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
   private:
+    void updateMask();
     void placeHandle();
     void dragTo(QPoint global);
     QRect selection_, bounds_, dragSelection_;
@@ -193,8 +194,8 @@ class ScrollCaptureRegion final : public QWidget {
     bool running_ = true, dragging_ = false;
 };
 
-// Dims the screen outside the live capture region. Native exclusion keeps the
-// shade out of sampled pixels while transparent input lets the target scroll.
+// Dims only the screen outside the live capture region. On Windows a native
+// window hole protects sampled pixels even when capture exclusion is unavailable.
 class ScrollCaptureShade final : public QWidget {
   public:
     explicit ScrollCaptureShade(QWidget *parent = nullptr);

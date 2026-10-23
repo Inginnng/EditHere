@@ -319,6 +319,35 @@ class CaptureTests : public QObject {
         QVERIFY(!region.moveHandle()->isVisible());
     }
 
+    void longCaptureMasksLeaveSampledPixelsUncovered() {
+        ScrollCaptureRegion region;
+        ScrollCaptureShade shade;
+        // Include negative monitor origins and selections small in logical pixels
+        // on a scaled display. A one-pixel margin protects fractional-DPI edges.
+        const QRect bounds(-640, -120, 640, 480);
+        for (const QRect selection : {QRect(-600, -60, 240, 180), QRect(-540, 10, 43, 80), bounds}) {
+            region.setSelection(selection, bounds);
+            shade.setSelection(selection, bounds);
+            region.setState(true);
+            const QRegion samples(selection.adjusted(-1, -1, 1, 1));
+            QVERIFY(!region.mask().translated(region.pos()).intersects(samples));
+            QVERIFY(!shade.mask().isEmpty());
+            QVERIFY(!shade.mask().translated(shade.pos()).intersects(samples));
+            if (selection == bounds)
+                QVERIFY(!shade.mask().intersects(QRegion(shade.rect())));
+            else
+                QVERIFY(shade.mask().contains(QPoint(0, 0)));
+            // Stopping must keep the larger resize hit area usable; restarting
+            // removes it again before any new sample, without moving the frame.
+            const QPoint innerEdge(4, region.height() / 2);
+            region.setState(false);
+            QVERIFY(region.mask().contains(innerEdge));
+            region.setState(true);
+            QVERIFY(!region.mask().translated(region.pos()).intersects(samples));
+            QCOMPARE(region.selection(), selection);
+        }
+    }
+
     void longCapturePanelKeepsPreviewInsideItsViewport() {
         if (!qEnvironmentVariable("EDITHERE_UI_ARTIFACT_DIR").isEmpty()) applyTheme(ThemeMode::Light);
         ScrollCaptureProgress panel;

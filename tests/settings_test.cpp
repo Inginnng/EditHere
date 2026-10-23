@@ -14,7 +14,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
-#include <QStandardPaths>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -34,52 +33,6 @@ class SettingsTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
-    }
-    void recognizedTextExportPreferencePersistsAndDefaultsOn() {
-        QVERIFY(defaultSettings().includeRecognizedText);
-        QVERIFY(defaultSettings().includeWindowTitle);
-        QTemporaryDir directory; const auto path = directory.filePath("settings.ini");
-        auto settings = defaultSettings(); settings.includeRecognizedText = false; settings.includeWindowTitle = false;
-        QString error; QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
-        QVERIFY(!loadSettings(path).includeRecognizedText);
-        QVERIFY(!recognizedTextExportEnabled(path));
-        QVERIFY(!loadSettings(path).includeWindowTitle);
-        QVERIFY(!windowTitleExportEnabled(path));
-        SettingsDialog dialog(settings);
-        auto checkbox = dialog.findChild<QCheckBox *>("includeRecognizedText"); QVERIFY(checkbox); QVERIFY(!checkbox->isChecked());
-        checkbox->setChecked(true); QVERIFY(dialog.settings().includeRecognizedText);
-        auto title = dialog.findChild<QCheckBox *>("includeWindowTitle"); QVERIFY(title); QVERIFY(!title->isChecked());
-        title->setChecked(true); QVERIFY(dialog.settings().includeWindowTitle);
-    }
-    void consoleIdentityUsesTheDesktopRecognizedTextPreference() {
-        const auto application = QCoreApplication::applicationName();
-        const auto organization = QCoreApplication::organizationName();
-        const bool testMode = QStandardPaths::isTestModeEnabled();
-        QStandardPaths::setTestModeEnabled(true);
-        QCoreApplication::setApplicationName("EditHere"); QCoreApplication::setOrganizationName("EditHere");
-        const auto folder = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
-        const auto path = QDir(folder).filePath("settings.ini");
-        QFile original(path); const bool existed = original.exists(); QByteArray bytes;
-        if (original.open(QIODevice::ReadOnly)) { bytes = original.readAll(); original.close(); }
-        struct Restore {
-            QString path, application, organization; QByteArray bytes; bool existed, testMode;
-            ~Restore() {
-                if (existed) { QFile file(path); if (file.open(QIODevice::WriteOnly)) file.write(bytes); }
-                else QFile::remove(path);
-                QCoreApplication::setApplicationName(application); QCoreApplication::setOrganizationName(organization);
-                QStandardPaths::setTestModeEnabled(testMode);
-            }
-        } restore{path, application, organization, bytes, existed, testMode};
-        QDir().mkpath(folder);
-        { QSettings values(path, QSettings::IniFormat); values.setValue("version", 1); values.setValue("defaults/includeRecognizedText", false); values.setValue("defaults/includeWindowTitle", false); values.sync(); }
-        QCoreApplication::setApplicationName("edithere-cli"); QCoreApplication::setOrganizationName({});
-        QVERIFY(!recognizedTextExportEnabled());
-        QVERIFY(!windowTitleExportEnabled());
-        QCOMPARE(QCoreApplication::applicationName(), QString("edithere-cli"));
-        QVERIFY(QCoreApplication::organizationName().isEmpty());
-        { QSettings values(path, QSettings::IniFormat); values.setValue("defaults/includeRecognizedText", true); values.setValue("defaults/includeWindowTitle", true); values.sync(); }
-        QVERIFY(recognizedTextExportEnabled());
-        QVERIFY(windowTitleExportEnabled());
     }
     void diagnosticsAreAccessibleWithoutChangingSettings() {
         QTemporaryDir directory;
@@ -206,10 +159,6 @@ class SettingsTests : public QObject {
         changed.launchAtLogin = true;
         changed.fitImageOnOpen = false;
         changed.embedOriginal = false;
-        changed.imageExportMode = ImageExportMode::None;
-        changed.includeFeedbackPreview = true;
-        changed.includeRecognizedText = false;
-        changed.includeWindowTitle = false;
         changed.confirmBeforeDiscard = false;
         changed.checkUpdatesOnStartup = true;
         changed.defaultTool = 2;

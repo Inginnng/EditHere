@@ -8,7 +8,6 @@ const os = require('node:os');
 const {execFileSync} = require('node:child_process');
 const feedbackFormat = require('./src/feedback.js');
 const layoutFormat = require('./src/layout.js');
-const imageFormat = require('./src/image-format.js');
 
 const API_VERSION = 1;
 const MAX_BODY = 96 * 1024 * 1024;
@@ -39,25 +38,13 @@ function rectangle(value) {
   if (out.x2 < out.x1 || out.y2 < out.y1) fail('Invalid feedback rectangle bounds.');
   return out;
 }
-function validateFeedback(value, image, resolveFile) {
+function validateFeedback(value, image) {
   boundedJSON(value, MAX_BODY, 'Feedback');
-  try { value = feedbackFormat.normalizeImage(value); } catch (error) { fail(error.message); }
-  if (!Object.hasOwn(value, 'image')) fail('Expected native image feedback with the original image.');
-  try {
-    if(typeof value.image==='string') {
-      imageData(value.image);
-      if(digest(imageFormat.dataBytes(value.image).bytes)!==digest(imageFormat.dataBytes(image).bytes))fail('Feedback must include this session\'s original image.');
-    } else {
-      imageFormat.validate(value.image);imageFormat.verify(value.image,image);
-      if(value.image.mode==='file'&&resolveFile)imageFormat.verify(value.image,resolveFile(value.image.file,value.image.mimeType));
-    }
-  }catch(error){fail(error.message);}
-  if (value.annotationSpace !== 'result') fail('Feedback must include this session\'s original image.');
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'annotationSpace,image,objects') fail('Expected native image feedback: annotationSpace, image and objects.');
+  if (value.annotationSpace !== 'result' || value.image !== image) fail('Feedback must include this session\'s original image.');
   if (!Array.isArray(value.objects) || value.objects.length > 1000) fail('Invalid feedback objects.');
   const objects = value.objects.map(object => {
-    const original=object;
-    object=feedbackFormat.legacyObject(object);
-    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== ['annotations','movements','source',...(Object.hasOwn(object,'id')?['id']:[]),...(Object.hasOwn(object,'recognizedText')?['recognizedText']:[])].sort().join(',')) fail('Invalid feedback object fields.');
+    if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).sort().join(',') !== 'annotations,movements,source') fail('Invalid feedback object fields.');
     const source = object.source === null ? null : rectangle(object.source);
     if (!Array.isArray(object.movements) || object.movements.length > 1000 || !Array.isArray(object.annotations) || object.annotations.length > 1000) fail('Invalid movement or annotation list.');
     if (source === null && object.movements.length) fail('A global annotation cannot move.');
@@ -67,43 +54,14 @@ function validateFeedback(value, image, resolveFile) {
       if (source.x1 === source.x2 || source.y1 === source.y2 || to.x1 === to.x2 || to.y1 === to.y2) fail('Movement rectangles must have positive dimensions.');
       return {to};
     });
-    const annotations = object.annotations.map(annotation => typeof annotation === 'string' ? annotation : {...annotation});
+    const annotations = object.annotations.map(text => {
+      if (typeof text !== 'string' || !text.trim() || text.length > 10000) fail('Annotations must contain nonempty text.');
+      return text;
+    });
     if (!movements.length && !annotations.length) fail('Empty feedback objects are not valid.');
-    if (value.schemaVersion==='feedback-minimal-3') return original;
-    return {...(Object.hasOwn(object, 'id') ? {id:object.id} : {}), source, movements, annotations,
-      ...(Object.hasOwn(object,'recognizedText')?{recognizedText:{...object.recognizedText}}:{})};
+    return {source, movements, annotations};
   });
-  return {...feedbackFormat.imageMetadata(value), annotationSpace:'result', image:value.image, objects};
-}
-function feedbackReceipt(feedback) {
-  const {image, ...result} = feedback;
-  if(image&&typeof image==='object')result.image=Object.fromEntries(Object.entries(image).filter(([key])=>key!=='dataUrl'));
-  return result;
-}
-
-function outputImage(session,name,mimeType){
-  if(!imageFormat.safeName(name))fail('Invalid companion image filename.');
-  const file=path.join(path.dirname(session.output),name);let stat;try{stat=fs.lstatSync(file);}catch{fail('Companion image is missing.');}
-  if(stat.isSymbolicLink()||!stat.isFile()||stat.size>64*1024*1024)fail('Invalid companion image file.');
-  return'data:'+mimeType+';base64,'+fs.readFileSync(file).toString('base64');
-}
-function bindCapture(value,session){
-  if(!value||typeof value!=='object'||Array.isArray(value))return value;
-  if(Object.hasOwn(value,'capture')){try{feedbackFormat.validateCapture(value.capture);}catch(error){fail(error.message);}}
-  if(!session.capture)return value;
-  if(Object.hasOwn(value,'capture')&&feedbackFormat.serialize(value.capture)!==feedbackFormat.serialize(session.capture))fail('Capture context must match this session.');
-  return {...value,capture:{...session.capture}};
-}
-function bindFeedbackCapture(value,session){
-  if(session.capture && value && !Object.hasOwn(value,'schemaVersion')){
-    try{value=feedbackFormat.upgradeImage(value,session.createdAt);}catch(error){fail(error.message);}
-  }
-  return bindCapture(value,session);
-}
-function validateSavedFeedback(session,feedback){
-  const valid=validateFeedback(bindFeedbackCapture(feedback,session),session.image,(name,mime)=>outputImage(session,name,mime));
-  if(valid.image?.preview){const data=outputImage(session,valid.image.preview,'image/jpeg'),info=imageFormat.inspect(data);if(info.width!==valid.image.width||info.height!==valid.image.height)fail('Annotated preview dimensions do not match.');if(session.previewSha256&&digest(info.bytes)!==session.previewSha256)fail('Annotated preview SHA-256 does not match.');}
-  return valid;
+  return {annotationSpace:'result', image, objects};
 }
 
 function defaultSessionDirectory() {
@@ -119,13 +77,12 @@ function allowedKeys(value, keys, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !keys.includes(key))) fail('Invalid ' + name + ' fields.');
 }
 function validateDraft(value, session) {
-  if(value?.document)value={...value,document:bindCapture(value.document,session)};
   const serialized = boundedJSON(value, MAX_BODY, 'Draft');
   allowedKeys(value, ['schemaVersion','tool','savedAt','kind','name','width','height','document'], 'draft');
   if (value.schemaVersion !== 'edithere-web-project-1' || value.tool !== 'EditHere Web' || value.kind !== 'image' || value.name !== session.name || typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))) fail('Invalid image draft project.');
   const {width, height, document:documentValue} = value;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 32767 || height > 32767 || width * height > 32000000) fail('Invalid draft dimensions.');
-  allowedKeys(documentValue, ['id','timestampUs','image','notes','layout','capture'], 'draft document');
+  allowedKeys(documentValue, ['id','timestampUs','image','notes','layout'], 'draft document');
   if (documentValue.image !== session.image || typeof documentValue.id !== 'string' || !documentValue.id || documentValue.id.length > 256 || /[\\/:*?"<>|\u0000-\u001f]/.test(documentValue.id) || documentValue.timestampUs !== null) fail('Draft must contain this session\'s original image.');
   if (!Array.isArray(documentValue.notes) || documentValue.notes.length > 1000) fail('Invalid draft annotation list.');
   const layout = documentValue.layout;
@@ -143,13 +100,9 @@ function validateDraft(value, session) {
     if (valid.x2 > width || valid.y2 > height) fail('Draft annotation is outside the image.');
   }
   for (const note of documentValue.notes) {
-    allowedKeys(note, ['id','source','text','groupId','groupIds','movementSource','movementSources','recognizedText'], 'draft annotation');
+    allowedKeys(note, ['id','source','text','groupId','groupIds','movementSource','movementSources'], 'draft annotation');
     if (typeof note.id !== 'string' || !note.id || note.id.length > 256 || ids.has(note.id) || typeof note.text !== 'string' || note.text.length > 10000 || !note.text.trim() && !note.movementSource) fail('Invalid draft annotation.');
     ids.add(note.id); draftRectangle(note.source);
-    if(Object.hasOwn(note,'recognizedText')){
-      if(note.source===null)fail('Global annotations cannot contain recognized screenshot text.');
-      try{feedbackFormat.validateRecognizedText(note.recognizedText,true);}catch(error){fail(error.message);}
-    }
     if (note.groupId && !groups.has(note.groupId)) fail('Draft annotation references a missing component.');
     if (note.groupIds !== undefined && (!Array.isArray(note.groupIds) || !note.groupIds.length || note.groupIds.length > 512 || new Set(note.groupIds).size !== note.groupIds.length || note.groupIds.some(id => !groups.has(id)))) fail('Invalid draft component references.');
     if (note.movementSource) {
@@ -167,7 +120,7 @@ function validateDraft(value, session) {
   return draft;
 }
 function hydratedDraft(session) {
-  return session.draft ? {...session.draft, document:{...bindCapture(session.draft.document,session), image:session.image}} : undefined;
+  return session.draft ? {...session.draft, document:{...session.draft.document, image:session.image}} : undefined;
 }
 function flushDirectory(directory) {
   let descriptor;
@@ -218,28 +171,21 @@ function persistedSession(directory, id) {
   } catch (error) { if (error.code === 'ENOENT') fail('Session not found.', 404); throw error; }
   if (session.id !== id || !/^[a-f0-9]{64}$/.test(session.token) || typeof session.output !== 'string' || !path.isAbsolute(session.output) || typeof session.inputPath !== 'string' || !path.isAbsolute(session.inputPath) || !['pending','submitting','completed','cancelled','expired'].includes(session.state) || !Number.isFinite(session.expiresAt)) fail('Invalid persisted session.');
   imageData(session.image);
-  if(Object.hasOwn(session,'capture')){try{feedbackFormat.validateCapture(session.capture);}catch(error){fail(error.message);}}
   if (session.state === 'submitting') {
-    let matchingOutput;
     try {
       const serialized = fs.readFileSync(session.output);
       if (digest(serialized) !== session.sha256) throw new Error('Unmatched result.');
-      matchingOutput=JSON.parse(serialized);
-    } catch { session.state = 'pending'; delete session.sha256; delete session.result; }
-    if(matchingOutput){
-      const feedback = validateSavedFeedback(session,matchingOutput);
-      session.result = feedbackReceipt(feedback);
+      const feedback = validateFeedback(JSON.parse(serialized), session.image);
+      session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
       session.state = 'completed'; session.completedAt ||= new Date().toISOString();
-    }
+    } catch { session.state = 'pending'; delete session.sha256; delete session.result; }
   }
   return session;
 }
 function receipt(session, now = Date.now()) {
   const state = session.state === 'pending' && now >= session.expiresAt ? 'expired' : session.state;
-  return {tool:'EditHere', sessionId:session.id, state, name:session.name, inputPath:session.inputPath, output:session.output, expiresAt:session.expiresAt,...(session.capture?{capture:{...session.capture}}:{}),
-    ...(state === 'completed' ? {completedAt:session.completedAt, sha256:session.sha256, feedback:session.result,
-      ...(session.result?.image?.mode==='file'?{imagePath:path.join(path.dirname(session.output),session.result.image.file)}:{}),
-      ...(session.result?.image?.preview?{previewPath:path.join(path.dirname(session.output),session.result.image.preview)}:{})} : {})};
+  return {tool:'EditHere', sessionId:session.id, state, name:session.name, inputPath:session.inputPath, output:session.output, expiresAt:session.expiresAt,
+    ...(state === 'completed' ? {completedAt:session.completedAt, sha256:session.sha256, feedback:session.result} : {})};
 }
 function readSessionStatus({directory = defaultSessionDirectory(), sessionId}) {
   const session = persistedSession(directory, sessionId);
@@ -247,8 +193,8 @@ function readSessionStatus({directory = defaultSessionDirectory(), sessionId}) {
     let output;
     try { output = fs.readFileSync(session.output); } catch { fail('Completed feedback file is missing or unreadable.', 409); }
     if (digest(output) !== session.sha256) fail('Completed feedback file was changed after submission.', 409);
-    const feedback = validateSavedFeedback(session,JSON.parse(output));
-    session.result = feedbackReceipt(feedback);
+    const feedback = validateFeedback(JSON.parse(output), session.image);
+    session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
   }
   return receipt(session);
 }
@@ -286,15 +232,10 @@ class AgentSessions {
     if (!Number.isInteger(timeout) || timeout < 30 || timeout > 86400) fail('Timeout must be 30–86400 seconds.');
     const name = input.name ?? path.basename(input.inputPath);
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Invalid image name.');
-    const imageMode=input.imageMode??'file';if(!['file','embedded','none'].includes(imageMode)||input.preview!==undefined&&typeof input.preview!=='boolean')fail('Invalid image export options.');
-    const createdAt=new Date(this.now()).toISOString();
-    let page;try{page=input.pageContext===undefined?undefined:feedbackFormat.validatePageContext(input.pageContext);}catch(error){fail(error.message);}
-    const capture={source:'file',fileName:path.basename(input.inputPath),capturedAt:createdAt,...(page?{page,pageSource:'agent'}:{})};
-    try{feedbackFormat.validateCapture(capture);}catch(error){fail(error.message);}
-    const session = {id:crypto.randomBytes(16).toString('hex'), token:randomToken(), state:'pending', image, name,imageMode,preview:input.preview??false,
-      inputPath:path.resolve(input.inputPath), output, createdAt,capture, expiresAt:this.now() + timeout * 1000};
+    const session = {id:crypto.randomBytes(16).toString('hex'), token:randomToken(), state:'pending', image, name,
+      inputPath:path.resolve(input.inputPath), output, createdAt:new Date(this.now()).toISOString(), expiresAt:this.now() + timeout * 1000};
     this.sessions.set(session.id, session); this.persist(session);
-    return {sessionId:session.id, url:this.origin + '/EditHere.html?agent=' + session.token, output, expiresAt:session.expiresAt,capture:{...session.capture}};
+    return {sessionId:session.id, url:this.origin + '/EditHere.html?agent=' + session.token, output, expiresAt:session.expiresAt};
   }
   byId(id) { const session = persistedSession(this.directory, id); this.sessions.set(id, session); return this.expire(session); }
   byToken(token) {
@@ -316,40 +257,32 @@ class AgentSessions {
   }
   browser(token) {
     const session = this.byToken(token);
-    return {sessionId:session.id, name:session.name, state:session.state, expiresAt:session.expiresAt,imageMode:session.imageMode??'file',preview:session.preview??false,outputFileName:path.basename(session.output),...(session.capture?{capture:{...session.capture}}:{}),
+    return {sessionId:session.id, name:session.name, state:session.state, expiresAt:session.expiresAt,
       ...(session.state === 'pending' ? {image:session.image} : {})};
   }
-  submit(token, input, previewDataUrl) {
+  submit(token, input) {
     const id = this.byToken(token).id;
-    return this.locked(id, () => this.submitLocked(token, input,previewDataUrl));
+    return this.locked(id, () => this.submitLocked(token, input));
   }
-  submitLocked(token, input,previewDataUrl) {
+  submitLocked(token, input) {
     const session = this.byToken(token);
-    const feedback = validateFeedback(bindFeedbackCapture(input,session), session.image);
+    const feedback = validateFeedback(input, session.image);
     const serialized = feedbackFormat.serialize(feedback), sha256 = digest(serialized);
     if (session.state === 'completed') {
       if (session.sha256 !== sha256) fail('This session already received different feedback.', 409);
-      validateSavedFeedback(session,JSON.parse(fs.readFileSync(session.output,'utf8')));return this.status(session);
+      return this.status(session);
     }
     if (session.state !== 'pending') fail('This session is ' + session.state + '.', 409);
-    const companions=[];
-    if(feedback.image?.mode==='file')companions.push({name:feedback.image.file,bytes:Buffer.from(imageFormat.dataBytes(session.image).bytes)});
-    if(feedback.image?.preview){if(!previewDataUrl)fail('Annotated preview data is required.');const info=imageFormat.inspect(previewDataUrl);if(info.mimeType!=='image/jpeg'||info.width!==feedback.image.width||info.height!==feedback.image.height)fail('Invalid annotated JPEG preview.');companions.push({name:feedback.image.preview,bytes:Buffer.from(info.bytes)});session.previewSha256=digest(info.bytes);}
-    if(companions.some(item=>item.name===path.basename(session.output))||new Set(companions.map(item=>item.name)).size!==companions.length)fail('Companion filenames conflict with feedback output.');
-    const previousPending=session.pendingFiles||[];
-    session.pendingFiles=previousPending;
     session.state = 'submitting'; session.sha256 = sha256;
-    session.result = feedbackReceipt(feedback);
+    session.result = {annotationSpace:feedback.annotationSpace, objects:feedback.objects};
     this.persist(session);
     try {
-      for(const item of companions){const file=path.join(path.dirname(session.output),item.name),owned=previousPending.some(saved=>saved.name===item.name&&saved.sha256===digest(item.bytes));if(owned&&fs.existsSync(file)){const stat=fs.lstatSync(file);if(stat.isSymbolicLink()||!stat.isFile()||digest(fs.readFileSync(file))!==digest(item.bytes))fail('Companion image was changed.');}else{atomicOutput(file,item.bytes,session.id);session.pendingFiles=session.pendingFiles.filter(saved=>saved.name!==item.name);session.pendingFiles.push({name:item.name,sha256:digest(item.bytes)});this.persist(session);}}
       atomicOutput(session.output, serialized, session.id);
     } catch (error) {
       // A failure after publishing (for example a lost directory flush ACK)
       // must keep the journal recoverable instead of orphaning the saved file.
       try {
         if (digest(fs.readFileSync(session.output)) === sha256) {
-          validateSavedFeedback(session,JSON.parse(fs.readFileSync(session.output,'utf8')));
           session.state = 'completed'; session.completedAt = new Date(this.now()).toISOString(); this.persist(session);
           return this.status(session);
         }
@@ -403,4 +336,4 @@ class AgentSessions {
     }
   }
 }
-module.exports = {AgentSessions, API_VERSION, MAX_BODY, imageData, validateFeedback, validateDraft, hydratedDraft, defaultSessionDirectory, readSessionStatus,imageFormat};
+module.exports = {AgentSessions, API_VERSION, MAX_BODY, imageData, validateFeedback, validateDraft, hydratedDraft, defaultSessionDirectory, readSessionStatus};

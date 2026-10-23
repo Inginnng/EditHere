@@ -16,51 +16,10 @@
 #include <QScreen>
 #include <QSignalSpy>
 #include <QTest>
-#include <QTextStream>
-#include <QTimer>
 using namespace h2d;
 class PlatformTests : public QObject {
     Q_OBJECT
   private slots:
-    void captureContextKeepsTheForeignWindowSnapshot() {
-#ifdef Q_OS_WIN
-        if (QGuiApplication::platformName() != "windows") QSKIP("Requires the Windows desktop compositor");
-        QProcess probe;
-        probe.setProgram(QCoreApplication::applicationFilePath());
-        probe.setArguments({"--capture-context-probe"});
-        probe.start();
-        QVERIFY(probe.waitForStarted());
-        QVERIFY(probe.waitForReadyRead(5000));
-        QVERIFY(probe.readAllStandardOutput().contains("ready"));
-        QWidget own;
-        own.setWindowTitle("J07 own capture overlay");
-        own.resize(80, 60); own.move(10, 10); own.show();
-        QTest::qWait(120);
-        QVector<ScreenFrame> frames;
-        captureScreens([&](QVector<ScreenFrame> value, QString) { frames = std::move(value); });
-        bool found = false;
-        for (const auto &frame : frames) for (const auto &window : frame.captureWindows) {
-            QVERIFY(window.windowTitle != "J07 own capture overlay");
-            if (window.windowTitle != "J07 foreign game homepage") continue;
-            found = true;
-            QVERIFY(!window.bounds.isEmpty());
-            QVERIFY(frame.image.rect().contains(window.bounds));
-            QCOMPARE(window.appName.toLower(), QString("platform_tests.exe"));
-        }
-        QVERIFY(found);
-        // Changing the real window after capture must not rewrite the stored
-        // title: selection happens later, after our overlay has opened.
-        const HWND target = FindWindowW(nullptr, L"J07 foreign game homepage");
-        QVERIFY(target);
-        SetWindowTextW(target, L"Changed after snapshot");
-        bool retained = false;
-        for (const auto &frame : frames) for (const auto &window : frame.captureWindows)
-            retained |= window.windowTitle == "J07 foreign game homepage";
-        QVERIFY(retained);
-        probe.terminate();
-        if (!probe.waitForFinished(3000)) { probe.kill(); probe.waitForFinished(); }
-#endif
-    }
 
     void globalShortcutRebindingKeepsWorkingRegistration() {
 #ifdef Q_OS_WIN
@@ -290,20 +249,5 @@ class PlatformTests : public QObject {
         window.hide();
     }
 };
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
-    if (app.arguments().contains("--capture-context-probe")) {
-        QWidget window;
-        window.setWindowTitle("J07 foreign game homepage");
-        window.setWindowFlag(Qt::WindowStaysOnTopHint);
-        window.resize(320, 160);
-        window.move(QGuiApplication::primaryScreen()->availableGeometry().center() - QPoint(160, 80));
-        window.show();
-        QTimer::singleShot(150, &window, [] { QTextStream(stdout) << "ready\n" << Qt::flush; });
-        QTimer::singleShot(15000, &app, &QCoreApplication::quit);
-        return app.exec();
-    }
-    PlatformTests tests;
-    return QTest::qExec(&tests, argc, argv);
-}
+QTEST_MAIN(PlatformTests)
 #include "platform_test.moc"
