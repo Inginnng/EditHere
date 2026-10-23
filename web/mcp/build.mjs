@@ -9,8 +9,6 @@ import {build} from 'esbuild';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const web = path.dirname(directory);
-const productVersion=fs.readFileSync(path.join(web,'../CMakeLists.txt'),'utf8').match(/project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/)?.[1];
-if(!productVersion)throw new Error('Cannot read the product version from CMakeLists.txt');
 execFileSync(process.execPath, [path.join(web, 'build.cjs')], {stdio:'inherit'});
 const browser = await build({
   entryPoints:[path.join(web, 'src/mcp-app.js')], bundle:true, write:false,
@@ -28,7 +26,7 @@ const server = await build({
   entryPoints:[path.join(directory, 'server.mjs')], bundle:true,
   outfile:path.join(directory, 'server.bundle.cjs'), platform:'node', format:'cjs',
   target:'node20', minify:true, metafile:true, legalComments:'none',
-  define:{'EDITHERE_MCP_DIR':'__dirname','EDITHERE_PRODUCT_VERSION':JSON.stringify(productVersion),'import.meta.url':'EDITHERE_IMPORT_META_URL'},
+  define:{'EDITHERE_MCP_DIR':'__dirname','import.meta.url':'EDITHERE_IMPORT_META_URL'},
   banner:{js:'const EDITHERE_IMPORT_META_URL = require("node:url").pathToFileURL(__filename).href;'}
 });
 

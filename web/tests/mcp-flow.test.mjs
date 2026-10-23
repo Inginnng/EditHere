@@ -102,20 +102,17 @@ async function movementNote(frame) {
   await frame.locator(`[data-edit="${note}"]`).click();await frame.locator('#note-text').fill('这个组件右移，并保留位移箭头批注');
   await frame.locator('#note-text').press('Control+Enter');await frame.locator('#note-dialog').waitFor({state:'hidden'});
   const feedback=await frame.locator('#canvas').evaluate(()=>EditHereWeb.feedback());
-  assert(feedback.objects.some(object=>object.movement&&object.annotations.some(annotation => annotation.text === '这个组件右移，并保留位移箭头批注')));
+  assert(feedback.objects.some(object=>object.movements.length&&object.annotations.includes('这个组件右移，并保留位移箭头批注')));
 }
 try {
   stage='first open';
   await connect();await page.goto('http://127.0.0.1:'+server.address().port);
   const tools=await client.listTools();
   assert.equal(tools.tools.find(t=>t.name==='edithere_web_open')._meta.ui.resourceUri,'ui://edithere/annotation.html');
-  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试',pageContext:'  游戏主页面 <b>literal</b>  '},{damageInlineImage:true});
+  let view=await open({imagePath,outputPath,name:'游戏主页 · MCP 链路测试'},{damageInlineImage:true});
   const sessionId=view.result.structuredContent.sessionId;
   await view.frame.locator('body[data-mcp-display-request="accepted"]').waitFor();
   await view.frame.locator('body[data-image-state="ready"]').waitFor();
-  assert.equal(await view.frame.locator('#page-description').textContent(),'游戏主页面 <b>literal</b>');
-  assert.equal(await view.frame.locator('#page-description b').count(),0);
-  assert.equal(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.project().document.capture.pageSource),'agent');
   assert.equal(await view.frame.locator('#canvas').evaluate(()=>EditHereWeb.project().document.image),view.result._meta.edithere.image);
   assert((await page.evaluate(()=>window.calls)).includes('edithere_web_image'));
   checks.push('Original image loads through app-only chunks even when the agent result contains a damaged image encoding');
@@ -222,9 +219,9 @@ try {
   const downloadPromise=page.waitForEvent('download');await view.frame.locator('#save-json').click();
   const download=await downloadPromise,stream=await download.createReadStream(),chunks=[];
   for await(const chunk of stream)chunks.push(chunk);
-  const bytes=Buffer.concat(chunks),entries=bytes.readUInt32LE(0)===0x04034b50?require('../src/bundle.js').unzip(bytes):null,backup=entries?Buffer.from([...entries].find(([name])=>name.endsWith('.json'))[1]).toString('utf8'):bytes.toString('utf8');
+  const backup=Buffer.concat(chunks).toString('utf8');
   assert.equal(await download.failure(),null);
-  const backupValue=JSON.parse(backup);assert.deepEqual({...backupValue,image:null},{...expected,image:null},'manual JSON backup preserves saved feedback');assert.equal(backupValue.image.sha256,expected.image.sha256);assert(entries?.has(backupValue.image.file));
+  assert.deepEqual(JSON.parse(backup),expected,'manual JSON backup preserves the complete saved feedback and original image');
   assert.equal(hash(outputPath),savedHash);
   checks.push('Manual JSON backup preserves completed native feedback without resubmitting or changing the receipt');
   assert.deepEqual(errors,[]);
@@ -236,7 +233,7 @@ try {
   console.error(JSON.stringify(await page.evaluate(()=>{
     const body=document.querySelector('iframe')?.contentDocument?.body;
     return {state:body?.dataset,toast:body?.querySelector('#toast')?.textContent,calls:window.calls,callErrors:window.callErrors};
-  }).catch(()=>({diagnostic:'The host page navigated before failure inspection.'}))));
+  })));
   throw error;
 }
 finally {await client?.close();await browser.close();await new Promise(resolve=>server.close(resolve));}

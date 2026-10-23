@@ -29,7 +29,7 @@ async function note(page,text) {await page.locator('#note-dialog').waitFor({stat
 async function main() {
   fs.mkdirSync(output,{recursive:true});
   const run=crypto.randomUUID(),file=path.join(output,run+'-feedback.json');
-  const session=await command('start','--image',image,'--output',file,'--name','游戏主页 · 链路测试','--page-context','  游戏主页面 <b>literal</b>  ','--timeout','1800');
+  const session=await command('start','--image',image,'--output',file,'--name','游戏主页 · 链路测试','--timeout','1800');
   assert(!fs.existsSync(file),'loading a screenshot must not create feedback');
   const wait=command('wait','--session',session.sessionId,'--wait','55');
   const browser=await chromium.launch({executablePath,headless:true});
@@ -40,20 +40,16 @@ async function main() {
     await page.goto(session.url);
     await page.waitForFunction(()=>document.body.dataset.agentState==='pending');
     await page.locator('#workspace').waitFor({state:'visible'});
-    assert.equal(await page.locator('#page-description').textContent(),'游戏主页面 <b>literal</b>');
-    assert.equal(await page.locator('#page-description b').count(),0);
-    assert.equal(await page.evaluate(()=>EditHereWeb.project().document.capture.pageSource),'agent');
     const dims=await page.locator('#canvas').evaluate(c=>({width:c.width,height:c.height}));
     const original='data:image/png;base64,'+fs.readFileSync(image).toString('base64');
-    assert.equal(await page.evaluate(()=>EditHereWeb.project().document.image),original);assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image.mode),'file');
+    assert.equal(await page.evaluate(()=>EditHereWeb.feedback().image),original);
     assert.equal(await page.locator('#export').getAttribute('aria-label'),'完成并返回 AI');
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('original image automatically loads from the session; no feedback before explicit submit');
     assert.equal(await page.locator('#offline').count(),0);
     assert.equal(await page.locator('#actual-size').count(),0);
     const backup=JSON.parse(await downloadText(page,'#save-json'));
-    assert.equal(backup.schemaVersion,'feedback-minimal-2');assert.equal(backup.tool.name,'EditHere');
-    assert.equal(backup.image.mode,'file');assert.deepEqual(backup.objects,[]);assert.equal(backup.image.sha256,hash(fs.readFileSync(image)));
+    assert.deepEqual(backup,{annotationSpace:'result',image:original,objects:[]},'manual JSON backup preserves the immutable original without submitting the session');
     assert(!fs.existsSync(file));assert.equal((await command('poll','--session',session.sessionId)).state,'pending');
     results.push('manual JSON backup retains the complete original and never submits feedback');
     if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
@@ -75,7 +71,7 @@ async function main() {
     await page.locator('[data-mode="point"]').click();const pin=await at(page,dims.width*.2,dims.height*.25);await page.mouse.click(pin.x,pin.y);await note(page,'链路测试：点批注保留原图像素坐标');
     results.push('global, movement-arrow text and point annotations survive compact UI editing');
     const expected=await page.evaluate(()=>EditHereWeb.feedback());
-    const movement=expected.objects.find(o=>o.annotations.some(annotation => annotation.text === '链路测试：位移箭头文字与原生 movement 一起返回'));
+    const movement=expected.objects.find(o=>o.annotations.includes('链路测试：位移箭头文字与原生 movement 一起返回'));
     assert(movement);assert.equal(movement.movements[0].to.x1-movement.source.x1,30);assert.equal(movement.movements[0].to.y1-movement.source.y1,10);
     assert.deepEqual(movement.source,{x1:before.gx,y1:before.gy,x2:before.gx+before.gw,y2:before.gy+before.gh});
     assert(expected.objects.some(o=>o.source===null));assert(expected.objects.some(o=>o.source&&o.source.x1===o.source.x2&&o.source.y1===o.source.y2));
@@ -83,11 +79,8 @@ async function main() {
     await page.route('**/__edithere_agent/feedback?*',async route=>{if(loseResponse){loseResponse=false;await route.fetch();await route.abort('failed');}else await route.continue();});
     await page.locator('#export').click();
     const receipt=await wait;assert.equal(receipt.state,'completed');
-    const expectedReceipt=expected;
-    assert.equal(expected.capture.page,'游戏主页面 <b>literal</b>');
-    assert.equal(expected.capture.fileName,path.basename(image));
-    assert.deepEqual(receipt.feedback,expectedReceipt);
-    assert(!JSON.stringify(receipt.feedback).includes('data:image/'),'the conversation receipt must not dump base64');assert.equal(fs.readFileSync(receipt.imagePath).toString('base64'),original.split(',')[1]);
+    assert.deepEqual(receipt.feedback,{annotationSpace:'result',objects:expected.objects});
+    assert(!Object.hasOwn(receipt.feedback,'image'),'the conversation receipt must not dump base64');
     const saved=fs.readFileSync(file);assert.equal(hash(saved),receipt.sha256);assert.deepEqual(JSON.parse(saved),expected);
     await page.waitForFunction(()=>!document.querySelector('#export').disabled);
     const documentBefore=await page.evaluate(()=>EditHereWeb.feedback());await page.keyboard.press('ArrowRight');assert.deepEqual(await page.evaluate(()=>EditHereWeb.feedback()),documentBefore,'unconfirmed delivery keeps the exact submitted snapshot');
@@ -114,7 +107,7 @@ async function main() {
     await third.locator('#global').click();await note(third,'链路测试：Agent 取消后保留编辑，仍可手工导出');
     await command('cancel','--session',remote.sessionId);await third.locator('#export').click();await third.waitForFunction(()=>document.body.dataset.agentState==='cancelled');
     assert.equal(await third.locator('#workspace').evaluate(el=>el.inert),false);assert(!fs.existsSync(remoteFile));
-    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0].text,'链路测试：Agent 取消后保留编辑，仍可手工导出');
+    await third.locator('#export').click();assert.equal((await readExportJson(third)).objects[0].annotations[0],'链路测试：Agent 取消后保留编辑，仍可手工导出');
     results.push('an externally cancelled session restores editable local export instead of freezing the workspace');
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed:results.length,results,sessionId:session.sessionId,output:file,sha256:receipt.sha256,feedback:receipt.feedback},null,2));

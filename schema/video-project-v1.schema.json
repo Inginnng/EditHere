@@ -10,7 +10,6 @@
     "schemaVersion": {"const": "video-project-1"},
     "tool": {"const": "EditHere"},
     "exportedAt": {"type": "string", "format": "date-time"},
-    "capture": {"$ref": "feedback-minimal-v2.schema.json#/$defs/capture"},
     "video": {
       "type": "object", "additionalProperties": false,
       "required": ["source", "durationMs", "positionMs"],

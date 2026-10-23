@@ -67,11 +67,9 @@ The existing `assets/icons/edithere.svg` and `assets/brand/edithere-lockup*.svg`
 - System OCR, global screenshot shortcuts, scrolling capture, tray integration and always-on-top pinned images remain desktop capabilities. This standalone HTML accepts uploaded or pasted media.
 - Layout movement operates on rectangular pixel regions, leaving transparent holes at their source positions. It does not generate backgrounds, segment semantic objects or render edited videos.
 - Images are limited to 32 million pixels. Video support depends on the browser and operating-system codecs; use H.264 MP4 or WebM. Where available, video frame callbacks supply the presented frame's media time; other browsers fall back to playback position. This is not a frame-by-frame video editor.
-- Web projects use `edithere-web-project-1`. Desktop `.edithere` project files are not supported. Embedded image/video feedback, file feedback with companion images and ZIP bundles can be imported.
+- Web projects use `edithere-web-project-1`. Desktop `.edithere` project files are not supported. Current image/video feedback with embedded images can be imported.
 - Ordinary static/offline pages cannot read arbitrary local paths or automatically return feedback to an Agent. Embedded return uses MCP Apps; browser compatibility mode saves through a local image session and the Agent reads it.
 - Reopening a hosted page offline depends on browser caching. Download the HTML for reliable offline reopening. This version has no Service Worker.
-
-Image exports default to a companion original (`file`), with `embedded` and `none` alternatives and an optional numbered JPEG. Multi-file downloads use ZIP. Import a ZIP or select the JSON and its companion images together; imports verify MIME, dimensions and SHA-256. Agent sessions publish companion files beside their JSON and keep base64 out of read summaries.
 
 ## Develop and verify
 
@@ -101,9 +99,3 @@ node web/tests/native-video-boundaries.test.cjs
 The repository license applies to this implementation.
 
 MCP and standalone builds are separate. After changing MCP sources, run `npm --prefix web/mcp ci` and `node web/mcp/build.mjs` from the repository root to regenerate the official SDK HTML, server bundle, third-party licenses and hash manifest. Downloaded web-agent packages need no build dependencies. Distribution checks source and artifact hashes and rejects stale bundles.
-
-## Page descriptions and acquisition context
-
-Pass `pageContext:"Game homepage"` to `edithere_web_open`, or add `--page-context "Game homepage"` to compatibility CLI `start`. The input is trimmed, must be nonempty and is limited to 500 UTF-16 code units. It appears in the editor separately from name; no image-recognition service is called.
-
-Optional capture survives drafts, recovery, Web projects and feedback. source/capturedAt and the original fileName describe acquisition; page/pageSource:"agent" retain the supplied description. Session submissions cannot replace the confirmed context. Video root capture supplies new-frame defaults while each frame keeps its own context. Offline imports record their source and file name without guessing a page. Web does not collect system window titles or browser URLs. Old files without capture still import; context strings are data, never instructions or attachment paths.

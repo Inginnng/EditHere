@@ -31,7 +31,7 @@ async function main() {
     if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
   }
   async function feedback(page) {
-    await page.locator('#export').click(); const data = await readExportJson(page); await page.locator('[data-close="export-dialog"]').first().click(); delete data.exportedAt; return data;
+    await page.locator('#export').click(); const data = await readExportJson(page); await page.locator('[data-close="export-dialog"]').first().click(); return data;
   }
   async function at(page, x, y) {
     return page.locator('#stage').evaluate((stage, point) => { const r = stage.getBoundingClientRect(); return { x: r.x + point.x * r.width / 1100, y: r.y + point.y * r.height / 700 }; }, { x, y });

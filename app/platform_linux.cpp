@@ -490,58 +490,6 @@ void captureScreens(CaptureCallback callback) {
             frame.nativeGeometry = QRect(screen->geometry().topLeft(), image.size());
             frame.nativePixels = QGuiApplication::platformName() == "xcb";
             frame.image = image;
-            frame.capturedAt = timestamp();
-            if (auto display = openXDisplay()) {
-                XErrorScope errors(display.get());
-                const Window root = screenRoot(display.get(), screen);
-                Atom actual = 0; int format = 0; unsigned long count = 0, remaining = 0;
-                unsigned char *data = nullptr;
-                const Atom stacking = XInternAtom(display.get(), "_NET_CLIENT_LIST_STACKING", True);
-                QVector<Window> windows;
-                if (stacking && XGetWindowProperty(display.get(), root, stacking, 0, 65536, False, XA_WINDOW,
-                        &actual, &format, &count, &remaining, &data) == Success && actual == XA_WINDOW && format == 32 && data) {
-                    const auto list = reinterpret_cast<unsigned long *>(data);
-                    for (unsigned long index = count; index > 0; --index) windows.append(Window(list[index - 1]));
-                }
-                if (data) XFree(data);
-                if (windows.isEmpty()) {
-                    Window returnedRoot = 0, parent = 0, *children = nullptr; unsigned int childrenCount = 0;
-                    if (XQueryTree(display.get(), root, &returnedRoot, &parent, &children, &childrenCount))
-                        for (unsigned int index = childrenCount; index > 0; --index) windows.append(children[index - 1]);
-                    if (children) XFree(children);
-                }
-                for (Window window : windows) {
-                    if (windowPid(display.get(), window) == quint32(QCoreApplication::applicationPid())) continue;
-                    XWindowAttributes attributes{}; int x = 0, y = 0; Window child = 0;
-                    if (!XGetWindowAttributes(display.get(), window, &attributes) || attributes.map_state != IsViewable ||
-                        attributes.c_class == InputOnly || !XTranslateCoordinates(display.get(), window, root, 0, 0, &x, &y, &child)) continue;
-                    const QRect bounds = QRect(x - frame.nativeGeometry.x(), y - frame.nativeGeometry.y(),
-                                               attributes.width, attributes.height).intersected(image.rect());
-                    if (bounds.isEmpty()) continue;
-                    QString title, app;
-                    const Atom name = XInternAtom(display.get(), "_NET_WM_NAME", True);
-                    const Atom utf8 = XInternAtom(display.get(), "UTF8_STRING", True);
-                    data = nullptr; count = 0;
-                    if (name && utf8 && XGetWindowProperty(display.get(), window, name, 0, 1024, False, utf8,
-                            &actual, &format, &count, &remaining, &data) == Success && actual == utf8 && format == 8 && data)
-                        title = QString::fromUtf8(reinterpret_cast<char *>(data), int(count)).left(1000);
-                    if (data) XFree(data);
-                    if (title.isEmpty()) {
-                        char *legacy = nullptr;
-                        if (XFetchName(display.get(), window, &legacy) && legacy) title = QString::fromLocal8Bit(legacy).left(1000);
-                        if (legacy) XFree(legacy);
-                    }
-                    XClassHint hint{};
-                    if (XGetClassHint(display.get(), window, &hint)) {
-                        if (hint.res_class) app = QString::fromLocal8Bit(hint.res_class).left(1000);
-                        if (hint.res_name) XFree(hint.res_name);
-                        if (hint.res_class) XFree(hint.res_class);
-                    }
-                    title.remove(QChar::Null);
-                    app.remove(QChar::Null);
-                    frame.captureWindows.append({bounds, title, app});
-                }
-            }
             frames.append(frame);
         }
         callback(frames, frames.isEmpty() ? tr("没有可截图的屏幕。") : QString());

@@ -545,11 +545,19 @@ void ScrollCaptureRegion::setSelection(const QRect &selection, const QRect &boun
     bounds_ = bounds;
     selection_ = selection.intersected(bounds);
     setGeometry(selection_.adjusted(-3, -3, 3, 3));
-    // A native hole, not merely transparent paint: WindowFromPoint and browser
-    // wheel routing must find the page below the center of the capture region.
-    setMask(QRegion(rect()).subtracted(QRegion(rect().adjusted(8, 8, -8, -8))));
+    updateMask();
     placeHandle();
     update();
+}
+
+void ScrollCaptureRegion::updateMask() {
+    // A native hole, not merely transparent paint: WindowFromPoint and browser
+    // wheel routing must find the page below the center of the capture region.
+    // While sampling, keep even the resize hit area outside the captured pixels.
+    // One logical pixel of clearance covers fractional-DPI coordinate rounding.
+    const QRect hole = running_ ? selection_.translated(-geometry().topLeft()).adjusted(-1, -1, 1, 1)
+                                : rect().adjusted(8, 8, -8, -8);
+    setMask(QRegion(rect()).subtracted(QRegion(hole)));
 }
 
 void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
@@ -561,10 +569,13 @@ void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
     if (windowFlags().testFlag(Qt::WindowTransparentForInput) != running) {
         const bool visible = isVisible();
         setWindowFlag(Qt::WindowTransparentForInput, running);
+        updateMask();
         if (visible) {
             show();
             configureNativeWindow(this, true);
         }
+    } else {
+        updateMask();
     }
     handle_->setCursor(running ? (axis == Qt::Vertical ? Qt::SizeVerCursor : Qt::SizeHorCursor)
                                : Qt::SizeAllCursor);
@@ -713,6 +724,10 @@ ScrollCaptureShade::ScrollCaptureShade(QWidget *parent)
 void ScrollCaptureShade::setSelection(const QRect &selection, const QRect &screen) {
     setGeometry(screen);
     selection_ = selection.translated(-screen.topLeft()).intersected(rect());
+    const QRegion outside = QRegion(rect()).subtracted(QRegion(selection_.adjusted(-1, -1, 1, 1)));
+    // An empty QWidget mask removes clipping. Keep a nonempty mask outside the
+    // widget for a full-screen selection, so later show() calls stay harmless.
+    setMask(outside.isEmpty() ? QRegion(QRect(-2, -2, 1, 1)) : outside);
     update();
 }
 

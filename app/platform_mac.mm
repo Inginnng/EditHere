@@ -524,34 +524,6 @@ void captureScreens(CaptureCallback callback) {
                 ScreenFrame frame{name, logical, native, pixels, true};
                 // AX operates in Quartz points, independently of native pixels.
                 frame.elementGeometry = logical;
-                frame.capturedAt = timestamp();
-                CFArrayRef windows = CGWindowListCopyWindowInfo(
-                    kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-                const pid_t ownPid = NSProcessInfo.processInfo.processIdentifier;
-                for (NSDictionary *info in (__bridge NSArray *)windows) {
-                    const pid_t pid = [info[(__bridge NSString *)kCGWindowOwnerPID] intValue];
-                    if (pid <= 0 || pid == ownPid || [info[(__bridge NSString *)kCGWindowAlpha] doubleValue] <= 0)
-                        continue;
-                    CGRect bounds{};
-                    if (!CGRectMakeWithDictionaryRepresentation(
-                            (__bridge CFDictionaryRef)info[(__bridge NSString *)kCGWindowBounds], &bounds)) continue;
-                    const double sx = double(pixels.width()) / logical.width();
-                    const double sy = double(pixels.height()) / logical.height();
-                    const QRect local(qRound((bounds.origin.x - logical.x()) * sx),
-                                      qRound((bounds.origin.y - logical.y()) * sy),
-                                      qRound(bounds.size.width * sx), qRound(bounds.size.height * sy));
-                    const QRect clipped = local.intersected(pixels.rect());
-                    if (clipped.isEmpty()) continue;
-                    NSString *title = info[(__bridge NSString *)kCGWindowName];
-                    NSRunningApplication *application = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-                    QString name = title ? QString::fromUtf8(title.UTF8String).left(1000) : QString();
-                    QString app = application.bundleIdentifier
-                        ? QString::fromUtf8(application.bundleIdentifier.UTF8String).left(1000) : QString();
-                    name.remove(QChar::Null);
-                    app.remove(QChar::Null);
-                    frame.captureWindows.append({clipped, name, app});
-                }
-                if (windows) CFRelease(windows);
                 frames.append(std::move(frame));
             }
             if (--pending == 0)
