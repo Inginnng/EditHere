@@ -95,6 +95,7 @@ class Controller final : public QObject {
         bool automatic = false;
         bool mismatched = false;
         bool dragging = false;
+        bool captureFallbackLogged = false;
         Qt::Orientation axis = Qt::Vertical;
         QString notice;
     };

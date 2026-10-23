@@ -821,9 +821,10 @@ void Controller::readScrollFrame() {
         return;
     const quint64 generation = scrollGeneration_;
     const quint64 round = scrollRun_.settleRound;
-    // Display affinity is best effort on older Windows and some graphics drivers.
-    // If the controls overlap the capture and are not excluded from it, hide them
-    // for every read, including the first; wait one compositor frame first.
+    // On Windows the shade and running frame have native holes around sampled
+    // pixels. Keep them visible without display affinity: toggling a screen-sized
+    // shade on every sample causes flashing. Other backends (notably Wayland)
+    // may not support bounding masks, so retain their existing capture fallback.
     const bool hideProgress = scrollProgress_ && scrollProgress_->isVisible() &&
                               !excludedFromCapture(scrollProgress_) &&
                               scrollProgress_->geometry().intersects(scrollRun_.logicalRegion);
@@ -839,8 +840,12 @@ void Controller::readScrollFrame() {
                             handle->geometry().intersects(scrollRun_.logicalRegion);
     QPointer<ScrollCaptureRegion> region = scrollRegion_;
     QPointer<ScrollCaptureShade> shade = scrollShade_;
+#ifdef Q_OS_WIN
+    const bool hideRegion = false, hideShade = false;
+#else
     const bool hideRegion = region && region->isVisible() && !excludedFromCapture(region);
     const bool hideShade = shade && shade->isVisible() && !excludedFromCapture(shade);
+#endif
     const bool restoreHandle = handle && handle->isVisible() && (hideHandle || hideRegion);
     if (hideProgress)
         scrollProgress_->hide();
@@ -849,6 +854,15 @@ void Controller::readScrollFrame() {
     if (hideHandle) handle->hide();
     if (hideRegion) region->hide();
     if (hideShade) shade->hide();
+    const bool hideControls = hideProgress || hidePreview || hideCropMenu || hideHandle || hideRegion || hideShade;
+    if (hideControls && !scrollRun_.captureFallbackLogged) {
+        scrollRun_.captureFallbackLogged = true;
+        diagnostics::write(diagnostics::Level::Info, "long_capture.controls_fallback",
+            "Capture surfaces require temporary hiding",
+            {{"toolbar", hideProgress}, {"preview", hidePreview}, {"cropMenu", hideCropMenu},
+             {"handle", hideHandle}, {"frame", hideRegion}, {"shade", hideShade},
+             {"automatic", scrollRun_.automatic}});
+    }
     scrollIo_.prepareFrame();
     QPointer<Controller> self(this);
     const auto read = [self, generation, round, hideProgress, hidePreview, hideCropMenu, hideRegion, hideShade, restoreHandle, preview, cropMenu, handle, region, shade] {
@@ -909,7 +923,7 @@ void Controller::readScrollFrame() {
             });
         });
     };
-    if (hideProgress || hidePreview || hideCropMenu || hideHandle || hideRegion || hideShade)
+    if (hideControls)
         QTimer::singleShot(35, this, read);
     else
         read();

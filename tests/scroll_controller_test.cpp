@@ -21,6 +21,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QWindow>
 #include <memory>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -28,6 +29,11 @@
 #endif
 
 namespace h2d {
+#ifdef Q_OS_WIN
+constexpr bool keepsCaptureSurfacesVisible = true;
+#else
+constexpr bool keepsCaptureSurfacesVisible = false;
+#endif
 class ScrollControllerTests final : public QObject {
     Q_OBJECT
     std::unique_ptr<QTemporaryDir> temporary_;
@@ -457,6 +463,9 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(preview->geometry().intersects(region));
         QVERIFY(cropMenu->geometry().intersects(region));
         QVERIFY(!excludedFromCapture(cropMenu));
+        QSignalSpy regionVisibility(liveRegion->windowHandle(), &QWindow::visibleChanged);
+        QSignalSpy shadeVisibility(shade->windowHandle(), &QWindow::visibleChanged);
+        const bool handleOverlaps = liveRegion->moveHandle()->geometry().intersects(region);
 
         bool grabbed = false;
         bool previewHidden = false;
@@ -483,9 +492,9 @@ class ScrollControllerTests final : public QObject {
         QTRY_VERIFY(grabbed);
         QVERIFY(previewHidden);
         QVERIFY(cropHidden);
-        QVERIFY(regionHidden);
-        QVERIFY(shadeHidden);
-        QVERIFY(handleHidden);
+        QCOMPARE(regionHidden, !keepsCaptureSurfacesVisible);
+        QCOMPARE(shadeHidden, !keepsCaptureSurfacesVisible);
+        QCOMPARE(handleHidden, handleOverlaps || !keepsCaptureSurfacesVisible);
         QCOMPARE(toolbarHidden, toolbarOverlaps);
         QCOMPARE(capturedRegion_, owner_->scrollRun_.nativeRegion);
         QVERIFY(!pending_.isEmpty());
@@ -497,6 +506,10 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(liveRegion->isVisible());
         QVERIFY(shade->isVisible());
         QVERIFY(liveRegion->moveHandle()->isVisible());
+        if (keepsCaptureSurfacesVisible) {
+            QCOMPARE(regionVisibility.count(), 0);
+            QCOMPARE(shadeVisibility.count(), 0);
+        }
         QVERIFY(!owner_->scrollRun_.paused);
         QCOMPARE(owner_->scroller_->picture(), first.convertToFormat(QImage::Format_ARGB32));
         QCOMPARE(owner_->history_.count(), 0);
@@ -525,8 +538,8 @@ class ScrollControllerTests final : public QObject {
         auto *shade = owner_->scrollShade_.data();
         QVERIFY(region && shade);
         QTRY_VERIFY(!pending_.isEmpty());
-        QVERIFY(!region->isVisible());
-        QVERIFY(!shade->isVisible());
+        QCOMPARE(region->isVisible(), keepsCaptureSurfacesVisible);
+        QCOMPARE(shade->isVisible(), keepsCaptureSurfacesVisible);
         auto stale = pending_.takeFirst();
         owner_->pauseScrollCapture(QStringLiteral("采样时暂停"));
         QVERIFY(owner_->scrollRun_.paused);
@@ -540,8 +553,8 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(owner_->scrollRun_.axis, Qt::Horizontal);
         QVERIFY(!owner_->scrollRun_.paused);
         QTRY_VERIFY(!pending_.isEmpty());
-        QVERIFY(!region->isVisible());
-        QVERIFY(!shade->isVisible());
+        QCOMPARE(region->isVisible(), keepsCaptureSurfacesVisible);
+        QCOMPARE(shade->isVisible(), keepsCaptureSurfacesVisible);
         auto current = pending_.takeFirst();
         current(first, {});
         QVERIFY(region->isVisible());

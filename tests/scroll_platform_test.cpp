@@ -413,6 +413,95 @@ class ScrollPlatformTests : public QObject {
             liveRegion.hide();
         }
 
+        // Exercise the fallback explicitly: neither the shade nor the frame may
+        // rely on WDA_EXCLUDEFROMCAPTURE to keep the selected pixels clean. A
+        // transparent paint operation alone does not make a native window hole.
+        ScrollCaptureShade liveShade;
+        const auto nativeRectFor = [scale](const QRect &logical) {
+            return QRect(qRound(logical.x() * scale), qRound(logical.y() * scale),
+                         qRound(logical.width() * scale), qRound(logical.height() * scale));
+        };
+        const auto forceCaptureInclusion = [](QWidget &widget) {
+            const auto window = reinterpret_cast<HWND>(widget.winId());
+            if (!SetWindowDisplayAffinity(window, WDA_NONE))
+                return false;
+            DWORD affinity = 0x00000011;
+            return GetWindowDisplayAffinity(window, &affinity) && affinity == WDA_NONE;
+        };
+        const auto nativeHoleContains = [](QWidget &widget, const QRect &selection) {
+            const auto window = reinterpret_cast<HWND>(widget.winId());
+            RECT bounds{};
+            GetWindowRect(window, &bounds);
+            HRGN shape = CreateRectRgn(0, 0, 0, 0);
+            const int kind = GetWindowRgn(window, shape);
+            bool excludesSelection = kind != ERROR;
+            for (const QPoint point : {selection.topLeft(), selection.topRight(),
+                    selection.bottomLeft(), selection.bottomRight(), selection.center()}) {
+                if (PtInRegion(shape, point.x() - bounds.left, point.y() - bounds.top))
+                    excludesSelection = false;
+            }
+            DeleteObject(shape);
+            return excludesSelection;
+        };
+        const QRect fallbackLogicalRegion = logicalRegion.adjusted(16, 16, -28, -28);
+        for (const QPoint movement : {QPoint(), QPoint(8, 8)}) {
+            const QRect selected = fallbackLogicalRegion.translated(movement);
+            const QRect nativeSelected = nativeRectFor(selected);
+            liveShade.setSelection(selected, screen->geometry());
+            liveRegion.setSelection(selected, screen->geometry());
+            liveRegion.setState(true, Qt::Vertical);
+            liveShade.show();
+            configureNativeWindow(&liveShade, true);
+            liveRegion.show();
+            configureNativeWindow(&liveRegion, true);
+            QVERIFY(QTest::qWaitForWindowExposed(&liveShade));
+            QVERIFY(QTest::qWaitForWindowExposed(&liveRegion));
+            QVERIFY(forceCaptureInclusion(liveShade));
+            QVERIFY(forceCaptureInclusion(liveRegion));
+            liveRegion.setState(false);
+            liveRegion.setState(true);
+            QVERIFY(forceCaptureInclusion(liveRegion));
+            QVERIFY(nativeHoleContains(liveShade, nativeSelected));
+            QVERIFY(nativeHoleContains(liveRegion, nativeSelected));
+            for (const QPoint point : {nativeSelected.topLeft(), nativeSelected.topRight(),
+                    nativeSelected.bottomLeft(), nativeSelected.bottomRight(), nativeSelected.center()}) {
+                const HWND throughControls = WindowFromPoint(POINT{point.x(), point.y()});
+                QCOMPARE(GetAncestor(throughControls, GA_ROOT), hwnd);
+            }
+            const QImage expected = before.copy(nativeSelected.translated(-region.topLeft()));
+            for (int frame = 0; frame < 4; ++frame) {
+                QImage captured;
+                captureScrollRegion(nativeSelected, [&](QImage image, QString failure) {
+                    captured = image;
+                    error = failure;
+                });
+                QVERIFY2(error.isEmpty(), qPrintable(error));
+                QCOMPARE(captured, expected);
+                QVERIFY(liveShade.isVisible());
+                QVERIFY(liveRegion.isVisible());
+                QVERIFY(IsWindowVisible(reinterpret_cast<HWND>(liveShade.winId())));
+                QVERIFY(IsWindowVisible(reinterpret_cast<HWND>(liveRegion.winId())));
+                QTest::qWait(20);
+            }
+        }
+        liveRegion.hide();
+
+        // Selecting the whole screen leaves no shaded area. An empty QRegion
+        // would clear QWidget's native mask and accidentally restore a full
+        // screen window, so this case must still preserve the native hole.
+        liveShade.setSelection(screen->geometry(), screen->geometry());
+        QVERIFY(forceCaptureInclusion(liveShade));
+        QVERIFY(nativeHoleContains(liveShade, region));
+        QCOMPARE(GetAncestor(WindowFromPoint(POINT{nativePoint.x(), nativePoint.y()}), GA_ROOT), hwnd);
+        QImage fullScreenSelection;
+        captureScrollRegion(region, [&](QImage image, QString failure) {
+            fullScreenSelection = image;
+            error = failure;
+        });
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(fullScreenSelection, before);
+        liveShade.hide();
+
         // Retain the existing invalid-target and occlusion checks at a known
         // nonzero offset after proving the upward path above.
         QVERIFY2(scrollCaptureStep(target, nativePoint, 1, &error), qPrintable(error));
