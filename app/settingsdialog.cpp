@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QKeySequenceEdit>
@@ -17,6 +18,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
@@ -25,6 +27,7 @@
 #include <QTabWidget>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 namespace h2d {
 namespace {
@@ -279,37 +282,44 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     toolbarLayout->addStretch();
     tabs->addTab(toolbar, {});
 
-    auto about = new QWidget;
-    about->setObjectName("settingsAboutPage");
-    auto aboutLayout = new QVBoxLayout(about);
+    auto aboutContent = new QWidget;
+    aboutContent->setObjectName("aboutContent");
+    auto aboutLayout = new QVBoxLayout(aboutContent);
     aboutLayout->setContentsMargins(20, 22, 20, 20);
     aboutLayout->setSpacing(18);
-    versionLabel_ = new QLabel(about);
+    versionLabel_ = new QLabel(aboutContent);
     versionLabel_->setObjectName("settingsSection");
     aboutLayout->addWidget(versionLabel_);
-    auto description = mutedLabel({}, about);
+    auto description = mutedLabel({}, aboutContent);
     description->setObjectName("aboutDescription");
     description->setWordWrap(true);
     aboutLayout->addWidget(description);
-    auto license = mutedLabel({}, about);
+
+    // The note explains why the program exists, but it is not something every
+    // reader needs on screen while changing a setting, so it opens on request.
+    auto noteButton = textButton({}, false, aboutContent);
+    noteButton->setObjectName("aboutNoteButton");
+    aboutLayout->addWidget(noteButton, 0, Qt::AlignLeft);
+
+    auto license = mutedLabel({}, aboutContent);
     license->setObjectName("aboutLicense");
     license->setWordWrap(true);
     license->setTextFormat(Qt::RichText);
     license->setOpenExternalLinks(true);
     aboutLayout->addWidget(license);
-    checkUpdatesOnStartup_ = new QCheckBox(about);
+    checkUpdatesOnStartup_ = new QCheckBox(aboutContent);
     checkUpdatesOnStartup_->setObjectName("checkUpdatesOnStartup");
     aboutLayout->addWidget(checkUpdatesOnStartup_);
-    auto status = new QLabel(about);
+    auto status = new QLabel(aboutContent);
     status->setObjectName("updateStatus");
     status->setWordWrap(true);
     status->setTextFormat(Qt::PlainText);
     aboutLayout->addWidget(status);
-    auto check = textButton({}, true, about);
+    auto check = textButton({}, true, aboutContent);
     check->setObjectName("checkUpdates");
-    auto releases = textButton({}, false, about);
+    auto releases = textButton({}, false, aboutContent);
     releases->setObjectName("openReleases");
-    auto cancelUpdate = textButton({}, false, about);
+    auto cancelUpdate = textButton({}, false, aboutContent);
     cancelUpdate->setObjectName("cancelUpdate");
     cancelUpdate->hide();
     auto updateActions = new QHBoxLayout;
@@ -318,19 +328,73 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     updateActions->addWidget(cancelUpdate);
     updateActions->addStretch();
     aboutLayout->addLayout(updateActions);
-    auto progressBar = new QProgressBar(about);
+    auto progressBar = new QProgressBar(aboutContent);
     progressBar->setObjectName("updateProgress");
     progressBar->setVisible(false);
     aboutLayout->addWidget(progressBar);
-    auto feedback = mutedLabel({}, about);
+    auto feedback = mutedLabel({}, aboutContent);
     feedback->setObjectName("aboutFeedback");
     feedback->setWordWrap(true);
     // The group number is the whole point of the line, so let it be selected.
     feedback->setTextInteractionFlags(Qt::TextSelectableByMouse);
     aboutLayout->addWidget(feedback);
     aboutLayout->addStretch();
-    tabs->addTab(about, {});
+    // The note makes the page taller than a small window, so it scrolls like the
+    // shortcut page instead of pushing the update controls out of reach.
+    auto aboutScroll = new QScrollArea(tabs);
+    aboutScroll->setObjectName("settingsAboutPage");
+    aboutScroll->setWidgetResizable(true);
+    aboutScroll->setFrameShape(QFrame::NoFrame);
+    aboutScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    aboutScroll->setWidget(aboutContent);
+    tabs->addTab(aboutScroll, {});
     tabs->addTab(new DiagnosticsPage(tabs), {});
+    connect(noteButton, &QPushButton::clicked, this, [this] {
+        // Built on demand so it always reflects the language that is active when
+        // it is opened, and so a reader who never asks pays nothing for it.
+        auto *note = new QDialog(this);
+        note->setObjectName("authorNoteDialog");
+        note->setAttribute(Qt::WA_DeleteOnClose);
+        note->setWindowModality(Qt::WindowModal);
+        note->setWindowTitle(tr("作者留言"));
+        note->setFixedWidth(520);
+        auto layout = new QVBoxLayout(note);
+        layout->setContentsMargins(24, 22, 24, 20);
+        layout->setSpacing(16);
+        auto heading = new QLabel(tr("作者留言"), note);
+        heading->setObjectName("authorNoteHeading");
+        layout->addWidget(heading);
+        auto text = new QLabel(note);
+        text->setObjectName("authorNoteText");
+        text->setWordWrap(true);
+        text->setTextFormat(Qt::PlainText);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        text->setText(tr("我是印迹，学生个人开发者。\n\n"
+                         "做它的原因很直接：Vibe Coding 时 AI 像一台许愿机，一句话就能变出能跑的界面；"
+                         "可一旦要改细节，想法很清楚，但要表达就很困难。于是我想，能不能把需求直接标在图上——"
+                         "哪一块、多大、往哪挪，让想法先被看见，再被实现。EditHere 就是这个想法的产物。\n\n"
+                         "最近在忙秋招，更新会慢一些，但不会停，很多设想中的功能也在逐步实现。"
+                         "我希望能从 EditHere 出发，挖掘更多人与 AI 交互的创新工具，开发最好的人机交互软件！\n\n"
+                         "如果你觉得它有用，欢迎在 GitHub 点一个 Star，这对我很重要，或把遇到的问题提给我。"
+                         "感谢使用它的你。"));
+        layout->addWidget(text);
+        auto actions = new QHBoxLayout;
+        auto close = textButton(tr("关闭"), false, note);
+        close->setObjectName("authorNoteClose");
+        auto star = textButton(tr("去 GitHub 点个 Star"), true, note);
+        star->setObjectName("authorNoteStar");
+        star->setToolTip(tr("在浏览器中打开 EditHere 的 GitHub 仓库。"));
+        actions->addWidget(close);
+        actions->addStretch();
+        actions->addWidget(star);
+        layout->addLayout(actions);
+        connect(close, &QPushButton::clicked, note, &QDialog::accept);
+        connect(star, &QPushButton::clicked, note, [] {
+            QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Inginnng/EditHere")));
+        });
+        note->adjustSize();
+        note->show();
+    });
     updater_ = new UpdateChecker(this);
     connect(cancelUpdate, &QPushButton::clicked, updater_, &UpdateChecker::cancelDownload);
     connect(check, &QPushButton::clicked, this, [this, status, check] {
@@ -541,6 +605,11 @@ void SettingsDialog::retranslate() {
         versionLabel_->setText(tr("EditHere · 改这里") + "  " EDITHERE_VERSION);
     if (auto description = findChild<QLabel *>("aboutDescription"))
         description->setText(tr("截图、批注与布局调整，让设计修改意见更清楚。"));
+    if (auto note = findChild<QPushButton *>("aboutNoteButton")) {
+        note->setText(tr("作者留言"));
+        note->setAccessibleName(tr("作者留言"));
+        note->setToolTip(tr("关于为什么做 EditHere，以及怎样参与。"));
+    }
     if (auto license = findChild<QLabel *>("aboutLicense"))
         license->setText(tr(R"(<a href="https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md">查看许可说明</a>)"));
     checkUpdatesOnStartup_->setText(tr("启动时检查更新"));

@@ -4,7 +4,10 @@
 #include "ui.h"
 #include <QComboBox>
 #include <QCheckBox>
+#include <QDesktopServices>
+#include <QDialog>
 #include <QTabWidget>
+#include <QUrl>
 #include <QFile>
 #include <QDir>
 #include <QFileDialog>
@@ -21,8 +24,27 @@
 #include <QTimer>
 #include <algorithm>
 using namespace h2d;
+// QDesktopServices::setUrlHandler only reaches slots, so the button test needs a
+// real QObject to hand the URL to instead of letting a browser open.
+class UrlRecorder : public QObject {
+    Q_OBJECT
+  public:
+    QUrl url;
+  public slots:
+    void record(const QUrl &value) { url = value; }
+};
 class SettingsTests : public QObject {
     Q_OBJECT
+  private:
+    // Same convention as the UI tests: write a picture only when a folder is
+    // supplied, so a normal run leaves no files behind.
+    void artifact(QWidget &widget, const QString &name) {
+        const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (folder.isEmpty())
+            return;
+        QDir().mkpath(folder);
+        widget.grab().save(QDir(folder).filePath(name));
+    }
   private slots:
     void initTestCase() {
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
@@ -489,8 +511,45 @@ class SettingsTests : public QObject {
         auto feedback = dialog.findChild<QLabel *>("aboutFeedback");
         QVERIFY(feedback);
         QVERIFY(feedback->text().contains("1018416966"));
+        // The note sits behind a button, so the page itself stays short and the
+        // long text is only built when someone asks for it.
+        auto noteButton = dialog.findChild<QPushButton *>("aboutNoteButton");
+        QVERIFY(noteButton && !noteButton->text().isEmpty());
+        QVERIFY(!dialog.findChild<QLabel *>("authorNoteText"));
         dialog.findChild<QPushButton *>("settingsReset")->click();
         QCOMPARE(dialog.settings().toolbarActions, defaultSettings().toolbarActions);
+    }
+    void authorNoteOpensWithAStarLink() {
+        SettingsDialog dialog(defaultSettings());
+        dialog.showUpdates();
+        dialog.show();
+        QCoreApplication::processEvents();
+        artifact(dialog, "settings-about-note.png");
+        auto opener = dialog.findChild<QPushButton *>("aboutNoteButton");
+        QVERIFY(opener);
+        opener->click();
+        auto note = dialog.findChild<QDialog *>("authorNoteDialog");
+        QVERIFY(note);
+        auto text = note->findChild<QLabel *>("authorNoteText");
+        QVERIFY(text && text->text().contains("印迹"));
+        QVERIFY(text->text().contains("GitHub"));
+        auto star = note->findChild<QPushButton *>("authorNoteStar");
+        QVERIFY(star && !star->text().isEmpty());
+        UrlRecorder recorder;
+        QDesktopServices::setUrlHandler("https", &recorder, "record");
+        star->click();
+        // Clear first so a failing comparison cannot leave the handler installed
+        // for later tests.
+        QDesktopServices::setUrlHandler("https", nullptr, nullptr);
+        QCOMPARE(recorder.url.toString(), QString("https://github.com/Inginnng/EditHere"));
+        QCoreApplication::processEvents();
+        artifact(*note, "settings-author-note.png");
+        applyTheme(ThemeMode::Dark);
+        QCoreApplication::processEvents();
+        artifact(*note, "settings-author-note-dark.png");
+        applyTheme(ThemeMode::Light);
+        QCoreApplication::processEvents();
+        note->close();
     }
     void failedWriteReportsError() {
         QTemporaryDir directory;

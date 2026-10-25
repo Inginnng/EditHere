@@ -114,6 +114,7 @@ QLabel#brand { font-weight:600; font-size:13px; }
 QLabel[sectionTitle="true"] { font-weight:600; font-size:12px; }
 QLabel[error="true"] { color:@error@; }
 QLabel#settingsSection {font-weight:600;padding-top:6px;}
+QLabel#authorNoteHeading { font-weight:600; font-size:14px; }
 QTextEdit,QPlainTextEdit { background:@surface@; border:1px solid @border@; border-radius:9px; padding:9px; selection-background-color:@accent@; selection-color:white; color:@text@; }
 QTextEdit:focus,QPlainTextEdit:focus { border-color:@accent@; }
 QLineEdit,QKeySequenceEdit,QDoubleSpinBox,QSpinBox,QComboBox { background:@surface@; color:@text@; border:1px solid @border@; border-radius:7px; padding:6px 8px; min-height:20px; selection-background-color:@accent@; selection-color:white; }
