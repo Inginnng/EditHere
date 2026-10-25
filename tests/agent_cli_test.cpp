@@ -438,6 +438,55 @@ class AgentCliTests : public QObject {
         QVERIFY_EXCEPTION_THROWN(writeNewFeedback(directory.filePath("missing/feedback.json"), "x"), std::runtime_error);
         QCOMPARE(QDir(directory.path()).entryList(QDir::Files | QDir::Hidden).size(), 1);
     }
+    void bundleConflictsAndPublicationFailureLeaveNoPartialFiles() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto document = loadDocument(inputProject(directory));
+        FeedbackExportOptions options; options.imageFile = "original.png"; options.preview = true;
+        options.previewFile = "review.annotated.jpg";
+        const auto bundle = buildFeedbackBundle(document, options);
+        saveBytes(directory.filePath("review.annotated.jpg"), "owned by another process");
+        QVERIFY_EXCEPTION_THROWN(writeNewFeedbackBundle(directory.filePath("result.json"), bundle), std::runtime_error);
+        QVERIFY(!QFileInfo::exists(directory.filePath("original.png")));
+        QVERIFY(!QFileInfo::exists(directory.filePath("result.json")));
+        QCOMPARE(readFile(directory.filePath("review.annotated.jpg")), QByteArray("owned by another process"));
+        QVERIFY(QFile::remove(directory.filePath("review.annotated.jpg")));
+        // A too-long final JSON filename fails after both sidecars were written.
+        QVERIFY_EXCEPTION_THROWN(writeNewFeedbackBundle(directory.filePath(QString(300, 'x') + ".json"), bundle), std::runtime_error);
+        QVERIFY(QDir(directory.path()).entryList({"*.png", "*.jpg", ".edithere-feedback-*"}, QDir::Files | QDir::Hidden).isEmpty());
+    }
+    void consoleImageModesAndNumberedPreviewWriteRealFiles() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const QString input = inputProject(directory);
+        const auto original = loadDocument(input);
+        struct Case { QString name; QStringList flags; QString mode; bool preview; };
+        const QList<Case> cases{{"file", {}, "file", false}, {"embedded", {"--embed-image"}, "embedded", false},
+                               {"none", {"--no-image"}, "none", false}, {"preview", {"--preview"}, "file", true},
+                               {"none-preview", {"--no-image", "--preview"}, "none", true}};
+        for (const auto &test : cases) {
+            const QString output = directory.filePath(test.name + ".json");
+            QStringList arguments{"export", input, "--output", output}; arguments.append(test.flags);
+            QProcess cli; cli.start(cliExecutable(), arguments);
+            QVERIFY(cli.waitForFinished(15000)); QCOMPARE(cli.exitStatus(), QProcess::NormalExit); QCOMPARE(cli.exitCode(), 0);
+            const auto receipt = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
+            QVERIFY(receipt["ok"].toBool());
+            const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
+            const auto image = feedback["image"].toObject(); QCOMPARE(image["mode"].toString(), test.mode);
+            QCOMPARE(QFileInfo::exists(directory.filePath(test.name + ".png")), test.mode == "file");
+            QCOMPARE(QFileInfo::exists(directory.filePath(test.name + ".annotated.jpg")), test.preview);
+            QCOMPARE(receipt["imageFile"].isNull(), test.mode != "file"); QCOMPARE(receipt["previewFile"].isNull(), !test.preview);
+            if (test.preview) {
+                const QImage preview(receipt["previewFile"].toString()); QVERIFY(!preview.isNull());
+                QVERIFY(preview.width() >= original.image.width()); QVERIFY(preview.height() >= original.image.height());
+            }
+            const auto restored = test.mode == "none" ? loadFeedback(feedback, original.image, original.png) : loadDocument(output);
+            QCOMPARE(restored.image, original.image); QCOMPARE(restored.notes.size(), original.notes.size());
+        }
+        for (const auto &flags : {QStringList{"--embed-image", "--no-image"}, QStringList{"--preview", "--preview"}}) {
+            QStringList arguments{"export", input, "--output", directory.filePath("invalid.json")}; arguments.append(flags);
+            QProcess cli; cli.start(cliExecutable(), arguments); QVERIFY(cli.waitForFinished(15000)); QCOMPARE(cli.exitCode(), 2);
+            QVERIFY(!QFileInfo::exists(directory.filePath("invalid.json")));
+        }
+    }
     void dirtyDocumentAndActiveSessionRejectReplacement() {
         QTemporaryDir directory;
         const auto input = inputProject(directory);
@@ -543,11 +592,14 @@ class AgentCliTests : public QObject {
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 1);
         const auto object = objects[0].toObject();
-        QVERIFY(object["source"].isNull());
+        QCOMPARE(object["kind"].toString(), QString("global"));
+        QVERIFY(!object.contains("source"));
         QCOMPARE(object["movements"].toArray().size(), 0);
         QCOMPARE(object["annotations"].toArray().size(), 1);
-        QCOMPARE(object["annotations"].toArray()[0].toString(), QString("Move the button"));
-        QVERIFY(!feedback["image"].toString().isEmpty());
+        QCOMPARE(object["annotations"].toArray()[0].toObject()["text"].toString(), QString("Move the button"));
+        QCOMPARE(feedback["image"].toObject()["mode"].toString(), QString("file"));
+        QVERIFY(QFileInfo::exists(reply["imageFile"].toString()));
+        QVERIFY(reply["previewFile"].isNull());
         QVERIFY(!editor->findChild<QWidget *>("agentSessionBanner")->isVisible());
         QVERIFY(editor->hasDocument());
         editor->hide();
@@ -575,7 +627,7 @@ class AgentCliTests : public QObject {
         const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
 #endif
         QProcess cli;
-        cli.start(executable, {"annotate", inputProject(directory), "--output", output, "--timeout", "60"});
+        cli.start(executable, {"annotate", inputProject(directory), "--output", output, "--timeout", "60", "--page-context", "  游戏主页面  "});
         QVERIFY2(cli.waitForStarted(), qPrintable(cli.errorString()));
         QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
         const auto documentId = editor->document().id;
@@ -591,8 +643,12 @@ class AgentCliTests : public QObject {
         QCOMPARE(cli.exitCode(), 0);
         const auto receipt = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
         QVERIFY(receipt["ok"].toBool());
+        QCOMPARE(receipt["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
         const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
-        QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toString(), comment);
+        QCOMPARE(feedback["schemaVersion"], receipt["schemaVersion"]);
+        QCOMPARE(feedback["capture"].toObject()["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(feedback["capture"].toObject()["pageSource"].toString(), QString("agent"));
+        QCOMPARE(feedback["objects"].toArray().first().toObject()["annotations"].toArray().first().toObject()["text"].toString(), comment);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QTest::qWait(50);
         QCOMPARE(finished.size(), 1);
@@ -685,7 +741,10 @@ class AgentCliTests : public QObject {
         QCOMPARE(cli.exitCode(), 0);
         const auto reply = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
         QVERIFY(reply["ok"].toBool());
-        QVERIFY(!QJsonDocument::fromJson(readFile(output)).object().contains("image"));
+        QCOMPARE(reply["schemaVersion"].toString(), QString(FeedbackSchemaVersion));
+        QCOMPARE(QJsonDocument::fromJson(readFile(output)).object()["schemaVersion"], reply["schemaVersion"]);
+        QCOMPARE(QJsonDocument::fromJson(readFile(output)).object()["image"].toObject()["mode"].toString(), QString("none"));
+        QVERIFY(reply["imageFile"].isNull()); QVERIFY(reply["previewFile"].isNull());
         cli.start(executable, {"export", input, "--output", output});
         QVERIFY(cli.waitForFinished(15000));
         QCOMPARE(cli.exitCode(), 5);
@@ -693,6 +752,45 @@ class AgentCliTests : public QObject {
         cli.start(executable, {"annotate", input, "--output", directory.filePath("other.json"), "--timeout", "0"});
         QVERIFY(cli.waitForFinished(15000));
         QCOMPARE(cli.exitCode(), 2);
+    }
+    void pageContextRejectsInvalidCliAndIpcAndSurvivesAgentCompletion() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto input = inputProject(directory);
+        for (const auto &page : {QString(), QString("   "), QString(501, 'x'), QString("bad") + QChar::Null}) {
+            Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+            auto value = request(input, directory.filePath("invalid.json")); value["pageContext"] = page;
+            QCOMPARE(agentExitCode(controller.handleAgentRequest(value)), 2);
+            QVERIFY(!editorOf(controller)->hasDocument());
+        }
+        {
+            Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+            for (const auto &command : {"capture", "status"}) {
+                QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", command}, {"pageContext", "游戏主页面"}})), 2);
+                QVERIFY(!editorOf(controller)->hasDocument());
+            }
+        }
+        for (const auto &flags : {QStringList{"--page-context"}, QStringList{"--page-context", " "}, QStringList{"--page-context", QString(501, 'x')},
+                                  QStringList{"--page-context", "one", "--page-context", "two"}}) {
+            QStringList arguments{"annotate", input, "--output", directory.filePath("invalid.json")}; arguments.append(flags);
+            QProcess cli; cli.start(cliExecutable(), arguments); QVERIFY(cli.waitForFinished(15000)); QCOMPARE(cli.exitCode(), 2);
+        }
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto open = QJsonObject{{"command", "open"}, {"input", input}, {"pageContext", "  游戏主页面  "}};
+        QVERIFY(controller.handleAgentRequest(open)["ok"].toBool());
+        auto editor = editorOf(controller);
+        QCOMPARE(editor->document().capture["page"].toString(), QString("游戏主页面"));
+        QCOMPARE(editor->document().capture["pageSource"].toString(), QString("agent"));
+        const auto stored = directory.filePath("page.edithere"); saveBytes(stored, editor->projectBytes());
+        const auto restored = loadDocument(stored); QCOMPARE(restored.capture["page"].toString(), QString("游戏主页面"));
+        editor->setDocument(restored); // A clean re-open can begin an annotation session.
+        QSignalSpy finished(&controller, &Controller::agentSessionFinished);
+        const auto output = directory.filePath("page-feedback.json");
+        auto annotate = request(stored, output); annotate["pageContext"] = "游戏设置页面";
+        QVERIFY(controller.handleAgentRequest(annotate)["pending"].toBool());
+        editor->findChild<QPushButton *>("agentFinish")->click(); QCOMPARE(finished.size(), 1);
+        QVERIFY(finished.first()[1].toJsonObject()["ok"].toBool());
+        QCOMPARE(loadDocument(output).capture["page"].toString(), QString("游戏设置页面"));
+        editor->hide();
     }
     void consoleVideoOpenAnnotateSaveAndReopenThroughAgentTransport() {
         const auto source = qEnvironmentVariable("EDITHERE_VIDEO_TEST_SOURCE");
@@ -749,7 +847,7 @@ class AgentCliTests : public QObject {
         const auto embeddedPath = directory.filePath("video-embedded.json");
         const int beforeAnnotate = paused.size();
         QProcess annotate;
-        annotate.start(videoCli, {"annotate", source, "--output", embeddedPath, "--timeout", "60"});
+        annotate.start(videoCli, {"annotate", source, "--output", embeddedPath, "--embed-image", "--timeout", "60"});
         QVERIFY2(annotate.waitForStarted(), qPrintable(annotate.errorString()));
         QTRY_VERIFY_WITH_TIMEOUT(editor->findChild<QWidget *>("agentSessionBanner")->isVisible(), 15000);
         QTRY_VERIFY_WITH_TIMEOUT(paused.size() > beforeAnnotate && !playback->positioning(), 15000);
@@ -858,9 +956,9 @@ class AgentCliTests : public QObject {
         QCOMPARE(objects[0].toObject()["source"], objects[1].toObject()["source"]);
         QVERIFY(objects[0].toObject()["frameId"] != objects[1].toObject()["frameId"]);
         QVERIFY(objects[0].toObject()["timestampMs"].toInteger() < objects[1].toObject()["timestampMs"].toInteger());
-        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toString(), firstComment);
-        QCOMPARE(objects[1].toObject()["annotations"].toArray()[0].toString(), secondComment);
-        QCOMPARE(objects[2].toObject()["annotations"].toArray()[0].toString(), thirdComment);
+        QCOMPARE(objects[0].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), firstComment);
+        QCOMPARE(objects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), secondComment);
+        QCOMPARE(objects[2].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), thirdComment);
         for (const auto &frame : embedded["frames"].toArray())
             QVERIFY(frame.toObject()["feedback"].toObject().contains("image"));
 
@@ -889,7 +987,7 @@ class AgentCliTests : public QObject {
         QCOMPARE(noImage["frames"].toArray().size(), 2);
         QCOMPARE(noImage["objects"], embedded["objects"]);
         for (const auto &frame : noImage["frames"].toArray())
-            QVERIFY(!frame.toObject()["feedback"].toObject().contains("image"));
+            QCOMPARE(frame.toObject()["feedback"].toObject()["image"].toObject()["mode"].toString(), QString("none"));
 
         const auto artifactFolder = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
         if (!artifactFolder.isEmpty()) {

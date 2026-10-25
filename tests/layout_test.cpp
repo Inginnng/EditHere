@@ -1,3 +1,4 @@
+#include "feedback_test_helpers.h"
 #include "layout.h"
 #include "model.h"
 #include <QDir>
@@ -607,50 +608,54 @@ class LayoutTests : public QObject {
         rectangle.comment = "表格右移";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "objects"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "capture", "image", "objects", "schemaVersion", "tool"}));
         const auto objects = feedback["objects"].toArray();
         QCOMPARE(objects.size(), 3);
         // 移动条目：父组件 "1234" 从 (10,10,60x40) 移动到 (50,50,90x60)。
-        QCOMPARE(objects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
-                              {"movements", QJsonArray{QJsonObject{{"to", rectJson({50, 50, 90, 60})}}}},
-                              {"annotations", QJsonArray{}}}));
-        // 点批注：(20,20) 处的 "加大标题"，源区域为零尺寸。
-        QCOMPARE(objects[1].toObject(),
-                 (QJsonObject{{"source", QJsonObject{{"x1", 20}, {"y1", 20}, {"x2", 20}, {"y2", 20}}},
-                              {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"加大标题"}}}));
-        // 矩形批注：(10,10,60x40) 处的 "表格右移"。
         QCOMPARE(objects[2].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 60, 40})},
-                              {"movements", QJsonArray{}},
-                              {"annotations", QJsonArray{"表格右移"}}}));
+                 (QJsonObject{{"id", "o3"}, {"kind", "region"}, {"source", rectJson({10, 10, 60, 40})},
+                              {"movement", QJsonObject{{"rect", rectJson({50, 50, 90, 60})}, {"dx", 40}, {"dy", 40}, {"scaleX", 1.5}, {"scaleY", 1.5}}},
+                              {"annotations", QJsonArray{}}}));
+        // 点批注：(20,20) 处的 "加大标题"。
+        QCOMPARE(objects[0].toObject(),
+                 (QJsonObject{{"id", "o1"}, {"kind", "point"}, {"point", QJsonObject{{"x", 20}, {"y", 20}}},
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", "加大标题"}}}}}));
+        // 矩形批注：(10,10,60x40) 处的 "表格右移"。
+        QCOMPARE(objects[1].toObject(),
+                 (QJsonObject{{"id", "o2"}, {"kind", "region"}, {"source", rectJson({10, 10, 60, 40})},
+                              {"annotations", QJsonArray{QJsonObject{{"number", 2}, {"text", "表格右移"}}}}}));
         const auto compact = serializeFeedback(document);
-        QVERIFY(compact.size() < 350);
+        auto payload = feedback;
+        for (const auto *field : {"$schema", "schemaVersion", "tool", "exportedAt"})
+            payload.remove(field);
+        const auto payloadBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        QVERIFY(payloadBytes.size() < 950); // Bounded image/capture metadata, IDs and notes; never encoded image bytes.
+        QVERIFY(compact.size() - payloadBytes.size() < 250); // Metadata stays bounded too.
         const auto path = directory.filePath("feedback-minimal.json");
         saveBytes(path, compact);
         QVERIFY_EXCEPTION_THROWN(loadDocument(path),
                                  std::runtime_error); // The matching source image is required.
-        saveBytes(directory.filePath("feedback-minimal.png"), document.png);
+        saveBytes(directory.filePath("feedback.png"), document.png);
         const auto restored = loadDocument(path);
         QVERIFY(restored.layout.has_value());
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            // The tag is optional on import, so the sample that drops it cannot be validated
-            // against the schema that requires it; it is published as feedback-notag.json.
-            auto notag = feedback;
+            // Unversioned feedback also imports without the optional coordinate tag.
+            auto notag = unversionedLegacyFeedback(feedback);
             notag.remove("annotationSpace");
+            notag.remove("image");
+            notag.remove("capture");
             saveBytes(QDir(folder).filePath("feedback-notag.json"),
                       QJsonDocument(notag).toJson(QJsonDocument::Compact));
             saveBytes(QDir(folder).filePath("feedback-notag.png"), document.png);
         }
         auto invalid = feedback;
         invalid["tool"] = "unexpected";
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         // 对象包含未知字段时被拒绝。
         auto badObjects = feedback["objects"].toArray();
@@ -658,40 +663,29 @@ class LayoutTests : public QObject {
         badObject["extra"] = true;
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
-        // 移动目标坐标超出限制时被拒绝。
-        badObjects = feedback["objects"].toArray();
-        auto badMovement = badObjects[0].toObject()["movements"].toArray()[0].toObject();
-        badMovement["to"] = rectJson({0, 0, 10000001, 10000001});
-        auto movements = badObjects[0].toObject()["movements"].toArray();
-        movements[0] = badMovement;
+        // Reject malformed final targets before restoring any layout.
+        for (const auto &target : {QJsonValue(rectJson({0, 0, 10000001, 10000001})),
+                                 QJsonValue(QJsonObject{{"x1", 100}, {"y1", 100}, {"x2", 50}, {"y2", 50}}),
+                                 QJsonValue("not-an-object")}) {
+            invalid = feedback; badObjects = feedback["objects"].toArray();
+            badObject = badObjects[2].toObject();
+            auto movement = badObject["movement"].toObject(); movement["rect"] = target;
+            badObject["movement"] = movement; badObjects[2] = badObject; invalid["objects"] = badObjects;
+            QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
+        }
+        // v3 point coordinates are integer pixel positions; importing a
+        // fractional value must not silently round it into a different point.
+        invalid = feedback;
+        badObjects = invalid["objects"].toArray();
         badObject = badObjects[0].toObject();
-        badObject["movements"] = movements;
+        auto badPoint = badObject["point"].toObject();
+        badPoint["x"] = 20.5;
+        badObject["point"] = badPoint;
         badObjects[0] = badObject;
         invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
-        invalid = feedback;
-        // 移动目标尺寸为负或零时被拒绝。
-        badObjects = feedback["objects"].toArray();
-        badMovement = badObjects[0].toObject()["movements"].toArray()[0].toObject();
-        badMovement["to"] = QJsonObject{{"x1", 100}, {"y1", 100}, {"x2", 50}, {"y2", 50}};
-        movements = badObjects[0].toObject()["movements"].toArray();
-        movements[0] = badMovement;
-        badObject = badObjects[0].toObject();
-        badObject["movements"] = movements;
-        badObjects[0] = badObject;
-        invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
-        invalid = feedback;
-        // 移动目标与源区域相同时被跳过，导致布局为空但批注仍存在，不算损坏。
-        // 此处改用移动 "to" 不是对象来触发拒绝。
-        badObjects = feedback["objects"].toArray();
-        badObject = badObjects[0].toObject();
-        badObject["movements"] = QJsonArray{QJsonObject{{"to", "not-an-object"}}};
-        badObjects[0] = badObject;
-        invalid["objects"] = badObjects;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
     }
     void centeredResizeSurvivesFeedbackRoundTrip() {
         auto document = fromImage(sourceImage(), "demo", "centered resize");
@@ -701,14 +695,14 @@ class LayoutTests : public QObject {
         const auto feedback = exportFeedback(document);
         QCOMPARE(feedback["objects"].toArray().size(), 1);
         const auto object = feedback["objects"].toArray()[0].toObject();
-        QCOMPARE(object["movements"].toArray().size(), 1);
-        const auto restored = loadFeedback(feedback, document.image);
+        QCOMPARE(object.contains("movement"), true);
+        const auto restored = loadFeedback(feedback, document.image, document.png);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
     }
-    void feedbackKeepsDistinctFractionalSourceRegions() {
+    void feedbackMergesSourcesThatRoundToTheSamePixels() {
         auto document = fromImage(sourceImage(), "demo", "fractional source regions");
         document.layout = createLayout(document.image.size(), {});
         const QRectF first(10.000001, 10, 20, 20), second(10.000002, 10, 20, 20);
@@ -716,12 +710,93 @@ class LayoutTests : public QObject {
         const auto secondId = addLayoutRegion(*document.layout, second);
         transformLayoutGroup(*document.layout, firstId, {50, 30, 20, 20});
         transformLayoutGroup(*document.layout, secondId, {80, 50, 20, 20});
-        const auto objects = exportFeedback(document)["objects"].toArray();
-        QCOMPARE(objects.size(), 2);
-        QCOMPARE(objects[0].toObject()["source"].toObject()["x1"].toDouble(), first.x());
-        QCOMPARE(objects[1].toObject()["source"].toObject()["x1"].toDouble(), second.x());
-        QCOMPARE(objects[0].toObject()["movements"].toArray().size(), 1);
-        QCOMPARE(objects[1].toObject()["movements"].toArray().size(), 1);
+        for (const auto &source : {first, second}) {
+            Note note; note.isPoint = false; note.movementSource = source;
+            note.rect = {50, 30, 20, 20}; note.comment = QString::number(document.notes.size() + 1);
+            document.notes.append(note);
+        }
+        const auto feedback = exportFeedback(document, true);
+        const auto objects = feedback["objects"].toArray();
+        QCOMPARE(objects.size(), 1);
+        QCOMPARE(objects[0].toObject()["source"].toObject()["x1"].toInt(), 10);
+        QCOMPARE(objects[0].toObject().contains("movement"), true);
+        QCOMPARE(objects[0].toObject()["annotations"].toArray().size(), 2);
+        const auto restored = exportFeedback(loadFeedback(feedback, {}), true)["objects"].toArray();
+        QCOMPARE(restored.size(), 1);
+        // The layout importer can collapse intermediate targets. Its final
+        // result and every attached annotation must survive the round trip.
+        for (const auto &key : {"id", "kind", "source", "movement", "annotations"})
+            QCOMPARE(restored[0].toObject()[key], objects[0].toObject()[key]);
+    }
+    void removingParentMovementPreservesDetachedChild() {
+        auto document = fromImage(sourceImage(), "demo", "delete movement");
+        document.layout = createLayout(document.image.size(), {});
+        const auto parent = addLayoutRegion(*document.layout, {10, 10, 80, 80});
+        const auto child = addLayoutRegion(*document.layout, {10, 10, 40, 80});
+        transformLayoutGroup(*document.layout, parent, {80, 10, 80, 80});
+        transformLayoutGroup(*document.layout, child, {20, 10, 40, 80});
+        Note parentNote; parentNote.isPoint = false; parentNote.movementSource = QRectF(10, 10, 80, 80);
+        parentNote.rect = {80, 10, 80, 80}; parentNote.comment = "删除父位移";
+        Note childNote; childNote.isPoint = false; childNote.movementSource = QRectF(10, 10, 40, 80);
+        childNote.rect = {20, 10, 40, 80}; childNote.comment = "保留子位移";
+        document.notes = {parentNote, childNote};
+        const auto before = *document.layout;
+        removeNote(document, parentNote.id);
+        QCOMPARE(document.notes.size(), 1); QCOMPARE(document.notes[0].comment, childNote.comment);
+        const auto childMembers = members(before, child), parentMembers = members(before, parent);
+        for (const auto &piece : document.layout->pieces) {
+            if (childMembers.contains(piece.id)) QCOMPARE(piece.destination, pieceById(before, piece.id)->destination);
+            if (parentMembers.contains(piece.id)) QCOMPARE(piece.destination, piece.source);
+        }
+        QCOMPARE(movementMarkers(*document.layout, document.notes).size(), 1);
+        const auto feedback = exportFeedback(document, true);
+        QCOMPARE(feedback["objects"].toArray().size(), 1);
+        QVERIFY(feedback["objects"].toArray()[0].toObject().contains("movement"));
+        QCOMPARE(stableFeedback(exportFeedback(loadFeedback(feedback, {}), true)), stableFeedback(feedback));
+    }
+    void feedbackRoundsCoordinatesAndDebouncesScale() {
+        QImage image(1120, 720, QImage::Format_ARGB32); image.fill(Qt::white);
+        auto document = fromImage(image, "demo", "integer feedback");
+        const QRectF source(10.2, 20.7, 300.2, 100.2), destination(41.6, 15.2, 300.2 * 1.1263, 100.2 * 1.003);
+        document.layout = importLayoutSequences({{source, {destination}}}, document.image.size());
+        const auto originalLayout = document.layout;
+        const auto feedback = exportFeedback(document, true);
+        const auto object = feedback["objects"].toArray()[0].toObject();
+        QCOMPARE(object["source"].toObject(), rectJson({10, 21, 300, 100}));
+        QCOMPARE(object["movement"].toObject(), (QJsonObject{{"rect", rectJson({42, 15, 338, 100})},
+                  {"dx", 32}, {"dy", -6}, {"scaleX", 1.13}}));
+        QCOMPARE(document.layout, originalLayout);
+        QCOMPARE(stableFeedback(exportFeedback(loadFeedback(feedback, {}), true)), stableFeedback(feedback));
+        auto older = feedback; auto olderObjects = older["objects"].toArray(); auto olderObject = olderObjects[0].toObject();
+        const auto floating = [](QRectF r) { return QJsonObject{{"x1", r.left()}, {"y1", r.top()}, {"x2", r.right()}, {"y2", r.bottom()}}; };
+        olderObject["source"] = floating(source);
+        olderObject["movements"] = QJsonArray{QJsonObject{{"to", floating(destination)}}};
+        olderObject.remove("movement"); olderObject["result"] = QJsonObject{{"rect", floating(destination)}, {"dx", destination.x() - source.x()},
+                            {"dy", destination.y() - source.y()}, {"scaleX", 1.1263}, {"scaleY", 1.003}};
+        olderObjects[0] = olderObject; older["objects"] = olderObjects;
+        QCOMPARE(stableFeedback(exportFeedback(loadFeedback(older, {}), true)), stableFeedback(feedback));
+        auto forged = feedback; auto objects = forged["objects"].toArray(); auto bad = objects[0].toObject();
+        auto result = bad["movement"].toObject(); result.remove("scaleX"); bad["movement"] = result; objects[0] = bad; forged["objects"] = objects;
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(forged, {}), std::runtime_error);
+    }
+    void feedbackDropsResizeJitterAndPreservesTinyRegions() {
+        QImage image(1120, 720, QImage::Format_ARGB32); image.fill(Qt::white);
+        auto document = fromImage(image, "demo", "resize jitter");
+        const QRectF source(10, 10, 1000, 600);
+        document.layout = importLayoutSequences({{source, {QRectF(10.2, 10.2, 1003, 598.2)}}}, document.image.size());
+        QVERIFY(exportFeedback(document)["objects"].toArray().isEmpty());
+        Note note; note.isPoint = false; note.movementSource = source; note.rect = {10, 10, 1003, 599};
+        note.comment = "保留意见"; note.recognizedText = {{"text", "保留识别"}, {"engine", "test"}};
+        document.notes = {note};
+        const auto retained = exportFeedback(document)["objects"].toArray()[0].toObject();
+        QVERIFY(!retained.contains("movements")); QVERIFY(!retained.contains("movement"));
+        QCOMPARE(retained["ocrtext"].toString(), QString("保留识别"));
+        QCOMPARE(retained["annotations"].toArray().size(), 1);
+        document.notes.clear();
+        document.layout = importLayoutSequences({{QRectF(1119.8, 719.8, .1, .1), {QRectF(100.8, 100.8, .1, .1)}}}, document.image.size());
+        const auto tiny = exportFeedback(document, true);
+        QCOMPARE(tiny["objects"].toArray()[0].toObject()["source"].toObject(), rectJson({1119, 719, 1, 1}));
+        QCOMPARE(stableFeedback(exportFeedback(loadFeedback(tiny, {}), true)), stableFeedback(tiny));
     }
     void feedbackKeepsChangesBeyondTheSelectableGroupLimit() {
         QImage image(1600, 80, QImage::Format_ARGB32);
@@ -737,10 +812,10 @@ class LayoutTests : public QObject {
         const auto original = loadFeedback(legacy, image);
         const auto feedback = exportFeedback(original);
         QCOMPARE(feedback["objects"].toArray().size(), MaxLayoutGroups);
-        const auto restored = loadFeedback(feedback, image);
+        const auto restored = loadFeedback(feedback, image, original.png);
         QVERIFY(restored.layout.has_value());
         QCOMPARE(restored.layout->groups.size(), MaxLayoutGroups);
-        QCOMPARE(exportFeedback(restored), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(feedback));
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(original.image, *original.layout));
         QVERIFY(importLayout(exportLayout(*restored.layout), image.size()) == *restored.layout);
@@ -780,10 +855,11 @@ class LayoutTests : public QObject {
         rectangle.comment = "这里加大文字";
         document.notes = {point, rectangle};
         const auto feedback = exportFeedback(document, true);
-        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "image", "objects"}));
+        QCOMPARE(feedback.keys(), QStringList({"annotationSpace", "capture", "image", "objects", "schemaVersion", "tool"}));
         QCOMPARE(feedback["annotationSpace"], QJsonValue("result"));
         QCOMPARE(feedback["objects"].toArray().size(), 3);
-        QCOMPARE(feedback["image"],
+        QCOMPARE(feedback["image"].toObject()["mode"].toString(), QString("embedded"));
+        QCOMPARE(feedback["image"].toObject()["dataUrl"],
                  QJsonValue("data:image/png;base64," + QString::fromLatin1(document.png.toBase64())));
         const auto path = directory.filePath("embedded.json");
         saveBytes(path, serializeFeedback(document, true));
@@ -791,7 +867,7 @@ class LayoutTests : public QObject {
         const auto restored = loadDocument(path);
         QCOMPARE(restored.png, document.png);
         QCOMPARE(restored.image, document.image);
-        QCOMPARE(exportFeedback(restored, true), feedback);
+        QCOMPARE(stableFeedback(exportFeedback(restored, true)), stableFeedback(feedback));
         QVERIFY(restored.layout.has_value());
         QCOMPARE(renderLayout(restored.image, *restored.layout),
                  renderLayout(document.image, *document.layout));
@@ -802,8 +878,10 @@ class LayoutTests : public QObject {
         const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
             QVERIFY(QDir().mkpath(folder));
-            saveBytes(QDir(folder).filePath("feedback.json"), serializeFeedback(document, true));
-            saveBytes(QDir(folder).filePath("feedback-no-image.json"), serializeFeedback(document));
+            const auto bundle = buildFeedbackBundle(document);
+            saveBytes(QDir(folder).filePath("feedback.json"), bundle.json);
+            for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) saveBytes(QDir(folder).filePath(it.key()), it.value());
+            saveBytes(QDir(folder).filePath("feedback-no-image.json"), serializeFeedback(document, false));
         }
         for (const auto &invalidImage :
              {QJsonValue(true), QJsonValue("data:image/jpeg;base64,AA=="),
@@ -816,10 +894,10 @@ class LayoutTests : public QObject {
         }
         auto invalid = feedback;
         invalid["annotationSpace"] = "original";
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         invalid = feedback;
         invalid["extra"] = true;
-        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(loadFeedback(invalid, document.image, document.png), std::runtime_error);
         auto badPng = document.png;
         for (int i = 16; i < 24; ++i)
             badPng[i] = char(0xff); // Reject absurd dimensions before PNG decoding allocates pixels.
@@ -856,11 +934,12 @@ class LayoutTests : public QObject {
         const auto feedbackObjects = feedback["objects"].toArray();
         QCOMPARE(feedbackObjects.size(), 3);
         QCOMPARE(feedbackObjects[0].toObject(),
-                 (QJsonObject{{"source", rectJson({10, 10, 30, 20})},
-                              {"movements", QJsonArray{QJsonObject{{"to", rectJson({90, 70, 30, 20})}}}},
-                              {"annotations", QJsonArray{movement.comment}}}));
-        QCOMPARE(feedbackObjects[1].toObject()["source"], QJsonValue(QJsonValue::Null));
-        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toString(), global.comment);
+                 (QJsonObject{{"id", "o1"}, {"kind", "region"}, {"source", rectJson({10, 10, 30, 20})},
+                              {"movement", QJsonObject{{"rect", rectJson({90, 70, 30, 20})}, {"dx", 80}, {"dy", 60}}},
+                              {"annotations", QJsonArray{QJsonObject{{"number", 1}, {"text", movement.comment}}}}}));
+        QCOMPARE(feedbackObjects[1].toObject()["kind"].toString(), QString("global"));
+        QVERIFY(!feedbackObjects[1].toObject().contains("source"));
+        QCOMPARE(feedbackObjects[1].toObject()["annotations"].toArray()[0].toObject()["text"].toString(), global.comment);
         const auto imported = loadFeedback(feedback, {});
         QCOMPARE(imported.notes[0].movementSource, movement.movementSource);
         QCOMPARE(imported.notes[0].rect, movement.rect);
@@ -873,7 +952,7 @@ class LayoutTests : public QObject {
         QCOMPARE(restored.notes, doc.notes);
         QCOMPARE(restored.layout, doc.layout);
         QCOMPARE(restored.image, doc.image);
-        QCOMPARE(exportFeedback(restored), exportFeedback(doc));
+        QCOMPARE(stableFeedback(exportFeedback(restored)), stableFeedback(exportFeedback(doc)));
         // Notes added in transparent holes must survive without a lossy reverse mapping.
         QCOMPARE(restored.notes[2].point, inHole.point);
         auto movedAgain = *doc.layout;
@@ -889,12 +968,12 @@ class LayoutTests : public QObject {
         const auto revertedObjects = reverted["objects"].toArray();
         bool hasMovements = false;
         for (const auto &obj : revertedObjects)
-            hasMovements = hasMovements || !obj.toObject()["movements"].toArray().isEmpty();
+            hasMovements = hasMovements || obj.toObject().contains("movement");
         QVERIFY(!hasMovements);
         QCOMPARE(doc.notes[0].rect, QRect(10, 10, 30, 20));
         // 移动批注回到源位置后仍作为矩形批注保留在对象中。
         QCOMPARE(revertedObjects[0].toObject()["source"], QJsonValue(rectJson({10, 10, 30, 20})));
-        QVERIFY(revertedObjects[0].toObject()["movements"].toArray().isEmpty());
+        QVERIFY(!revertedObjects[0].toObject().contains("movement"));
         for (const auto badValue : {QJsonValue(true), QJsonValue(1), QJsonValue("invalid")}) {
             auto invalid = feedback;
             auto badObjects = feedback["objects"].toArray();
@@ -918,6 +997,9 @@ class LayoutTests : public QObject {
         rectangle.comment = "旧矩形";
         document.notes = {point, rectangle};
         auto legacy = exportFeedback(document);
+        legacy = unversionedLegacyFeedback(legacy);
+        legacy.remove("image");
+        legacy.remove("capture");
         legacy.remove("annotationSpace");
         auto restored = loadFeedback(legacy, document.image);
         QCOMPARE(restored.notes[0].point, QPoint(100, 80));
@@ -933,7 +1015,9 @@ class LayoutTests : public QObject {
         const auto fullRestored = loadDocument(path);
         QCOMPARE(fullRestored.notes, restored.notes);
         QCOMPARE(fullRestored.image, document.image);
-        QCOMPARE(exportFeedback(fullRestored), exportFeedback(restored));
+        auto reexported = exportFeedback(fullRestored), importedLegacy = exportFeedback(restored);
+        reexported.remove("capture"); importedLegacy.remove("capture"); // The old format had no acquisition metadata to preserve.
+        QCOMPARE(stableFeedback(reexported), stableFeedback(importedLegacy));
 
         Note inHole;
         inHole.point = {20, 20};

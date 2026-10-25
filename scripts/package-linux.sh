@@ -76,7 +76,7 @@ if [[ -d "$appdir/usr/lib/pipewire-0.3" ]]; then
   export LD_LIBRARY_PATH="$appdir/usr/lib/pipewire-0.3:$LD_LIBRARY_PATH"
 fi
 export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;multimedia"
-export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
+export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so;libqoffscreen.so"
 export VERSION="$version" ARCH=x86_64 OUTPUT="EditHere-linux-x86_64.AppImage"
 export LDAI_RUNTIME_FILE="$project_root/.tools/linuxdeploy/runtime-x86_64"
 [[ -f "$LDAI_RUNTIME_FILE" ]] || { echo 'Run scripts/fetch-linuxdeploy.py first' >&2; exit 1; }
@@ -93,6 +93,7 @@ if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
 fi
 "$LINUXDEPLOY" --appdir "$appdir" "${deployment_args[@]}" --plugin qt --custom-apprun "$project_root/packaging/linux/AppRun" --output appimage
 [[ -s "$OUTPUT" ]] || { echo 'AppImage was not produced' >&2; exit 1; }
+[[ -s "$appdir/usr/plugins/platforms/libqoffscreen.so" ]] || { echo 'Headless CLI preview platform plugin is missing' >&2; exit 1; }
 cp "$project_root/packaging/linux/edithere-cli" "$output/edithere-cli"
 chmod +x "$output/edithere-cli"
 sha256sum "$OUTPUT" > "$OUTPUT.sha256"

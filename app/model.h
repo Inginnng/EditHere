@@ -1,6 +1,8 @@
 #pragma once
 #include "layout.h"
+#include "feedbackexport.h"
 #include <QImage>
+#include <QHash>
 #include <QJsonObject>
 #include <QLineF>
 #include <QRect>
@@ -13,6 +15,8 @@ constexpr qint64 MaxPixels = 32000000;
 constexpr int MaxNotes = 1000;
 constexpr qint64 MaxImageFileBytes = 48LL * 1024 * 1024;
 constexpr qint64 MaxProjectFileBytes = 96LL * 1024 * 1024;
+inline constexpr auto FeedbackSchemaVersion = "feedback-minimal-4";
+inline constexpr auto FeedbackSchemaId = "urn:edithere:feedback-minimal:4";
 QString uniqueId();
 QString timestamp();
 QJsonObject rectJson(const QRect &rect);
@@ -26,18 +30,32 @@ struct Candidate {
     QJsonObject target;
 };
 QJsonObject manualTarget();
+// No link means standalone. A link always has both an owning movement and its
+// confirmation state, so partially reset ownership cannot survive an edit.
+enum class ParentState { Child, Unknown };
+struct ParentLink {
+    QRectF source;
+    ParentState state = ParentState::Child;
+    bool operator==(const ParentLink &) const = default;
+};
 struct Note {
     QString id = uniqueId();
+    // The feedback object identity is separate from the note identity. It is
+    // populated when importing a feedback object so a re-export can retain
+    // the caller-visible object ID without changing project note storage.
+    QString feedbackObjectId;
     bool isPoint = true;
     bool isGlobal = false;
     std::optional<QRectF> movementSource;
+    std::optional<ParentLink> parent;
     QPoint point;
     QRect rect;
     QString comment;
     QJsonObject target = manualTarget();
+    QJsonObject recognizedText; // Screenshot content, never an instruction. Empty = unavailable.
     QString createdAt = timestamp();
     QString updatedAt = createdAt;
-    bool operator==(const Note &) const = default;
+    bool operator==(const Note &) const;
 };
 struct MovementMarker {
     QRectF source, destination;
@@ -49,6 +67,7 @@ struct Document {
     QString createdAt = timestamp();
     QString title;
     QString source = "file";
+    QJsonObject capture; // Optional acquisition and Agent-provided page context.
     QString imageFile;
     QImage image;
     QByteArray png;
@@ -56,6 +75,7 @@ struct Document {
     QVector<Note> notes;
     QVector<Candidate> candidates;
     std::optional<LayoutState> layout;
+    QHash<QString, QString> feedbackObjectIds;
     bool dirty = false;
 };
 QByteArray encodePng(const QImage &image);
@@ -63,22 +83,48 @@ QByteArray encodePng(const QImage &image);
 QByteArray encodeOpaquePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque = false);
 Document loadDocument(const QString &path);
-QJsonObject exportFeedback(const Document &doc, bool embed = false, bool compress = false);
-QByteArray serializeFeedback(const Document &doc, bool embed = false, bool compress = false);
+QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &options = {});
+QJsonObject exportFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);
+// Decide which moved component, if any, a new note belongs to. A box that sits
+// entirely inside a moved component becomes its child without asking; a partial
+// overlap stays unknown until the user answers.
+std::optional<ParentLink> classifyParent(const QRect &rect, const std::optional<LayoutState> &layout);
+// One pixel identity for ownership in the UI, project storage and feedback.
+// Quantized collisions are ambiguous and cannot own annotations.
+QString noteSourceKey(const QRectF &source);
+// Child annotations always sit directly below the moved component they belong
+// to: the sidebar and the exported object order both rely on it.
+void groupChildNotes(QVector<Note> &notes);
+// Mutates only ownership and order: resolve links to unique active movements,
+// release stale/invalid links, then group confirmed children stably.
+void normalizeNoteParents(Document &document);
+// Export boundaries reject unresolved ownership; editable projects retain it.
+void requireConfirmedNoteParents(const Document &document);
+QByteArray formatFeedbackJson(const QJsonObject &feedback, bool indented = false);
+QByteArray serializeFeedback(const Document &doc, const FeedbackExportOptions &options = {});
+QByteArray serializeFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);
+FeedbackBundle buildFeedbackBundle(const Document &doc, const FeedbackExportOptions &options = {});
 int movementAnnotationIndex(const Note &note, const LayoutState &layout);
 QVector<MovementMarker> movementMarkers(const LayoutState &layout, const QVector<Note> &notes);
 QLineF movementMarkerLine(const MovementMarker &marker);
 QPointF movementMarkerAnchor(const MovementMarker &marker, double zoom, QSizeF viewport);
 std::optional<QRectF> movementAnnotationDestination(const Note &note, const LayoutState &layout);
 QVector<Note> remapNotes(const QVector<Note> &notes, const LayoutState &before, const LayoutState &after);
-Document loadFeedback(const QJsonObject &feedback, const QImage &original);
+void removeNote(Document &document, const QString &id);
+Document loadFeedback(const QJsonObject &feedback, const QImage &original, const QByteArray &originalBytes = {});
+Document loadFeedbackFile(const QJsonObject &feedback, const QString &jsonPath, const QString &legacyImageName = {});
 QJsonObject exportDocument(const Document &doc, bool embed = false);
 void validateProjectStorageSize(qint64 jsonBytes, qint64 externalImageBytes = 0);
 QByteArray serializeDocument(const Document &doc, bool embed = false);
 void validateDocument(const Document &doc);
+void validateRecognizedText(const QJsonObject &value, bool allowCleared = false);
+void validateCaptureContext(const QJsonObject &capture);
+void validatePageContext(const QString &page);
+QJsonObject exportCaptureContext(const QJsonObject &capture, bool includeWindowTitle = true);
 void saveBytes(const QString &path, const QByteArray &bytes);
 QImage exampleImage();
 QImage previewImage(const Document &doc);
+QImage noteRecognitionImage(const Document &doc, const Note &note);
 class CandidatePicker {
   public:
     // `keep` is for a pointer being fine-tuned with the keys rather than moved about

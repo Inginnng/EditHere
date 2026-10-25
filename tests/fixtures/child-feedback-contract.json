@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "feedback-minimal-4",
+  "cases": [
+    {
+      "name": "stable-siblings-and-unrelated-order",
+      "document": {
+        "width": 800, "height": 600,
+        "movements": [{"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "destination": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
+        "notes": [
+          {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "movementSource": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "text": "Move component"},
+          {"source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "text": "First child", "parent": {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "state": "child"}},
+          {"source": {"x1": 10, "y1": 10, "x2": 10, "y2": 10}, "text": "Unrelated"},
+          {"source": {"x1": 250, "y1": 150, "x2": 270, "y2": 170}, "text": "Second child", "parent": {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "state": "child"}}
+        ]
+      },
+      "expected": {"objects": [
+        {"id": "o1", "kind": "region", "source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "movement": {"rect": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "dx": 100, "dy": 40}, "annotations": [{"number": 1, "text": "Move component"}], "children": [
+          {"id": "o2", "kind": "region", "source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "annotations": [{"number": 2, "text": "First child"}]},
+          {"id": "o3", "kind": "region", "source": {"x1": 250, "y1": 150, "x2": 270, "y2": 170}, "annotations": [{"number": 3, "text": "Second child"}]}
+        ]},
+        {"id": "o4", "kind": "point", "point": {"x": 10, "y": 10}, "annotations": [{"number": 4, "text": "Unrelated"}]}
+      ], "serializedObjects": "{\"objects\":[{\"annotations\":[{\"number\":1,\"text\":\"Move component\"}],\"id\":\"o1\",\"kind\":\"region\",\"movement\":{\"dx\":100,\"dy\":40,\"rect\":{\"x1\":200,\"x2\":400,\"y1\":140,\"y2\":240}},\"source\":{\"x1\":100,\"x2\":300,\"y1\":100,\"y2\":200},\"children\":[{\"annotations\":[{\"number\":2,\"text\":\"First child\"}],\"id\":\"o2\",\"kind\":\"region\",\"source\":{\"x1\":220,\"x2\":240,\"y1\":150,\"y2\":170}},{\"annotations\":[{\"number\":3,\"text\":\"Second child\"}],\"id\":\"o3\",\"kind\":\"region\",\"source\":{\"x1\":250,\"x2\":270,\"y1\":150,\"y2\":170}}]},{\"annotations\":[{\"number\":4,\"text\":\"Unrelated\"}],\"id\":\"o4\",\"kind\":\"point\",\"point\":{\"x\":10,\"y\":10}}]}\n"}
+    },
+    {
+      "name": "ordinary-source-collision-does-not-steal-child",
+      "document": {
+        "width": 800, "height": 600,
+        "movements": [{"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "destination": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}}],
+        "notes": [
+          {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "text": "Fill vacated area"},
+          {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "movementSource": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "text": "Moved component"},
+          {"source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "text": "Child", "parent": {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "state": "child"}}
+        ]
+      },
+      "expected": {"objects": [
+        {"id": "o1", "kind": "region", "source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "annotations": [{"number": 1, "text": "Fill vacated area"}]},
+        {"id": "o2", "kind": "region", "source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "movement": {"rect": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "dx": 100, "dy": 40}, "annotations": [{"number": 2, "text": "Moved component"}], "children": [
+          {"id": "o3", "kind": "region", "source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "annotations": [{"number": 3, "text": "Child"}]}
+        ]}
+      ], "serializedObjects": "{\"objects\":[{\"annotations\":[{\"number\":1,\"text\":\"Fill vacated area\"}],\"id\":\"o1\",\"kind\":\"region\",\"source\":{\"x1\":100,\"x2\":300,\"y1\":100,\"y2\":200}},{\"annotations\":[{\"number\":2,\"text\":\"Moved component\"}],\"id\":\"o2\",\"kind\":\"region\",\"movement\":{\"dx\":100,\"dy\":40,\"rect\":{\"x1\":200,\"x2\":400,\"y1\":140,\"y2\":240}},\"source\":{\"x1\":100,\"x2\":300,\"y1\":100,\"y2\":200},\"children\":[{\"annotations\":[{\"number\":3,\"text\":\"Child\"}],\"id\":\"o3\",\"kind\":\"region\",\"source\":{\"x1\":220,\"x2\":240,\"y1\":150,\"y2\":170}}]}]}\n"}
+    },
+    {
+      "name": "orphan-becomes-standalone",
+      "document": {
+        "width": 800, "height": 600, "movements": [],
+        "notes": [{"source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "text": "Orphan", "parent": {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "state": "child"}}]
+      },
+      "expected": {"objects": [{"id": "o1", "kind": "region", "source": {"x1": 220, "y1": 150, "x2": 240, "y2": 170}, "annotations": [{"number": 1, "text": "Orphan"}]}], "serializedObjects": "{\"objects\":[{\"annotations\":[{\"number\":1,\"text\":\"Orphan\"}],\"id\":\"o1\",\"kind\":\"region\",\"source\":{\"x1\":220,\"x2\":240,\"y1\":150,\"y2\":170}}]}\n"}
+    },
+    {
+      "name": "independently-moved-child-is-top-level",
+      "document": {
+        "width": 800, "height": 600,
+        "movements": [
+          {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "destination": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}},
+          {"source": {"x1": 440, "y1": 100, "x2": 500, "y2": 160}, "destination": {"x1": 450, "y1": 110, "x2": 510, "y2": 170}}
+        ],
+        "notes": [
+          {"source": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "movementSource": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "text": "Parent movement"},
+          {"source": {"x1": 450, "y1": 110, "x2": 510, "y2": 170}, "movementSource": {"x1": 440, "y1": 100, "x2": 500, "y2": 160}, "text": "Independent movement", "parent": {"source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "state": "child"}}
+        ]
+      },
+      "expected": {"objects": [
+        {"id": "o1", "kind": "region", "source": {"x1": 100, "y1": 100, "x2": 300, "y2": 200}, "movement": {"rect": {"x1": 200, "y1": 140, "x2": 400, "y2": 240}, "dx": 100, "dy": 40}, "annotations": [{"number": 1, "text": "Parent movement"}]},
+        {"id": "o2", "kind": "region", "source": {"x1": 440, "y1": 100, "x2": 500, "y2": 160}, "movement": {"rect": {"x1": 450, "y1": 110, "x2": 510, "y2": 170}, "dx": 10, "dy": 10}, "annotations": [{"number": 2, "text": "Independent movement"}]}
+      ], "serializedObjects": "{\"objects\":[{\"annotations\":[{\"number\":1,\"text\":\"Parent movement\"}],\"id\":\"o1\",\"kind\":\"region\",\"movement\":{\"dx\":100,\"dy\":40,\"rect\":{\"x1\":200,\"x2\":400,\"y1\":140,\"y2\":240}},\"source\":{\"x1\":100,\"x2\":300,\"y1\":100,\"y2\":200}},{\"annotations\":[{\"number\":2,\"text\":\"Independent movement\"}],\"id\":\"o2\",\"kind\":\"region\",\"movement\":{\"dx\":10,\"dy\":10,\"rect\":{\"x1\":450,\"x2\":510,\"y1\":110,\"y2\":170}},\"source\":{\"x1\":440,\"x2\":500,\"y1\":100,\"y2\":160}}]}\n"}
+    }
+  ]
+}

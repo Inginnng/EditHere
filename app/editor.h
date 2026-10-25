@@ -21,6 +21,7 @@ class LayoutInspector;
 class ExplosionWave;
 class GuideOverlay;
 class VideoPlayback;
+class OcrEngine;
 class Editor final : public QWidget {
     Q_OBJECT
   public:
@@ -29,6 +30,8 @@ class Editor final : public QWidget {
     void setAgentSession(bool active);
     bool hasUnsavedChanges();
     QByteArray agentFeedback(bool embed);
+    FeedbackBundle agentFeedbackBundle(FeedbackExportOptions options);
+    void setPageContext(const QString &page);
     void setPreferences(const AppSettings &settings);
     void setShortcuts(const QMap<QString, QKeySequence> &bindings);
     const Document &document() const {
@@ -83,6 +86,7 @@ class Editor final : public QWidget {
     // The editor changed a preference itself — the "don't ask again" box does — and the
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();
+    void exportPreferencesChanged(h2d::ImageExportMode imageMode, bool copyTextWithImage);
 
   protected:
     bool eventFilter(QObject *, QEvent *) override;
@@ -94,6 +98,14 @@ class Editor final : public QWidget {
 
   private:
     void editNote(Note note, bool fresh, QPoint global);
+    // A child annotation needs its component's card above it, so an unannotated
+    // movement gets one before the child is inserted.
+    std::optional<Note> missingMovementNote(const QRectF &source) const;
+    void scheduleRegionRecognition();
+    void updateRecognizedText(const QString &id, const QJsonObject &text);
+    void recognizeNextRegion();
+    QByteArray recognitionKey(const Note &note) const;
+    void cancelRegionRecognition();
     void changed(bool contentChanged = true);
     void renderNotes();
     // Rebuilds every label of the permanent chrome. Called from the constructor
@@ -102,6 +114,7 @@ class Editor final : public QWidget {
     // What the window says while there is no picture in it, and whether it says it.
     void updateEmptyState();
     void updateToolLabels();
+    void updatePageContextLabel();
     void beginNoteEdit(const QString &id);
     void finishNoteEdit();
     void cancelNoteEdit();
@@ -115,6 +128,8 @@ class Editor final : public QWidget {
     void updateAnnotationVisibility();
     void copyJson();
     void copyJsonText();
+    QPushButton *makeCopyJsonTextOptions(QWidget *parent, const QString &name);
+    void setCopyJsonTextWithImage(bool enabled);
     void showJsonHelp();
     void updateToolbar();
     void toast(const QString &message);
@@ -126,6 +141,7 @@ class Editor final : public QWidget {
     void copyImage();
     void saveImage(bool annotated = false);
     void removeSelected();
+    void deleteNote(const QString &id, std::optional<QRectF> movementSource = {});
     void setMode(Canvas::Mode mode);
     void updateControls();
     void clearVideo();
@@ -154,6 +170,7 @@ class Editor final : public QWidget {
     bool videoPreview_ = false;
     VideoPlayback *videoPlayback_ = nullptr;
     AppSettings preferences_;
+    QPushButton *copyJsonTextOptions_ = nullptr;
     struct Snapshot {
         QVector<Note> notes;
         std::optional<LayoutState> layout;
@@ -180,6 +197,7 @@ class Editor final : public QWidget {
     QString editingId_, draftId_;
     Snapshot editingBaseline_;
     bool editingWasDirty_ = false, renderingNotes_ = false, finishingEdit_ = false;
+    bool editingTimestampUpdated_ = false;
     bool annotationsVisible_ = true;
     QMap<QString, QPushButton *> outputButtons_;
     ImageArea *imageScroll_;
@@ -205,6 +223,10 @@ class Editor final : public QWidget {
     QPoint viewportPanPosition_;
     bool fitted_ = true;
     int generation_ = 0;
+    int recognitionGeneration_ = 0;
+    OcrEngine *regionOcr_ = nullptr;
+    QMap<QString, QByteArray> recognizedRegions_;
+    bool recognitionScheduled_ = false;
     QString projectPath_;
 };
 } // namespace h2d

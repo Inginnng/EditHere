@@ -104,6 +104,8 @@ VisionOutcome visionRecognize(const QImage &image, const QString &preferred) {
             if (candidate == nil || candidate.string.length == 0)
                 continue;
             const CGRect box = observation.boundingBox;
+            // Vision already supplies a line with its intended word spacing.
+            // Geometry-aware joining belongs to engines returning separate words.
             outcome.lines.append({QString::fromNSString(candidate.string),
                                   QRectF(box.origin.x, 1.0 - box.origin.y - box.size.height,
                                          box.size.width, box.size.height)});

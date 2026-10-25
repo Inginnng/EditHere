@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QList>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryDir>
@@ -26,6 +27,17 @@ void exactKeys(const QJsonObject &object, const QStringList &keys) {
     for (const auto &key : keys)
         if (!object.contains(key))
             fail(tr("视频项目缺少字段：%1").arg(key));
+}
+void appendFrameIndex(QJsonArray &index, const QJsonArray &objects,
+                      const QJsonValue &timestampMs, const QJsonValue &frameId) {
+    for (const auto &value : objects) {
+        auto object = value.toObject();
+        const auto children = object.take("children").toArray();
+        object.insert("timestampMs", timestampMs);
+        object.insert("frameId", frameId);
+        index.append(object);
+        appendFrameIndex(index, children, timestampMs, frameId);
+    }
 }
 qint64 integer(const QJsonValue &value, const QString &name, qint64 maximum = MaxJsonInteger) {
     const double number = value.toDouble(-1);
@@ -62,6 +74,7 @@ bool annotated(const Document &document) {
     return false;
 }
 QVector<const VideoFrame *> orderedFrames(const VideoProject &project) {
+    if (!project.capture.isEmpty()) validateCaptureContext(project.capture);
     if (project.source.trimmed().isEmpty() || project.source.size() > 32768 || project.source.contains(QChar::Null))
         fail(tr("视频地址不能为空或超出限制"));
     if (project.durationMs < 0 || project.durationMs > MaxJsonInteger / 1000 ||
@@ -124,7 +137,9 @@ QJsonObject readRoot(const QString &path) {
     return parsed.object();
 }
 VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path) {
-    exactKeys(root, {"schemaVersion", "tool", "exportedAt", "video", "frames", "objects"});
+    QStringList rootFields{"schemaVersion", "tool", "exportedAt", "video", "frames", "objects"};
+    if (root.contains("capture")) rootFields.append("capture");
+    exactKeys(root, rootFields);
     if (root["tool"] != "EditHere" ||
         !QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
         fail(tr("视频反馈工具或导出日期不正确"));
@@ -136,6 +151,7 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
         fail(tr("视频地址必须是字符串"));
     VideoProject project;
     project.source = video["source"].toString();
+    if (root.contains("capture")) { if (!root["capture"].isObject()) fail(tr("采集上下文必须是对象")); project.capture = root["capture"].toObject(); validateCaptureContext(project.capture); }
     project.durationMs = integer(video["durationMs"], "durationMs", MaxJsonInteger / 1000);
     orderedFrames(project);
     const qint64 width = integer(video["width"], "width", 32767);
@@ -154,7 +170,9 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
         if (!value.isObject())
             fail(tr("视频标注帧必须是对象"));
         const auto frame = value.toObject();
-        exactKeys(frame, {"id", "timestampMs", "timestampUs", "imageFile", "feedback"});
+        QStringList frameFields{"id", "timestampMs", "timestampUs", "feedback"};
+        if (frame.contains("imageFile")) frameFields.append("imageFile");
+        exactKeys(frame, frameFields);
         const auto id = frame["id"].toString();
         if (!frame["id"].isString())
             fail(tr("视频帧标识必须是字符串"));
@@ -164,15 +182,19 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
             (project.durationMs && time / 1000 > project.durationMs) || ids.contains(id) || times.contains(time))
             fail(tr("视频反馈包含重复、无效或不一致的帧时间或标识"));
         const QString imageFile = "frame-" + id + ".png";
-        if (frame["imageFile"] != imageFile || !frame["feedback"].isObject())
-            fail(tr("视频帧图片文件名或反馈格式不正确"));
+        if (!frame["feedback"].isObject()) fail(tr("视频帧反馈格式不正确"));
         const auto feedback = frame["feedback"].toObject();
+        const auto image = feedback.value("image");
+        if (image.isObject()) {
+            const auto info = image.toObject();
+            if (info["mode"] == "file") {
+                if (!frame["imageFile"].isString() || frame["imageFile"] != info["file"] || !safeFeedbackImageName(frame["imageFile"].toString()))
+                    fail(tr("视频帧原图引用与图片信息不一致"));
+            } else if (frame.contains("imageFile")) fail(tr("内嵌或无图模式不能声明视频帧原图文件"));
+        } else if (frame.contains("imageFile") && frame["imageFile"] != imageFile) fail(tr("视频帧图片文件名不正确"));
         if (!feedback["objects"].isArray() || feedback["objects"].toArray().isEmpty())
             fail(tr("视频反馈只能包含有批注或移动的对象帧"));
-        QImage original;
-        if (!feedback.contains("image"))
-            original = loadDocument(QFileInfo(path).dir().filePath(imageFile)).image;
-        auto document = loadFeedback(feedback, original);
+        auto document = loadFeedbackFile(feedback, path, imageFile);
         if (document.image.size() != QSize(int(width), int(height)))
             fail(tr("视频反馈图片尺寸与视频信息不一致"));
         document.id = id;
@@ -193,12 +215,8 @@ VideoProject loadVideoFeedbackRoot(const QJsonObject &root, const QString &path)
     });
     QJsonArray expectedIndex;
     for (const auto &frame : ordered)
-        for (const auto &value : frame["feedback"].toObject()["objects"].toArray()) {
-            auto object = value.toObject();
-            object.insert("timestampMs", frame["timestampMs"]);
-            object.insert("frameId", frame["id"]);
-            expectedIndex.append(object);
-        }
+        appendFrameIndex(expectedIndex, frame["feedback"].toObject()["objects"].toArray(),
+                         frame["timestampMs"], frame["id"]);
     // The index is for AI consumers, not a second source of editable notes.
     // Verify its image/time references before ignoring it during restoration.
     if (root["objects"].toArray() != expectedIndex)
@@ -235,7 +253,9 @@ VideoProject loadVideoProject(const QString &path) {
     const auto root = readRoot(path);
     if (root["schemaVersion"] == "video-feedback-1")
         return loadVideoFeedbackRoot(root, path);
-    exactKeys(root, {"schemaVersion", "tool", "exportedAt", "video", "frames"});
+    QStringList rootFields{"schemaVersion", "tool", "exportedAt", "video", "frames"};
+    if (root.contains("capture")) rootFields.append("capture");
+    exactKeys(root, rootFields);
     if (root["schemaVersion"] != "video-project-1" || root["tool"] != "EditHere")
         fail(tr("不支持这个视频项目版本"));
     if (!QDateTime::fromString(root["exportedAt"].toString(), Qt::ISODateWithMs).isValid())
@@ -248,6 +268,7 @@ VideoProject loadVideoProject(const QString &path) {
         fail(tr("视频地址必须是字符串"));
     VideoProject project;
     project.source = video["source"].toString();
+    if (root.contains("capture")) { if (!root["capture"].isObject()) fail(tr("采集上下文必须是对象")); project.capture = root["capture"].toObject(); validateCaptureContext(project.capture); }
     project.durationMs = integer(video["durationMs"], "durationMs", MaxJsonInteger / 1000);
     project.positionMs = integer(video["positionMs"], "positionMs", MaxJsonInteger / 1000);
     // Validate the video before allocating or decoding any screenshots. A missing
@@ -327,44 +348,74 @@ QByteArray serializeVideoProject(const VideoProject &project) {
         frames.append(QJsonObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
                                   {"timestampUs", frame->timestampUs}, {"document", document}});
     }
-    const QJsonObject root{{"schemaVersion", "video-project-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
+    QJsonObject root{{"schemaVersion", "video-project-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"positionMs", project.positionMs}}},
                            {"frames", frames}};
+    if (!project.capture.isEmpty()) root.insert("capture", project.capture);
     auto bytes = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
     storageSize(bytes.size());
     return bytes;
 }
-QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress) {
+FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const FeedbackExportOptions &options) {
+    FeedbackBundle bundle;
     const auto ordered = orderedFrames(project);
     QJsonArray frames, objects;
+    QSize dimensions;
     for (const auto *frame : ordered) {
-        const auto feedback = exportFeedback(frame->document, embed, compress);
-        frames.append(QJsonObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
-                                  {"timestampUs", frame->timestampUs},
-                                  {"imageFile", "frame-" + frame->document.id + ".png"}, {"feedback", feedback}});
+        auto frameOptions = options;
+        frameOptions.imageFile = "frame-" + frame->document.id + ".png";
+        frameOptions.previewFile = "frame-" + frame->document.id + ".annotated.jpg";
+        const auto frameBundle = buildFeedbackBundle(frame->document, frameOptions);
+        const auto feedback = QJsonDocument::fromJson(frameBundle.json).object();
+        if (feedback["objects"].toArray().isEmpty()) continue;
+        if (frames.isEmpty()) dimensions = frame->document.image.size();
+        for (auto it = frameBundle.files.cbegin(); it != frameBundle.files.cend(); ++it) bundle.files.insert(it.key(), it.value());
+        QJsonObject frameObject{{"id", frame->document.id}, {"timestampMs", frame->timestampUs / 1000},
+                                {"timestampUs", frame->timestampUs}, {"feedback", feedback}};
+        if (options.mode == ImageExportMode::File) frameObject.insert("imageFile", frameOptions.imageFile);
+        frames.append(frameObject);
         // This index repeats only lightweight annotation metadata. The image is
         // stored once in its frame's independently readable existing feedback.
-        for (const auto &value : feedback["objects"].toArray()) {
-            auto object = value.toObject();
-            object.insert("timestampMs", frame->timestampUs / 1000);
-            object.insert("frameId", frame->document.id);
-            objects.append(object);
-        }
+        appendFrameIndex(objects, feedback["objects"].toArray(),
+                         frame->timestampUs / 1000, frame->document.id);
     }
-    const QSize dimensions = ordered.isEmpty() ? QSize(0, 0) : ordered.first()->document.image.size();
-    const QJsonObject root{{"schemaVersion", "video-feedback-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
+    if (frames.isEmpty()) dimensions = QSize(0, 0);
+    QJsonObject root{{"schemaVersion", "video-feedback-1"}, {"tool", "EditHere"}, {"exportedAt", timestamp()},
                            {"video", QJsonObject{{"source", project.source}, {"durationMs", project.durationMs},
                                                   {"width", dimensions.width()}, {"height", dimensions.height()}}},
                            {"frames", frames}, {"objects", objects}};
-    auto bytes = QJsonDocument(root).toJson(QJsonDocument::Compact) + '\n';
-    storageSize(bytes.size());
-    return bytes;
+    if (!project.capture.isEmpty()) root.insert("capture", exportCaptureContext(project.capture, options.includeWindowTitle));
+    bundle.json = formatFeedbackJson(root);
+    qint64 total = bundle.json.size();
+    for (const auto &bytes : bundle.files) total += bytes.size();
+    storageSize(total);
+    return bundle;
+}
+QByteArray serializeVideoFeedback(const VideoProject &project, const FeedbackExportOptions &options) {
+    return buildVideoFeedbackBundle(project, options).json;
+}
+QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress, bool includeRecognizedText) {
+    FeedbackExportOptions options;
+    options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
+    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    return serializeVideoFeedback(project, options);
 }
 int videoAnnotationCount(const VideoProject &project) {
     int count = 0;
-    for (const auto *frame : orderedFrames(project))
-        count += exportFeedback(frame->document)["objects"].toArray().size();
+    for (const auto *frame : orderedFrames(project)) {
+        // Child annotations are nested under the component that moved, so walk
+        // them too instead of reporting fewer notes than the user made.
+        QList<QJsonObject> pending;
+        for (const auto &value : exportFeedback(frame->document)["objects"].toArray())
+            pending.append(value.toObject());
+        while (!pending.isEmpty()) {
+            const auto object = pending.takeFirst();
+            ++count;
+            for (const auto &child : object["children"].toArray())
+                if (child.isObject()) pending.append(child.toObject());
+        }
+    }
     return count;
 }
 QString videoTimeLabel(qint64 ms) {

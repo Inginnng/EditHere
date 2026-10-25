@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const F=require('../src/feedback.js');
 const { pathToFileURL } = require('node:url');
 const { downloadText, readExportJson } = require('./export-test-utils.cjs');
 const root = path.resolve(__dirname, '../..');
@@ -27,9 +28,15 @@ async function main() {
     await page.locator('#file-input').setInputFiles({ name: 'native-video-feedback.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
     await page.waitForFunction(() => document.body.dataset.busy !== 'true');
   }
-  async function exported() { await page.locator('#export').click(); const value = await readExportJson(page); await page.keyboard.press('Escape'); return value; }
+  async function exported() { await page.locator('#export').click();await page.locator('#embed-image').check(); const value = await readExportJson(page); await page.keyboard.press('Escape'); for(const frame of value.frames)assert.equal(frame.feedback.schemaVersion,'feedback-minimal-4'); return value; }
   async function savedProject() { return JSON.parse(await downloadText(page, '#save-project')); }
-  const metadata = value => { const stable = JSON.parse(JSON.stringify(value)); delete stable.exportedAt; return stable; };
+  const metadata = value => {
+    const stable = JSON.parse(JSON.stringify(value)); delete stable.exportedAt;
+    const objects=items=>items.map(({id,frameId,timestampMs,...object})=>({...F.legacyObject(object),...(frameId?{frameId,timestampMs}:{}),annotations:object.annotations.map(annotation=>typeof annotation==='string'?annotation:annotation.text)}));
+    stable.objects=objects(stable.objects);
+    for(const frame of stable.frames){if(typeof frame.feedback.image==='string'||frame.feedback.image?.mode==='embedded')delete frame.imageFile;delete frame.feedback.$schema;delete frame.feedback.schemaVersion;delete frame.feedback.tool;delete frame.feedback.exportedAt;frame.feedback.objects=objects(frame.feedback.objects);if(frame.feedback.image?.mode==='embedded')frame.feedback.image=frame.feedback.image.dataUrl;}
+    return stable;
+  };
   let current = 'load';
   try {
     await page.goto(pathToFileURL(path.join(root, 'web/EditHere.html')).href);
@@ -53,7 +60,7 @@ async function main() {
       await page.locator('#play').click(); await page.waitForFunction(() => !document.querySelector('#video').paused && document.querySelector('#video').currentTime > .05); await page.locator('#play').click();
       if (await page.locator('body').getAttribute('data-inspector-open') !== 'true') await page.locator('#inspect-toggle').click();
       await page.locator('#global').click(); await page.locator('#note-text').fill('空视频反馈重新关联后仍可批注'); await page.locator('#note-form [type="submit"]').click(); await page.locator('#note-dialog').waitFor({ state: 'hidden' });
-      const data = await exported(); assert.equal(data.frames.length, 1); assert.equal(data.video.width, video.width); assert.equal(data.video.height, video.height); assert.deepEqual(data.frames[0].feedback.objects[0].annotations, ['空视频反馈重新关联后仍可批注']);
+      const data = await exported(); assert.equal(data.frames.length, 1); assert.equal(data.video.width, video.width); assert.equal(data.video.height, video.height); assert.deepEqual(data.frames[0].feedback.objects[0].annotations, [{number:1,text:'空视频反馈重新关联后仍可批注'}]);
       await page.screenshot({ path: path.join(output, 'empty-video-linked-and-annotated.png') });
     });
     const image = await page.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 200; canvas.height = 100; canvas.getContext('2d').fillRect(0, 0, 200, 100); return canvas.toDataURL('image/png'); });

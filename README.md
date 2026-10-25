@@ -102,22 +102,28 @@
 
 EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 
-- **手动**：复制 JSON 内容 / JSON 文件 / 带批注图片，粘贴给任意 AI。
+- **手动**：复制 JSON 内容 / JSON 与图片 / 带批注图片，粘贴给任意 AI。
 - **自动**：配合仓库内的 [`edithere` skill](skills/edithere/SKILL.md) 和 `edithere-cli`，AI 执行 `edithere-cli annotate` 打开画面并等待；你点击 **「完成并返回 AI」** 后，AI 立即收到反馈继续修改。取消或超时不会把未提交的编辑当成修改要求。
 
-一份反馈 JSON 同时包含：
+0.12.0 默认交付 JSON 与独立原图，也可勾选“原图嵌入 JSON”。“复制 JSON 内容”默认不携带原图编码，旁边竖向 … 可切换并记住选择。新程序兼容读取旧反馈与工程；旧程序不保证能读取 v4。
+
+反馈结构示例：
 
 ```jsonc
 {
-  "image": "data:image/png;base64,…",          // 可选：修改前的原图
+  "schemaVersion": "feedback-minimal-4",
+  "tool": {"name": "EditHere", "version": "0.12.0"},
+  "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
+            "width": 2000, "height": 1200, "devicePixelRatio": null,
+            "sha256": "…"}, // 示意哈希；原图与 JSON 一起提供
   "annotationSpace": "result",
   "objects": [
-    { "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},   // 框批注
-      "movements": [], "annotations": ["转化率下降要更醒目，改成红色标签"] },
-    { "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},    // 大爆炸移动
-      "movements": [{"to": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}}],
-      "annotations": ["导出按钮挪到标题旁边"] },
-    { "source": null, "movements": [], "annotations": ["整体留白再大一些"] }  // 全局意见
+    {"id": "o1", "kind": "region", "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},
+     "annotations": [{"number": 1, "text": "转化率下降要更醒目，改成红色标签"}]},
+    {"id": "o2", "kind": "region", "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},
+     "movement": {"rect": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}, "dx": -1120, "dy": -10},
+     "annotations": [{"number": 2, "text": "导出按钮挪到标题旁边"}]},
+    {"id": "o3", "kind": "global", "annotations": [{"number": 3, "text": "整体留白再大一些"}]}
   ]
 }
 ```

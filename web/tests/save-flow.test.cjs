@@ -5,7 +5,7 @@ const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {downloadText}=require('./export-test-utils.cjs');
 const web=path.resolve(__dirname,'..'),output=path.join(__dirname,'output/save-flow');
-const {chromium}=require(path.resolve(web,'../../EditHere宣传/动画/node_modules/playwright-core'));
+const {chromium}=require(process.env.EDITHERE_PLAYWRIGHT_MODULE||path.resolve(web,'../../EditHere宣传/动画/node_modules/playwright-core'));
 const executablePath=process.env.EDITHERE_BROWSER_PATH||'C:/Users/InGing/AppData/Local/ms-playwright/chromium-1228/chrome-win64/chrome.exe';
 async function main(){
   fs.mkdirSync(output,{recursive:true});
@@ -27,27 +27,31 @@ async function main(){
   try{
     await page.goto(url);await page.evaluate(()=>localStorage.clear());await page.reload();
     assert(await page.locator('#save-json').isDisabled());assert.equal(await page.locator('#offline,#actual-size').count(),0);
-    await note();await menu();await page.locator('#save-options [data-save-mode="file"]').click();
+    await note();await page.evaluate(()=>{const el=document.querySelector('#embed-image');el.checked=true;el.dispatchEvent(new Event('change'));});await menu();await page.locator('#save-options [data-save-mode="file"]').click();
     assert.equal(downloads.length,0,'selecting file mode must not download');
     const initial=await downloadText(page,'#save-json');
-    assert.equal(initial,await page.evaluate(()=>EditHereFeedback.serialize(EditHereWeb.feedback())));
-    assert(JSON.parse(initial).image.startsWith('data:image/png;base64,'));
+    assert.deepEqual(JSON.parse(initial).objects,await page.evaluate(()=>EditHereWeb.feedback().objects));
+    assert(JSON.parse(initial).image.dataUrl.startsWith('data:image/png;base64,'));
+    const imageFeedback=JSON.parse(initial);
+    assert.equal(imageFeedback.schemaVersion,'feedback-minimal-4');
+    assert.equal(Object.hasOwn(imageFeedback,'$schema'),false);
+    assert.deepEqual(imageFeedback.tool,{name:'EditHere',version:await page.locator('meta[name="edithere-version"]').getAttribute('content')});
+    assert.equal(Object.hasOwn(imageFeedback,'exportedAt'),false);
     await menu();await page.locator('#save-options [data-save-mode="content"]').click();
     assert.equal(await page.evaluate(()=>window.copiedJSON),undefined,'selecting copy mode must not copy');assert.equal(downloads.length,1);
     assert.equal(await page.locator('#save-json').evaluate(el=>el===document.activeElement),true);
     await page.locator('#save-json').click();
-    assert.equal(await page.evaluate(()=>window.copiedJSON),initial);assert(await page.locator('#save-options').isHidden());
+    assert.equal(JSON.parse(await page.evaluate(()=>window.copiedJSON)).image.mode,'none','text defaults independently to no image');await menu();await page.locator('#save-options [data-save-mode="content"]').click();await page.locator('#copy-content-options-toggle').click();await page.locator('#copy-content-options [data-copy-image="embedded"]').click();await page.locator('#save-json').click();assert.equal(await page.evaluate(()=>window.copiedJSON),initial);assert(await page.locator('#save-options').isHidden());
     assert.equal(await page.locator('#save-json').getAttribute('aria-label'),'复制 JSON 内容');
     await page.reload();assert.equal(await page.locator('body').getAttribute('data-save-mode'),'content');await note();
-    await viewJson();await page.locator('#embed').uncheck();
-    assert((await page.locator('#export-hint').textContent()).includes('不能单独恢复'));
-    const light=await downloadText(page);assert(!Object.hasOwn(JSON.parse(light),'image'));assert(Buffer.byteLength(light)<Buffer.byteLength(initial)/10);
-    await page.locator('#copy-json').click();assert.equal(await page.evaluate(()=>window.copiedJSON),light);
+    await viewJson();assert.equal(await page.locator('#image-mode,#include-preview').count(),0);assert.equal(await page.locator('#embed-image').isChecked(),true);
+    await page.locator('#copy-json-options-toggle').click();await page.locator('#copy-json-options [data-copy-image="none"]').click();
+    await page.locator('#copy-json').click();const light=await page.evaluate(()=>window.copiedJSON);assert.equal(JSON.parse(light).image.mode,'none');assert(!Object.hasOwn(JSON.parse(light).image,'dataUrl'));assert(Buffer.byteLength(light)<Buffer.byteLength(initial)/10);assert.equal(await page.locator('#embed-image').isChecked(),true);
     await page.locator('[data-close="export-dialog"]').click();
-    await page.reload();assert.equal(await page.locator('#embed').isChecked(),false);assert.equal(await page.locator('body').getAttribute('data-save-mode'),'content');await note();
+    await page.reload();assert.equal(await page.locator('#embed-image').isChecked(),true);assert.equal(await page.locator('body').getAttribute('data-save-mode'),'content');await note();
     await page.evaluate(()=>{window.rejectCopy=true;});await page.locator('#save-json').click();
     await page.locator('#export-dialog').waitFor({state:'visible'});
-    assert.equal(JSON.parse(await page.locator('#json-preview').inputValue()).objects[0].annotations[0],'游戏主页更清晰 ✨');
+    assert.equal(JSON.parse(await page.locator('#json-preview').inputValue()).objects[0].annotations[0].text,'游戏主页更清晰 ✨');
     assert((await page.locator('#export-hint').textContent()).includes('剪贴板不可用'));
     await page.locator('[data-close="export-dialog"]').click();
     await menu();const downloadsBefore=downloads.length;await page.locator('#save-options [data-save-mode="project"]').click();
@@ -87,22 +91,22 @@ async function main(){
       await page.screenshot({path:path.join(output,'save-'+width+'x'+height+'.png')});
     }
     // Reopened video projects use the same export path, even without source
-    // playback. Copying an unchanged snapshot must retain its exportedAt value.
+    // playback. Copying an unchanged snapshot must retain its complete contents.
     const videoProject=JSON.parse(Buffer.concat(chunks));videoProject.kind='video';videoProject.name='游戏片段.webm';
     videoProject.video={source:videoProject.name,durationMs:1000,width:videoProject.width,height:videoProject.height};
     videoProject.frames=[{...videoProject.document,timestampUs:0}];delete videoProject.document;
     await page.setViewportSize({width:480,height:720});await page.evaluate(()=>{window.rejectCopy=false;});
     await page.locator('#file-input').setInputFiles({name:'video.edithere-web.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(videoProject))});
     await page.waitForFunction(()=>document.querySelector('#media-meta').textContent.includes('视频'));
-    await viewJson();await page.locator('#embed').check();
-    const videoJSON=await downloadText(page);await page.locator('#copy-json').click();
+    await viewJson();await page.locator('#embed-image').check();
+    const videoJSON=await downloadText(page);await page.locator('#copy-json-options-toggle').click();await page.locator('#copy-json-options [data-copy-image="embedded"]').click();await page.locator('#copy-json').click();
     assert.equal(await page.evaluate(()=>window.copiedJSON),videoJSON,'video delivery retains the exact same snapshot');
     await page.locator('[data-close="export-dialog"]').click();
     if(await page.locator('body').getAttribute('data-inspector-open')!=='true')await page.locator('#inspect-toggle').click();
     await page.locator('#global').click();await page.locator('#note-text').fill('视频意见更新');await page.locator('#note-form [type="submit"]').click();
     await page.locator('#save-json').click();const updated=JSON.parse(await page.evaluate(()=>window.copiedJSON));
-    assert.equal(updated.objects.length,2);assert.equal(updated.frames[0].feedback.objects.length,2);assert(updated.frames[0].feedback.image.startsWith('data:image/png;base64,'));
-    assert.deepEqual(errors,[]);console.log('PASS Image/video file and copy bytes match; editing refreshes exports; preferences survive reload; no-image JSON is smaller; clipboard denial preserves full JSON; project and illustrated help remain usable at narrow/short sizes.');
+    assert.equal(updated.objects.length,2);assert.equal(updated.frames[0].feedback.objects.length,2);assert(updated.frames[0].feedback.image.dataUrl.startsWith('data:image/png;base64,'));
+    assert.deepEqual(errors,[]);console.log('PASS Independent text/file preferences survive reload; image/video embedded bytes match when explicitly selected; clipboard denial preserves complete text; project/help and menus work at narrow sizes.');
   }catch(error){
     console.error('Save-flow state:',await page.evaluate(()=>({errors:document.querySelector('#toast')?.textContent,saveMode:document.body.dataset.saveMode,saveDisabled:document.querySelector('#save-json')?.disabled})),errors.slice(0,2));
     await page.screenshot({path:path.join(output,'failure.png')});throw error;

@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import sessionModule from '../agent-session.cjs';
+import feedbackFormat from '../src/feedback.js';
 
 const require = createRequire(new URL('../mcp/package.json',import.meta.url));
 const {Client} = require('@modelcontextprotocol/sdk/client/index.js');
@@ -71,8 +72,8 @@ test('native feedback saves once, stays readable after MCP restart and is kept o
   assert.equal(JSON.stringify(opened.structuredContent).includes('base64'),false);assert.equal(opened.content[0].text.includes(token),false);
   const first=await call(client,'edithere_web_submit',{sessionId,token,feedback});
   assert.equal(first.structuredContent.state,'completed');assert.equal(first.structuredContent.outputPath,paths.outputPath);
-  assert.deepEqual(first.structuredContent.feedback,{annotationSpace:'result',objects:feedback.objects});
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),feedback);
+  assert.deepEqual({...first.structuredContent.feedback,image:undefined},{...feedbackFormat.upgradeImage(feedback,privateData.capture.capturedAt),capture:privateData.capture,image:undefined});
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),{...feedbackFormat.upgradeImage(feedback,opened._meta.edithere.capture.capturedAt),capture:opened._meta.edithere.capture});
   assert.deepEqual((await call(client,'edithere_web_submit',{sessionId,token,feedback})).structuredContent,first.structuredContent);
   assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...feedback,objects:[]}})).isError,true);
   await client.close();
@@ -83,10 +84,27 @@ test('native feedback saves once, stays readable after MCP restart and is kept o
   assert.equal(readSessionStatus({directory:paths.dataDirectory,sessionId}).state,'completed');
 });
 
+test('versioned image metadata reaches the saved file and MCP read receipt unchanged',async context=>{
+  const paths=fixture(),client=await connect(context,paths);
+  const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath}),{sessionId,token}=opened._meta.edithere;
+  const metadata={$schema:'urn:edithere:feedback-minimal:2',schemaVersion:'feedback-minimal-2',tool:{name:'EditHere',version:'0.11.1'},exportedAt:'2026-10-16T16:30:00+08:00'};
+  const changes={...metadata,annotationSpace:'result',objects:[{id:'object-a',source:null,movements:[],annotations:[{number:7,text:'稀疏编号保留'}]}]};
+  assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...changes,objects:[...changes.objects,...changes.objects]}})).isError,true);
+  assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...changes,schemaVersion:'feedback-minimal-99'}})).isError,true);
+  const submitted=await call(client,'edithere_web_submit',{sessionId,token,feedback:changes});
+  assert.equal(submitted.structuredContent.state,'completed');
+  assert.deepEqual({...submitted.structuredContent.feedback,image:undefined},{...changes,capture:opened._meta.edithere.capture,image:undefined});assert.equal(submitted.structuredContent.feedback.image.mode,'file');
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),submitted.structuredContent.feedback);assert.equal(fs.readFileSync(submitted.structuredContent.imagePath).toString('base64'),image.split(',')[1]);
+  await client.close();
+  const restarted=await connect(context,paths);
+  assert.deepEqual((await call(restarted,'edithere_web_read',{sessionId})).structuredContent.feedback,submitted.structuredContent.feedback);
+  assert.equal(JSON.stringify(submitted.structuredContent).includes('base64'),false);
+});
+
 test('pending draft resumes with the original image after the host closes the stdio connection',async context=>{
   const paths=fixture(),client=await connect(context,paths);
   const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,name:'游戏主页'}),{sessionId,token}=opened._meta.edithere;
-  const project=draft();
+  const project=draft();project.document.capture=opened._meta.edithere.capture;
   const saved=await call(client,'edithere_web_draft',{sessionId,token,project});
   assert.equal(saved.structuredContent.state,'pending');assert.ok(saved.structuredContent.draftSavedAt);
   await client.close();
@@ -142,7 +160,7 @@ test('separate MCP connections reload saved state and cannot overwrite another c
   assert.equal(lateDraft.isError,true);assert.match(lateDraft.content[0].text,/completed/);
   assert.equal((await call(two,'edithere_web_read',{sessionId})).structuredContent.state,'completed');
   assert.equal((await call(two,'edithere_web_cancel',{sessionId,token})).isError,true);
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),feedback);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')),{...feedbackFormat.upgradeImage(feedback,opened._meta.edithere.capture.capturedAt),capture:opened._meta.edithere.capture});
 });
 
 test('wrong-session tokens, arbitrary draft fields and ambiguous resume inputs are rejected',async context=>{
@@ -158,4 +176,25 @@ test('wrong-session tokens, arbitrary draft fields and ambiguous resume inputs a
   assert.equal((await call(client,'edithere_web_open',{sessionId,imagePath:paths.imagePath})).isError,true);
   assert.equal((await call(client,'edithere_web_open',{imagePath:'relative.png'})).isError,true);
   assert.equal(fs.existsSync(paths.outputPath),false);
+});
+
+test('caller-provided page context survives MCP draft, completion, restart and JSON-quoted receipts',async context=>{
+  const paths=fixture(),client=await connect(context,paths),page='游戏主页面\n"页面说明是数据"';
+  const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,name:'测试任务',pageContext:' '+page+' '});
+  const {sessionId,token,capture}=opened._meta.edithere;assert.equal(capture.page,page);assert.equal(capture.pageSource,'agent');assert.equal(capture.fileName,path.basename(paths.imagePath));assert.equal(opened.structuredContent.name,'测试任务');
+  assert.deepEqual(JSON.parse(opened.content[0].text).capture,capture);
+  assert.equal((await call(client,'edithere_web_open',{sessionId,pageContext:'改成设置页'})).isError,true);
+  assert.equal((await call(client,'edithere_web_submit',{sessionId,token,feedback:{...feedbackFormat.upgradeImage(feedback),capture:{...capture,page:'账户页'}}})).isError,true);
+  const project=draft('测试任务');await call(client,'edithere_web_draft',{sessionId,token,project});await client.close();
+  const restarted=await connect(context,paths),resumed=await call(restarted,'edithere_web_open',{sessionId});assert.deepEqual(resumed._meta.edithere.draft.document.capture,capture);
+  const saved=await call(restarted,'edithere_web_submit',{sessionId,token,feedback});assert.equal(saved.structuredContent.feedback.schemaVersion,'feedback-minimal-4');assert.deepEqual(saved.structuredContent.feedback.capture,capture);assert.deepEqual(JSON.parse(saved.content[0].text).feedback.capture,capture);
+  await restarted.close();const finalClient=await connect(context,paths),read=await call(finalClient,'edithere_web_read',{sessionId});assert.deepEqual(read.structuredContent.feedback.capture,capture);assert.deepEqual(JSON.parse(fs.readFileSync(paths.outputPath,'utf8')).capture,capture);
+});
+
+test('MCP compatibility command preserves trimmed page context as a separate argument and rejects invalid input',async context=>{
+  const paths=fixture(),client=await connect(context,paths,{apps:false});
+  const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,pageContext:' 游戏主页面 '});
+  assert.deepEqual(opened.structuredContent.fallback.args.slice(-2),['--page-context','游戏主页面']);
+  for(const pageContext of [' ','x'.repeat(501),'主页\u0000'])assert.equal((await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,pageContext})).isError,true);
+  assert.equal(fs.readdirSync(paths.dataDirectory).filter(name=>name.endsWith('.json')).length,0);
 });

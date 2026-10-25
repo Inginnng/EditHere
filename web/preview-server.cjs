@@ -7,6 +7,11 @@ const crypto = require('node:crypto');
 const {AgentSessions, API_VERSION, MAX_BODY, defaultSessionDirectory} = require('./agent-session.cjs');
 const html = path.join(__dirname, 'EditHere.html');
 const sessionDirectory = defaultSessionDirectory();
+function configuredPort() {
+  const port = Number(process.env.EDITHERE_WEB_PORT ?? 7330);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('EDITHERE_WEB_PORT must be an integer between 1 and 65535.');
+  return port;
+}
 function json(res, status, body, head = false) {
   res.writeHead(status, {'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer'});
   res.end(head ? undefined : JSON.stringify(body));
@@ -45,7 +50,7 @@ function createPreviewServer({port = 7330, directory = sessionDirectory} = {}) {
         if (pathname === '/__edithere_agent/session' && req.method === 'GET') { json(res, 200, sessions.browser(url.searchParams.get('token'))); return; }
         if (pathname === '/__edithere_agent/feedback' && req.method === 'POST') {
           if (req.headers.origin !== currentOrigin) { json(res, 403, {error:'Same-origin browser submission is required.'}); return; }
-          json(res, 200, sessions.submit(url.searchParams.get('token'), await readBody(req))); return;
+          const body=await readBody(req);json(res, 200, sessions.submit(url.searchParams.get('token'),body?.feedback||body,body?.feedback?body.previewDataUrl:undefined)); return;
         }
         if (pathname === '/__edithere_agent/cancel' && req.method === 'POST') {
           if (req.headers.origin !== currentOrigin) { json(res, 403, {error:'Same-origin browser cancellation is required.'}); return; }
@@ -83,8 +88,9 @@ function createPreviewServer({port = 7330, directory = sessionDirectory} = {}) {
   return {server, sessions};
 }
 if (require.main === module) {
-  const {server} = createPreviewServer();
+  const port = configuredPort();
+  const {server} = createPreviewServer({port});
   server.on('error', error => { console.error('EditHere preview:', error.message); process.exitCode = 1; });
-  server.listen(7330, '127.0.0.1', () => console.log('EditHere preview and Agent bridge: http://127.0.0.1:7330/EditHere.html'));
+  server.listen(port, '127.0.0.1', () => console.log('EditHere preview and Agent bridge: http://127.0.0.1:' + port + '/EditHere.html'));
 }
-module.exports = {createPreviewServer, sessionDirectory};
+module.exports = {createPreviewServer, sessionDirectory, configuredPort};

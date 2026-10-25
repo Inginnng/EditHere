@@ -106,4 +106,32 @@ void writeNewFeedback(const QString &path, const QByteArray &bytes) {
         fail(QString("Unable to publish feedback without replacement: %1").arg(QString::fromLocal8Bit(std::strerror(errno))));
 #endif
 }
+void writeNewFeedbackBundle(const QString &path, const FeedbackBundle &bundle) {
+    auto fail = [](const QString &message) { throw std::runtime_error(message.toStdString()); };
+    if (const auto error = validateNewFeedbackPath(path); !error.isEmpty()) fail(error);
+    const QDir directory = QFileInfo(path).dir();
+    QStringList destinations;
+    for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) {
+        if (!safeFeedbackImageName(it.key())) fail("Invalid feedback sidecar filename.");
+        const QString destination = directory.filePath(it.key());
+        if (destination.compare(path, Qt::CaseInsensitive) == 0) fail("Feedback and image paths collide.");
+        if (const auto error = validateNewFeedbackPath(destination); !error.isEmpty()) fail(error);
+        for (const auto &previous : destinations)
+            if (previous.compare(destination, Qt::CaseInsensitive) == 0) fail("Feedback sidecar paths collide.");
+        destinations.append(destination);
+    }
+    QStringList created;
+    try {
+        for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) {
+            const QString destination = directory.filePath(it.key());
+            writeNewFeedback(destination, it.value());
+            created.append(destination);
+        }
+        writeNewFeedback(path, bundle.json);
+    } catch (...) {
+        // Never remove a pre-existing file or one we failed to publish.
+        for (const auto &createdPath : created) QFile::remove(createdPath);
+        throw;
+    }
+}
 } // namespace h2d

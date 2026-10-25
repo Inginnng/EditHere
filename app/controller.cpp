@@ -114,6 +114,15 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
             tray_.showMessage("EditHere", tr("设置未能保存：") + error);
         }
     });
+    connect(&editor_, &Editor::exportPreferencesChanged, this, [this](ImageExportMode mode, bool copyTextWithImage) {
+        settings_.imageExportMode = mode;
+        settings_.copyJsonTextWithImage = copyTextWithImage;
+        QString error;
+        if (!saveSettings(settings_, &error, settingsFile_)) {
+            diagnostics::write(diagnostics::Level::Error, "settings.persist", error);
+            tray_.showMessage("EditHere", tr("设置未能保存：") + error);
+        }
+    });
     if (!shortcut_.start(settings_.shortcuts.value("capture"))) {
         diagnostics::write(diagnostics::Level::Warning, "shortcuts.register", shortcut_.lastError());
         tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));
@@ -570,6 +579,13 @@ void Controller::startScrollCapture(Overlay *source) {
         return;
     }
     scrollRun_ = {};
+    scrollRun_.capture = {{"source", "scroll"}, {"capturedAt", frame.capturedAt.isEmpty() ? timestamp() : frame.capturedAt}};
+    for (const auto &window : frame.captureWindows) {
+        if (!window.bounds.contains(area.center())) continue;
+        if (!window.windowTitle.isEmpty()) scrollRun_.capture.insert("windowTitle", window.windowTitle.left(1000));
+        if (!window.appName.isEmpty()) scrollRun_.capture.insert("appName", window.appName.left(1000));
+        break;
+    }
     scrollRun_.axis = settings_.scrollAxis;
     scrollRun_.nativeRegion = nativeRegion;
     diagnostics::write(diagnostics::Level::Info, "long_capture.begin", "Long capture started",
@@ -1218,6 +1234,7 @@ void Controller::finishScrollCapture() {
         return;
     try {
         auto doc = fromImage(picture, "scroll", tr("长截图"));
+        doc.capture = scrollRun_.capture; doc.createdAt = doc.capture["capturedAt"].toString();
         // Long screenshots carry the exact stitched pixels. Decorations can push
         // an image at the capture limit beyond the editor's supported dimensions.
         remember(picture, selection);
@@ -1537,6 +1554,16 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     try {
         const ScreenFrame frame = source->frame();
         auto doc = fromImage(frame.image.copy(area), "screen", tr("屏幕截图"));
+        if (!frame.capturedAt.isEmpty()) {
+            doc.createdAt = frame.capturedAt;
+            doc.capture["capturedAt"] = frame.capturedAt;
+        }
+        for (const auto &window : frame.captureWindows) {
+            if (!window.bounds.contains(area.center())) continue;
+            if (!window.windowTitle.isEmpty()) doc.capture.insert("windowTitle", window.windowTitle.left(1000));
+            if (!window.appName.isEmpty()) doc.capture.insert("appName", window.appName.left(1000));
+            break;
+        }
         if (frame.nativePixels && !frame.nativeGeometry.isEmpty())
             doc.screenBounds = area.translated(frame.nativeGeometry.topLeft());
         for (auto c : candidates) {
@@ -1573,6 +1600,12 @@ void Controller::quit() {
 }
 QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     const auto command = request["command"].toString();
+    if (request.contains("pageContext")) {
+        if ((command != "open" && command != "annotate") || !request["pageContext"].isString())
+            return agentError("invalid_arguments", "pageContext must be a page description for open or annotate.");
+        try { validatePageContext(request["pageContext"].toString().trimmed()); }
+        catch (const std::exception &error) { return agentError("invalid_arguments", QString::fromUtf8(error.what())); }
+    }
     if (command == "status") {
         QString startupError;
         const bool startupRegistered = launchAtLoginEnabled(&startupError);
@@ -1605,9 +1638,23 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
         timeout = request["timeout"].toInt(1800);
         if (timeout < 1 || timeout > 86400) return agentError("invalid_arguments", "Timeout must be between 1 and 86400 seconds.");
     }
+    FeedbackExportOptions exportOptions;
+    if (request.contains("imageMode")) {
+        const auto mode = request["imageMode"].toString();
+        if (mode != "file" && mode != "embedded" && mode != "none") return agentError("invalid_arguments", "Unsupported image mode.");
+        exportOptions.mode = mode == "file" ? ImageExportMode::File : mode == "embedded" ? ImageExportMode::Embedded : ImageExportMode::None;
+    } else if (request.contains("embed")) {
+        if (!request["embed"].isBool()) return agentError("invalid_arguments", "embed must be boolean.");
+        exportOptions.mode = request["embed"].toBool() ? ImageExportMode::Embedded : ImageExportMode::None;
+    }
+    if (request.contains("preview") && !request["preview"].isBool()) return agentError("invalid_arguments", "preview must be boolean.");
+    exportOptions.preview = request["preview"].toBool();
+    exportOptions.imageFile = QFileInfo(output).completeBaseName() + ".png";
+    exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
     try {
         guidePending_ = false;
         editor_.loadMedia(input);
+        if (request.contains("pageContext")) editor_.setPageContext(request["pageContext"].toString());
     } catch (const std::exception &error) {
         diagnostics::write(diagnostics::Level::Error, "agent.load_media", QString::fromUtf8(error.what()));
         return agentError("io_error", QString::fromUtf8(error.what()));
@@ -1615,11 +1662,11 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     if (command == "open") return {{"ok", true}, {"command", command}, {"accepted", true}, {"input", input}};
     agentSessionId_ = uniqueId();
     agentOutput_ = output;
-    agentEmbed_ = request["embed"].toBool(true);
+    agentExportOptions_ = exportOptions;
     editor_.setAgentSession(true);
     const auto id = agentSessionId_;
     diagnostics::write(diagnostics::Level::Info, "agent.session_start", "Annotation session started",
-                       {{"session", id}, {"timeoutSeconds", timeout}, {"imageIncluded", agentEmbed_}});
+                       {{"session", id}, {"timeoutSeconds", timeout}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None}});
     QTimer::singleShot(timeout * 1000, this, [this, id] {
         cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
     });
@@ -1639,16 +1686,21 @@ void Controller::finishAgentSession() {
     if (agentSessionId_.isEmpty()) return;
     const auto id = agentSessionId_;
     const auto output = agentOutput_;
+    FeedbackBundle bundle;
     try {
-        writeNewFeedback(output, editor_.agentFeedback(agentEmbed_));
+        bundle = editor_.agentFeedbackBundle(agentExportOptions_);
+        writeNewFeedbackBundle(output, bundle);
         diagnostics::write(diagnostics::Level::Info, "agent.feedback_written", "Feedback file committed",
                            {{"session", id}, {"bytes", QFileInfo(output).size()}});
     } catch (const std::exception &error) {
         cancelAgentSession(id, "io_error", QString::fromUtf8(error.what()));
         return;
     }
+    auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
-                            {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentEmbed_}};
+                            {"imageFile", receiptPath(bundle.imageFile)}, {"previewFile", receiptPath(bundle.previewFile)},
+                            {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None},
+                            {"schemaVersion", editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);

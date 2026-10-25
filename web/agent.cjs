@@ -3,8 +3,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const {ensurePreview} = require('./preview.cjs');
+const {ensurePreview, previewUrl} = require('./preview.cjs');
 const {sessionDirectory} = require('./preview-server.cjs');
+const {validatePageContext}=require('./src/feedback.js');
 const {imageData, MAX_BODY, readSessionStatus} = require('./agent-session.cjs');
 const legacyDirectory = path.join(__dirname, 'tests/output/agent');
 function persistedStatus(sessionId) {
@@ -17,7 +18,7 @@ function options(args) {
   const result = {command:args[0]};
   for (let index = 1; index < args.length; index += 2) {
     const name = args[index];
-    if (!/^--(image|output|name|timeout|session|wait)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
+    if (!/^--(image|output|name|timeout|session|wait|image-mode|preview|page-context)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
     result[name.slice(2)] = args[index + 1];
   }
   return result;
@@ -26,7 +27,7 @@ function request(method, endpoint, body) {
   const key = fs.readFileSync(path.join(sessionDirectory, 'server-key'), 'utf8');
   return new Promise((resolve, reject) => {
     const content = body === undefined ? undefined : JSON.stringify(body);
-    const req = http.request('http://127.0.0.1:7330' + endpoint, {method, headers:{Authorization:'Bearer ' + key, ...(content ? {'Content-Type':'application/json','Content-Length':Buffer.byteLength(content)} : {})}}, res => {
+    const req = http.request(new URL(endpoint, previewUrl), {method, headers:{Authorization:'Bearer ' + key, ...(content ? {'Content-Type':'application/json','Content-Length':Buffer.byteLength(content)} : {})}}, res => {
       let bytes = 0, chunks = [];
       res.on('data', chunk => { bytes += chunk.length; if (bytes > MAX_BODY) req.destroy(new Error('Response exceeds the allowed limit.')); else chunks.push(chunk); });
       res.on('end', () => { try { const data = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (res.statusCode < 200 || res.statusCode >= 300) throw new Error(data.error || 'HTTP ' + res.statusCode); resolve(data); } catch (error) { reject(error); } });
@@ -38,7 +39,7 @@ function request(method, endpoint, body) {
 }
 async function run(args) {
   const opts = options(args);
-  if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
+  if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--page-context PAGE] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
   if (opts.command === 'start') {
     if (!opts.image || !path.isAbsolute(opts.image) || !opts.output || !path.isAbsolute(opts.output)) throw new Error('--image and --output must be absolute paths.');
     if (opts.session || opts.wait) throw new Error('start does not accept --session or --wait.');
@@ -49,11 +50,13 @@ async function run(args) {
     const mime = {'.png':'png','.jpg':'jpeg','.jpeg':'jpeg','.webp':'webp','.gif':'gif','.bmp':'bmp'}[extension];
     if (!mime) throw new Error('Supported input images: PNG, JPEG, WebP, GIF and BMP.');
     const image = imageData('data:image/' + mime + ';base64,' + bytes.toString('base64'));
+    const pageContext=opts['page-context']===undefined?undefined:validatePageContext(opts['page-context']);
     await ensurePreview({requireBridge:true});
-    return request('POST', '/__edithere_agent/sessions', {image,inputPath,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
+    if(opts.preview!==undefined&&!['true','false'].includes(opts.preview))throw new Error('--preview must be true or false.');
+    return request('POST', '/__edithere_agent/sessions', {image,inputPath,pageContext,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),imageMode:opts['image-mode'],preview:opts.preview===undefined?undefined:opts.preview==='true',timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
   }
   if (!/^[a-f0-9]{32}$/.test(opts.session || '')) throw new Error('--session must be the sessionId returned by start.');
-  if (opts.image || opts.output || opts.name || opts.timeout) throw new Error('Only --session and optional --wait are accepted for this command.');
+  if (opts.image || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview||opts['page-context']!==undefined) throw new Error('Only --session and optional --wait are accepted for this command.');
   const endpoint = '/__edithere_agent/sessions/' + opts.session;
   if (opts.command === 'cancel') {
     await ensurePreview({requireBridge:true});

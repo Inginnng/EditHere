@@ -29,7 +29,7 @@ A project records the source video's address and does not put the whole video in
 
 If the video is moved or deleted, the saved screenshots and annotations can still be viewed. Click “Locate video again” to choose the matching video and restore playback and seeking; choose a video with the same content, or the old timestamps may point at different frames.
 
-On export, `frames[n].feedback.image` holds the embedded screenshot; `frames[n].imageFile`, when present, records the name of a screenshot file in the same folder as the JSON. When you export JSON without embedded images, keep those screenshot files alongside it when sharing with AI, or export a version with embedded images again.
+Each frame uses a `file` (default, a real companion original), `embedded` or `none` image descriptor. Share file-mode JSON and screenshots together. None retains metadata only. `--preview` adds a numbered JPEG per frame. Legacy string images remain readable; the example below shows that older embedded format.
 
 ## JSON structure
 
@@ -123,3 +123,7 @@ The independent acceptance also extracted the five frames around each `timestamp
 Both exact-PTS candidates have the lowest whole-frame error in their respective five-frame windows; the three annotated regions all reach their lowest error at `(0,0)` in the `±2px` shift comparison. The images differ slightly in colour values, so this comparison proves the time and position correspondence; it does not claim that a decoded source-video screenshot is pixel-for-pixel identical to the exported PNG.
 
 Detailed evidence is in [the independent AI acceptance report](../artifacts/video-independent-reader/report.md) and [the per-object localisation and PTS comparison result](../artifacts/video-independent-reader/result.json), which keep the SHA-256 of the source/asset versions, the extracted-frame record and the comparison values. The SHA-256 of the independent report's input JSON matches the real export file.
+
+## Page context
+
+When opening a video or video project, an Agent can supply `--page-context "Game homepage"` (pageContext in the connector). It appears in the editor separately from the title. Root capture supplies new-frame defaults and each frame retains its own capture in feedback and projects across reopening and export. Disabling window-title export filters windowTitle at the video root and within every frame while projects retain it; page/appName remain. Older videos without capture still import. No image-recognition service is called.

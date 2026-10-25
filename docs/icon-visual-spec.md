@@ -39,7 +39,7 @@
 | 复制图片 | `image-copy` | Lucide images | 各截图、长截图、编辑器使用同图 |
 | 查看 JSON | `json` | Lucide file-braces（file-json） | 文件 + 花括号，区别于批注显隐 |
 | 保存 JSON 文件 | `download` | Lucide file-down | 文件 + 下载箭头 |
-| 复制 JSON 文件 | `json-copy-file` | Lucide files | 复制文件对象 |
+| 复制 JSON 与图片 | `json-copy-file` | Lucide files | 复制文件对象 |
 | 复制 JSON 正文 | `json-copy-text` | Lucide clipboard-type | 文字进入剪贴板 |
 | 保存反馈目录 | `feedback-save` | Lucide folder-output | JSON 与图片组合输出 |
 | 普通文本 / 路径复制 | `copy` | Lucide copy | 不代替 JSON 或图片的专用操作 |

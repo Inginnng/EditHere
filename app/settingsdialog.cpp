@@ -169,8 +169,14 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     launchAtLogin_->setObjectName("launchAtLogin");
     fitImageOnOpen_ = new QCheckBox(defaults);
     fitImageOnOpen_->setObjectName("fitImageOnOpen");
-    embedOriginal_ = new QCheckBox(defaults);
-    embedOriginal_->setObjectName("defaultEmbedOriginal");
+    embedFeedbackImage_ = new QCheckBox(defaults);
+    embedFeedbackImage_->setObjectName("defaultEmbedImage");
+    copyJsonTextWithImage_ = new QCheckBox(defaults);
+    copyJsonTextWithImage_->setObjectName("defaultCopyJsonTextWithImage");
+    includeWindowTitle_ = new QCheckBox(defaults);
+    includeWindowTitle_->setObjectName("includeWindowTitle");
+    includeRecognizedText_ = new QCheckBox(defaults);
+    includeRecognizedText_->setObjectName("includeRecognizedText");
     confirmBeforeDiscard_ = new QCheckBox(defaults);
     confirmBeforeDiscard_->setObjectName("confirmBeforeDiscard");
     defaultsLayout->addWidget(captureOnStartup_);
@@ -184,7 +190,10 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     loginLayout->addWidget(launchAtLoginNotice_);
     defaultsLayout->addLayout(loginLayout);
     defaultsLayout->addWidget(fitImageOnOpen_);
-    defaultsLayout->addWidget(embedOriginal_);
+    defaultsLayout->addWidget(embedFeedbackImage_);
+    defaultsLayout->addWidget(copyJsonTextWithImage_);
+    defaultsLayout->addWidget(includeRecognizedText_);
+    defaultsLayout->addWidget(includeWindowTitle_);
     defaultsLayout->addWidget(confirmBeforeDiscard_);
     auto feedbackRow = new QHBoxLayout;
     feedbackDir_ = new QLineEdit(defaults);
@@ -479,7 +488,14 @@ void SettingsDialog::retranslate() {
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
     fitImageOnOpen_->setToolTip(tr("关闭后以 100% 显示，仍可随时缩放或使用适应窗口。"));
-    embedOriginal_->setText(tr("导出 JSON 默认包含原图"));
+    includeWindowTitle_->setText(tr("导出时附带窗口标题"));
+    includeWindowTitle_->setToolTip(tr("关闭后反馈 JSON 不包含窗口标题，应用名称与页面描述仍会保留。"));
+    includeRecognizedText_->setText(tr("导出时附带区域文字"));
+    includeRecognizedText_->setToolTip(tr("自动在本机识别批注区域文字。关闭后导出 JSON 不包含识别文字，项目仍保留结果。"));
+    embedFeedbackImage_->setText(tr("原图嵌入 JSON"));
+    embedFeedbackImage_->setToolTip(tr("未勾选时将 JSON 与原图作为独立文件复制。"));
+    copyJsonTextWithImage_->setText(tr("复制 JSON 内容时携带原图信息"));
+    copyJsonTextWithImage_->setToolTip(tr("默认不携带原图信息；也可在复制按钮旁的选项中快速切换。"));
     confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
     confirmBeforeDiscard_->setToolTip(
         tr("关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。"));
@@ -517,9 +533,9 @@ void SettingsDialog::retranslate() {
         if (definition.id == "saveImage")
             checkbox->setToolTip(tr("保存包含批注和布局调整的图片。"));
         else if (definition.id == "exportJson")
-            checkbox->setToolTip(tr("打开 JSON 预览，可查看、复制或保存文件。"));
+            checkbox->setToolTip(tr("打开 JSON 预览，可查看或复制反馈。"));
         else if (definition.id == "copyJson")
-            checkbox->setToolTip(tr("将 JSON 直接复制到剪贴板。"));
+            checkbox->setToolTip(tr("将 JSON 与配套原图文件复制到剪贴板。"));
     }
     if (versionLabel_)
         versionLabel_->setText(tr("EditHere · 改这里") + "  " EDITHERE_VERSION);
@@ -613,7 +629,12 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     captureOnStartup_->setChecked(settings.captureOnStartup);
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
-    embedOriginal_->setChecked(settings.embedOriginal);
+    legacyEmbedOriginal_ = settings.embedOriginal;
+    embedFeedbackImage_->setChecked(settings.imageExportMode == ImageExportMode::Embedded);
+    copyJsonTextWithImage_->setChecked(settings.copyJsonTextWithImage);
+    legacyIncludeFeedbackPreview_ = settings.includeFeedbackPreview;
+    includeRecognizedText_->setChecked(settings.includeRecognizedText);
+    includeWindowTitle_->setChecked(settings.includeWindowTitle);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
     checkUpdatesOnStartup_->setChecked(settings.checkUpdatesOnStartup);
     feedbackDir_->setText(QDir::toNativeSeparators(settings.feedbackDir));
@@ -628,7 +649,12 @@ AppSettings SettingsDialog::settings() const {
     result.captureOnStartup = captureOnStartup_->isChecked();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
-    result.embedOriginal = embedOriginal_->isChecked();
+    result.imageExportMode = embedFeedbackImage_->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;
+    result.copyJsonTextWithImage = copyJsonTextWithImage_->isChecked();
+    result.embedOriginal = legacyEmbedOriginal_;
+    result.includeFeedbackPreview = legacyIncludeFeedbackPreview_;
+    result.includeRecognizedText = includeRecognizedText_->isChecked();
+    result.includeWindowTitle = includeWindowTitle_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());

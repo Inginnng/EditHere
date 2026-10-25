@@ -11,6 +11,7 @@
 #include <functional>
 #ifdef Q_OS_APPLE
 #include <QFutureWatcher>
+#include <optional>
 #endif
 class QProcess;
 class QTemporaryDir;
@@ -51,10 +52,40 @@ QString ocrLanguageLabel(OcrLanguageMode mode);
 // engine stays below it and splits anything taller. Exposed for tests.
 int ocrMaxImageDimension();
 
+// Height of one line of text, measured from the picture itself. Recognisers stop
+// reading below roughly twenty pixels, and a crop can be large while its text is
+// small, so the size alone does not say how much to enlarge. Zero when the
+// picture has no measurable ink. Exposed for tests.
+int estimateOcrTextHeight(const QImage &image);
+
 // Enlarges small images so tightly cropped text remains readable, and shrinks
-// images wider than the recogniser accepts. The aspect ratio is preserved, so
+// images wider than the recogniser accepts. The enlargement follows the measured
+// line height as well as the sheet size. The aspect ratio is preserved, so
 // recognised boxes remain valid fractions of the original picture.
 QImage scaleForOcr(const QImage &image, int maxDimension);
+
+// Margin added around a crop before recognition: recognisers drop characters that
+// touch the border. Bounded so a tiny crop still gains context and a large one
+// does not pay for it. Exposed for tests.
+int ocrPaddingFor(const QSize &size);
+
+// Stretches a low-contrast crop to the full range. Faint labels on a dark toolbar
+// sit below what the recogniser accepts even after enlargement. Exposed for tests.
+QImage stretchOcrContrast(const QImage &image);
+
+// Adds an opaque margin matching the background. Transparent glyphs use a
+// contrasting background, so both dark and white text remain visible.
+QImage padForOcr(const QImage &image, int padding);
+
+// Keep the processed picture and its source area together. Every recogniser
+// returns fractions of image; sourceBox removes the preprocessing margin once,
+// after the platform result is collected, including Vision's normalised boxes.
+struct PreparedOcrImage {
+    QImage image;
+    QRect contentRect;
+    QRectF sourceBox(const QRectF &box) const;
+};
+PreparedOcrImage prepareForOcr(const QImage &image, int maxDimension);
 
 // Splits an image taller than the recogniser accepts into overlapping bands, so a
 // line of text on a boundary is still read in full by one of them. The bands are
@@ -65,6 +96,10 @@ QVector<QRect> ocrBands(const QSize &size, int maxDimension, int overlap = 24);
 // Moves a box reported for one band onto the whole image and turns it into
 // fractions of the image size.
 QRectF ocrBandBoxToImage(const QRectF &box, const QRect &band, const QSize &size);
+
+// Words have pixel boxes in the same line. Only closely adjacent CJK words are
+// joined without a separator; actual word contents and wider gaps are preserved.
+QString joinOcrWords(const QVector<OcrLine> &words);
 
 // Reads the payload the Windows bridge writes:
 //   {"engineLanguage":"<tag>","lines":[{"text":"..","x":0,"y":0,"w":0,"h":0}]}
@@ -101,7 +136,8 @@ QStringList visionLanguageTags();
 
 // Reads the text in an image. The work happens in a helper process or on a worker
 // thread, so the call returns immediately; the callback runs once, on the thread
-// that started the work. Calling it again cancels whatever is still running.
+// that started the work, unless cancelled. A new call replaces the previous
+// request. A synchronous native worker finishes before its replacement starts.
 class OcrEngine final : public QObject {
     Q_OBJECT
   public:
@@ -131,7 +167,7 @@ class OcrEngine final : public QObject {
     void collectBand(const QString &payload, const QString &diagnostic);
     void reportFailure(int exitCode, bool timedOut, const QString &diagnostic);
     OcrCallback callback_;
-    QImage sent_; // Exactly the picture that was handed to the recogniser.
+    PreparedOcrImage prepared_;
     QVector<QRect> bands_;
     QVector<QString> bandPaths_;
     QVector<OcrLine> lines_;
@@ -141,6 +177,15 @@ class OcrEngine final : public QObject {
     QProcess *process_ = nullptr;
 #ifdef Q_OS_APPLE
     QFutureWatcher<VisionOutcome> *watcher_ = nullptr;
+    // Vision is synchronous and cannot be stopped by QFuture::cancel(). Keep
+    // its watcher until completion and run only the newest queued replacement.
+    struct PendingRequest {
+        QImage image;
+        OcrLanguageMode language;
+        OcrCallback callback;
+    };
+    std::optional<PendingRequest> pending_;
+    bool watcherAbandoned_ = false;
 #endif
     QTemporaryDir *scratch_ = nullptr;
 };
