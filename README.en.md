@@ -248,6 +248,16 @@ Yes. A `.edithere` project keeps the original image, notes and editing state; th
 
 Thanks to everyone on the [linux.do](https://linux.do/) forum for their suggestions and feedback.
 
+## A note from the author
+
+I'm Yinji, a student developer.
+
+It started from something simple. With vibe coding, the AI feels like a wishing machine: one sentence and a working screen appears. But the moment a detail needs to change, the idea is perfectly clear — and saying it out loud is the hard part. So I wanted to mark the request right on the picture: which part, how big, move it where. Let the idea be seen first, then built. That is what EditHere grew out of.
+
+Job hunting is taking most of my time right now, so updates come slowly, but they will not stop — several features I have planned are on the way. I hope EditHere becomes a starting point for more tools that rethink how people and AI work together, and for building the best human–AI interaction software I can.
+
+If EditHere helps you, a star on GitHub matters a lot to me. Or just tell me about the problem you hit. Thank you for using it.
+
 ## License and commercial collaboration
 
 The original software is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) (SPDX: `PolyForm-Noncommercial-1.0.0`).
