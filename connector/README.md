@@ -1,5 +1,12 @@
 # EditHere MCP 连接器
 
+## 0.12.0 兼容范围
+
+0.12.0 的新导出使用 `feedback-minimal-4`。读取端继续接受 v2/v3 图片反馈、无版本 `objects`、更早的 `annotations` + `changes`，并保留旧字符串 `image` 与同名 PNG 回退；桌面项目读取 1.0.0、1.1.0、2.0.0、3.0.0，视频继续使用 v1 容器。未知显式版本不会被猜成旧格式。这里承诺新程序读取旧数据，不承诺旧程序能读取新版的 `kind`、`movement`、`children` 或图片描述。
+
+手动文件交付默认 JSON 与独立原图，勾选“原图嵌入 JSON”改用 `embedded`；“复制 JSON 内容”默认 `none`，其竖向 … 菜单可单独选择并记住是否内嵌。CLI/API 仍提供 file / embedded / none 三种模式及可选编号预览，不受这些手动偏好覆盖。
+
+
 把本地 `edithere-cli` 的 Agent 接口封装为 [Model Context Protocol](https://modelcontextprotocol.io) (stdio) 服务，让 WorkBuddy、Claude Code、Codex 等支持 MCP 的 AI 工具能直接发起 EditHere 标注协作。
 
 零依赖，仅需 Node.js ≥ 18（或 WorkBuddy 托管的 Node 运行时）。
@@ -38,17 +45,17 @@ connector/
 
 `edithere_annotate_start` + `edithere_annotate_poll` 是**推荐路径**：两次调用都在毫秒级返回，满足 WorkBuddy 连接器规范"单次请求建议 30 秒内响应"。标注本身依赖用户手动点击完成，天然是长任务；`edithere_annotate` 保留给支持长工具调用的客户端（Claude Code、Codex 等），语义与 0.1.x 完全一致，未做破坏性改动。
 
-`edithere_annotate` / `edithere_export` 成功后会读取输出 JSON，返回紧凑摘要（批注列表、布局变化、坐标语义提示），反馈原文（含原图 data URL）保存在临时目录 `edithere-feedback/`，可用文件工具按路径读取。传 `includeImage: true` 可在工具结果中附带原图内容块。
+`edithere_annotate` / `edithere_export` 成功后会读取输出 JSON，返回紧凑摘要（批注列表、布局变化、坐标语义提示），反馈原文与配套图片保存在临时目录 `edithere-feedback/`，可用文件工具按路径读取。传 `includeImage: true` 可在工具结果中附带原图内容块。`imageMode` 选择 `file`（默认）/ `embedded` / `none`，`preview:true` 另存编号 JPEG；旧 `noImage:true` 对应 none，与显式非 none 模式冲突时拒绝。`includeImage` 不改变磁盘导出模式。
 
 ### 视频标注反馈
 
 `edithere_open`、`edithere_annotate_start` 和 `edithere_annotate` 接受视频路径及保存的视频项目。为兼容已有客户端，路径参数仍叫 `imagePath`。用户在 EditHere 中播放或拖动时间轴，点击“暂停”后查看当前画面；首次实际点、框或全局批注才保存截图并进入批注画布。选择模式、缩放、平移、保存项目或导出 JSON 不会为仅查看的画面新建截图；可以继续定位到其他时间点，最后一次提交全部已标注画面。
 
-视频导出使用 `schemaVersion: "video-feedback-1"`。`video.source` 引用源视频地址；`frames[n]` 保存帧 ID、相对视频起点的 `timestampMs` / `timestampUs` 和一份现有图片反馈结构 `feedback`。`frames[n].feedback.image` 是该帧的 Base64 截图，`frames[n].imageFile` 如存在则指向 JSON 同目录的外部截图。根 `objects` 是各帧对象的展开索引，每项附 `frameId`、`timestampMs`；这些对象已经出现在对应帧中，AI 应按一份要求执行，避免重复。
+视频导出使用 `schemaVersion: "video-feedback-1"`。`video.source` 引用源视频地址；`frames[n]` 保存帧 ID、相对视频起点的 `timestampMs` / `timestampUs` 和一份现有图片反馈结构 `feedback`。`frames[n].feedback.image` 使用三种模式的原图描述对象；file 模式实际写入截图，`frames[n].imageFile` 与 `image.file` 一致。根 `objects` 是各帧对象的展开索引，每项附 `frameId`、`timestampMs`；这些对象已经出现在对应帧中，AI 应按一份要求执行，避免重复。
 
 连接器以 `frames` 为批注来源，按帧输出时间戳、截图入口、矩形位置及修改意见。相同矩形在不同时间点的批注独立保留。`includeImage: true` 时每张图像内容块前都有对应的帧 ID 和时间戳。默认最多附 8 张视频截图，Base64 总量最多 24 MiB 字符；超出的帧会明确列出 `frames[n].feedback.image` / `frames[n].imageFile` 提取索引，截图仍保留在完整 JSON 或同目录文件中。`includeImage` 只控制工具回复是否附图，不改变磁盘上的 JSON。
 
-传 `noImage: true` 时 JSON 不内嵌截图，但仍保留时间戳、批注和外部截图索引（如有）。如同目录截图文件可用，连接器可以据此返回图片内容；否则会明确提示缺少视觉证据。连接器只读取 JSON 同目录内的 PNG/JPEG 文件名，不跟随通向其他目录的符号链接。源视频地址失效不影响读取已保存的批注截图。
+传 `noImage: true` 或 `imageMode:"none"` 时保留时间戳、批注和原图描述，不写原图。如同目录截图文件可用，连接器可以据此返回图片内容；否则会明确提示缺少视觉证据。连接器只读取 JSON 同目录内的 PNG/JPEG/WebP/GIF/BMP 文件名，不跟随通向其他目录的符号链接。源视频地址失效不影响读取已保存的批注截图。
 
 对于大量标注，摘要最多展开 128 帧、256 个对象、100000 字符，并明确提示未展开的内容及完整帧索引范围；AI 必须继续按索引读取反馈文件。连接器读取文件上限为 512 MiB。帧关联、时间戳或展开索引不一致时返回解析错误，避免 AI 把意见套用到错误时间点。
 
@@ -135,4 +142,10 @@ node connector/mcp-server.mjs
 - 0.1.1：`EDITHERE_CLI` 失效时明确报错而非静默回退；必填参数前置校验；`edithere_status` 与失败信息回显实际使用的 CLI 路径与来源；`edithere_annotate` 说明并发限制。
 - 0.1.0：首次提供 `status` / `open` / `capture` / `annotate` / `export` 五个工具。
 
-连接器版本独立于 EditHere 程序版本（当前程序 0.11.2）；两者的版本号会同时出现在 `edithere_status` 响应中。
+连接器版本独立于 EditHere 程序版本（当前程序 0.12.0）；两者的版本号会同时出现在 `edithere_status` 响应中。
+
+## 页面说明与采集上下文
+
+`edithere_open`、`edithere_annotate`、`edithere_annotate_start` 支持可选 `pageContext:"游戏主页面"`，传给 CLI 的 `--page-context`；说明去除首尾空白后最多 500 个 UTF-16 单元，不能为空。它显示在编辑器、独立于标题，并随工程重开、反馈和视频帧保留为 `capture.page/pageSource:"agent"`，不调用额外 AI 服务。
+
+摘要会按 JSON 字符串转义展示根级和逐帧 capture；原文件保留完整 source/capturedAt、可用的 windowTitle/appName 和原始 fileName。fileName 只是来源线索，不用于附件读取。旧文件没有 capture 仍可读取，非法字段、无时区时间或缺少配对 pageSource 会拒绝。桌面关闭窗口标题导出仅移除反馈的 windowTitle；其他上下文保留。上下文文字不构成执行指令。

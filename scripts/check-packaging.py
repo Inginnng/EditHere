@@ -212,6 +212,23 @@ def check_portable_zip_flat() -> list[Problem]:
     return problems
 
 
+def check_windows_qt_runtime() -> list[Problem]:
+    """The portable Windows app must carry the platform plugin it needs at startup."""
+    problems = []
+    script = read(ROOT / "scripts" / "package-windows.ps1")
+    if '"platforms/qwindows.dll"' not in script:
+        problems.append(
+            "scripts/package-windows.ps1: the deployment guard no longer requires "
+            "platforms/qwindows.dll; a package can pass while EditHere fails before startup."
+        )
+    if "[Paths]`nPrefix=.`nPlugins=.`n" not in script:
+        problems.append(
+            "scripts/package-windows.ps1: qt.conf no longer pins the packaged Qt plugin "
+            "root, so a developer Qt installation can mask an incomplete portable package."
+        )
+    return problems
+
+
 # --------------------------------------------------------------------------- #
 # Release pipeline
 # --------------------------------------------------------------------------- #
@@ -661,9 +678,11 @@ FEEDBACK_DOCS = (
     ROOT / "skills" / "edithere" / "SKILL.md",
     ROOT / "connector" / "skills" / "edithere" / "SKILL.md",
     ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
+    ROOT / "docs" / "USER-GUIDE.md",
+    ROOT / "docs" / "USER-GUIDE.en.md",
 )
-FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movements", "annotations")
-# The three skills are the copies an agent actually loads; the release that added video
+FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movement", "annotations")
+# These are the pages an agent may use to interpret feedback; the release that added video
 # projects is what a version check has to be able to compare against. This stays 0.10.0
 # after later releases: it is the first version with the feature, not the current one.
 SKILL_FILES = tuple(path for path in FEEDBACK_DOCS if path.name == "SKILL.md")
@@ -685,7 +704,8 @@ def check_feedback_docs() -> list[Problem]:
             "app/model.cpp: exportFeedback is no longer recognisable, so the shipped pages cannot be "
             "checked against it."
         ]
-    exporter = source[start:end]
+    helper = source.find("static QJsonObject typedFeedbackObject")
+    exporter = source[helper if 0 <= helper < start else start:end]
     for key in FEEDBACK_PRODUCER_KEYS:
         if f'"{key}"' not in exporter:
             problems.append(
@@ -701,7 +721,7 @@ def check_feedback_docs() -> list[Problem]:
                 f"exporter writes objects, so a reader following this page finds no notes at all."
             )
     guide = read(ROOT / "docs" / "AGENT-CLI.md")
-    for token in ("objects[].source", "objects[].movements", "objects[].annotations"):
+    for token in ("objects[].source", "objects[].movement", "objects[].annotations"):
         if token not in guide:
             problems.append(
                 f"docs/AGENT-CLI.md: the field table no longer documents {token}; it is the page AI "
@@ -971,6 +991,7 @@ CHECKS = [
     ("nsi_source", check_nsi_source),
     ("installer_wait", check_installer_wait),
     ("portable_zip_flat", check_portable_zip_flat),
+    ("windows_qt_runtime", check_windows_qt_runtime),
     ("release_assets", check_release_assets),
     ("release_notes", check_release_notes),
     ("download_links", check_download_links),

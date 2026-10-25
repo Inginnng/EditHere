@@ -141,6 +141,10 @@ QWidget#layoutInspector { background:@surface@; border:0; }
 QWidget#noteContainer { background:@surface@; }
 QFrame#noteCard { background:@surface@; border:1px solid @border@; border-radius:10px; }
 QFrame#noteCard[selected="true"] { background:@cardSelected@; border-color:@focus@; }
+QFrame#noteCard[unresolvedParent="true"] { border:2px solid @error@; }
+QFrame#noteCard[childNote="true"] { border-left:3px solid @accent@; }
+QWidget#parentPrompt QPushButton { border:1px solid @border@; border-radius:6px; padding:0; font-size:12px; background:@button@; color:@text@; }
+QWidget#parentPrompt QPushButton:hover { background:@hover@; }
 QLabel#noteBadge { background:@accent@; color:white; border-radius:11px; font-weight:600; font-size:11px; }
 QWidget#toolbarSeparator,QWidget#inspectorSeparator { background:@border@; border:0; }
 QWidget#scrollCaptureProgress QPushButton,QWidget#scrollCropMenu QPushButton,QPushButton#scrollRegionHandle { background:transparent; border:1px solid transparent; border-radius:8px; padding:0; min-width:0; min-height:0; }

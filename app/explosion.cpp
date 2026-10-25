@@ -363,19 +363,26 @@ void LayoutCanvas::paintEvent(QPaintEvent *event) {
             continue;
         const bool hovered = note.id == hoveredNote_;
         const double pulse = hovered ? .5 + .5 * std::sin(hoverPhase_) : 0;
+        const bool unresolved = note.parent && note.parent->state == ParentState::Unknown;
+        const QColor ink = unresolved ? QColor(0xE2, 0x4B, 0x4A) : accent();
         if (!note.isPoint) {
-            p.setPen(QPen(accent(), 1.5));
+            p.setPen(QPen(ink, unresolved ? 2 : 1.5, unresolved ? Qt::DashLine : Qt::SolidLine));
             p.setBrush(Qt::NoBrush);
             p.drawRect(screenRect(note.rect));
         }
         const QPointF anchor = noteAnchor(note);
         if (hovered) {
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(0, 122, 255, 38 + qRound(pulse * 14)));
+            p.setBrush(QColor(ink.red(), ink.green(), ink.blue(), 38 + qRound(pulse * 14)));
             p.drawEllipse(anchor, 18 + pulse * 2, 18 + pulse * 2);
         }
+        if (note.parent) {
+            p.setPen(QPen(ink, 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(anchor, 17 + pulse * 1.5, 17 + pulse * 1.5);
+        }
         p.setPen(QPen(Qt::white, 2));
-        p.setBrush(accent());
+        p.setBrush(ink);
         p.drawEllipse(anchor, 13 + pulse * 1.5, 13 + pulse * 1.5);
         p.setPen(Qt::white);
         p.setFont(QFont(h2d::latinFontFamily(), 10, QFont::DemiBold));

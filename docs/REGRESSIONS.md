@@ -15,6 +15,27 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 反馈格式升级（0.12.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-187 | 子批注升级遗漏连接器、Web 导入与草稿入口；多子项排序不收敛、矩形碰撞误挂、撤销丢归属及视频跨帧漏确认。归属合为一个可选对象并集中正规化，视频 v1 根索引保持扁平，旧反馈 Schema 冻结 | native core/ui/video-project；Web feedback-children/movement/agent-session；connector v4 图片/视频；共享 child-feedback-contract.json；validate-exports | 🆕 |
+| REG-188 | OCR 补边后 Mac 坐标未还原、像素格式假设和透明白字底色错误，盲删中文空格会粘连控件。统一预处理变换和结果回映射，按词框间距合并紧邻 CJK 字符 | ocr_tests：预处理映射、像素格式、透明前景、词框间距；Mac Vision 路径仍需 macOS CI 编译和实机验证 | ⚠️ |
+| REG-189 | Web 通用序列化重新按字母排列 children，破坏与桌面相同的阅读顺序；共享契约固定对象的完整输出字节，同时校验两个实现 | CoreTests::childFeedbackMatchesSharedContractAndNormalizationIsIdempotent；Web feedback-children；共享 child-feedback-contract.json 的 serializedObjects | 🆕 |
+| REG-190 | 320×640 导出弹窗的按钮被固定高度 JSON 预览挤到屏幕外；改用纵向弹性布局，仅预览区收缩，极矮窗口保留滚动 | Web panel：320px 下按钮实际命中检查；save-flow/visual | 🆕 |
+| REG-191 | 取消 QtConcurrent 同步 Vision 请求不会停止底层识别；保留 watcher，完成后只执行最新待处理请求，取消抑制旧回调 | OcrTests::rapidRequestsAnswerOnlyTheLatestPicture；Mac 专属 cancellingQueuedVisionWorkLeavesNoReplacementOrCallback 待 macOS CI 执行 | ⚠️ |
+| REG-192 | Windows 读取草稿文件时短暂占用会令原子 rename 返回 EPERM，最新草稿未落盘。只对 Windows 的共享错误有限退避重试，仍保持原子替换；持续失败保留旧文件并清理临时文件 | Web agent-session：瞬态/持续/非共享错误故障注入；mcp-flow：真实编辑、延迟 ACK 与进程重启恢复 | 🆕 |
+| REG-184 | 精简反馈缺少页面来源；新增 capture 与 AI 页面说明后需避免标题覆盖、工程/视频/恢复丢失及隐私开关漏过滤，截图窗口信息必须来自抓取快照 | native core/layout/ui/agent-cli/settings/video-project；Windows 独立窗口快照；connector 参数/摘要/校验；Web capture/session/recovery/MCP 与浏览器；真实导出 Schema | ✅ |
+| REG-183 | 内嵌原图导致 JSON 体积大，缺图反馈依赖隐含文件名且无法验证图片；新增三模式与编码字节哈希，按完整 bundle 发布，预览使用编号 JPEG | native core / agent-cli / video-project / ui，connector 图片篡改与路径校验，Web bundle、session 与导入测试；validate-exports 校验实际三模式和附件 | ✅ |
+
+J04 回归：移动对象先归组，不能改变批注原有编号。原生 `core` 与 Web feedback / browser 测试验证交错的全局、点和移动批注；连接器拒绝重复 ID 或编号，同时保留旧字符串批注兼容。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-180 | 精简图片反馈无版本，新增字段会被旧的项目分流或严格字段校验拒绝；新增显式版本分流和新旧格式兼容，预览/回执保留元数据 | `core` 元数据与新旧导入；`agent-cli` 回执；`tests/connector_test.mjs` 恢复与未知版本；`web/tests/feedback.test.cjs`、会话及导入测试；`scripts/validate-exports.py` 真实导出 Schema 验证 | 🆕 |
+| REG-181 | 移动对象先归组会使按导出顺序重编的编号偏离图上编号；从原批注顺序保留编号，导入检查重复并按编号还原 | `core` 编号与兼容测试；`tests/connector_test.mjs` 编号、间隙、重复及视频帧作用域；Web 单元和实际界面编号验收 | 🆕 |
+| REG-182 | 批注区域文字缺失，新增 OCR 后还可能被异步旧结果覆盖、在导出关闭后泄漏或在导入/视频索引中丢失；本机异步识别并保留手工编辑，区分截图文字与用户意见，统一过滤所有反馈出口 | `core` OCR 元数据/项目往返与裁图空间；`ui` 本机识别、编辑删除与过期结果；`settings` 持久化；连接器 OCR 校验与摘要/恢复；Web OCR 单元、会话及离线浏览器编辑/恢复/视频/导出开关；真实导出 Schema 校验 | 🆕 |
+
 ## Windows 长截图闪烁（#22，0.11.2）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

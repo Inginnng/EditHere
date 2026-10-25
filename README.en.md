@@ -102,22 +102,28 @@ See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md) for the format.
 
 EditHere **never calls a model**; its job is to make the feedback unambiguous:
 
-- **Manually:** copy the JSON text, the JSON file or the annotated image and paste it into any AI.
+- **Manually:** copy JSON text, JSON and its companion image, or an annotated image and paste it into any AI.
 - **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
 
-One feedback file contains everything:
+0.12.0 defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and its vertical … menu remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
+
+Example feedback structure:
 
 ```jsonc
 {
-  "image": "data:image/png;base64,…",          // optional: the picture before any change
+  "schemaVersion": "feedback-minimal-4",
+  "tool": {"name": "EditHere", "version": "0.12.0"},
+  "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
+            "width": 2000, "height": 1200, "devicePixelRatio": null,
+            "sha256": "…"}, // illustrative hash; send the original with this JSON
   "annotationSpace": "result",
   "objects": [
-    { "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},   // a box note
-      "movements": [], "annotations": ["Make the conversion drop stand out with a red tag"] },
-    { "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},    // a part moved with Explode
-      "movements": [{"to": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}}],
-      "annotations": ["Move Export next to the title"] },
-    { "source": null, "movements": [], "annotations": ["More breathing room overall"] }  // a global note
+    {"id": "o1", "kind": "region", "source": {"x1": 1002, "y1": 156, "x2": 1464, "y2": 384},
+     "annotations": [{"number": 1, "text": "Make the conversion drop stand out with a red tag"}]},
+    {"id": "o2", "kind": "region", "source": {"x1": 1760, "y1": 50, "x2": 1960, "y2": 110},
+     "movement": {"rect": {"x1": 640, "y1": 40, "x2": 840, "y2": 100}, "dx": -1120, "dy": -10},
+     "annotations": [{"number": 2, "text": "Move Export next to the title"}]},
+    {"id": "o3", "kind": "global", "annotations": [{"number": 3, "text": "More breathing room overall"}]}
   ]
 }
 ```

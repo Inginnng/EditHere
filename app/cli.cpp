@@ -3,14 +3,17 @@
 #include "agentlaunch.h"
 #include "diagnostics.h"
 #include "model.h"
+#include "settings.h"
 #include "videoproject.h"
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QLocalSocket>
 #include <cstdio>
+#include <memory>
 using namespace h2d;
 namespace {
 int printResult(const QJsonObject &result) {
@@ -38,7 +41,20 @@ QString guiExecutable() {
 }
 }
 int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+    // Numbered previews draw fonts. Only offline preview export needs a GUI
+    // runtime; it creates no window. Headless Linux uses the bundled offscreen plugin.
+    bool renderPreview = argc > 1 && QByteArray(argv[1]) == "export";
+    bool previewRequested = false;
+    for (int index = 2; index < argc; ++index) if (QByteArray(argv[index]) == "--preview") previewRequested = true;
+    std::unique_ptr<QCoreApplication> application;
+    if (renderPreview && previewRequested) {
+#ifdef Q_OS_LINUX
+        if (qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+#endif
+        application = std::make_unique<QGuiApplication>(argc, argv);
+    } else application = std::make_unique<QCoreApplication>(argc, argv);
+    auto &app = *application;
     app.setApplicationName("edithere-cli");
     app.setApplicationVersion(EDITHERE_VERSION);
     auto args = app.arguments();
@@ -48,14 +64,14 @@ int main(int argc, char **argv) {
                   "Usage:\n"
                   "  edithere-cli --help | --version\n"
                   "  edithere-cli status\n"
-                  "  edithere-cli open <image-video-or-project>\n"
+                  "  edithere-cli open <image-video-or-project> [--page-context <page>]\n"
                   "  edithere-cli capture\n"
-                  "  edithere-cli export <project> --output <new.json> [--no-image]\n"
-                  "  edithere-cli annotate <image-video-or-project> --output <new.json> [--no-image] [--timeout <seconds>]\n\n"
+                  "  edithere-cli export <project> --output <new.json> [--embed-image | --no-image] [--preview]\n"
+                  "  edithere-cli annotate <image-video-or-project> --output <new.json> [--embed-image | --no-image] [--preview] [--timeout <seconds>] [--page-context <page>]\n\n"
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
-                  "Feedback embeds the image by default. Output must not exist; its parent must exist.\n"
+                  "Feedback saves the original beside JSON by default. Output and sidecars must not exist; their parent must exist.\n"
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
-                  "Source videos stay referenced by path; --no-image omits all embedded frame screenshots.\n"
+                  "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds numbered JPEG previews.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
                   "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
@@ -66,22 +82,29 @@ int main(int argc, char **argv) {
     const bool withPath = command == "open" || command == "export" || command == "annotate";
     if (!withPath && command != "status" && command != "capture")
         return printResult(agentError("invalid_arguments", "Unknown command. Run edithere-cli --help."));
-    QString input, output;
-    bool embed = true;
+    QString input, output, pageContext;
+    FeedbackExportOptions options;
+    options.includeRecognizedText = recognizedTextExportEnabled();
+    options.includeWindowTitle = windowTitleExportEnabled();
     int timeoutSeconds = 1800;
     if (withPath) {
         if (args.isEmpty() || args.first().startsWith("--"))
             return printResult(agentError("invalid_arguments", "An image, video or project path is required."));
         input = QFileInfo(args.takeFirst()).absoluteFilePath();
     }
-    bool outputSeen = false, imageSeen = false, timeoutSeen = false;
+    bool outputSeen = false, imageSeen = false, timeoutSeen = false, previewSeen = false, pageSeen = false;
     while (!args.isEmpty()) {
         const auto option = args.takeFirst();
         if (option == "--output" && !outputSeen && (command == "export" || command == "annotate") && !args.isEmpty()) {
             outputSeen = true;
             output = QFileInfo(args.takeFirst()).absoluteFilePath();
-        } else if (option == "--no-image" && !imageSeen && (command == "export" || command == "annotate")) {
-            imageSeen = true; embed = false;
+        } else if ((option == "--no-image" || option == "--embed-image") && !imageSeen && (command == "export" || command == "annotate")) {
+            imageSeen = true; options.mode = option == "--embed-image" ? ImageExportMode::Embedded : ImageExportMode::None;
+        } else if (option == "--preview" && !previewSeen && (command == "export" || command == "annotate")) {
+            previewSeen = true; options.preview = true;
+        } else if (option == "--page-context" && !pageSeen && (command == "open" || command == "annotate") && !args.isEmpty()) {
+            pageSeen = true; pageContext = args.takeFirst().trimmed();
+            try { validatePageContext(pageContext); } catch (const std::exception &error) { return printResult(agentError("invalid_arguments", QString::fromUtf8(error.what()))); }
         } else if (option == "--timeout" && !timeoutSeen && command == "annotate" && !args.isEmpty()) {
             timeoutSeen = true;
             bool ok = false; timeoutSeconds = args.takeFirst().toInt(&ok);
@@ -97,19 +120,28 @@ int main(int argc, char **argv) {
         const auto error = validateNewFeedbackPath(output);
         if (!error.isEmpty()) return printResult(agentError("io_error", error));
     }
+    options.imageFile = QFileInfo(output).completeBaseName() + ".png";
+    options.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
+    auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     if (command == "export") {
         try {
             if (isVideoProjectFile(input)) {
                 const auto project = loadVideoProject(input);
-                writeNewFeedback(output, serializeVideoFeedback(project, embed));
+                const auto bundle = buildVideoFeedbackBundle(project, options);
+                writeNewFeedbackBundle(output, bundle);
                 return printResult({{"ok", true}, {"command", "export"}, {"output", output},
                                     {"annotations", videoAnnotationCount(project)},
-                                    {"frames", project.frames.size()}, {"imageIncluded", embed},
+                                    {"frames", project.frames.size()}, {"imageIncluded", options.mode != ImageExportMode::None},
+                                    {"imageFile", QJsonValue(QJsonValue::Null)}, {"previewFile", QJsonValue(QJsonValue::Null)},
                                     {"schemaVersion", "video-feedback-1"}});
             }
             const auto doc = loadDocument(input);
-            writeNewFeedback(output, serializeFeedback(doc, embed));
-            return printResult({{"ok", true}, {"command", "export"}, {"output", output}, {"annotations", doc.notes.size()}, {"imageIncluded", embed}});
+            const auto bundle = buildFeedbackBundle(doc, options);
+            writeNewFeedbackBundle(output, bundle);
+            return printResult({{"ok", true}, {"command", "export"}, {"output", output},
+                                {"annotations", doc.notes.size()}, {"imageIncluded", options.mode != ImageExportMode::None},
+                                {"imageFile", receiptPath(bundle.imageFile)}, {"previewFile", receiptPath(bundle.previewFile)},
+                                {"schemaVersion", FeedbackSchemaVersion}});
         } catch (const std::exception &error) { return printResult(agentError("io_error", QString::fromUtf8(error.what()))); }
     }
     QLocalSocket socket;
@@ -128,7 +160,8 @@ int main(int argc, char **argv) {
     if (!connection.isEmpty()) return printResult(connection);
     QJsonObject request{{"protocol", 1}, {"command", command}};
     if (withPath) request["input"] = input;
-    if (outputSeen) { request["output"] = output; request["embed"] = embed; }
+    if (pageSeen) request["pageContext"] = pageContext;
+    if (outputSeen) { request["output"] = output; request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"; request["preview"] = options.preview; }
     if (command == "annotate") request["timeout"] = timeoutSeconds;
     const auto message = encodeAgentMessage(request);
     if (socket.write(message) != message.size())

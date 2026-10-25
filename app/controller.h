@@ -98,6 +98,7 @@ class Controller final : public QObject {
         bool captureFallbackLogged = false;
         Qt::Orientation axis = Qt::Vertical;
         QString notice;
+        QJsonObject capture;
     };
     ScrollRun scrollRun_;
     quint64 scrollGeneration_ = 0;
@@ -164,7 +165,7 @@ class Controller final : public QObject {
     GlobalShortcut annotateShortcut_;
     QVector<Overlay *> overlays_;
     QString agentSessionId_, agentOutput_;
-    bool agentEmbed_ = true;
+    FeedbackExportOptions agentExportOptions_;
     bool startupUpdateChecked_ = false;
     std::optional<UpdateChecker::Result> pendingStartupUpdate_;
     bool installationReceiptChecked_ = false;

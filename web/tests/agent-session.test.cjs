@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const {spawnSync} = require('node:child_process');
-const {AgentSessions, readSessionStatus, hydratedDraft} = require('../agent-session.cjs');
+const {AgentSessions, readSessionStatus, hydratedDraft,validateDraft} = require('../agent-session.cjs');
 const {createPreviewServer} = require('../preview-server.cjs');
 const format = require('../src/feedback.js');
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
@@ -21,6 +21,83 @@ function fixture() {
 }
 function create(store, paths, extras = {}) { return store.create({image,name:'游戏主页',inputPath:paths.inputPath,output:paths.output,...extras}); }
 const token = session => new URL(session.url).searchParams.get('agent');
+function onPlatform(platform, operation) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  try { Object.defineProperty(process, 'platform', {...descriptor, value:platform}); return operation(); }
+  finally { Object.defineProperty(process, 'platform', descriptor); }
+}
+
+test('Windows draft persistence retries sharing errors and atomically saves the latest draft', context => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),project=draftProject();
+  const file=path.join(paths.directory,opened.sessionId+'.json'),rename=fs.renameSync;
+  const failures=['EPERM','EACCES','EBUSY'];let attempts=0;
+  context.mock.method(fs,'renameSync',(temp,destination)=>{
+    assert.equal(destination,file);assert(fs.existsSync(temp));
+    assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).draft,undefined);
+    if(attempts++<failures.length)throw Object.assign(new Error('Transient sharing violation'),{code:failures[attempts-1]});
+    return rename(temp,destination);
+  });
+  onPlatform('win32',()=>store.saveDraft(token(opened),project));
+  assert.equal(attempts,4);
+  const restarted=new AgentSessions({...paths,credentials:false});
+  assert.deepEqual(hydratedDraft(restarted.byId(opened.sessionId)).document.notes,project.document.notes);
+  assert.deepEqual(fs.readdirSync(paths.directory).filter(name=>name.endsWith('.tmp')),[]);
+});
+
+test('persistent Windows rename sharing errors preserve the old draft and remove the temporary file', context => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),previous=draftProject();
+  store.saveDraft(token(opened),previous);
+  const file=path.join(paths.directory,opened.sessionId+'.json'),oldBytes=fs.readFileSync(file);
+  const project=draftProject();project.document.notes[0].text='Only save this if atomic replacement succeeds';
+  const error=Object.assign(new Error('Persistent sharing violation'),{code:'EPERM'});let attempts=0;
+  context.mock.method(fs,'renameSync',()=>{attempts++;throw error;});
+  onPlatform('win32',()=>assert.throws(()=>store.saveDraft(token(opened),project),failure=>failure===error));
+  assert.equal(attempts,5);assert.deepEqual(fs.readFileSync(file),oldBytes);
+  assert.deepEqual(hydratedDraft(store.byId(opened.sessionId)).document.notes,previous.document.notes);
+  assert.deepEqual(fs.readdirSync(paths.directory).filter(name=>/\.(tmp|lock)$/.test(name)),[]);
+});
+
+test('Windows draft persistence does not retry a non-sharing rename error', context => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
+  const file=path.join(paths.directory,opened.sessionId+'.json'),oldBytes=fs.readFileSync(file);
+  const error=Object.assign(new Error('Cross-device rename'),{code:'EXDEV'});let attempts=0;
+  context.mock.method(fs,'renameSync',()=>{attempts++;throw error;});
+  onPlatform('win32',()=>assert.throws(()=>store.saveDraft(token(opened),draftProject()),failure=>failure===error));
+  assert.equal(attempts,1);assert.deepEqual(fs.readFileSync(file),oldBytes);
+  assert.deepEqual(fs.readdirSync(paths.directory).filter(name=>name.endsWith('.tmp')),[]);
+});
+
+test('draft persistence does not retry sharing errors outside Windows', context => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
+  const error=Object.assign(new Error('Permission denied'),{code:'EPERM'});let attempts=0;
+  context.mock.method(fs,'renameSync',()=>{attempts++;throw error;});
+  onPlatform('linux',()=>assert.throws(()=>store.saveDraft(token(opened),draftProject()),failure=>failure===error));
+  assert.equal(attempts,1);
+  assert.deepEqual(fs.readdirSync(paths.directory).filter(name=>name.endsWith('.tmp')),[]);
+});
+
+test('child drafts persist one parent object, migrate old fields and reject incomplete links',()=>{
+  const largeImage=require('./image-fixture.cjs').pngData(200,100),L=require('../src/layout.js');
+  const source={x1:10,y1:10,x2:50,y2:50},destination={x1:60,y1:10,x2:100,y2:50},layout=L.create(200,100),groupId=L.addRegion(layout,source);
+  L.transform(layout,groupId,destination);
+  const draft={schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:'2026-10-21T00:00:00Z',kind:'image',name:'child',width:200,height:100,
+    document:{id:'child',timestampUs:null,image:largeImage,layout,notes:[{id:'n',source:{x1:70,y1:20,x2:90,y2:40},text:'child',parent:{source,state:'child',groupId}}]}};
+  const session={name:'child',image:largeImage};
+  assert.deepEqual(validateDraft(draft,session).document.notes,draft.document.notes);
+  const paths=fixture(),store=new AgentSessions(paths),opened=store.create({...session,inputPath:paths.inputPath,output:paths.output});
+  store.saveDraft(token(opened),draft);
+  const restarted=new AgentSessions(paths);
+  assert.deepEqual(hydratedDraft(restarted.byId(opened.sessionId)).document.notes,draft.document.notes);
+  const legacy=structuredClone(draft),note=legacy.document.notes[0];note.parentSource=source;note.parentState='unknown';delete note.parent;
+  const normalized=validateDraft(legacy,session).document.notes[0];assert.deepEqual(normalized.parent,{source,state:'unknown'});assert(!Object.hasOwn(normalized,'parentSource'));
+  for(const mutate of [
+    n=>delete n.parent.state,n=>delete n.parent.source,n=>n.parent.state='bad',n=>n.parent=null,
+    n=>n.parent.groupId='missing',n=>n.parent.extra=true,n=>n.source=null,
+    n=>n.source={x1:3,y1:3,x2:3,y2:3},n=>n.movementSource=source,
+    n=>{delete n.parent;n.parentSource=source;},n=>{delete n.parent;n.parentState='child';},
+    n=>n.parentSource=source
+  ]){const invalid=structuredClone(draft);mutate(invalid.document.notes[0]);assert.throws(()=>validateDraft(invalid,session));}
+});
 
 test('explicit submit writes native complete JSON; receipt omits image; retry is idempotent', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
@@ -30,11 +107,67 @@ test('explicit submit writes native complete JSON; receipt omits image; retry is
   const receipt = store.submit(token(session), feedback);
   assert.equal(receipt.state, 'completed');
   assert.equal(receipt.feedback.image, undefined);
-  assert.deepEqual(receipt.feedback.objects, feedback.objects);
-  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize(feedback));
+  assert.deepEqual(receipt.feedback.objects, format.upgradeImage(feedback, session.capture.capturedAt).objects);
+  assert.equal(fs.readFileSync(paths.output, 'utf8'), format.serialize({...format.upgradeImage(feedback,session.capture.capturedAt),capture:session.capture}));
   assert.equal(receipt.sha256, crypto.createHash('sha256').update(fs.readFileSync(paths.output)).digest('hex'));
   assert.deepEqual(store.submit(token(session), feedback), receipt);
   assert.throws(() => store.submit(token(session), {...feedback,objects:[]}), /different feedback/);
+});
+
+test('versioned metadata survives submission, restart, disk verification and crash recovery', () => {
+  const metadata = {$schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
+    tool:{name:'EditHere', version:'0.11.1'}, exportedAt:'2026-10-16T16:30:00+08:00'};
+  const current = {...metadata, ...feedback};
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const receipt = store.submit(token(session), current);
+  assert.deepEqual(receipt.feedback, {...metadata, capture:session.capture, annotationSpace:'result', objects:feedback.objects});
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output, 'utf8')), {...current,capture:session.capture});
+  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}), receipt);
+  const raw = store.byId(session.sessionId); raw.state = 'submitting'; raw.result = {objects:[]}; store.persist(raw);
+  const restarted = new AgentSessions(paths);
+  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)), receipt);
+  assert.deepEqual(restarted.submit(token(session), current), receipt);
+});
+
+test('recognized screenshot text survives Agent submission, receipts and restart as data', () => {
+  const paths=fixture(),store=new AgentSessions(paths),session=create(store,paths);
+  const current=format.exportImage({image,movements:[],notes:[{source:rectangle,text:'按钮更醒目',recognizedText:{text:'开始',engine:'windows-ocr',language:'zh-Hans'}}]});
+  const receipt=store.submit(token(session),current);
+  assert.deepEqual(receipt.feedback.objects,current.objects);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
+  assert.deepEqual(new AgentSessions(paths).status(store.byId(session.sessionId)),receipt);
+  const otherPaths=fixture(),otherStore=new AgentSessions(otherPaths),otherSession=create(otherStore,otherPaths);
+  const invalid=structuredClone(current);invalid.objects[0].ocrtext={lines:[]};
+  assert.throws(()=>otherStore.submit(token(otherSession),invalid),/recognized screenshot text/);
+  assert.equal(fs.existsSync(otherPaths.output),false);
+});
+
+test('a declared image version cannot omit or replace its metadata', () => {
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const current = {...feedback, $schema:'urn:edithere:feedback-minimal:2', schemaVersion:'feedback-minimal-2',
+    tool:{name:'EditHere',version:'0.11.1'}, exportedAt:'2026-10-16T08:30:00Z'};
+  for (const invalid of [
+    {...current,schemaVersion:'feedback-minimal-3'}, {...current,$schema:null},
+    {...current,tool:{name:'Another tool',version:'0.11.1'}}, {...current,exportedAt:'2026-10-16T08:30:00'}
+  ]) assert.throws(() => store.submit(token(session), invalid));
+  assert.equal(fs.existsSync(paths.output), false);
+  assert.equal(store.byId(session.sessionId).state, 'pending');
+});
+
+test('numbered feedback retains file object IDs and sparse numbers in the persisted MCP receipt', () => {
+  const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
+  const current = format.exportImage({image,movements:[],notes:[{source:null,text:'意见'}]});
+  current.objects=[{id:'first-object',kind:'global',movements:[],annotations:[{number:3,text:'较早'}]},
+    {id:'second-object',kind:'region',source:rectangle,movements:[],annotations:[{number:1000,text:'较晚'}]}];
+  for(const objects of [
+    [current.objects[0],{...current.objects[1],id:'first-object'}],
+    [current.objects[0],{...current.objects[1],annotations:[{number:3,text:'重复编号'}]}]
+  ])assert.throws(()=>store.submit(token(session),{...current,objects}),/duplicate/);
+  const receipt=store.submit(token(session),current);
+  assert.deepEqual(receipt.feedback.objects,current.objects);
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.output,'utf8')),{...current,capture:session.capture});
+  assert.deepEqual(readSessionStatus({directory:paths.directory,sessionId:session.sessionId}),receipt);
+  assert.deepEqual(new AgentSessions(paths).submit(token(session),current),receipt);
 });
 
 test('feedback rejects a replaced image, empty text, invalid coordinates and incompatible fields', () => {
@@ -79,13 +212,14 @@ test('restart restores pending sessions, original tokens and completed receipts'
 
 test('a crash after output write recovers only the recorded matching feedback', () => {
   const paths = fixture(), store = new AgentSessions(paths), session = create(store, paths);
-  const raw = store.byId(session.sessionId), serialized = format.serialize(feedback);
+  const current = format.upgradeImage(feedback, session.capture.capturedAt);
+  const raw = store.byId(session.sessionId), serialized = format.serialize(current);
   raw.state = 'submitting'; raw.sha256 = crypto.createHash('sha256').update(serialized).digest('hex');
-  raw.result = {annotationSpace:'result',objects:feedback.objects}; store.persist(raw);
+  raw.result = {...current, image:undefined}; delete raw.result.image; store.persist(raw);
   fs.writeFileSync(paths.output, serialized);
   const restarted = new AgentSessions(paths);
   assert.equal(restarted.status(restarted.byId(session.sessionId)).state, 'completed');
-  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, feedback.objects);
+  assert.deepEqual(restarted.status(restarted.byId(session.sessionId)).feedback.objects, current.objects);
 });
 
 test('existing output is never overwritten, including a file created after session start', () => {
@@ -156,7 +290,7 @@ test('drafts restore without duplicating the image and do not overwrite a comple
   assert.equal(fs.existsSync(path.join(paths.directory,'server-key')),false);
   first.saveDraft(token(opened),draftProject());
   const resumed = second.byId(opened.sessionId);
-  assert.deepEqual(hydratedDraft(resumed),draftProjectWithDate(resumed.draft.savedAt));
+  const expected=draftProjectWithDate(resumed.draft.savedAt);expected.document.capture=opened.capture;assert.deepEqual(hydratedDraft(resumed),expected);
   assert.equal(resumed.draft.document.image,undefined);
   second.submit(token(opened),feedback);
   assert.throws(() => first.saveDraft(token(opened),draftProject()),/completed/);
@@ -178,13 +312,28 @@ test('draft validation rejects another image, unknown fields and invalid layout 
   assert.equal(fs.existsSync(paths.output),false);
 });
 
+test('Agent drafts preserve recognized text and explicit deletion while rejecting malformed or global OCR', () => {
+  const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths),project=draftProject();
+  project.document.notes=[{id:'ocr-note',source:rectangle,text:'放大按钮',recognizedText:{text:'开始',engine:'windows-ocr'}}];
+  store.saveDraft(token(opened),project);
+  const restarted=new AgentSessions(paths);
+  assert.deepEqual(hydratedDraft(restarted.byId(opened.sessionId)).document.notes,project.document.notes);
+  const deleted=structuredClone(project);deleted.document.notes[0].recognizedText={text:'',edited:true};
+  store.saveDraft(token(opened),deleted);
+  assert.deepEqual(hydratedDraft(new AgentSessions(paths).byId(opened.sessionId)).document.notes,deleted.document.notes);
+  for(const mutate of [v=>v.document.notes[0].source=null,v=>v.document.notes[0].recognizedText.edited=false,v=>v.document.notes[0].recognizedText.lines=[]]){
+    const invalid=structuredClone(deleted);mutate(invalid);assert.throws(()=>store.saveDraft(token(opened),invalid));
+    assert.deepEqual(hydratedDraft(store.byId(opened.sessionId)).document.notes,deleted.document.notes);
+  }
+});
+
 test('reading a completed receipt checks the file and needs neither HTTP nor server credentials', () => {
   const paths=fixture(),store=new AgentSessions(paths),opened=create(store,paths);
   store.submit(token(opened),feedback);
   const key=fs.readFileSync(path.join(paths.directory,'server-key'),'utf8');
   const stat=fs.statSync(path.join(paths.directory,opened.sessionId+'.json'));
   const saved=readSessionStatus({directory:paths.directory,sessionId:opened.sessionId});
-  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,feedback.objects);
+  assert.equal(saved.state,'completed');assert.deepEqual(saved.feedback.objects,format.upgradeImage(feedback,opened.capture.capturedAt).objects);
   assert.equal(fs.readFileSync(path.join(paths.directory,'server-key'),'utf8'),key);
   assert.equal(fs.statSync(path.join(paths.directory,opened.sessionId+'.json')).mtimeMs,stat.mtimeMs);
   fs.writeFileSync(paths.output,'external edit');

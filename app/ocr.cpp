@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QLocale>
+#include <QPainter>
 #include <algorithm>
 #ifdef Q_OS_APPLE
 #include <QtConcurrent>
@@ -37,6 +38,81 @@ constexpr quint32 kCreateNoWindow = 0x08000000;
 // well under a second on a normal machine.
 constexpr int kTimeoutMs = 60000;
 constexpr int kLanguagesTimeoutMs = 5000;
+
+// Empirical defaults for screenshot labels, kept together so changes can be
+// compared against the small-label, faint-label and coordinate regressions.
+struct OcrTuning {
+    int sampleEdge = 320;        // Bound line-height sampling work on screenshots.
+    int colorSampleEdge = 64;
+    int inkDistance = 48;        // Ignore small background/antialias variations.
+    int rowInkDivisor = 8;
+    int minimumStrokeRun = 2;    // A single sampled row can be noise.
+    int minimumShortEdge = 64;
+    int targetTextHeight = 32;   // Comfortable glyph size for the existing engines.
+    qreal maximumUpscale = 4.0;
+    int minimumContrastRange = 160;
+    int minimumPadding = 6;
+    int sizePaddingDivisor = 10;
+    int maximumSizePadding = 24;
+    int maximumPadding = 48;
+    qreal linePadding = 0.6;
+    qreal maximumCjkGap = 0.25;  // A quarter glyph keeps ordinary word gaps apart.
+};
+constexpr OcrTuning kOcrTuning;
+
+QColor ocrBackground(const QImage &image) {
+    // QImage::scaled retains its storage format. Convert before reading QRgb:
+    // native macOS captures are RGBA8888, and imported images can be grayscale.
+    const QImage sample = image.scaled(kOcrTuning.colorSampleEdge, kOcrTuning.colorSampleEdge,
+                                       Qt::KeepAspectRatio, Qt::FastTransformation)
+                              .convertToFormat(QImage::Format_ARGB32);
+    QHash<QRgb, int> colors;
+    int opaquePixels = 0;
+    bool transparent = false;
+    qint64 luminance = 0, weight = 0;
+    for (int y = 0; y < sample.height(); ++y) {
+        const auto *row = reinterpret_cast<const QRgb *>(sample.constScanLine(y));
+        for (int x = 0; x < sample.width(); ++x) {
+            const QRgb pixel = row[x];
+            const int alpha = qAlpha(pixel);
+            transparent |= alpha < 255;
+            if (alpha == 255) {
+                ++opaquePixels;
+                ++colors[qRgb(qRed(pixel), qGreen(pixel), qBlue(pixel))];
+            }
+            luminance += qint64(qGray(pixel)) * alpha;
+            weight += alpha;
+        }
+    }
+    // A mostly transparent crop is commonly a glyph mask, not a white sheet.
+    // Ignore invisible RGB values and choose the opposite of the visible ink;
+    // white lettering must not disappear onto a white canvas.
+    if (transparent && opaquePixels < sample.width() * sample.height() / 2)
+        return weight > 0 && luminance / weight > 127 ? QColor(Qt::black) : QColor(Qt::white);
+    QRgb dominant = qRgb(255, 255, 255);
+    int best = 0;
+    for (auto it = colors.cbegin(); it != colors.cend(); ++it)
+        if (it.value() > best || (it.value() == best && it.key() < dominant)) {
+            best = it.value();
+            dominant = it.key();
+        }
+    return QColor::fromRgb(dominant);
+}
+
+QImage opaqueForOcr(const QImage &image) {
+    if (image.isNull())
+        return image;
+    if (!image.hasAlphaChannel())
+        return image.convertToFormat(QImage::Format_RGB32);
+    QImage result(image.size(), QImage::Format_RGB32);
+    result.fill(ocrBackground(image));
+    QPainter painter(&result);
+    // The target uses native pixels even if the source carries a screen DPR.
+    painter.drawImage(result.rect(), image);
+    painter.end();
+    result.setDevicePixelRatio(image.devicePixelRatio());
+    return result;
+}
 
 QString bridgeScript() {
     QFile file(QString::fromLatin1(kBridgeResource));
@@ -136,23 +212,186 @@ int ocrMaxImageDimension() {
     return 8000;
 }
 
+int estimateOcrTextHeight(const QImage &image) {
+    if (image.isNull())
+        return 0;
+    // Only the rhythm of the strokes matters, so the picture is measured small.
+    const int sampleEdge = kOcrTuning.sampleEdge;
+    QImage sample = image;
+    if (std::max(image.width(), image.height()) > sampleEdge)
+        sample = image.scaled(sampleEdge, sampleEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (sample.width() < 4 || sample.height() < 4)
+        return 0;
+    const QImage gray = sample.convertToFormat(QImage::Format_Grayscale8);
+    int histogram[256] = {0};
+    for (int y = 0; y < gray.height(); ++y) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < gray.width(); ++x)
+            ++histogram[row[x]];
+    }
+    int background = 0;
+    for (int value = 1; value < 256; ++value)
+        if (histogram[value] > histogram[background])
+            background = value;
+    // Ink is whatever clearly differs from the dominant colour: dark text on a
+    // dark theme then counts exactly like dark text on white.
+    const auto ink = [background](int value) {
+        return std::abs(value - background) > kOcrTuning.inkDistance;
+    };
+    QVector<int> counts(gray.height(), 0);
+    int busiest = 0;
+    for (int y = 0; y < gray.height(); ++y) {
+        const uchar *row = gray.constScanLine(y);
+        int count = 0;
+        for (int x = 0; x < gray.width(); ++x)
+            if (ink(row[x]))
+                ++count;
+        counts[y] = count;
+        busiest = std::max(busiest, count);
+    }
+    if (busiest < 2)
+        return 0;
+    // A row belongs to a line when it carries a noticeable share of the busiest
+    // row, so sparse text in a wide crop still counts and a stray pixel does not.
+    const int minimumInk = std::max(2, busiest / kOcrTuning.rowInkDivisor);
+    QVector<int> runs;
+    int run = 0;
+    for (int y = 0; y < gray.height(); ++y) {
+        if (counts[y] >= minimumInk) {
+            ++run;
+        } else if (run > 0) {
+            if (run >= kOcrTuning.minimumStrokeRun)
+                runs.append(run);
+            run = 0;
+        }
+    }
+    if (run >= kOcrTuning.minimumStrokeRun)
+        runs.append(run);
+    if (runs.isEmpty())
+        return 0;
+    // Text lines are the common case, so the median height is the line height.
+    std::sort(runs.begin(), runs.end());
+    const int median = runs.at(runs.size() / 2);
+    return std::max(1, qRound(qreal(median) * image.height() / sample.height()));
+}
+
 QImage scaleForOcr(const QImage &image, int maxDimension) {
     if (image.isNull() || maxDimension <= 0)
         return image;
-    if (image.width() > maxDimension)
-        return image.scaledToWidth(maxDimension, Qt::SmoothTransformation);
-    // A narrow crop can contain perfectly legible text yet produce no lines at
-    // its native size (for example a 380 x 19 URL). Give small glyphs more pixels
-    // without resampling ordinary screenshots or enlarging tiny inputs without
-    // a bound. Tall images are still handled by ocrBands after this step.
-    constexpr int minimumShortEdge = 64;
-    constexpr qreal maximumUpscale = 4.0;
-    const qreal scale = std::min({maximumUpscale,
-                                 qreal(minimumShortEdge) / std::min(image.width(), image.height()),
-                                 qreal(maxDimension) / image.width()});
+    QImage result = image;
+    if (result.width() > maxDimension)
+        result = result.scaledToWidth(maxDimension, Qt::SmoothTransformation);
+    // Two reasons to give the recogniser more pixels: a crop can be small in
+    // absolute terms (a 380 x 19 address bar), or it can be large while the text
+    // inside it is small (a 500 x 120 card holding 10 px labels). The short edge
+    // alone only catches the first, so the measured line height decides as well
+    // and the larger of the two wins. Both stay bounded.
+    const qreal shortEdgeScale =
+        qreal(kOcrTuning.minimumShortEdge) / std::min(result.width(), result.height());
+    const int textHeight = estimateOcrTextHeight(result);
+    const qreal textScale = textHeight > 0 ? qreal(kOcrTuning.targetTextHeight) / textHeight : 1.0;
+    const qreal scale = std::min({std::max({1.0, shortEdgeScale, textScale}), kOcrTuning.maximumUpscale,
+                                  qreal(maxDimension) / result.width()});
     if (scale <= 1.0)
+        return result;
+    QImage scaled = result.scaledToWidth(qRound(result.width() * scale), Qt::SmoothTransformation);
+    scaled.setDevicePixelRatio(result.devicePixelRatio());
+    return scaled;
+}
+
+int ocrPaddingFor(const QSize &size) {
+    if (size.isEmpty())
+        return 0;
+    // Recognisers drop characters that touch the border, so every crop gets a
+    // margin proportional to its short edge and bounded for tiny and huge crops.
+    return std::clamp(std::min(size.width(), size.height()) / kOcrTuning.sizePaddingDivisor,
+                      kOcrTuning.minimumPadding, kOcrTuning.maximumSizePadding);
+}
+
+QImage stretchOcrContrast(const QImage &image) {
+    if (image.isNull())
         return image;
-    return image.scaledToWidth(qRound(image.width() * scale), Qt::SmoothTransformation);
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    int histogram[256] = {0};
+    for (int y = 0; y < gray.height(); ++y) {
+        const uchar *row = gray.constScanLine(y);
+        for (int x = 0; x < gray.width(); ++x)
+            ++histogram[row[x]];
+    }
+    // The extremes are the text itself: a one-line label covers far less than a
+    // percent of the crop, so a fixed percentile could discard every glyph.
+    // Keep the observed extrema; robust outlier clipping needs a labelled corpus
+    // showing a recognition benefit before adding a second threshold policy.
+    const qint64 edge = 1;
+    int low = 0, high = 255;
+    for (qint64 seen = 0, value = 0; value < 256; ++value) {
+        seen += histogram[value];
+        if (seen >= edge) { low = int(value); break; }
+    }
+    for (qint64 seen = 0, value = 255; value >= 0; --value) {
+        seen += histogram[value];
+        if (seen >= edge) { high = int(value); break; }
+    }
+    // A crop that already uses most of the range needs nothing; one that does not
+    // (grey labels on a dark toolbar) is stretched, which is what lifts faint text
+    // far enough for the recogniser to see it at all.
+    if (high - low >= kOcrTuning.minimumContrastRange || high <= low)
+        return image;
+    const int span = high - low;
+    QImage result = image.convertToFormat(QImage::Format_RGB32);
+    for (int y = 0; y < result.height(); ++y) {
+        auto *row = reinterpret_cast<QRgb *>(result.scanLine(y));
+        for (int x = 0; x < result.width(); ++x) {
+            const auto stretch = [&](int channel) {
+                return std::clamp((channel - low) * 255 / span, 0, 255);
+            };
+            row[x] = qRgb(stretch(qRed(row[x])), stretch(qGreen(row[x])), stretch(qBlue(row[x])));
+        }
+    }
+    return result;
+}
+
+QImage padForOcr(const QImage &image, int padding) {
+    if (image.isNull())
+        return image;
+    const QImage opaque = opaqueForOcr(image);
+    if (padding <= 0)
+        return opaque;
+    QImage padded(image.width() + padding * 2, image.height() + padding * 2, QImage::Format_RGB32);
+    padded.fill(ocrBackground(opaque));
+    QPainter painter(&padded);
+    painter.drawImage(QRect(QPoint(padding, padding), image.size()), opaque);
+    painter.end();
+    padded.setDevicePixelRatio(image.devicePixelRatio());
+    return padded;
+}
+
+PreparedOcrImage prepareForOcr(const QImage &image, int maxDimension) {
+    if (image.isNull() || maxDimension <= 0)
+        return {};
+    // Flatten alpha before measuring contrast, then make faint strokes visible
+    // before estimating their height. Reserve room for the largest allowed margin
+    // so the final image, rather than just its content, respects the width cap.
+    const int marginBudget = std::min(kOcrTuning.maximumPadding, (maxDimension - 1) / 2);
+    QImage content = scaleForOcr(stretchOcrContrast(opaqueForOcr(image)),
+                                 maxDimension - marginBudget * 2);
+    content.setDevicePixelRatio(1);
+    const int padding = std::min(marginBudget,
+        std::clamp(std::max(ocrPaddingFor(content.size()),
+                            qRound(estimateOcrTextHeight(content) * kOcrTuning.linePadding)),
+                   kOcrTuning.minimumPadding, kOcrTuning.maximumPadding));
+    return {padForOcr(content, padding), QRect(QPoint(padding, padding), content.size())};
+}
+
+QRectF PreparedOcrImage::sourceBox(const QRectF &box) const {
+    if (image.isNull() || contentRect.isEmpty())
+        return {};
+    const QRectF pixels(box.x() * image.width() - contentRect.x(),
+                        box.y() * image.height() - contentRect.y(),
+                        box.width() * image.width(), box.height() * image.height());
+    return QRectF(pixels.x() / contentRect.width(), pixels.y() / contentRect.height(),
+                  pixels.width() / contentRect.width(), pixels.height() / contentRect.height())
+        .intersected(QRectF(0, 0, 1, 1));
 }
 
 QVector<QRect> ocrBands(const QSize &size, int maxDimension, int overlap) {
@@ -175,12 +414,51 @@ QVector<QRect> ocrBands(const QSize &size, int maxDimension, int overlap) {
     return bands;
 }
 
+namespace {
+// Scripts written without spaces between words. The recogniser splits them into
+// one "word" per character anyway and joins those words with spaces, which is
+// what makes Chinese arrive as "前 担 心 的".
+bool isCjk(const QChar character) {
+    const auto code = character.unicode();
+    return (code >= 0x2E80 && code <= 0x9FFF)     // radicals, punctuation, kana, CJK
+           || (code >= 0xF900 && code <= 0xFAFF)  // compatibility ideographs
+           || (code >= 0xFE30 && code <= 0xFE4F)  // compatibility forms
+           || (code >= 0xFF01 && code <= 0xFF0F)  // fullwidth punctuation, not Latin/digits
+           || (code >= 0xFF1A && code <= 0xFF20)
+           || (code >= 0xFF3B && code <= 0xFF40)
+           || (code >= 0xFF5B && code <= 0xFF65);
+}
+} // namespace
+
+QString joinOcrWords(const QVector<OcrLine> &words) {
+    QString result;
+    const OcrLine *previous = nullptr;
+    for (const auto &word : words) {
+        if (word.text.isEmpty())
+            continue;
+        if (previous != nullptr) {
+            const qreal height = std::max(previous->box.height(), word.box.height());
+            const qreal overlap = std::min(previous->box.bottom(), word.box.bottom()) -
+                                  std::max(previous->box.top(), word.box.top());
+            const qreal gap = word.box.left() - previous->box.right();
+            const bool adjacentCjk = isCjk(previous->text.back()) && isCjk(word.text.front()) &&
+                height > 0 && overlap >= std::min(previous->box.height(), word.box.height()) / 2 &&
+                gap >= -height / 2 && gap <= height * kOcrTuning.maximumCjkGap;
+            if (!adjacentCjk)
+                result += QLatin1Char(' ');
+        }
+        result += word.text;
+        previous = &word;
+    }
+    return result;
+}
+
 QRectF ocrBandBoxToImage(const QRectF &box, const QRect &band, const QSize &size) {
     if (size.isEmpty())
         return {};
     const QRectF placed(box.x() + band.x(), box.y() + band.y(), box.width(), box.height());
-    return QRectF(placed.x() / size.width(), placed.y() / size.height(), placed.width() / size.width(),
-                  placed.height() / size.height());
+    return QRectF(placed.x() / size.width(), placed.y() / size.height(),
+                  placed.width() / size.width(), placed.height() / size.height());
 }
 
 bool parseOcrPayload(const QByteArray &payload, const QRect &band, const QSize &size, QString *language,
@@ -217,13 +495,28 @@ bool parseOcrPayload(const QByteArray &payload, const QRect &band, const QSize &
     if (lines) {
         for (const auto &entry : object.value(QStringLiteral("lines")).toArray()) {
             const auto item = entry.toObject();
-            const auto text = item.value(QStringLiteral("text")).toString();
+            auto text = item.value(QStringLiteral("text")).toString();
+            if (item.contains(QStringLiteral("words"))) {
+                if (!item.value(QStringLiteral("words")).isArray())
+                    return fail(QStringLiteral("line words is not an array"));
+                QVector<OcrLine> words;
+                for (const auto &value : item.value(QStringLiteral("words")).toArray()) {
+                    const auto word = value.toObject();
+                    words.append({word.value(QStringLiteral("text")).toString(),
+                                  QRectF(word.value(QStringLiteral("x")).toDouble(),
+                                         word.value(QStringLiteral("y")).toDouble(),
+                                         word.value(QStringLiteral("w")).toDouble(),
+                                         word.value(QStringLiteral("h")).toDouble())});
+                }
+                text = joinOcrWords(words);
+            }
             if (text.isEmpty())
                 continue;
             const QRectF box(item.value(QStringLiteral("x")).toDouble(),
                              item.value(QStringLiteral("y")).toDouble(),
                              item.value(QStringLiteral("w")).toDouble(),
                              item.value(QStringLiteral("h")).toDouble());
+            // Old payloads without words and Vision's text keep their real spaces.
             lines->append({text, ocrBandBoxToImage(box, band, size)});
         }
     }
@@ -305,7 +598,7 @@ bool OcrEngine::busy() const {
     if (process_ != nullptr)
         return true;
 #ifdef Q_OS_APPLE
-    if (watcher_ != nullptr)
+    if (pending_ || (watcher_ != nullptr && !watcherAbandoned_))
         return true;
 #endif
     return false;
@@ -326,18 +619,18 @@ void OcrEngine::cancel() {
         process->deleteLater();
     }
 #ifdef Q_OS_APPLE
-    if (watcher_ != nullptr) {
-        QFutureWatcher<VisionOutcome> *watcher = watcher_;
-        watcher_ = nullptr;
-        watcher->disconnect(this);
-        watcher->cancel();
-        watcher->deleteLater();
-    }
+    pending_.reset();
+    // A basic QtConcurrent run does not interrupt synchronous Vision work.
+    // Discard its answer, but retain the watcher so a replacement cannot start
+    // another recogniser before this one actually exits.
+    if (watcher_ != nullptr)
+        watcherAbandoned_ = true;
 #endif
     delete scratch_;
     scratch_ = nullptr;
     bands_.clear();
     bandPaths_.clear();
+    prepared_ = {};
     bandIndex_ = 0;
 }
 
@@ -363,6 +656,12 @@ void OcrEngine::recognize(const QImage &image, OcrLanguageMode language, OcrCall
             callback(failure(OcrFailure::Unsupported, tr("当前平台不支持文字识别。")));
         return;
     }
+#ifdef Q_OS_APPLE
+    if (watcher_ != nullptr) {
+        pending_ = PendingRequest{image, language, std::move(callback)};
+        return;
+    }
+#endif
     begin(image, language, std::move(callback));
 }
 
@@ -372,7 +671,7 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
     language_.clear();
     preferred_ = ocrLanguageTag(language);
     request_ = language;
-    sent_ = scaleForOcr(image, ocrMaxImageDimension());
+    prepared_ = prepareForOcr(image, ocrMaxImageDimension());
 #ifdef Q_OS_WIN
     const QString script = bridgeScript();
     if (script.isEmpty()) {
@@ -385,11 +684,11 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
         finish(failure(OcrFailure::Unavailable, tr("无法创建临时目录，请检查磁盘空间与访问权限。")));
         return;
     }
-    bands_ = ocrBands(sent_.size(), ocrMaxImageDimension());
+    bands_ = ocrBands(prepared_.image.size(), ocrMaxImageDimension());
     bandPaths_.clear();
     for (int index = 0; index < bands_.size(); ++index) {
         const QString path = scratch_->filePath(QStringLiteral("band-%1.png").arg(index));
-        if (!sent_.copy(bands_.at(index)).save(path, "PNG")) {
+        if (!prepared_.image.copy(bands_.at(index)).save(path, "PNG")) {
             finish(failure(OcrFailure::Unavailable, tr("无法写入临时图片，请检查磁盘空间与访问权限。")));
             return;
         }
@@ -400,7 +699,20 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
 #elif defined(Q_OS_APPLE)
     auto *watcher = new QFutureWatcher<VisionOutcome>(this);
     watcher_ = watcher;
+    watcherAbandoned_ = false;
     connect(watcher, &QFutureWatcher<VisionOutcome>::finished, this, [this, watcher] {
+        if (watcher_ != watcher)
+            return;
+        if (watcherAbandoned_) {
+            watcher_ = nullptr;
+            watcherAbandoned_ = false;
+            watcher->deleteLater();
+            auto pending = std::move(pending_);
+            pending_.reset();
+            if (pending)
+                begin(pending->image, pending->language, std::move(pending->callback));
+            return;
+        }
         const VisionOutcome outcome = watcher->result();
         OcrResult result;
         if (outcome.ok) {
@@ -428,7 +740,7 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
     // Vision reads a request synchronously, so it runs on a worker thread; only the
     // finished outcome crosses back, and the wording it is turned into is built on
     // the thread that owns the translation.
-    watcher->setFuture(QtConcurrent::run([image = sent_, preferred = preferred_ ] {
+    watcher->setFuture(QtConcurrent::run([image = prepared_.image, preferred = preferred_ ] {
         return visionRecognize(image, preferred);
     }));
 #elif defined(Q_OS_LINUX)
@@ -445,10 +757,10 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
     language_ = desired;
     scratch_ = new QTemporaryDir;
     if (!scratch_->isValid()) { finish(failure(OcrFailure::Unavailable, tr("无法创建文字识别临时目录。"))); return; }
-    bands_ = ocrBands(sent_.size(), ocrMaxImageDimension());
+    bands_ = ocrBands(prepared_.image.size(), ocrMaxImageDimension());
     for (int i = 0; i < bands_.size(); ++i) {
         const auto path = scratch_->filePath(QString("band-%1.png").arg(i));
-        if (!sent_.copy(bands_[i]).save(path)) { finish(failure(OcrFailure::Unavailable, tr("无法写入待识别图片。"))); return; }
+        if (!prepared_.image.copy(bands_[i]).save(path)) { finish(failure(OcrFailure::Unavailable, tr("无法写入待识别图片。"))); return; }
         bandPaths_.append(path);
     }
     startNextBand();
@@ -460,6 +772,9 @@ void OcrEngine::begin(const QImage &image, OcrLanguageMode language, OcrCallback
 
 void OcrEngine::startNextBand() {
     if (bandIndex_ >= bandPaths_.size()) {
+        if (lines_.isEmpty())
+            qWarning("ocr: no text found in %dx%d using \"%s\" for %d", prepared_.image.width(), prepared_.image.height(),
+                     qUtf8Printable(language_), int(request_));
         OcrResult result;
         result.ok = true;
         result.engineLanguage = language_;
@@ -544,7 +859,7 @@ void OcrEngine::startNextBand() {
         QFile file(output);
         QVector<OcrLine> lines;
         if (!file.open(QIODevice::ReadOnly) || file.size() > 8 * 1024 * 1024 ||
-            !parseTesseractTsv(file.readAll(), bands_[bandIndex_], sent_.size(), &lines)) {
+            !parseTesseractTsv(file.readAll(), bands_[bandIndex_], prepared_.image.size(), &lines)) {
             finish(failure(OcrFailure::Failed, tr("无法读取文字识别结果，请重试。"))); return;
         }
         lines_ += lines;
@@ -564,7 +879,7 @@ void OcrEngine::collectBand(const QString &payload, const QString &diagnostic) {
     QString language;
     QVector<OcrLine> lines;
     QString error;
-    if (!parseOcrPayload(payload.toUtf8(), bands_.value(bandIndex_), sent_.size(), &language, &lines,
+    if (!parseOcrPayload(payload.toUtf8(), bands_.value(bandIndex_), prepared_.image.size(), &language, &lines,
                          &error)) {
         qWarning("ocr: unusable result from the bridge: %s", qUtf8Printable(error));
         finish(failure(OcrFailure::Failed, tr("无法读取文字识别结果，请重试。")));
@@ -605,6 +920,11 @@ void OcrEngine::reportFailure(int exitCode, bool timedOut, const QString &diagno
 }
 
 void OcrEngine::finish(OcrResult result) {
+    // All engines describe the prepared image. Correct their boxes here once so
+    // adding a platform never requires remembering a separate padding argument.
+    if (result.ok)
+        for (auto &line : result.lines)
+            line.box = prepared_.sourceBox(line.box);
     OcrCallback callback = callback_;
     callback_ = nullptr;
     if (process_ != nullptr) {
@@ -631,6 +951,7 @@ void OcrEngine::finish(OcrResult result) {
     scratch_ = nullptr;
     bands_.clear();
     bandPaths_.clear();
+    prepared_ = {};
     // Whichever path produced it, the language the recogniser answered in is what the
     // next call reports. Vision hands it back in the outcome and the Windows bridge in
     // every band, so it is taken from the finished result rather than from either one.

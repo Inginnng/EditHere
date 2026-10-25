@@ -6,7 +6,7 @@ bool parseTesseractTsv(const QByteArray &payload, const QRect &band, const QSize
     if (!lines || !size.isValid() || !band.isValid() || payload.size() > 8 * 1024 * 1024) return false;
     const auto rows = QString::fromUtf8(payload).split('\n');
     if (rows.isEmpty() || !rows.first().startsWith("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext")) return false;
-    struct Line { QString text; QRectF box; };
+    struct Line { QVector<OcrLine> words; QRectF box; };
     QVector<Line> collected;
     QMap<QString, int> indexes;
     for (int row = 1; row < rows.size(); ++row) {
@@ -25,11 +25,12 @@ bool parseTesseractTsv(const QByteArray &payload, const QRect &band, const QSize
             qint64(left) + width > band.width() || qint64(top) + height > band.height()) return false;
         const auto key = fields.mid(1, 4).join(':');
         const QRectF box(left, top, width, height);
-        if (!indexes.contains(key)) { indexes.insert(key, collected.size()); collected.append({text, box}); }
-        else { auto &line = collected[indexes[key]]; line.text += ' ' + text; line.box = line.box.united(box); }
+        if (!indexes.contains(key)) { indexes.insert(key, collected.size()); collected.append({{{text, box}}, box}); }
+        else { auto &line = collected[indexes[key]]; line.words.append({text, box}); line.box = line.box.united(box); }
     }
     QVector<OcrLine> result;
-    for (const auto &line : collected) result.append({line.text, ocrBandBoxToImage(line.box, band, size)});
+    for (const auto &line : collected)
+        result.append({joinOcrWords(line.words), ocrBandBoxToImage(line.box, band, size)});
     *lines = result;
     return true;
 }

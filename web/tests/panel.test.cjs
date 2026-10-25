@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const F=require('../src/feedback.js');
 const { pathToFileURL } = require('node:url');
 const { readExportJson } = require('./export-test-utils.cjs');
 const root = path.resolve(__dirname, '../..');
@@ -31,7 +32,7 @@ async function main() {
     if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
   }
   async function feedback(page) {
-    await page.locator('#export').click(); const data = await readExportJson(page); await page.locator('[data-close="export-dialog"]').first().click(); return data;
+    await page.locator('#export').click(); const data = await readExportJson(page); await page.locator('[data-close="export-dialog"]').first().click(); delete data.exportedAt; return data;
   }
   async function at(page, x, y) {
     return page.locator('#stage').evaluate((stage, point) => { const r = stage.getBoundingClientRect(); return { x: r.x + point.x * r.width / 1100, y: r.y + point.y * r.height / 700 }; }, { x, y });
@@ -56,7 +57,7 @@ async function main() {
         assert.equal(await page.locator('.panel-actions #geometry-toggle + #global').count(), 1, 'component layout belongs immediately to the left of the global-note button');
         assert(await page.locator('#geometry-toggle').isDisabled(), 'component layout is disabled without a selected component');
         assert(await page.locator('#geometry').isHidden(), 'component layout starts closed and occupies no panel space');
-        assert.equal(await page.locator('#export-dialog footer #preview').count(), 1, 'PNG export belongs in the export dialog');
+        assert.equal(await page.locator('#export-dialog footer #preview').count(), 0, 'JSON dialog has no separate PNG save action');assert.equal(await page.locator('.utility-dock #preview').count(),1,'PNG export remains available under more tools');
         assert.equal(await page.locator('body').getAttribute('data-inspector-open'), 'false', 'compact workspace starts with the image visible');
         await page.locator('[data-mode="rect"]').click(); const a = await at(page, 815, 230), b = await at(page, 964, 275);
         await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up(); await note(page, '123');
@@ -111,11 +112,18 @@ async function main() {
         await ensureUtility(page); await page.locator('#help').click(); assert(await page.locator('#help-dialog').isVisible()); await page.keyboard.press('Escape');
         if (width === 320) {
           await page.locator('#export').click();
-          const buttons = await page.locator('#export-dialog footer button').evaluateAll(elements => elements.map(element => {
+          const buttons = await page.locator('#export-dialog footer button:visible').evaluateAll(elements => elements.map(element => {
             const r = element.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
             return { label: element.textContent, x: r.x, right: r.right, y: r.y, bottom: r.bottom, reachable: hit === element || element.contains(hit) };
           }));
           assert(buttons.every(button => button.x >= 0 && button.right <= width && button.reachable), 'all export actions must remain accessible in a 320px panel: ' + JSON.stringify(buttons));
+          await page.locator('#copy-json-options-toggle').click();
+          const copyOptions = await page.locator('#copy-json-options [data-copy-image]').evaluateAll(elements => elements.map(element => {
+            const r = element.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return { label: element.textContent, x: r.x, right: r.right, y: r.y, bottom: r.bottom, reachable: hit === element || element.contains(hit) };
+          }));
+          assert(copyOptions.every(button => button.x >= 0 && button.right <= width && button.y >= 0 && button.bottom <= height && button.reachable), 'text-copy options must remain accessible in a 320px panel: ' + JSON.stringify(copyOptions));
+          await page.locator('#copy-json-options [data-copy-image="none"]').click();
           await page.screenshot({ path: path.join(output, 'export-320x640.png') }); await page.keyboard.press('Escape');
         }
         await ensureUtility(page); await page.locator('#theme-toggle').click(); await page.screenshot({ path: path.join(output, `two-notes-${width}x${height}-dark.png`) });
@@ -148,7 +156,7 @@ async function main() {
     await page.locator('[data-mode="cut"]').click(); const a = await at(page, 245, 170), b = await at(page, 490, 320);
     await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up();
     const from = await at(page, 365, 240), to = await at(page, 405, 270); await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 6 }); await page.mouse.up();
-    const moved = await feedback(page); assert(moved.objects.some(object => object.movements.length)); const movedPixels = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
+    const moved = await feedback(page); assert(moved.objects.some(object => F.legacyObject(object).movements.length)); const movedPixels = await page.locator('#canvas').evaluate(canvas => canvas.toDataURL());
     await ensureGlobal(page);
     assert.equal(await page.locator('.movement-empty p').first().textContent(), '位置变化，点击可写下想法...', 'a movement without text must explain how to add it');
     assert.equal(await page.locator('.movement-empty .note-number').first().textContent(), '1', 'an empty movement is a numbered real annotation');
@@ -171,7 +179,7 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'component-layout-popup-560x560.png') });
     await page.locator('#lock-ratio').uncheck();
     await page.locator('#gw').fill('200'); await page.locator('#gh').fill('125'); await page.locator('#apply-geometry').click();
-    const resized = await feedback(page); assert(resized.objects.some(object => object.movements.some(movement => Math.abs(movement.to.x2 - movement.to.x1 - 200) < .01 && Math.abs(movement.to.y2 - movement.to.y1 - 125) < .01)), 'numeric controls must remain usable in a small square panel');
+    const resized = await feedback(page); assert(resized.objects.some(object => F.legacyObject(object).movements.some(movement => Math.abs(movement.to.x2 - movement.to.x1 - 200) < .01 && Math.abs(movement.to.y2 - movement.to.y1 - 125) < .01)), 'numeric controls must remain usable in a small square panel');
     assert(await page.locator('#geometry').isHidden(), 'clicking outside the popup closes it');
     await page.locator('#geometry-toggle').click(); await page.locator('#geometry-close').click(); assert(await page.locator('#geometry').isHidden());
     for (const [width, height] of [[320, 640], [650, 390]]) {

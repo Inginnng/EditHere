@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -33,6 +34,88 @@ class SettingsTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void recognizedTextExportPreferencePersistsAndDefaultsOn() {
+        QVERIFY(defaultSettings().includeRecognizedText);
+        QVERIFY(defaultSettings().includeWindowTitle);
+        QTemporaryDir directory; const auto path = directory.filePath("settings.ini");
+        auto settings = defaultSettings(); settings.includeRecognizedText = false; settings.includeWindowTitle = false;
+        QString error; QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QVERIFY(!loadSettings(path).includeRecognizedText);
+        QVERIFY(!recognizedTextExportEnabled(path));
+        QVERIFY(!loadSettings(path).includeWindowTitle);
+        QVERIFY(!windowTitleExportEnabled(path));
+        SettingsDialog dialog(settings);
+        auto checkbox = dialog.findChild<QCheckBox *>("includeRecognizedText"); QVERIFY(checkbox); QVERIFY(!checkbox->isChecked());
+        checkbox->setChecked(true); QVERIFY(dialog.settings().includeRecognizedText);
+        auto title = dialog.findChild<QCheckBox *>("includeWindowTitle"); QVERIFY(title); QVERIFY(!title->isChecked());
+        title->setChecked(true); QVERIFY(dialog.settings().includeWindowTitle);
+    }
+    void independentJsonTextPreferencePersistsWithoutChangingFileMode() {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        QVERIFY(!defaultSettings().copyJsonTextWithImage);
+        { // An existing settings file has no text-copy choice and keeps its file-mode choice.
+            QSettings legacy(path, QSettings::IniFormat);
+            legacy.setValue("version", 1);
+            legacy.setValue("defaults/imageMode", "embedded");
+            legacy.setValue("defaults/includeFeedbackPreview", true);
+            legacy.sync();
+        }
+        auto settings = loadSettings(path);
+        QCOMPARE(settings.imageExportMode, ImageExportMode::Embedded);
+        QVERIFY(!settings.copyJsonTextWithImage);
+        QVERIFY(settings.includeFeedbackPreview);
+        settings.imageExportMode = ImageExportMode::File;
+        settings.copyJsonTextWithImage = true;
+        QString error;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        const auto restored = loadSettings(path);
+        QCOMPARE(restored.imageExportMode, ImageExportMode::File);
+        QVERIFY(restored.copyJsonTextWithImage);
+        QVERIFY(restored.includeFeedbackPreview);
+        SettingsDialog dialog(restored);
+        auto embed = dialog.findChild<QCheckBox *>("defaultEmbedImage");
+        auto text = dialog.findChild<QCheckBox *>("defaultCopyJsonTextWithImage");
+        QVERIFY(embed && text && !embed->isChecked() && text->isChecked());
+        QVERIFY(!dialog.findChild<QComboBox *>("defaultImageMode"));
+        QVERIFY(!dialog.findChild<QCheckBox *>("defaultFeedbackPreview"));
+        embed->setChecked(true); text->setChecked(false);
+        QCOMPARE(dialog.settings().imageExportMode, ImageExportMode::Embedded);
+        QVERIFY(!dialog.settings().copyJsonTextWithImage);
+        QVERIFY(dialog.settings().includeFeedbackPreview); // retained solely for legacy/explicit callers
+        { QSettings malformed(path, QSettings::IniFormat); malformed.setValue("defaults/copyJsonTextWithImage", "invalid"); malformed.sync(); }
+        QVERIFY(!loadSettings(path).copyJsonTextWithImage);
+    }
+    void consoleIdentityUsesTheDesktopRecognizedTextPreference() {
+        const auto application = QCoreApplication::applicationName();
+        const auto organization = QCoreApplication::organizationName();
+        const bool testMode = QStandardPaths::isTestModeEnabled();
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setApplicationName("EditHere"); QCoreApplication::setOrganizationName("EditHere");
+        const auto folder = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+        const auto path = QDir(folder).filePath("settings.ini");
+        QFile original(path); const bool existed = original.exists(); QByteArray bytes;
+        if (original.open(QIODevice::ReadOnly)) { bytes = original.readAll(); original.close(); }
+        struct Restore {
+            QString path, application, organization; QByteArray bytes; bool existed, testMode;
+            ~Restore() {
+                if (existed) { QFile file(path); if (file.open(QIODevice::WriteOnly)) file.write(bytes); }
+                else QFile::remove(path);
+                QCoreApplication::setApplicationName(application); QCoreApplication::setOrganizationName(organization);
+                QStandardPaths::setTestModeEnabled(testMode);
+            }
+        } restore{path, application, organization, bytes, existed, testMode};
+        QDir().mkpath(folder);
+        { QSettings values(path, QSettings::IniFormat); values.setValue("version", 1); values.setValue("defaults/includeRecognizedText", false); values.setValue("defaults/includeWindowTitle", false); values.sync(); }
+        QCoreApplication::setApplicationName("edithere-cli"); QCoreApplication::setOrganizationName({});
+        QVERIFY(!recognizedTextExportEnabled());
+        QVERIFY(!windowTitleExportEnabled());
+        QCOMPARE(QCoreApplication::applicationName(), QString("edithere-cli"));
+        QVERIFY(QCoreApplication::organizationName().isEmpty());
+        { QSettings values(path, QSettings::IniFormat); values.setValue("defaults/includeRecognizedText", true); values.setValue("defaults/includeWindowTitle", true); values.sync(); }
+        QVERIFY(recognizedTextExportEnabled());
+        QVERIFY(windowTitleExportEnabled());
     }
     void diagnosticsAreAccessibleWithoutChangingSettings() {
         QTemporaryDir directory;
@@ -159,6 +242,11 @@ class SettingsTests : public QObject {
         changed.launchAtLogin = true;
         changed.fitImageOnOpen = false;
         changed.embedOriginal = false;
+        changed.imageExportMode = ImageExportMode::None;
+        changed.copyJsonTextWithImage = true;
+        changed.includeFeedbackPreview = true;
+        changed.includeRecognizedText = false;
+        changed.includeWindowTitle = false;
         changed.confirmBeforeDiscard = false;
         changed.checkUpdatesOnStartup = true;
         changed.defaultTool = 2;

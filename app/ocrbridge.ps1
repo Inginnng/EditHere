@@ -18,7 +18,7 @@
 #   __EDITHERE_IMAGE__     PNG to read
 #   __EDITHERE_OUTPUT__    JSON to write
 #   __EDITHERE_LANGUAGE__  preferred BCP-47 tag, empty for the user's languages
-# Output: {"engineLanguage":"<tag>","lines":[{"text":"..","x":0,"y":0,"w":0,"h":0}]}
+# Output: {"engineLanguage":"<tag>","lines":[{"text":"..","x":0,"y":0,"w":0,"h":0,"words":[...]}]}
 # The box of a line is in pixels of the image that was read.
 # Exit codes: 0 ok, 1 failure (message on stderr), 2 image missing,
 #             3 no OCR engine for any installed language.
@@ -108,19 +108,30 @@ try {
         $top = [double]::MaxValue
         $right = [double]::MinValue
         $bottom = [double]::MinValue
+        $wordRecords = @()
         foreach ($word in $words) {
             $rect = $word.BoundingRect
             if ($rect.X -lt $left) { $left = $rect.X }
             if ($rect.Y -lt $top) { $top = $rect.Y }
             if (($rect.X + $rect.Width) -gt $right) { $right = $rect.X + $rect.Width }
             if (($rect.Y + $rect.Height) -gt $bottom) { $bottom = $rect.Y + $rect.Height }
+            # Preserve geometry so C++ can distinguish the recogniser's per-CJK-
+            # character separators from an actual gap between labels or words.
+            $wordRecords += [pscustomobject]@{
+                text = $word.Text
+                x = [double]$rect.X
+                y = [double]$rect.Y
+                w = [double]$rect.Width
+                h = [double]$rect.Height
+            }
         }
-        $records += ConvertTo-Json -Compress -InputObject ([pscustomobject]@{
+        $records += ConvertTo-Json -Compress -Depth 4 -InputObject ([pscustomobject]@{
                 text = $line.Text
                 x = [int][Math]::Round($left)
                 y = [int][Math]::Round($top)
                 w = [int][Math]::Round($right - $left)
                 h = [int][Math]::Round($bottom - $top)
+                words = $wordRecords
             })
     }
     $tag = $engine.RecognizerLanguage.LanguageTag

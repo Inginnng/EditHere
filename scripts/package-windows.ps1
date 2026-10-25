@@ -85,8 +85,8 @@ try {
 }
 # A developer SDK on PATH can hide an incomplete video deployment. Require the
 # backend and each FFmpeg library beside the packaged executable before zipping.
-foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "multimedia/ffmpegmediaplugin.dll")) {
-    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Video runtime deployment is incomplete: $runtimeFile" }
+foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt runtime deployment is incomplete: $runtimeFile" }
 }
 $ffmpegLibraries = @()
 foreach ($component in @("avcodec", "avformat", "avutil", "swresample", "swscale")) {
@@ -142,7 +142,13 @@ $packagedLicensing = Join-Path $outputPath "LICENSING.md"
 [IO.File]::WriteAllText($packagedLicensing, [IO.File]::ReadAllText($packagedLicensing).Replace("packaging/THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md"), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $outputPath "qt.conf"), "[Paths]`nPrefix=.`nPlugins=.`n", [Text.UTF8Encoding]::new($false))
 $manifest = Get-ChildItem -LiteralPath $outputPath -Recurse -File | ForEach-Object {
-    [PSCustomObject]@{ path = [IO.Path]::GetRelativePath($outputPath, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+    # Windows PowerShell 5.1 runs on .NET Framework, which does not expose
+    # [IO.Path]::GetRelativePath (the packaging host is not guaranteed to be
+    # PowerShell 7).  The output path is a child of $outputPath, so a
+    # separator-safe substring gives the same relative manifest path on both
+    # PowerShell generations.
+    $relativePath = $_.FullName.Substring($outputPath.Length + 1).Replace([IO.Path]::DirectorySeparatorChar, "/")
+    [PSCustomObject]@{ path = $relativePath; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputPath "manifest.json") -Encoding utf8
 # Zip the CONTENTS of the package folder (no top-level directory): the in-app

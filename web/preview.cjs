@@ -6,9 +6,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {defaultSessionDirectory} = require('./agent-session.cjs');
+const {configuredPort} = require('./preview-server.cjs');
 const html = path.join(__dirname, 'EditHere.html');
-const healthUrl = 'http://127.0.0.1:7330/__edithere_preview_health';
-const previewUrl = 'http://127.0.0.1:7330/EditHere.html';
+const port = configuredPort();
+const healthUrl = 'http://127.0.0.1:' + port + '/__edithere_preview_health';
+const previewUrl = 'http://127.0.0.1:' + port + '/EditHere.html';
 function health() {
   return new Promise(resolve => {
     const request = http.get(healthUrl, response => {
@@ -23,7 +25,7 @@ function health() {
   });
 }
 function verify(state, requireBridge = false) {
-  if (state.service !== 'edithere-web-preview' || path.resolve(state.file || '') !== html) throw new Error('Port 7330 is serving another project. Stop that service before starting this preview.');
+  if (state.service !== 'edithere-web-preview' || path.resolve(state.file || '') !== html) throw new Error('Port ' + port + ' is serving another project. Choose another EDITHERE_WEB_PORT for this preview.');
   const hash = crypto.createHash('sha256').update(fs.readFileSync(html)).digest('hex');
   if (state.sha256 !== hash) throw new Error('The preview response does not match the current EditHere.html.');
   if (requireBridge && (state.apiVersion !== 1 || state.agentBridge !== true)) throw new Error('The existing preview (PID ' + state.pid + ') predates the Agent bridge. Stop that verified EditHere preview process and run node web/preview.cjs again.');
@@ -48,7 +50,7 @@ async function ensurePreview({requireBridge = false} = {}) {
     if (failure || child.exitCode !== null) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  throw failure || new Error('Preview did not start. Check ' + path.join(logs, 'server-error.log') + '; another service may occupy port 7330.');
+  throw failure || new Error('Preview did not start. Check ' + path.join(logs, 'server-error.log') + '; another service may occupy port ' + port + '.');
 }
 if (require.main === module) ensurePreview().then(state => {
   if (process.argv.includes('--json')) console.log(JSON.stringify({...state, url:previewUrl}));

@@ -1,5 +1,19 @@
 *.sh text eol=lf
 *.yml text eol=lf
+# Native sources and their contract fixtures use the same bytes on every host.
+app/*.cpp text eol=lf
+app/*.h text eol=lf
+app/*.mm text eol=lf
+app/*.ps1 text eol=lf
+app/translations/*.ts text eol=lf
+tests/*.cpp text eol=lf
+tests/*.h text eol=lf
+tests/*.mjs text eol=lf
+tests/fixtures/*.json text eol=lf
+schema/*.json text eol=lf
+scripts/*.py text eol=lf
+connector/*.mjs text eol=lf
+docs/*.md text eol=lf
 # The web build concatenates web/src sources and embeds the brand art and
 # shared icons verbatim, so their line endings are part of the bytes in
 # web/EditHere.html, web/EditHere.mcp.html and the published web packages.
