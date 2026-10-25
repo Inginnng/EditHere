@@ -361,14 +361,19 @@ class OcrTests : public QObject {
     }
     void ordinaryPicturesStayUntouchedAndWidePicturesFit() {
         // A small limit is used so the test does not have to allocate a picture the
-        // size of a wall to exercise the same branch.
-        const QImage wide(2000, 400, QImage::Format_ARGB32);
+        // size of a wall to exercise the same branch. Both pictures are filled
+        // explicitly: an unfilled QImage holds whatever the allocator left
+        // behind, and stray pixels can read as small text, which legitimately
+        // triggers the enlargement path on one platform and not another.
+        QImage wide(2000, 400, QImage::Format_ARGB32);
+        wide.fill(Qt::white);
         const auto scaled = scaleForOcr(wide, 800);
         QCOMPARE(scaled.width(), 800);
         QCOMPARE(scaled.height(), 160);
         // A picture that already fits is handed on untouched rather than being
         // resampled, which would only cost accuracy.
-        const QImage small(640, 480, QImage::Format_ARGB32);
+        QImage small(640, 480, QImage::Format_ARGB32);
+        small.fill(Qt::white);
         QCOMPARE(scaleForOcr(small, 800).size(), small.size());
         QVERIFY(scaleForOcr(QImage(), 800).isNull());
     }
