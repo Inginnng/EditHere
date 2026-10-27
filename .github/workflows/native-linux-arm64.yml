@@ -48,12 +48,19 @@ jobs:
           echo "$PWD/.tools/python/bin" >> "$GITHUB_PATH"
           echo "QT_ROOT=$PWD/.tools/qt/6.8.3" >> "$GITHUB_ENV"
       - name: Restore source-built Qt
-        uses: actions/cache@v4
+        id: qt-cache
+        uses: actions/cache/restore@v4
         with:
           path: .tools/qt/6.8.3
           key: qt-6.8.3-debian11-aarch64-${{ hashFiles('scripts/build-qt-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
       - name: Build Qt against glibc 2.31
         run: bash scripts/build-qt-linux.sh
+      - name: Save completed Qt SDK
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .tools/qt/6.8.3
+          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
       - name: Build and test existing Linux application
         run: |
           export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"

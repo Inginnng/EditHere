@@ -120,7 +120,7 @@ for module in qtsvg qtimageformats qtshadertools qtwayland qtmultimedia; do
   (
     cd "$build_root/$module"
     "$qt_prefix/bin/qt-configure-module" "$source_root/$module-everywhere-src-$qt_version" \
-      -nomake tests -nomake examples -- -G Ninja "${options[@]}"
+      -- -G Ninja -DQT_BUILD_TESTS=OFF -DQT_BUILD_EXAMPLES=OFF "${options[@]}"
     cmake --build . --parallel "$jobs"
     cmake --install .
   )
