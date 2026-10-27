@@ -1,0 +1,85 @@
+name: Native Linux ARM64 preview
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["app/**", "assets/ui-icons/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux-arm64.yml"]
+permissions:
+  contents: read
+jobs:
+  linux-arm64:
+    # Compile natively, but keep the full dependency stack on glibc 2.31.
+    # Qt's prebuilt ARM64 SDK/Ubuntu 24.04 libraries require newer glibc.
+    runs-on: ubuntu-24.04-arm
+    container: debian:bullseye
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      QT_ROOT: ${{ github.workspace }}/.tools/qt/6.8.3
+      EDITHERE_GLIBC_MAX: "2.31"
+      BUILD_JOBS: "4"
+    steps:
+      - name: Install build and desktop dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config python3 python3-venv xz-utils zstd file binutils patchelf \
+            libx11-dev libx11-xcb-dev libxtst-dev libatspi2.0-dev libdbus-1-dev libglib2.0-dev libssl-dev libicu-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libpng-dev libjpeg-dev libtiff-dev libwebp-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render-util0-dev \
+            libxcb-xinerama0-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-sync-dev libxcb-xkb-dev \
+            libwayland-dev wayland-protocols libpulse-dev ffmpeg tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra \
+            fonts-noto-cjk xvfb xauth dbus-x11 desktop-file-utils
+          test "$(uname -m)" = aarch64
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
+      - uses: actions/checkout@v4
+      - name: Install CMake and Ninja
+        run: |
+          python3 -m venv .tools/python
+          .tools/python/bin/pip install cmake==3.30.8 ninja==1.11.1.3
+          echo "$PWD/.tools/python/bin" >> "$GITHUB_PATH"
+      - name: Restore source-built Qt
+        uses: actions/cache@v4
+        with:
+          path: .tools/qt/6.8.3
+          key: qt-6.8.3-debian11-aarch64-${{ hashFiles('scripts/build-qt-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
+      - name: Build Qt against glibc 2.31
+        run: bash scripts/build-qt-linux.sh
+      - name: Build and test existing Linux application
+        run: |
+          export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
+          dbus-run-session -- bash scripts/build-linux.sh
+          dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          QT_SCALE_FACTOR=2 dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1280x1024x24 -extension XTEST' build-linux/linux_platform_tests x11CaptureReturnsPixels x11ManualCaptureDoesNotRequireInputInjection -platform xcb
+          desktop-file-validate packaging/linux/com.edithere.capture.desktop
+      - name: Package and smoke-test ARM64 AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch-linuxdeploy.py
+          export LINUXDEPLOY="$PWD/.tools/linuxdeploy/linuxdeploy-aarch64.AppImage"
+          export LINUXDEPLOY_PLUGIN_QT="$PWD/.tools/linuxdeploy/linuxdeploy-plugin-qt-aarch64.AppImage"
+          bash scripts/package-linux.sh
+          dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linux-*/EditHere-linux-aarch64.AppImage
+      - name: Upload experimental package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64-preview-glibc231
+          path: |
+            dist/linux-*/EditHere-linux-aarch64.AppImage
+            dist/linux-*/EditHere-linux-aarch64.AppImage.sha256
+            dist/linux-*/edithere-cli
+          if-no-files-found: error
+      - name: Upload build results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-aarch64-preview-build-results
+          path: |
+            build-linux/test-results.xml
+            build-linux/Testing/Temporary/LastTest.log
+            .tools/qt-build/6.8.3/*/config.summary
+            .tools/qt-build/6.8.3/*/CMakeFiles/CMakeConfigureLog.yaml
+            artifacts/linux-ui/

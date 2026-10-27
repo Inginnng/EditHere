@@ -345,6 +345,10 @@ if(Python3_Interpreter_FOUND)
   endif()
   add_test(NAME packaging
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-packaging.py")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME linux-packaging
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/linux_packaging_test.py")
+  endif()
   if(TARGET Qt6::lupdate)
     add_test(NAME translations
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-translations.py"

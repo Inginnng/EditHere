@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
-: "${QT_ROOT:?Set QT_ROOT to the Qt 6.8 gcc_64 SDK directory}"
+: "${QT_ROOT:?Set QT_ROOT to the native Qt 6.8 SDK directory}"
 : "${LINUXDEPLOY:?Set LINUXDEPLOY to the official linuxdeploy AppImage}"
 : "${LINUXDEPLOY_PLUGIN_QT:?Set LINUXDEPLOY_PLUGIN_QT to the official Qt plugin AppImage}"
 build_path="${EDITHERE_BUILD_DIR:-$project_root/build-linux}"
-[[ "$(uname -m)" == x86_64 ]] || { echo 'This package targets x86_64' >&2; exit 1; }
+case "$(uname -m)" in
+  x86_64|amd64) architecture=x86_64 ;;
+  aarch64|arm64) architecture=aarch64 ;;
+  *) echo 'Supported Linux package architectures: x86_64, aarch64' >&2; exit 1 ;;
+esac
 version="$(cat "$build_path/version.txt")"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid built version' >&2; exit 1; }
 output="${EDITHERE_PACKAGE_DIR:-$project_root/dist/linux-$version}"
@@ -21,6 +25,9 @@ mkdir -p "$appdir/usr/share/doc/edithere/licenses/ui-icons"
 cp "$project_root/assets/ui-icons/LICENSE" "$appdir/usr/share/doc/edithere/licenses/ui-icons/"
 cp "$build_path/version.txt" "$appdir/usr/share/doc/edithere/"
 cp "$project_root/NOTICE" "$project_root/LICENSING.md" "$appdir/usr/share/doc/edithere/"
+if [[ -d "$QT_ROOT/share/edithere-build-materials" ]]; then
+  cp -R "$QT_ROOT/share/edithere-build-materials" "$appdir/usr/share/doc/edithere/build-materials"
+fi
 mkdir -p "$appdir/usr/share/doc/edithere/licenses/linux"
 # PipeWire loads client modules at runtime, so ldd/linuxdeploy cannot discover
 # them from the executable. Keep the client modules/configuration with the
@@ -53,6 +60,7 @@ if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
   done
 fi
 for copyright in /usr/share/doc/libatspi2.0-0/copyright /usr/share/doc/libglib2.0-0t64/copyright \
+  /usr/share/doc/libglib2.0-0/copyright /usr/share/doc/libffi7/copyright \
   /usr/share/doc/libdbus-1-3/copyright /usr/share/doc/libpcre2-8-0/copyright /usr/share/doc/libffi8/copyright \
   /usr/share/doc/libgcc-s1/copyright /usr/share/doc/libstdc++6/copyright \
   /usr/share/doc/libxtst6/copyright /usr/share/doc/libpipewire-0.3-0t64/copyright \
@@ -77,15 +85,23 @@ if [[ -d "$appdir/usr/lib/pipewire-0.3" ]]; then
 fi
 export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;multimedia"
 export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so;libqoffscreen.so"
-export VERSION="$version" ARCH=x86_64 OUTPUT="EditHere-linux-x86_64.AppImage"
-export LDAI_RUNTIME_FILE="$project_root/.tools/linuxdeploy/runtime-x86_64"
+export VERSION="$version" ARCH="$architecture" OUTPUT="EditHere-linux-$architecture.AppImage"
+export LDAI_RUNTIME_FILE="$project_root/.tools/linuxdeploy/runtime-$architecture"
 [[ -f "$LDAI_RUNTIME_FILE" ]] || { echo 'Run scripts/fetch-linuxdeploy.py first' >&2; exit 1; }
 # Official AppImage/type2-runtime release 20251108; must match fetch-linuxdeploy.py.
-echo '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d '"$LDAI_RUNTIME_FILE" | sha256sum --check --status
+runtime_sha256="$(python3 "$project_root/scripts/fetch-linuxdeploy.py" --arch "$architecture" --runtime-sha256)"
+echo "$runtime_sha256  $LDAI_RUNTIME_FILE" | sha256sum --check --status
 plugin_directory="$(dirname "$LINUXDEPLOY_PLUGIN_QT")"
 export PATH="$plugin_directory:$QT_ROOT/bin:$PATH"
 cd "$output"
 deployment_args=()
+if [[ "$architecture" == aarch64 ]]; then
+  # Kylin V10 may have an older compiler runtime than the build container.
+  # linuxdeploy excludes these by default; ship the runtimes used to link Qt
+  # and the application, and include them in the glibc audit below.
+  deployment_args+=(--library "$(g++ -print-file-name=libstdc++.so.6)"
+                   --library "$(gcc -print-file-name=libgcc_s.so.1)")
+fi
 if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
   # linuxdeploy blacklists PipeWire by default. This client library must match
   # the client modules above, so explicitly request its deployment.
@@ -94,6 +110,11 @@ fi
 "$LINUXDEPLOY" --appdir "$appdir" "${deployment_args[@]}" --plugin qt --custom-apprun "$project_root/packaging/linux/AppRun" --output appimage
 [[ -s "$OUTPUT" ]] || { echo 'AppImage was not produced' >&2; exit 1; }
 [[ -s "$appdir/usr/plugins/platforms/libqoffscreen.so" ]] || { echo 'Headless CLI preview platform plugin is missing' >&2; exit 1; }
+abi_args=(--architecture "$architecture")
+if [[ -n "${EDITHERE_GLIBC_MAX:-}" ]]; then
+  abi_args+=(--glibc-max "$EDITHERE_GLIBC_MAX")
+fi
+python3 "$project_root/scripts/check-linux-abi.py" "$appdir" "${abi_args[@]}"
 cp "$project_root/packaging/linux/edithere-cli" "$output/edithere-cli"
 chmod +x "$output/edithere-cli"
 sha256sum "$OUTPUT" > "$OUTPUT.sha256"

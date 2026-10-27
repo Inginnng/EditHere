@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 directory="$(cd "$(dirname "$0")" && pwd)"
-exec "$directory/EditHere-linux-x86_64.AppImage" --cli "$@"
+case "$(uname -m)" in
+  x86_64|amd64) architecture=x86_64 ;;
+  aarch64|arm64) architecture=aarch64 ;;
+  *) echo 'Supported Linux package architectures: x86_64, aarch64' >&2; exit 1 ;;
+esac
+package="$directory/EditHere-linux-$architecture.AppImage"
+[[ -x "$package" ]] || { echo "Missing executable AppImage: $package" >&2; exit 1; }
+exec "$package" --cli "$@"
