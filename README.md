@@ -13,6 +13,8 @@
   <a href="https://github.com/Inginnng/EditHere/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Inginnng/EditHere?style=social"></a>
 </p>
 
+<p align="center"><a href="https://hellogithub.com/repository/Inginnng/EditHere" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=92e309a8378848d5823f34e72c86a498&claim_uid=PpE4IYUeqyvVRBC" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a></p>
+
 <p align="center">
   <a href="#下载与安装"><b>下载</b></a> ·
   <a href="#让-ai-帮你安装">让 AI 帮你安装</a> ·
