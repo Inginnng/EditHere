@@ -246,7 +246,16 @@ Yes. A `.edithere` project keeps the original image, notes and editing state; th
 - QQ group **1018416966** (feedback only); mention you came from GitHub when joining.
 - To contribute code, see the [contributing guide (Chinese)](CONTRIBUTING.md).
 
-Thanks to everyone on the [linux.do](https://linux.do/) forum for their suggestions and feedback.
+## Special thanks
+
+<p align="center">
+  <a href="https://linux.do/"><img src="assets/readme/thanks/linux-do.png" width="76" alt="LINUX DO"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://hellogithub.com/repository/Inginnng/EditHere"><img src="assets/readme/thanks/hellogithub.png" width="76" alt="HelloGitHub"></a>
+</p>
+
+- **[LINUX DO](https://linux.do/)** is a Chinese tech community whose motto is “Where possible begins”. EditHere picked up plenty of suggestions and feedback from the people there, and quite a few details were fixed because of them.
+- **[HelloGitHub](https://hellogithub.com/repository/Inginnng/EditHere)** discovers and shares interesting, beginner-friendly open-source projects. EditHere is featured in [issue 127 of the HelloGitHub monthly](https://hellogithub.com/periodical/volume/127).
 
 ## A note from the author
 
