@@ -4,7 +4,8 @@
     [string]$VcVars = "",
     [string]$BuildDirectory = "build",
     [string]$OutputDirectory = "",
-    [string]$ValidationDirectory = ""
+    [string]$ValidationDirectory = "",
+    [switch]$SkipArchive
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -161,6 +162,8 @@ $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outpu
 # updater extracts this archive straight onto the app directory with
 # "tar -xf <zip> -C <appdir>", and a wrapped folder would land the new files in
 # a nested subdirectory instead of replacing the app.
-Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
+if (-not $SkipArchive) {
+    Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
+}
 Write-Host "Portable folder: $outputPath"
-Write-Host "ZIP: $outputPath.zip"
+if (-not $SkipArchive) { Write-Host "ZIP: $outputPath.zip" }

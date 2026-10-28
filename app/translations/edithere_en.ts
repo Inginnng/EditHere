@@ -14,7 +14,7 @@
         <translation>Content area</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="787"/>
+        <location filename="../editor.cpp" line="788"/>
         <location filename="../layout.cpp" line="235"/>
         <source>整个图片</source>
         <translation>Whole image</translation>
@@ -124,12 +124,12 @@
         <translation>Could not enable launch at login: the command, including startup arguments, must not exceed 260 characters. Move the app to a shorter path.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="164"/>
+        <location filename="../editor.cpp" line="165"/>
         <source>复制完整 JSON</source>
         <translation>Copy full JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="170"/>
+        <location filename="../editor.cpp" line="171"/>
         <source>全选</source>
         <translation>Select all</translation>
     </message>
@@ -1248,13 +1248,13 @@
     </message>
     <message>
         <location filename="../settings.cpp" line="112"/>
-        <location filename="../settings.cpp" line="135"/>
+        <location filename="../settings.cpp" line="136"/>
         <source>复制带批注图片</source>
         <translation>Copy annotated image</translation>
     </message>
     <message>
         <location filename="../settings.cpp" line="113"/>
-        <location filename="../settings.cpp" line="134"/>
+        <location filename="../settings.cpp" line="135"/>
         <source>复制 JSON 与图片</source>
         <translation>Copy JSON and images</translation>
     </message>
@@ -1331,102 +1331,107 @@
     </message>
     <message>
         <location filename="../settings.cpp" line="133"/>
+        <source>AI解析</source>
+        <translation>AI analysis</translation>
+    </message>
+    <message>
+        <location filename="../settings.cpp" line="134"/>
         <source>复制 JSON 内容</source>
         <translation>Copy JSON content</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="136"/>
+        <location filename="../settings.cpp" line="137"/>
         <source>重新截图</source>
         <translation>Retake screenshot</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="137"/>
+        <location filename="../settings.cpp" line="138"/>
         <source>适应图片</source>
         <translation>Fit image</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="147"/>
+        <location filename="../settings.cpp" line="148"/>
         <source>请选择有效的 API 提供商。</source>
         <translation>Select a valid API provider.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="150"/>
+        <location filename="../settings.cpp" line="151"/>
         <source>API 配置无效，请检查服务地址、协议和超时时间。</source>
         <translation>Invalid API settings. Check the URL, protocol, and timeout.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="152"/>
+        <location filename="../settings.cpp" line="153"/>
         <source>请选择有效的外观模式。</source>
         <translation>Choose a valid appearance mode.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="154"/>
+        <location filename="../settings.cpp" line="155"/>
         <source>请选择有效的界面语言。</source>
         <translation>Choose a valid interface language.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="156"/>
+        <location filename="../settings.cpp" line="157"/>
         <source>请选择有效的原图导出模式。</source>
         <translation>Choose a valid image export mode.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="158"/>
+        <location filename="../settings.cpp" line="159"/>
         <source>请选择有效的默认标注工具。</source>
         <translation>Choose a valid default annotation tool.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="165"/>
+        <location filename="../settings.cpp" line="166"/>
         <source>反馈临时目录必须是绝对路径。</source>
         <translation>The feedback temporary folder must be an absolute path.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="167"/>
+        <location filename="../settings.cpp" line="168"/>
         <source>反馈临时目录不能指向一个已有文件。</source>
         <translation>The feedback temporary folder cannot point to an existing file.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="170"/>
+        <location filename="../settings.cpp" line="171"/>
         <source>请选择有效的长截图方向。</source>
         <translation>Choose a valid scrolling capture direction.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="175"/>
+        <location filename="../settings.cpp" line="176"/>
         <source>快捷键配置不完整，请恢复默认后重试。</source>
         <translation>The shortcut configuration is incomplete. Restore the defaults and retry.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="180"/>
+        <location filename="../settings.cpp" line="181"/>
         <source>“%1”只支持一个有效的组合键。</source>
         <translation>“%1” supports only one key combination.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="186"/>
+        <location filename="../settings.cpp" line="187"/>
         <source>“%1”快捷键需要包含 Ctrl、Alt 或 Command / Win，或使用 F1–F24、Print Screen。</source>
         <translation>The “%1” shortcut must include Ctrl, Alt or Command / Win, or use F1–F24 or Print Screen.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="190"/>
+        <location filename="../settings.cpp" line="191"/>
         <source>“%1”和“%2”使用了相同的快捷键 %3。</source>
         <translation>“%1” and “%2” use the same shortcut %3.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="195"/>
+        <location filename="../settings.cpp" line="196"/>
         <source>包含无法识别的快捷键配置。</source>
         <translation>Contains an unrecognized shortcut configuration.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="369"/>
-        <location filename="../settings.cpp" line="443"/>
+        <location filename="../settings.cpp" line="375"/>
+        <location filename="../settings.cpp" line="450"/>
         <source>无法创建设置目录。</source>
         <translation>Could not create the settings folder.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="427"/>
+        <location filename="../settings.cpp" line="434"/>
         <source>无法保存设置，请检查配置文件的访问权限。</source>
         <translation>Could not save the settings. Check the access permissions of the configuration file.</translation>
     </message>
     <message>
-        <location filename="../settings.cpp" line="452"/>
+        <location filename="../settings.cpp" line="459"/>
         <source>无法保存引导状态，请检查配置文件的访问权限。</source>
         <translation>Could not save the guide state. Check the access permissions of the configuration file.</translation>
     </message>
@@ -2220,32 +2225,32 @@
 <context>
     <name>h2d::AiCredentials</name>
     <message>
-        <location filename="../aicredentials.cpp" line="24"/>
+        <location filename="../aicredentials.cpp" line="26"/>
         <source>无法读取密钥：API 提供商标识无效。</source>
         <translation>Cannot read the key: invalid API provider ID.</translation>
     </message>
     <message>
-        <location filename="../aicredentials.cpp" line="34"/>
+        <location filename="../aicredentials.cpp" line="36"/>
         <source>无法读取系统凭据库中的 API Key（错误 %1）。</source>
         <translation>Cannot read the API key from the system credential store (error %1).</translation>
     </message>
     <message>
-        <location filename="../aicredentials.cpp" line="41"/>
+        <location filename="../aicredentials.cpp" line="43"/>
         <source>请输入有效的 API Key 后再保存。</source>
         <translation>Enter a valid API key before saving.</translation>
     </message>
     <message>
-        <location filename="../aicredentials.cpp" line="52"/>
+        <location filename="../aicredentials.cpp" line="54"/>
         <source>API Key 未保存：无法写入系统凭据库（错误 %1）。</source>
         <translation>API key not saved: cannot write to the system credential store (error %1).</translation>
     </message>
     <message>
-        <location filename="../aicredentials.cpp" line="58"/>
+        <location filename="../aicredentials.cpp" line="60"/>
         <source>无法删除密钥：API 提供商标识无效。</source>
         <translation>Cannot delete the key: invalid API provider ID.</translation>
     </message>
     <message>
-        <location filename="../aicredentials.cpp" line="66"/>
+        <location filename="../aicredentials.cpp" line="68"/>
         <source>API Key 未删除：无法访问系统凭据库（错误 %1）。</source>
         <translation>API key not deleted: cannot access the system credential store (error %1).</translation>
     </message>
@@ -2362,119 +2367,155 @@
 <context>
     <name>h2d::AiInstructionsDialog</name>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="23"/>
-        <source>生成修改意见</source>
-        <translation>Generate instructions</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="28"/>
-        <source>把批注整理为可执行的修改意见</source>
-        <translation>Turn annotations into actionable instructions</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="33"/>
-        <source>%1 · %2
-将本次 %3 张截图和批注发送至 %4。复制和保存的结果仅含文字。</source>
-        <translation>%1 · %2
-Send these %3 screenshots and annotations to %4. Copied and saved results contain text only.</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="38"/>
-        <source>使用打开此窗口时的批注快照。原始图片和批注保留在当前项目中。</source>
-        <translation>Uses a snapshot of the annotations taken when this window opened. Original images and annotations remain in the current project.</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="41"/>
+        <location filename="../aiinstructionsdialog.cpp" line="77"/>
+        <location filename="../aiinstructionsdialog.cpp" line="94"/>
         <source>修改意见</source>
         <translation>Modification instructions</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="42"/>
+        <location filename="../aiinstructionsdialog.cpp" line="95"/>
         <source>生成后可在这里核对、编辑，再复制给 Agent。</source>
         <translation>Review and edit the generated instructions here, then copy them to your agent.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="46"/>
+        <location filename="../aiinstructionsdialog.cpp" line="100"/>
         <source>正在读取 API Key…</source>
         <translation>Reading API key…</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="50"/>
-        <source>API 设置…</source>
-        <translation>API settings…</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="51"/>
-        <source>生成</source>
-        <translation>Generate</translation>
-    </message>
-    <message>
-        <location filename="../aiinstructionsdialog.cpp" line="52"/>
+        <location filename="../aiinstructionsdialog.cpp" line="105"/>
         <source>停止</source>
         <translation>Stop</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="53"/>
+        <location filename="../aiinstructionsdialog.cpp" line="106"/>
         <source>复制文字</source>
         <translation>Copy text</translation>
     </message>
     <message>
+        <location filename="../aiinstructionsdialog.cpp" line="28"/>
+        <location filename="../aiinstructionsdialog.cpp" line="36"/>
+        <source>AI解析</source>
+        <translation>AI analysis</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="39"/>
+        <source>把画面上的批注，整理成清楚的修改意见。</source>
+        <translation>Turn on-screen annotations into clear instructions.</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="41"/>
+        <source>API 设置</source>
+        <translation>API settings</translation>
+    </message>
+    <message>
         <location filename="../aiinstructionsdialog.cpp" line="54"/>
-        <source>保存文字…</source>
-        <translation>Save text…</translation>
+        <source>%1 · %2</source>
+        <translation>%1 · %2</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="55"/>
-        <source>关闭</source>
-        <translation>Close</translation>
+        <location filename="../aiinstructionsdialog.cpp" line="59"/>
+        <source>%1 张图片</source>
+        <translation>Images: %1</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="65"/>
+        <location filename="../aiinstructionsdialog.cpp" line="69"/>
+        <source>另 %1 张</source>
+        <translation>+%1 more</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="71"/>
+        <source>图片发往所选 API；复制给 Agent 的只有文字。</source>
+        <translation>Images go to the chosen API; copied output is text only.</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="80"/>
+        <source>解析后可直接编辑</source>
+        <translation>Edit after analysis</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="104"/>
+        <location filename="../aiinstructionsdialog.cpp" line="182"/>
+        <source>开始解析</source>
+        <translation>Start analysis</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="107"/>
+        <source>另存为…</source>
+        <translation>Save as…</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="116"/>
         <source>修改意见已复制，未附带图片。</source>
         <translation>Instructions copied without images.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="68"/>
+        <location filename="../aiinstructionsdialog.cpp" line="119"/>
         <source>保存修改意见</source>
         <translation>Save modification instructions</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="69"/>
+        <location filename="../aiinstructionsdialog.cpp" line="120"/>
         <source>文本文件 (*.txt);;Markdown (*.md)</source>
         <translation>Text files (*.txt);;Markdown (*.md)</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="74"/>
+        <location filename="../aiinstructionsdialog.cpp" line="125"/>
         <source>文字保存失败：%1</source>
         <translation>Failed to save text: %1</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="75"/>
+        <location filename="../aiinstructionsdialog.cpp" line="126"/>
         <source>修改意见已保存。</source>
         <translation>Instructions saved.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="79"/>
-        <source>已生成。请核对对象、数值和“待核对”项后使用。</source>
-        <translation>Generated. Review the targets, values, and items marked “Needs review” before using these instructions.</translation>
+        <location filename="../aiinstructionsdialog.cpp" line="130"/>
+        <source>解析完成，请核对后复制给 Agent。</source>
+        <translation>Analysis complete. Review the result, then copy it to your agent.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="85"/>
-        <source>本次 API 用量：输入 %1 tokens，输出 %2 tokens（以提供商返回为准）</source>
-        <translation>API usage: %1 input tokens, %2 output tokens (as reported by the provider)</translation>
+        <location filename="../aiinstructionsdialog.cpp" line="136"/>
+        <source>输入 %1 · 输出 %2 tokens</source>
+        <translation>Input %1 · Output %2 tokens</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="90"/>
+        <location filename="../aiinstructionsdialog.cpp" line="171"/>
+        <source>正在理解你的批注</source>
+        <translation>Interpreting your annotations</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="171"/>
+        <source>准备好开始解析</source>
+        <translation>Ready to analyze</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="172"/>
+        <source>正在识别画面对象、批注和布局关系…</source>
+        <translation>Identifying objects, annotations, and layout relationships…</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="172"/>
+        <source>解析结果会保留批注原话、坐标和移动信息。</source>
+        <translation>Results retain your original comments, coordinates, and movements.</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="182"/>
+        <source>重新解析</source>
+        <translation>Analyze again</translation>
+    </message>
+    <message>
+        <location filename="../aiinstructionsdialog.cpp" line="141"/>
         <source>请先在 API 设置中填写并保存此提供商的 Key。</source>
         <translation>Enter and save this provider’s key in API settings first.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="91"/>
-        <source>准备就绪。点击生成后开始本次请求。</source>
-        <translation>Ready. Click Generate to start this request.</translation>
+        <location filename="../aiinstructionsdialog.cpp" line="142"/>
+        <source>准备就绪。点击开始解析后发起本次请求。</source>
+        <translation>Ready. Click Start analysis to send this request.</translation>
     </message>
     <message>
-        <location filename="../aiinstructionsdialog.cpp" line="111"/>
+        <location filename="../aiinstructionsdialog.cpp" line="163"/>
         <source>正在理解本次截图和批注…</source>
         <translation>Interpreting these screenshots and annotations…</translation>
     </message>
@@ -2482,191 +2523,241 @@ Send these %3 screenshots and annotations to %4. Copied and saved results contai
 <context>
     <name>h2d::AiSettingsPage</name>
     <message>
-        <location filename="../aisettingspage.cpp" line="148"/>
+        <location filename="../aisettingspage.cpp" line="250"/>
         <source>密钥已修改，点击“保存密钥”后持久保存。</source>
         <translation>Key changed. Click “Save key” to store it permanently.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="163"/>
+        <location filename="../aisettingspage.cpp" line="265"/>
         <source>已恢复此提供商的默认地址、模型和提示词。密钥保持不变。</source>
         <translation>Restored this provider’s default URL, model, and prompt. The key is unchanged.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="166"/>
-        <location filename="../aisettingspage.cpp" line="182"/>
+        <location filename="../aisettingspage.cpp" line="268"/>
+        <location filename="../aisettingspage.cpp" line="284"/>
         <source>请先输入 API Key。</source>
         <translation>Enter an API key first.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="169"/>
+        <location filename="../aisettingspage.cpp" line="271"/>
         <source>正在保存密钥…</source>
         <translation>Saving key…</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="174"/>
+        <location filename="../aisettingspage.cpp" line="276"/>
         <source>正在删除密钥…</source>
         <translation>Deleting key…</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="183"/>
+        <location filename="../aisettingspage.cpp" line="285"/>
         <source>正在测试图文接口；只发送内置测试图片，不发送当前批注。</source>
         <translation>Testing the multimodal API with a built-in image. Current annotations are not sent.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="189"/>
-        <location filename="../aisettingspage.cpp" line="375"/>
+        <location filename="../aisettingspage.cpp" line="296"/>
+        <location filename="../aisettingspage.cpp" line="566"/>
         <source>取消测试</source>
         <translation>Cancel test</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="199"/>
+        <location filename="../aisettingspage.cpp" line="306"/>
         <source>连接成功，模型已通过图文接口测试。</source>
         <translation>Connected. The model passed the multimodal API test.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="211"/>
+        <location filename="../aisettingspage.cpp" line="318"/>
         <source>此提供商尚未保存 API Key。</source>
         <translation>No API key is saved for this provider.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="211"/>
+        <location filename="../aisettingspage.cpp" line="318"/>
         <source>已从系统凭据库读取 API Key。</source>
         <translation>API key loaded from the system credential store.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="223"/>
+        <location filename="../aisettingspage.cpp" line="330"/>
         <source>API Key 已保存到系统凭据库。</source>
         <translation>API key saved to the system credential store.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="232"/>
+        <location filename="../aisettingspage.cpp" line="339"/>
         <source>已删除此提供商的 API Key。</source>
         <translation>API key deleted for this provider.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="245"/>
+        <location filename="../aisettingspage.cpp" line="352"/>
         <source>EditHere 内置提示词</source>
         <translation>EditHere built-in prompt</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="253"/>
+        <location filename="../aisettingspage.cpp" line="360"/>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="366"/>
-        <source>将批注和截图交给所选模型，生成可直接复制的修改意见。选择提供商、填写 API Key 即可使用。</source>
-        <translation>Send annotations and screenshots to the selected model to generate instructions you can copy. Choose a provider and enter its API key to get started.</translation>
+        <location filename="../aisettingspage.cpp" line="496"/>
+        <source>中国区</source>
+        <translation>China</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="367"/>
+        <location filename="../aisettingspage.cpp" line="497"/>
+        <source>国际区</source>
+        <translation>Global</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="501"/>
+        <source>服务地区</source>
+        <translation>Service region</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="503"/>
+        <source>自定义服务</source>
+        <translation>Custom service</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="546"/>
+        <source>自定义</source>
+        <translation>Custom</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="550"/>
+        <source>AI 连接</source>
+        <translation>AI connection</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="551"/>
+        <source>为「AI解析」选择服务商，填入 API Key 即可开始。</source>
+        <translation>Choose a provider and enter its API key to use AI analysis.</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="558"/>
+        <source>隐藏密钥</source>
+        <translation>Hide key</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="558"/>
+        <source>显示密钥</source>
+        <translation>Show key</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="561"/>
+        <source>立即保存到系统凭据库；取消设置不会撤销此操作。</source>
+        <translation>Save to the system credential store now. Canceling Settings will not undo this.</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="562"/>
+        <source>删除已存密钥</source>
+        <translation>Delete saved key</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="564"/>
+        <source>密钥操作</source>
+        <translation>Key actions</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="567"/>
+        <source>密钥保存到系统凭据库，其他配置随底部“保存”生效。</source>
+        <translation>Keys use the system credential store; Save below applies other settings.</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="568"/>
+        <source>截图仅在你点击解析时发送给所选提供商，API 调用可能计费。</source>
+        <translation>Screenshots go to the selected provider only when you start analysis. API charges may apply.</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="570"/>
+        <source>收起高级选项</source>
+        <translation>Hide advanced options</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="570"/>
+        <source>高级选项</source>
+        <translation>Advanced options</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="585"/>
+        <source>恢复预设</source>
+        <translation>Restore preset</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="586"/>
+        <source>恢复此提供商的地址、模型、协议和补充要求，保留密钥。</source>
+        <translation>Restore this provider’s URL, model, protocol, and additional instructions. Keep the key.</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="587"/>
+        <source>内置提示词</source>
+        <translation>Built-in prompt</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="588"/>
+        <source>官方文档</source>
+        <translation>Official docs</translation>
+    </message>
+    <message>
+        <location filename="../aisettingspage.cpp" line="552"/>
         <source>提供商</source>
         <translation>Provider</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="371"/>
+        <location filename="../aisettingspage.cpp" line="556"/>
         <source>输入此提供商的 API Key</source>
         <translation>Enter this provider’s API key</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="372"/>
-        <source>隐藏</source>
-        <translation>Hide</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="372"/>
-        <source>显示</source>
-        <translation>Show</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="373"/>
+        <location filename="../aisettingspage.cpp" line="560"/>
         <source>保存密钥</source>
         <translation>Save key</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="374"/>
-        <source>删除密钥</source>
-        <translation>Delete key</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="375"/>
+        <location filename="../aisettingspage.cpp" line="566"/>
         <source>测试连接</source>
         <translation>Test connection</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="376"/>
-        <source>“保存密钥”和“删除密钥”立即更新系统凭据库；底部“保存”保存其他配置。截图仅在你生成意见时发送给所选提供商，API 调用可能计费。</source>
-        <translation>“Save key” and “Delete key” update the system credential store immediately. “Save” at the bottom saves other settings. Screenshots are sent to the selected provider only when you generate instructions. API charges may apply.</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="377"/>
+        <location filename="../aisettingspage.cpp" line="569"/>
         <source>发送一张内置小图验证接口和识图能力，不发送当前截图或批注。</source>
         <translation>Send a small built-in image to test the API and vision support. Current screenshots and annotations are not sent.</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="378"/>
-        <source>收起高级配置</source>
-        <translation>Hide advanced settings</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="378"/>
-        <source>高级配置</source>
-        <translation>Advanced settings</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="379"/>
+        <location filename="../aisettingspage.cpp" line="571"/>
         <source>API 地址</source>
         <translation>API URL</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="382"/>
+        <location filename="../aisettingspage.cpp" line="574"/>
         <source>模型</source>
         <translation>Model</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="384"/>
+        <location filename="../aisettingspage.cpp" line="576"/>
         <source>支持图片输入的模型名称</source>
         <translation>Model name with image input support</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="385"/>
+        <location filename="../aisettingspage.cpp" line="577"/>
         <source>接口协议</source>
         <translation>API protocol</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="387"/>
+        <location filename="../aisettingspage.cpp" line="579"/>
         <source>超时时间</source>
         <translation>Timeout</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="388"/>
+        <location filename="../aisettingspage.cpp" line="580"/>
         <source> 秒</source>
         <translation> s</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="390"/>
+        <location filename="../aisettingspage.cpp" line="582"/>
         <source>补充要求</source>
         <translation>Additional instructions</translation>
     </message>
     <message>
-        <location filename="../aisettingspage.cpp" line="392"/>
+        <location filename="../aisettingspage.cpp" line="584"/>
         <source>可选，例如：使用中文；按页面分组。内置精度规则始终保留。</source>
         <translation>Optional, for example: use English; group by page. Built-in accuracy rules always apply.</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="393"/>
-        <source>恢复此提供商默认配置</source>
-        <translation>Restore provider defaults</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="394"/>
-        <source>查看内置提示词</source>
-        <translation>View built-in prompt</translation>
-    </message>
-    <message>
-        <location filename="../aisettingspage.cpp" line="395"/>
-        <source>官方 API 文档</source>
-        <translation>Official API documentation</translation>
     </message>
 </context>
 <context>
@@ -3375,598 +3466,597 @@ Scroll back a little; stitching continues once it lines up.</translation>
 <context>
     <name>h2d::Editor</name>
     <message>
-        <location filename="../editor.cpp" line="216"/>
-        <location filename="../editor.cpp" line="590"/>
+        <location filename="../editor.cpp" line="217"/>
+        <location filename="../editor.cpp" line="591"/>
         <source>关闭放大镜</source>
         <translation>Turn off the magnifier</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="216"/>
-        <location filename="../editor.cpp" line="590"/>
+        <location filename="../editor.cpp" line="217"/>
+        <location filename="../editor.cpp" line="591"/>
         <source>开启放大镜</source>
         <translation>Turn on the magnifier</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="201"/>
+        <location filename="../editor.cpp" line="202"/>
         <source>无法使用？</source>
         <translation>Need help?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="565"/>
+        <location filename="../editor.cpp" line="566"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="577"/>
+        <location filename="../editor.cpp" line="578"/>
         <source>重新截图</source>
         <translation>Retake screenshot</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="578"/>
+        <location filename="../editor.cpp" line="579"/>
         <source>使用引导</source>
         <translation>Open the guide</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="580"/>
+        <location filename="../editor.cpp" line="581"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="581"/>
+        <location filename="../editor.cpp" line="582"/>
         <source>最小化</source>
         <translation>Minimize</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="582"/>
-        <location filename="../editor.cpp" line="1020"/>
+        <location filename="../editor.cpp" line="583"/>
+        <location filename="../editor.cpp" line="1021"/>
         <source>全屏</source>
         <translation>Full screen</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="583"/>
-        <location filename="../editor.cpp" line="2578"/>
+        <location filename="../editor.cpp" line="584"/>
+        <location filename="../editor.cpp" line="2590"/>
         <source>关闭当前截图</source>
         <translation>Close current screenshot</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="584"/>
+        <location filename="../editor.cpp" line="585"/>
         <source>添加全局批注</source>
         <translation>Add global annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="585"/>
+        <location filename="../editor.cpp" line="586"/>
         <source>缩小</source>
         <translation>Zoom out</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="586"/>
+        <location filename="../editor.cpp" line="587"/>
         <source>放大</source>
         <translation>Zoom in</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="587"/>
+        <location filename="../editor.cpp" line="588"/>
         <source>更多操作</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1720"/>
+        <location filename="../editor.cpp" line="1721"/>
         <source>隐藏画面批注</source>
         <translation>Hide on-canvas annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1720"/>
+        <location filename="../editor.cpp" line="1721"/>
         <source>显示画面批注</source>
         <translation>Show on-canvas annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="592"/>
+        <location filename="../editor.cpp" line="593"/>
         <source>AI 正在等待你的修改意见</source>
         <translation>AI is waiting for your feedback</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="594"/>
+        <location filename="../editor.cpp" line="595"/>
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="596"/>
+        <location filename="../editor.cpp" line="597"/>
         <source>完成并返回 AI</source>
         <translation>Finish and return to AI</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="597"/>
+        <location filename="../editor.cpp" line="598"/>
         <source>圈出位置，或添加一条全局意见。</source>
         <translation>Mark a spot, or add one overall note.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="604"/>
+        <location filename="../editor.cpp" line="605"/>
         <source>适应图片</source>
         <translation>Fit image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="609"/>
+        <location filename="../editor.cpp" line="610"/>
         <source>撤销</source>
         <translation>Undo</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="610"/>
+        <location filename="../editor.cpp" line="611"/>
         <source>重做</source>
         <translation>Redo</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="612"/>
-        <location filename="../editor.cpp" line="704"/>
+        <location filename="../editor.cpp" line="613"/>
+        <location filename="../editor.cpp" line="705"/>
         <source>大爆炸</source>
         <translation>Explode</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="635"/>
-        <location filename="../editor.cpp" line="1221"/>
+        <location filename="../editor.cpp" line="636"/>
+        <location filename="../editor.cpp" line="1222"/>
         <source>批注 %1 条</source>
         <translation>%1 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="669"/>
+        <location filename="../editor.cpp" line="670"/>
         <source>引导示例</source>
         <translation>Guide example</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="696"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>智能选块</source>
         <translation>Smart select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="696"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>点标注</source>
         <translation>Point</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="696"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>框选</source>
         <translation>Box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="696"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>调整批注</source>
         <translation>Adjust</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="806"/>
+        <location filename="../editor.cpp" line="807"/>
         <source>视频文件不存在</source>
         <translation>The video file does not exist</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="845"/>
+        <location filename="../editor.cpp" line="846"/>
         <source>源视频未找到，可查看已保存的批注画面，或重新指定视频。</source>
         <translation>Source video not found. You can view saved annotated frames or locate the video again.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="920"/>
+        <location filename="../editor.cpp" line="921"/>
         <source>视频画面 %1</source>
         <translation>Video frame %1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="889"/>
-        <location filename="../editor.cpp" line="930"/>
-        <location filename="../editor.cpp" line="949"/>
+        <location filename="../editor.cpp" line="890"/>
+        <location filename="../editor.cpp" line="931"/>
+        <location filename="../editor.cpp" line="950"/>
         <source>%1 × %2 · %3</source>
         <translation>%1 × %2 · %3</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1020"/>
+        <location filename="../editor.cpp" line="1021"/>
         <source>退出全屏</source>
         <translation>Exit full screen</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1102"/>
         <location filename="../editor.cpp" line="1103"/>
-        <location filename="../editor.cpp" line="1868"/>
-        <location filename="../editor.cpp" line="1869"/>
-        <location filename="../editor.cpp" line="2561"/>
+        <location filename="../editor.cpp" line="1104"/>
+        <location filename="../editor.cpp" line="1883"/>
+        <location filename="../editor.cpp" line="1884"/>
+        <location filename="../editor.cpp" line="2573"/>
         <source>复制 JSON 内容选项</source>
         <translation>JSON text copy options</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1111"/>
+        <location filename="../editor.cpp" line="1112"/>
         <source>直接复制文件（携带原图信息），适用于可以发送文件的 Agent。</source>
         <translation>Copy a file including the original image, for agents that accept file uploads.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1114"/>
-        <location filename="../editor.cpp" line="2485"/>
+        <location filename="../editor.cpp" line="1115"/>
+        <location filename="../editor.cpp" line="2500"/>
         <source>复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。</source>
         <translation>Copy JSON text including the original image, for agents that cannot accept files.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1115"/>
-        <location filename="../editor.cpp" line="2486"/>
+        <location filename="../editor.cpp" line="1116"/>
+        <location filename="../editor.cpp" line="2501"/>
         <source>复制 JSON 文本（默认不携带原图信息），适用于无法发送文件的 Agent。</source>
         <translation>Copy JSON text (original image excluded by default), for Agents that cannot receive files.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1178"/>
+        <location filename="../editor.cpp" line="1179"/>
         <source>展开批注框</source>
         <translation>Expand the annotation box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1178"/>
+        <location filename="../editor.cpp" line="1179"/>
         <source>收起批注框</source>
         <translation>Collapse the annotation box</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1185"/>
+        <location filename="../editor.cpp" line="1186"/>
         <source>全局</source>
         <translation>Global</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1186"/>
+        <location filename="../editor.cpp" line="1187"/>
         <source>位置变化</source>
         <translation>Moved</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1187"/>
+        <location filename="../editor.cpp" line="1188"/>
         <source>点 (%1,%2)</source>
         <translation>Point (%1,%2)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1188"/>
+        <location filename="../editor.cpp" line="1189"/>
         <source>框 (%1,%2)→(%3,%4)</source>
         <translation>Box (%1,%2)→(%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1246"/>
+        <location filename="../editor.cpp" line="1247"/>
         <source>编辑批注</source>
         <translation>Edit annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1246"/>
-        <location filename="../editor.cpp" line="1458"/>
+        <location filename="../editor.cpp" line="1247"/>
+        <location filename="../editor.cpp" line="1459"/>
         <source>删除批注</source>
         <translation>Delete annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1254"/>
+        <location filename="../editor.cpp" line="1255"/>
         <source>批注内容</source>
         <translation>Annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1255"/>
+        <location filename="../editor.cpp" line="1256"/>
         <source>写下你的想法…</source>
         <translation>Write what you have in mind…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1354"/>
+        <location filename="../editor.cpp" line="1355"/>
         <source>收起</source>
         <translation>Collapse</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1354"/>
+        <location filename="../editor.cpp" line="1355"/>
         <source>展开</source>
         <translation>Expand</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1355"/>
+        <location filename="../editor.cpp" line="1356"/>
         <source>收起批注全文</source>
         <translation>Collapse the full annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1355"/>
+        <location filename="../editor.cpp" line="1356"/>
         <source>展开批注全文</source>
         <translation>Expand the full annotation text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1419"/>
+        <location filename="../editor.cpp" line="1420"/>
         <source>批注 %1 内容</source>
         <translation>Annotation %1 text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1464"/>
+        <location filename="../editor.cpp" line="1465"/>
         <source>点击此处为这次移动添加文字…</source>
         <translation>Click here to add text for this move…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1479"/>
+        <location filename="../editor.cpp" line="1480"/>
         <source>移动 (%1,%2) → (%3,%4)</source>
         <translation>Move (%1,%2) → (%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1290"/>
-        <location filename="../editor.cpp" line="1585"/>
+        <location filename="../editor.cpp" line="1291"/>
+        <location filename="../editor.cpp" line="1586"/>
         <source>最多支持 1000 条批注</source>
         <translation>Up to 1000 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1873"/>
-        <location filename="../editor.cpp" line="1882"/>
-        <location filename="../editor.cpp" line="2565"/>
+        <location filename="../editor.cpp" line="1888"/>
+        <location filename="../editor.cpp" line="1897"/>
+        <location filename="../editor.cpp" line="2577"/>
         <source>不携带原图信息</source>
         <translation>Exclude original image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1874"/>
-        <location filename="../editor.cpp" line="1883"/>
-        <location filename="../editor.cpp" line="2566"/>
+        <location filename="../editor.cpp" line="1889"/>
+        <location filename="../editor.cpp" line="1898"/>
+        <location filename="../editor.cpp" line="2578"/>
         <source>携带原图信息（嵌入 JSON）</source>
         <translation>Include original image (embed in JSON)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1911"/>
-        <location filename="../editor.cpp" line="2496"/>
+        <location filename="../editor.cpp" line="1926"/>
+        <location filename="../editor.cpp" line="2511"/>
         <source>JSON 文本已复制（包含原图编码）</source>
         <translation>JSON text copied (original image embedded)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1911"/>
-        <location filename="../editor.cpp" line="2496"/>
+        <location filename="../editor.cpp" line="1926"/>
+        <location filename="../editor.cpp" line="2511"/>
         <source>JSON 文本已复制（不含原图编码）</source>
         <translation>JSON text copied (original image excluded)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1917"/>
+        <location filename="../editor.cpp" line="1932"/>
         <source>无法使用 JSON？</source>
         <translation>Trouble using JSON?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1919"/>
+        <location filename="../editor.cpp" line="1934"/>
         <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”旁的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;</source>
         <translation>&lt;h3&gt;1. JSON text is truncated and JSON files cannot be sent?&lt;/h3&gt;&lt;p&gt;Choose “Exclude original image” beside “Copy JSON content”, copy the JSON text, and upload the original image to the Agent separately.&lt;/p&gt;&lt;h3&gt;2. What if only chat messages are supported?&lt;/h3&gt;&lt;p&gt;You can try sending JSON text without the original image. Its effectiveness cannot be confirmed without the image.&lt;/p&gt;&lt;h3&gt;3. What if the AI does not recognize the original image?&lt;/h3&gt;&lt;p&gt;Add “Refer to the image information in the JSON file…” to your prompt. If it still fails, use the first method.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2373"/>
+        <location filename="../editor.cpp" line="2388"/>
         <source>打开图片、视频或项目</source>
         <translation>Open image, video, or project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2374"/>
+        <location filename="../editor.cpp" line="2389"/>
         <source>图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)</source>
         <translation>Images, videos, or projects (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2450"/>
+        <location filename="../editor.cpp" line="2457"/>
+        <source>AI解析</source>
+        <translation>AI analysis</translation>
+    </message>
+    <message>
+        <location filename="../editor.cpp" line="2465"/>
         <source>复制 JSON 内容</source>
         <translation>Copy JSON content</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2468"/>
+        <location filename="../editor.cpp" line="2483"/>
         <source>,[图片编码已折叠]</source>
         <translation>,[image data collapsed]</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1997"/>
+        <location filename="../editor.cpp" line="2012"/>
         <source>在调整后的画面批注 · 滚轮切换范围 · 单击或拖动框选</source>
         <translation>Annotate on the adjusted image · Scroll to change the region · Click or drag to select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="398"/>
+        <location filename="../editor.cpp" line="399"/>
         <source>重新指定视频</source>
         <translation>Locate video again</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="399"/>
+        <location filename="../editor.cpp" line="400"/>
         <source>视频 (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;所有文件 (*)</source>
         <translation>Videos (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="579"/>
-        <location filename="../editor.cpp" line="601"/>
-        <location filename="../editor.cpp" line="2577"/>
+        <location filename="../editor.cpp" line="580"/>
+        <location filename="../editor.cpp" line="602"/>
+        <location filename="../editor.cpp" line="2589"/>
         <source>导入图片、视频或项目</source>
         <translation>Import image, video, or project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="599"/>
+        <location filename="../editor.cpp" line="600"/>
         <source>可拖入图片或视频，也可粘贴图片</source>
         <translation>Drop an image or video here, or paste an image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1267"/>
-        <location filename="../editor.cpp" line="1737"/>
+        <location filename="../editor.cpp" line="1268"/>
+        <location filename="../editor.cpp" line="1746"/>
         <source>归属待确认</source>
         <translation>Ownership undecided</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1273"/>
+        <location filename="../editor.cpp" line="1274"/>
         <source>是，作为子批注</source>
         <translation>Yes, as a child annotation</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1276"/>
+        <location filename="../editor.cpp" line="1277"/>
         <source>否，独立对象</source>
         <translation>No, separate object</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1313"/>
+        <location filename="../editor.cpp" line="1314"/>
         <source>区域文字</source>
         <translation>Region text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1315"/>
+        <location filename="../editor.cpp" line="1316"/>
         <source>删除识别文字</source>
         <translation>Delete recognized text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1320"/>
+        <location filename="../editor.cpp" line="1321"/>
         <source>识别的区域文字</source>
         <translation>Recognized region text</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1415"/>
+        <location filename="../editor.cpp" line="1416"/>
         <source>属于上级 · %1</source>
         <translation>Belongs to parent · %1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1736"/>
+        <location filename="../editor.cpp" line="1745"/>
         <source>这个框是指大爆炸移动后的内容吗？</source>
         <translation>Is this box meant for the content moved by Explode?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1942"/>
-        <location filename="../editor.cpp" line="2513"/>
+        <location filename="../editor.cpp" line="1957"/>
+        <location filename="../editor.cpp" line="2528"/>
         <source>JSON 与配套图片文件已复制</source>
         <translation>JSON and companion image files copied</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1998"/>
+        <location filename="../editor.cpp" line="2013"/>
         <source>滚轮切换范围 · 单击批注 · 拖动框选</source>
         <translation>Scroll to change the region · Click to annotate · Drag to select</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2013"/>
+        <location filename="../editor.cpp" line="2028"/>
         <source>悬停滚轮选范围 · 拖边改宽高 · 拖角等比 · 点标注或框选可添加意见</source>
         <translation>Hover and scroll to pick a region · Drag the edges to resize · Drag a corner to scale proportionally · Use Point or Box to leave a note</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2193"/>
+        <location filename="../editor.cpp" line="2208"/>
         <source>带批注图片已复制</source>
         <translation>Annotated image copied</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2205"/>
+        <location filename="../editor.cpp" line="2220"/>
         <source>保存 EditHere 项目</source>
         <translation>Save EditHere project</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2206"/>
+        <location filename="../editor.cpp" line="2221"/>
         <source>设计反馈.edithere</source>
         <translation>design-feedback.edithere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2207"/>
+        <location filename="../editor.cpp" line="2222"/>
         <source>EditHere 项目 (*.edithere)</source>
         <translation>EditHere project (*.edithere)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2225"/>
+        <location filename="../editor.cpp" line="2240"/>
         <source>项目已保存，可双击继续编辑</source>
         <translation>Project saved. Double-click it to keep editing.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2225"/>
+        <location filename="../editor.cpp" line="2240"/>
         <source>项目已保存，可从 EditHere 导入继续编辑</source>
         <translation>Project saved. Import it from EditHere to keep editing.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2273"/>
         <location filename="../editor.cpp" line="2288"/>
-        <location filename="../editor.cpp" line="2616"/>
+        <location filename="../editor.cpp" line="2303"/>
+        <location filename="../editor.cpp" line="2628"/>
         <source>请先完成或取消当前 AI 批注任务</source>
         <translation>Finish or cancel the current AI annotation task first</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2280"/>
-        <location filename="../editor.cpp" line="2354"/>
+        <location filename="../editor.cpp" line="2295"/>
+        <location filename="../editor.cpp" line="2369"/>
         <source>保留当前修改？</source>
         <translation>Keep your changes?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2280"/>
-        <location filename="../editor.cpp" line="2355"/>
+        <location filename="../editor.cpp" line="2295"/>
+        <location filename="../editor.cpp" line="2370"/>
         <source>当前批注或布局修改尚未保存。是否先保存项目？</source>
         <translation>The annotation or layout changes have not been saved yet. Save the project first?</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2359"/>
+        <location filename="../editor.cpp" line="2374"/>
         <source>不再提醒，可在设置中修改</source>
         <translation>Do not ask again — changeable in the settings</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2390"/>
+        <location filename="../editor.cpp" line="2405"/>
         <source>剪贴板图片</source>
         <translation>Clipboard image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2404"/>
+        <location filename="../editor.cpp" line="2419"/>
         <source>保存带批注图片</source>
         <translation>Save annotated image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2405"/>
+        <location filename="../editor.cpp" line="2420"/>
         <source>保存调整效果</source>
         <translation>Save adjusted result</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2406"/>
+        <location filename="../editor.cpp" line="2421"/>
         <source>保存原图</source>
         <translation>Save original image</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2410"/>
+        <location filename="../editor.cpp" line="2425"/>
         <source>PNG 图片 (*.png)</source>
         <translation>PNG image (*.png)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2419"/>
+        <location filename="../editor.cpp" line="2434"/>
         <source>图片已保存</source>
         <translation>Image saved</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2428"/>
+        <location filename="../editor.cpp" line="2443"/>
         <source>查看 JSON</source>
         <translation>View JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2430"/>
+        <location filename="../editor.cpp" line="2445"/>
         <source>查看 JSON  ·  批注 %1 条</source>
         <translation>View JSON  ·  %1 annotations</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2432"/>
+        <location filename="../editor.cpp" line="2447"/>
         <source>原图嵌入 JSON</source>
         <translation>Embed original image in JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2435"/>
+        <location filename="../editor.cpp" line="2450"/>
         <source>未勾选时将 JSON 与原图作为独立文件复制。</source>
         <translation>When unchecked, copy JSON and the original image as separate files.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2437"/>
+        <location filename="../editor.cpp" line="2452"/>
         <source>压缩内嵌原图（保持尺寸，可能轻微损失细节）</source>
         <translation>Compress embedded original image (preserves dimensions; may lose some detail)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2442"/>
-        <location filename="../editor.cpp" line="2549"/>
-        <source>生成修改意见…</source>
-        <translation>Generate instructions…</translation>
-    </message>
-    <message>
-        <location filename="../editor.cpp" line="2450"/>
+        <location filename="../editor.cpp" line="2465"/>
         <source>复制 JSON 与图片</source>
         <translation>Copy JSON and images</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2478"/>
+        <location filename="../editor.cpp" line="2493"/>
         <source>原图作为配套文件保存；请将 JSON 与图片一起交给 Agent。</source>
         <translation>The original is a companion file; send the JSON and images to the agent together.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2479"/>
+        <location filename="../editor.cpp" line="2494"/>
         <source>图片编码仅在预览中折叠，复制文件包含完整原图。</source>
         <translation>Image encoding is folded only in this preview; copied files contain the full original image.</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2439"/>
+        <location filename="../editor.cpp" line="2454"/>
         <source>标准化 JSON</source>
         <translation>Standard JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2449"/>
+        <location filename="../editor.cpp" line="2464"/>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2546"/>
+        <location filename="../editor.cpp" line="2561"/>
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2548"/>
+        <location filename="../editor.cpp" line="2563"/>
         <source>自定义工具栏…</source>
         <translation>Customize toolbar…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2623"/>
+        <location filename="../editor.cpp" line="2635"/>
         <source>拖入的图片</source>
         <translation>Dropped picture</translation>
     </message>

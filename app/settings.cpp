@@ -130,6 +130,7 @@ QVector<ToolbarActionDefinition> toolbarActionDefinitions() {
     return {{"saveProject", tr("保存项目")},
             {"saveImage", tr("保存图片")},
             {"exportJson", tr("查看 JSON")},
+            {"generateInstructions", tr("AI解析")},
             {"copyJsonText", tr("复制 JSON 内容")},
             {"copyJson", tr("复制 JSON 与图片")},
             {"copyImage", tr("复制带批注图片")},
@@ -327,6 +328,11 @@ AppSettings loadSettings(const QString &filePath) {
         if (validateToolbarActions(actions).isEmpty())
             result.toolbarActions = actions;
     }
+    // AI parsing used to live only under More. Show its new first-class action
+    // once for existing installations, while respecting later customisation.
+    if (source.value("toolbar/actionsVersion", 0).toInt() < 1 &&
+        !result.toolbarActions.contains("generateInstructions"))
+        result.toolbarActions.append("generateInstructions");
     bool validTool = false;
     const auto tool = source.value("defaults/tool", 0).toInt(&validTool);
     if (validTool && tool >= 0 && tool <= 3)
@@ -418,6 +424,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     // say from one that did.
     target.setValue("capture/styleVersion", kCaptureStyleVersion);
     target.setValue("toolbar/actions", settings.toolbarActions);
+    target.setValue("toolbar/actionsVersion", 1);
     for (const auto &definition : shortcutDefinitions())
         target.setValue("shortcuts/" + definition.id,
                         settings.shortcuts.value(definition.id).toString(QKeySequence::PortableText));

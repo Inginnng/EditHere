@@ -29,6 +29,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -2369,6 +2370,10 @@ class UiTests : public QObject {
         auto file = editor.findChild<QPushButton *>("copyJson");
         auto options = editor.findChild<QPushButton *>("copyJsonTextOptions");
         QVERIFY(text && file && options && text->isVisible() && file->isVisible() && options->isVisible());
+        QCOMPARE(options->parentWidget(), text);
+        QTRY_VERIFY(text->rect().contains(options->geometry()));
+        for (auto layout : editor.findChildren<QLayout *>())
+            QCOMPARE(layout->indexOf(options), -1); // No separate toolbar slot.
         QVERIFY(!options->icon().isNull());
         QVERIFY(text->toolTip().contains("默认不携带原图信息"));
         text->click();
@@ -2385,9 +2390,13 @@ class UiTests : public QObject {
         const auto embedded = clipboardJson().object()["image"].toObject();
         QCOMPARE(embedded["mode"].toString(), QString("embedded"));
         QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/"));
-        options->click();
+        const auto copiedBeforeOptions = QApplication::clipboard()->text();
+        QSignalSpy copiedOnMainClick(text, &QPushButton::clicked);
+        QTest::mouseClick(options, Qt::LeftButton);
         auto textMenu = options->findChild<QMenu *>("copyJsonTextOptionsMenu");
         QVERIFY(textMenu && textMenu->isVisible());
+        QCOMPARE(copiedOnMainClick.size(), 0);
+        QCOMPARE(QApplication::clipboard()->text(), copiedBeforeOptions);
         artifact(*textMenu, "json-text-options.png");
         textMenu->close();
         file->click();
@@ -2404,6 +2413,8 @@ class UiTests : public QObject {
             auto embed = dialog->findChild<QCheckBox *>("feedbackEmbedImage");
             auto dialogOptions = dialog->findChild<QPushButton *>("copyJsonTextOptions");
             QVERIFY(copyText && copyFile && embed && dialogOptions);
+            QCOMPARE(dialogOptions->parentWidget(), copyText);
+            QVERIFY(copyText->rect().contains(dialogOptions->geometry()));
             QVERIFY(!dialog->findChild<QPushButton *>("saveFeedbackBundle"));
             QVERIFY(!dialog->findChild<QComboBox *>("feedbackImageMode"));
             QVERIFY(!dialog->findChild<QCheckBox *>("feedbackPreview"));
@@ -2540,6 +2551,12 @@ class UiTests : public QObject {
         Editor editor; editor.setDocument(gridDocument()); editor.resize(760, 650); QTest::qWait(60);
         auto options = editor.findChild<QPushButton *>("copyJsonTextOptions");
         auto text = editor.findChild<QPushButton *>("copyJsonText"); QVERIFY(options && text);
+        auto ai = editor.findChild<QPushButton *>("generateInstructions");
+        QVERIFY(ai && ai->isVisible() && ai->isEnabled());
+        QCOMPARE(ai->text(), QString("AI解析"));
+        QVERIFY(!ai->property("tool").toBool());
+        QVERIFY(!ai->property("primary").toBool());
+        QCOMPARE(ai->height(), editor.findChild<QPushButton *>("copyJson")->height());
         QVERIFY(!text->isVisible()); QVERIFY(!options->isVisible());
         artifact(editor, "json-actions-compact.png");
         bool selected = false;
@@ -2553,6 +2570,31 @@ class UiTests : public QObject {
         QTimer::singleShot(2000, &editor, [] { if (auto popup = QApplication::activePopupWidget()) popup->close(); });
         editor.findChild<QPushButton *>("moreActions")->click(); QVERIFY(selected);
         text->click(); QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("embedded"));
+        editor.hide();
+    }
+    void aiParsingIsVisibleInDefaultAndMinimumToolbars() {
+        Editor editor;
+        editor.show();
+        auto ai = editor.findChild<QPushButton *>("generateInstructions");
+        QVERIFY(ai);
+        QCOMPARE(ai->text(), QString("AI解析"));
+        editor.resize(1280, 850);
+        QTRY_VERIFY(ai->isVisible());
+        QVERIFY(!ai->isEnabled()); // The empty home still exposes the feature.
+        editor.setDocument(gridDocument());
+        QTRY_VERIFY(ai->isEnabled());
+        artifact(editor, "ai-toolbar-desktop-light.png");
+        for (int width : {1280, 960, 760, 740}) {
+            editor.resize(width, 650);
+            QTRY_VERIFY(ai->isVisible());
+            QVERIFY(QRect(QPoint(), editor.size()).contains(QRect(ai->mapTo(&editor, QPoint()), ai->size())));
+        }
+        artifact(editor, "ai-toolbar-minimum-light.png");
+        applyTheme(ThemeMode::Dark);
+        editor.setPreferences(defaultSettings());
+        QTest::qWait(1);
+        artifact(editor, "ai-toolbar-minimum-dark.png");
+        applyTheme(ThemeMode::Light);
         editor.hide();
     }
     void feedbackFileClipboardIncludesOriginalWithoutLegacyPreview() {

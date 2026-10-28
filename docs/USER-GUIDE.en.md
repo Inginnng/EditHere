@@ -187,7 +187,7 @@ A move becomes an annotation the moment it happens, listed alongside text annota
 | Copy annotated image | `Ctrl + C` | Put the annotated image on the clipboard; the image area is a uniform 960 pixels wide, and indices, text and the sidebar keep a consistent scale |
 | Copy JSON and image / Copy JSON content / Save image / Hide marks / Global annotation | Not bound by default | Assign them yourself in Settings |
 
-The bottom toolbar shows **Save project**, **Save image**, **View JSON**, **Copy JSON content**, **Copy JSON and image**, **Copy annotated image**, **Retake screenshot** and **Fit image** by default; which buttons appear is chosen in **Settings → Toolbar**, and unchecked buttons do not appear in the bottom bar.
+The bottom toolbar shows **Save project**, **Save image**, **View JSON**, **AI analysis**, **Copy JSON content**, **Copy JSON and image** and **Copy annotated image** by default; which buttons appear is chosen in **Settings → Toolbar**, and unchecked buttons do not appear in the bottom bar.
 
 The **“Need help?”** entry on the toolbar and at the top of the annotation window explains what to do when an agent cannot take the feedback.
 
@@ -196,8 +196,8 @@ The **View JSON** window provides these options and actions:
 - **Embed original image in JSON**: off by default, producing JSON with a companion PNG. Enable it to put the original in `image.dataUrl` for a single-file handoff. The source-image mode dropdown has been removed.
 - **Compress embedded original**: available only when embedding; dimensions stay unchanged, with possible small detail loss. Companion originals remain PNG.
 - **Copy JSON and image**: writes the JSON and companion original into an independent temporary folder and copies the files together. Embedded mode copies a JSON containing the original. Configure the folder in **Settings → Default behavior → Feedback temporary folder**.
-- **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Its adjacent vertical **…** menu remembers a separate include-image choice. Including the image uses embedded encoding and does not change file handoff.
-- **Generate instructions (0.13.0)**: also available from the editor's **More** menu. A separate API request processes the current screenshots and annotations into plain text that you can review, edit, copy or save. First select a provider and save your own key under **Settings → AI API**; see [Generate instructions](AI-INSTRUCTIONS.en.md).
+- **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Its internal **⋯** menu on the right remembers a separate include-image choice without occupying another toolbar slot. Including the image uses embedded encoding and does not change file handoff.
+- **AI analysis (0.13.0)**: visible directly on the editor's bottom toolbar, styled like its neighboring actions, and also available in **View JSON**. A separate API request processes the current screenshots and annotations into plain text that you can review, edit, copy or save. First select a provider and save your own key under **Settings → AI API**; see [AI analysis](AI-INSTRUCTIONS.en.md).
 
 The viewer no longer offers a numbered-preview checkbox or an extra **Save JSON and image** action. Use the existing image-saving action for annotated images; programmatic CLI/API `--preview` / `preview` output remains available.
 
@@ -417,11 +417,11 @@ Windows uses the current user's startup entry and needs no administrator privile
 ### Toolbar
 
 - **Default annotation tool**: Smart select, Point, Box or Adjust; sets the tool selected by default after opening an image.
-- **Shown in the bottom toolbar**: Save project, Save image, View JSON, Copy JSON content, Copy JSON and image, Copy annotated image, Retake screenshot and Fit image. Unchecking removes a button from the bottom bar; the feature is still available through a shortcut or the menu.
+- **Shown in the bottom toolbar**: Save project, Save image, View JSON, AI analysis, Copy JSON content, Copy JSON and image, Copy annotated image, Retake screenshot and Fit image. Unchecking removes a button from the bottom bar; the feature is still available through a shortcut or the menu.
 
 ### AI / API
 
-Choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service. Presets supply the base address, vision model and protocol, with separate China and global entries. You can adjust the address, model, timeout and additional instructions. **Save key** writes directly to the system credential store; the Settings window's bottom save button persists ordinary provider settings. **Test connection** sends only a built-in small image, never the current screenshot. See [Generate instructions](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
+Choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service. Presets supply the base address, vision model and protocol; GLM and Kimi have China and global region selectors. Provider choices are grouped together, and the API key, model and API address are visible for direct editing. **Advanced options** contains only the protocol, timeout and additional instructions. **Save key** writes directly to the system credential store; the Settings window's bottom save button persists ordinary provider settings. **Test connection** sends only a built-in small image, never the current screenshot. See [AI analysis](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
 
 ### Diagnostics
 

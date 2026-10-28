@@ -289,8 +289,46 @@ class SettingsTests : public QObject {
         QVERIFY(loaded.first().at(1).toString().isEmpty());
 #endif
     }
+    void aiFamilyPickerKeepsRegionalProfilesAndDrafts() {
+        FakeAiCredentials credentials;
+        AiSettingsPage page(nullptr, &credentials);
+        page.setSettings(defaultSettings());
+        auto *provider = page.findChild<QComboBox *>("aiProvider");
+        auto *region = page.findChild<QComboBox *>("aiProviderRegion");
+        auto *glm = page.findChild<QPushButton *>("aiProviderChoice_glm");
+        auto *kimi = page.findChild<QPushButton *>("aiProviderChoice_kimi");
+        auto *openai = page.findChild<QPushButton *>("aiProviderChoice_openai");
+        auto *model = page.findChild<QLineEdit *>("aiModel");
+        QVERIFY(provider && region && glm && kimi && openai && model);
+        page.show();
+        QTRY_VERIFY(openai->isEnabled());
+        QVERIFY(provider->isHidden());
+        QVERIFY(region->isHidden());
+        glm->click();
+        QCOMPARE(provider->currentData().toString(), QString("glm-cn"));
+        QTRY_VERIFY(glm->isEnabled());
+        QVERIFY(region->isVisible());
+        region->setCurrentIndex(region->findData("glm-global"));
+        QCOMPARE(provider->currentData().toString(), QString("glm-global"));
+        QTRY_VERIFY(glm->isEnabled());
+        model->setText("my-regional-vision-model");
+        kimi->click();
+        QCOMPARE(provider->currentData().toString(), QString("kimi-cn"));
+        QTRY_VERIFY(glm->isEnabled());
+        glm->click();
+        QCOMPARE(provider->currentData().toString(), QString("glm-global"));
+        QCOMPARE(model->text(), QString("my-regional-vision-model"));
+        QVERIFY(glm->isChecked());
+        QVERIFY(!kimi->isChecked());
+        QTRY_VERIFY(openai->isEnabled());
+        openai->click();
+        QVERIFY(region->isHidden());
+        QCOMPARE(credentials.saves, 0);
+    }
     void aiSettingsCancelAndNarrowTranslatedLayout() {
-        struct RestoreLanguage { ~RestoreLanguage() { installLanguage(LanguageMode::SimplifiedChinese); } } restore;
+        struct RestoreAppearance {
+            ~RestoreAppearance() { installLanguage(LanguageMode::SimplifiedChinese); applyTheme(ThemeMode::Light); }
+        } restore;
         QVERIFY(installLanguage(LanguageMode::SimplifiedChinese));
         auto settings = defaultSettings();
         settings.language = LanguageMode::SimplifiedChinese;
@@ -306,15 +344,15 @@ class SettingsTests : public QObject {
             return true;
         };
         const auto basicRows = [](SettingsDialog &dialog) {
-            return QList<QWidget *>{dialog.findChild<QComboBox *>("aiProvider"),
-                dialog.findChild<QLineEdit *>("aiApiKey"), dialog.findChild<QPushButton *>("aiSaveKey"),
-                dialog.findChild<QLabel *>("aiKeyStorageHint"), dialog.findChild<QLabel *>("aiProviderNote"),
-                dialog.findChild<QPushButton *>("aiProviderDocs"), dialog.findChild<QLabel *>("aiConnectionStatus"),
+            return QList<QWidget *>{dialog.findChild<QLabel *>("aiSettingsTitle"),
+                dialog.findChild<QLabel *>("aiDescription"), dialog.findChild<QWidget *>("aiProviderChoices"),
+                dialog.findChild<QWidget *>("aiProviderSummary"), dialog.findChild<QLineEdit *>("aiApiKey"),
+                dialog.findChild<QLineEdit *>("aiModel"), dialog.findChild<QLineEdit *>("aiBaseUrl"),
+                dialog.findChild<QLabel *>("aiKeyStorageHint"), dialog.findChild<QLabel *>("aiConnectionStatus"),
                 dialog.findChild<QPushButton *>("aiAdvancedToggle")};
         };
         const auto advancedRows = [](SettingsDialog &dialog) {
-            return QList<QWidget *>{dialog.findChild<QLineEdit *>("aiBaseUrl"), dialog.findChild<QLineEdit *>("aiModel"),
-                dialog.findChild<QComboBox *>("aiProtocol"), dialog.findChild<QSpinBox *>("aiTimeout"),
+            return QList<QWidget *>{dialog.findChild<QComboBox *>("aiProtocol"), dialog.findChild<QSpinBox *>("aiTimeout"),
                 dialog.findChild<QPlainTextEdit *>("aiExtraInstructions"), dialog.findChild<QPushButton *>("aiResetPreset")};
         };
         {
@@ -328,9 +366,17 @@ class SettingsTests : public QObject {
             QVERIFY(key && advanced && fields && scroll);
             QTRY_COMPARE(key->text(), QString("saved-key-for-test"));
             QVERIFY(!fields->isVisible());
+            QVERIFY(dialog.findChild<QLineEdit *>("aiModel")->isVisible());
+            QVERIFY(dialog.findChild<QLineEdit *>("aiBaseUrl")->isVisible());
             QVERIFY(key->echoMode() == QLineEdit::Password);
             QTRY_VERIFY(noVerticalOverlap(basicRows(dialog)));
             artifact(dialog, "ai-settings-basic.png");
+            artifact(*scroll->widget(), "ai-settings-basic-page.png");
+            applyTheme(ThemeMode::Dark);
+            QCoreApplication::processEvents();
+            artifact(dialog, "ai-settings-basic-dark.png");
+            artifact(*scroll->widget(), "ai-settings-basic-dark-page.png");
+            applyTheme(ThemeMode::Light);
             advanced->click();
             QTRY_VERIFY(fields->isVisible());
             QTRY_VERIFY(noVerticalOverlap(basicRows(dialog)));
@@ -378,6 +424,13 @@ class SettingsTests : public QObject {
         QTRY_VERIFY(scroll->viewport()->rect().contains(QRect(reset->mapTo(scroll->viewport(), QPoint()), reset->size())));
         QVERIFY(reset->height() >= reset->sizeHint().height());
         artifact(dialog, "ai-settings-english-narrow-bottom.png");
+        applyTheme(ThemeMode::Dark);
+        QCoreApplication::processEvents();
+        scroll->verticalScrollBar()->setValue(0);
+        QCoreApplication::processEvents();
+        artifact(dialog, "ai-settings-english-narrow-dark.png");
+        artifact(*scroll->widget(), "ai-settings-english-narrow-dark-page.png");
+        QCOMPARE(scroll->horizontalScrollBar()->maximum(), 0);
         key->selectAll();
         QTest::keyClicks(key, "explicitly-saved");
         save->click();
@@ -775,8 +828,8 @@ class SettingsTests : public QObject {
         QTemporaryDir directory;
         const auto path = directory.filePath("settings.ini");
         auto settings = defaultSettings();
-        QCOMPARE(settings.toolbarActions.size(), 6);
-        for (const auto &id : {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage"})
+        QCOMPARE(settings.toolbarActions.size(), 7);
+        for (const auto &id : {"saveProject", "saveImage", "exportJson", "copyJson", "copyImage", "generateInstructions"})
             QVERIFY(settings.toolbarActions.contains(id));
         QVERIFY(!settings.toolbarActions.contains("capture"));
         QVERIFY(!settings.toolbarActions.contains("fit"));
@@ -809,7 +862,7 @@ class SettingsTests : public QObject {
         source.setValue("toolbar/actions", QStringList{"copyJson", "copyJson"});
         source.sync();
         QCOMPARE(loadSettings(path).toolbarActions, defaultSettings().toolbarActions);
-        // Existing users without the preference get all five actions on upgrade.
+        // Existing users without the preference get the current default actions.
         source.remove("toolbar/actions");
         source.sync();
         QCOMPARE(loadSettings(path).toolbarActions, defaultSettings().toolbarActions);
@@ -823,6 +876,18 @@ class SettingsTests : public QObject {
         QCOMPARE(migrated.shortcuts.value("export"), QKeySequence("Ctrl+E"));
         QVERIFY2(saveSettings(migrated, &error, path), qPrintable(error));
         QVERIFY(loadSettings(path) == migrated);
+        // A toolbar last saved before AI parsing gains its entry once. A later
+        // explicit choice to hide it survives subsequent launches.
+        source.remove("toolbar/actionsVersion");
+        source.setValue("toolbar/actions", legacyActions);
+        source.sync();
+        migrated = loadSettings(path);
+        auto upgradedActions = legacyActions;
+        upgradedActions.append("generateInstructions");
+        QCOMPARE(migrated.toolbarActions, upgradedActions);
+        migrated.toolbarActions.removeAll("generateInstructions");
+        QVERIFY2(saveSettings(migrated, &error, path), qPrintable(error));
+        QCOMPARE(loadSettings(path).toolbarActions, legacyActions);
     }
     void toolbarDraftAndUpdateNavigation() {
         SettingsDialog dialog(defaultSettings());

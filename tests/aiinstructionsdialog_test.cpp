@@ -203,9 +203,15 @@ class AiInstructionsTests final : public QObject {
         QTRY_VERIFY(generate->isEnabled());
         QCOMPARE(credentials.loads, 1);
         QCOMPARE(api.requests, 0); // Opening this dialog never spends API tokens.
+        QVERIFY(!output->isVisible());
+        QVERIFY(copy->isHidden());
+        artifact(dialog, "ai-analysis-ready.png");
         generate->click();
         QTRY_VERIFY(output->toPlainText().contains("顶部标题"));
         QTRY_VERIFY(copy->isEnabled());
+        QTRY_VERIFY(output->isVisible());
+        QVERIFY(copy->property("primary").toBool());
+        QVERIFY(!generate->property("primary").toBool());
         QCOMPARE(api.requests, 1);
         QVERIFY(usage->text().contains("123"));
         output->appendPlainText("人工核对：保持标题内容。");
@@ -222,6 +228,10 @@ class AiInstructionsTests final : public QObject {
         QVERIFY(!mime->text().contains("data:image"));
         QVERIFY(!mime->text().contains("base64"));
         artifact(dialog, "ai-instructions-generated.png");
+        applyTheme(ThemeMode::Dark);
+        QTest::qWait(1);
+        artifact(dialog, "ai-analysis-dark.png");
+        applyTheme(ThemeMode::Light);
     }
     void missingKeyAndCredentialFailureKeepConfigurationReachable_data() {
         QTest::addColumn<bool>("failure");

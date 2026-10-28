@@ -85,6 +85,7 @@ QString toolbarGlyph(const QString &id) {
     if (id == "copyJson") return "json-copy-file";
     if (id == "copyJsonText") return "json-copy-text";
     if (id == "exportJson") return "json";
+    if (id == "generateInstructions") return "notes";
     if (id == "capture") return "capture";
     if (id == "fit") return "fit";
     if (id == "copyImage") return "image-copy";
@@ -468,11 +469,11 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         else if (definition.id == "saveImage") connect(button, &QPushButton::clicked, this, [this] { saveImage(true); });
         else if (definition.id == "copyJsonText") {
             connect(button, &QPushButton::clicked, this, &Editor::copyJsonText);
-            copyJsonTextOptions_ = makeCopyJsonTextOptions(shell, "copyJsonTextOptions");
-            dock->addWidget(copyJsonTextOptions_);
+            copyJsonTextOptions_ = makeCopyJsonTextOptions(button, "copyJsonTextOptions");
         }
         else if (definition.id == "copyJson") connect(button, &QPushButton::clicked, this, &Editor::copyJson);
         else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
+        else if (definition.id == "generateInstructions") connect(button, &QPushButton::clicked, this, &Editor::generateInstructions);
         else if (definition.id == "capture") connect(button, &QPushButton::clicked, this, &Editor::captureRequested);
         else if (definition.id == "fit") connect(button, &QPushButton::clicked, this, &Editor::fit);
         else if (definition.id == "copyImage") connect(button, &QPushButton::clicked, this, &Editor::copyImage);
@@ -1115,7 +1116,7 @@ void Editor::updateToolbar() {
                     : tr("复制 JSON 文本（默认不携带原图信息），适用于无法发送文件的 Agent。"))
                 : definition.label);
         button->setAccessibleName(definition.label);
-        const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" ||
+        const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" || definition.id == "generateInstructions" ||
                               definition.id == "exportJson" || (!compact && definition.id == "copyImage");
         button->setProperty("tool", !labelled);
         button->setProperty("primary", definition.id == "copyJson");
@@ -1132,7 +1133,7 @@ void Editor::updateToolbar() {
         if (copyJsonTextOptions_)
             copyJsonTextOptions_->setVisible(!outputButtons_.value("copyJsonText")->isHidden());
         dock_->invalidate();
-        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson"};
+        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson", "generateInstructions"};
         for (const auto &id : overflowOrder) {
             if (dock_->sizeHint().width() <= width()-2) break;
             if (auto button = outputButtons_.value(id); button && !button->isHidden()) {
@@ -1725,6 +1726,14 @@ void Editor::updateAnnotationVisibility() {
     if (layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
+    // The options affordance belongs to the copy button's hit area, never to a
+    // separate toolbar layout slot. This also serves the JSON preview dialog.
+    if ((event->type() == QEvent::Resize || event->type() == QEvent::Show) &&
+        object->property("embeddedJsonOptions").toBool()) {
+        if (auto button = qobject_cast<QPushButton *>(object))
+            if (auto options = button->findChild<QPushButton *>("copyJsonTextOptions", Qt::FindDirectChildrenOnly))
+                options->setGeometry(button->width() - 29, 3, 26, button->height() - 6);
+    }
     if (auto owner = qobject_cast<QWidget *>(object); owner && owner->window() != this)
         return QWidget::eventFilter(object, event);
     // An unresolved note shows a compact "归属待确认" chip that turns into the
@@ -1858,13 +1867,19 @@ void Editor::toast(const QString &message) {
     QToolTip::showText(mapToGlobal(QPoint(width()/2,height()-65)),message,this,{},2000);
 }
 QPushButton *Editor::makeCopyJsonTextOptions(QWidget *parent, const QString &name) {
+    parent->setProperty("embeddedJsonOptions", true);
+    parent->setStyleSheet("QPushButton { padding-right:34px; }");
+    parent->installEventFilter(this);
     auto button = textButton({}, false, parent);
     button->setIcon(QIcon(glyph("more", QColor("#80848e")).pixmap(36, 36)
                               .transformed(QTransform().rotate(90))));
     button->setIconSize(QSize(18, 18));
     button->setObjectName(name);
-    button->setFixedSize(24, 34);
-    button->setStyleSheet("padding:0; min-width:0; min-height:0;");
+    button->setFixedSize(26, 28);
+    button->setStyleSheet("QPushButton { background:transparent; border:0; border-left:1px solid palette(midlight);"
+                         "border-radius:0; padding:0; min-width:0; min-height:0; }"
+                         "QPushButton:hover { background:palette(midlight); border-radius:4px; }");
+    button->move(parent->width() - 29, 3);
     button->setToolTip(tr("复制 JSON 内容选项"));
     button->setAccessibleName(tr("复制 JSON 内容选项"));
     auto menu = new QMenu(button);
@@ -2439,9 +2454,9 @@ void Editor::exportJson() {
     auto json = new JsonPreview(&dialog); json->setAccessibleName(tr("标准化 JSON")); json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth); json->setFont(QFont(h2d::monoFontFamily(), 10)); layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog); status->setObjectName("exportStatus"); status->setWordWrap(true); layout->addWidget(status);
-    auto ai = textButton(tr("生成修改意见…"), false, &dialog);
+    auto ai = textButton(tr("AI解析"), false, &dialog);
     ai->setObjectName("generateInstructions");
-    layout->addWidget(ai);
+    ai->setIcon(glyph("notes"));
     connect(ai, &QPushButton::clicked, &dialog, [&] {
         dialog.accept(); QTimer::singleShot(0, this, &Editor::generateInstructions);
     });
@@ -2452,8 +2467,8 @@ void Editor::exportJson() {
     close->setProperty("glyphName", "close"); close->setIcon(glyph("close"));
     copy->setProperty("glyphName", "json-copy-file"); copy->setIcon(glyph("json-copy-file", Qt::white));
     copyText->setProperty("glyphName", "json-copy-text"); copyText->setIcon(glyph("json-copy-text"));
-    auto textOptions = makeCopyJsonTextOptions(&dialog, "copyJsonTextOptions");
-    row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(textOptions); row->addWidget(copy); layout->addLayout(row);
+    auto textOptions = makeCopyJsonTextOptions(copyText, "copyJsonTextOptions");
+    row->addWidget(ai); row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(copy); layout->addLayout(row);
     FeedbackBundle bundle;
     auto refresh = [&] {
         try {
@@ -2546,9 +2561,6 @@ void Editor::showContext(QPoint p) {
     auto settings = menu.addAction(glyph("settings"), tr("设置…"), this, &Editor::settingsRequested);
     settings->setObjectName("editorSettings");
     menu.addAction(glyph("layout-settings"),tr("自定义工具栏…"),this,&Editor::toolbarSettingsRequested);
-    auto ai = menu.addAction(glyph("notes"), tr("生成修改意见…"), this, &Editor::generateInstructions);
-    ai->setObjectName("generateInstructions");
-    ai->setEnabled(hasDocument() || video_.has_value());
     bool hiddenActions=false;
     for (const auto &definition : toolbarActionDefinitions()) {
         auto button=outputButtons_.value(definition.id);
