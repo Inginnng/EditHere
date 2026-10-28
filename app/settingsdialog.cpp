@@ -559,7 +559,7 @@ void SettingsDialog::retranslate() {
     embedFeedbackImage_->setText(tr("原图嵌入 JSON"));
     embedFeedbackImage_->setToolTip(tr("未勾选时将 JSON 与原图作为独立文件复制。"));
     copyJsonTextWithImage_->setText(tr("复制 JSON 内容时携带原图信息"));
-    copyJsonTextWithImage_->setToolTip(tr("默认不携带原图信息；也可在复制按钮旁的选项中快速切换。"));
+    copyJsonTextWithImage_->setToolTip(tr("默认不携带原图信息；也可在复制按钮内的选项中快速切换。"));
     confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
     confirmBeforeDiscard_->setToolTip(
         tr("关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。"));
@@ -702,6 +702,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     embedFeedbackImage_->setChecked(settings.imageExportMode == ImageExportMode::Embedded);
     copyJsonTextWithImage_->setChecked(settings.copyJsonTextWithImage);
     legacyIncludeFeedbackPreview_ = settings.includeFeedbackPreview;
+    regionOcrEnabled_ = settings.regionOcrEnabled;
     includeRecognizedText_->setChecked(settings.includeRecognizedText);
     includeWindowTitle_->setChecked(settings.includeWindowTitle);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
@@ -722,6 +723,7 @@ AppSettings SettingsDialog::settings() const {
     result.copyJsonTextWithImage = copyJsonTextWithImage_->isChecked();
     result.embedOriginal = legacyEmbedOriginal_;
     result.includeFeedbackPreview = legacyIncludeFeedbackPreview_;
+    result.regionOcrEnabled = regionOcrEnabled_;
     result.includeRecognizedText = includeRecognizedText_->isChecked();
     result.includeWindowTitle = includeWindowTitle_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();

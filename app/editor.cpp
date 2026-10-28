@@ -205,6 +205,14 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     hideAnnotations_->setCheckable(true);
     header->addWidget(hideAnnotations_);
     connect(hideAnnotations_, &QPushButton::clicked, this, &Editor::toggleAnnotations);
+    regionOcrToggle_ = textButton(QStringLiteral("OCR"), false, bar);
+    regionOcrToggle_->setObjectName("toggleRegionOcr");
+    regionOcrToggle_->setProperty("tool", true);
+    regionOcrToggle_->setFixedSize(44, 34);
+    styleControl(regionOcrToggle_, QStringLiteral("padding:4px; min-width:34px; max-width:34px;"));
+    regionOcrToggle_->setCheckable(true);
+    header->addWidget(regionOcrToggle_);
+    connect(regionOcrToggle_, &QPushButton::toggled, this, &Editor::setRegionOcrEnabled);
     auto magnifier=iconButton("magnifier", {}, bar);
     magnifier->setObjectName("toggleMagnifier");
     magnifier->setCheckable(true); magnifier->setChecked(true);
@@ -466,8 +474,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         else if (definition.id == "saveImage") connect(button, &QPushButton::clicked, this, [this] { saveImage(true); });
         else if (definition.id == "copyJsonText") {
             connect(button, &QPushButton::clicked, this, &Editor::copyJsonText);
-            copyJsonTextOptions_ = makeCopyJsonTextOptions(shell, "copyJsonTextOptions");
-            dock->addWidget(copyJsonTextOptions_);
+            copyJsonTextOptions_ = makeCopyJsonTextOptions(button, "copyJsonTextOptions");
         }
         else if (definition.id == "copyJson") connect(button, &QPushButton::clicked, this, &Editor::copyJson);
         else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
@@ -584,6 +591,7 @@ void Editor::retranslate() {
     tooltip("zoomIn", tr("放大"));
     tooltip("moreActions", tr("更多操作"));
     updateAnnotationVisibility();
+    updateRegionOcrButton();
     if (auto magnifier = findChild<QPushButton *>("toggleMagnifier"))
         tooltip("toggleMagnifier", magnifier->isChecked() ? tr("关闭放大镜") : tr("开启放大镜"));
     if (auto agentHint = findChild<QLabel *>("agentSessionHint"))
@@ -1091,7 +1099,13 @@ void Editor::resizeEvent(QResizeEvent *e) {
         });
 }
 void Editor::setPreferences(const AppSettings &settings) {
+    const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;
     preferences_ = settings;
+    if (recognitionChanged) {
+        cancelRegionRecognition();
+        if (preferences_.regionOcrEnabled) scheduleRegionRecognition();
+    }
+    updateRegionOcrButton();
     if (zoom_) updateToolbar();
 }
 void Editor::updateToolbar() {
@@ -1127,15 +1141,12 @@ void Editor::updateToolbar() {
     }
     // Keep the permanent tools accessible when optional actions exceed the window width.
     if (dock_) {
-        if (copyJsonTextOptions_)
-            copyJsonTextOptions_->setVisible(!outputButtons_.value("copyJsonText")->isHidden());
         dock_->invalidate();
         const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson"};
         for (const auto &id : overflowOrder) {
             if (dock_->sizeHint().width() <= width()-2) break;
             if (auto button = outputButtons_.value(id); button && !button->isHidden()) {
                 button->hide();
-                if (id == "copyJsonText" && copyJsonTextOptions_) copyJsonTextOptions_->hide();
                 dock_->invalidate();
             }
         }
@@ -1626,8 +1637,24 @@ void Editor::cancelRegionRecognition() {
     recognizedRegions_.clear();
     if (regionOcr_) regionOcr_->cancel();
 }
+void Editor::setRegionOcrEnabled(bool enabled) {
+    if (preferences_.regionOcrEnabled == enabled) return;
+    preferences_.regionOcrEnabled = enabled;
+    cancelRegionRecognition();
+    updateRegionOcrButton();
+    if (enabled) scheduleRegionRecognition();
+    emit regionOcrPreferenceChanged(enabled);
+}
+void Editor::updateRegionOcrButton() {
+    if (!regionOcrToggle_) return;
+    const QSignalBlocker blocker(regionOcrToggle_);
+    regionOcrToggle_->setChecked(preferences_.regionOcrEnabled);
+    const auto label = preferences_.regionOcrEnabled ? tr("关闭区域文字识别（OCR）") : tr("开启区域文字识别（OCR）");
+    regionOcrToggle_->setToolTip(label);
+    regionOcrToggle_->setAccessibleName(label);
+}
 void Editor::scheduleRegionRecognition() {
-    if (recognitionScheduled_ || !hasDocument()) return;
+    if (!preferences_.regionOcrEnabled || recognitionScheduled_ || !hasDocument()) return;
     recognitionScheduled_ = true;
     const int generation = recognitionGeneration_;
     QTimer::singleShot(200, this, [this, generation] {
@@ -1637,7 +1664,7 @@ void Editor::scheduleRegionRecognition() {
     });
 }
 void Editor::recognizeNextRegion() {
-    if (!hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
+    if (!preferences_.regionOcrEnabled || !hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
     for (auto &note : doc_.notes) {
         // OCR belongs to the selected screenshot content. Rearranging that
         // content must preserve both saved text and an in-flight first result.
@@ -1654,7 +1681,7 @@ void Editor::recognizeNextRegion() {
         QPointer<Editor> self(this);
         regionOcr_->recognize(picture, preferences_.ocrLanguage,
             [self, generation, documentId, id, key](OcrResult result) {
-                if (!self || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
+                if (!self || !self->preferences_.regionOcrEnabled || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
                 for (auto &current : self->doc_.notes) {
                     if (current.id != id || current.recognizedText.value("edited") == true ||
                         !self->recognizedRegions_.contains(id) || self->recognizedRegions_.value(id) != key) continue;
@@ -1855,14 +1882,23 @@ void Editor::toast(const QString &message) {
     hint_->setText(message);
     QToolTip::showText(mapToGlobal(QPoint(width()/2,height()-65)),message,this,{},2000);
 }
-QPushButton *Editor::makeCopyJsonTextOptions(QWidget *parent, const QString &name) {
+QPushButton *Editor::makeCopyJsonTextOptions(QPushButton *parent, const QString &name) {
+    // Reserve the trailing edge of the copy button for its options. The child
+    // follows the button's visibility and never takes a separate toolbar slot.
+    parent->setStyleSheet("QPushButton#copyJsonText { padding-right:32px; }");
     auto button = textButton({}, false, parent);
     button->setIcon(QIcon(glyph("more", QColor("#80848e")).pixmap(36, 36)
                               .transformed(QTransform().rotate(90))));
     button->setIconSize(QSize(18, 18));
     button->setObjectName(name);
-    button->setFixedSize(24, 34);
-    button->setStyleSheet("padding:0; min-width:0; min-height:0;");
+    button->setFixedSize(24, 28);
+    button->setProperty("tool", true);
+    styleControl(button, QStringLiteral("padding:0; min-width:0; min-height:0; border:0;"));
+    auto row = new QHBoxLayout(parent);
+    row->setContentsMargins(0, 0, 3, 0);
+    row->setSpacing(0);
+    row->addStretch();
+    row->addWidget(button);
     button->setToolTip(tr("复制 JSON 内容选项"));
     button->setAccessibleName(tr("复制 JSON 内容选项"));
     auto menu = new QMenu(button);
@@ -1916,7 +1952,7 @@ void Editor::showJsonHelp() {
     help.setTextFormat(Qt::RichText);
     help.setText(tr(
         "<h3>1. 发送 JSON 文本被截断，又无法发送 JSON 文件？</h3>"
-        "<p>在“复制 JSON 内容”旁的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。</p>"
+        "<p>在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。</p>"
         "<h3>2. 都不支持上传，只支持对话怎么办？</h3>"
         "<p>可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。</p>"
         "<h3>3. AI 没认出来原图信息怎么办？</h3>"
@@ -2444,8 +2480,8 @@ void Editor::exportJson() {
     close->setProperty("glyphName", "close"); close->setIcon(glyph("close"));
     copy->setProperty("glyphName", "json-copy-file"); copy->setIcon(glyph("json-copy-file", Qt::white));
     copyText->setProperty("glyphName", "json-copy-text"); copyText->setIcon(glyph("json-copy-text"));
-    auto textOptions = makeCopyJsonTextOptions(&dialog, "copyJsonTextOptions");
-    row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(textOptions); row->addWidget(copy); layout->addLayout(row);
+    makeCopyJsonTextOptions(copyText, "copyJsonTextOptions");
+    row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(copy); layout->addLayout(row);
     FeedbackBundle bundle;
     auto refresh = [&] {
         try {
@@ -2466,11 +2502,11 @@ void Editor::exportJson() {
                 readable["frames"] = frames;
             } else readable = fold(readable);
             json->setPlainText(QString::fromUtf8(formatFeedbackJson(readable, true)));
-            copy->setEnabled(true); copyText->setEnabled(true); textOptions->setEnabled(true);
+            copy->setEnabled(true); copyText->setEnabled(true);
             status->setText(options.mode == ImageExportMode::File ? tr("原图作为配套文件保存；请将 JSON 与图片一起交给 Agent。")
                 : tr("图片编码仅在预览中折叠，复制文件包含完整原图。"));
         } catch (const std::exception &error) {
-            bundle = {}; json->clear(); copy->setEnabled(false); copyText->setEnabled(false); textOptions->setEnabled(false);
+            bundle = {}; json->clear(); copy->setEnabled(false); copyText->setEnabled(false);
             status->setText(QString::fromUtf8(error.what()));
         }
         copyText->setToolTip(preferences_.copyJsonTextWithImage

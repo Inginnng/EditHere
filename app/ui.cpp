@@ -417,6 +417,12 @@ QPushButton *textButton(const QString &text, bool primary, QWidget *parent) {
     b->setCursor(Qt::PointingHandCursor);
     return b;
 }
+void styleControl(QWidget *widget, const QString &declarations) {
+    const auto name = widget->objectName();
+    const auto selector = name.isEmpty() ? QString::fromLatin1(widget->metaObject()->className())
+                                         : QStringLiteral("#") + name;
+    widget->setStyleSheet(selector + " { " + declarations + " }");
+}
 QLabel *mutedLabel(const QString &text, QWidget *parent) {
     auto l = new QLabel(text, parent);
     l->setProperty("muted", true);

@@ -30,6 +30,7 @@ struct AppSettings {
     bool includeFeedbackPreview = false;
     bool includeWindowTitle = true;
     bool includeRecognizedText = true;
+    bool regionOcrEnabled = true;
     // Whether closing the annotation window asks about unsaved changes. Turning it off
     // is what the "don't ask again" box on that question does: from then on closing
     // throws the changes away instead of stopping to ask. It is a preference rather

@@ -4,7 +4,7 @@
 
 0.12.0 的新导出使用 `feedback-minimal-4`。读取端继续接受 v2/v3 图片反馈、无版本 `objects`、更早的 `annotations` + `changes`，并保留旧字符串 `image` 与同名 PNG 回退；桌面项目读取 1.0.0、1.1.0、2.0.0、3.0.0，视频继续使用 v1 容器。未知显式版本不会被猜成旧格式。这里承诺新程序读取旧数据，不承诺旧程序能读取新版的 `kind`、`movement`、`children` 或图片描述。
 
-手动文件交付默认 JSON 与独立原图，勾选“原图嵌入 JSON”改用 `embedded`；“复制 JSON 内容”默认 `none`，其竖向 … 菜单可单独选择并记住是否内嵌。CLI/API 仍提供 file / embedded / none 三种模式及可选编号预览，不受这些手动偏好覆盖。
+手动文件交付默认 JSON 与独立原图，勾选“原图嵌入 JSON”改用 `embedded`；“复制 JSON 内容”默认 `none`，按钮内部的竖向 ⋯ 菜单可单独选择并记住是否内嵌。CLI/API 仍提供 file / embedded / none 三种模式及可选编号预览，不受这些手动偏好覆盖。
 
 
 **简体中文** · [English](AGENT-CLI.en.md)

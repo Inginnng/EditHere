@@ -57,6 +57,29 @@ class SettingsTests : public QObject {
 #endif
         applyTheme(ThemeMode::Light);
     }
+    void regionOcrPreferencePersistsIndependentlyOfExport() {
+        QVERIFY(defaultSettings().regionOcrEnabled);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+        auto settings = defaultSettings(); settings.regionOcrEnabled = false;
+        QString error; QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        const auto restored = loadSettings(path);
+        QVERIFY(!restored.regionOcrEnabled);
+        QVERIFY(restored.includeRecognizedText);
+        SettingsDialog dialog(restored);
+        QVERIFY(!dialog.settings().regionOcrEnabled);
+        auto exportText = dialog.findChild<QCheckBox *>("includeRecognizedText"); QVERIFY(exportText);
+        exportText->setChecked(false);
+        QVERIFY(!dialog.settings().includeRecognizedText);
+        QVERIFY(!dialog.settings().regionOcrEnabled);
+        settings.regionOcrEnabled = true; settings.includeRecognizedText = false;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+        QVERIFY(!loadSettings(path).includeRecognizedText);
+        { QSettings malformed(path, QSettings::IniFormat); malformed.setValue("defaults/regionOcrEnabled", "invalid"); malformed.sync(); }
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+    }
     void recognizedTextExportPreferencePersistsAndDefaultsOn() {
         QVERIFY(defaultSettings().includeRecognizedText);
         QVERIFY(defaultSettings().includeWindowTitle);
