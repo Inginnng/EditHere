@@ -773,8 +773,10 @@ class VideoUiTests : public QObject {
     void playbackSeekAnnotateAndReopen() {
         if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
         try {
+        QTemporaryDir bundle; QVERIFY(bundle.isValid());
         Editor editor;
-        auto settings = defaultSettings(); settings.confirmBeforeDiscard = false; editor.setPreferences(settings);
+        auto settings = defaultSettings(); settings.confirmBeforeDiscard = false;
+        settings.feedbackDir = bundle.path(); editor.setPreferences(settings);
         auto playback = editor.findChild<VideoPlayback *>(); QVERIFY(playback);
         QSignalSpy paused(playback, &VideoPlayback::framePaused);
         QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
@@ -857,34 +859,35 @@ class VideoUiTests : public QObject {
             QCOMPARE(editor.canvas()->internalWinId(), WId(0));
             QCOMPARE(playback->videoWidget()->internalWinId(), WId(0));
         }
-        QTemporaryDir bundle;
         QByteArray copied;
-        bool bundleSaved = false;
-        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+        QString bundleJsonPath;
         QTimer::singleShot(50, &editor, [&] {
             auto dialog = editor.findChild<QDialog *>("feedbackDialog");
-            if (!dialog) return;
-            dialog->findChild<QPushButton *>("copyJsonText")->click();
+            QVERIFY(dialog);
+            auto copyText = dialog->findChild<QPushButton *>("copyJsonText");
+            auto copyFile = dialog->findChild<QPushButton *>("copyJsonFile");
+            auto embedded = dialog->findChild<QCheckBox *>("feedbackEmbedImage");
+            QVERIFY(copyText && copyFile && embedded);
+            embedded->setChecked(false);
+            copyText->click();
             copied = QApplication::clipboard()->text().toUtf8();
-            QTimer::singleShot(50, dialog, [&] {
-                for (auto widget : QApplication::topLevelWidgets())
-                    if (auto picker = qobject_cast<QFileDialog *>(widget)) {
-                        picker->setDirectory(bundle.path());
-                        QMetaObject::invokeMethod(picker, "accept", Qt::DirectConnection);
-                    }
-            });
-            dialog->findChild<QPushButton *>("saveFeedbackBundle")->click();
-            bundleSaved = !QDir(bundle.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty();
+            copyFile->click();
+            const auto mime = QApplication::clipboard()->mimeData();
+            QVERIFY(mime && mime->hasUrls() && !mime->urls().isEmpty());
+            QVERIFY(mime->urls().first().isLocalFile());
+            bundleJsonPath = mime->urls().first().toLocalFile();
             dialog->accept();
         });
+        QTimer::singleShot(5000, &editor, [&] {
+            if (auto dialog = editor.findChild<QDialog *>("feedbackDialog")) dialog->reject();
+        });
         editor.exportJson();
-        QVERIFY(!copied.isEmpty()); QVERIFY(bundleSaved);
+        QVERIFY(!copied.isEmpty()); QVERIFY(!bundleJsonPath.isEmpty());
+        QVERIFY(QDir::cleanPath(bundleJsonPath).startsWith(QDir::cleanPath(bundle.path()) + '/'));
         const auto exported = QJsonDocument::fromJson(copied).object();
         QCOMPARE(exported["frames"].toArray().size(), 2);
         QCOMPARE(exported["objects"], json["objects"]);
-        const auto folders = QDir(bundle.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        const auto bundlePath = QDir(bundle.path()).filePath(folders.first());
-        const auto imported = loadVideoProject(QDir(bundlePath).filePath("feedback.json"));
+        const auto imported = loadVideoProject(bundleJsonPath);
         QCOMPARE(imported.frames.size(), 2);
         const auto artifactFolder = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
         if (!artifactFolder.isEmpty()) {
