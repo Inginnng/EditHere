@@ -246,7 +246,16 @@ EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 - QQ 群 **1018416966**（反馈专用），加群时请说明来自 GitHub。
 - 参与开发见 [贡献指南](CONTRIBUTING.md)。
 
-感谢 [linux.do](https://linux.do/) 论坛各位的建议与反馈。
+## 特别鸣谢
+
+<p align="center">
+  <a href="https://linux.do/"><img src="assets/readme/thanks/linux-do.png" width="76" alt="LINUX DO"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://hellogithub.com/repository/Inginnng/EditHere"><img src="assets/readme/thanks/hellogithub.png" width="76" alt="HelloGitHub"></a>
+</p>
+
+- **[LINUX DO](https://linux.do/)**：中文技术社区，社区口号是「Where possible begins」。EditHere 在这里收获了许多建议与反馈，不少细节因此被改好。
+- **[HelloGitHub](https://hellogithub.com/repository/Inginnng/EditHere)**：发现和分享有趣、入门级开源项目的社区，EditHere 收录于[《HelloGitHub 月刊》第 127 期](https://hellogithub.com/periodical/volume/127)。
 
 ## 作者的话
 
