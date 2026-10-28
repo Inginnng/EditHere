@@ -99,11 +99,10 @@
 
 ### 🤖 一键交给 AI
 
-EditHere 提供结构化反馈，也可通过你配置的 API 把批注整理成纯文本：
+EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 
 - **手动**：复制 JSON 内容 / JSON 与图片 / 带批注图片，粘贴给任意 AI。
 - **自动**：配合仓库内的 [`edithere` skill](skills/edithere/SKILL.md) 和 `edithere-cli`，AI 执行 `edithere-cli annotate` 打开画面并等待；你点击 **「完成并返回 AI」** 后，AI 立即收到反馈继续修改。取消或超时不会把未提交的编辑当成修改要求。
-- **纯文本（0.13.0）**：在「设置 → AI 接口」选择提供商并保存自己的 Key，再用「更多 → 生成修改意见」。截图和批注在独立 API 请求中理解，核对后只复制文字给目标 Agent，减少该对话的图片上下文占用。详见[生成修改意见](docs/AI-INSTRUCTIONS.md)。
 
 默认交付 JSON 与独立原图，也可勾选“原图嵌入 JSON”。“复制 JSON 内容”默认不携带原图编码，按钮内部的竖向「⋯」可切换并记住选择。新程序兼容读取旧反馈与工程；旧程序不保证能读取 v4。
 
@@ -146,7 +145,7 @@ EditHere 提供结构化反馈，也可通过你配置的 API 把批注整理成
 | 💾 **项目保存**   | `.edithere` 项目内嵌原图、批注与编辑状态，随时重新打开接着改；视频项目引用源文件并保存已标注帧。       |
 | 📥 **多种输入**   | 截图、打开、拖入或粘贴 PNG / JPEG / WebP / BMP，以及 MP4 / MOV / WebM 等视频。 |
 | 🎨 **外观与快捷键** | 浅色 / 深色主题，简体中文 / English 界面，22 项快捷键与底部工具栏均可自定义。              |
-| 🔒 **本地优先**   | 截图、元素识别、OCR、编辑在本机完成；使用可选的 API 生成功能时，才向所选提供商发送本次图文。           |
+| 🔒 **本地优先**   | 截图、元素识别、OCR、编辑全部在本机完成，EditHere 不会上传你的画面。           |
 | 🖥️ **跨平台**   | Windows 10 1809+ 正式支持；macOS 14+ 与 Linux（Ubuntu 24.04）为预览版。   |
 
 ## 桌面版与网页版
@@ -236,7 +235,7 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": {"name": "EditHere", "version": "0.13.0"},
+  "tool": {"name": "EditHere", "version": "0.12.2"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // 示意哈希；原图与 JSON 一起提供
@@ -273,13 +272,13 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 <details>
 <summary><b>截图会自动上传吗？</b></summary>
 
-不会自动上传。截图、图像识别和编辑都在本机完成。使用可选的「生成修改意见」或「测试连接」时，EditHere 会调用你配置的 API：生成发送当前批注快照与截图，连接测试只发送内置小图。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动检查更新或默认开启的启动检查时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。可在设置中关闭启动检查。
+不会。截图、图像识别和编辑都在本机完成。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动检查更新或默认开启的启动检查时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。可在设置中关闭启动检查。
 </details>
 
 <details>
 <summary><b>只能配合 Codex / Claude Code 使用吗？</b></summary>
 
-不是。反馈以 JSON 和图片交付，不绑定任何模型服务。Codex、Claude Code 可使用配套 skill，其他工具可通过 CLI 或手动导入接收反馈。桌面端另有可选的 API 生成功能，支持 OpenAI、Claude、DeepSeek、GLM、Kimi 及自定义兼容服务，需要你自己的 API Key 和额度。
+不是。反馈以 JSON 和图片交付，不绑定任何模型服务。Codex、Claude Code 可使用配套 skill，其他工具可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
 </details>
 
 <details>
@@ -300,7 +299,6 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 | ---------------------------------- | ------------------------------------ |
 | [使用指南](docs/USER-GUIDE.md)         | 截图、批注、大爆炸、导出、设置与快捷键的完整说明             |
 | [AI 与命令行](docs/AGENT-CLI.md)       | `edithere-cli` 命令、skill 配置与 Agent 接入 |
-| [生成修改意见](docs/AI-INSTRUCTIONS.md)  | 配置模型 API，把截图和批注整理成纯文本                |
 | [AI 安装指南](docs/AI-SETUP.md)        | 让 AI 自动完成安装与配置                       |
 | [网页版说明](web/README.md)             | 独立 HTML、MCP Apps 与浏览器兼容模式            |
 | [视频标注说明](docs/VIDEO-ANNOTATION.md) | 视频反馈格式与使用方式                          |
