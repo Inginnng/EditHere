@@ -103,6 +103,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
+    connect(&editor_, &Editor::aiSettingsRequested, this, [this] { openSettingsDialog(false, false, nullptr, true); });
     connect(&editor_, &Editor::preferencesChanged, this, [this] {
         // The editor turned a preference off by itself — the "don't ask again" box on
         // the close question does — and an answer the user gave has to outlive the
@@ -162,7 +163,7 @@ void Controller::openAnnotation() {
 void Controller::openSettings(bool updates, bool toolbar) {
     openSettingsDialog(updates, toolbar);
 }
-void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release) {
+void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -197,6 +198,8 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         dialog.showUpdates(true);
     else if (toolbar)
         dialog.showToolbar();
+    else if (ai)
+        dialog.showAi();
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;

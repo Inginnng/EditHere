@@ -1,5 +1,7 @@
 #include "editor.h"
 #include "agentprotocol.h"
+#include "aifeedbacksnapshot.h"
+#include "aiinstructionsdialog.h"
 #include <QActionGroup>
 #include "ocr.h"
 #include "diagnostics.h"
@@ -2437,6 +2439,12 @@ void Editor::exportJson() {
     auto json = new JsonPreview(&dialog); json->setAccessibleName(tr("标准化 JSON")); json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth); json->setFont(QFont(h2d::monoFontFamily(), 10)); layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog); status->setObjectName("exportStatus"); status->setWordWrap(true); layout->addWidget(status);
+    auto ai = textButton(tr("生成修改意见…"), false, &dialog);
+    ai->setObjectName("generateInstructions");
+    layout->addWidget(ai);
+    connect(ai, &QPushButton::clicked, &dialog, [&] {
+        dialog.accept(); QTimer::singleShot(0, this, &Editor::generateInstructions);
+    });
     auto row = new QHBoxLayout;
     auto close = textButton(tr("关闭"), false, &dialog),
          copy = textButton(tr("复制 JSON 与图片"), true, &dialog), copyText = textButton(tr("复制 JSON 内容"), false, &dialog);
@@ -2507,12 +2515,40 @@ void Editor::exportJson() {
     });
     refresh(); dialog.exec();
 }
+void Editor::generateInstructions() {
+    if (!hasDocument() && !video_) return;
+    finishNoteEdit(); commitVideoFrame();
+    AiFeedbackInput input;
+    try {
+        FeedbackExportOptions options;
+        options.mode = ImageExportMode::None;
+        // Use the normal export boundary to reveal any unresolved child parent.
+        agentFeedbackBundle(options);
+        options.includeRecognizedText = preferences_.includeRecognizedText;
+        options.includeWindowTitle = preferences_.includeWindowTitle;
+        input = video_ ? aiFeedbackSnapshot(*video_, options) : aiFeedbackSnapshot(doc_, options);
+    } catch (const std::exception &error) {
+        showError(QString::fromUtf8(error.what())); return;
+    }
+    for (;;) {
+        int result;
+        {
+            AiInstructionsDialog dialog(preferences_, input, this);
+            result = dialog.exec();
+        }
+        if (result != AiInstructionsDialog::Configure) break;
+        emit aiSettingsRequested();
+    }
+}
 void Editor::showContext(QPoint p) {
     finishNoteEdit();
     QMenu menu(this);
     auto settings = menu.addAction(glyph("settings"), tr("设置…"), this, &Editor::settingsRequested);
     settings->setObjectName("editorSettings");
     menu.addAction(glyph("layout-settings"),tr("自定义工具栏…"),this,&Editor::toolbarSettingsRequested);
+    auto ai = menu.addAction(glyph("notes"), tr("生成修改意见…"), this, &Editor::generateInstructions);
+    ai->setObjectName("generateInstructions");
+    ai->setEnabled(hasDocument() || video_.has_value());
     bool hiddenActions=false;
     for (const auto &definition : toolbarActionDefinitions()) {
         auto button=outputButtons_.value(definition.id);

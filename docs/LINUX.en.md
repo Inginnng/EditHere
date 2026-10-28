@@ -34,7 +34,7 @@ Without FUSE you can use `APPIMAGE_EXTRACT_AND_RUN=1 ./EditHere-linux-x86_64.App
 
 ## Build and packaging
 
-Depends on GCC, CMake, Ninja, Qt 6.8.3 gcc_64, X11, XTest and the AT-SPI development libraries. Wayland scrolling capture also needs the optional PipeWire 1.0.4 or later development libraries; without them the build keeps ordinary screenshots. An AppImage with PipeWire enabled carries matching versions of the client main library, modules, SPA plugins and configuration, and the packaging environment must provide `libpipewire-0.3-modules`, `libspa-0.2-modules` and `pipewire-bin`. For the full dependency list see `.github/workflows/native-linux.yml`; Qt Wayland comes with the base SDK and is not an optional aqt module.
+Depends on GCC, CMake, Ninja, Qt 6.8.3 gcc_64, X11, XTest, AT-SPI and libsecret (`libsecret-1-dev`) development libraries. CMake fetches pinned QtKeychain; the desktop session supplies the runtime credential service for API keys. If it is unavailable, the app reports an error without falling back to plaintext. Wayland scrolling capture also needs the optional PipeWire 1.0.4 or later development libraries; without them the build keeps ordinary screenshots. An AppImage with PipeWire enabled carries matching versions of the client main library, modules, SPA plugins and configuration, and the packaging environment must provide `libpipewire-0.3-modules`, `libspa-0.2-modules` and `pipewire-bin`. For the full dependency list see `.github/workflows/native-linux.yml`; Qt Wayland comes with the base SDK and is not an optional aqt module.
 
 ```bash
 export QT_ROOT=/path/to/Qt/6.8.3/gcc_64

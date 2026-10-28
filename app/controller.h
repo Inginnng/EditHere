@@ -58,7 +58,7 @@ class Controller final : public QObject {
     void presentStartupUpdate();
     void readInstallationReceipt();
     void presentInstallationReceipt();
-    void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr);
+    void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr, bool ai = false);
     // What the toolbar beside a finished region can do with it.
     void copyRegion(Overlay *source);
     void pinRegion(Overlay *source);

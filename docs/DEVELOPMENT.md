@@ -14,7 +14,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前为 **0.12.1**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，此功能分支为 **0.13.0（开发中）**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
@@ -30,18 +30,20 @@
 
 界面文案走 Qt 翻译（见[多语言与翻译](i18n.md)）；**仓库里的说明文档不走翻译，中英各存一份文件**，文件名加 `.en` 后缀：
 
-- 面向使用者的七份文档各有英文版：`USER-GUIDE`、`LONG-CAPTURE`、`VIDEO-ANNOTATION`、`AGENT-CLI`、`AI-SETUP`、`LINUX`、`DEVELOPMENT`。两份文件各自在标题下放一行语言切换互相指向，`README.en.md` 也要链接到每一份英文页；这三件事都由 `check-packaging.py` 的 `translated_docs` 检查，新增中文文档时要在 `TRANSLATED_DOCS` 里登记。
+- 面向使用者的八份文档各有英文版：`USER-GUIDE`、`LONG-CAPTURE`、`VIDEO-ANNOTATION`、`AGENT-CLI`、`AI-SETUP`、`LINUX`、`DEVELOPMENT`、`AI-INSTRUCTIONS`。两份文件各自在标题下放一行语言切换互相指向，`README.en.md` 也要链接到每一份英文页；这三件事都由 `check-packaging.py` 的 `translated_docs` 检查，新增中文文档时要在 `TRANSLATED_DOCS` 里登记。
 - `CHANGELOG.md` 保持中文单语，它是历史的唯一来源——同一段历史维护两份必然漂移。对外可见的「本版变了什么」由发布页承担，即上一条的双语发布说明。
 - `docs/releases/*.md` 只是发布页正文片段，没有标题也没有语言切换行：相对链接在发布页上会按发布地址解析，所以语言切换靠 release.yml 拼接完成，`translated_docs` 负责两侧都在。
 - 英文文档里的 JSON 字段名、命令、路径与平台标识保持原样；源视频或截图里实际显示的中文（例如演示动画的字幕）也保持中文，不译。
 - 只维护中文：`i18n.md`、`REGRESSIONS.md`、`PRERELEASE-0.9.9.md` 这类维护者记录，以及 `docs/releases/0.9.x.md` 等历史发布页。
-- Windows 免安装包随包附带的仍只有中文版 `AGENT-CLI.md` 与 `VIDEO-ANNOTATION.md`；`package-windows.ps1` 会把它们里面的相对链接改写成仓库地址，语言切换行也在改写范围内。
+- Windows 免安装包附带中文版 `AGENT-CLI.md` 与 `VIDEO-ANNOTATION.md`，以及中英文 `AI-INSTRUCTIONS` 和提供商来源说明；`package-windows.ps1` 会把它们里面的相对链接改写成仓库地址，语言切换行也在改写范围内。
 
 ## 构建与验证
 
 Linux 预览版的系统依赖、构建、AppImage 打包与 X11/Wayland 行为见 [Linux 说明](LINUX.md)。
 
 依赖：Qt **6.8.3**（qtbase、qtsvg、qtimageformats、qtmultimedia 动态库，外加 qttranslations 提供界面语言用到的 Qt 自带翻译）、CMake 3.24+、Ninja、C++20 编译器。Windows 使用 MinGW GCC 13.1.0；Mac CI 固定 macOS 15 + Xcode 16.4，以匹配 Qt 6.8.3；Xcode 26 SDK 已移除该版本 Qt 链接的 AGL framework。视频播放需随包部署 Multimedia 插件和对应解码依赖，不要求用户另行安装 Qt。
+
+0.13.0 桌面 API 功能通过 CMake FetchContent 获取并校验固定版本 QtKeychain 0.15.0，静态构建系统凭据库适配；首次配置需要网络，也可预先提供 FetchContent 源码缓存。Linux 需 `libsecret-1-dev`，运行时凭据服务由桌面会话提供。提供商来源、许可证和使用说明见 [API 预设](ai-providers.md)与[生成修改意见](AI-INSTRUCTIONS.md)。
 
 Windows PowerShell 7，CMake 在 PATH 中：
 

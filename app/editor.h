@@ -64,6 +64,7 @@ class Editor final : public QWidget {
     void openEmpty();
     void pasteImage();
     void exportJson();
+    void generateInstructions();
     void fit();
     void showGuide();
     void dismissGuide();
@@ -83,6 +84,7 @@ class Editor final : public QWidget {
     void hiddenToTray();
     void toolbarSettingsRequested();
     void settingsRequested();
+    void aiSettingsRequested();
     // The editor changed a preference itself — the "don't ask again" box does — and the
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();

@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "aisettingspage.h"
 #include "diagnosticspage.h"
 #include "diagnostics.h"
 #include "i18n.h"
@@ -47,7 +48,7 @@ constexpr bool windowsUpdates = true;
 constexpr bool windowsUpdates = false;
 #endif
 }
-SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : QDialog(parent) {
+SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiCredentials *credentials) : QDialog(parent) {
     setObjectName("settingsDialog");
     setMinimumSize(500, 440);
     resize(620, 680);
@@ -349,6 +350,14 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     aboutScroll->setWidget(aboutContent);
     tabs->addTab(aboutScroll, {});
     tabs->addTab(new DiagnosticsPage(tabs), {});
+    auto *aiScroll = new QScrollArea(tabs);
+    aiScroll->setObjectName("settingsAiPage");
+    aiScroll->setWidgetResizable(true);
+    aiScroll->setFrameShape(QFrame::NoFrame);
+    aiScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    aiPage_ = new AiSettingsPage(aiScroll, credentials);
+    aiScroll->setWidget(aiPage_);
+    tabs->addTab(aiScroll, {});
     connect(noteButton, &QPushButton::clicked, this, [this] {
         // Built on demand so it always reflects the language that is active when
         // it is opened, and so a reader who never asks pays nothing for it.
@@ -519,9 +528,10 @@ void SettingsDialog::retranslate() {
             field->setPlaceholderText(tr("点击录制快捷键"));
     }
     const QStringList tabTitles{tr("快捷键"), tr("外观"), tr("默认行为"), tr("长截图"),
-                                tr("工具栏"), tr("关于与更新"), tr("诊断日志")};
+                                tr("工具栏"), tr("关于与更新"), tr("诊断日志"), tr("AI 接口")};
     for (int i = 0; i < tabs_->count() && i < tabTitles.size(); ++i)
         tabs_->setTabText(i, tabTitles[i]);
+    if (aiPage_) aiPage_->retranslate();
     if (appearanceTitle_)
         appearanceTitle_->setText(tr("外观模式"));
     if (auto description = findChild<QLabel *>("themeDescription"))
@@ -682,11 +692,15 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
 void SettingsDialog::showToolbar() {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsToolbarPage"));
 }
+void SettingsDialog::showAi() {
+    tabs_->setCurrentWidget(findChild<QWidget *>("settingsAiPage"));
+}
 void SettingsDialog::setLaunchAtLoginNotice(const QString &notice) {
     launchAtLoginNotice_->setText(notice);
     launchAtLoginNotice_->setVisible(!notice.isEmpty());
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
+    aiPage_->setSettings(settings);
     captureStyle_ = settings.captureStyle;
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
@@ -714,6 +728,7 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
 }
 AppSettings SettingsDialog::settings() const {
     AppSettings result;
+    aiPage_->applyTo(result);
     result.captureStyle = captureStyle_;
     result.captureOnStartup = captureOnStartup_->isChecked();
     result.launchAtLogin = launchAtLogin_->isChecked();

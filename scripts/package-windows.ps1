@@ -30,6 +30,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/project-v3.sche
 foreach ($videoFile in @("docs/VIDEO-ANNOTATION.md", "schema/video-feedback-v1.schema.json", "schema/video-project-v1.schema.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $videoFile))) { throw "Video usage material is missing: $videoFile" }
 }
+foreach ($aiFile in @("docs/AI-INSTRUCTIONS.md", "docs/AI-INSTRUCTIONS.en.md", "docs/ai-providers.md", "packaging/licenses/qtkeychain/COPYING", "packaging/licenses/cc-switch/LICENSE")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $aiFile))) { throw "AI usage or license material is missing: $aiFile" }
+}
 if ($ValidationDirectory) { $ValidationDirectory = (Resolve-Path -LiteralPath (Join-Path $projectRoot $ValidationDirectory)).Path }
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $notice))) { throw "Application license material is missing: $notice" }
@@ -43,6 +46,9 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1")
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/AGENT-CLI.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/VIDEO-ANNOTATION.md") -Destination $outputPath
+foreach ($aiGuide in @("AI-INSTRUCTIONS.md", "AI-INSTRUCTIONS.en.md", "ai-providers.md")) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot "docs/$aiGuide") -Destination $outputPath
+}
 if ($ValidationDirectory) { Copy-Item -LiteralPath $ValidationDirectory -Destination (Join-Path $outputPath "validation") -Recurse }
 $previousEnvironment = @{}
 Get-ChildItem Env: | ForEach-Object { $previousEnvironment[$_.Name] = $_.Value }

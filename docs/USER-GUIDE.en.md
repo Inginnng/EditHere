@@ -197,6 +197,7 @@ The **View JSON** window provides these options and actions:
 - **Compress embedded original**: available only when embedding; dimensions stay unchanged, with possible small detail loss. Companion originals remain PNG.
 - **Copy JSON and image**: writes the JSON and companion original into an independent temporary folder and copies the files together. Embedded mode copies a JSON containing the original. Configure the folder in **Settings → Default behavior → Feedback temporary folder**.
 - **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Its adjacent vertical **…** menu remembers a separate include-image choice. Including the image uses embedded encoding and does not change file handoff.
+- **Generate instructions (0.13.0)**: also available from the editor's **More** menu. A separate API request processes the current screenshots and annotations into plain text that you can review, edit, copy or save. First select a provider and save your own key under **Settings → AI API**; see [Generate instructions](AI-INSTRUCTIONS.en.md).
 
 The viewer no longer offers a numbered-preview checkbox or an extra **Save JSON and image** action. Use the existing image-saving action for annotated images; programmatic CLI/API `--preview` / `preview` output remains available.
 
@@ -417,6 +418,10 @@ Windows uses the current user's startup entry and needs no administrator privile
 
 - **Default annotation tool**: Smart select, Point, Box or Adjust; sets the tool selected by default after opening an image.
 - **Shown in the bottom toolbar**: Save project, Save image, View JSON, Copy JSON content, Copy JSON and image, Copy annotated image, Retake screenshot and Fit image. Unchecking removes a button from the bottom bar; the feature is still available through a shortcut or the menu.
+
+### AI / API
+
+Choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service. Presets supply the base address, vision model and protocol, with separate China and global entries. You can adjust the address, model, timeout and additional instructions. **Save key** writes directly to the system credential store; the Settings window's bottom save button persists ordinary provider settings. **Test connection** sends only a built-in small image, never the current screenshot. See [Generate instructions](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
 
 ### Diagnostics
 

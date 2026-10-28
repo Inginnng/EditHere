@@ -10,14 +10,16 @@ class QKeySequenceEdit;
 class QLabel;
 class QLineEdit;
 namespace h2d {
+class AiCredentials;
 class SettingsDialog final : public QDialog {
     Q_OBJECT
   public:
-    explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr);
+    explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr, AiCredentials *credentials = nullptr);
     AppSettings settings() const;
     void showUpdates(bool checkNow = false);
     void offerUpdate(const UpdateChecker::Result &result, bool installNow = false);
     void showToolbar();
+    void showAi();
     void setLaunchAtLoginNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
     void setUpdatePreparationHandler(std::function<bool()> handler);
@@ -67,5 +69,6 @@ class SettingsDialog final : public QDialog {
     QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;
     CaptureStyle captureStyle_;
+    class AiSettingsPage *aiPage_ = nullptr;
 };
 } // namespace h2d

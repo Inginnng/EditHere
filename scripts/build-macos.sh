@@ -36,6 +36,12 @@ cp "$build_path/version.txt" "$output/"
 cp "$build_path/edithere-cli" "$output/EditHere.app/Contents/MacOS/edithere-cli"
 "$QT_ROOT/bin/macdeployqt" "$output/EditHere.app" -always-overwrite -executable="$output/EditHere.app/Contents/MacOS/edithere-cli"
 ln -s /Applications "$output/Applications"
+for ai_file in docs/AI-INSTRUCTIONS.md docs/AI-INSTRUCTIONS.en.md docs/ai-providers.md \
+    packaging/licenses/qtkeychain/COPYING packaging/licenses/cc-switch/LICENSE; do
+  [[ -f "$project_root/$ai_file" ]] || { echo "AI usage or license material is missing: $ai_file" >&2; exit 1; }
+done
+cp "$project_root/docs/AI-INSTRUCTIONS.md" "$project_root/docs/AI-INSTRUCTIONS.en.md" \
+  "$project_root/docs/ai-providers.md" "$output/"
 cp -R "$project_root/skills" "$output/"
 sed -e 's|../skills/|skills/|g' -e 's|../schema/|schema/|g' -e 's|../README.md|https://github.com/Inginnng/EditHere|g' -e 's|USER-GUIDE.md|https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md|g' "$project_root/docs/AGENT-CLI.md" > "$output/AGENT-CLI.md"
 cp -R "$project_root/packaging/licenses" "$output/"

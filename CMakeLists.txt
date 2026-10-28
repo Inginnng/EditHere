@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.12.1 LANGUAGES C CXX)
+project(EditHere VERSION 0.13.0 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -10,6 +10,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network Test Multimedia MultimediaWidgets)
 qt_standard_project_setup()
+# Reuse QtKeychain's native credential backends; API keys never enter settings.ini.
+# BSD-3-Clause, pinned source archive and hash, built statically to keep deployment
+# consistent with the existing desktop packages. See packaging/licenses/qtkeychain.
+include(FetchContent)
+set(BUILD_WITH_QT6 ON CACHE BOOL "Build QtKeychain against Qt 6" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build bundled dependencies statically" FORCE)
+set(BUILD_TRANSLATIONS OFF CACHE BOOL "Do not build QtKeychain translations" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "Do not build dependency tests" FORCE)
+FetchContent_Declare(qtkeychain
+  URL https://codeload.github.com/frankosterfeld/qtkeychain/tar.gz/refs/tags/0.15.0
+  URL_HASH SHA256=f4254dc8f0933b06d90672d683eab08ef770acd8336e44dfa030ce041dc2ca22
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(qtkeychain)
 set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
 set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
@@ -45,10 +58,17 @@ target_include_directories(edithere_zlib PUBLIC third_party/zlib)
 target_compile_definitions(edithere_zlib PUBLIC Z_SOLO)
 add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/tesseract.cpp app/videoplayback.cpp)
 target_sources(h2d_ui PRIVATE app/diagnosticspage.cpp)
+target_sources(h2d_ui PRIVATE app/aifeedback.cpp app/aicredentials.cpp
+  app/aisettingspage.cpp app/aiinstructionsdialog.cpp app/aifeedbacksnapshot.cpp)
 target_include_directories(h2d_ui PUBLIC app)
 target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::MultimediaWidgets)
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
 target_link_libraries(h2d_ui PUBLIC h2d_diagnostics)
+target_link_libraries(h2d_ui PRIVATE qt6keychain)
+qt_add_resources(h2d_ui ai_assets
+  PREFIX "/ai"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ai"
+  FILES assets/ai/provider-presets.json assets/ai/instructions-prompt.txt)
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
@@ -151,6 +171,14 @@ add_custom_command(TARGET EditHere POST_BUILD
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   VERBATIM)
 enable_testing()
+qt_add_executable(ai_feedback_tests tests/aifeedback_test.cpp)
+target_link_libraries(ai_feedback_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(ai_feedback_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME ai-feedback COMMAND ai_feedback_tests)
+qt_add_executable(ai_instructions_tests tests/aiinstructionsdialog_test.cpp)
+target_link_libraries(ai_instructions_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(ai_instructions_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME ai-instructions COMMAND ai_instructions_tests -platform offscreen)
 qt_add_executable(video_project_tests tests/video_project_test.cpp)
 target_link_libraries(video_project_tests PRIVATE h2d_core Qt6::Test)
 add_dependencies(video_project_tests edithere-cli)
@@ -231,6 +259,10 @@ target_link_libraries(canvas_feedback_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME canvas-feedback COMMAND canvas_feedback_tests -platform offscreen)
 qt_add_executable(settings_tests tests/settings_test.cpp)
 target_link_libraries(settings_tests PRIVATE h2d_ui Qt6::Test)
+qt_add_resources(settings_tests settings_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES app/translations/built/edithere_en.qm)
 add_test(NAME settings COMMAND settings_tests -platform offscreen)
 qt_add_executable(diagnostics_tests tests/diagnostics_test.cpp)
 target_link_libraries(diagnostics_tests PRIVATE h2d_diagnostics Qt6::Test)

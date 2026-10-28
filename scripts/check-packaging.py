@@ -854,6 +854,7 @@ TRANSLATED_DOCS = (
     "docs/LONG-CAPTURE.md",
     "docs/VIDEO-ANNOTATION.md",
     "docs/AGENT-CLI.md",
+    "docs/AI-INSTRUCTIONS.md",
     "docs/AI-SETUP.md",
     "docs/LINUX.md",
     "docs/DEVELOPMENT.md",

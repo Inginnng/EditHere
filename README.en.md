@@ -100,10 +100,11 @@ See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md) for the format.
 
 ### 🤖 Hand it to your AI
 
-EditHere **never calls a model**; its job is to make the feedback unambiguous:
+EditHere provides structured feedback, with an optional API feature that turns annotations into plain text:
 
 - **Manually:** copy JSON text, JSON and its companion image, or an annotated image and paste it into any AI.
 - **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
+- **Plain text (0.13.0):** choose a provider and save your own key under **Settings → AI API**, then use **More → Generate instructions**. A separate API request interprets the screenshots and annotations; review the result and copy only text to the target agent, reducing image context in that conversation. See [Generate instructions](docs/AI-INSTRUCTIONS.en.md).
 
 0.12.0 defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and its vertical … menu remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
 
@@ -137,7 +138,7 @@ Field reference: [User guide · Feedback JSON](docs/USER-GUIDE.en.md#feedback-js
 | 💾 **Projects** | `.edithere` projects embed the image, notes and editing state so you can pick up where you left off; video projects reference the source file and keep annotated frames. |
 | 📥 **Any input** | Capture, open, drop or paste PNG / JPEG / WebP / BMP, and MP4 / MOV / WebM videos. |
 | 🎨 **Your way** | Light and dark themes, English and Simplified Chinese interface, 22 configurable shortcuts and a customisable toolbar. |
-| 🔒 **Local first** | Capture, element detection, OCR and editing all run on your machine; EditHere never uploads your screen. |
+| 🔒 **Local first** | Capture, element detection, OCR and editing run on your machine. The optional API generation feature sends this task's images and annotations to your chosen provider. |
 | 🖥️ **Cross-platform** | Windows 10 1809+ is fully supported; macOS 14+ and Linux (Ubuntu 24.04) are previews. |
 
 ## Set up with AI
@@ -206,13 +207,13 @@ No. It combines element boundaries exposed by the system with local image analys
 <details>
 <summary><b>Are screenshots uploaded?</b></summary>
 
-No. Capture, detection and editing happen locally. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. When you check for updates manually or use the default startup check, EditHere queries stable releases on GitHub and [Gitee](https://gitee.com/InnGing/EditHere) and chooses the newer version.
+Not automatically. Capture, detection and editing happen locally. If you use **Generate instructions** or **Test connection**, EditHere calls your configured API: generation sends the current annotation snapshot and screenshots, while the connection test sends only a built-in small image. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. When you check for updates manually or use the default startup check, EditHere queries stable releases on GitHub and [Gitee](https://gitee.com/InnGing/EditHere) and chooses the newer version.
 </details>
 
 <details>
 <summary><b>Does it only work with Codex or Claude Code?</b></summary>
 
-No. Feedback is plain JSON plus images, tied to no model provider. Codex and Claude Code can use the companion skill; other tools can use the CLI or a manual import. EditHere includes no model calls and no model credits.
+No. Feedback is plain JSON plus images, tied to no model provider. Codex and Claude Code can use the companion skill; other tools can use the CLI or a manual import. The desktop app also offers optional API generation for OpenAI, Claude, DeepSeek, GLM, Kimi and compatible custom services, using your own API key and credits.
 </details>
 
 <details>
@@ -233,6 +234,7 @@ Yes. A `.edithere` project keeps the original image, notes and editing state; th
 | --- | --- |
 | [User guide](docs/USER-GUIDE.en.md) | Capture, annotation, Explode, export, settings and shortcuts |
 | [AI integration and CLI](docs/AGENT-CLI.en.md) | `edithere-cli` commands, skill setup and agent integration |
+| [Generate instructions](docs/AI-INSTRUCTIONS.en.md) | Configure a model API to turn screenshots and annotations into plain text |
 | [AI setup guide](docs/AI-SETUP.en.md) | Let an AI install and configure EditHere for you |
 | [Video annotation](docs/VIDEO-ANNOTATION.en.md) | The video feedback format and workflow |
 | [Scrolling capture](docs/LONG-CAPTURE.en.md) | Design and verification of scrolling capture |
