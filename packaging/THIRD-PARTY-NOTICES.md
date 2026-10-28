@@ -69,8 +69,8 @@ installed version can be obtained through `apt-get source at-spi2-core` and
 `apt-cache policy libatspi2.0-0`. Libraries are dynamically linked and can be
 replaced in an extracted AppImage. No modified third-party library is distributed.
 
-The experimental Linux ARM64 build instead compiles Qt 6.8.3 and shared FFmpeg
-7.1.1 against glibc 2.31. FFmpeg's GPL, nonfree and version3 components are
+The experimental Linux ARM64 build instead compiles Qt 6.8.3, the PipeWire 1.0.4
+client and shared FFmpeg 7.1.1 against glibc 2.31. FFmpeg's GPL, nonfree and version3 components are
 disabled. Exact unmodified source archives, SHA-256 checksums, upstream license
 texts, configure options and the build recipe accompany that AppImage under
 usr/share/doc/edithere/build-materials. The compiler runtime notices are under

@@ -83,7 +83,8 @@ mkdir -p "$build_root/ffmpeg"
     --prefix="$qt_prefix" --libdir="$qt_prefix/lib" \
     --enable-shared --disable-static --enable-pic \
     --disable-gpl --disable-nonfree --disable-version3 --disable-autodetect \
-    --disable-doc --disable-programs --disable-debug --disable-network \
+    --enable-zlib --enable-bzlib --enable-iconv --enable-libdrm --enable-vaapi \
+    --disable-doc --disable-programs --disable-debug --enable-network \
     --disable-avdevice --disable-avfilter --disable-postproc
   make -j"$jobs"
   make install
@@ -103,7 +104,7 @@ mkdir -p "$build_root/qtbase"
     -nomake tests -nomake examples -- -G Ninja \
     -DQT_INSTALL_LIBDIR=lib -DQT_INSTALL_LIBEXECDIR=libexec \
     -DFEATURE_xcb=ON -DFEATURE_dbus=ON -DFEATURE_glib=ON \
-    -DFEATURE_opengl=ON -DFEATURE_vulkan=OFF
+    -DFEATURE_opengl=ON
   cmake --build . --parallel "$jobs"
   cmake --install .
 )
@@ -115,7 +116,7 @@ for module in qtsvg qtimageformats qtshadertools qtwayland qtmultimedia; do
     options+=(-DFEATURE_wayland_client=ON -DFEATURE_wayland_server=OFF)
   elif [[ "$module" == qtmultimedia ]]; then
     options+=(-DFFMPEG_DIR="$qt_prefix" -DFEATURE_ffmpeg=ON \
-      -DFEATURE_gstreamer=OFF -DFEATURE_pulseaudio=ON)
+      -DFEATURE_gstreamer=OFF -DFEATURE_pulseaudio=ON -DFEATURE_vaapi=ON)
   fi
   (
     cd "$build_root/$module"

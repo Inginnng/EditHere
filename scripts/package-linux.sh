@@ -49,9 +49,14 @@ if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
   cp "$spa/support/libspa-support.so" "$appdir/usr/lib/spa-0.2/support/"
   cp "$spa/audioconvert/libspa-audioconvert.so" "$appdir/usr/lib/spa-0.2/audioconvert/"
   cp "$pipewire_root/share/pipewire/client.conf" "$appdir/usr/share/pipewire/"
-  for component in libpipewire-0.3-modules libspa-0.2-modules pipewire-bin; do
-    cp "$pipewire_root/share/doc/$component/copyright" "$appdir/usr/share/doc/edithere/licenses/linux/$component.txt"
-  done
+  if [[ -d "$pipewire_root/share/edithere-build-materials" ]]; then
+    mkdir -p "$appdir/usr/share/doc/edithere/build-materials"
+    cp -R "$pipewire_root/share/edithere-build-materials" "$appdir/usr/share/doc/edithere/build-materials/pipewire"
+  else
+    for component in libpipewire-0.3-modules libspa-0.2-modules pipewire-bin; do
+      cp "$pipewire_root/share/doc/$component/copyright" "$appdir/usr/share/doc/edithere/licenses/linux/$component.txt"
+    done
+  fi
   pipewire_sdk="$(pkg-config --variable=prefix libpipewire-0.3)"
   for component in libpipewire-0.3-0t64 libpipewire-0.3-0 libpipewire-0.3-common; do
     if [[ -f "$pipewire_sdk/share/doc/$component/copyright" ]]; then
@@ -61,6 +66,9 @@ if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
 fi
 for copyright in /usr/share/doc/libatspi2.0-0/copyright /usr/share/doc/libglib2.0-0t64/copyright \
   /usr/share/doc/libglib2.0-0/copyright /usr/share/doc/libffi7/copyright \
+  /usr/share/doc/libbz2-1.0/copyright /usr/share/doc/libva2/copyright \
+  /usr/share/doc/libva-drm2/copyright /usr/share/doc/libdrm2/copyright \
+  /usr/share/doc/libicu67/copyright /usr/share/doc/libssl1.1/copyright \
   /usr/share/doc/libdbus-1-3/copyright /usr/share/doc/libpcre2-8-0/copyright /usr/share/doc/libffi8/copyright \
   /usr/share/doc/libgcc-s1/copyright /usr/share/doc/libstdc++6/copyright \
   /usr/share/doc/libxtst6/copyright /usr/share/doc/libpipewire-0.3-0t64/copyright \

@@ -26,7 +26,9 @@ This path targets Linux machines reporting `aarch64` (also called `arm64`) from 
 
 Run the [ARM64 workflow](../.github/workflows/native-linux-arm64.yml) manually in GitHub Actions, or inspect a relevant PR build. After a successful build, download the artifact containing `EditHere-linux-aarch64.AppImage` and `edithere-cli`. These experimental artifacts are not included in the regular Release and do not establish compatibility with every Kylin V10 version or device.
 
-The ARM64 workflow builds Qt 6.8.3 and EditHere from source inside a Debian 11 ARM64 container on an Ubuntu 24.04 ARM64 host, using glibc 2.31 as its build baseline. [Qt's official ARM64 binaries use Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations) and cannot be used directly on a Kylin environment with glibc 2.31. AppImage bundles Qt and related libraries, but not the system glibc; compatibility still depends on the target machine's actual versions and test results.
+The ARM64 workflow builds Qt 6.8.3, the PipeWire 1.0.4 client and EditHere from source inside a Debian 11 ARM64 container on an Ubuntu 24.04 ARM64 host, using glibc 2.31 as its build baseline. [Qt's official ARM64 binaries use Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations) and cannot be used directly on a Kylin environment with glibc 2.31. AppImage bundles Qt and related libraries, but not the system glibc; compatibility still depends on the target machine's actual versions and test results.
+
+ARM64 builds must enable PipeWire to retain the existing Wayland screen stream and manual long-capture path. The video backend retains compressed-format support and VAAPI interfaces; actual acceleration depends on the system driver. The desktop still supplies Portal and PipeWire services. Existing x86_64 releases continue using their original SDK, dependencies and build configuration.
 
 Put the experimental AppImage and the CLI from the same build in one directory:
 
@@ -83,7 +85,11 @@ For an ARM64 build with an older glibc baseline, use the container and dependenc
 
 ```bash
 bash scripts/build-qt-linux.sh
+bash scripts/build-pipewire-linux.sh
 export QT_ROOT="$PWD/.tools/qt/6.8.3"
+export EDITHERE_PIPEWIRE_RUNTIME_ROOT="$PWD/.tools/pipewire/1.0.4"
+export PKG_CONFIG_PATH="$EDITHERE_PIPEWIRE_RUNTIME_ROOT/lib/$(gcc -dumpmachine)/pkgconfig:$QT_ROOT/lib/pkgconfig"
+export LD_LIBRARY_PATH="$EDITHERE_PIPEWIRE_RUNTIME_ROOT/lib/$(gcc -dumpmachine):$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
 export EDITHERE_BUILD_DIR="$PWD/build-linux-aarch64"
 export EDITHERE_PACKAGE_DIR="$PWD/dist/linux-aarch64-test"
 export EDITHERE_GLIBC_MAX=2.31
@@ -99,7 +105,7 @@ dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py \
 
 Override `build-qt-linux.sh`'s install prefix with `EDITHERE_QT_PREFIX` if needed, and point `QT_ROOT` at that prefix afterwards. Skip this step when a suitable Qt SDK built from source is already available. Rebuilding only EditHere while retaining a Qt SDK built against a newer glibc does not lower the package's glibc requirement.
 
-The script also builds shared LGPL FFmpeg 7.1.1 to retain video support; Debian 11's GStreamer is too old for Qt 6.8's multimedia backend. Exact dependency sources, licenses and build configuration accompany the package under `usr/share/doc/edithere/build-materials`. Packaging checks every ELF's architecture; `EDITHERE_GLIBC_MAX=2.31` also rejects files requiring a newer glibc.
+The Qt script also builds shared LGPL FFmpeg 7.1.1 to retain video support; Debian 11's GStreamer is too old for Qt 6.8's multimedia backend. `build-pipewire-linux.sh` installs only a private client SDK and modules, without installing system audio services. Override its prefix with `EDITHERE_PIPEWIRE_PREFIX` and adjust the environment variables above accordingly. Exact dependency sources, licenses and build configuration accompany the package under `usr/share/doc/edithere/build-materials`. Packaging checks every ELF's architecture; `EDITHERE_GLIBC_MAX=2.31` also rejects files requiring a newer glibc.
 
 Packaging defaults to `dist/linux-<version>/` and refuses to overwrite an existing directory; use `EDITHERE_PACKAGE_DIR` to keep each architecture's output separately. x86_64 builds are triggered by release tags and relevant PRs: tagging produces the AppImage as part of the release workflow, attached to the releases page alongside the other platforms' packages. Experimental ARM64 builds run separately and upload artifacts. The dedicated tests simulate the Portal in an isolated DBus session and verify real X11 through Xvfb; they do not replace acceptance in a Kylin or GNOME/KDE session. Launch at login records the original AppImage path, not a temporary mount path; saving the settings after moving refreshes it.
 

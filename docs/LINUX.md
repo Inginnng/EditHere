@@ -26,7 +26,9 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 在 GitHub Actions 的 [ARM64 工作流](../.github/workflows/native-linux-arm64.yml)中手动运行或查看相关 PR 构建，成功后下载包含 `EditHere-linux-aarch64.AppImage` 与 `edithere-cli` 的 artifact。该实验产物暂不接入正式 Release，也不代表所有麒麟 V10 版本和设备均可运行。
 
-ARM64 工作流在 Ubuntu 24.04 ARM64 宿主上的 Debian 11 ARM64 容器内，从源码构建 Qt 6.8.3 和 EditHere，以 glibc 2.31 为构建基线。[Qt 官方 ARM64 预编译包使用 Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations)，不能直接用于 glibc 2.31 的麒麟环境。AppImage 携带 Qt 和相关库，但不携带系统 glibc；是否兼容仍以目标机器的实际版本和测试结果为准。
+ARM64 工作流在 Ubuntu 24.04 ARM64 宿主上的 Debian 11 ARM64 容器内，从源码构建 Qt 6.8.3、PipeWire 1.0.4 客户端和 EditHere，以 glibc 2.31 为构建基线。[Qt 官方 ARM64 预编译包使用 Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations)，不能直接用于 glibc 2.31 的麒麟环境。AppImage 携带 Qt 和相关库，但不携带系统 glibc；是否兼容仍以目标机器的实际版本和测试结果为准。
+
+适配复用现有功能路径：ARM64 构建必须启用 PipeWire，保留 Wayland 屏幕流与手动长截图；视频后端保留压缩格式支持和 VAAPI 加速接口。实际硬件加速由系统驱动决定，Portal 与 PipeWire 服务仍由桌面提供。现有 x86_64 发布继续使用原来的 SDK、依赖和构建配置。
 
 把实验包与同次构建的 CLI 放在同一目录后运行：
 
@@ -83,7 +85,11 @@ ARM64 低 glibc 构建请使用 `.github/workflows/native-linux-arm64.yml` 中�
 
 ```bash
 bash scripts/build-qt-linux.sh
+bash scripts/build-pipewire-linux.sh
 export QT_ROOT="$PWD/.tools/qt/6.8.3"
+export EDITHERE_PIPEWIRE_RUNTIME_ROOT="$PWD/.tools/pipewire/1.0.4"
+export PKG_CONFIG_PATH="$EDITHERE_PIPEWIRE_RUNTIME_ROOT/lib/$(gcc -dumpmachine)/pkgconfig:$QT_ROOT/lib/pkgconfig"
+export LD_LIBRARY_PATH="$EDITHERE_PIPEWIRE_RUNTIME_ROOT/lib/$(gcc -dumpmachine):$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
 export EDITHERE_BUILD_DIR="$PWD/build-linux-aarch64"
 export EDITHERE_PACKAGE_DIR="$PWD/dist/linux-aarch64-test"
 export EDITHERE_GLIBC_MAX=2.31
@@ -99,7 +105,7 @@ dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py \
 
 `build-qt-linux.sh` 的安装前缀可用 `EDITHERE_QT_PREFIX` 覆盖；随后须将 `QT_ROOT` 指向该前缀。已有合适的源码构建 Qt SDK 时可跳过此步。仅在较新系统上重新编译 EditHere、继续使用较新 glibc 构建的 Qt，不能降低整包的 glibc 要求。
 
-该脚本同时构建共享 LGPL FFmpeg 7.1.1，以保留视频功能；Debian 11 的系统 GStreamer 版本不足以构建 Qt 6.8 的视频后端。精确依赖源码、许可与配置随包保存在 `usr/share/doc/edithere/build-materials`。打包时检查所有 ELF 的架构；设置 `EDITHERE_GLIBC_MAX=2.31` 后还拒绝任何依赖更高 glibc 的文件。
+Qt 构建脚本同时构建共享 LGPL FFmpeg 7.1.1，以保留视频功能；Debian 11 的系统 GStreamer 版本不足以构建 Qt 6.8 的视频后端。`build-pipewire-linux.sh` 只在私有目录准备客户端 SDK 和模块，不安装系统音频服务；前缀可用 `EDITHERE_PIPEWIRE_PREFIX` 覆盖，并同步修改上述环境变量。精确依赖源码、许可与配置随包保存在 `usr/share/doc/edithere/build-materials`。打包时检查所有 ELF 的架构；设置 `EDITHERE_GLIBC_MAX=2.31` 后还拒绝任何依赖更高 glibc 的文件。
 
 默认打包到 `dist/linux-<版本>/`，已有目录时拒绝覆盖；可用 `EDITHERE_PACKAGE_DIR` 指定新目录，分别保留各架构产物。x86_64 构建随发布标签与相关 PR 触发：打标签时由发布工作流一并产出 AppImage，与其他平台的包一同挂到发布页；ARM64 实验构建单独运行并上传 artifact。专项测试在独立 DBus 会话模拟 Portal，真实 X11 通过 Xvfb 验证，不替代麒麟或 GNOME/KDE 会话验收。开机启动登记原始 AppImage 路径，不使用临时挂载路径；移动后保存设置可刷新。
 

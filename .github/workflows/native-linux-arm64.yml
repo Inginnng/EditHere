@@ -32,7 +32,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config python3 python3-venv xz-utils zstd file binutils patchelf \
             libx11-dev libx11-xcb-dev libxtst-dev libatspi2.0-dev libdbus-1-dev libglib2.0-dev libssl-dev libicu-dev \
-            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libpng-dev libjpeg-dev libtiff-dev libwebp-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libpng-dev libjpeg-dev libtiff-dev libwebp-dev zlib1g-dev libbz2-dev libva-dev \
             libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libxkbcommon-dev libxkbcommon-x11-dev \
             libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render-util0-dev \
             libxcb-xinerama0-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-sync-dev libxcb-xkb-dev \
@@ -44,9 +44,31 @@ jobs:
       - name: Install CMake and Ninja
         run: |
           python3 -m venv .tools/python
-          .tools/python/bin/pip install cmake==3.30.5 ninja==1.11.1.3
+          .tools/python/bin/pip install cmake==3.30.5 ninja==1.11.1.3 meson==1.3.2
           echo "$PWD/.tools/python/bin" >> "$GITHUB_PATH"
           echo "QT_ROOT=$PWD/.tools/qt/6.8.3" >> "$GITHUB_ENV"
+          pipewire_prefix="$PWD/.tools/pipewire/1.0.4"
+          triplet="$(gcc -dumpmachine)"
+          echo "EDITHERE_PIPEWIRE_RUNTIME_ROOT=$pipewire_prefix" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$pipewire_prefix/lib/$triplet/pkgconfig:$PWD/.tools/qt/6.8.3/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$pipewire_prefix/lib/$triplet:$PWD/.tools/qt/6.8.3/lib" >> "$GITHUB_ENV"
+      - name: Restore source-built PipeWire client
+        id: pipewire-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .tools/pipewire/1.0.4
+          key: pipewire-1.0.4-debian11-aarch64-${{ hashFiles('scripts/build-pipewire-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
+      - name: Build PipeWire client against glibc 2.31
+        run: |
+          mkdir -p artifacts/linux-arm64
+          bash scripts/build-pipewire-linux.sh 2>&1 | tee artifacts/linux-arm64/pipewire-build.log
+          pkg-config --atleast-version=1.0.4 libpipewire-0.3
+      - name: Save completed PipeWire client SDK
+        if: steps.pipewire-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .tools/pipewire/1.0.4
+          key: ${{ steps.pipewire-cache.outputs.cache-primary-key }}
       - name: Restore source-built Qt
         id: qt-cache
         uses: actions/cache/restore@v4
@@ -54,7 +76,9 @@ jobs:
           path: .tools/qt/6.8.3
           key: qt-6.8.3-debian11-aarch64-${{ hashFiles('scripts/build-qt-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
       - name: Build Qt against glibc 2.31
-        run: bash scripts/build-qt-linux.sh
+        run: |
+          mkdir -p artifacts/linux-arm64
+          bash scripts/build-qt-linux.sh 2>&1 | tee artifacts/linux-arm64/qt-build.log
       - name: Save completed Qt SDK
         if: steps.qt-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -65,6 +89,8 @@ jobs:
         run: |
           export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
           dbus-run-session -- bash scripts/build-linux.sh
+          # Preserve the same ScreenCast/PipeWire path as the x86_64 package.
+          grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' build-linux/CMakeCache.txt
           dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
           QT_SCALE_FACTOR=2 dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
           dbus-run-session -- xvfb-run -a -s '-screen 0 1280x1024x24 -extension XTEST' build-linux/linux_platform_tests x11CaptureReturnsPixels x11ManualCaptureDoesNotRequireInputInjection -platform xcb
@@ -98,3 +124,4 @@ jobs:
             .tools/qt-build/6.8.3/*/config.summary
             .tools/qt-build/6.8.3/*/CMakeFiles/CMakeConfigureLog.yaml
             artifacts/linux-ui/
+            artifacts/linux-arm64/
