@@ -65,6 +65,7 @@ qtbase 56001b905601bb9023d399f3ba780d7fa940f3e4861e496a7c490331f49e0b80
 qtsvg 35eb516460f00f264eb504baa253432384351cf23fb9980a5857190e8deef438
 qtimageformats 049bfb99845e4801672aca07c3c4fc4c140f932a3a33faa899419579e33ef1c8
 qtshadertools f6ec88bf42deba84d8f6b5d0914636ceed4749ccb51d1945b2f79b322b7ecf47
+qtdeclarative 1f03a2b8f5588b4face7da87926e9b2c1372b3a32157c52df07a75067a9db1af
 qtwayland 20fe385887d21190165a3180c17dcfc8b9a0e1da4ec76865b6334bdc709994b0
 qtmultimedia 32e82307d783172a3b984cc3c47c5e4e8b819cee3cbfc702c7012c47f15f6b01
 EOF
@@ -108,7 +109,10 @@ mkdir -p "$build_root/qtbase"
   cmake --build . --parallel "$jobs"
   cmake --install .
 )
-for module in qtsvg qtimageformats qtshadertools qtwayland qtmultimedia; do
+# The enabled EGLFS capture backend in Qt Multimedia also links Qt Quick and
+# OpenGLPrivate. Build Declarative after ShaderTools so that backend keeps its
+# existing functionality instead of being disabled to reduce SDK dependencies.
+for module in qtsvg qtimageformats qtshadertools qtdeclarative qtwayland qtmultimedia; do
   mkdir -p "$build_root/$module"
   options=()
   if [[ "$module" == qtwayland ]]; then
@@ -126,7 +130,7 @@ for module in qtsvg qtimageformats qtshadertools qtwayland qtmultimedia; do
     cmake --install .
   )
 done
-for module in qtbase qtsvg qtimageformats qtshadertools qtwayland qtmultimedia; do
+for module in qtbase qtsvg qtimageformats qtshadertools qtdeclarative qtwayland qtmultimedia; do
   mkdir -p "$materials/$module"
   cp -R "$source_root/$module-everywhere-src-$qt_version/LICENSES" "$materials/$module/"
   cp "$build_root/$module/config.summary" "$materials/$module/"
