@@ -22,6 +22,7 @@
 | REG-193 | 「复制 JSON 内容」的选项按钮单独占用底栏和导出弹窗位置，挤占主操作空间。将选项嵌入复制按钮，文字区继续直接复制，选项区独立打开原图菜单 | `ui::separateJsonClipboardFormatsAndHelp`：嵌套位置、真实鼠标命中、菜单与复制行为；`ui::compactToolbarKeepsJsonTextOptionsInMoreMenu`：窄窗溢出与恢复宽窗 | 🆕 |
 | REG-194 | 批注区域自动 OCR 缺少就地开关，关闭时仍可能收到旧识别回调。新增持久化开关，关闭时取消待处理识别并抑制旧结果，保留已有文字，重新开启后识别缺少结果的区域 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`、`regionOcrToggleCancelsInFlightAndResumes`、`regionOcrPreferenceSurvivesControllerRestart`；`settings::regionOcrPreferencePersistsIndependentlyOfExport` | 🆕 |
 | REG-195 | 控件的样式规则也作用到它自己的提示：Qt 把提示做成该控件的子标签，OCR 开关上的 `max-width` 把悬停提示裁成一个字。样式改由 `styleControl()` 只作用于控件本身，提示沿用全局样式 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`：提示标签的 `maximumWidth` 未被限制（旧写法下为 42 px） | 🆕 |
+| REG-196 | 产品版本写在 `CMakeLists.txt` 里，而它同时是 MCP 打包清单的输入。改版本后忘了重新生成 `web/mcp` 产物时，`build-web` 要等原生包全部构建完才报 `Stale MCP build file`，只能移动标签重跑一次发布 | `packaging`：`mcp_build` 按 `web/mcp/build-info.json` 逐条重算源文件与产物摘要，版本号一变即失败并提示 `node web/mcp/build.mjs` | 🆕 |
 
 ## 反馈格式升级（0.12.0）
 
@@ -398,7 +399,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158/196 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
