@@ -88,6 +88,17 @@ done
 export APPIMAGE_EXTRACT_AND_RUN=1
 export QMAKE="$QT_ROOT/bin/qmake"
 export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
+if [[ "$architecture" == aarch64 ]]; then
+  # linuxdeploy's EXTRA_QT_PLUGINS accepts module names, not this plugin
+  # category. Deploy it before dependency scanning so generic Wayland can
+  # create the OpenGL contexts used by the existing video path.
+  wayland_graphics="$QT_ROOT/plugins/wayland-graphics-integration-client"
+  [[ -s "$wayland_graphics/libqt-plugin-wayland-egl.so" ]] || {
+    echo 'Qt Wayland EGL client integration plugin is missing.' >&2; exit 1;
+  }
+  mkdir -p "$appdir/usr/plugins"
+  cp -R "$wayland_graphics" "$appdir/usr/plugins/"
+fi
 if [[ -d "$appdir/usr/lib/pipewire-0.3" ]]; then
   export LD_LIBRARY_PATH="$appdir/usr/lib/pipewire-0.3:$LD_LIBRARY_PATH"
 fi
