@@ -855,13 +855,36 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
 void Editor::commitVideoFrame() {
     if (!video_ || videoFrameUs_ < 0 || doc_.image.isNull()) return;
     if (doc_.dirty) video_->dirty = true;
-    const bool annotated = !exportFeedback(doc_)["objects"].toArray().isEmpty();
+    auto document = doc_;
+    if (!editingId_.isEmpty()) {
+        for (auto &note : document.notes) {
+            if (note.id != editingId_ || note.movementSource || !note.comment.trimmed().isEmpty()) continue;
+            if (note.id == draftId_) {
+                // OCR can finish before the user writes anything. Keep the
+                // committed notes, excluding this draft and any parent card
+                // created for it; the live document still owns its OCR result.
+                document.notes = editingBaseline_.notes;
+            } else {
+                // Clearing an existing comment is temporary until editing ends.
+                // Preserve its text while keeping newly recognised metadata.
+                for (const auto &before : editingBaseline_.notes)
+                    if (before.id == note.id) { note.comment = before.comment; break; }
+            }
+            break;
+        }
+    }
+    // This is an editable-frame snapshot, not an export boundary. Serialising
+    // it here used to validate an unfinished comment from an OCR callback and
+    // let the resulting exception escape through Qt's event loop.
+    const bool annotated = std::any_of(document.notes.cbegin(), document.notes.cend(), [](const Note &note) {
+        return !note.comment.trimmed().isEmpty() || !note.recognizedText.value("text").toString().trimmed().isEmpty();
+    }) || (document.layout && !movementMarkers(*document.layout, document.notes).isEmpty());
     auto it = std::find_if(video_->frames.begin(), video_->frames.end(), [this](const VideoFrame &frame) {
         return frame.timestampUs == videoFrameUs_;
     });
     if (annotated) {
-        if (it == video_->frames.end()) video_->frames.append({videoFrameUs_, doc_});
-        else it->document = doc_;
+        if (it == video_->frames.end()) video_->frames.append({videoFrameUs_, std::move(document)});
+        else it->document = std::move(document);
     } else if (it != video_->frames.end()) video_->frames.erase(it);
     std::sort(video_->frames.begin(), video_->frames.end(), [](const VideoFrame &a, const VideoFrame &b) {
         return a.timestampUs < b.timestampUs;

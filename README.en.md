@@ -236,7 +236,7 @@ The exported `feedback-minimal-4` keeps image verification, note positions, boxe
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": {"name": "EditHere", "version": "0.12.2"},
+  "tool": {"name": "EditHere", "version": "0.12.3"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // illustrative hash; send the original with this JSON
