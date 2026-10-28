@@ -192,6 +192,7 @@ class AiInstructionsTests final : public QObject {
         TestCredentials credentials;
         auto snapshot = aiFeedbackSnapshot(annotatedDocument());
         AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials);
+        dialog.resize(1080, 740);
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
         auto *copy = dialog.findChild<QPushButton *>("aiInstructionsCopy");
         auto *output = dialog.findChild<QPlainTextEdit *>("aiInstructionsText");
@@ -231,6 +232,12 @@ class AiInstructionsTests final : public QObject {
         applyTheme(ThemeMode::Dark);
         QTest::qWait(1);
         artifact(dialog, "ai-analysis-dark.png");
+        dialog.resize(740, 620);
+        QTest::qWait(1);
+        const auto sources = dialog.findChild<QWidget *>("aiAnalysisSources");
+        QVERIFY(sources && sources->width() < 260);
+        QVERIFY(output->width() >= 350);
+        artifact(dialog, "ai-analysis-narrow-dark.png");
         applyTheme(ThemeMode::Light);
     }
     void missingKeyAndCredentialFailureKeepConfigurationReachable_data() {

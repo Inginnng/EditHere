@@ -10,6 +10,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QUrl>
 #include <QFile>
 #include <QDir>
@@ -46,8 +47,8 @@ class FakeAiCredentials final : public AiCredentials {
   public:
     QMap<QString, QString> keys;
     int loads = 0, saves = 0, removals = 0;
-    bool failWrite = false, holdLoads = false;
-    QMap<QString, QString> pendingLoads;
+    bool failWrite = false, holdLoads = false, holdWrites = false;
+    QMap<QString, QString> pendingLoads, pendingSaves;
     void load(const QString &id) override {
         ++loads;
         if (holdLoads) { pendingLoads[id] = keys.value(id); return; }
@@ -56,11 +57,13 @@ class FakeAiCredentials final : public AiCredentials {
     void finishLoad(const QString &id) { emit loaded(id, pendingLoads.take(id)); }
     void save(const QString &id, const QString &key) override {
         ++saves;
+        if (holdWrites) { pendingSaves[id] = key; return; }
         QTimer::singleShot(0, this, [this, id, key] {
             if (failWrite) emit failed("Test credential store is unavailable");
             else { keys[id] = key; emit saved(id); }
         });
     }
+    void finishSave(const QString &id) { keys[id] = pendingSaves.take(id); emit saved(id); }
     void remove(const QString &id) override {
         ++removals;
         QTimer::singleShot(0, this, [this, id] { keys.remove(id); emit removed(id); });
@@ -125,7 +128,7 @@ class SettingsTests : public QObject {
         QVERIFY(!saveSettings(settings, &error, path));
         QVERIFY(!error.isEmpty());
     }
-    void aiProviderSwitchKeepsIndependentDraftsAndExplicitSecretWrites() {
+    void aiProviderSwitchKeepsDraftsUntilUnifiedSave() {
         FakeAiCredentials credentials;
         credentials.keys["openai"] = "saved-openai-key";
         AiSettingsPage page(nullptr, &credentials);
@@ -135,10 +138,8 @@ class SettingsTests : public QObject {
         auto *key = page.findChild<QLineEdit *>("aiApiKey");
         auto *base = page.findChild<QLineEdit *>("aiBaseUrl");
         auto *model = page.findChild<QLineEdit *>("aiModel");
-        auto *save = page.findChild<QPushButton *>("aiSaveKey");
-        auto *remove = page.findChild<QPushButton *>("aiDeleteKey");
         auto *status = page.findChild<QLabel *>("aiConnectionStatus");
-        QVERIFY(provider && key && base && model && save && remove && status);
+        QVERIFY(provider && key && base && model && status);
         QVERIFY(provider->findData("openai") >= 0);
         QVERIFY(provider->findData("claude") >= 0);
         QVERIFY(provider->findData("deepseek") >= 0);
@@ -162,21 +163,36 @@ class SettingsTests : public QObject {
         page.applyTo(result);
         QCOMPARE(result.aiProviderId, QString("openai"));
         QCOMPARE(result.aiProviders.value("openai").model, QString("custom-vision-model"));
-        save->click();
+        bool finished = false, succeeded = false;
+        page.saveCredentials([&](bool ok) { finished = true; succeeded = ok; });
         QVERIFY(!provider->isEnabled());
         QTRY_COMPARE(credentials.keys.value("openai"), QString("new-openai-key"));
         QTRY_VERIFY(provider->isEnabled());
+        QTRY_VERIFY(finished);
+        QVERIFY(succeeded);
+        QVERIFY(!page.hasPendingCredentials());
         QCOMPARE(credentials.saves, 1);
-        remove->click();
-        QTRY_VERIFY(key->text().isEmpty());
+        key->selectAll();
+        QTest::keyClick(key, Qt::Key_Backspace);
+        QCOMPARE(key->text(), QString());
+        QVERIFY(credentials.keys.contains("openai"));
+        QVERIFY(page.hasPendingCredentials());
+        finished = false;
+        page.saveCredentials([&](bool ok) { finished = true; succeeded = ok; });
+        QTRY_VERIFY(finished);
+        QVERIFY(succeeded);
         QVERIFY(!credentials.keys.contains("openai"));
         credentials.failWrite = true;
         QTest::keyClicks(key, "not-saved");
-        save->click();
+        finished = false;
+        page.saveCredentials([&](bool ok) { finished = true; succeeded = ok; });
+        QTRY_VERIFY(finished);
+        QVERIFY(!succeeded);
         QTRY_VERIFY(status->text().contains("unavailable"));
         QVERIFY(status->property("error").toBool());
         QVERIFY(provider->isEnabled());
         QVERIFY(!credentials.keys.contains("openai"));
+        QVERIFY(page.hasPendingCredentials());
     }
     void aiCredentialReadsSerializeWithWritesAndRecoverAcrossReset() {
         FakeAiCredentials credentials;
@@ -187,17 +203,19 @@ class SettingsTests : public QObject {
         page.setSettings(defaultSettings());
         auto *provider = page.findChild<QComboBox *>("aiProvider");
         auto *key = page.findChild<QLineEdit *>("aiApiKey");
-        auto *save = page.findChild<QPushButton *>("aiSaveKey");
         auto *test = page.findChild<QPushButton *>("aiTestConnection");
         auto *status = page.findChild<QLabel *>("aiConnectionStatus");
-        QVERIFY(provider && key && save && test && status);
+        QVERIFY(provider && key && test && status);
         page.show();
         QCOMPARE(credentials.loads, 1);
         QVERIFY(!provider->isEnabled());
         QVERIFY(!key->isEnabled());
-        QVERIFY(!save->isEnabled());
         QVERIFY(!test->isEnabled());
-        save->click();
+        bool finished = false, succeeded = true;
+        page.saveCredentials([&](bool ok) { finished = true; succeeded = ok; });
+        // No draft credentials exist, so this is a no-op even during a read.
+        QVERIFY(finished);
+        QVERIFY(succeeded);
         QCOMPARE(credentials.saves, 0);
 
         // Restoring other settings remains possible while the OS keyring is
@@ -214,7 +232,10 @@ class SettingsTests : public QObject {
         QCOMPARE(key->text(), QString("stored-claude"));
         key->selectAll();
         QTest::keyClicks(key, "replacement-claude");
-        save->click();
+        finished = false;
+        page.saveCredentials([&](bool ok) { finished = true; succeeded = ok; });
+        QTRY_VERIFY(finished);
+        QVERIFY(succeeded);
         QTRY_COMPARE(credentials.keys.value("claude"), QString("replacement-claude"));
         // Duplicate or delayed read delivery must not replace a local draft or
         // the newly saved value, even after dirty state has been cleared.
@@ -225,7 +246,6 @@ class SettingsTests : public QObject {
         QVERIFY(!test->isEnabled());
         emit credentials.failed("Test keyring could not be unlocked");
         QVERIFY(provider->isEnabled());
-        QVERIFY(save->isEnabled());
         QVERIFY(test->isEnabled());
         QVERIFY(status->text().contains("unlocked"));
     }
@@ -243,6 +263,65 @@ class SettingsTests : public QObject {
         credentials.save("openai", {});
         credentials.remove("bad/provider");
         QTRY_COMPARE(failed.size(), 3);
+    }
+    void unifiedSaveWritesMultipleProviderDraftsAndPreventsClosingMidWrite() {
+        FakeAiCredentials credentials;
+        credentials.keys["openai"] = "old-openai-key";
+        SettingsDialog dialog(defaultSettings(), nullptr, &credentials);
+        dialog.showAi(); dialog.show();
+        auto *provider = dialog.findChild<QComboBox *>("aiProvider");
+        auto *key = dialog.findChild<QLineEdit *>("aiApiKey");
+        auto *save = dialog.findChild<QPushButton *>("settingsSave");
+        auto *cancel = dialog.findChild<QPushButton *>("settingsCancel");
+        auto *tabs = dialog.findChild<QTabWidget *>("settingsTabs");
+        QVERIFY(provider && key && save && cancel && tabs);
+        QVERIFY(!tabs->tabBar()->isVisible());
+        QTRY_COMPARE(key->text(), QString("old-openai-key"));
+        key->selectAll(); QTest::keyClicks(key, "new-openai-key");
+        provider->setCurrentIndex(provider->findData("claude"));
+        QTRY_VERIFY(key->isEnabled());
+        QTest::keyClicks(key, "new-claude-key");
+        QCOMPARE(credentials.saves, 0);
+        credentials.holdWrites = true;
+        int applied = 0;
+        dialog.setApplyHandler([&](const AppSettings &) { ++applied; return QString(); });
+        save->click();
+        QCOMPARE(credentials.saves, 1); // One credential operation at a time.
+        QVERIFY(!save->isEnabled()); QVERIFY(!cancel->isEnabled());
+        dialog.reject();
+        QVERIFY(dialog.isVisible());
+        QCOMPARE(applied, 0);
+        credentials.finishSave(credentials.pendingSaves.firstKey());
+        QTRY_COMPARE(credentials.saves, 2);
+        QCOMPARE(credentials.pendingSaves.size(), 1);
+        credentials.finishSave(credentials.pendingSaves.firstKey());
+        QTRY_COMPARE(dialog.result(), int(QDialog::Accepted));
+        QCOMPARE(applied, 1);
+        QCOMPARE(credentials.keys.value("openai"), QString("new-openai-key"));
+        QCOMPARE(credentials.keys.value("claude"), QString("new-claude-key"));
+    }
+    void failedUnifiedCredentialSaveKeepsWindowOpenAndCanRetry() {
+        FakeAiCredentials credentials;
+        SettingsDialog dialog(defaultSettings(), nullptr, &credentials);
+        dialog.showAi(); dialog.show();
+        auto *key = dialog.findChild<QLineEdit *>("aiApiKey");
+        auto *save = dialog.findChild<QPushButton *>("settingsSave");
+        QTRY_VERIFY(key->isEnabled());
+        QTest::keyClicks(key, "replacement-key");
+        int applied = 0;
+        dialog.setApplyHandler([&](const AppSettings &) { ++applied; return QString(); });
+        credentials.failWrite = true;
+        save->click();
+        QTRY_VERIFY(save->isEnabled());
+        QVERIFY(dialog.isVisible());
+        QCOMPARE(applied, 0);
+        QVERIFY(dialog.findChild<AiSettingsPage *>()->hasPendingCredentials());
+        QVERIFY(!credentials.keys.contains("openai"));
+        credentials.failWrite = false;
+        save->click();
+        QTRY_COMPARE(dialog.result(), int(QDialog::Accepted));
+        QCOMPARE(applied, 1);
+        QCOMPARE(credentials.keys.value("openai"), QString("replacement-key"));
     }
     void aiWindowsSystemCredentialRoundtripOptIn() {
 #ifndef Q_OS_WIN
@@ -295,33 +374,35 @@ class SettingsTests : public QObject {
         page.setSettings(defaultSettings());
         auto *provider = page.findChild<QComboBox *>("aiProvider");
         auto *region = page.findChild<QComboBox *>("aiProviderRegion");
-        auto *glm = page.findChild<QPushButton *>("aiProviderChoice_glm");
-        auto *kimi = page.findChild<QPushButton *>("aiProviderChoice_kimi");
-        auto *openai = page.findChild<QPushButton *>("aiProviderChoice_openai");
+        auto *family = page.findChild<QComboBox *>("aiProviderFamily");
         auto *model = page.findChild<QLineEdit *>("aiModel");
-        QVERIFY(provider && region && glm && kimi && openai && model);
+        QVERIFY(provider && region && family && model);
+        for (const auto &id : {"openai", "claude", "deepseek", "glm", "kimi"}) {
+            const int index = family->findData(id);
+            QVERIFY(index >= 0);
+            QVERIFY(!family->itemIcon(index).isNull());
+        }
         page.show();
-        QTRY_VERIFY(openai->isEnabled());
+        QTRY_VERIFY(family->isEnabled());
         QVERIFY(provider->isHidden());
         QVERIFY(region->isHidden());
-        glm->click();
+        family->setCurrentIndex(family->findData("glm"));
         QCOMPARE(provider->currentData().toString(), QString("glm-cn"));
-        QTRY_VERIFY(glm->isEnabled());
+        QTRY_VERIFY(family->isEnabled());
         QVERIFY(region->isVisible());
         region->setCurrentIndex(region->findData("glm-global"));
         QCOMPARE(provider->currentData().toString(), QString("glm-global"));
-        QTRY_VERIFY(glm->isEnabled());
+        QTRY_VERIFY(family->isEnabled());
         model->setText("my-regional-vision-model");
-        kimi->click();
+        family->setCurrentIndex(family->findData("kimi"));
         QCOMPARE(provider->currentData().toString(), QString("kimi-cn"));
-        QTRY_VERIFY(glm->isEnabled());
-        glm->click();
+        QTRY_VERIFY(family->isEnabled());
+        family->setCurrentIndex(family->findData("glm"));
         QCOMPARE(provider->currentData().toString(), QString("glm-global"));
         QCOMPARE(model->text(), QString("my-regional-vision-model"));
-        QVERIFY(glm->isChecked());
-        QVERIFY(!kimi->isChecked());
-        QTRY_VERIFY(openai->isEnabled());
-        openai->click();
+        QCOMPARE(family->currentData().toString(), QString("glm"));
+        QTRY_VERIFY(family->isEnabled());
+        family->setCurrentIndex(family->findData("openai"));
         QVERIFY(region->isHidden());
         QCOMPARE(credentials.saves, 0);
     }
@@ -345,10 +426,10 @@ class SettingsTests : public QObject {
         };
         const auto basicRows = [](SettingsDialog &dialog) {
             return QList<QWidget *>{dialog.findChild<QLabel *>("aiSettingsTitle"),
-                dialog.findChild<QLabel *>("aiDescription"), dialog.findChild<QWidget *>("aiProviderChoices"),
-                dialog.findChild<QWidget *>("aiProviderSummary"), dialog.findChild<QLineEdit *>("aiApiKey"),
-                dialog.findChild<QLineEdit *>("aiModel"), dialog.findChild<QLineEdit *>("aiBaseUrl"),
-                dialog.findChild<QLabel *>("aiKeyStorageHint"), dialog.findChild<QLabel *>("aiConnectionStatus"),
+                dialog.findChild<QLabel *>("aiDescription"), dialog.findChild<QComboBox *>("aiProviderFamily"),
+                dialog.findChild<QLineEdit *>("aiApiKey"),
+                dialog.findChild<QLabel *>("aiKeyStorageHint"), dialog.findChild<QLineEdit *>("aiModel"),
+                dialog.findChild<QLineEdit *>("aiBaseUrl"), dialog.findChild<QLabel *>("aiConnectionStatus"),
                 dialog.findChild<QPushButton *>("aiAdvancedToggle")};
         };
         const auto advancedRows = [](SettingsDialog &dialog) {
@@ -358,6 +439,7 @@ class SettingsTests : public QObject {
         {
             SettingsDialog dialog(settings, nullptr, &credentials);
             dialog.showAi();
+            dialog.resize(980, 740);
             dialog.show();
             auto *key = dialog.findChild<QLineEdit *>("aiApiKey");
             auto *advanced = dialog.findChild<QPushButton *>("aiAdvancedToggle");
@@ -365,6 +447,13 @@ class SettingsTests : public QObject {
             auto *scroll = dialog.findChild<QScrollArea *>("settingsAiPage");
             QVERIFY(key && advanced && fields && scroll);
             QTRY_COMPARE(key->text(), QString("saved-key-for-test"));
+            auto *sidebar = dialog.findChild<QWidget *>("settingsSidebar");
+            auto *nav = dialog.findChild<QPushButton *>("settingsNav_7");
+            QVERIFY(sidebar && nav && nav->isChecked());
+            QVERIFY(sidebar->width() >= 170);
+            QVERIFY(!nav->text().isEmpty());
+            nav->click();
+            QVERIFY(nav->isChecked());
             QVERIFY(!fields->isVisible());
             QVERIFY(dialog.findChild<QLineEdit *>("aiModel")->isVisible());
             QVERIFY(dialog.findChild<QLineEdit *>("aiBaseUrl")->isVisible());
@@ -396,10 +485,11 @@ class SettingsTests : public QObject {
         settings.language = LanguageMode::English;
         SettingsDialog dialog(settings, nullptr, &credentials);
         dialog.showAi();
-        dialog.resize(500, 560);
+        dialog.resize(680, 620);
         dialog.show();
+        QTRY_VERIFY(dialog.findChild<QWidget *>("settingsSidebar")->width() <= 64);
         auto *key = dialog.findChild<QLineEdit *>("aiApiKey");
-        auto *save = dialog.findChild<QPushButton *>("aiSaveKey");
+        auto *save = dialog.findChild<QPushButton *>("settingsSave");
         auto *advanced = dialog.findChild<QPushButton *>("aiAdvancedToggle");
         auto *scroll = dialog.findChild<QScrollArea *>("settingsAiPage");
         QVERIFY(key && save && advanced && scroll);
@@ -435,7 +525,7 @@ class SettingsTests : public QObject {
         QTest::keyClicks(key, "explicitly-saved");
         save->click();
         QTRY_COMPARE(credentials.keys.value("openai"), QString("explicitly-saved"));
-        dialog.reject();
+        QTRY_COMPARE(dialog.result(), int(QDialog::Accepted));
         QCOMPARE(credentials.keys.value("openai"), QString("explicitly-saved"));
     }
     void initTestCase() {

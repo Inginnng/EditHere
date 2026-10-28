@@ -421,7 +421,7 @@ Windows uses the current user's startup entry and needs no administrator privile
 
 ### AI / API
 
-Choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service. Presets supply the base address, vision model and protocol; GLM and Kimi have China and global region selectors. Provider choices are grouped together, and the API key, model and API address are visible for direct editing. **Advanced options** contains only the protocol, timeout and additional instructions. **Save key** writes directly to the system credential store; the Settings window's bottom save button persists ordinary provider settings. **Test connection** sends only a built-in small image, never the current screenshot. See [AI analysis](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
+Open AI API in the left navigation sidebar and choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service from the provider selector with brand icons. Presets supply the base address, vision model and protocol; GLM and Kimi have China and global region selectors. The API key, model and API address are visible for direct editing. **Advanced options** contains only the protocol, timeout and additional instructions. **Save settings** at the bottom saves both the configuration and keys, with keys stored in the system credential store. Cancel discards unsaved key drafts; clear a key and save to delete it. **Test connection** uses the key currently entered and sends only a built-in small image, never the current screenshot. See [AI analysis](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
 
 ### Diagnostics
 

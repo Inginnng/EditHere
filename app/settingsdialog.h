@@ -9,6 +9,8 @@ class QTabWidget;
 class QKeySequenceEdit;
 class QLabel;
 class QLineEdit;
+class QPushButton;
+class QResizeEvent;
 namespace h2d {
 class AiCredentials;
 class SettingsDialog final : public QDialog {
@@ -26,6 +28,7 @@ class SettingsDialog final : public QDialog {
     // Cancelling also rolls the live language preview back. QDialog::reject() is a
     // public slot, so the override keeps the same access.
     void reject() override;
+    void done(int result) override;
 
   signals:
     void guideRequested();
@@ -36,6 +39,7 @@ class SettingsDialog final : public QDialog {
 
   protected:
     void changeEvent(QEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
 
   private:
     void setDraft(const AppSettings &settings);
@@ -44,6 +48,9 @@ class SettingsDialog final : public QDialog {
     void retranslate();
     void applyLanguage(LanguageMode mode);
     void save();
+    void updateNavigation();
+    void updateAppearance();
+    void setSaving(bool saving);
     QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;
@@ -54,7 +61,11 @@ class SettingsDialog final : public QDialog {
     bool legacyEmbedOriginal_ = true;
     bool legacyIncludeFeedbackPreview_ = false;
     QLineEdit *feedbackDir_;
-    QTabWidget *tabs_;
+    QTabWidget *tabs_ = nullptr;
+    QWidget *sidebar_ = nullptr, *navigation_ = nullptr, *footer_ = nullptr, *pageHeader_ = nullptr;
+    QLabel *sidebarBrand_ = nullptr, *sidebarTitle_ = nullptr, *sidebarVersion_ = nullptr, *pageTitle_ = nullptr;
+    QVector<QPushButton *> navigationButtons_;
+    bool compactNavigation_ = false, saving_ = false, updatingAppearance_ = false;
     class UpdateChecker *updater_;
     UpdateChecker::Result updateResult_{UpdateChecker::Failed, {}, {}, {}, {}, {}, {}, {}};
     QLabel *error_, *launchAtLoginNotice_;

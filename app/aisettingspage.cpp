@@ -1,191 +1,198 @@
 #include "aisettingspage.h"
 #include "aicredentials.h"
 #include "aifeedback.h"
+#include "aiprovidericons.h"
 #include "ui.h"
+#include <QAction>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QEvent>
-#include <QFormLayout>
 #include <QFrame>
-#include <QGridLayout>
-#include <QMenu>
-#include <QStyle>
-#include <QAction>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QSpinBox>
-#include <QTimer>
+#include <QStyle>
+#include <QTransform>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <utility>
 
 namespace h2d {
+namespace {
+// Keep the standard combo's interaction and accessibility, while drawing a
+// theme-aware vector arrow instead of Fusion's partially styled subcontrol.
+class SettingsComboBox final : public QComboBox {
+  public:
+    using QComboBox::QComboBox;
+  protected:
+    void paintEvent(QPaintEvent *event) override {
+        QComboBox::paintEvent(event);
+        QPainter painter(this);
+        const auto arrow = QStyle::visualRect(layoutDirection(), rect(),
+                                              QRect(width() - 25, (height() - 16) / 2, 16, 16));
+        glyph("chevron-down").paint(&painter, arrow, Qt::AlignCenter,
+                                    isEnabled() ? QIcon::Normal : QIcon::Disabled);
+    }
+};
+QString providerFamily(const QString &provider) {
+    if (provider.startsWith("glm-")) return "glm";
+    if (provider.startsWith("kimi-")) return "kimi";
+    return provider;
+}
+QIcon disclosureIcon(bool expanded) {
+    const auto down = glyph("chevron-down");
+    return expanded ? QIcon(down.pixmap(16, 16).transformed(QTransform().rotate(180))) : down;
+}
+}
 AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QWidget(parent),
     credentials_(credentials ? credentials : new AiCredentials(this)), client_(new AiFeedbackClient(this)) {
     setObjectName("aiSettingsContent");
+    setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QVBoxLayout(this);
     layout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    layout->setContentsMargins(20, 20, 20, 20);
-    layout->setSpacing(14);
+    layout->setContentsMargins(36, 30, 36, 28);
+    layout->setSpacing(0);
     title_ = new QLabel(this);
     title_->setObjectName("aiSettingsTitle");
     layout->addWidget(title_);
+    layout->addSpacing(8);
     description_ = mutedLabel({}, this);
     description_->setWordWrap(true);
     description_->setObjectName("aiDescription");
     layout->addWidget(description_);
+    layout->addSpacing(28);
 
-    // Keep a single provider-id model for persistence and asynchronous key reads.
-    // The visible picker groups regional variants, as in CC Switch's preset bar.
+    // The hidden model keeps regional platform IDs distinct for persistence and
+    // asynchronous credentials. The visible family picker only groups the UI.
     provider_ = new QComboBox(this);
     provider_->setObjectName("aiProvider");
     for (const auto &preset : aiProviderPresets()) provider_->addItem(preset.name, preset.id);
     provider_->hide();
+    auto *providerHeading = new QHBoxLayout;
+    providerHeading->setContentsMargins(0, 0, 0, 0);
     providerLabel_ = new QLabel(this);
-    providerLabel_->hide();
-    providerChoices_ = new QWidget(this);
-    providerChoices_->setObjectName("aiProviderChoices");
-    auto *choices = new QGridLayout(providerChoices_);
-    choices->setContentsMargins(0, 0, 0, 0);
-    choices->setSpacing(7);
-    const QStringList families{"openai", "claude", "deepseek", "glm", "kimi", "custom"};
-    for (int i = 0; i < families.size(); ++i) {
-        const auto family = families[i];
-        auto *button = textButton({}, false, providerChoices_);
-        button->setObjectName("aiProviderChoice_" + family);
-        button->setProperty("aiPreset", true);
-        button->setCheckable(true);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        familyButtons_[family] = button;
-        choices->addWidget(button, i / 3, i % 3);
-        connect(button, &QPushButton::clicked, this, [this, family] {
-            const auto id = lastFamilyProvider_.value(family, family == "glm" || family == "kimi" ? family + "-cn" : family);
-            provider_->setCurrentIndex(provider_->findData(id));
-            syncProviderChoices();
-        });
-    }
-    layout->addWidget(providerChoices_);
-
-    auto *summary = new QFrame(this);
-    summary->setObjectName("aiProviderSummary");
-    auto *summaryRow = new QHBoxLayout(summary);
-    summaryRow->setContentsMargins(12, 10, 12, 10);
-    summaryRow->setSpacing(10);
-    providerMark_ = new QLabel(summary);
-    providerMark_->setObjectName("aiProviderMark");
-    providerMark_->setAlignment(Qt::AlignCenter);
-    providerMark_->setFixedSize(32, 32);
-    summaryRow->addWidget(providerMark_);
-    auto *identity = new QVBoxLayout;
-    identity->setSpacing(2);
-    providerName_ = new QLabel(summary);
-    providerName_->setObjectName("aiSelectedProviderName");
-    providerHost_ = mutedLabel({}, summary);
-    providerHost_->setObjectName("aiSelectedProviderHost");
-    providerHost_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    identity->addWidget(providerName_);
-    identity->addWidget(providerHost_);
-    summaryRow->addLayout(identity, 1);
-    region_ = new QComboBox(summary);
-    region_->setObjectName("aiProviderRegion");
-    summaryRow->addWidget(region_);
-    docs_ = textButton({}, false, summary);
+    providerLabel_->setProperty("aiFieldLabel", true);
+    providerHeading->addWidget(providerLabel_);
+    providerHeading->addStretch();
+    docs_ = textButton({}, false, this);
     docs_->setObjectName("aiProviderDocs");
     docs_->setProperty("aiQuiet", true);
-    summaryRow->addWidget(docs_);
-    layout->addWidget(summary);
+    providerHeading->addWidget(docs_);
+    layout->addLayout(providerHeading);
+    layout->addSpacing(6);
+    auto *providerRow = new QHBoxLayout;
+    providerRow->setSpacing(10);
+    family_ = new SettingsComboBox(this);
+    family_->setObjectName("aiProviderFamily");
+    family_->setIconSize({24, 24});
+    family_->setMinimumWidth(120);
+    family_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    for (const auto &family : {"openai", "claude", "deepseek", "glm", "kimi", "custom"})
+        family_->addItem(aiProviderIcon(family), {}, family);
+    providerLabel_->setBuddy(family_);
+    providerRow->addWidget(family_, 1);
+    region_ = new SettingsComboBox(this);
+    region_->setObjectName("aiProviderRegion");
+    region_->setMinimumContentsLength(6);
+    region_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    providerRow->addWidget(region_);
+    layout->addLayout(providerRow);
+    layout->addSpacing(20);
+    connect(family_, &QComboBox::currentIndexChanged, this, [this] {
+        const auto family = family_->currentData().toString();
+        const auto fallback = family == "glm" || family == "kimi" ? family + "-cn" : family;
+        provider_->setCurrentIndex(provider_->findData(lastFamilyProvider_.value(family, fallback)));
+    });
     connect(region_, &QComboBox::currentIndexChanged, this, [this] {
         const auto id = region_->currentData().toString();
         if (!id.isEmpty()) provider_->setCurrentIndex(provider_->findData(id));
     });
 
-    connectionCard_ = new QFrame(this);
-    connectionCard_->setObjectName("aiConnectionCard");
-    auto *connection = new QVBoxLayout(connectionCard_);
-    connection->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    connection->setContentsMargins(14, 14, 14, 12);
-    connection->setSpacing(10);
-    auto *form = new QFormLayout;
-    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    form->setRowWrapPolicy(QFormLayout::DontWrapRows);
-    form->setHorizontalSpacing(12);
-    form->setVerticalSpacing(10);
-    apiKey_ = new QLineEdit(connectionCard_);
+    keyLabel_ = new QLabel(this);
+    keyLabel_->setProperty("aiFieldLabel", true);
+    layout->addWidget(keyLabel_);
+    layout->addSpacing(8);
+    auto *keyRow = new QHBoxLayout;
+    keyRow->setSpacing(6);
+    apiKey_ = new QLineEdit(this);
     apiKey_->setObjectName("aiApiKey");
     apiKey_->setEchoMode(QLineEdit::Password);
     apiKey_->setMaxLength(16384);
     apiKey_->setMinimumWidth(60);
     apiKey_->setInputMethodHints(Qt::ImhHiddenText | Qt::ImhNoPredictiveText | Qt::ImhNoAutoUppercase);
-    auto *keyRow = new QHBoxLayout;
-    keyRow->setSpacing(5);
-    showKey_ = iconButton("eye", {}, connectionCard_);
+    keyLabel_->setBuddy(apiKey_);
+    showKey_ = apiKey_->addAction(glyph("eye"), QLineEdit::TrailingPosition);
     showKey_->setObjectName("aiShowKey");
     showKey_->setCheckable(true);
-    showKey_->setFixedSize(30, 34);
-    saveKey_ = textButton({}, false, connectionCard_);
-    saveKey_->setObjectName("aiSaveKey");
-    saveKey_->setProperty("aiCompact", true);
-    keyMore_ = iconButton("more", {}, connectionCard_);
-    keyMore_->setObjectName("aiKeyActions");
-    keyMore_->setFixedSize(28, 34);
-    auto *keyMenu = new QMenu(keyMore_);
-    deleteAction_ = keyMenu->addAction(QString());
-    deleteKey_ = new QPushButton(this);
-    deleteKey_->setObjectName("aiDeleteKey");
-    deleteKey_->hide();
-    connect(deleteAction_, &QAction::triggered, deleteKey_, &QPushButton::click);
-    keyMore_->setMenu(keyMenu);
     keyRow->addWidget(apiKey_, 1);
-    keyRow->addWidget(showKey_);
-    keyRow->addWidget(saveKey_);
+    keyMore_ = iconButton("more", {}, this);
+    keyMore_->setObjectName("aiKeyActions");
+    keyMore_->setFixedSize(36, 42);
+    auto *keyMenu = new QMenu(keyMore_);
+    clearKey_ = keyMenu->addAction(QString());
+    clearKey_->setObjectName("aiClearKey");
+    keyMore_->setMenu(keyMenu);
     keyRow->addWidget(keyMore_);
-    keyLabel_ = new QLabel(connectionCard_);
-    keyLabel_->setBuddy(apiKey_);
-    form->addRow(keyLabel_, keyRow);
-    model_ = new QLineEdit(connectionCard_);
-    model_->setObjectName("aiModel");
-    model_->setMaxLength(200);
-    modelLabel_ = new QLabel(connectionCard_);
-    modelLabel_->setBuddy(model_);
-    form->addRow(modelLabel_, model_);
-    baseUrl_ = new QLineEdit(connectionCard_);
-    baseUrl_->setObjectName("aiBaseUrl");
-    baseUrl_->setMaxLength(4096);
-    baseLabel_ = new QLabel(connectionCard_);
-    baseLabel_->setBuddy(baseUrl_);
-    form->addRow(baseLabel_, baseUrl_);
-    connection->addLayout(form);
-    keyHint_ = mutedLabel({}, connectionCard_);
+    layout->addLayout(keyRow);
+    layout->addSpacing(8);
+    keyHint_ = mutedLabel({}, this);
     keyHint_->setWordWrap(true);
     keyHint_->setObjectName("aiKeyStorageHint");
-    connection->addWidget(keyHint_);
+    layout->addWidget(keyHint_);
+    layout->addSpacing(20);
+    modelLabel_ = new QLabel(this);
+    modelLabel_->setProperty("aiFieldLabel", true);
+    layout->addWidget(modelLabel_);
+    layout->addSpacing(8);
+    model_ = new QLineEdit(this);
+    model_->setObjectName("aiModel");
+    model_->setMaxLength(200);
+    modelLabel_->setBuddy(model_);
+    layout->addWidget(model_);
+    layout->addSpacing(20);
+    baseLabel_ = new QLabel(this);
+    baseLabel_->setProperty("aiFieldLabel", true);
+    layout->addWidget(baseLabel_);
+    layout->addSpacing(8);
+    baseUrl_ = new QLineEdit(this);
+    baseUrl_->setObjectName("aiBaseUrl");
+    baseUrl_->setMaxLength(4096);
+    baseLabel_->setBuddy(baseUrl_);
+    layout->addWidget(baseUrl_);
+    layout->addSpacing(20);
+
     auto *testRow = new QHBoxLayout;
-    testRow->setSpacing(12);
-    status_ = new QLabel(connectionCard_);
+    testRow->setSpacing(14);
+    test_ = textButton({}, false, this);
+    test_->setObjectName("aiTestConnection");
+    test_->setProperty("aiOutline", true);
+    testRow->addWidget(test_, 0, Qt::AlignTop);
+    status_ = new QLabel(this);
     status_->setObjectName("aiConnectionStatus");
     status_->setTextFormat(Qt::PlainText);
     status_->setWordWrap(true);
     status_->setProperty("muted", true);
     status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    testRow->addWidget(status_, 1);
-    test_ = textButton({}, true, connectionCard_);
-    test_->setObjectName("aiTestConnection");
-    test_->setProperty("aiCompact", true);
-    testRow->addWidget(test_);
-    connection->addLayout(testRow);
-    layout->addWidget(connectionCard_);
-    // Platform-specific account/quota details are available on the selected
-    // provider, without turning the main form into a wall of warnings.
-    note_ = mutedLabel({}, this);
-    note_->setObjectName("aiProviderNote");
-    note_->hide();
+    testRow->addWidget(status_, 1, Qt::AlignVCenter);
+    layout->addLayout(testRow);
+    layout->addSpacing(22);
+    auto *separator = new QFrame(this);
+    separator->setObjectName("aiSettingsDivider");
+    separator->setFixedHeight(1);
+    layout->addWidget(separator);
+    layout->addSpacing(12);
 
     auto *advancedHeader = new QHBoxLayout;
+    advancedHeader->setSpacing(8);
     advancedButton_ = textButton({}, false, this);
     advancedButton_->setObjectName("aiAdvancedToggle");
     advancedButton_->setProperty("aiQuiet", true);
@@ -197,57 +204,60 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
     prompt_->setProperty("aiQuiet", true);
     advancedHeader->addWidget(prompt_);
     layout->addLayout(advancedHeader);
-    advanced_ = new QFrame(this);
+    advanced_ = new QWidget(this);
     advanced_->setObjectName("aiAdvancedFields");
-    auto *advancedForm = new QFormLayout(advanced_);
-    advancedForm->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    advancedForm->setContentsMargins(14, 14, 14, 14);
-    advancedForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    advancedForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
-    advancedForm->setHorizontalSpacing(12);
-    advancedForm->setVerticalSpacing(10);
-    protocol_ = new QComboBox(advanced_);
+    auto *advancedLayout = new QVBoxLayout(advanced_);
+    advancedLayout->setContentsMargins(0, 18, 0, 0);
+    advancedLayout->setSpacing(8);
+    protocolLabel_ = new QLabel(advanced_);
+    protocolLabel_->setProperty("aiFieldLabel", true);
+    advancedLayout->addWidget(protocolLabel_);
+    protocol_ = new SettingsComboBox(advanced_);
     protocol_->setObjectName("aiProtocol");
     protocol_->addItem("OpenAI Responses", "responses");
     protocol_->addItem("OpenAI Chat Completions", "chat-completions");
     protocol_->addItem("Anthropic Messages", "anthropic-messages");
-    protocolLabel_ = new QLabel(advanced_);
     protocolLabel_->setBuddy(protocol_);
-    advancedForm->addRow(protocolLabel_, protocol_);
+    advancedLayout->addWidget(protocol_);
+    advancedLayout->addSpacing(12);
+    timeoutLabel_ = new QLabel(advanced_);
+    timeoutLabel_->setProperty("aiFieldLabel", true);
+    advancedLayout->addWidget(timeoutLabel_);
     timeout_ = new QSpinBox(advanced_);
     timeout_->setObjectName("aiTimeout");
     timeout_->setRange(10, 600);
-    timeoutLabel_ = new QLabel(advanced_);
+    timeout_->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    timeout_->setMaximumWidth(160);
     timeoutLabel_->setBuddy(timeout_);
-    advancedForm->addRow(timeoutLabel_, timeout_);
+    advancedLayout->addWidget(timeout_);
+    advancedLayout->addSpacing(12);
+    extraLabel_ = new QLabel(advanced_);
+    extraLabel_->setProperty("aiFieldLabel", true);
+    advancedLayout->addWidget(extraLabel_);
     extra_ = new QPlainTextEdit(advanced_);
     extra_->setObjectName("aiExtraInstructions");
-    extra_->setMinimumHeight(76);
-    extra_->setMaximumHeight(96);
-    extraLabel_ = new QLabel(advanced_);
+    extra_->setFixedHeight(92);
     extraLabel_->setBuddy(extra_);
-    advancedForm->addRow(extraLabel_, extra_);
+    advancedLayout->addWidget(extra_);
     reset_ = textButton({}, false, advanced_);
     reset_->setObjectName("aiResetPreset");
     reset_->setProperty("aiQuiet", true);
-    advancedForm->addRow(reset_);
+    advancedLayout->addWidget(reset_, 0, Qt::AlignLeft);
     layout->addWidget(advanced_);
     advanced_->hide();
-    layout->addStretch();
-    connect(baseUrl_, &QLineEdit::textChanged, this, [this] {
-        providerHost_->setText(QUrl(baseUrl_->text()).host());
-        providerHost_->setToolTip(baseUrl_->text());
-    });
+    layout->addStretch(1);
+    note_ = new QLabel(this);
+    note_->setObjectName("aiProviderNote");
+    note_->hide();
 
-    connect(showKey_, &QPushButton::toggled, this, [this](bool checked) {
+    connect(showKey_, &QAction::toggled, this, [this](bool checked) {
         apiKey_->setEchoMode(checked ? QLineEdit::Normal : QLineEdit::Password);
         retranslate();
     });
-    connect(apiKey_, &QLineEdit::textEdited, this, [this] {
-        keysByProvider_[currentProvider_] = apiKey_->text();
-        loadedKeys_.insert(currentProvider_);
-        dirtyKeys_.insert(currentProvider_);
-        setStatus(tr("密钥已修改，点击“保存密钥”后持久保存。"));
+    connect(apiKey_, &QLineEdit::textEdited, this, &AiSettingsPage::markKeyEdited);
+    connect(clearKey_, &QAction::triggered, this, [this] {
+        apiKey_->clear();
+        markKeyEdited();
     });
     connect(provider_, &QComboBox::currentIndexChanged, this, &AiSettingsPage::switchProvider);
     connect(advancedButton_, &QPushButton::toggled, this, [this](bool expanded) {
@@ -262,19 +272,7 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
         timeout_->setValue(config.timeoutSeconds);
         extra_->setPlainText(config.extraInstructions);
         connections_.remove(currentProvider_);
-        setStatus(tr("已恢复此提供商的默认地址、模型和提示词。密钥保持不变。"));
-    });
-    connect(saveKey_, &QPushButton::clicked, this, [this] {
-        if (apiKey_->text().trimmed().isEmpty()) { setStatus(tr("请先输入 API Key。"), true); return; }
-        keysByProvider_[currentProvider_] = apiKey_->text().trimmed();
-        credentialBusy(true);
-        setStatus(tr("正在保存密钥…"));
-        credentials_->save(currentProvider_, apiKey_->text().trimmed());
-    });
-    connect(deleteKey_, &QPushButton::clicked, this, [this] {
-        credentialBusy(true);
-        setStatus(tr("正在删除密钥…"));
-        credentials_->remove(currentProvider_);
+        setStatus(tr("已恢复连接预设，密钥草稿保持不变。"));
     });
     connect(test_, &QPushButton::clicked, this, [this] {
         if (client_->isRunning()) { client_->cancel(); return; }
@@ -282,31 +280,19 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
         const auto error = validateAiConnection(config);
         if (!error.isEmpty()) { setStatus(error, true); return; }
         if (apiKey_->text().trimmed().isEmpty()) { setStatus(tr("请先输入 API Key。"), true); return; }
-        setStatus(tr("正在测试图文接口；只发送内置测试图片，不发送当前批注。"));
-        provider_->setEnabled(false);
-        providerChoices_->setEnabled(false);
-        region_->setEnabled(false);
-        advanced_->setEnabled(false);
-        baseUrl_->setEnabled(false);
-        model_->setEnabled(false);
-        saveKey_->setEnabled(false);
-        deleteKey_->setEnabled(false);
-        keyMore_->setEnabled(false);
-        apiKey_->setEnabled(false);
-        test_->setText(tr("取消测试"));
+        setStatus(tr("正在验证图文接口…"));
         client_->testConnection(config, apiKey_->text().trimmed());
-    });
-    auto finishTest = [this] {
         credentialBusy(credentialsBusy_);
         retranslate();
-        if (isVisible()) loadKey();
-    };
-    connect(client_, &AiFeedbackClient::completed, this, [this, finishTest](const QString &) {
-        finishTest();
-        setStatus(tr("连接成功，模型已通过图文接口测试。"));
     });
-    connect(client_, &AiFeedbackClient::failed, this, [this, finishTest](const QString &message) {
-        finishTest();
+    connect(client_, &AiFeedbackClient::completed, this, [this](const QString &) {
+        credentialBusy(credentialsBusy_);
+        retranslate();
+        setStatus(tr("连接成功，支持图片输入。"));
+    });
+    connect(client_, &AiFeedbackClient::failed, this, [this](const QString &message) {
+        credentialBusy(credentialsBusy_);
+        retranslate();
         setStatus(message, true);
     });
     connect(credentials_, &AiCredentials::loaded, this, [this](const QString &id, const QString &key) {
@@ -315,7 +301,7 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
         loadedKeys_.insert(id);
         if (id == currentProvider_ && accept) {
             apiKey_->setText(key);
-            setStatus(key.isEmpty() ? tr("此提供商尚未保存 API Key。") : tr("已从系统凭据库读取 API Key。"));
+            setStatus({});
         }
         if (loadingProvider_ == id) {
             loadingProvider_.clear();
@@ -323,41 +309,38 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
             if (id != currentProvider_ && isVisible()) loadKey();
         }
     });
-    connect(credentials_, &AiCredentials::saved, this, [this](const QString &id) {
+    auto saved = [this](const QString &id) {
+        if (!savingCredentials_ || id != savingProvider_) return;
         dirtyKeys_.remove(id);
         loadedKeys_.insert(id);
-        credentialBusy(false);
-        setStatus(tr("API Key 已保存到系统凭据库。"));
-        if (id != currentProvider_ && isVisible()) loadKey();
-    });
-    connect(credentials_, &AiCredentials::removed, this, [this](const QString &id) {
-        dirtyKeys_.remove(id);
-        loadedKeys_.insert(id);
-        keysByProvider_[id].clear();
-        if (id == currentProvider_) apiKey_->clear();
-        credentialBusy(false);
-        setStatus(tr("已删除此提供商的 API Key。"));
-        if (id != currentProvider_ && isVisible()) loadKey();
-    });
+        keysByProvider_[id] = keysByProvider_.value(id).trimmed();
+        if (id == currentProvider_) apiKey_->setText(keysByProvider_.value(id));
+        savingProvider_.clear();
+        saveNextCredential();
+    };
+    connect(credentials_, &AiCredentials::saved, this, saved);
+    connect(credentials_, &AiCredentials::removed, this, saved);
     connect(credentials_, &AiCredentials::failed, this, [this](const QString &message) {
         const auto failedLoad = loadingProvider_;
         loadingProvider_.clear();
-        credentialBusy(false);
         setStatus(message, true);
-        if (isVisible() && (failedLoad.isEmpty() || failedLoad != currentProvider_)) loadKey();
+        if (savingCredentials_) { finishCredentialSave(false); return; }
+        credentialBusy(false);
+        if (isVisible() && !failedLoad.isEmpty() && failedLoad != currentProvider_) loadKey();
     });
     connect(prompt_, &QPushButton::clicked, this, [this] {
         QDialog dialog(this);
         dialog.setObjectName("aiPromptDialog");
         dialog.setWindowTitle(tr("EditHere 内置提示词"));
-        dialog.resize(620, 480);
+        dialog.resize(680, 520);
         auto *body = new QVBoxLayout(&dialog);
+        body->setContentsMargins(24, 24, 24, 24);
         auto *text = new QPlainTextEdit(&dialog);
         text->setObjectName("aiBuiltinPrompt");
         text->setReadOnly(true);
         text->setPlainText(aiSystemPrompt());
         body->addWidget(text);
-        auto *close = textButton(tr("关闭"), true, &dialog);
+        auto *close = textButton(tr("关闭"), false, &dialog);
         body->addWidget(close, 0, Qt::AlignRight);
         connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
         dialog.exec();
@@ -411,7 +394,7 @@ void AiSettingsPage::switchProvider() {
     rememberConnection();
     currentProvider_ = provider_->currentData().toString();
     syncProviderChoices();
-    auto config = connections_.value(currentProvider_, defaultAiConnection(currentProvider_));
+    const auto config = connections_.value(currentProvider_, defaultAiConnection(currentProvider_));
     baseUrl_->setText(config.baseUrl);
     model_->setText(config.model);
     protocol_->setCurrentIndex(protocol_->findData(config.protocol));
@@ -419,7 +402,7 @@ void AiSettingsPage::switchProvider() {
     extra_->setPlainText(config.extraInstructions);
     apiKey_->setText(keysByProvider_.value(currentProvider_));
     showKey_->setChecked(false);
-    setStatus({});
+    setStatus(dirtyKeys_.contains(currentProvider_) ? tr("有未保存的密钥修改。") : QString());
     updateNote();
     if (currentProvider_ == "custom") advancedButton_->setChecked(true);
     if (isVisible()) loadKey();
@@ -429,10 +412,50 @@ void AiSettingsPage::loadKey() {
         dirtyKeys_.contains(currentProvider_) || !loadingProvider_.isEmpty() ||
         credentialsBusy_ || client_->isRunning()) return;
     loadingProvider_ = currentProvider_;
-    // Reads can open an OS keyring prompt. Serialize them with explicit writes
-    // and connection tests, so a delayed read cannot replace a newly saved key.
     credentialBusy(true);
     credentials_->load(currentProvider_);
+}
+void AiSettingsPage::markKeyEdited() {
+    if (currentProvider_.isEmpty()) return;
+    keysByProvider_[currentProvider_] = apiKey_->text();
+    loadedKeys_.insert(currentProvider_);
+    dirtyKeys_.insert(currentProvider_);
+    setStatus(apiKey_->text().trimmed().isEmpty() ? tr("保存设置后将移除此服务商的密钥。")
+                                               : tr("有未保存的密钥修改。"));
+}
+bool AiSettingsPage::hasPendingCredentials() const { return !dirtyKeys_.isEmpty(); }
+void AiSettingsPage::saveCredentials(std::function<void(bool)> finished) {
+    if (!finished) return;
+    if (dirtyKeys_.isEmpty()) { finished(true); return; }
+    if (credentialsBusy_ || client_->isRunning()) {
+        setStatus(tr("请等待当前操作完成后再保存。"), true);
+        finished(false);
+        return;
+    }
+    saveQueue_ = dirtyKeys_.values();
+    std::sort(saveQueue_.begin(), saveQueue_.end());
+    saveFinished_ = std::move(finished);
+    savingCredentials_ = true;
+    credentialBusy(true);
+    setStatus(tr("正在保存密钥…"));
+    saveNextCredential();
+}
+void AiSettingsPage::saveNextCredential() {
+    if (saveQueue_.isEmpty()) { finishCredentialSave(true); return; }
+    savingProvider_ = saveQueue_.takeFirst();
+    const auto key = keysByProvider_.value(savingProvider_).trimmed();
+    if (key.isEmpty()) credentials_->remove(savingProvider_);
+    else credentials_->save(savingProvider_, key);
+}
+void AiSettingsPage::finishCredentialSave(bool success) {
+    savingCredentials_ = false;
+    savingProvider_.clear();
+    saveQueue_.clear();
+    credentialBusy(false);
+    if (success) setStatus(tr("密钥修改已保存。"));
+    auto finished = std::move(saveFinished_);
+    saveFinished_ = {};
+    if (finished) finished(success);
 }
 void AiSettingsPage::updateNote() {
     note_->clear();
@@ -440,8 +463,7 @@ void AiSettingsPage::updateNote() {
     for (const auto &preset : aiProviderPresets()) {
         if (preset.id != currentProvider_) continue;
         note_->setText(preset.note);
-        providerMark_->setToolTip(preset.note);
-        providerName_->setToolTip(preset.note);
+        family_->setToolTip(preset.note);
         docs_->setEnabled(!preset.docsUrl.isEmpty());
         break;
     }
@@ -456,17 +478,15 @@ void AiSettingsPage::credentialBusy(bool busy) {
     credentialsBusy_ = busy;
     const bool editable = !busy && !client_->isRunning();
     provider_->setEnabled(editable);
-    providerChoices_->setEnabled(editable);
+    family_->setEnabled(editable);
     region_->setEnabled(editable);
     apiKey_->setEnabled(editable);
-    saveKey_->setEnabled(editable);
-    deleteKey_->setEnabled(editable);
     keyMore_->setEnabled(editable);
-    deleteAction_->setEnabled(editable);
+    clearKey_->setEnabled(editable);
     showKey_->setEnabled(editable);
-    baseUrl_->setEnabled(!client_->isRunning());
-    model_->setEnabled(!client_->isRunning());
-    advanced_->setEnabled(!client_->isRunning());
+    baseUrl_->setEnabled(editable);
+    model_->setEnabled(editable);
+    advanced_->setEnabled(editable);
     test_->setEnabled(!busy);
 }
 void AiSettingsPage::showEvent(QShowEvent *event) {
@@ -481,16 +501,12 @@ void AiSettingsPage::changeEvent(QEvent *event) {
         updateAppearance();
 }
 void AiSettingsPage::syncProviderChoices() {
-    QString family = currentProvider_;
-    if (family.startsWith("glm-")) family = "glm";
-    if (family.startsWith("kimi-")) family = "kimi";
-    if (!familyButtons_.contains(family)) family = "custom";
+    auto family = providerFamily(currentProvider_);
+    if (family_->findData(family) < 0) family = "custom";
     if (!currentProvider_.isEmpty()) lastFamilyProvider_[family] = currentProvider_;
-    for (auto it = familyButtons_.cbegin(); it != familyButtons_.cend(); ++it) {
-        const QSignalBlocker blocker(it.value());
-        it.value()->setChecked(it.key() == family);
-    }
-    const QSignalBlocker blocker(region_);
+    const QSignalBlocker familyBlocker(family_);
+    family_->setCurrentIndex(family_->findData(family));
+    const QSignalBlocker regionBlocker(region_);
     region_->clear();
     if (family == "glm" || family == "kimi") {
         region_->addItem(tr("中国区"), family + "-cn");
@@ -499,42 +515,50 @@ void AiSettingsPage::syncProviderChoices() {
     }
     region_->setVisible(region_->count() > 0);
     region_->setAccessibleName(tr("服务地区"));
-    const QMap<QString, QString> names{{"openai", "OpenAI"}, {"claude", "Claude"}, {"deepseek", "DeepSeek"},
-        {"glm", "GLM"}, {"kimi", "Kimi"}, {"custom", tr("自定义服务")}};
-    const QMap<QString, QString> marks{{"openai", "O"}, {"claude", "C"}, {"deepseek", "D"},
-        {"glm", "G"}, {"kimi", "K"}, {"custom", "+"}};
-    providerName_->setText(names.value(family));
-    providerMark_->setText(marks.value(family));
-    providerHost_->setText(QUrl(baseUrl_->text()).host());
 }
 void AiSettingsPage::updateAppearance() {
     if (updatingAppearance_) return;
     updatingAppearance_ = true;
     const bool dark = isDarkTheme();
-    const QString surface = dark ? "#282a30" : "#ffffff";
-    const QString subtle = dark ? "#303239" : "#f1f2f6";
-    const QString border = dark ? "#40424c" : "#e1e2e9";
-    const QString muted = dark ? "#a0a2ae" : "#777985";
-    const QString selected = dark ? "#263a59" : "#edf4ff";
-    const QString accentColor = accent().name();
-    setStyleSheet(QString(R"(
-QLabel#aiSettingsTitle { font-size:19px; font-weight:600; }
-QLabel#aiSelectedProviderName { font-weight:600; }
-QLabel#aiProviderMark { background:%1; color:%5; border-radius:9px; font-size:17px; font-weight:600; }
-QFrame#aiProviderSummary { background:%2; border-radius:10px; }
-QFrame#aiConnectionCard, QFrame#aiAdvancedFields { background:%1; border:1px solid %3; border-radius:12px; }
-QPushButton[aiPreset="true"] { background:%1; border:1px solid %3; border-radius:8px; padding:7px 10px; min-height:20px; }
-QPushButton[aiPreset="true"]:hover { background:%2; }
-QPushButton[aiPreset="true"]:checked { background:%6; border:1px solid %5; color:%5; }
-QPushButton[aiQuiet="true"] { background:transparent; border:0; color:%4; padding:6px 8px; min-height:20px; }
-QPushButton[aiQuiet="true"]:hover { background:%2; color:%5; }
-QPushButton[aiCompact="true"] { padding:6px 10px; min-height:20px; }
-QPushButton#aiShowKey, QPushButton#aiKeyActions { padding:0; min-width:0; min-height:0; }
+    const QString surface = dark ? "#24262c" : "#ffffff";
+    const QString hover = dark ? "#30333b" : "#f2f4f7";
+    const QString border = dark ? "#424650" : "#dfe3e8";
+    const QString muted = dark ? "#a6abb8" : "#76808f";
+    const QString text = dark ? "#e9ecf1" : "#253041";
+    const QString css = QString(R"(
+QWidget#aiSettingsContent { background:%1; }
+QWidget#aiSettingsContent QLabel, QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox,
+QWidget#aiSettingsContent QSpinBox, QWidget#aiSettingsContent QPlainTextEdit, QWidget#aiSettingsContent QPushButton { font-size:13px; }
+QWidget#aiSettingsContent QLabel#aiSettingsTitle { font-size:24px; font-weight:600; color:%5; }
+QWidget#aiSettingsContent QLabel[aiFieldLabel="true"] { font-weight:600; color:%5; }
+QWidget#aiSettingsContent QLabel#aiDescription, QWidget#aiSettingsContent QLabel#aiKeyStorageHint { color:%4; font-size:12px; }
+QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox, QWidget#aiSettingsContent QSpinBox {
+    background:%1; border:1px solid %3; border-radius:7px; padding:10px 12px; min-height:20px;
+}
+QWidget#aiSettingsContent QLineEdit:focus, QWidget#aiSettingsContent QComboBox:focus, QWidget#aiSettingsContent QSpinBox:focus { border-color:%6; }
+QWidget#aiSettingsContent QLineEdit:disabled, QWidget#aiSettingsContent QComboBox:disabled, QWidget#aiSettingsContent QSpinBox:disabled { background:%2; color:%4; }
+QWidget#aiSettingsContent QComboBox { padding-right:30px; }
+QWidget#aiSettingsContent QComboBox::drop-down { border:0; width:26px; background:transparent; }
+QWidget#aiSettingsContent QComboBox::down-arrow { image:none; width:0; height:0; }
+QWidget#aiSettingsContent QSpinBox::up-button, QWidget#aiSettingsContent QSpinBox::down-button { border:0; background:transparent; width:22px; }
+QWidget#aiSettingsContent QPlainTextEdit { background:%1; border:1px solid %3; border-radius:7px; padding:10px 12px; }
+QWidget#aiSettingsContent QPlainTextEdit:focus { border-color:%6; }
+QPushButton[aiQuiet="true"] { background:transparent; border:0; color:%4; padding:3px 0; min-height:20px; }
+QPushButton[aiQuiet="true"]:hover { color:%6; }
+QPushButton[aiOutline="true"] { background:%1; border:1px solid %3; padding:9px 16px; border-radius:7px; }
+QPushButton[aiOutline="true"]:hover { background:%2; }
+QPushButton#aiKeyActions { background:transparent; padding:0; min-width:0; min-height:0; }
+QPushButton#aiKeyActions:hover { background:%2; }
 QPushButton#aiKeyActions::menu-indicator { image:none; width:0; }
-QLabel#aiConnectionStatus[error="true"] { color:%7; }
-)").arg(surface, subtle, border, muted, accentColor, selected, dark ? "#ff8a8a" : "#c63636"));
+QFrame#aiSettingsDivider { background:%3; border:0; }
+QWidget#aiSettingsContent QLabel#aiConnectionStatus { color:%4; font-size:12px; }
+QWidget#aiSettingsContent QLabel#aiConnectionStatus[error="true"] { color:%7; }
+)").arg(surface, hover, border, muted, text, accent().name(), dark ? "#ff8a8a" : "#c63636");
+    if (styleSheet() != css) setStyleSheet(css);
     showKey_->setIcon(glyph(showKey_->isChecked() ? "eye-off" : "eye"));
     keyMore_->setIcon(glyph("more"));
+    advancedButton_->setIcon(disclosureIcon(advancedButton_->isChecked()));
+    for (int i = 0; i < family_->count(); ++i) family_->setItemIcon(i, aiProviderIcon(family_->itemData(i).toString()));
     updatingAppearance_ = false;
 }
 void AiSettingsPage::retranslate() {
@@ -543,31 +567,31 @@ void AiSettingsPage::retranslate() {
         if (index >= 0) provider_->setItemText(index, preset.name);
     }
     const QMap<QString, QString> labels{{"openai", "OpenAI"}, {"claude", "Claude"}, {"deepseek", "DeepSeek"},
-        {"glm", "GLM"}, {"kimi", "Kimi"}, {"custom", tr("自定义")}};
-    for (auto it = familyButtons_.cbegin(); it != familyButtons_.cend(); ++it) it.value()->setText(labels.value(it.key()));
+        {"glm", "GLM"}, {"kimi", "Kimi"}, {"custom", tr("自定义服务")}};
+    for (int i = 0; i < family_->count(); ++i) family_->setItemText(i, labels.value(family_->itemData(i).toString()));
     syncProviderChoices();
     updateNote();
-    title_->setText(tr("AI 连接"));
-    description_->setText(tr("为「AI解析」选择服务商，填入 API Key 即可开始。"));
-    providerLabel_->setText(tr("提供商"));
+    title_->setText(tr("AI 解析"));
+    description_->setText(tr("将截图与批注整理为文字，发给 Agent 前先在这里连接模型。"));
+    providerLabel_->setText(tr("服务商"));
     provider_->setAccessibleName(providerLabel_->text());
+    family_->setAccessibleName(providerLabel_->text());
     keyLabel_->setText("API Key");
     apiKey_->setAccessibleName("API Key");
-    apiKey_->setPlaceholderText(tr("输入此提供商的 API Key"));
+    apiKey_->setPlaceholderText(tr("输入 API Key"));
     showKey_->setIcon(glyph(showKey_->isChecked() ? "eye-off" : "eye"));
-    showKey_->setToolTip(showKey_->isChecked() ? tr("隐藏密钥") : tr("显示密钥"));
-    showKey_->setAccessibleName(showKey_->toolTip());
-    saveKey_->setText(tr("保存密钥"));
-    saveKey_->setToolTip(tr("立即保存到系统凭据库；取消设置不会撤销此操作。"));
-    deleteKey_->setText(tr("删除已存密钥"));
-    deleteAction_->setText(deleteKey_->text());
+    showKey_->setText(showKey_->isChecked() ? tr("隐藏密钥") : tr("显示密钥"));
+    showKey_->setToolTip(showKey_->text());
+    clearKey_->setText(tr("清空密钥"));
+    clearKey_->setToolTip(tr("清空后点击“保存设置”，才会删除系统凭据库中此服务商的密钥。"));
     keyMore_->setToolTip(tr("密钥操作"));
     keyMore_->setAccessibleName(keyMore_->toolTip());
     test_->setText(client_->isRunning() ? tr("取消测试") : tr("测试连接"));
-    keyHint_->setText(tr("密钥保存到系统凭据库，其他配置随底部“保存”生效。"));
+    keyHint_->setText(tr("密钥存入系统凭据库，随“保存设置”一起生效。"));
     keyHint_->setToolTip(tr("截图仅在你点击解析时发送给所选提供商，API 调用可能计费。"));
-    test_->setToolTip(tr("发送一张内置小图验证接口和识图能力，不发送当前截图或批注。"));
-    advancedButton_->setText(advancedButton_->isChecked() ? tr("收起高级选项") : tr("高级选项"));
+    test_->setToolTip(tr("发送内置小图验证连接和识图能力，不发送当前截图或批注。"));
+    advancedButton_->setText(tr("高级选项"));
+    advancedButton_->setIcon(disclosureIcon(advancedButton_->isChecked()));
     baseLabel_->setText(tr("API 地址"));
     baseUrl_->setAccessibleName(baseLabel_->text());
     baseUrl_->setPlaceholderText("https://api.example.com/v1");
@@ -582,9 +606,9 @@ void AiSettingsPage::retranslate() {
     extraLabel_->setText(tr("补充要求"));
     extra_->setAccessibleName(extraLabel_->text());
     extra_->setPlaceholderText(tr("可选，例如：使用中文；按页面分组。内置精度规则始终保留。"));
-    reset_->setText(tr("恢复预设"));
-    reset_->setToolTip(tr("恢复此提供商的地址、模型、协议和补充要求，保留密钥。"));
+    reset_->setText(tr("恢复连接预设"));
+    reset_->setToolTip(tr("恢复地址、模型和协议，保留密钥草稿。"));
     prompt_->setText(tr("内置提示词"));
-    docs_->setText(tr("官方文档"));
+    docs_->setText(tr("官方文档 ↗"));
 }
 } // namespace h2d

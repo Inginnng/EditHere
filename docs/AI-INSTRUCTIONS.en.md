@@ -7,15 +7,16 @@ Desktop EditHere can turn screenshots, component moves and annotations into plai
 ## Set up once
 
 1. Open **Settings → AI API** and choose a provider.
-2. Enter an API key from that provider's standard developer platform, then click **Save key**. The key goes into the system credential store. The Settings window's bottom save button saves the provider selection, model, address and advanced configuration.
-3. Click **Test connection**. This sends only a built-in small image, never the current screenshot. Save Settings after the test succeeds.
+2. Enter an API key from that provider's standard developer platform. The address, model and protocol are prefilled and can be changed.
+3. Click **Test connection**. The test uses the key currently entered and sends only a built-in small image, never the current screenshot.
+4. Click **Save settings** at the bottom to save both the key and configuration. Keys go into the system credential store; other options go into ordinary settings. Cancel discards unsaved key drafts.
 
-Presets supply an API address, an image-capable model and a protocol. Provider choices are grouped together, with the API key, model and API address always visible; GLM and Kimi offer China and global region selectors. China, global and Coding Plan services may use different accounts and credits. Edit the common settings directly; **Advanced options** contains only the protocol, timeout and additional instructions. You can also choose a custom service. See [provider presets and open-source sources (Chinese)](ai-providers.md). You can view the built-in prompt in Settings; additional instructions can specify an output language or wording.
+Settings uses a left navigation sidebar. The AI page has a provider selector with brand icons, with the API key, model and API address always visible; GLM and Kimi offer China and global region selectors. China, global and Coding Plan services may use different accounts and credits. Edit the common settings directly; **Advanced options** contains only the protocol, timeout and additional instructions. You can also choose a custom service. See [provider presets and open-source sources (Chinese)](ai-providers.md). You can view the built-in prompt in Settings; additional instructions can specify an output language or wording. Clear a key and save to delete that provider's stored key.
 
 ## Generate and hand off
 
 1. Finish annotating, then click **AI analysis** directly on the editor's bottom toolbar. The same entry is also available in **View JSON**.
-2. Check the displayed provider and model, then click **Start analysis**. The dialog processes a snapshot taken when it was opened; opening it does not send a request.
+2. Check the images, provider and model on the left, then click **Start analysis**. The dialog processes a snapshot taken when it was opened; opening it does not send a request.
 3. Review the identified objects, original comments, exact values and items marked for review. You can edit the result directly.
 4. Click **Copy text** to hand it to an agent, or **Save as…** to export UTF-8 TXT / Markdown.
 

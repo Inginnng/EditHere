@@ -22,11 +22,13 @@ class AiInstructionsDialog final : public QDialog {
     void done(int result) override;
   protected:
     void changeEvent(QEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
   private:
     void generate();
     void setBusy(bool busy);
     void updateOutputActions();
     void refreshStyle();
+    void updateSourceWidth();
     AiConnectionSettings connection_;
     AiFeedbackInput input_;
     QString key_;
@@ -39,6 +41,8 @@ class AiInstructionsDialog final : public QDialog {
     QPlainTextEdit *output_;
     QStackedWidget *content_;
     QLabel *emptyTitle_, *emptyHint_;
+    QWidget *sourcePanel_ = nullptr;
+    QLabel *providerIcon_ = nullptr, *emptyIcon_ = nullptr;
     QProgressBar *progress_;
     QPushButton *generate_, *cancel_, *copy_, *save_, *configure_;
 };

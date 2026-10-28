@@ -31,7 +31,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/project-v3.sche
 foreach ($videoFile in @("docs/VIDEO-ANNOTATION.md", "schema/video-feedback-v1.schema.json", "schema/video-project-v1.schema.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $videoFile))) { throw "Video usage material is missing: $videoFile" }
 }
-foreach ($aiFile in @("docs/AI-INSTRUCTIONS.md", "docs/AI-INSTRUCTIONS.en.md", "docs/ai-providers.md", "packaging/licenses/qtkeychain/COPYING", "packaging/licenses/cc-switch/LICENSE")) {
+foreach ($aiFile in @("docs/AI-INSTRUCTIONS.md", "docs/AI-INSTRUCTIONS.en.md", "docs/ai-providers.md", "packaging/licenses/qtkeychain/COPYING", "packaging/licenses/cc-switch/LICENSE", "packaging/licenses/lobehub-icons/LICENSE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $aiFile))) { throw "AI usage or license material is missing: $aiFile" }
 }
 if ($ValidationDirectory) { $ValidationDirectory = (Resolve-Path -LiteralPath (Join-Path $projectRoot $ValidationDirectory)).Path }

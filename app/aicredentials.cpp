@@ -43,8 +43,8 @@ void AiCredentials::save(const QString &providerId, const QString &key) {
         QTimer::singleShot(0, this, [this] { emit failed(tr("请输入有效的 API Key 后再保存。")); });
         return;
     }
-    // Clicking Save is an explicit write, independent from accepting/cancelling
-    // the settings dialog. Keep that job alive if its UI closes before completion.
+    // A confirmed settings save is an explicit credential write. Let the OS job
+    // finish even if its calling UI is destroyed before completion.
     auto *job = jobFor<QKeychain::WritePasswordJob>(providerId, QCoreApplication::instance());
     job->setTextData(key.trimmed());
     connect(job, &QKeychain::Job::finished, this, [this, job, providerId] {

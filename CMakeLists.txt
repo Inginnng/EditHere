@@ -59,7 +59,7 @@ target_compile_definitions(edithere_zlib PUBLIC Z_SOLO)
 add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/tesseract.cpp app/videoplayback.cpp)
 target_sources(h2d_ui PRIVATE app/diagnosticspage.cpp)
 target_sources(h2d_ui PRIVATE app/aifeedback.cpp app/aicredentials.cpp
-  app/aisettingspage.cpp app/aiinstructionsdialog.cpp app/aifeedbacksnapshot.cpp)
+  app/aisettingspage.cpp app/aiinstructionsdialog.cpp app/aifeedbacksnapshot.cpp app/aiprovidericons.cpp)
 target_include_directories(h2d_ui PUBLIC app)
 target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::MultimediaWidgets)
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
@@ -69,6 +69,11 @@ qt_add_resources(h2d_ui ai_assets
   PREFIX "/ai"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ai"
   FILES assets/ai/provider-presets.json assets/ai/instructions-prompt.txt)
+qt_add_resources(h2d_ui ai_provider_icons
+  PREFIX "/ai/providers"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ai/providers"
+  FILES assets/ai/providers/openai.svg assets/ai/providers/claude.svg
+    assets/ai/providers/deepseek.svg assets/ai/providers/glm.svg assets/ai/providers/kimi.svg)
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
