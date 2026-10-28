@@ -4,7 +4,7 @@
 
 New exports use `feedback-minimal-4`. Readers retain support for v2/v3 image feedback, unversioned `objects`, older `annotations` + `changes`, string `image` values and the same-name PNG fallback. Desktop projects support 1.0.0, 1.1.0, 2.0.0 and 3.0.0; videos retain their v1 container. An unknown explicit version is rejected, not guessed to be legacy. This is new-reader/old-data compatibility: older apps are not guaranteed to understand v4 `kind`, `movement`, `children` or image descriptors.
 
-Manual file handoff defaults to JSON and a companion original; **Embed original image in JSON** selects `embedded`. **Copy JSON content** defaults to `none`; its adjacent vertical … menu remembers a separate include-image choice. CLI/API file / embedded / none modes and optional numbered previews remain available and are not overridden by manual preferences.
+Manual file handoff defaults to JSON and a companion original; **Embed original image in JSON** selects `embedded`. **Copy JSON content** defaults to `none`; the vertical ⋯ menu inside the button remembers a separate include-image choice. CLI/API file / embedded / none modes and optional numbered previews remain available and are not overridden by manual preferences.
 
 
 ## Migration decision

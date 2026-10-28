@@ -87,6 +87,7 @@ class Editor final : public QWidget {
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();
     void exportPreferencesChanged(h2d::ImageExportMode imageMode, bool copyTextWithImage);
+    void regionOcrPreferenceChanged(bool enabled);
 
   protected:
     bool eventFilter(QObject *, QEvent *) override;
@@ -106,6 +107,8 @@ class Editor final : public QWidget {
     void recognizeNextRegion();
     QByteArray recognitionKey(const Note &note) const;
     void cancelRegionRecognition();
+    void setRegionOcrEnabled(bool enabled);
+    void updateRegionOcrButton();
     void changed(bool contentChanged = true);
     void renderNotes();
     // Rebuilds every label of the permanent chrome. Called from the constructor
@@ -128,7 +131,7 @@ class Editor final : public QWidget {
     void updateAnnotationVisibility();
     void copyJson();
     void copyJsonText();
-    QPushButton *makeCopyJsonTextOptions(QWidget *parent, const QString &name);
+    QPushButton *makeCopyJsonTextOptions(QPushButton *parent, const QString &name);
     void setCopyJsonTextWithImage(bool enabled);
     void showJsonHelp();
     void updateToolbar();
@@ -171,6 +174,7 @@ class Editor final : public QWidget {
     VideoPlayback *videoPlayback_ = nullptr;
     AppSettings preferences_;
     QPushButton *copyJsonTextOptions_ = nullptr;
+    QPushButton *regionOcrToggle_ = nullptr;
     struct Snapshot {
         QVector<Note> notes;
         std::optional<LayoutState> layout;

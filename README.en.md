@@ -107,7 +107,7 @@ EditHere **never calls a model**; its job is to make the feedback unambiguous:
 - **Manually:** copy JSON text, JSON and its companion image, or an annotated image and paste it into any AI.
 - **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
 
-0.12.0 defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and its vertical … menu remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
+File handoff defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and the vertical **⋯** menu inside the button remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
 
 Example feedback structure:
 

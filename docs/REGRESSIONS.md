@@ -15,6 +15,14 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 批注页操作（0.12.2）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-193 | 「复制 JSON 内容」的选项按钮单独占用底栏和导出弹窗位置，挤占主操作空间。将选项嵌入复制按钮，文字区继续直接复制，选项区独立打开原图菜单 | `ui::separateJsonClipboardFormatsAndHelp`：嵌套位置、真实鼠标命中、菜单与复制行为；`ui::compactToolbarKeepsJsonTextOptionsInMoreMenu`：窄窗溢出与恢复宽窗 | 🆕 |
+| REG-194 | 批注区域自动 OCR 缺少就地开关，关闭时仍可能收到旧识别回调。新增持久化开关，关闭时取消待处理识别并抑制旧结果，保留已有文字，重新开启后识别缺少结果的区域 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`、`regionOcrToggleCancelsInFlightAndResumes`、`regionOcrPreferenceSurvivesControllerRestart`；`settings::regionOcrPreferencePersistsIndependentlyOfExport` | 🆕 |
+| REG-195 | 控件的样式规则也作用到它自己的提示：Qt 把提示做成该控件的子标签，OCR 开关上的 `max-width` 把悬停提示裁成一个字。样式改由 `styleControl()` 只作用于控件本身，提示沿用全局样式 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`：提示标签的 `maximumWidth` 未被限制（旧写法下为 42 px） | 🆕 |
+
 ## 反馈格式升级（0.12.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

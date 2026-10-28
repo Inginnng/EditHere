@@ -51,6 +51,7 @@ class SettingsDialog final : public QDialog {
         *confirmBeforeDiscard_, *checkUpdatesOnStartup_, *scrollAutoCrop_, *scrollUltraLong_;
     bool legacyEmbedOriginal_ = true;
     bool legacyIncludeFeedbackPreview_ = false;
+    bool regionOcrEnabled_ = true;
     QLineEdit *feedbackDir_;
     QTabWidget *tabs_;
     class UpdateChecker *updater_;
