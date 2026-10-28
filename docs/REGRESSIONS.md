@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 视频批注闪退（0.12.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-197 | 视频批注尚未输入文字或已有意见被临时清空时，OCR 成功回调触发内部帧保存；内部保存误用正式反馈导出，空草稿校验抛出未捕获异常而退出。内部帧快照排除未完成的新草稿，临时清空的已有批注保留已提交文字及最新 OCR；正式导出校验不变。旧版真实视频用例缺素材即跳过，且仍引用过时的单文件附件和已移除导出按钮 | `video-ui::blankVideoDraftSurvivesOcrAndCanBeCommittedOrCancelled`（新帧/已有帧）、`clearingAnExistingVideoCommentDuringOcrPreservesItsCommittedText`：真实 Windows OCR 完成前保持空白，验证提交/取消；发布检查纳入 video-ui/video-project/ocr，并设置 `EDITHERE_REQUIRE_VIDEO_OCR_TESTS`，缺识别器时失败；真实视频导出测试同步当前附件和按钮契约 | 🆕 |
+
 ## 批注页操作（0.12.2）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

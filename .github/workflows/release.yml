@@ -33,12 +33,27 @@ jobs:
       - name: Install NSIS
         run: choco install nsis -y --no-progress
 
+      - name: Ensure English system OCR is available
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $engineType = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+          $languages = @($engineType::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag })
+          if ($languages -notcontains 'en-US') {
+            Add-WindowsCapability -Online -Name 'Language.OCR~~~en-US~0.0.1.0' -ErrorAction Stop | Out-Null
+            # Verify in a fresh Windows PowerShell process after installing the language.
+            & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command '$t=[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]; if (@($t::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag }) -notcontains "en-US") { throw "English system OCR is still unavailable after installation." }'
+            if ($LASTEXITCODE) { throw 'English system OCR verification failed; video OCR regression tests cannot run.' }
+          }
+
       - name: Verify capture regressions, startup updates and installer transactions
+        env:
+          EDITHERE_REQUIRE_VIDEO_OCR_TESTS: "1"
         run: |
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
           $qtBin = (Resolve-Path ".tools/qt/6.8.3/mingw_64/bin").Path
           $env:PATH = "$qtBin;$mingwBin;$env:PATH"
-          ctest --test-dir build --output-on-failure -R '^(core|ui|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates)$'
+          ctest --test-dir build --output-on-failure -R '^(core|ui|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates)$'
           if ($LASTEXITCODE) { throw 'Capture, annotation, startup or update tests failed.' }
           $env:NSIS_MAKENSIS = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
           $env:EDITHERE_UPDATE_STUB = (Resolve-Path 'build/update_installer_stub.exe').Path
