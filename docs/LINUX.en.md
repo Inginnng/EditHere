@@ -28,7 +28,7 @@ Run the [ARM64 workflow](../.github/workflows/native-linux-arm64.yml) manually i
 
 The ARM64 workflow builds Qt 6.8.3, the PipeWire 1.0.4 client and EditHere from source inside a Debian 11 ARM64 container on an Ubuntu 24.04 ARM64 host, using glibc 2.31 as its build baseline. [Qt's official ARM64 binaries use Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations) and cannot be used directly on a Kylin environment with glibc 2.31. AppImage bundles Qt and related libraries, but not the system glibc; compatibility still depends on the target machine's actual versions and test results.
 
-ARM64 builds must enable PipeWire to retain the existing Wayland screen stream and manual long-capture path. The video backend retains compressed-format support and VAAPI interfaces; actual acceleration depends on the system driver. The desktop still supplies Portal and PipeWire services. Existing x86_64 releases continue using their original SDK, dependencies and build configuration.
+ARM64 builds must enable PipeWire to retain the existing Wayland screen stream and manual long-capture path. The video backend retains compressed-format and HTTPS-source support and VAAPI interfaces; actual acceleration depends on the system driver. The desktop still supplies Portal and PipeWire services. Existing x86_64 releases continue using their original SDK, dependencies and build configuration.
 
 Put the experimental AppImage and the CLI from the same build in one directory:
 

@@ -28,7 +28,7 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 ARM64 工作流在 Ubuntu 24.04 ARM64 宿主上的 Debian 11 ARM64 容器内，从源码构建 Qt 6.8.3、PipeWire 1.0.4 客户端和 EditHere，以 glibc 2.31 为构建基线。[Qt 官方 ARM64 预编译包使用 Ubuntu 24.04 / glibc 2.39](https://doc.qt.io/qt-6.8/linux.html#supported-configurations)，不能直接用于 glibc 2.31 的麒麟环境。AppImage 携带 Qt 和相关库，但不携带系统 glibc；是否兼容仍以目标机器的实际版本和测试结果为准。
 
-适配复用现有功能路径：ARM64 构建必须启用 PipeWire，保留 Wayland 屏幕流与手动长截图；视频后端保留压缩格式支持和 VAAPI 加速接口。实际硬件加速由系统驱动决定，Portal 与 PipeWire 服务仍由桌面提供。现有 x86_64 发布继续使用原来的 SDK、依赖和构建配置。
+适配复用现有功能路径：ARM64 构建必须启用 PipeWire，保留 Wayland 屏幕流与手动长截图；视频后端保留压缩格式、HTTPS 来源支持和 VAAPI 加速接口。实际硬件加速由系统驱动决定，Portal 与 PipeWire 服务仍由桌面提供。现有 x86_64 发布继续使用原来的 SDK、依赖和构建配置。
 
 把实验包与同次构建的 CLI 放在同一目录后运行：
 

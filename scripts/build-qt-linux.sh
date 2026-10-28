@@ -72,6 +72,7 @@ EOF
 
 # Debian 11's GStreamer 1.18 is below Qt 6.8's required 1.20. Build the same
 # FFmpeg major used by the existing Qt 6.8 desktop packages on the old ABI.
+# Match Qt's Linux FFmpeg recipe's OpenSSL support for HTTPS video sources.
 fetch_source "https://ffmpeg.org/releases/ffmpeg-$ffmpeg_version.tar.xz" \
   733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
 if [[ ! -d "$source_root/ffmpeg-$ffmpeg_version" ]]; then
@@ -84,7 +85,7 @@ mkdir -p "$build_root/ffmpeg"
     --prefix="$qt_prefix" --libdir="$qt_prefix/lib" \
     --enable-shared --disable-static --enable-pic \
     --disable-gpl --disable-nonfree --disable-version3 --disable-autodetect \
-    --enable-zlib --enable-bzlib --enable-iconv --enable-libdrm --enable-vaapi \
+    --enable-zlib --enable-bzlib --enable-iconv --enable-libdrm --enable-vaapi --enable-openssl \
     --disable-doc --disable-programs --disable-debug --enable-network \
     --disable-avdevice --disable-avfilter --disable-postproc
   make -j"$jobs"
