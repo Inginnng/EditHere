@@ -1,0 +1,125 @@
+.workspace-page {
+  height: calc(100dvh - var(--workspace-top-offset, 96px));
+  min-height: 440px;
+  max-width: 1680px;
+  margin: 0 auto;
+  padding: 24px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+}
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; flex-shrink: 0; }
+.workspace-heading h1 { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.4; letter-spacing: -.35px; }
+.workspace-heading p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.workspace-import { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 13px; white-space: nowrap; cursor: pointer; }
+.workspace-import span { margin-left: 9px; color: var(--muted); font-size: 11px; }
+.workspace-import:hover { background: var(--canvas); border-color: color-mix(in srgb, var(--muted) 45%, var(--line)); }
+.workspace-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.editor-topbar { height: 46px; min-height: 46px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; background: var(--surface); }
+.editor-file { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 500; }
+.editor-file>span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-file-icon { display: flex; color: var(--muted); }
+.editor-file-status { display: flex; align-items: center; gap: 4px; margin-left: 9px; color: var(--muted); font-size: 11px; font-weight: 400; white-space: nowrap; }
+.editor-zoom { display: flex; align-items: center; gap: 4px; color: var(--muted); flex-shrink: 0; }
+.editor-zoom>span:not(.editor-small-divider) { min-width: 34px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+.editor-zoom button,.annotation-sidebar-heading button,.editor-tools button,.annotation-delete { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+.editor-zoom button:hover,.annotation-sidebar-heading button:hover,.editor-tools button:hover { background: var(--canvas); color: var(--ink); }
+.editor-small-divider { width: 1px; height: 16px; margin: 0 5px; background: var(--line); }
+.workspace-editing-area { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.editor-canvas { position: relative; display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 0; padding: 48px 24px 38px; overflow: hidden; background-color: var(--canvas); background-image: radial-gradient(var(--line) .7px, transparent .7px); background-size: 12px 12px; }
+.editor-canvas-label { position: absolute; top: 17px; left: 20px; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.editor-canvas-label>span:first-child { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.editor-artboard { position: relative; flex-shrink: 0; width: min(100%, calc((100dvh - 322px) * 1.6667)); max-width: 800px; line-height: 0; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 6%, transparent); transition: transform .15s ease; }
+.artwork-scene { display: block; width: 100%; height: auto; }
+.editor-artboard-drawing { cursor: crosshair; }
+.editor-imported-image { display: block; width: 100%; height: auto; max-height: calc(100dvh - 322px); object-fit: contain; }
+.editor-canvas-hint { position: absolute; bottom: 13px; left: 12px; right: 12px; color: var(--muted); font-size: 11px; text-align: center; }
+.annotation-pin { position: absolute; z-index: 2; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: var(--on-accent); line-height: 1.2; transform: translate(-50%,-50%); cursor: pointer; }
+.annotation-pin>span:first-child { display: grid; place-items: center; width: 23px; height: 23px; border: 2px solid var(--surface); border-radius: 50% 50% 50% 3px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent); }
+.annotation-pin-selected>span:first-child { width: 26px; height: 26px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+.annotation-selected-label { padding: 5px 7px; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 11px; white-space: nowrap; }
+.annotation-selection-outline { position: absolute; left: 4.2%; top: 28%; width: 42%; height: 24%; border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 3%, transparent); pointer-events: none; }
+.annotation-selection-outline:before,.annotation-selection-outline:after { content: ''; position: absolute; width: 5px; height: 5px; border: 1px solid var(--accent); background: var(--surface); }
+.annotation-selection-outline:before { left: -3px; top: -3px; }
+.annotation-selection-outline:after { right: -3px; bottom: -3px; }
+.annotation-sidebar { display: flex; flex-direction: column; width: 280px; min-height: 0; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--surface); }
+.annotation-sidebar-heading { display: flex; align-items: center; justify-content: space-between; min-height: 49px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.annotation-sidebar-heading>div { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.annotation-sidebar-heading strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.annotation-sidebar-heading>div>span { margin-left: 2px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--muted); font-size: 11px; }
+.annotation-sidebar-heading button { color: var(--muted); }
+.annotation-notes { flex: 1; min-height: 0; overflow-y: auto; }
+.annotation-note { padding: 15px 16px 14px; border-left: 2px solid transparent; cursor: pointer; }
+.annotation-note+.annotation-note { border-top: 1px solid var(--line); }
+.annotation-note-selected { border-left-color: var(--accent); background: var(--accent-soft); }
+.annotation-note-title { display: flex; align-items: center; gap: 8px; min-height: 23px; }
+.annotation-number { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.annotation-note-selected .annotation-number { color: var(--accent); }
+.annotation-note-title strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.annotation-delete { width: 24px; height: 24px; margin-left: auto; color: var(--muted); opacity: 0; }
+.annotation-note:hover .annotation-delete,.annotation-delete:focus-visible { opacity: 1; }
+.annotation-delete:hover { color: var(--ink); background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.annotation-note-text { display: block; width: 100%; margin: 8px 0 9px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 1.8; text-align: left; cursor: text; }
+.annotation-note textarea { width: 100%; min-height: 90px; margin: 8px 0; padding: 6px 8px; resize: vertical; border: 1px solid var(--accent); border-radius: 4px; outline: 0; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; line-height: 1.8; }
+.annotation-note-meta { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.annotation-sidebar-foot { display: flex; align-items: center; gap: 6px; padding: 12px 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.annotation-status-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.annotation-empty { padding: 34px 24px; color: var(--muted); text-align: center; }
+.annotation-empty p { font-size: 13px; }
+.annotation-empty span { display: block; font-size: 12px; line-height: 1.7; }
+.editor-toolbar { position: relative; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 12px; min-height: 55px; padding: 10px 14px; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; background: var(--surface); }
+.editor-tools { display: flex; align-items: center; gap: 3px; color: var(--muted); }
+.editor-tools button.editor-tool-active { background: var(--accent-soft); color: var(--accent); }
+.editor-toolbar-divider { width: 1px; height: 18px; margin: 0 5px; background: var(--line); }
+.editor-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.editor-json-wrap { position: relative; }
+.editor-json-button { display: flex; height: 32px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+.editor-json-button>button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 0; background: transparent; color: var(--ink); font-size: 13px; cursor: pointer; }
+.editor-json-button>button:hover { background: var(--canvas); }
+.editor-json-button>button:last-child { margin: 6px 0; padding: 0 7px; border-left: 1px solid var(--line); }
+.editor-analyze { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 500; cursor: pointer; }
+.editor-analyze>span { display: flex; margin-left: 4px; padding-left: 7px; border-left: 1px solid color-mix(in srgb, var(--on-accent) 30%, transparent); }
+.editor-analyze:hover { background: color-mix(in srgb, var(--accent) 90%, var(--ink)); }
+.editor-json-menu { position: absolute; right: 0; bottom: 40px; z-index: 5; min-width: 175px; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); box-shadow: 0 4px 16px color-mix(in srgb, var(--ink) 10%, transparent); }
+.editor-json-menu button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.editor-json-menu button:hover { background: var(--canvas); }
+@media(max-width:1100px) {
+  .workspace-page { padding: 22px 24px 18px; }
+  .editor-file-status { display: none; }
+  .editor-canvas { padding-right: 18px; padding-left: 18px; }
+  .annotation-delete { opacity: 1; }
+}
+@media(max-width:760px) {
+  .workspace-page { height: auto; min-height: calc(100dvh - var(--workspace-top-offset, 96px)); padding: 20px 16px; }
+  .workspace-heading { align-items: flex-start; gap: 12px; }
+  .workspace-heading p { max-width: 245px; }
+  .workspace-import span { display: none; }
+  .workspace-editing-area { flex-direction: column; overflow: visible; }
+  .editor-canvas { min-height: 280px; padding: 46px 22px 35px; }
+  .editor-artboard { width: 100%; }
+  .annotation-sidebar { width: auto; border-left: 0; border-top: 1px solid var(--line); }
+  .annotation-sidebar-heading { min-height: 44px; padding: 6px 14px; }
+  .annotation-notes { display: flex; max-height: 180px; overflow-x: auto; }
+  .annotation-note { flex: 1; min-width: 225px; padding: 12px 14px; border-left: 0; border-bottom: 2px solid transparent; }
+  .annotation-note+.annotation-note { border-top: 0; border-left: 1px solid var(--line); }
+  .annotation-note-selected { border-bottom-color: var(--accent); }
+  .annotation-sidebar-foot { display: none; }
+  .editor-toolbar { flex-wrap: wrap; gap: 9px; padding: 9px 11px; }
+  .editor-toolbar-actions { margin-left: auto; }
+}
+@media(max-width:540px) {
+  .workspace-heading h1 { font-size: 22px; }
+  .workspace-heading p { font-size: 12px; max-width: 200px; }
+  .workspace-import { padding: 0 8px; font-size: 12px; }
+  .editor-topbar { padding: 0 10px; }
+  .editor-file { font-size: 11px; }
+  .editor-zoom { gap: 0; }
+  .editor-zoom button { width: 27px; }
+  .editor-small-divider { margin: 0 2px; }
+  .editor-tools { gap: 1px; }
+  .editor-tools button { width: 29px; }
+  .editor-json-button>button { padding: 0 8px; font-size: 12px; }
+  .editor-analyze { font-size: 12px; }
+  .editor-analyze>span { display: none; }
+}
+@media(prefers-reduced-motion:reduce) { .editor-artboard { transition: none; } }
