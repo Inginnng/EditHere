@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -332,6 +333,45 @@ def check_linux_release_package(release_workflow: str) -> list[Problem]:
             f"release would look complete while Linux is missing."
         )
     return problems
+
+def check_mcp_build_freshness() -> list[Problem]:
+    """REG-196  The MCP bundle pins the digest of every input, CMakeLists.txt included.
+
+    A product version bump therefore invalidates the committed bundle, and the only
+    place that noticed was the release job's packaging step -- after every native
+    build had already run, so the release had to be re-tagged. Recompute the digests
+    here, where the local pre-release run and every CI job see them.
+    """
+    problems: list[Problem] = []
+    manifest_file = ROOT / "web/mcp/build-info.json"
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"web/mcp/build-info.json is missing or invalid: {error}"]
+    if not isinstance(manifest, dict) or manifest.get("hashEncoding") != "utf8-lf":
+        return ["web/mcp/build-info.json: unsupported manifest; run node web/mcp/build.mjs"]
+    for group in ("sources", "artifacts"):
+        entries = manifest.get(group)
+        if not isinstance(entries, dict) or not entries:
+            problems.append(f"web/mcp/build-info.json: no {group} recorded")
+            continue
+        for relative, digest in entries.items():
+            file = ROOT / relative
+            if not file.is_file():
+                problems.append(f"{relative} is pinned in build-info.json but missing")
+                continue
+            try:
+                normalized = file.read_bytes().decode("utf-8").replace("\r\n", "\n").encode("utf-8")
+            except UnicodeDecodeError:
+                problems.append(f"{relative} is not UTF-8; the MCP build cannot hash it")
+                continue
+            if hashlib.sha256(normalized).hexdigest() != digest:
+                problems.append(
+                    f"{relative} changed after the MCP bundle was built; "
+                    "run node web/mcp/build.mjs before tagging"
+                )
+    return problems
+
 
 def check_release_notes() -> list[Problem]:
     """REG-011  Generated notes only list merged pull requests, and this repo pushes commits."""
@@ -1006,6 +1046,7 @@ CHECKS = [
     ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
     ("doc_links", check_doc_links),
+    ("mcp_build", check_mcp_build_freshness),
 ]
 
 

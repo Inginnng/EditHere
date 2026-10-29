@@ -2680,6 +2680,14 @@ Scroll back a little; stitching continues once it lines up.</translation>
 <context>
     <name>h2d::Editor</name>
     <message>
+        <source>关闭区域文字识别（OCR）</source>
+        <translation>Turn off region text recognition (OCR)</translation>
+    </message>
+    <message>
+        <source>开启区域文字识别（OCR）</source>
+        <translation>Turn on region text recognition (OCR)</translation>
+    </message>
+    <message>
         <location filename="../editor.cpp" line="214"/>
         <location filename="../editor.cpp" line="588"/>
         <source>关闭放大镜</source>
@@ -3013,8 +3021,8 @@ Scroll back a little; stitching continues once it lines up.</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="1917"/>
-        <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”旁的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;1. JSON text is truncated and JSON files cannot be sent?&lt;/h3&gt;&lt;p&gt;Choose “Exclude original image” beside “Copy JSON content”, copy the JSON text, and upload the original image to the Agent separately.&lt;/p&gt;&lt;h3&gt;2. What if only chat messages are supported?&lt;/h3&gt;&lt;p&gt;You can try sending JSON text without the original image. Its effectiveness cannot be confirmed without the image.&lt;/p&gt;&lt;h3&gt;3. What if the AI does not recognize the original image?&lt;/h3&gt;&lt;p&gt;Add “Refer to the image information in the JSON file…” to your prompt. If it still fails, use the first method.&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;1. JSON text is truncated and JSON files cannot be sent?&lt;/h3&gt;&lt;p&gt;Choose “Exclude original image” inside the “Copy JSON content” button, copy the JSON text, and upload the original image to the Agent separately.&lt;/p&gt;&lt;h3&gt;2. What if only chat messages are supported?&lt;/h3&gt;&lt;p&gt;You can try sending JSON text without the original image. Its effectiveness cannot be confirmed without the image.&lt;/p&gt;&lt;h3&gt;3. What if the AI does not recognize the original image?&lt;/h3&gt;&lt;p&gt;Add “Refer to the image information in the JSON file…” to your prompt. If it still fails, use the first method.&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="2371"/>
@@ -4356,8 +4364,8 @@ If EditHere helps you, a star on GitHub matters a lot to me. Or just tell me abo
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="562"/>
-        <source>默认不携带原图信息；也可在复制按钮旁的选项中快速切换。</source>
-        <translation>Original image excluded by default; use the options beside the copy button to switch.</translation>
+        <source>默认不携带原图信息；也可在复制按钮内的选项中快速切换。</source>
+        <translation>Original image excluded by default; use the options inside the copy button to switch.</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="563"/>

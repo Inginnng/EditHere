@@ -123,6 +123,14 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
             tray_.showMessage("EditHere", tr("设置未能保存：") + error);
         }
     });
+    connect(&editor_, &Editor::regionOcrPreferenceChanged, this, [this](bool enabled) {
+        settings_.regionOcrEnabled = enabled;
+        QString error;
+        if (!saveSettings(settings_, &error, settingsFile_)) {
+            diagnostics::write(diagnostics::Level::Error, "settings.persist", error);
+            tray_.showMessage("EditHere", tr("设置未能保存：") + error);
+        }
+    });
     if (!shortcut_.start(settings_.shortcuts.value("capture"))) {
         diagnostics::write(diagnostics::Level::Warning, "shortcuts.register", shortcut_.lastError());
         tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));

@@ -1,6 +1,7 @@
 #include "feedback_test_helpers.h"
 #include "editor.h"
 #include "imagearea.h"
+#include "ocr.h"
 #include "videoplayback.h"
 #include "ui.h"
 #include <QApplication>
@@ -11,8 +12,8 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
-#include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QImage>
@@ -20,6 +21,7 @@
 #include <QMediaPlayer>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
@@ -289,6 +291,120 @@ class VideoUiTests : public QObject {
         editor.setDocument(fromImage(image, "file", "ordinary image"));
         QVERIFY(!editor.hasVideo());
         QVERIFY(!QJsonDocument::fromJson(editor.agentFeedback(true)).object().contains("frames"));
+    }
+    void blankVideoDraftSurvivesOcrAndCanBeCommittedOrCancelled_data() {
+        QTest::addColumn<bool>("newFrame");
+        QTest::newRow("first-note-on-new-frame") << true;
+        QTest::newRow("additional-note-on-saved-frame") << false;
+    }
+    void blankVideoDraftSurvivesOcrAndCanBeCommittedOrCancelled() {
+#ifndef Q_OS_WIN
+        QSKIP("This integration fixture exercises the Windows system recognizer.");
+#endif
+        const bool recognizerAvailable = OcrEngine::supported() && OcrEngine::availableLanguages().contains("en-US", Qt::CaseInsensitive);
+        if (qEnvironmentVariableIsSet("EDITHERE_REQUIRE_VIDEO_OCR_TESTS"))
+            QVERIFY2(recognizerAvailable, "Release verification requires the English system OCR recognizer.");
+        if (!recognizerAvailable)
+            QSKIP("English system recognizer is unavailable.");
+        QFETCH(bool, newFrame);
+        QVERIFY(QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR") + "/Fonts/segoeui.ttf") >= 0);
+        QImage image(600, 180, QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black); painter.setFont(QFont("Segoe UI", 36));
+        painter.drawText(image.rect(), Qt::AlignCenter, "EDITHERE"); painter.end();
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        auto saved = fromImage(image, "video", "Saved video frame");
+        Note original; original.isGlobal = true; original.comment = "Keep the saved annotation";
+        saved.notes = {original};
+        VideoProject project; project.source = directory.filePath("missing.mp4"); project.durationMs = 10000;
+        project.frames = {{1000000, saved}};
+        Editor editor; auto settings = defaultSettings(); settings.confirmBeforeDiscard = false;
+        settings.ocrLanguage = OcrLanguageMode::English; editor.setPreferences(settings); editor.setVideoProject(project);
+        if (newFrame) editor.findChild<VideoPlayback *>()->frameCaptured(image, 2000000);
+        QTest::qWait(80);
+        auto choices = editor.findChild<QComboBox *>("videoAnnotatedFrames"); QVERIFY(choices);
+        QCOMPARE(choices->count(), 2); // Header plus the original saved frame.
+        Note draft; draft.isPoint = false; draft.rect = image.rect();
+        editor.canvas()->editRequested(draft, true, {});
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + draft.id); QVERIFY(input);
+        input->setFocus();
+        // Do not type or export here: OCR must complete while the new comment is
+        // still empty. Previously its completion threw through the Qt event loop.
+        QTRY_VERIFY_WITH_TIMEOUT(editor.document().notes.last().recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive), 45000);
+        QCOMPARE(editor.document().notes.last().id, draft.id);
+        QVERIFY(editor.document().notes.last().comment.isEmpty());
+        QCOMPARE(choices->count(), 2); // An unfinished note must not add a saved frame.
+        input->setPlainText("Change the title after OCR has completed");
+        QTest::keyClick(input, Qt::Key_Return, Qt::ControlModifier);
+        QTRY_VERIFY(!input->hasFocus());
+        const auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(feedback["frames"].toArray().size(), newFrame ? 2 : 1);
+        QCOMPARE(feedback["objects"].toArray().size(), 2);
+        const auto committed = editor.videoProject();
+        QCOMPARE(committed.frames.first().document.notes.first(), original);
+        const auto committedNote = editor.document().notes.last();
+        QCOMPARE(committedNote.id, draft.id);
+        QVERIFY(committedNote.recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive));
+
+        Note cancelled; cancelled.isPoint = false; cancelled.rect = image.rect();
+        editor.canvas()->editRequested(cancelled, true, {});
+        auto cancelledInput = editor.findChild<QPlainTextEdit *>("noteText_" + cancelled.id); QVERIFY(cancelledInput);
+        cancelledInput->setFocus();
+        QTRY_VERIFY_WITH_TIMEOUT(editor.document().notes.last().recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive), 45000);
+        QVERIFY(editor.document().notes.last().comment.isEmpty());
+        QTest::keyClick(cancelledInput, Qt::Key_Escape);
+        const auto afterCancel = editor.videoProject();
+        QCOMPARE(afterCancel.frames.size(), committed.frames.size());
+        for (qsizetype i = 0; i < committed.frames.size(); ++i) {
+            QCOMPARE(afterCancel.frames[i].timestampUs, committed.frames[i].timestampUs);
+            QCOMPARE(afterCancel.frames[i].document.notes, committed.frames[i].document.notes);
+        }
+        QCOMPARE(QJsonDocument::fromJson(editor.agentFeedback(true)).object()["objects"], feedback["objects"]);
+        editor.hide();
+    }
+    void clearingAnExistingVideoCommentDuringOcrPreservesItsCommittedText() {
+#ifndef Q_OS_WIN
+        QSKIP("This integration fixture exercises the Windows system recognizer.");
+#endif
+        const bool recognizerAvailable = OcrEngine::supported() && OcrEngine::availableLanguages().contains("en-US", Qt::CaseInsensitive);
+        if (qEnvironmentVariableIsSet("EDITHERE_REQUIRE_VIDEO_OCR_TESTS"))
+            QVERIFY2(recognizerAvailable, "Release verification requires the English system OCR recognizer.");
+        if (!recognizerAvailable)
+            QSKIP("English system recognizer is unavailable.");
+        QVERIFY(QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR") + "/Fonts/segoeui.ttf") >= 0);
+        QImage image(600, 180, QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black); painter.setFont(QFont("Segoe UI", 36));
+        painter.drawText(image.rect(), Qt::AlignCenter, "EDITHERE"); painter.end();
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        auto document = fromImage(image, "video", "Video comment edit");
+        VideoProject project; project.source = directory.filePath("missing.mp4"); project.durationMs = 10000;
+        project.frames = {{1000000, document}};
+        Editor editor; auto settings = defaultSettings(); settings.confirmBeforeDiscard = false;
+        settings.ocrLanguage = OcrLanguageMode::English; editor.setPreferences(settings); editor.setVideoProject(project);
+        QTest::qWait(80);
+        Note note; note.isPoint = false; note.rect = image.rect(); note.comment = "Original committed comment";
+        editor.canvas()->editRequested(note, true, {});
+        editor.agentFeedback(true); // Commit before the debounced OCR request starts.
+        auto input = editor.findChild<QPlainTextEdit *>("noteText_" + note.id); QVERIFY(input);
+        input->setFocus(); input->setPlainText(" \t ");
+        QTRY_VERIFY_WITH_TIMEOUT(editor.document().notes.first().recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive), 45000);
+        QVERIFY(editor.document().notes.first().comment.trimmed().isEmpty());
+        QCOMPARE(editor.findChild<QComboBox *>("videoAnnotatedFrames")->count(), 2);
+        QTest::keyClick(input, Qt::Key_Escape);
+        QCOMPARE(editor.document().notes.first().comment, note.comment);
+        QVERIFY(editor.document().notes.first().recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive));
+        auto restored = editor.videoProject();
+        QCOMPARE(restored.frames.size(), 1);
+        QCOMPARE(restored.frames.first().document.notes.first().comment, note.comment);
+        const auto metadata = restored.frames.first().document.notes.first().recognizedText;
+        input = editor.findChild<QPlainTextEdit *>("noteText_" + note.id); QVERIFY(input);
+        input->setFocus(); input->clear(); input->setPlainText("Replacement committed comment");
+        QTest::keyClick(input, Qt::Key_Return, Qt::ControlModifier);
+        QTRY_VERIFY(!input->hasFocus());
+        const auto updated = editor.videoProject();
+        QCOMPARE(updated.frames.first().document.notes.first().comment, QString("Replacement committed comment"));
+        QCOMPARE(updated.frames.first().document.notes.first().recognizedText, metadata);
+        QVERIFY(!editor.agentFeedback(true).isEmpty());
+        editor.hide();
     }
     void timelineTagsPointAtTrackAndEnlarge_data() {
         QTest::addColumn<bool>("dark");
@@ -753,10 +869,17 @@ class VideoUiTests : public QObject {
                 copyFile->click();
                 QTest::qWait(150);
                 const auto mime = QApplication::clipboard()->mimeData();
-                if (!mime || !mime->hasUrls() || mime->urls().size() != 1 ||
+                if (!mime || !mime->hasUrls() || mime->urls().size() != savedFeedback["frames"].toArray().size() + 1 ||
                     !mime->urls().first().isLocalFile()) continue;
                 const QString candidate = QDir::cleanPath(QFileInfo(mime->urls().first().toLocalFile()).absoluteFilePath());
-                if (candidate.startsWith(feedbackPrefix, Qt::CaseInsensitive)) copiedPath = candidate;
+                if (!candidate.startsWith(feedbackPrefix, Qt::CaseInsensitive) || QFileInfo(candidate).fileName() != "feedback.json") continue;
+                const auto directory = QFileInfo(candidate).absolutePath();
+                bool complete = true;
+                for (const auto &url : mime->urls()) {
+                    const QFileInfo file(url.toLocalFile());
+                    if (!url.isLocalFile() || !file.isFile() || file.absolutePath() != directory) complete = false;
+                }
+                if (complete) copiedPath = candidate;
             }
             QVERIFY2(!copiedPath.isEmpty(), "Toolbar JSON copy did not provide this test's file URL within five attempts");
             QFile copiedFile(copiedPath);
@@ -765,6 +888,14 @@ class VideoUiTests : public QObject {
             QCOMPARE(fileFeedback["schemaVersion"].toString(), QString("video-feedback-1"));
             QCOMPARE(fileFeedback["frames"].toArray().size(), 1);
             QCOMPARE(fileFeedback["objects"], savedFeedback["objects"]);
+            const auto imported = loadVideoProject(copiedPath);
+            const auto stored = editor.videoProject();
+            QCOMPARE(imported.frames.size(), stored.frames.size());
+            QCOMPARE(imported.frames.first().timestampUs, stored.frames.first().timestampUs);
+            QCOMPARE(imported.frames.first().document.image, stored.frames.first().document.image);
+            QCOMPARE(imported.frames.first().document.notes.size(), stored.frames.first().document.notes.size());
+            for (qsizetype i = 0; i < imported.frames.first().document.notes.size(); ++i)
+                QCOMPARE(imported.frames.first().document.notes[i].comment, stored.frames.first().document.notes[i].comment);
             QCOMPARE(captured.size(), 1);
             QVERIFY(video->isVisible());
             QVERIFY(!editor.hasDocument());
@@ -773,10 +904,9 @@ class VideoUiTests : public QObject {
     void playbackSeekAnnotateAndReopen() {
         if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
         try {
-        QTemporaryDir bundle; QVERIFY(bundle.isValid());
+        QTemporaryDir feedbackFiles; QVERIFY(feedbackFiles.isValid());
         Editor editor;
-        auto settings = defaultSettings(); settings.confirmBeforeDiscard = false;
-        settings.feedbackDir = bundle.path(); editor.setPreferences(settings);
+        auto settings = defaultSettings(); settings.confirmBeforeDiscard = false; settings.feedbackDir = feedbackFiles.path(); editor.setPreferences(settings);
         auto playback = editor.findChild<VideoPlayback *>(); QVERIFY(playback);
         QSignalSpy paused(playback, &VideoPlayback::framePaused);
         QSignalSpy captured(playback, &VideoPlayback::frameCaptured);
@@ -861,6 +991,8 @@ class VideoUiTests : public QObject {
         }
         QByteArray copied;
         QString bundleJsonPath;
+        bool bundleSaved = false;
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
         QTimer::singleShot(50, &editor, [&] {
             auto dialog = editor.findChild<QDialog *>("feedbackDialog");
             QVERIFY(dialog);
@@ -871,24 +1003,54 @@ class VideoUiTests : public QObject {
             embedded->setChecked(false);
             copyText->click();
             copied = QApplication::clipboard()->text().toUtf8();
-            copyFile->click();
-            const auto mime = QApplication::clipboard()->mimeData();
-            QVERIFY(mime && mime->hasUrls() && !mime->urls().isEmpty());
-            QVERIFY(mime->urls().first().isLocalFile());
-            bundleJsonPath = mime->urls().first().toLocalFile();
+            QList<QUrl> urls;
+            // Windows OLE ownership can briefly be held by another process.
+            // Retry the real action, accepting only this test's own bundle.
+            for (int attempt = 0; attempt < 5 && urls.isEmpty(); ++attempt) {
+                copyFile->click();
+                QTest::qWait(150);
+                const auto mime = QApplication::clipboard()->mimeData();
+                if (!mime || !mime->hasUrls() || mime->urls().isEmpty()) continue;
+                const auto candidate = mime->urls().first();
+                if (candidate.isLocalFile() && QDir::cleanPath(candidate.toLocalFile()).startsWith(
+                        QDir::cleanPath(feedbackFiles.path()) + '/', Qt::CaseInsensitive))
+                    urls = mime->urls();
+            }
+            QVERIFY(!urls.isEmpty());
+            QCOMPARE(urls.size(), 3); // JSON plus both original frame images.
+            QVERIFY(urls.first().isLocalFile());
+            bundleJsonPath = QDir::cleanPath(QFileInfo(urls.first().toLocalFile()).absoluteFilePath());
+            QVERIFY(bundleJsonPath.startsWith(QDir::cleanPath(feedbackFiles.path()) + '/', Qt::CaseInsensitive));
+            QCOMPARE(QFileInfo(bundleJsonPath).fileName(), QString("feedback.json"));
+            const auto directory = QFileInfo(bundleJsonPath).absolutePath();
+            for (const auto &url : urls) {
+                QVERIFY(url.isLocalFile());
+                const QFileInfo file(url.toLocalFile());
+                QVERIFY(file.isFile());
+                QCOMPARE(file.absolutePath(), directory);
+            }
+            bundleSaved = true;
             dialog->accept();
         });
-        QTimer::singleShot(5000, &editor, [&] {
+        QTimer::singleShot(5000, &editor, [&editor] {
             if (auto dialog = editor.findChild<QDialog *>("feedbackDialog")) dialog->reject();
         });
         editor.exportJson();
-        QVERIFY(!copied.isEmpty()); QVERIFY(!bundleJsonPath.isEmpty());
-        QVERIFY(QDir::cleanPath(bundleJsonPath).startsWith(QDir::cleanPath(bundle.path()) + '/'));
+        QVERIFY(!copied.isEmpty()); QVERIFY(bundleSaved);
         const auto exported = QJsonDocument::fromJson(copied).object();
         QCOMPARE(exported["frames"].toArray().size(), 2);
         QCOMPARE(exported["objects"], json["objects"]);
         const auto imported = loadVideoProject(bundleJsonPath);
         QCOMPARE(imported.frames.size(), 2);
+        const auto stored = editor.videoProject();
+        QCOMPARE(imported.frames.size(), stored.frames.size());
+        for (qsizetype i = 0; i < imported.frames.size(); ++i) {
+            QCOMPARE(imported.frames[i].timestampUs, stored.frames[i].timestampUs);
+            QCOMPARE(imported.frames[i].document.image, stored.frames[i].document.image);
+            QCOMPARE(imported.frames[i].document.notes.size(), stored.frames[i].document.notes.size());
+            for (qsizetype j = 0; j < imported.frames[i].document.notes.size(); ++j)
+                QCOMPARE(imported.frames[i].document.notes[j].comment, stored.frames[i].document.notes[j].comment);
+        }
         const auto artifactFolder = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
         if (!artifactFolder.isEmpty()) {
             QVERIFY(QDir().mkpath(artifactFolder));

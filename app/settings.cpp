@@ -238,6 +238,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.includeFeedbackPreview = boolean("defaults/includeFeedbackPreview", false);
     result.copyJsonTextWithImage = boolean("defaults/copyJsonTextWithImage", false);
     result.includeRecognizedText = boolean("defaults/includeRecognizedText", true);
+    result.regionOcrEnabled = boolean("defaults/regionOcrEnabled", true);
     result.includeWindowTitle = boolean("defaults/includeWindowTitle", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
@@ -333,6 +334,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/includeFeedbackPreview", settings.includeFeedbackPreview);
     target.setValue("defaults/copyJsonTextWithImage", settings.copyJsonTextWithImage);
     target.setValue("defaults/includeRecognizedText", settings.includeRecognizedText);
+    target.setValue("defaults/regionOcrEnabled", settings.regionOcrEnabled);
     target.setValue("defaults/includeWindowTitle", settings.includeWindowTitle);
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);

@@ -36,6 +36,10 @@ QIcon glyph(const QString &name, QColor color = QColor());
 QStringList glyphNames();
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent = nullptr);
 QPushButton *textButton(const QString &text, bool primary = false, QWidget *parent = nullptr);
+// Applies declarations to `widget` alone. A rule written without a selector also
+// reaches the widget's tooltip, which Qt creates as its child, so a width there
+// clips the tooltip text; this keeps the rules on the control itself.
+void styleControl(QWidget *widget, const QString &declarations);
 QLabel *mutedLabel(const QString &text, QWidget *parent = nullptr);
 class DragBar : public QWidget {
   public:

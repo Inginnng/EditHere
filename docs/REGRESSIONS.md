@@ -15,6 +15,21 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 视频批注闪退（0.12.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-197 | 视频批注尚未输入文字或已有意见被临时清空时，OCR 成功回调触发内部帧保存；内部保存误用正式反馈导出，空草稿校验抛出未捕获异常而退出。内部帧快照排除未完成的新草稿，临时清空的已有批注保留已提交文字及最新 OCR；正式导出校验不变。旧版真实视频用例缺素材即跳过，且仍引用过时的单文件附件和已移除导出按钮 | `video-ui::blankVideoDraftSurvivesOcrAndCanBeCommittedOrCancelled`（新帧/已有帧）、`clearingAnExistingVideoCommentDuringOcrPreservesItsCommittedText`：真实 Windows OCR 完成前保持空白，验证提交/取消；发布检查纳入 video-ui/video-project/ocr，并设置 `EDITHERE_REQUIRE_VIDEO_OCR_TESTS`，缺识别器时失败；真实视频导出测试同步当前附件和按钮契约 | 🆕 |
+
+## 批注页操作（0.12.2）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-193 | 「复制 JSON 内容」的选项按钮单独占用底栏和导出弹窗位置，挤占主操作空间。将选项嵌入复制按钮，文字区继续直接复制，选项区独立打开原图菜单 | `ui::separateJsonClipboardFormatsAndHelp`：嵌套位置、真实鼠标命中、菜单与复制行为；`ui::compactToolbarKeepsJsonTextOptionsInMoreMenu`：窄窗溢出与恢复宽窗 | 🆕 |
+| REG-194 | 批注区域自动 OCR 缺少就地开关，关闭时仍可能收到旧识别回调。新增持久化开关，关闭时取消待处理识别并抑制旧结果，保留已有文字，重新开启后识别缺少结果的区域 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`、`regionOcrToggleCancelsInFlightAndResumes`、`regionOcrPreferenceSurvivesControllerRestart`；`settings::regionOcrPreferencePersistsIndependentlyOfExport` | 🆕 |
+| REG-195 | 控件的样式规则也作用到它自己的提示：Qt 把提示做成该控件的子标签，OCR 开关上的 `max-width` 把悬停提示裁成一个字。样式改由 `styleControl()` 只作用于控件本身，提示沿用全局样式 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`：提示标签的 `maximumWidth` 未被限制（旧写法下为 42 px） | 🆕 |
+| REG-196 | 产品版本写在 `CMakeLists.txt` 里，而它同时是 MCP 打包清单的输入。改版本后忘了重新生成 `web/mcp` 产物时，`build-web` 要等原生包全部构建完才报 `Stale MCP build file`，只能移动标签重跑一次发布 | `packaging`：`mcp_build` 按 `web/mcp/build-info.json` 逐条重算源文件与产物摘要，版本号一变即失败并提示 `node web/mcp/build.mjs` | 🆕 |
+
 ## 反馈格式升级（0.12.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -390,7 +405,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158/196 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |

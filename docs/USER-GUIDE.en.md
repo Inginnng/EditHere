@@ -4,7 +4,7 @@
 
 [Back to the product overview](../README.en.md) · [AI and the command line](AGENT-CLI.en.md) · [Changelog](../CHANGELOG.md) · [Development notes](DEVELOPMENT.en.md)
 
-This page covers **0.12.1** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
+This page covers **0.12.3** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
 
 ## Contents
 
@@ -137,11 +137,11 @@ Mac editing shortcuts use Command and redo is Command + Shift + Z; global captur
 
 ### Text from annotation regions
 
-After a box, smart-region or component-move annotation is added, the desktop app automatically reads text from that region locally. Imported screenshots work too; no AI service is required. Ordinary notes read the current adjusted image, move annotations read their original source region, and point annotations read a nearby region. Global notes are not recognized. Windows uses system OCR, macOS uses Vision, and Linux uses an installed Tesseract. Missing engines, language packs or readable text do not prevent annotation or export.
+After a box, smart-region or component-move annotation is added, the desktop app automatically reads text from that region locally. Imported screenshots work too; no AI service is required. The **OCR** button on the screenshot annotation page turns automatic recognition on or off; it is on by default and remembers your choice. Turning it off stops automatic recognition and retains existing text. Turning it back on resumes recognition for regions without a result. Ordinary notes read the current adjusted image, move annotations read their original source region, and point annotations read a nearby region. Global notes are not recognized. Windows uses system OCR, macOS uses Vision, and Linux uses an installed Tesseract. Missing engines, language packs or readable text do not prevent annotation or export.
 
 The annotation sidebar shows the result, which you can edit or delete, up to 500 characters. Manual edits are marked as edited and clear any previous confidence score; a score is omitted when the engine does not provide one. This screenshot text helps the AI identify the selected content; the change request is still the annotation you wrote.
 
-**“Include region text in exports”** is enabled by default in Settings. Turning it off excludes recognition results from JSON preview, copying, saving and Agent/CLI feedback. The `.edithere` project retains them for further editing. The Web app can import, retain, edit and delete existing results and exclude them from export; it does not automatically recognize text in this stage.
+**“Include region text in exports”** is enabled by default in Settings and is separate from the annotation page's OCR button. Turning it off excludes recognition results from JSON preview, copying, saving and Agent/CLI feedback. The `.edithere` project retains them for further editing. The Web app can import, retain, edit and delete existing results and exclude them from export; it does not automatically recognize text in this stage.
 
 ## Video annotation
 
@@ -196,7 +196,7 @@ The **View JSON** window provides these options and actions:
 - **Embed original image in JSON**: off by default, producing JSON with a companion PNG. Enable it to put the original in `image.dataUrl` for a single-file handoff. The source-image mode dropdown has been removed.
 - **Compress embedded original**: available only when embedding; dimensions stay unchanged, with possible small detail loss. Companion originals remain PNG.
 - **Copy JSON and image**: writes the JSON and companion original into an independent temporary folder and copies the files together. Embedded mode copies a JSON containing the original. Configure the folder in **Settings → Default behavior → Feedback temporary folder**.
-- **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Its adjacent vertical **…** menu remembers a separate include-image choice. Including the image uses embedded encoding and does not change file handoff.
+- **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Click the button text to copy; the vertical **⋯** menu inside the button remembers a separate include-image choice and takes no separate toolbar slot. Including the image uses embedded encoding and does not change file handoff.
 
 The viewer no longer offers a numbered-preview checkbox or an extra **Save JSON and image** action. Use the existing image-saving action for annotated images; programmatic CLI/API `--preview` / `preview` output remains available.
 
@@ -407,7 +407,7 @@ The keys on the capture toolbar (Enter, C, T, P, L, `Ctrl + C`, `Ctrl + S`, `Ctr
 | Start EditHere at login | After you sign in it only stays in the tray and does not capture automatically; keep the folder the app is in, and after moving it save once to refresh the path |
 | Fit to window when opening an image | When off, images open at 100%; you can still zoom or fit to window at any time |
 | Embed original image in JSON | File handoff defaults to JSON plus companion original; enable to embed; projects always include the original |
-| Original image in copied JSON text | The vertical … menu remembers this separate choice; off by default, without changing file handoff |
+| Original image in copied JSON text | The vertical ⋯ menu inside the button remembers this separate choice; off by default, without changing file handoff |
 | Ask about saving when the annotation window closes | When off, closing no longer prompts and discards unsaved annotations directly; ticking “Do not ask again” in the annotation window also turns this off |
 | Feedback temporary folder | Where temporary feedback JSON files are stored; leave empty to use `feedback` under the default cache directory |
 
