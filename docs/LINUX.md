@@ -32,7 +32,7 @@ ARM64 工作流在 Ubuntu 24.04 ARM64 宿主上的 Debian 11 ARM64 容器内，�
 
 ARM64 包额外携带 GLVND 的 `libOpenGL.so.0`、`libGLdispatch.so.0` 和 `libEGL.so.1`，补齐麒麟默认缺少的 OpenGL 库及旧 Mali EGL 缺少的 EGL 1.5 入口；不打包 GPU 驱动。无需以 sudo 安装 `libopengl0` 或手动修改 `LD_LIBRARY_PATH`。驱动能否创建实际图形上下文仍需在目标设备验证。
 
-桌面能力按实际提供的接口判断，不能只看 xdg-desktop-portal 的包版本：普通截图需要 `org.freedesktop.portal.Screenshot`；屏幕流和手动长截图需要 `org.freedesktop.portal.ScreenCast` 及工作的 PipeWire 服务；全局快捷键需要 `org.freedesktop.portal.GlobalShortcuts`。只有 Screenshot 时，系统截图完成后直接进入批注编辑器；缺少 GlobalShortcuts 时提示限制并保存其他设置，所选按键不会冒充已注册。可以从托盘操作，或在系统快捷键设置中绑定程序完整路径加 `--capture` / `--annotate`。
+桌面能力按实际提供的接口判断，不能只看 xdg-desktop-portal 的包版本：普通截图需要 `org.freedesktop.portal.Screenshot`；屏幕流和手动长截图需要 `org.freedesktop.portal.ScreenCast` 及工作的 PipeWire 服务；全局快捷键需要 `org.freedesktop.portal.GlobalShortcuts`。只有 Screenshot 时，系统截图完成后直接进入批注编辑器；缺少 GlobalShortcuts 时提示限制并保存其他设置，所选按键不会冒充已注册。可以从托盘操作，或在系统快捷键设置中绑定程序完整路径加 `--capture`。
 
 UKUI Wayland 下即使 Qt 使用 `xcb`，也继续使用 Portal 获取桌面截图；Xwayland 的根窗口无法保证包含所有原生 Wayland 窗口。真正的 X11 会话仍使用原来的 X11 路径。[issue #30](https://github.com/Inginnng/EditHere/issues/30) 已反馈在麒麟 V10 SP1 / ARM64 / glibc 2.31 上经过临时库修正后，图片批注和大爆炸可用；自动打包的库修正、截图衔接及视频仍待新版实机复测。
 

@@ -186,7 +186,7 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
     if (startupReadError.isEmpty())
         draft.launchAtLogin = registered;
     SettingsDialog dialog(draft, &editor_);
-    const auto unavailableNotice = tr("当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture / --annotate。");
+    const auto unavailableNotice = tr("当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。");
     if (shortcut_.unavailable() || annotateShortcut_.unavailable())
         dialog.setGlobalShortcutNotice(unavailableNotice);
     dialog.setUpdatePreparationHandler([this] {
