@@ -691,7 +691,7 @@ class ScrollControllerTests final : public QObject {
         QVERIFY(owner_->editor_.isVisible());
         QCOMPARE(owner_->editor_.document().image, frame.image.convertToFormat(QImage::Format_ARGB32));
         QCOMPARE(owner_->editor_.document().createdAt, frame.capturedAt);
-        QVERIFY(owner_->editor_.document().screenBounds.isEmpty());
+        QVERIFY(!owner_->editor_.document().screenBounds.has_value());
         QCOMPARE(owner_->handleAgentRequest({{"command", "status"}}).value("capturing").toBool(), false);
         owner_->openAnnotation();
         QVERIFY(!owner_->editor_.hasDocument());
