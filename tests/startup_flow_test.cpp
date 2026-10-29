@@ -514,6 +514,40 @@ class StartupFlowTests : public QObject {
         QVERIFY(hasSeenGuide(stateFile));
         editor->hide();
     }
+#ifdef Q_OS_LINUX
+    void missingWaylandShortcutPortalDoesNotBlockOtherSettings() {
+        const auto previous = qgetenv("XDG_SESSION_TYPE");
+        qputenv("XDG_SESSION_TYPE", "wayland");
+        QTemporaryDir directory;
+        const auto stateFile = directory.filePath("settings.ini");
+        auto settings = quietSettings();
+        settings.language = LanguageMode::SimplifiedChinese; // This test binary has no embedded QM resource.
+        settings.shortcuts["capture"] = QKeySequence("Ctrl+Shift+F8");
+        settings.shortcuts["annotate"] = QKeySequence("Ctrl+Shift+F9");
+        Controller controller(nullptr, settings, stateFile);
+        auto capture = controller.findChild<GlobalShortcut *>("captureShortcut");
+        QVERIFY(capture && capture->unavailable());
+        bool saved = false;
+        QTimer::singleShot(0, &controller, [&] {
+            auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto notice = dialog->findChild<QLabel *>("globalShortcutNotice");
+            QVERIFY(notice && !notice->isHidden() && !notice->text().isEmpty());
+            dialog->findChild<QCheckBox *>("captureOnStartup")->setChecked(true);
+            QTimer::singleShot(3000, dialog, &QDialog::reject);
+            dialog->findChild<QPushButton *>("settingsSave")->click();
+            saved = dialog->result() == QDialog::Accepted;
+        });
+        controller.openSettings();
+        QVERIFY(saved);
+        const auto stored = loadSettings(stateFile);
+        QVERIFY(stored.captureOnStartup);
+        QCOMPARE(stored.shortcuts, settings.shortcuts);
+        QVERIFY(capture->sequence().isEmpty());
+        QVERIFY(capture->unavailable());
+        qputenv("XDG_SESSION_TYPE", previous);
+    }
+#endif
     void annotationShortcutOpensEmptyWindow() {
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));

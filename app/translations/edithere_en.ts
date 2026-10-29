@@ -2227,6 +2227,10 @@
 <context>
     <name>h2d::Controller</name>
     <message>
+        <source>当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。</source>
+        <translation>This desktop does not support global shortcuts. Settings can still be saved; use the tray menu, or bind EditHere --capture in the system shortcut settings.</translation>
+    </message>
+    <message>
         <location filename="../controller.cpp" line="67"/>
         <source>已启用系统元素识别</source>
         <translation>System element recognition is on</translation>

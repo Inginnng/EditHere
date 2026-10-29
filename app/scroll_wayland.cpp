@@ -285,6 +285,7 @@ void screenshotFallback(CaptureCallback callback) {
             image.setDevicePixelRatio(1);
             ScreenFrame frame;
             frame.name = "portal"; frame.image = image;
+            frame.selectionComplete = true;
             frame.capturedAt = timestamp();
             frame.elementProbingAllowed = false;
             const auto size = image.size().scaled(screen->availableGeometry().size(), Qt::KeepAspectRatio);

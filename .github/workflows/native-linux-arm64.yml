@@ -1,0 +1,159 @@
+name: Native Linux ARM64 preview
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["app/**", "assets/ui-icons/**", "tests/**", "scripts/**", "packaging/**", "CMakeLists.txt", ".github/workflows/native-linux-arm64.yml"]
+permissions:
+  contents: read
+jobs:
+  linux-arm64:
+    # Compile natively, but keep the full dependency stack on glibc 2.31.
+    # Qt's prebuilt ARM64 SDK/Ubuntu 24.04 libraries require newer glibc.
+    runs-on: ubuntu-24.04-arm
+    container: debian:bullseye
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      EDITHERE_GLIBC_MAX: "2.31"
+      BUILD_JOBS: "4"
+    steps:
+      - name: Install build and desktop dependencies
+        run: |
+          # Bullseye security packages moved out of the live mirror after LTS
+          # ended in 2026. Its stale live index can resolve packages to 404s.
+          # Keep Debian's signed archive; do not disable signature verification.
+          rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
+          printf '%s\n' \
+            'deb [check-valid-until=no] http://archive.debian.org/debian bullseye main' \
+            'deb [check-valid-until=no] http://archive.debian.org/debian-security bullseye-security main' \
+            > /etc/apt/sources.list
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config python3 python3-venv xz-utils zstd file binutils patchelf gdb \
+            libx11-dev libx11-xcb-dev libxrandr-dev libxtst-dev libatspi2.0-dev libdbus-1-dev libglib2.0-dev libssl-dev libicu-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libpng-dev libjpeg-dev libtiff-dev libwebp-dev zlib1g-dev libbz2-dev libva-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render-util0-dev \
+            libxcb-xinerama0-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-sync-dev libxcb-xkb-dev \
+            libwayland-dev wayland-protocols libpulse-dev ffmpeg tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra \
+            fonts-noto-cjk xvfb xauth dbus-x11 desktop-file-utils
+          test "$(uname -m)" = aarch64
+          test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'
+      - uses: actions/checkout@v4
+      - name: Install CMake and Ninja
+        run: |
+          python3 -m venv .tools/python
+          .tools/python/bin/pip install cmake==3.30.5 ninja==1.11.1.3 meson==1.3.2
+          echo "$PWD/.tools/python/bin" >> "$GITHUB_PATH"
+          echo "QT_ROOT=$PWD/.tools/qt/6.8.3" >> "$GITHUB_ENV"
+          pipewire_prefix="$PWD/.tools/pipewire/1.0.4"
+          triplet="$(gcc -dumpmachine)"
+          echo "EDITHERE_PIPEWIRE_RUNTIME_ROOT=$pipewire_prefix" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$pipewire_prefix/lib/$triplet/pkgconfig:$PWD/.tools/qt/6.8.3/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$pipewire_prefix/lib/$triplet:$PWD/.tools/qt/6.8.3/lib" >> "$GITHUB_ENV"
+      - name: Restore source-built PipeWire client
+        id: pipewire-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .tools/pipewire/1.0.4
+          key: pipewire-1.0.4-debian11-aarch64-${{ hashFiles('scripts/build-pipewire-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
+          # The recipe's completion marker validates a restored SDK before use.
+          restore-keys: pipewire-1.0.4-debian11-aarch64-
+      - name: Build PipeWire client against glibc 2.31
+        run: |
+          mkdir -p artifacts/linux-arm64
+          bash scripts/build-pipewire-linux.sh 2>&1 | tee artifacts/linux-arm64/pipewire-build.log
+          pkg-config --atleast-version=1.0.4 libpipewire-0.3
+      - name: Save completed PipeWire client SDK
+        if: steps.pipewire-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .tools/pipewire/1.0.4
+          key: ${{ steps.pipewire-cache.outputs.cache-primary-key }}
+      - name: Restore source-built Qt
+        id: qt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .tools/qt/6.8.3
+            .tools/qt-source/6.8.3
+            .tools/qt-build/6.8.3
+            .tools/qt-downloads
+          key: qt-6.8.3-debian11-aarch64-${{ hashFiles('scripts/build-qt-linux.sh', '.github/workflows/native-linux-arm64.yml') }}
+          restore-keys: qt-6.8.3-debian11-aarch64-
+      - name: Build Qt against glibc 2.31
+        run: |
+          mkdir -p artifacts/linux-arm64
+          bash scripts/build-qt-linux.sh 2>&1 | tee artifacts/linux-arm64/qt-build.log
+      - name: Save Qt SDK and incremental build
+        if: always() && steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          # A failed module can resume its Ninja build on the next attempt.
+          # Only the source recipe may write the completed SDK marker.
+          path: |
+            .tools/qt/6.8.3
+            .tools/qt-source/6.8.3
+            .tools/qt-build/6.8.3
+            .tools/qt-downloads
+          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
+      - name: Build and test existing Linux application
+        run: |
+          export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
+          dbus-run-session -- bash scripts/build-linux.sh
+          # Preserve the same ScreenCast/PipeWire path as the x86_64 package.
+          grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' build-linux/CMakeCache.txt
+          dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          QT_SCALE_FACTOR=2 dbus-run-session -- xvfb-run -a build-linux/linux_platform_tests -platform xcb
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1280x1024x24 -extension XTEST' build-linux/linux_platform_tests x11CaptureReturnsPixels x11ManualCaptureDoesNotRequireInputInjection -platform xcb
+          desktop-file-validate packaging/linux/com.edithere.capture.desktop
+      - name: Package and smoke-test ARM64 AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch-linuxdeploy.py
+          export LINUXDEPLOY="$PWD/.tools/linuxdeploy/linuxdeploy-aarch64.AppImage"
+          export LINUXDEPLOY_PLUGIN_QT="$PWD/.tools/linuxdeploy/linuxdeploy-plugin-qt-aarch64.AppImage"
+          bash scripts/package-linux.sh
+          dbus-run-session -- xvfb-run -a python3 scripts/check-linux-package.py dist/linux-*/EditHere-linux-aarch64.AppImage
+      - name: Exercise packaged video decoding and annotation
+        run: |
+          # Reuse the existing real-decoding test instead of silently skipping
+          # it when EDITHERE_VIDEO_TEST_SOURCE is absent. The fixture stays in CI.
+          ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=1920x1080:rate=10:duration=112' \
+            -c:v libx264 -preset ultrafast -crf 35 -pix_fmt yuv420p -an artifacts/linux-arm64/video-fixture.mp4
+          appdir="$(realpath dist/linux-*/AppDir)"
+          test -f "$appdir/usr/plugins/multimedia/libffmpegmediaplugin.so"
+          export LD_LIBRARY_PATH="$appdir/usr/lib"
+          export QT_PLUGIN_PATH="$appdir/usr/plugins"
+          export QT_MEDIA_BACKEND=ffmpeg QT_DEBUG_PLUGINS=1
+          export EDITHERE_VIDEO_TEST_SOURCE="$PWD/artifacts/linux-arm64/video-fixture.mp4"
+          dbus-run-session -- xvfb-run -a gdb --batch --return-child-result \
+            -ex run -ex 'thread apply all bt' --args \
+            build-linux/video_ui_tests playbackSeekAnnotateAndReopen -platform xcb -nocrashhandler \
+            2>&1 | tee artifacts/linux-arm64/packaged-video-tests.log
+          # Prove the tested backend came from the package, with no SDK fallback.
+          grep -E 'AppDir/usr/plugins/multimedia/libffmpegmediaplugin\.so.*loaded library|loaded library.*AppDir/usr/plugins/multimedia/libffmpegmediaplugin\.so' \
+            artifacts/linux-arm64/packaged-video-tests.log
+      - name: Upload experimental package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64-preview-glibc231
+          path: |
+            dist/linux-*/EditHere-linux-aarch64.AppImage
+            dist/linux-*/EditHere-linux-aarch64.AppImage.sha256
+            dist/linux-*/edithere-cli
+          if-no-files-found: error
+      - name: Upload build results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-aarch64-preview-build-results
+          path: |
+            build-linux/test-results.xml
+            build-linux/Testing/Temporary/LastTest.log
+            .tools/qt-build/6.8.3/*/config.summary
+            .tools/qt-build/6.8.3/*/CMakeFiles/CMakeConfigureLog.yaml
+            artifacts/linux-ui/
+            artifacts/linux-arm64/

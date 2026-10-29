@@ -24,8 +24,8 @@ by Qt's windeployqt. The exact Qt and FFmpeg versions and FFmpeg binary hashes
 are recorded in dependency-versions.json; SDK SPDX records, when provided by Qt,
 are included under licenses/qt-sbom.
 
-Video playback uses FFmpeg shared libraries obtained with the official Qt
-Multimedia binaries, copyright the FFmpeg developers and respective contributors,
+Builds using the prebuilt Qt SDK play video with FFmpeg shared libraries obtained
+with the official Qt Multimedia binaries, copyright the FFmpeg developers and respective contributors,
 under LGPL-2.1-or-later and the applicable permissive licenses listed in
 licenses/ffmpeg/LICENSE.md and licenses/qtmultimedia/third-party. Qt's supplied
 FFmpeg build does not enable the optional GPL or nonfree components. The FFmpeg
@@ -42,8 +42,8 @@ runtime subset. Source code and the matching Qt build recipes are available at:
 Corresponding unmodified Qt source archives, including third-party sources and
 Qt build configuration, are available at no charge from the upstream references
 below. Select the version recorded in dependency-versions.json for the Windows
-package (the release CI pins 6.8.3; the local MSVC preview uses 6.8.0). Qt binaries
-were obtained from the official Qt online repository through aqtinstall; the
+package (the release CI pins 6.8.3; the local MSVC preview uses 6.8.0). Prebuilt Qt binaries
+are obtained from the official Qt online repository through aqtinstall; the
 application dynamically links them. The application license does not cover these
 libraries.
 
@@ -68,6 +68,19 @@ at https://gitlab.gnome.org/GNOME/at-spi2-core ; the Ubuntu package source and e
 installed version can be obtained through `apt-get source at-spi2-core` and
 `apt-cache policy libatspi2.0-0`. Libraries are dynamically linked and can be
 replaced in an extracted AppImage. No modified third-party library is distributed.
+
+The experimental Linux ARM64 build instead compiles Qt 6.8.3, the PipeWire 1.0.4
+client and shared FFmpeg 7.1.1 against glibc 2.31. FFmpeg's GPL, nonfree and version3 components are
+disabled. Exact unmodified source archives, SHA-256 checksums, upstream license
+texts, configure options and the build recipe accompany that AppImage under
+usr/share/doc/edithere/build-materials. The compiler runtime notices are under
+licenses/linux; these libraries remain separately replaceable.
+
+ARM64 packages also dynamically link the unmodified GLVND OpenGL/EGL dispatch
+libraries (MIT-style licenses), https://gitlab.freedesktop.org/glvnd/libglvnd .
+Their Debian component copyright and license notices accompany the package under
+licenses/linux/libopengl0.txt, libegl1.txt and libglvnd0.txt. GPU vendor drivers
+are loaded from the operating system and are not bundled.
 
 Builds with Wayland long capture additionally dynamically link PipeWire's client
 library (MIT/Expat), copyright Wim Taymans and contributors. PipeWire source and

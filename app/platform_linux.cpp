@@ -34,14 +34,22 @@ constexpr auto shortcutInterface = "org.freedesktop.portal.GlobalShortcuts";
 QString tr(const char *text) { return QCoreApplication::translate("h2d", text); }
 bool wayland() { return QGuiApplication::platformName().startsWith("wayland") ||
                        qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland"; }
-QVariantMap portalCall(const QString &method, QList<QVariant> args, QVariantMap options, QString *error) {
+QVariantMap portalCall(const QString &method, QList<QVariant> args, QVariantMap options, QString *error,
+                       bool *unavailable) {
     QEventLoop loop;
     QVariantMap result;
     auto *request = new LinuxPortalRequest(&loop);
     request->start(shortcutInterface, method, args, options, [&](uint code, QVariantMap values) {
         if (code == 0) result = values;
-        else *error = code == 1 ? tr("快捷键授权已取消。") :
-            tr("桌面不支持快捷键授权，请在托盘菜单中使用相应操作。") + "\n" + values.value("error").toString();
+        else {
+            const auto name = values.value("errorName").toString();
+            *unavailable = name == "org.freedesktop.DBus.Error.UnknownMethod" ||
+                name == "org.freedesktop.DBus.Error.UnknownInterface" ||
+                name == "org.freedesktop.DBus.Error.ServiceUnknown" ||
+                name == "org.freedesktop.DBus.Error.NotSupported";
+            *error = code == 1 ? tr("快捷键授权已取消。") :
+                tr("桌面不支持快捷键授权，请在托盘菜单中使用相应操作。") + "\n" + values.value("error").toString();
+        }
         loop.quit();
     });
     loop.exec();
@@ -216,6 +224,7 @@ GlobalShortcut::GlobalShortcut(QObject *parent) : QObject(parent) {}
 GlobalShortcut::~GlobalShortcut() { stop(); }
 bool GlobalShortcut::start(const QKeySequence &sequence) {
     lastError_.clear();
+    unavailable_ = false;
     if (sequence.isEmpty()) { stop(); return true; }
     if (handle_ && sequence == sequence_) return true;
     stop();
@@ -227,7 +236,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
         qDBusRegisterMetaType<PortalShortcut>();
         qDBusRegisterMetaType<PortalShortcuts>();
         const QString token = "edithere_" + QUuid::createUuid().toString(QUuid::Id128);
-        const auto result = portalCall("CreateSession", {}, {{"session_handle_token", token}}, &lastError_);
+        const auto result = portalCall("CreateSession", {}, {{"session_handle_token", token}}, &lastError_, &unavailable_);
         state->session = result.value("session_handle").toString();
         if (state->session.isEmpty()) { stop(); return false; }
         QString preferred;
@@ -243,7 +252,7 @@ bool GlobalShortcut::start(const QKeySequence &sequence) {
         PortalShortcuts shortcuts{{state->actionId, {{"description", description_.isEmpty() ? tr("截图") : description_},
                                                     {"preferred_trigger", preferred}}}};
         const auto bound = portalCall("BindShortcuts", {QVariant::fromValue(QDBusObjectPath(state->session)),
-            QVariant::fromValue(shortcuts), QString()}, {}, &lastError_);
+            QVariant::fromValue(shortcuts), QString()}, {}, &lastError_, &unavailable_);
         const auto registered = qdbus_cast<PortalShortcuts>(bound.value("shortcuts"));
         if (registered.isEmpty()) {
             if (lastError_.isEmpty()) lastError_ = tr("全局快捷键未能注册。");
