@@ -17,6 +17,9 @@ struct ScreenFrame {
     QRect nativeGeometry;
     QImage image;
     bool nativePixels = false;
+    // An interactive desktop portal already selected this image. It has no
+    // reliable screen origin and should open in the editor, without an overlay.
+    bool selectionComplete = false;
     bool windowScopeAvailable = false;
     QVector<Candidate> frontWindows; // Front-to-back snapshot, in image pixels.
     // Accessibility APIs can use logical screen coordinates while capture uses
@@ -82,6 +85,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
     QString lastError() const {
         return lastError_;
     }
+    bool unavailable() const { return unavailable_; }
     bool nativeEventFilter(const QByteArray &, void *, qintptr *) override;
   signals:
     void triggered();
@@ -89,6 +93,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   private:
     QKeySequence sequence_;
     QString lastError_;
+    bool unavailable_ = false;
     QString actionId_ = "capture";
     QString description_;
     quint32 shortcutId_ = 0;

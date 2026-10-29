@@ -676,6 +676,60 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(sessionEnds_, 0);
         QCOMPARE(wheelSteps_, 0);
     }
+    void portalSelectionOpensEditorAndReleasesCapture() {
+        owner_->capturing_ = false;
+        owner_->captureIo_.prepare = [](QObject *, std::function<void()> ready, bool) { ready(); };
+        ScreenFrame frame;
+        frame.image = document(320, 180);
+        frame.selectionComplete = true;
+        frame.elementProbingAllowed = false;
+        frame.capturedAt = "2026-10-29T09:00:00.000Z";
+        owner_->captureIo_.grab = [frame](CaptureCallback callback) { callback({frame}, {}); };
+        owner_->capture();
+        QVERIFY(!owner_->capturing_);
+        QVERIFY(owner_->overlays_.isEmpty());
+        QVERIFY(owner_->editor_.isVisible());
+        QCOMPARE(owner_->editor_.document().image, frame.image.convertToFormat(QImage::Format_ARGB32));
+        QCOMPARE(owner_->editor_.document().createdAt, frame.capturedAt);
+        QVERIFY(owner_->editor_.document().screenBounds.isEmpty());
+        QCOMPARE(owner_->handleAgentRequest({{"command", "status"}}).value("capturing").toBool(), false);
+        owner_->openAnnotation();
+        QVERIFY(!owner_->editor_.hasDocument());
+    }
+    void failedScreenReadReleasesCaptureAndAllowsRetry() {
+        owner_->capturing_ = false;
+        owner_->editor_.show();
+        owner_->captureIo_.prepare = [](QObject *, std::function<void()> ready, bool) { ready(); };
+        QList<CaptureCallback> captures;
+        owner_->captureIo_.grab = [&](CaptureCallback callback) { captures.append(std::move(callback)); };
+        for (const auto &error : {QString("Screenshot cancelled"), QString("Screenshot portal unavailable")}) {
+            owner_->capture();
+            QVERIFY(owner_->capturing_);
+            QCOMPARE(captures.size(), 1);
+            bool dismissed = false;
+            QTimer::singleShot(0, owner_.get(), [&] {
+                if (auto dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                    dismissed = true;
+                    dialog->accept();
+                }
+            });
+            captures.takeFirst()({}, error);
+            QVERIFY(dismissed);
+            QVERIFY(!owner_->capturing_);
+            QVERIFY(owner_->editor_.isVisible());
+            QVERIFY(owner_->overlays_.isEmpty());
+            owner_->openAnnotation();
+            QVERIFY(owner_->editor_.isVisible());
+        }
+        owner_->capture();
+        QCOMPARE(captures.size(), 1);
+        ScreenFrame frame;
+        frame.image = document(320, 180);
+        frame.selectionComplete = true;
+        captures.takeFirst()({frame}, {});
+        QVERIFY(!owner_->capturing_);
+        QVERIFY(owner_->editor_.hasDocument());
+    }
     void cancelledScreenPreparationCannotStartTheNextCapturesRead() {
         owner_->capturing_ = false;
         QList<std::function<void()>> preparations;

@@ -169,6 +169,7 @@ class LinuxPlatformTests : public QObject {
         captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
         QTRY_VERIFY(done); QCOMPARE(frames.size(), 1); QVERIFY(error.isEmpty());
         QCOMPARE(frames[0].image, image); QVERIFY(!frames[0].nativePixels);
+        QVERIFY(frames[0].selectionComplete);
         mock.result = 1; done = false;
         captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
         QTRY_VERIFY(done); QVERIFY(frames.isEmpty()); QVERIFY(!error.isEmpty());
@@ -180,12 +181,21 @@ class LinuxPlatformTests : public QObject {
         bus.unregisterService("org.freedesktop.portal.Desktop");
     }
     void missingShortcutPortalFailsWithoutClaimingRegistration() {
+        auto bus = QDBusConnection::sessionBus();
+        QVERIFY(bus.registerService("org.freedesktop.portal.Desktop"));
+        MockScreenshot mock; // The desktop can provide Screenshot without GlobalShortcuts.
+        QVERIFY(bus.registerObject("/org/freedesktop/portal/desktop", &mock, QDBusConnection::ExportAllSlots));
         const auto previous = qgetenv("XDG_SESSION_TYPE"); qputenv("XDG_SESSION_TYPE", "wayland");
         GlobalShortcut shortcut;
         QVERIFY(!shortcut.start(QKeySequence("Ctrl+Shift+F8")));
         QVERIFY(!shortcut.lastError().isEmpty());
         QVERIFY(shortcut.sequence().isEmpty());
+        QVERIFY(shortcut.unavailable());
+        QVERIFY(shortcut.start({}));
+        QVERIFY(!shortcut.unavailable());
         qputenv("XDG_SESSION_TYPE", previous);
+        bus.unregisterObject("/org/freedesktop/portal/desktop");
+        bus.unregisterService("org.freedesktop.portal.Desktop");
     }
     void portalShortcutRegistersActivatesAndRejectsCancellation() {
         auto bus = QDBusConnection::sessionBus();
@@ -203,6 +213,7 @@ class LinuxPlatformTests : public QObject {
         mock.result = 1;
         QVERIFY(!shortcut.start(QKeySequence("Ctrl+Shift+F9")));
         QVERIFY(shortcut.sequence().isEmpty());
+        QVERIFY(!shortcut.unavailable()); // User cancellation must still reject settings.
         qputenv("XDG_SESSION_TYPE", previous);
         bus.unregisterObject("/org/freedesktop/portal/desktop");
         bus.unregisterService("org.freedesktop.portal.Desktop");

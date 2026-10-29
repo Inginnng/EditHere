@@ -76,6 +76,12 @@ texts, configure options and the build recipe accompany that AppImage under
 usr/share/doc/edithere/build-materials. The compiler runtime notices are under
 licenses/linux; these libraries remain separately replaceable.
 
+ARM64 packages also dynamically link the unmodified GLVND OpenGL/EGL dispatch
+libraries (MIT-style licenses), https://gitlab.freedesktop.org/glvnd/libglvnd .
+Their Debian component copyright and license notices accompany the package under
+licenses/linux/libopengl0.txt, libegl1.txt and libglvnd0.txt. GPU vendor drivers
+are loaded from the operating system and are not bundled.
+
 Builds with Wayland long capture additionally dynamically link PipeWire's client
 library (MIT/Expat), copyright Wim Taymans and contributors. PipeWire source and
 component license details are available at https://gitlab.freedesktop.org/pipewire/pipewire

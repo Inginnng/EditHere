@@ -44,7 +44,8 @@ void LinuxPortalRequest::start(const QString &interface, const QString &method, 
         QDBusPendingReply<QDBusObjectPath> reply = *watcher;
         watcher->deleteLater();
         if (!callback_) return;
-        if (reply.isError()) complete(2, {{"error", reply.error().message()}});
+        if (reply.isError()) complete(2, {{"error", reply.error().message()},
+                                        {"errorName", reply.error().name()}});
         else if (reply.value().path() != path_) complete(2, {{"error", "Unexpected portal request path"}});
     });
     QTimer::singleShot(120000, this, [this] { complete(2, {{"error", "Portal request timed out"}}); });

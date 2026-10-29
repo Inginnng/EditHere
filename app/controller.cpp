@@ -186,6 +186,9 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
     if (startupReadError.isEmpty())
         draft.launchAtLogin = registered;
     SettingsDialog dialog(draft, &editor_);
+    const auto unavailableNotice = tr("当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture / --annotate。");
+    if (shortcut_.unavailable() || annotateShortcut_.unavailable())
+        dialog.setGlobalShortcutNotice(unavailableNotice);
     dialog.setUpdatePreparationHandler([this] {
         // Never discard an active agent session to make room for an update.
         // allowReplace also commits inline edits and offers Save/Discard/Cancel.
@@ -205,7 +208,8 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         dialog.showUpdates(true);
     else if (toolbar)
         dialog.showToolbar();
-    dialog.setApplyHandler([this](const AppSettings &next) -> QString {
+    bool shortcutsUnavailable = false;
+    dialog.setApplyHandler([this, &dialog, &shortcutsUnavailable, unavailableNotice](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;
         const auto previousLanguage = settings_.language;
@@ -228,17 +232,20 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
                 error += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
             return error;
         };
-        if (!shortcut_.start(next.shortcuts.value("capture"))) {
+        shortcutsUnavailable = false;
+        if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable()) {
             const auto error = shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
                                                               : shortcut_.lastError();
             return error + restoreShortcuts();
         }
-        if (!annotateShortcut_.start(next.shortcuts.value("annotate"))) {
+        if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable()) {
             const auto error = annotateShortcut_.lastError().isEmpty()
                                    ? tr("新建批注快捷键无法注册，请更换组合键。")
                                    : tr("新建批注（空窗口）：") + annotateShortcut_.lastError();
             return error + restoreShortcuts();
         }
+        shortcutsUnavailable = shortcut_.unavailable() || annotateShortcut_.unavailable();
+        dialog.setGlobalShortcutNotice(shortcutsUnavailable ? unavailableNotice : QString());
         QString error;
         const bool startupChanged = wasRegistered != next.launchAtLogin;
         if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
@@ -276,6 +283,10 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
             tray_.showMessage("EditHere", tr("新建批注快捷键未能恢复，请在设置中更换组合键。"));
     }
     if (accepted) {
+        if (shortcutsUnavailable) {
+            diagnostics::write(diagnostics::Level::Warning, "settings.shortcuts", unavailableNotice);
+            tray_.showMessage("EditHere", unavailableNotice);
+        }
         const auto notice = launchAtLoginNotice();
         if (!notice.isEmpty()) tray_.showMessage(tr("EditHere 开机自启"), notice);
     }
@@ -482,6 +493,11 @@ void Controller::beginCapture(bool fromTray) {
                 owner->capturing_ = false;
                 owner->restoreAfterCapture();
                 QMessageBox::warning(&owner->editor_, tr("截图未完成"), error);
+                return;
+            }
+            if (frames.size() == 1 && frames.first().selectionComplete) {
+                const auto &frame = frames.first();
+                owner->completeCapture(frame, frame.image.rect(), {});
                 return;
             }
             for (auto &frame : frames) {
@@ -1559,8 +1575,11 @@ void Controller::runRecognition(OcrLanguageMode language) {
 }
 
 void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate> candidates) {
+    const ScreenFrame frame = source->frame();
+    completeCapture(frame, area, std::move(candidates));
+}
+void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<Candidate> candidates) {
     try {
-        const ScreenFrame frame = source->frame();
         auto doc = fromImage(frame.image.copy(area), "screen", tr("屏幕截图"));
         if (!frame.capturedAt.isEmpty()) {
             doc.createdAt = frame.capturedAt;

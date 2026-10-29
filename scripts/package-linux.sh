@@ -71,6 +71,7 @@ for copyright in /usr/share/doc/libatspi2.0-0/copyright /usr/share/doc/libglib2.
   /usr/share/doc/libicu67/copyright /usr/share/doc/libssl1.1/copyright \
   /usr/share/doc/libdbus-1-3/copyright /usr/share/doc/libpcre2-8-0/copyright /usr/share/doc/libffi8/copyright \
   /usr/share/doc/libgcc-s1/copyright /usr/share/doc/libstdc++6/copyright \
+  /usr/share/doc/libopengl0/copyright /usr/share/doc/libegl1/copyright /usr/share/doc/libglvnd0/copyright \
   /usr/share/doc/libxtst6/copyright /usr/share/doc/libpipewire-0.3-0t64/copyright \
   /usr/share/doc/libpipewire-0.3-0/copyright /usr/share/doc/libspa-0.2-modules/copyright; do
   if [[ -f "$copyright" ]]; then
@@ -120,6 +121,14 @@ if [[ "$architecture" == aarch64 ]]; then
   # and the application, and include them in the glibc audit below.
   deployment_args+=(--library "$(g++ -print-file-name=libstdc++.so.6)"
                    --library "$(gcc -print-file-name=libgcc_s.so.1)")
+  # Older ARM desktops may omit libOpenGL, or put a vendor EGL 1.3 library
+  # before the system dispatcher. Qt Multimedia needs EGL 1.5 entry points.
+  # Ship GLVND dispatchers only; GPU drivers and vendor selection stay local.
+  graphics_libdir="$(pkg-config --variable=libdir egl)"
+  for library in libOpenGL.so.0 libGLdispatch.so.0 libEGL.so.1; do
+    [[ -s "$graphics_libdir/$library" ]] || { echo "Missing GLVND library: $library" >&2; exit 1; }
+    deployment_args+=(--library "$graphics_libdir/$library")
+  done
 fi
 if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
   # linuxdeploy blacklists PipeWire by default. This client library must match
@@ -129,6 +138,22 @@ fi
 "$LINUXDEPLOY" --appdir "$appdir" "${deployment_args[@]}" --plugin qt --custom-apprun "$project_root/packaging/linux/AppRun" --output appimage
 [[ -s "$OUTPUT" ]] || { echo 'AppImage was not produced' >&2; exit 1; }
 [[ -s "$appdir/usr/plugins/platforms/libqoffscreen.so" ]] || { echo 'Headless CLI preview platform plugin is missing' >&2; exit 1; }
+if [[ "$architecture" == aarch64 ]]; then
+  # Check actual dynamic loading, including the symbols missing on old Mali
+  # EGL libraries. CLI/video smoke tests below must use these same dispatchers.
+  LD_LIBRARY_PATH="$appdir/usr/lib" python3 - "$appdir" <<'PY'
+import ctypes
+from pathlib import Path
+import sys
+libraries = Path(sys.argv[1]) / 'usr/lib'
+for name in ('libGLdispatch.so.0', 'libOpenGL.so.0', 'libEGL.so.1'):
+    library = ctypes.CDLL(str(libraries / name))
+    if name == 'libEGL.so.1':
+        for symbol in ('eglCreateImage', 'eglDestroyImage'):
+            getattr(library, symbol)
+print('Packaged OpenGL/EGL dispatchers loaded; EGL 1.5 image entry points available')
+PY
+fi
 abi_args=(--architecture "$architecture")
 if [[ -n "${EDITHERE_GLIBC_MAX:-}" ]]; then
   abi_args+=(--glibc-max "$EDITHERE_GLIBC_MAX")
