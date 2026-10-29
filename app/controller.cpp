@@ -557,6 +557,10 @@ void Controller::restoreAfterCapture() {
             editor_.show();
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
         } else {
+            // A visible empty editor is also a valid entry point after a
+            // cancelled/failed capture. raiseEditor only handles documents.
+            if (!editor_.hasDocument())
+                editor_.show();
             raiseEditor();
         }
     }

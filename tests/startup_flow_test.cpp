@@ -521,6 +521,7 @@ class StartupFlowTests : public QObject {
         QTemporaryDir directory;
         const auto stateFile = directory.filePath("settings.ini");
         auto settings = quietSettings();
+        settings.language = LanguageMode::SimplifiedChinese; // This test binary has no embedded QM resource.
         settings.shortcuts["capture"] = QKeySequence("Ctrl+Shift+F8");
         settings.shortcuts["annotate"] = QKeySequence("Ctrl+Shift+F9");
         Controller controller(nullptr, settings, stateFile);
