@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "diagnostics.h"
 #import <ApplicationServices/ApplicationServices.h>
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
@@ -59,7 +60,26 @@ struct MacScrollSession {
     QSize backingMode;
     __strong SCContentFilter *filter = nil;
     bool excludesOwnApplication = false;
+    // One line per stage per session: the frame reader runs several times a
+    // second, and a crash report only needs to show how far the first read got.
+    bool loggedRequest = false;
+    bool loggedContent = false;
+    bool loggedFrame = false;
 };
+// ScreenCaptureKit raises Objective-C exceptions for a few combinations it does
+// not support instead of returning an NSError. An uncaught exception ends the
+// process before any log line can follow, which is what a long-capture crash
+// looked like in the field (issue #39), so every call below is guarded.
+QString exceptionText(NSException *exception) {
+    if (!exception)
+        return {};
+    const char *name = exception.name.UTF8String;
+    const char *reason = exception.reason.UTF8String;
+    QString text = QString::fromUtf8(name ? name : "NSException");
+    if (reason && *reason)
+        text += QStringLiteral(": ") + QString::fromUtf8(reason);
+    return text;
+}
 // All access is on the Qt GUI thread. The shared owner keeps a pending native
 // callback safe after cancellation, without letting it replace the next session.
 std::shared_ptr<MacScrollSession> scrollingSession;
@@ -191,39 +211,65 @@ void captureSessionRegion(const std::shared_ptr<MacScrollSession> &session, cons
         request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
         return;
     }
-    const QPoint local = nativeRegion.topLeft() - session->nativeGeometry.topLeft();
-    const double sx = session->displayBounds.size.width / session->nativeGeometry.width();
-    const double sy = session->displayBounds.size.height / session->nativeGeometry.height();
+    // The whole display is captured and the region is cropped here. Asking for a
+    // sub-rectangle through sourceRect is the only request the long capture made
+    // that a one-shot screenshot never does, and it is the step the reported
+    // crash died on before a single frame was read (issue #39). Full-frame
+    // capture reuses the path that already works, and the same pixel limit the
+    // one-shot capture applies bounds it.
+    const QRect source(nativeRegion.translated(-session->nativeGeometry.topLeft()));
+    if (!session->nativeGeometry.isValid() ||
+        !QRect(QPoint(0, 0), session->nativeGeometry.size()).contains(source)) {
+        request->finish({}, tr("长截图区域无效或过大。"));
+        return;
+    }
     SCStreamConfiguration *configuration = [SCStreamConfiguration new];
-    // sourceRect is in display-local screen points; output width/height are in
-    // pixels. This remains one-to-one at Retina scale and negative origins.
-    configuration.sourceRect = CGRectMake(local.x() * sx, local.y() * sy,
-                                          nativeRegion.width() * sx, nativeRegion.height() * sy);
-    configuration.width = nativeRegion.width();
-    configuration.height = nativeRegion.height();
+    configuration.width = session->nativeGeometry.width();
+    configuration.height = session->nativeGeometry.height();
     configuration.showsCursor = NO;
     configuration.colorSpaceName = kCGColorSpaceSRGB;
     auto onImage = ^(CGImageRef image, NSError *error) {
-        QImage pixels = error ? QImage() : fromCGImage(image);
-        const QString details = error
-            ? QString::fromUtf8(error.localizedDescription.UTF8String) : QString();
-        QMetaObject::invokeMethod(qApp, [session, nativeRegion, request, pixels, details] {
-            if (scrollingSession != session || !validDisplay(session)) {
-                request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
-                return;
-            }
-            if (pixels.isNull() || pixels.size() != nativeRegion.size()) {
-                request->finish({}, details.isEmpty()
-                    ? tr("无法读取长截图区域，请检查屏幕采集权限。")
-                    : tr("无法读取长截图区域：%1").arg(details));
-                return;
-            }
-            request->finish(pixels, {});
-        }, Qt::QueuedConnection);
+        @try {
+            QImage pixels = error ? QImage() : fromCGImage(image);
+            const QString details = error
+                ? QString::fromUtf8(error.localizedDescription.UTF8String) : QString();
+            QMetaObject::invokeMethod(qApp, [session, source, request, pixels, details] {
+                if (scrollingSession != session || !validDisplay(session)) {
+                    request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
+                    return;
+                }
+                if (pixels.isNull() || pixels.size() != session->nativeGeometry.size()) {
+                    request->finish({}, details.isEmpty()
+                        ? tr("无法读取长截图区域，请检查屏幕采集权限。")
+                        : tr("无法读取长截图区域：%1").arg(details));
+                    return;
+                }
+                if (!session->loggedFrame) {
+                    session->loggedFrame = true;
+                    diagnostics::write(diagnostics::Level::Info, "scroll.capture.frame",
+                        "Long capture frame read",
+                        {{"displayWidth", session->nativeGeometry.width()},
+                         {"displayHeight", session->nativeGeometry.height()},
+                         {"width", source.width()}, {"height", source.height()}});
+                }
+                request->finish(pixels.copy(source), {});
+            }, Qt::QueuedConnection);
+        } @catch (NSException *exception) {
+            const QString text = exceptionText(exception);
+            QMetaObject::invokeMethod(qApp, [request, text] {
+                request->finish({}, tr("无法读取长截图区域：%1").arg(text));
+            }, Qt::QueuedConnection);
+        }
     };
-    [SCScreenshotManager captureImageWithFilter:session->filter
-                                 configuration:configuration
-                             completionHandler:onImage];
+    @try {
+        [SCScreenshotManager captureImageWithFilter:session->filter
+                                     configuration:configuration
+                                 completionHandler:onImage];
+    } @catch (NSException *exception) {
+        const QString text = exceptionText(exception);
+        diagnostics::write(diagnostics::Level::Error, "scroll.capture.exception", text);
+        request->finish({}, tr("无法读取长截图区域：%1").arg(text));
+    }
 }
 
 constexpr OSType ShortcutSignature = 0x48324453; // H2DS
@@ -434,6 +480,15 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
     QTimer::singleShot(8000, qApp, [request] {
         request->finish({}, tr("macOS 屏幕采集超时，请检查屏幕录制权限后重试。"));
     });
+    if (!session->loggedRequest) {
+        session->loggedRequest = true;
+        diagnostics::write(diagnostics::Level::Info, "scroll.capture.request",
+            "Long capture frame requested",
+            {{"width", nativeRegion.width()}, {"height", nativeRegion.height()},
+             {"displayWidth", session->nativeGeometry.width()},
+             {"displayHeight", session->nativeGeometry.height()},
+             {"cachedFilter", session->filter != nil}});
+    }
     if (session->filter) {
         captureSessionRegion(session, nativeRegion, request);
         return;
@@ -441,41 +496,65 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
     // Acquire the app-exclusion filter after the live UI exists, once per
     // session. Keeping it avoids enumerating all windows every captured frame.
     auto onContent = ^(SCShareableContent *content, NSError *error) {
-        QMetaObject::invokeMethod(qApp, [session, nativeRegion, request, content, error] {
-            if (request->completed)
-                return;
-            if (scrollingSession != session || !validDisplay(session)) {
-                request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
-                return;
-            }
-            SCDisplay *selected = nil;
-            for (SCDisplay *display in content.displays)
-                if (display.displayID == session->display) {
-                    selected = display;
-                    break;
+        @try {
+            QMetaObject::invokeMethod(qApp, [session, nativeRegion, request, content, error] {
+                if (request->completed)
+                    return;
+                if (scrollingSession != session || !validDisplay(session)) {
+                    request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
+                    return;
                 }
-            if (error || !selected) {
+                if (!session->loggedContent) {
+                    session->loggedContent = true;
+                    diagnostics::write(diagnostics::Level::Info, "scroll.capture.content",
+                        "Shareable content received",
+                        {{"displays", content ? int(content.displays.count) : 0},
+                         {"error", error ? QString::fromUtf8(error.localizedDescription.UTF8String)
+                                         : QString()}});
+                }
+                SCDisplay *selected = nil;
+                for (SCDisplay *display in content.displays)
+                    if (display.displayID == session->display) {
+                        selected = display;
+                        break;
+                    }
+                if (error || !selected) {
+                    request->finish({}, tr("无法获取屏幕，请检查屏幕录制权限"));
+                    return;
+                }
+                bool excluded = false;
+                SCContentFilter *filter = displayFilter(content, selected, &excluded);
+                if (!excluded) {
+                    request->finish({}, tr("无法从长截图中排除 EditHere 窗口，请重新截图。"));
+                    return;
+                }
+                if (nativeDisplaySize(filter, session->displayBounds) != session->nativeGeometry.size()) {
+                    request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
+                    return;
+                }
+                session->filter = filter;
+                session->excludesOwnApplication = true;
+                captureSessionRegion(session, nativeRegion, request);
+            }, Qt::QueuedConnection);
+        } @catch (NSException *exception) {
+            diagnostics::write(diagnostics::Level::Error, "scroll.capture.exception",
+                               exceptionText(exception));
+            QMetaObject::invokeMethod(qApp, [request] {
                 request->finish({}, tr("无法获取屏幕，请检查屏幕录制权限"));
-                return;
-            }
-            bool excluded = false;
-            SCContentFilter *filter = displayFilter(content, selected, &excluded);
-            if (!excluded) {
-                request->finish({}, tr("无法从长截图中排除 EditHere 窗口，请重新截图。"));
-                return;
-            }
-            if (nativeDisplaySize(filter, session->displayBounds) != session->nativeGeometry.size()) {
-                request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
-                return;
-            }
-            session->filter = filter;
-            session->excludesOwnApplication = true;
-            captureSessionRegion(session, nativeRegion, request);
-        }, Qt::QueuedConnection);
+            }, Qt::QueuedConnection);
+        }
     };
-    [SCShareableContent getShareableContentExcludingDesktopWindows:YES
-                                             onScreenWindowsOnly:NO
-                                               completionHandler:onContent];
+    @try {
+        // On-screen windows only, exactly as the one-shot capture asks: the
+        // filter needs the display list and this application, nothing else.
+        [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                                 onScreenWindowsOnly:YES
+                                                   completionHandler:onContent];
+    } @catch (NSException *exception) {
+        const QString text = exceptionText(exception);
+        diagnostics::write(diagnostics::Level::Error, "scroll.capture.exception", text);
+        request->finish({}, tr("无法获取屏幕，请检查屏幕录制权限"));
+    }
 }
 quintptr captureForegroundWindow() {
     NSRunningApplication *application = NSWorkspace.sharedWorkspace.frontmostApplication;

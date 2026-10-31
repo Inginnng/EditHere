@@ -15,6 +15,13 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## macOS 长截图崩溃与保存路径（0.12.4）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-198 | macOS 15.7 上框选区域开始长截图后，进程在读第一帧画面时直接消失，系统弹出「意外退出」；诊断日志停在 `long_capture.controls_fallback`，没有任何后续记录，可见是进程级崩溃而非程序内报错（#39）。ScreenCaptureKit 在参数不被支持时抛 Objective-C 异常，`platform_mac.mm` 里没有任何 `@try`，异常无人接住即终止进程。修复：长截图不再请求只有它才会用的 `sourceRect` 子区域参数，改为整屏采集后在本地裁出选区，与一次性截图走同一条已被验证的采集路径；`getShareableContent` 与 `captureImage` 的提交与完成回调全部包进 `@try/@catch`，异常写入 `scroll.capture.exception` 并作为提示返回；补 `scroll.capture.request`/`content`/`frame` 三段诊断，失败时能看出停在哪一步 | 只能 macOS 实机复测：Windows 与 CI 都无法执行真实屏幕采集（macOS 运行器拿不到屏幕录制授权，`.mm` 也无法在本机构建）。装上 0.12.4 复现一次即可定位——若仍崩溃，诊断包会留下最后到达的阶段与异常名，可按 `scroll.capture.*` 直接判断是取内容、建过滤器还是抓帧 | ⚠️ |
+| REG-199 | macOS 上从 Finder 启动的程序工作目录是 `/`，而「保存 EditHere 项目」的默认文件名是相对名 `设计反馈.edithere`，保存对话框因此打开在只读的磁盘根目录，保存必然失败（#39 诊断日志中的 `Read-only file system`）。同一处「保存带批注图片 / 调整效果」也以 `preview.png`、`layout.png` 裸文件名作为默认值。修复：默认值改为「文稿」与「图片」目录下的完整路径 | `packaging`：`save_dialog_paths` 解析 `app/*.cpp` 里每个 `getSaveFileName()` 的第三个参数，对三元表达式的每个分支求值，出现裸字符串字面量即失败；用原始代码与修复后的代码分别验证过命中与不误报 | 🆕 |
+
 ## 视频批注闪退（0.12.3）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -406,6 +413,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
 | `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158/196 |
+| `save_dialog_paths` | `scripts/check-packaging.py` 的一项，随 `packaging` 一起执行 | REG-199 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |
