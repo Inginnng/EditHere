@@ -114,18 +114,23 @@ if(WIN32)
     FILES app/ocrbridge.ps1)
 endif()
 # Interface translations. Simplified Chinese is the source language written in the
-# code, so only English needs a .ts. The Linguist tools compile it when they are
-# installed; the minimal Qt used by CI has no Linguist, which is why the compiled
-# .qm is committed under app/translations/built and used as the fallback.
+# code, so only English and Traditional Chinese need a .ts. The Linguist tools compile
+# them when they are installed; the minimal Qt used by CI has no Linguist, which is why
+# the compiled .qm files are committed under app/translations/built and used as the
+# fallback.
 find_package(Qt6 QUIET COMPONENTS LinguistTools)
 if(Qt6LinguistTools_FOUND)
-  qt_add_translations(EditHere TS_FILES app/translations/edithere_en.ts)
+  qt_add_translations(EditHere TS_FILES
+    app/translations/edithere_en.ts
+    app/translations/edithere_zh_TW.ts)
 else()
   message(STATUS "Qt Linguist tools not found; embedding the prebuilt translations.")
   qt_add_resources(EditHere app_translations
     PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
-    FILES app/translations/built/edithere_en.qm)
+    FILES
+      app/translations/built/edithere_en.qm
+      app/translations/built/edithere_zh_TW.qm)
 endif()
 if(WIN32)
   enable_language(RC)
@@ -238,12 +243,14 @@ set_target_properties(diagnostics_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX
 add_test(NAME diagnostics COMMAND diagnostics_tests)
 qt_add_executable(i18n_tests tests/i18n_test.cpp)
 target_link_libraries(i18n_tests PRIVATE h2d_ui Qt6::Test)
-# installLanguage() resolves ":/i18n/edithere_en.qm", which the application embeds. The
-# test embeds the same committed file so it exercises that lookup instead of a path.
+# installLanguage() resolves ":/i18n/edithere_<locale>.qm", which the application embeds.
+# The test embeds the same committed files so it exercises that lookup instead of a path.
 qt_add_resources(i18n_tests i18n_test_translations
   PREFIX "/i18n"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
-  FILES app/translations/built/edithere_en.qm)
+  FILES
+    app/translations/built/edithere_en.qm
+    app/translations/built/edithere_zh_TW.qm)
 add_test(NAME i18n COMMAND i18n_tests -platform offscreen)
 qt_add_executable(guide_tests tests/guide_test.cpp)
 target_link_libraries(guide_tests PRIVATE h2d_ui Qt6::Test)

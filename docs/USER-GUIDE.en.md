@@ -396,7 +396,7 @@ The keys on the capture toolbar (Enter, C, T, P, L, `Ctrl + C`, `Ctrl + S`, `Ctr
 ### Appearance
 
 - **Appearance mode**: Follow system, Light or Dark, defaulting to Follow system. After switching, the editor, annotation column, component sidebar, menus and Settings window update together; the original pixels of the source image and exported images are unaffected by the theme.
-- **Interface language**: Follow system, Simplified Chinese or English. Switching previews immediately, takes effect on save, and returns to the previous language on cancel. The system file dialogs, message boxes and colour picker follow it too. The JSON field values exported for AI do not change with the interface language.
+- **Interface language**: Follow system, Simplified Chinese, Traditional Chinese or English. Switching previews immediately, takes effect on save, and returns to the previous language on cancel. The system file dialogs, message boxes and colour picker follow it too. The JSON field values exported for AI do not change with the interface language.
 - **Recognition language**: Follow system, Simplified Chinese or English, used for text recognition on the capture toolbar and also switchable in place from the toolbar menu.
 
 ### Default behavior

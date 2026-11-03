@@ -6,9 +6,10 @@ namespace h2d {
 // language so it stays readable whatever the interface currently uses.
 QString languageDisplayName(LanguageMode mode);
 
-// Locale the choice resolves to, e.g. "zh_CN" or "en". "System" follows the
-// operating system and falls back to English on non-Chinese systems, because
-// Simplified Chinese is the built-in source language of the interface.
+// Locale the choice resolves to, e.g. "zh_CN", "zh_TW" or "en". "System" follows
+// the operating system: a traditional-script locale resolves to zh_TW, any other
+// Chinese locale to zh_CN, and everything else to English, because Simplified
+// Chinese is the built-in source language of the interface.
 QString resolveLanguage(LanguageMode mode);
 
 // Locale currently installed by installLanguage(). Empty before startup.
@@ -19,7 +20,7 @@ QString currentLanguage();
 // files, so a language change needs a restart to rebuild every label.
 bool installLanguage(LanguageMode mode);
 
-// True when the running interface is Simplified Chinese.
+// True when the running interface uses Chinese characters, in either script.
 bool isChineseInterface();
 
 // Region labels such as "色块区域" and "整个图片" double as stable identifiers in
