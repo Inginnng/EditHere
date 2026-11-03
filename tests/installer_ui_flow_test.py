@@ -262,10 +262,15 @@ class InstallerUIFlowTests(unittest.TestCase):
         self.next(page)
         page = self.wait_page("license", lambda _, text: "许可" in text or "协议" in text)
         self.next(page)
-        page = self.wait_page("options", lambda _, text: "组件" in text)
+        # A page paints its text slightly before its controls are enumerable, so
+        # the control requirement belongs in the wait, not in a snapshot check.
+        page = self.wait_page("options", lambda snapshot, text: "组件" in text and any(
+            child["class"] == "SysTreeView32" for window in snapshot for child in window["children"]))
         self.assertTrue(any(child["class"] == "SysTreeView32" for window in page for child in window["children"]))
         self.next(page)
-        page = self.wait_page("directory", lambda _, text: str(target) in text)
+        page = self.wait_page("directory", lambda snapshot, text: str(target) in text and any(
+            child["class"] == "Edit" and child["text"] == str(target)
+            for window in snapshot for child in window["children"]))
         self.assertTrue(any(child["class"] == "Edit" and child["text"] == str(target)
                             for window in page for child in window["children"]))
         self.next(page)
