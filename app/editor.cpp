@@ -99,6 +99,31 @@ QString feedbackTempDir(const QString &configured = {}) {
 }
 // Each clipboard file bundle gets an owned directory, so relative references
 // remain valid when several exports coexist. All URLs are copied together.
+QString feedbackClipboardName(const FeedbackBundle &bundle) {
+    const auto feedback = QJsonDocument::fromJson(bundle.json).object();
+    auto firstComment = [](const QJsonObject &imageFeedback) {
+        for (const auto &object : imageFeedback["objects"].toArray())
+            for (const auto &annotation : object.toObject()["annotations"].toArray()) {
+                const auto text = annotation.toObject()["text"].toString().simplified();
+                if (!text.isEmpty()) return text;
+            }
+        return QString{};
+    };
+    QString stem = firstComment(feedback);
+    if (stem.isEmpty())
+        for (const auto &frame : feedback["frames"].toArray()) {
+            stem = firstComment(frame.toObject()["feedback"].toObject());
+            if (!stem.isEmpty()) break;
+        }
+    stem.replace(QRegularExpression("[\\\\/:*?\"<>|\\x{0000}-\\x{001f}\\x{007f}]"), "_");
+    stem = stem.left(80);
+    if (!stem.isEmpty() && stem.back().isHighSurrogate()) stem.chop(1);
+    while (stem.startsWith('.') || stem.startsWith(' ')) stem.remove(0, 1);
+    while (stem.endsWith('.') || stem.endsWith(' ')) stem.chop(1);
+    if (stem.isEmpty()) stem = "feedback";
+    if (!safeFeedbackImageName(stem + ".png")) stem.prepend('_');
+    return stem + ".json";
+}
 QString writeFeedbackTempBundle(const FeedbackBundle &bundle, const QString &configuredDir = {}) {
     const QDir parent(feedbackTempDir(configuredDir));
     const QString name = "edithere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + "-" + uniqueId();
@@ -106,8 +131,9 @@ QString writeFeedbackTempBundle(const FeedbackBundle &bundle, const QString &con
     const QDir directory(parent.filePath(name));
     const QString marker = directory.filePath(".edithere-feedback-bundle");
     try {
-        saveBytes(marker, "1\n");
-        const QString path = directory.filePath("feedback.json");
+        const QString jsonName = feedbackClipboardName(bundle);
+        saveBytes(marker, "2\n" + jsonName.toUtf8() + "\n");
+        const QString path = directory.filePath(jsonName);
         writeNewFeedbackBundle(path, bundle);
         return path;
     } catch (...) {
@@ -133,10 +159,17 @@ void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configu
         const QDir directory(folder.absoluteFilePath());
         const QFileInfo marker(directory.filePath(".edithere-feedback-bundle"));
         if (!marker.isFile() || marker.isSymLink()) continue;
+        QFile markerFile(marker.absoluteFilePath());
+        if (!markerFile.open(QIODevice::ReadOnly)) continue;
+        const auto markerLines = markerFile.read(1024).split('\n');
+        const QString jsonName = markerLines.value(0) == "1" ? QStringLiteral("feedback.json")
+            : markerLines.value(0) == "2" ? QString::fromUtf8(markerLines.value(1)) : QString{};
+        markerFile.close();
+        if (!jsonName.endsWith(".json") || jsonName.contains('/') || jsonName.contains('\\')) continue;
         const auto entries = directory.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
         bool owned = true;
         for (const auto &entry : entries) if (!entry.isFile() || entry.isSymLink() ||
-            !(entry.fileName() == ".edithere-feedback-bundle" || entry.fileName() == "feedback.json" || safeFeedbackImageName(entry.fileName()))) { owned = false; break; }
+            !(entry.fileName() == ".edithere-feedback-bundle" || entry.fileName() == jsonName || safeFeedbackImageName(entry.fileName()))) { owned = false; break; }
         if (!owned) continue;
         for (const auto &entry : entries) QFile::remove(entry.absoluteFilePath());
         parent.rmdir(name);

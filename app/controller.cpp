@@ -19,6 +19,10 @@
 #include "settingsdialog.h"
 #include "ui.h"
 #include "updatechecker.h"
+#ifdef Q_OS_MACOS
+#include "trayeventguard_mac.h"
+#endif
+#include "updateauth.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QMenu>
@@ -52,17 +56,25 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("edithereTray");
     auto menu = new QMenu(&editor_);
-    captureAction_ = menu->addAction(QString(), this, [this] { beginCapture(true); });
+    const auto addTrayAction = [this, menu](auto callback) {
+        auto *action = menu->addAction(QString());
+#ifdef Q_OS_MACOS
+        // Dialogs and capture overlays must start after native menu tracking
+        // returns. Running them inside an NSMenu action can trap input there.
+        connect(action, &QAction::triggered, this, std::move(callback), Qt::QueuedConnection);
+#else
+        connect(action, &QAction::triggered, this, std::move(callback));
+#endif
+        return action;
+    };
+    captureAction_ = addTrayAction([this] { beginCapture(true); });
     captureAction_->setObjectName("trayCapture");
-    annotateAction_ = menu->addAction(QString(), this, &Controller::openAnnotation);
+    annotateAction_ = addTrayAction([this] { openAnnotation(); });
     annotateAction_->setObjectName("trayAnnotate");
-    openAction_ = menu->addAction(QString(), &editor_, [this] {
-        scheduleStartupUpdate();
-        editor_.openFile();
-        if (guidePending_ && editor_.hasDocument()) showGuide();
-    });
+    openAction_ = addTrayAction([this] { openFromTray(); });
+    openAction_->setObjectName("trayOpen");
 #ifdef Q_OS_MAC
-    accessibilityAction_ = menu->addAction(QString(), this, [this] {
+    accessibilityAction_ = addTrayAction([this] {
         if (requestAccessibility())
             tray_.showMessage("EditHere", tr("已启用系统元素识别"));
         else
@@ -70,26 +82,37 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
 #endif
     menu->addSeparator();
-    settingsAction_ = menu->addAction(QString(), this, [this] { openSettings(); });
+    settingsAction_ = addTrayAction([this] { openSettings(); });
     settingsAction_->setObjectName("traySettings");
-    updatesAction_ = menu->addAction(QString(), this, [this] { openSettings(true); });
+    updatesAction_ = addTrayAction([this] { openSettings(true); });
     updatesAction_->setObjectName("trayUpdates");
     menu->addSeparator();
-    quitAction_ = menu->addAction(QString(), this, &Controller::quit);
+    quitAction_ = addTrayAction([this] { quit(); });
     tray_.setContextMenu(menu);
     retranslate();
     updateTrayShortcut();
-    tray_.show();
+#ifdef Q_OS_MACOS
+    QString trayGuardError;
+    if (!installCocoaTrayEventGuard(&trayGuardError))
+        diagnostics::write(diagnostics::Level::Error, "startup.tray_guard", trayGuardError);
+    else
+#endif
+        tray_.show();
 #ifdef Q_OS_LINUX
     connect(&editor_, &Editor::hiddenToTray, this, [] {
         if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable())
             QCoreApplication::quit();
     });
 #endif
+#ifndef Q_OS_MACOS
+    // Cocoa emits Trigger when the native menu begins tracking, before an item
+    // is chosen. Capturing here covers that menu and intercepts its next click.
+    // macOS uses the explicit Capture menu action instead.
     connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger)
             beginCapture(true);
     });
+#endif
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&annotateShortcut_, &GlobalShortcut::triggered, this, &Controller::openAnnotation);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
@@ -166,6 +189,21 @@ void Controller::openAnnotation() {
     if (auto menu = tray_.contextMenu())
         menu->close();
     editor_.openEmpty();
+}
+void Controller::openFromTray() {
+    if (capturing_ || QApplication::activeModalWidget())
+        return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
+    // A native Cocoa menu action still runs inside AppKit's tracking loop.
+    // Let it unwind before a file dialog starts another modal event loop.
+    QTimer::singleShot(0, this, [this] {
+        if (capturing_ || QApplication::activeModalWidget())
+            return;
+        scheduleStartupUpdate();
+        editor_.openFile();
+        if (guidePending_ && editor_.hasDocument()) showGuide();
+    });
 }
 void Controller::openSettings(bool updates, bool toolbar) {
     openSettingsDialog(updates, toolbar);
@@ -293,6 +331,10 @@ void Controller::showGuide() {
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
     if (!background)
         scheduleStartupUpdate();
+#ifdef Q_OS_MACOS
+    if (!tray_.isVisible())
+        editor_.show();
+#endif
 #ifdef Q_OS_LINUX
     // GNOME may have no tray host. Keep a visible entry point in that case.
     if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)
@@ -355,7 +397,7 @@ void Controller::presentStartupUpdate() {
     QMessageBox prompt(QMessageBox::Information, tr("EditHere 更新"),
                        tr("发现新版本 %1。").arg(release.tagName), QMessageBox::NoButton, &editor_);
     prompt.setObjectName("startupUpdatePrompt");
-    auto update = prompt.addButton(tr("立即更新"), QMessageBox::AcceptRole);
+    auto update = prompt.addButton(updateauth::publisherConfigured() ? tr("立即更新") : tr("打开发布页"), QMessageBox::AcceptRole);
     auto skip = prompt.addButton(tr("跳过"), QMessageBox::RejectRole);
     prompt.setDefaultButton(skip);
     prompt.setEscapeButton(skip);

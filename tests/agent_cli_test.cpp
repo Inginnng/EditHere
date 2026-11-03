@@ -1,6 +1,7 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
 #include "agentserver.h"
+#include "localauth.h"
 #include "controller.h"
 #include "diagnostics.h"
 #include "videoplayback.h"
@@ -29,12 +30,30 @@
 #ifdef Q_OS_MACOS
 #include <sys/un.h>
 #endif
+#ifndef Q_OS_WIN
+#include <unistd.h>
+#include <sys/stat.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <aclapi.h>
+#include <sddl.h>
+#endif
 using namespace h2d;
 class AgentCliTests : public QObject {
     Q_OBJECT
     // Keep test names shorter than the production endpoints. Qt prefixes these
     // with the per-user temporary directory on Unix.
     static QString isolatedSocketName() { return "eh-" + uniqueId(); }
+    static QJsonObject authenticated(QJsonObject request, const QByteArray &token) {
+        request["token"] = QString::fromLatin1(token);
+        return request;
+    }
+    struct TestCredentials {
+        QByteArray token;
+        QString error = createIpcCredentials(token);
+        ~TestCredentials() { removeIpcCredentials(token); }
+    };
     static AppSettings quietSettings() {
         auto settings = defaultSettings();
         settings.shortcuts["capture"] = {};
@@ -231,7 +250,7 @@ class AgentCliTests : public QObject {
         // This checks the actual runner TMPDIR without binding the user's endpoints.
         const auto limit = qsizetype(sizeof(sockaddr_un{}.sun_path));
         for (const auto &name : {agentServerName(), legacyDesktopServerName(), isolatedSocketName()}) {
-            const auto path = QDir::temp().filePath(name);
+            const auto path = QFileInfo(name).isAbsolute() ? name : QDir::temp().filePath(name);
             const auto bytes = QFile::encodeName(path).size() + 1;
             const auto detail = QString("Unix socket requires %1 bytes, limit %2: %3")
                                     .arg(bytes).arg(limit).arg(path);
@@ -287,7 +306,235 @@ class AgentCliTests : public QObject {
         QCOMPARE(reads.size(), 0);
         delete accepted;
     }
-    void desktopRequestsConsumeFragmentsAndWaitForEof() {
+    void agentRequiresCredentialsBeforeDispatchAndRotatesOnRestart() {
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        const auto name = isolatedSocketName();
+        const auto previous = randomIpcToken();
+        const auto current = randomIpcToken();
+        QVERIFY(previous != current);
+        // A new listener represents a restarted GUI. A prior session's token
+        // must fail just like an absent token, before any command is dispatched.
+        AgentServer server(controller, current);
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        const auto input = inputProject(directory);
+        for (const auto &command : QStringList{"status", "open", "capture", "annotate"}) {
+            for (const auto &token : {QByteArray(), previous}) {
+                QLocalSocket socket;
+                socket.connectToServer(name);
+                QVERIFY(socket.waitForConnected(1000));
+                QJsonObject request{{"protocol", 1}, {"command", command}, {"input", input},
+                                    {"output", directory.filePath("refused.json")}};
+                if (!token.isEmpty()) request["token"] = QString::fromLatin1(token);
+                socket.write(encodeAgentMessage(request)); socket.flush();
+                QByteArray bytes;
+                QJsonObject reply;
+                QString error;
+                auto framing = AgentFrameState::Incomplete;
+                QTRY_VERIFY_WITH_TIMEOUT(([&] {
+                    if (framing != AgentFrameState::Incomplete) return true;
+                    bytes += socket.readAll();
+                    framing = takeAgentMessage(bytes, reply, error);
+                    return framing != AgentFrameState::Incomplete;
+                })(), 1500);
+                QCOMPARE(framing, AgentFrameState::Complete);
+                QCOMPARE(agentExitCode(reply), 8);
+                QCOMPARE(reply["error"].toObject()["code"].toString(), QString("authentication_required"));
+                QVERIFY(!editorOf(controller)->hasDocument());
+                const auto status = controller.handleAgentRequest({{"command", "status"}});
+                QVERIFY(!status["capturing"].toBool());
+                QVERIFY(!status["agentSession"].toBool());
+                QVERIFY(!QFileInfo::exists(directory.filePath("refused.json")));
+            }
+        }
+        QLocalSocket good;
+        good.connectToServer(name);
+        QVERIFY(good.waitForConnected(1000));
+        good.write(encodeAgentMessage(authenticated({{"protocol", 1}, {"command", "open"}, {"input", input}}, current)));
+        good.flush();
+        QTRY_VERIFY(editorOf(controller)->hasDocument());
+        editorOf(controller)->hide();
+    }
+    void desktopRequiresCredentialsAndNeverAcceptsLegacyCommands() {
+        QLocalServer server;
+        const auto name = isolatedSocketName();
+        const auto token = randomIpcToken();
+        QVERIFY2(server.listen(name), qPrintable(server.errorString()));
+        QStringList requests;
+        connect(&server, &QLocalServer::newConnection, this, [&] {
+            while (const auto socket = server.nextPendingConnection())
+                receiveDesktopRequest(*socket, *this, token, [&](const QString &text) { requests.append(text); });
+        });
+        const QList<QByteArray> refused{
+            "capture", "quit", "/tmp/private.edithere",
+            encodeAgentMessage({{"protocol", 1}, {"request", "quit"}}),
+            encodeDesktopRequest("capture", randomIpcToken()),
+            encodeDesktopRequest("quit", QByteArray()),
+            encodeDesktopRequest("open", token) + encodeDesktopRequest("quit", token)
+        };
+        for (const auto &message : refused) {
+            QLocalSocket client;
+            client.connectToServer(name);
+            QVERIFY(client.waitForConnected(1000));
+            client.write(message); client.flush();
+            QTest::qWait(20);
+            client.disconnectFromServer();
+            QTRY_COMPARE(server.findChildren<QLocalSocket *>().size(), 0);
+            QVERIFY(requests.isEmpty());
+        }
+        for (const auto &text : QStringList{"capture", "quit", "/tmp/中文 目录/input.edithere"}) {
+            QLocalSocket client;
+            client.connectToServer(name);
+            QVERIFY(client.waitForConnected(1000));
+            client.write(encodeDesktopRequest(text, token)); client.flush();
+            QTest::qWait(20);
+            client.disconnectFromServer();
+            QTRY_VERIFY(!requests.isEmpty() && requests.last() == text);
+        }
+    }
+    void privateCredentialsRotateAndRejectUnsafeFiles() {
+        struct TestPaths {
+            bool previous = QStandardPaths::isTestModeEnabled();
+            TestPaths() { QStandardPaths::setTestModeEnabled(true); }
+            ~TestPaths() { QStandardPaths::setTestModeEnabled(previous); }
+        } paths;
+        TestCredentials credentials;
+        QVERIFY2(credentials.error.isEmpty(), qPrintable(credentials.error));
+        QByteArray read;
+        QVERIFY2(readIpcCredentials(read).isEmpty(), "a freshly created private credential must be readable");
+        QCOMPARE(read, credentials.token);
+        QVERIFY(ipcTokenMatches(credentials.token, QString::fromLatin1(read)));
+        const auto old = read;
+        QVERIFY(createIpcCredentials(credentials.token).isEmpty());
+        QVERIFY(credentials.token != old);
+        QVERIFY(!ipcTokenMatches(credentials.token, QString::fromLatin1(old)));
+        QVERIFY(readIpcCredentials(read).isEmpty());
+        QCOMPARE(read, credentials.token);
+#ifdef Q_OS_WIN
+        // QFile::Permissions is not an ACL test on Windows. Deliberately grant
+        // Everyone access, verify refusal, then restore the real protected DACL.
+        PACL originalAcl = nullptr;
+        PSECURITY_DESCRIPTOR original = nullptr;
+        const auto path = ipcCredentialPath();
+        QCOMPARE(GetNamedSecurityInfoW(const_cast<LPWSTR>(reinterpret_cast<LPCWSTR>(path.utf16())), SE_FILE_OBJECT,
+                                     DACL_SECURITY_INFORMATION, nullptr, nullptr, &originalAcl, nullptr, &original), DWORD(ERROR_SUCCESS));
+        PSECURITY_DESCRIPTOR broad = nullptr;
+        QVERIFY(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:P(A;;FA;;;WD)", SDDL_REVISION_1, &broad, nullptr));
+        PACL broadAcl = nullptr; BOOL present = FALSE, defaulted = FALSE;
+        QVERIFY(GetSecurityDescriptorDacl(broad, &present, &broadAcl, &defaulted));
+        QCOMPARE(SetNamedSecurityInfoW(const_cast<LPWSTR>(reinterpret_cast<LPCWSTR>(path.utf16())), SE_FILE_OBJECT,
+                                     DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                                     nullptr, nullptr, broadAcl, nullptr), DWORD(ERROR_SUCCESS));
+        const bool broadRejected = !readIpcCredentials(read).isEmpty();
+        const auto restored = SetNamedSecurityInfoW(const_cast<LPWSTR>(reinterpret_cast<LPCWSTR>(path.utf16())), SE_FILE_OBJECT,
+                                                   DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                                                   nullptr, nullptr, originalAcl, nullptr);
+        LocalFree(broad); LocalFree(original);
+        QCOMPARE(restored, DWORD(ERROR_SUCCESS));
+        QVERIFY(broadRejected);
+#else
+        const auto nativeDirectory = QFile::encodeName(ipcRuntimeDirectory());
+        const auto nativeToken = QFile::encodeName(ipcCredentialPath());
+        struct stat information{};
+        QVERIFY(::stat(nativeDirectory.constData(), &information) == 0);
+        QCOMPARE(information.st_mode & 0777, mode_t(0700));
+        QVERIFY(::stat(nativeToken.constData(), &information) == 0);
+        QCOMPARE(information.st_mode & 0777, mode_t(0600));
+        QVERIFY(::chmod(nativeDirectory.constData(), 0755) == 0);
+        const bool directoryRejected = !readIpcCredentials(read).isEmpty();
+        QVERIFY(::chmod(nativeDirectory.constData(), 0700) == 0);
+        QVERIFY(directoryRejected);
+        const auto heldDirectory = nativeDirectory + "-held-" + randomIpcToken().left(8);
+        QVERIFY(::rename(nativeDirectory.constData(), heldDirectory.constData()) == 0);
+        const bool directoryLinked = ::symlink(heldDirectory.constData(), nativeDirectory.constData()) == 0;
+        const bool directoryLinkRejected = directoryLinked && !readIpcCredentials(read).isEmpty();
+        if (directoryLinked) ::unlink(nativeDirectory.constData());
+        const bool directoryRestored = ::rename(heldDirectory.constData(), nativeDirectory.constData()) == 0;
+        QVERIFY(directoryRestored);
+        QVERIFY(directoryLinked);
+        QVERIFY(directoryLinkRejected);
+        QVERIFY(::chmod(nativeToken.constData(), 0644) == 0);
+        const bool fileRejected = !readIpcCredentials(read).isEmpty();
+        QVERIFY(::chmod(nativeToken.constData(), 0600) == 0);
+        QVERIFY(fileRejected);
+        QTemporaryDir outside;
+        const auto target = outside.filePath("victim");
+        saveBytes(target, "unchanged");
+        QVERIFY(QFile::remove(ipcCredentialPath()));
+        QVERIFY(::symlink(QFile::encodeName(target).constData(), nativeToken.constData()) == 0);
+        const bool linkReadRejected = !readIpcCredentials(read).isEmpty();
+        QByteArray ignored;
+        const bool linkCreateRejected = !createIpcCredentials(ignored).isEmpty();
+        QVERIFY(QFile::remove(ipcCredentialPath()));
+        QVERIFY(linkReadRejected);
+        QVERIFY(linkCreateRejected);
+        QCOMPARE(readFile(target), QByteArray("unchanged"));
+        QVERIFY(createIpcCredentials(credentials.token).isEmpty());
+#endif
+        removeIpcCredentials(credentials.token);
+        QVERIFY(!readIpcCredentials(read).isEmpty());
+        QVERIFY(read.isEmpty());
+    }
+    void cliReportsMissingCredentialsWithoutDispatch() {
+        struct TestPaths {
+            bool previous = QStandardPaths::isTestModeEnabled();
+            TestPaths() { QStandardPaths::setTestModeEnabled(true); }
+            ~TestPaths() { QStandardPaths::setTestModeEnabled(previous); }
+        } paths;
+        TestCredentials credentials;
+        QVERIFY2(credentials.error.isEmpty(), qPrintable(credentials.error));
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        AgentServer server(controller, credentials.token);
+        QVERIFY2(server.listen(agentServerName()), qPrintable(server.errorString()));
+        removeIpcCredentials(credentials.token);
+#ifdef Q_OS_WIN
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test.exe");
+#else
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
+#endif
+        QProcess cli;
+        cli.start(executable, {"status"});
+        QVERIFY(cli.waitForStarted());
+        QTRY_COMPARE_WITH_TIMEOUT(cli.state(), QProcess::NotRunning, 10000);
+        QCOMPARE(cli.exitCode(), 8);
+        const auto reply = QJsonDocument::fromJson(cli.readAllStandardOutput()).object();
+        QCOMPARE(reply["error"].toObject()["code"].toString(), QString("authentication_required"));
+        QVERIFY(!editorOf(controller)->hasDocument());
+    }
+    void cliReconnectsUsingNewCredentialsAfterDesktopRestart() {
+        struct TestPaths {
+            bool previous = QStandardPaths::isTestModeEnabled();
+            TestPaths() { QStandardPaths::setTestModeEnabled(true); }
+            ~TestPaths() { QStandardPaths::setTestModeEnabled(previous); }
+        } paths;
+        TestCredentials credentials;
+        QVERIFY2(credentials.error.isEmpty(), qPrintable(credentials.error));
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+#ifdef Q_OS_WIN
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test.exe");
+#else
+        const auto executable = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test");
+#endif
+        const auto previous = credentials.token;
+        for (int round = 0; round < 2; ++round) {
+            if (round) {
+                QVERIFY(createIpcCredentials(credentials.token).isEmpty());
+                QVERIFY(credentials.token != previous);
+            }
+            AgentServer server(controller, credentials.token);
+            QVERIFY2(server.start(), qPrintable(server.errorString()));
+            QProcess cli;
+            cli.start(executable, {"status"});
+            QVERIFY(cli.waitForStarted());
+            QTRY_COMPARE_WITH_TIMEOUT(cli.state(), QProcess::NotRunning, 10000);
+            QCOMPARE(cli.exitCode(), 0);
+            QVERIFY(QJsonDocument::fromJson(cli.readAllStandardOutput()).object()["running"].toBool());
+        }
+    }
+    void desktopRequestsConsumeFragmentsAndAuthenticateCompleteFrame() {
+        const auto token = randomIpcToken();
         QLocalServer server;
         const auto name = isolatedSocketName();
         QVERIFY2(server.listen(name), qPrintable(server.errorString()));
@@ -297,23 +544,29 @@ class AgentCliTests : public QObject {
         QVERIFY(client.waitForConnected(1000));
         QTRY_VERIFY(server.hasPendingConnections());
         const auto accepted = server.nextPendingConnection();
-        receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); });
+        receiveDesktopRequest(*accepted, *this, token, [&](const QString &text) { requests.append(text); });
         const QString path = "C:/中文 目录/图片.png";
-        const auto bytes = path.toUtf8();
-        // Split inside the first three-byte character, then let both reads run
-        // before EOF so neither fragment can be dispatched as a partial path.
+        const auto bytes = encodeDesktopRequest(path, token);
+        // Split inside the first three-byte character: an incomplete frame must
+        // never dispatch a partial path or acknowledge authentication.
         const auto split = bytes.indexOf(QString("中").toUtf8()) + 1;
         client.write(bytes.first(split)); client.flush();
         QTRY_COMPARE(accepted->bytesAvailable(), 0);
         QTest::qWait(30);
         QVERIFY(requests.isEmpty());
         client.write(bytes.mid(split)); client.flush();
-        QTest::qWait(30);
-        QVERIFY(requests.isEmpty());
-        client.disconnectFromServer();
         QTRY_COMPARE(requests, QStringList{path});
+        QByteArray replyBytes = client.readAll();
+        QJsonObject reply; QString error;
+        QTRY_VERIFY(([&] {
+            if (reply["ok"].toBool()) return true;
+            replyBytes += client.readAll();
+            return takeAgentMessage(replyBytes, reply, error) == AgentFrameState::Complete;
+        })());
+        QVERIFY(reply["ok"].toBool());
     }
-    void desktopRequestAlreadyAtEofIsNotLost() {
+    void desktopRequestBufferedBeforeHandlerIsNotLost() {
+        const auto token = randomIpcToken();
         QLocalServer server;
         const auto name = isolatedSocketName();
         QVERIFY2(server.listen(name), qPrintable(server.errorString()));
@@ -322,25 +575,24 @@ class AgentCliTests : public QObject {
         QVERIFY(client.waitForConnected(1000));
         QTRY_VERIFY(server.hasPendingConnections());
         const auto accepted = server.nextPendingConnection();
-        client.write("capture"); client.flush();
-        client.disconnectFromServer();
-        // Slow startup can install the handler after the peer has already
-        // closed; there will be no second disconnected signal to wait for.
-        QTRY_COMPARE(accepted->state(), QLocalSocket::UnconnectedState);
+        client.write(encodeDesktopRequest("capture", token)); client.flush();
+        QTRY_VERIFY(accepted->bytesAvailable() > 0);
+        // A buffered request must still authenticate before dispatch.
         QStringList requests;
-        receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); });
-        QCOMPARE(requests, QStringList{"capture"});
+        receiveDesktopRequest(*accepted, *this, token, [&](const QString &text) { requests.append(text); });
+        QTRY_COMPARE(requests, QStringList{"capture"});
     }
     void invalidDesktopRequestsAreDiscardedAndNextClientWorks_data() {
         QTest::addColumn<QByteArray>("bytes");
         QTest::addColumn<bool>("waitForDisconnect");
         QTest::addColumn<int>("timeoutMs");
-        QTest::newRow("oversized-without-eof") << QByteArray(65537, 'x') << true << 5000;
+        QTest::newRow("oversized-without-eof") << QByteArray(MaxAgentMessageBytes + 5, 'x') << true << 5000;
         QTest::newRow("idle-without-eof") << QByteArray() << true << 150;
         QTest::newRow("invalid-utf8") << QByteArray::fromHex("c328") << false << 5000;
         QTest::newRow("incomplete-utf8") << QByteArray::fromHex("e4b8") << false << 5000;
     }
     void invalidDesktopRequestsAreDiscardedAndNextClientWorks() {
+        const auto token = randomIpcToken();
         QFETCH(QByteArray, bytes);
         QFETCH(bool, waitForDisconnect);
         QFETCH(int, timeoutMs);
@@ -350,7 +602,7 @@ class AgentCliTests : public QObject {
         QStringList requests;
         connect(&server, &QLocalServer::newConnection, this, [&] {
             while (const auto accepted = server.nextPendingConnection())
-                receiveDesktopRequest(*accepted, *this, [&](const QString &text) { requests.append(text); }, timeoutMs);
+                receiveDesktopRequest(*accepted, *this, token, [&](const QString &text) { requests.append(text); }, timeoutMs);
         });
         QLocalSocket bad;
         bad.connectToServer(name);
@@ -362,8 +614,7 @@ class AgentCliTests : public QObject {
         QLocalSocket good;
         good.connectToServer(name);
         QVERIFY(good.waitForConnected(1000));
-        good.write("capture"); good.flush();
-        good.disconnectFromServer();
+        good.write(encodeDesktopRequest("capture", token)); good.flush();
         QTRY_COMPARE(requests, QStringList{"capture"});
     }
     void invalidIpcRequestsDoNotBreakFollowingConnections_data() {
@@ -377,17 +628,18 @@ class AgentCliTests : public QObject {
         QTest::newRow("multiple-requests") << status + status;
     }
     void invalidIpcRequestsDoNotBreakFollowingConnections() {
+        const auto token = randomIpcToken();
         QFETCH(QByteArray, bytes);
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
-        AgentServer server(controller);
+        AgentServer server(controller, token);
         const auto name = isolatedSocketName();
         QVERIFY2(server.listen(name), qPrintable(server.errorString()));
         for (const bool invalid : {true, false}) {
             QLocalSocket socket;
             socket.connectToServer(name);
             QVERIFY(socket.waitForConnected(1000));
-            socket.write(invalid ? bytes : encodeAgentMessage({{"protocol", 1}, {"command", "status"}}));
+            socket.write(invalid ? bytes : encodeAgentMessage(authenticated({{"protocol", 1}, {"command", "status"}}, token)));
             socket.flush();
             QByteArray replyBytes;
             QJsonObject reply;
@@ -610,13 +862,15 @@ class AgentCliTests : public QObject {
             TestPaths() { QStandardPaths::setTestModeEnabled(true); }
             ~TestPaths() { QStandardPaths::setTestModeEnabled(previous); }
         } isolatedPaths;
+        TestCredentials credentials;
+        QVERIFY2(credentials.error.isEmpty(), qPrintable(credentials.error));
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         QVERIFY(diagnostics::start({directory.filePath("logs")}));
         struct LogLifetime { ~LogLifetime() { diagnostics::stop(); } } logLifetime;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         auto editor = editorOf(controller);
-        AgentServer server(controller);
+        AgentServer server(controller, credentials.token);
         QVERIFY2(server.listen(agentServerName()), qPrintable(server.errorString()));
         QSignalSpy finished(&controller, &Controller::agentSessionFinished);
         QSignalSpy quitting(qApp, &QCoreApplication::aboutToQuit);
@@ -705,15 +959,16 @@ class AgentCliTests : public QObject {
         editor->hide();
     }
     void socketDisconnectCancelsItsSession() {
+        const auto token = randomIpcToken();
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
-        AgentServer server(controller);
+        AgentServer server(controller, token);
         const auto name = isolatedSocketName();
         QVERIFY2(server.listen(name), qPrintable(server.errorString()));
         QLocalSocket socket;
         socket.connectToServer(name);
         QVERIFY(socket.waitForConnected(1000));
-        const auto frame = encodeAgentMessage(request(inputProject(directory), directory.filePath("result.json")));
+        const auto frame = encodeAgentMessage(authenticated(request(inputProject(directory), directory.filePath("result.json")), token));
         socket.write(frame.first(3)); socket.flush();
         QTest::qWait(30);
         QVERIFY(!controller.handleAgentRequest({{"command", "status"}})["agentSession"].toBool());
@@ -802,6 +1057,8 @@ class AgentCliTests : public QObject {
             StandardPathsTestMode() { QStandardPaths::setTestModeEnabled(true); }
             ~StandardPathsTestMode() { QStandardPaths::setTestModeEnabled(previous); }
         } isolatedStandardPaths;
+        TestCredentials credentials;
+        QVERIFY2(credentials.error.isEmpty(), qPrintable(credentials.error));
 #ifdef Q_OS_WIN
         const auto videoCli = QDir(QCoreApplication::applicationDirPath()).filePath("edithere-cli-test.exe");
 #else
@@ -812,7 +1069,7 @@ class AgentCliTests : public QObject {
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         const auto editor = editorOf(controller);
         QVERIFY(editor);
-        AgentServer server(controller);
+        AgentServer server(controller, credentials.token);
         // Both processes use Qt test mode. Windows can accept multiple named
         // pipe listeners, so a successful listen on the ordinary endpoint would
         // not prove that CLI requests are isolated from a user's running app.

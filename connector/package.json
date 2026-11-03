@@ -1,6 +1,6 @@
 {
   "name": "edithere-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "EditHere（改这里）MCP 连接器：把本地 edithere-cli 的 Agent 接口封装为 MCP 工具，让 AI 读取用户在截图上的批注与布局调整",
   "type": "module",
   "main": "mcp-server.mjs",

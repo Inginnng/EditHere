@@ -2179,10 +2179,10 @@ QImage exampleImage() {
     return image;
 }
 QImage previewImage(const Document &doc) {
-    // Lay out every export in the same coordinate space. Source pixels and
-    // annotation coordinates remain untouched in projects and JSON exports.
-    const double imageScale = 960.0 / doc.image.width();
-    const int imageWidth = 960;
+    // The annotated copy must keep small text in high-resolution screenshots
+    // readable. Enlarge small sources as before, but never downsample a source.
+    const int imageWidth = std::max(960, doc.image.width());
+    const double imageScale = double(imageWidth) / doc.image.width();
     const double scaledHeight = doc.image.height() * imageScale;
     if (scaledHeight > 32767 - 48) fail(tr("预览图片过大，请保存项目"));
     const int imageHeight = std::max(1, qRound(scaledHeight));
@@ -2197,7 +2197,7 @@ QImage previewImage(const Document &doc) {
         total += h + 12;
     }
     int width = imageWidth + 408, height = std::max(imageHeight + 48, total + 24);
-    if (qint64(width) * height > MaxPixels || height > 32767)
+    if (qint64(width) * height > MaxPixels || width > 32767 || height > 32767)
         fail(tr("预览图片过大，请保存项目"));
     QImage image(width, height, QImage::Format_ARGB32);
     image.fill(QColor("#f5f5f7"));

@@ -2603,6 +2603,11 @@
         <source>屏幕截图</source>
         <translation>螢幕截圖</translation>
     </message>
+    <message>
+        <location filename="../controller.cpp" line="342" />
+        <source>打开发布页</source>
+        <translation>開啟發布頁</translation>
+    </message>
 </context>
 <context>
     <name>h2d::DiagnosticsPage</name>
@@ -4803,6 +4808,28 @@
         <location filename="../updatechecker.cpp" line="647"/>
         <source>校验失败：安装包已损坏或不完整。</source>
         <translation>驗證失敗：安裝檔已損壞或不完整。</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="42" />
+        <location filename="../updatechecker.cpp" line="411" />
+        <location filename="../updatechecker.cpp" line="662" />
+        <source>未配置可信发布者，程序内安装已停用。请前往发布页手动下载。</source>
+        <translation>未設定可信任的發布者，程式內安裝已停用。請前往發布頁手動下載。</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="82" />
+        <source>安装包的发布者签名无效或无法验证，已停止更新。请前往发布页手动下载。</source>
+        <translation>安裝套件的發布者簽章無效或無法驗證，已停止更新。請前往發布頁手動下載。</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="84" />
+        <source>安装包签名与内置的可信发布者不一致，已停止更新。请前往发布页手动下载。</source>
+        <translation>安裝套件簽章與內建的可信任發布者不一致，已停止更新。請前往發布頁手動下載。</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="672" />
+        <source>无法读取并锁定已下载的安装包，已停止更新。</source>
+        <translation>無法讀取並鎖定已下載的安裝套件，已停止更新。</translation>
     </message>
 </context>
 <context>

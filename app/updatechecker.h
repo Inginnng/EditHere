@@ -84,6 +84,8 @@ class UpdateChecker final : public QObject {
     void completeCheck();
     void finish(Result result);
     void verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller);
+    bool startVerifiedInstaller(const QString &filePath, const QString &expectedHash, bool isInstaller,
+                                QString *error);
     void failInstall(const QString &message);
     bool prepareHandoff(const QString &filePath, const QString &expectedHash, QString *error);
     bool writeHandoffAction(const QString &action);

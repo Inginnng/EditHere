@@ -5,7 +5,7 @@ display_name_en: EditHere
 description: 用 EditHere（改这里）让用户在截图或设计图上批注、移动和缩放组件，读取用户明确提交的结构化反馈后继续实现。适用于用户要求用 EditHere 标注修改、想在图上直接画出改法，或需要处理 EditHere 反馈 JSON 的场景。
 description_zh: 在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI，适用于难以用文字描述清楚的界面调整。
 description_en: Let the user annotate a screenshot or mockup, move and resize components, then read the structured feedback the user submits and continue implementing.
-version: 0.2.0
+version: 0.2.1
 author: EditHere
 ---
 

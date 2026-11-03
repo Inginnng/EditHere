@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "agentconnection.h"
 #include "agentserver.h"
+#include "localauth.h"
 #include "autostart.h"
 #include "diagnostics.h"
 #include "i18n.h"
@@ -143,12 +144,17 @@ int main(int argc, char **argv) {
             return 2;
         }
         QLocalSocket socket;
+        QByteArray token;
+        if (const auto error = readIpcCredentials(token); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.quit_auth", error);
+            return 2;
+        }
         socket.connectToServer(serverName);
         if (socket.waitForConnected(800)) {
-            socket.write("quit");
-            socket.flush();
-            socket.waitForBytesWritten(500);
-            socket.disconnectFromServer();
+            if (const auto error = sendDesktopRequest(socket, "quit", token); !error.isEmpty()) {
+                diagnostics::write(diagnostics::Level::Error, "startup.quit_auth", error);
+                return 2;
+            }
         } else {
             diagnostics::write(diagnostics::Level::Warning, "startup.quit_request", socket.errorString());
         }
@@ -172,12 +178,16 @@ int main(int argc, char **argv) {
         if ((background || wasLaunchedAtLogin()) && path.isEmpty())
             return 0;
         QLocalSocket socket;
+        QByteArray token;
+        if (const auto error = readIpcCredentials(token); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.forward_auth", error);
+            QMessageBox::warning(nullptr, "EditHere", error);
+            return 2;
+        }
         socket.connectToServer(serverName);
         if (socket.waitForConnected(800)) {
-            socket.write(path.isEmpty() ? QByteArray("capture") : path.toUtf8());
-            socket.flush();
-            if (socket.bytesToWrite() && !socket.waitForBytesWritten(500)) {
-                diagnostics::write(diagnostics::Level::Error, "startup.forward", socket.errorString());
+            if (const auto error = sendDesktopRequest(socket, path.isEmpty() ? QString("capture") : path, token); !error.isEmpty()) {
+                diagnostics::write(diagnostics::Level::Error, "startup.forward_auth", error);
                 return 2;
             }
         } else {
@@ -187,22 +197,41 @@ int main(int argc, char **argv) {
         }
         return 0;
     }
+    QByteArray ipcToken;
+    const auto policyError = ipcServerPolicyError();
+    const bool ipcEnabled = policyError.isEmpty();
+    if (ipcEnabled) {
+        if (const auto error = createIpcCredentials(ipcToken); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.ipc_auth", error);
+            QMessageBox::critical(nullptr, "EditHere", error);
+            return 2;
+        }
+    } else {
+        // A manually launched elevated GUI remains usable, without accepting
+        // requests from less privileged processes of the same Windows account.
+        diagnostics::write(diagnostics::Level::Warning, "startup.ipc_disabled", policyError);
+        QMessageBox::warning(nullptr, "EditHere", policyError);
+    }
+    struct IpcLifetime {
+        QByteArray token;
+        ~IpcLifetime() { removeIpcCredentials(token); }
+    } ipcLifetime{ipcToken};
     QLocalServer server;
-    QLocalServer::removeServer(serverName);
+    if (ipcEnabled) QLocalServer::removeServer(serverName);
     server.setSocketOptions(QLocalServer::UserAccessOption);
-    if (!server.listen(serverName)) {
+    if (ipcEnabled && !server.listen(serverName)) {
         diagnostics::write(diagnostics::Level::Error, "startup.desktop_server", server.errorString());
         QMessageBox::critical(nullptr, "EditHere", QCoreApplication::translate("h2d", "无法启动程序通信服务，请退出其他 EditHere 实例后重试。"));
         return 2;
     }
     Controller controller;
-    AgentServer agentServer(controller, &app);
-    if (!agentServer.start())
+    AgentServer agentServer(controller, ipcToken, &app);
+    if (ipcEnabled && !agentServer.start())
         diagnostics::write(diagnostics::Level::Error, "startup.agent_server", agentServer.errorString());
     app.openProject=[&controller](const QString &path) {controller.start(false,path);};
     QObject::connect(&server, &QLocalServer::newConnection, &app, [&] {
         while (auto socket = server.nextPendingConnection()) {
-            receiveDesktopRequest(*socket, controller, [&controller](const QString &text) {
+            receiveDesktopRequest(*socket, controller, ipcToken, [&controller](const QString &text) {
                 if (text == "capture") controller.capture();
                 else if (text == "quit") controller.quit();
                 else if (!text.isEmpty()) controller.start(false, text);

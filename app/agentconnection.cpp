@@ -1,10 +1,11 @@
 #include "agentconnection.h"
 #include "agentprotocol.h"
+#include "localauth.h"
+#include <QDir>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QThread>
 #include <QTimer>
-#include <QStringDecoder>
 #include <memory>
 namespace h2d {
 namespace {
@@ -40,52 +41,96 @@ QJsonObject endpointUnavailable(const AgentSocketResult &result) {
 }
 }
 QString legacyDesktopServerName() {
+#ifndef Q_OS_WIN
+    return QDir(ipcRuntimeDirectory()).filePath("d");
+#else
+    return "EditHere-native-v2-" + QString::number(qHash(agentStateLocation()));
+#endif
+}
+QString previousDesktopServerName() {
     // Shares agentStateLocation() with the Agent endpoint: both names have to be reached from
     // any process identity, not just from the GUI that listens on them.
     const auto state = agentStateLocation();
     return "EditHere-native-" + QString::number(qHash(state));
 }
+QByteArray encodeDesktopRequest(const QString &text, const QByteArray &token) {
+    return encodeAgentMessage({{"protocol", 1}, {"token", QString::fromLatin1(token)}, {"request", text}});
+}
+QString sendDesktopRequest(QLocalSocket &socket, const QString &text, const QByteArray &token, int timeoutMs) {
+    if (const auto error = ipcPeerError(socket); !error.isEmpty()) return error;
+    socket.setReadBufferSize(MaxAgentMessageBytes + 4);
+    const auto bytes = encodeDesktopRequest(text, token);
+    if (socket.write(bytes) != bytes.size()) return socket.errorString();
+    socket.flush();
+    QElapsedTimer elapsed; elapsed.start();
+    QByteArray response;
+    while (elapsed.elapsed() < timeoutMs) {
+        response += socket.readAll();
+        if (response.size() > MaxAgentMessageBytes + 4) return "Desktop reply exceeds the supported size.";
+        QJsonObject reply; QString error;
+        const auto state = takeAgentMessage(response, reply, error);
+        if (state == AgentFrameState::Invalid) return error;
+        if (state == AgentFrameState::Complete && !response.isEmpty()) return "Expected one desktop reply.";
+        if (state == AgentFrameState::Complete)
+            return reply["ok"].toBool() ? QString() : reply["error"].toObject()["message"].toString("Desktop request was refused.");
+        if (socket.state() == QLocalSocket::UnconnectedState) return "Desktop connection closed before authenticating the request.";
+        socket.waitForReadyRead(qMin(500, qMax(1, timeoutMs - int(elapsed.elapsed()))));
+    }
+    return "Desktop request authentication timed out.";
+}
 void receiveDesktopRequest(QLocalSocket &socket, QObject &receiver,
+                           const QByteArray &token,
                            const std::function<void(const QString &)> &dispatch, int timeoutMs) {
-    constexpr qsizetype maximumBytes = 65536;
+    constexpr qsizetype maximumBytes = MaxAgentMessageBytes + 4;
     socket.setReadBufferSize(maximumBytes + 1);
-    struct State { QByteArray bytes; bool invalid = false; bool finished = false; };
+    if (!ipcPeerError(socket, true).isEmpty()) { socket.abort(); socket.deleteLater(); return; }
+    struct State { QByteArray bytes; bool finished = false; };
     auto state = std::make_shared<State>();
     auto deadline = new QTimer(&socket);
     deadline->setSingleShot(true);
-    auto collect = [&socket, state] {
-        if (state->invalid || !socket.isOpen()) return;
+    auto collect = [&socket, state, deadline, token, dispatch] {
+        if (state->finished || !socket.isOpen()) return;
         state->bytes += socket.readAll();
         if (state->bytes.size() > maximumBytes) {
-            state->invalid = true;
+            state->finished = true;
             state->bytes.clear();
             socket.abort();
+            return;
         }
+        QJsonObject request;
+        QString error;
+        const auto frame = takeAgentMessage(state->bytes, request, error);
+        if (frame == AgentFrameState::Incomplete) return;
+        state->finished = true;
+        deadline->stop();
+        QJsonObject reply;
+        if (frame == AgentFrameState::Invalid || !state->bytes.isEmpty() || request["protocol"].toInt() != 1 || !request["request"].isString())
+            reply = agentError("protocol_error", "Expected one authenticated desktop request.");
+        else if (!ipcTokenMatches(token, request["token"].toString()))
+            reply = agentError("authentication_required", "A valid IPC credential for this desktop session is required.");
+        else reply = {{"ok", true}, {"accepted", true}};
+        socket.write(encodeAgentMessage(reply));
+        socket.flush();
+        if (socket.bytesToWrite()) socket.waitForBytesWritten(500);
+        socket.disconnectFromServer();
+        if (reply["ok"].toBool()) dispatch(request["request"].toString());
     };
     QObject::connect(&socket, &QLocalSocket::readyRead, &socket, collect);
     QObject::connect(deadline, &QTimer::timeout, &socket, [&socket, state] {
-        state->invalid = true;
+        state->finished = true;
         state->bytes.clear();
         socket.abort();
         socket.deleteLater();
     });
-    auto finish = [state, deadline, collect, dispatch] {
-        if (state->finished) return;
+    QObject::connect(&socket, &QLocalSocket::disconnected, &receiver, [state, deadline] {
         state->finished = true;
         deadline->stop();
-        collect();
-        if (state->invalid || state->bytes.isEmpty()) return;
-        QStringDecoder decode(QStringDecoder::Utf8, QStringConverter::Flag::Stateless);
-        const QString text = decode(state->bytes);
-        if (!decode.hasError()) dispatch(text);
-    };
-    QObject::connect(&socket, &QLocalSocket::disconnected, &receiver, finish);
+    });
     QObject::connect(&socket, &QLocalSocket::disconnected, &socket, &QObject::deleteLater);
     deadline->start(qMax(1, timeoutMs));
     // The peer can write before nextPendingConnection() is called.
     if (socket.bytesAvailable()) collect();
     if (socket.state() == QLocalSocket::UnconnectedState) {
-        finish();
         socket.deleteLater();
     }
 }
@@ -119,11 +164,11 @@ QJsonObject ensureAgentConnection(bool mayStart, const QString &version,
     if (result.connected) return {};
     if (!missing(result)) return agentConnectionError(result, AgentEndpoint::Agent, "connect");
 
-    // A pre-CLI GUI still owns the desktop endpoint. Connecting without writing is a no-op
-    // for its legacy protocol and avoids inspecting or modifying the real instance lock.
+    // The desktop listener may precede the Agent listener during GUI startup.
+    // Probes send no data, including when the caller detects an older GUI.
     const auto desktop = connect(AgentEndpoint::Desktop, 400);
     if (desktop.connected) {
-        // main() publishes the legacy listener before constructing the UI and Agent server.
+        // main() publishes the desktop listener before constructing the UI and Agent server.
         // Missing endpoints fail immediately, so wait explicitly for that initialization gap.
         QElapsedTimer initializing;
         initializing.start();

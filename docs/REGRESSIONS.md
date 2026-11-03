@@ -15,6 +15,27 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 本地请求认证与更新发布者验证（2026-11-03）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-205 | #8：桌面转发和 Agent 仅依赖 socket 的用户权限，更新只校验同源 SHA-256。两个 IPC 端点改用每轮随机 token，并双向验证 OS 用户身份；Windows 同时要求完整性级别一致，提权 GUI 停用 IPC。Windows 更新增加 Authenticode 和编译内置证书 pin，验证至启动保持文件锁；未配置 pin 时默认转到手动发布页。反馈发布继续使用原子 no-overwrite，目标被抢占时失败而不覆盖。详见 `SECURITY.md` | `agent-cli`：缺失/错误/旧 token、私有凭据轮换、桌面旧裸命令拒绝、真实 CLI 重连及反馈目标竞争；`updates`：签名 fixture 匹配/错误 pin/篡改、unsigned 包拒绝、未配 pin 在网络访问前拒绝且不确认/启动安装。Windows MSVC / Qt 6.8.0：50 + 48 passed，0 failed；在线视频、live release 各 1 项 opt-in skipped。本轮未运行 Unix 原生校验，macOS/Linux 由原生 CI 复核；项目发布签名和可信 pin 尚未配置 | ⚠️ |
+
+## macOS 菜单栏与异步长截图（2026-11-03）
+
+同批反馈导出回归：
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-203 | #42：带批注图片固定把原图缩到 960px，导致大截图的小字和细节丢失。宽图改为保留原始像素宽度，侧栏继续附编号与意见，超过像素或边长上限明确拒绝 | `core::annotatedPreviewPreservesHighResolutionSourcePixels`：3840px 细密图案逐像素比较；现有 clipboard 图像回归 | 🆕 |
+| REG-204 | #38：会话里所有手动 JSON 附件都叫 feedback.json，无法从名称识别意见。改用首条批注命名、清洗路径和保留字、限制长度；每轮仍为独立目录，v2 marker 记录实际 JSON 名以兼容清理 | `ui::feedbackFileClipboardIncludesOriginalWithoutLegacyPreview`、`feedbackClipboardNamesAreSafeAndUseTheFirstComment`：命名、相对原图引用、重复复制、路径字符与 CON、无批注回退 | 🆕 |
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-200 | #11：Qt 6.8.3 的 Cocoa 托盘委托直接读取 `NSApp.currentEvent.clickCount`，macOS 27 的非鼠标菜单事件触发 AppKit 断言。复用经过方法签名检查的两个委托局部防护，非鼠标事件跳过激活解析；不兼容时隐藏托盘、保留编辑窗口并写诊断 | macOS `cocoa-tray`：真实 Qt 委托的 KitDefined 负对照、非鼠标/空事件、鼠标类型、重复安装、原生菜单和动作。Windows 不编译 Objective-C++，macOS 27 原生手势需实机复测 | ⚠️ |
+| REG-201 | #41：0.12.4 Intel 报告为 `EXC_BAD_ACCESS`、主线程 Qt queued callback，区别于 #39 的异常。`captureSessionRegion` 的 `shared_ptr` 引用参数被逃逸的 Objective-C block 按引用保存；调用方局部对象离开作用域后，完成回调再拷入 Qt lambda 时访问失效引用。改为值参数，让 block 独立持有请求与会话；把异常处理放在真正执行的 Qt queued lambda 内，配置构造也纳入兜底 | macOS `cocoa-capture` 编译真实后端、替换原生提交入口，延迟真实完成 block 到调用栈退出后：弱引用确认请求仍存活、返回正确帧、取消后不污染新会话、超时后迟到帧只完成一次。无需录屏权限；Windows 无法执行，需 macOS CI/实机验证 | ⚠️ |
+| REG-202 | #44：Cocoa 开始跟踪菜单也发送托盘 `Trigger`，通用单击截图处理把尚未选择动作的菜单直接覆盖；「打开图片」没有采集/模态检查，随后又嵌套文件对话框。macOS 只由明确的截图菜单项启动采集，原生菜单动作排队到 tracking 返回后；打开文件检查采集与模态状态并延后对话框 | `startup-flow::macTrayActivationOnlyOpensTheMenu`：菜单激活不截图、明确截图动作仍生效；`openingFromTrayDoesNotInterruptCapture`：捕捉期间不能弹文件对话框；现有新建批注入口回归继续验证 | ⚠️ |
+
 ## macOS 长截图崩溃与保存路径（0.12.4）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

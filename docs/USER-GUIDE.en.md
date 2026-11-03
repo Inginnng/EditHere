@@ -180,6 +180,10 @@ A move becomes an annotation the moment it happens, listed alongside text annota
 
 ## Save and export
 
+Copying an annotated image preserves the original pixel width of wide screenshots so small text stays readable, with numbered comments alongside it. Images exceeding the export size or memory limit report an error and can be saved as a project.
+
+The JSON attachment copied by “Copy JSON and images” uses the first annotation as its filename, limited to 80 characters with invalid filename characters replaced. With no text annotations it uses `feedback.json`. Each copy has its own folder, image references remain relative, and explicit CLI output paths are unchanged.
+
 | Action | Default shortcut | Result |
 | --- | --- | --- |
 | Save project | `Ctrl + S` | An `.edithere` file that always embeds the original image and the slice cache, and can be reopened to keep editing |

@@ -897,10 +897,12 @@ class CoreTests : public QObject {
         feedback["objects"] = objects;
         QVERIFY_EXCEPTION_THROWN(loadFeedback(feedback, {}), std::runtime_error);
     }
-    void previewLayoutIsIndependentOfSourceResolution() {
+    void annotatedPreviewPreservesHighResolutionSourcePixels() {
         auto makeDocument = [](int factor) {
             QImage image(960 * factor, 540 * factor, QImage::Format_RGB32);
-            image.fill(Qt::white);
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    image.setPixelColor(x, y, QColor((x * 37) % 256, (y * 53) % 256, (x + y) % 256));
             auto doc = fromImage(image, "file", "proportional preview");
             Note note;
             note.isPoint = false;
@@ -911,11 +913,12 @@ class CoreTests : public QObject {
         };
         const auto small = makeDocument(1), large = makeDocument(4);
         const auto first = previewImage(small), second = previewImage(large);
-        QCOMPARE(first.size(), second.size());
-        // Coordinates are displayed as original pixels, so compare the image
-        // area, title and comment body independently of the coordinate label.
-        QCOMPARE(first.copy(0, 0, 984, first.height()), second.copy(0, 0, 984, second.height()));
-        QCOMPARE(first.copy(1020, 122, 324, 60), second.copy(1020, 122, 324, 60));
+        QCOMPARE(first.width(), 960 + 408);
+        QCOMPARE(second.size(), QSize(3840 + 408, 2160 + 48));
+        // Compare fine pixel detail away from the annotation. A 960px export
+        // loses this pattern even when enlarged again by the receiving app.
+        QCOMPARE(second.copy(24 + 1200, 24 + 100, 600, 200),
+                 large.image.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
         QCOMPARE(large.notes[0].rect, QRect(480, 400, 800, 600));
     }
     void compressedFeedbackKeepsCoordinatesAndProjectPixels() {
