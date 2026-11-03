@@ -34,7 +34,9 @@ ARM64 包额外携带 GLVND 的 `libOpenGL.so.0`、`libGLdispatch.so.0` 和 `lib
 
 桌面能力按实际提供的接口判断，不能只看 xdg-desktop-portal 的包版本：普通截图需要 `org.freedesktop.portal.Screenshot`；屏幕流和手动长截图需要 `org.freedesktop.portal.ScreenCast` 及工作的 PipeWire 服务；全局快捷键需要 `org.freedesktop.portal.GlobalShortcuts`。只有 Screenshot 时，系统截图完成后直接进入批注编辑器；缺少 GlobalShortcuts 时提示限制并保存其他设置，所选按键不会冒充已注册。可以从托盘操作，或在系统快捷键设置中绑定程序完整路径加 `--capture`。
 
-UKUI Wayland 下即使 Qt 使用 `xcb`，也继续使用 Portal 获取桌面截图；Xwayland 的根窗口无法保证包含所有原生 Wayland 窗口。真正的 X11 会话仍使用原来的 X11 路径。[issue #30](https://github.com/Inginnng/EditHere/issues/30) 已反馈在麒麟 V10 SP1 / ARM64 / glibc 2.31 上经过临时库修正后，图片批注和大爆炸可用；自动打包的库修正、截图衔接及视频仍待新版实机复测。
+UKUI Wayland 下即使 Qt 使用 `xcb`，也继续使用 Portal 获取桌面截图；Xwayland 的根窗口无法保证包含所有原生 Wayland 窗口。真正的 X11 会话仍使用原来的 X11 路径。[issue #30](https://github.com/Inginnng/EditHere/issues/30) 已反馈在麒麟 V10 SP1 / ARM64 / glibc 2.31 上经过临时库修正后，图片批注和大爆炸可用，0.12.3 实验包的设置保存也已确认正常。但 2026-10-30 的最新实测仍有截图授权失败、空白批注无反应；截图和视频尚未完成目标设备验收。可先用系统截图工具保存图片，再在 EditHere 打开。
+
+Portal 请求兼容忽略 `handle_token`、返回不同请求路径的旧桌面实现，截图失败提示保留底层 DBus 错误。此兼容修正通过模拟 Portal 验证，尚不能确认是上述麒麟故障的根因。复测时请提供失败提示全文及 `edithere-cli status` 的结果；截图/授权窗口关闭后，`capturing` 应为 `false`。
 
 把实验包与同次构建的 CLI 放在同一目录后运行：
 

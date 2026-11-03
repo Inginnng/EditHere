@@ -89,15 +89,20 @@ class MockScreenshot : public QObject, protected QDBusContext {
   public:
     QString uri;
     uint result = 0;
+    bool legacyHandle = false;
     MockRequest *last = nullptr;
   public slots:
     QDBusObjectPath Screenshot(const QString &, const QVariantMap &options) {
         QString sender = message().service().mid(1); sender.replace('.', '_');
-        const QString path = "/org/freedesktop/portal/desktop/request/" + sender + "/" + options.value("handle_token").toString();
+        const QString path = "/org/freedesktop/portal/desktop/request/" + sender + "/" +
+            (legacyHandle ? QString("legacy_request") : options.value("handle_token").toString());
         auto *request = new MockRequest;
         request->setParent(this); last = request;
         QDBusConnection::sessionBus().registerObject(path, request, QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals);
-        QTimer::singleShot(0, request, [request, code = result, uri = uri] { emit request->Response(code, {{"uri", uri}}); });
+        // Legacy handles become known only after the method reply. The portal
+        // interaction completes later, once the caller can move its subscription.
+        QTimer::singleShot(legacyHandle ? 50 : 0, request,
+            [request, code = result, uri = uri] { emit request->Response(code, {{"uri", uri}}); });
         return QDBusObjectPath(path);
     }
 };
@@ -170,12 +175,22 @@ class LinuxPlatformTests : public QObject {
         QTRY_VERIFY(done); QCOMPARE(frames.size(), 1); QVERIFY(error.isEmpty());
         QCOMPARE(frames[0].image, image); QVERIFY(!frames[0].nativePixels);
         QVERIFY(frames[0].selectionComplete);
+        mock.legacyHandle = true; done = false;
+        captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
+        QTRY_VERIFY(done); QCOMPARE(frames.size(), 1); QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(frames[0].image, image);
+        mock.legacyHandle = false;
         mock.result = 1; done = false;
         captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
         QTRY_VERIFY(done); QVERIFY(frames.isEmpty()); QVERIFY(!error.isEmpty());
         mock.result = 0; mock.uri = "https://example.com/not-local.png"; done = false;
         captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
         QTRY_VERIFY(done); QVERIFY(frames.isEmpty()); QVERIFY(!error.isEmpty());
+        bus.unregisterObject("/org/freedesktop/portal/desktop");
+        done = false;
+        captureScreens([&](auto value, auto message) { frames = value; error = message; done = true; });
+        QTRY_VERIFY(done); QVERIFY(frames.isEmpty());
+        QVERIFY2(error.contains('\n'), "A portal transport error must include the underlying DBus diagnostic.");
         qputenv("XDG_SESSION_TYPE", previous);
         bus.unregisterObject("/org/freedesktop/portal/desktop");
         bus.unregisterService("org.freedesktop.portal.Desktop");

@@ -44,9 +44,25 @@ void LinuxPortalRequest::start(const QString &interface, const QString &method, 
         QDBusPendingReply<QDBusObjectPath> reply = *watcher;
         watcher->deleteLater();
         if (!callback_) return;
-        if (reply.isError()) complete(2, {{"error", reply.error().message()},
-                                        {"errorName", reply.error().name()}});
-        else if (reply.value().path() != path_) complete(2, {{"error", "Unexpected portal request path"}});
+        if (reply.isError()) {
+            complete(2, {{"error", reply.error().message()},
+                         {"errorName", reply.error().name()}});
+            return;
+        }
+        const auto actualPath = reply.value().path();
+        if (actualPath == path_) return;
+        // Some older desktop portals ignore handle_token. The Request protocol
+        // requires moving the subscription to the handle actually returned.
+        auto bus = QDBusConnection::sessionBus();
+        if (!actualPath.startsWith("/org/freedesktop/portal/desktop/request/") ||
+            !bus.connect(service, actualPath, "org.freedesktop.portal.Request", "Response",
+                         this, SLOT(response(uint,QVariantMap)))) {
+            complete(2, {{"error", "Unable to subscribe to the returned portal request"}});
+            return;
+        }
+        bus.disconnect(service, path_, "org.freedesktop.portal.Request", "Response",
+                       this, SLOT(response(uint,QVariantMap)));
+        path_ = actualPath;
     });
     QTimer::singleShot(120000, this, [this] { complete(2, {{"error", "Portal request timed out"}}); });
 }
