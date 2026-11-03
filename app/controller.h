@@ -38,6 +38,7 @@ class Controller final : public QObject {
     friend class ReadmeRecorder;
     void beginCapture(bool fromTray);
     void openAnnotation();
+    void openFromTray();
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
     quint64 captureGeneration_ = 0;

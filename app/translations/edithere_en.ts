@@ -2607,6 +2607,11 @@ Scroll back a little; stitching continues once it lines up.</translation>
         <source>屏幕截图</source>
         <translation>Screen capture</translation>
     </message>
+    <message>
+        <location filename="../controller.cpp" line="342"/>
+        <source>打开发布页</source>
+        <translation>Open the releases page</translation>
+    </message>
 </context>
 <context>
     <name>h2d::DiagnosticsPage</name>
@@ -4813,6 +4818,28 @@ If EditHere helps you, a star on GitHub matters a lot to me. Or just tell me abo
         <location filename="../updatechecker.cpp" line="647"/>
         <source>校验失败：安装包已损坏或不完整。</source>
         <translation>Verification failed: the installer is corrupt or incomplete.</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="42"/>
+        <location filename="../updatechecker.cpp" line="411"/>
+        <location filename="../updatechecker.cpp" line="662"/>
+        <source>未配置可信发布者，程序内安装已停用。请前往发布页手动下载。</source>
+        <translation>No trusted publisher is configured, so in-app installation is disabled. Download manually from the releases page.</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="82"/>
+        <source>安装包的发布者签名无效或无法验证，已停止更新。请前往发布页手动下载。</source>
+        <translation>The installer's publisher signature is invalid or cannot be verified. The update was stopped. Download manually from the releases page.</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="84"/>
+        <source>安装包签名与内置的可信发布者不一致，已停止更新。请前往发布页手动下载。</source>
+        <translation>The installer's signer does not match the built-in trusted publisher. The update was stopped. Download manually from the releases page.</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="672"/>
+        <source>无法读取并锁定已下载的安装包，已停止更新。</source>
+        <translation>The downloaded installer could not be opened and locked. The update was stopped.</translation>
     </message>
 </context>
 <context>

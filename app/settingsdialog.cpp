@@ -146,6 +146,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     language_->setObjectName("interfaceLanguage");
     language_->addItem({}, static_cast<int>(LanguageMode::System));
     language_->addItem({}, static_cast<int>(LanguageMode::SimplifiedChinese));
+    language_->addItem({}, static_cast<int>(LanguageMode::TraditionalChinese));
     language_->addItem({}, static_cast<int>(LanguageMode::English));
     language_->setMinimumHeight(36);
     appearanceLayout->addWidget(language_);
@@ -542,7 +543,8 @@ void SettingsDialog::retranslate() {
     language_->setAccessibleName(tr("界面语言"));
     language_->setItemText(0, tr("跟随系统"));
     language_->setItemText(1, languageDisplayName(LanguageMode::SimplifiedChinese));
-    language_->setItemText(2, languageDisplayName(LanguageMode::English));
+    language_->setItemText(2, languageDisplayName(LanguageMode::TraditionalChinese));
+    language_->setItemText(3, languageDisplayName(LanguageMode::English));
     if (ocrTitle_)
         ocrTitle_->setText(tr("文字识别语言"));
     if (auto description = findChild<QLabel *>("ocrLanguageDescription"))

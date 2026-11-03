@@ -1,4 +1,5 @@
 #include "updatechecker.h"
+#include "updateauth.h"
 #include "diagnostics.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -32,6 +33,11 @@ bool isSourceAssetUrl(const QUrl &url, UpdateChecker::Source source) {
 }
 bool isValidAssetUrl(const QUrl &url) {
     return isSourceAssetUrl(url, UpdateChecker::GitHub) || isSourceAssetUrl(url, UpdateChecker::Gitee);
+}
+bool compatibleInstallerAssets(const UpdateChecker::Result &result, bool installed, bool windows) {
+    return windows && result.status == UpdateChecker::Available && (installed || result.portableInstallerSupported) &&
+           isValidAssetUrl(result.installer.url) && isValidAssetUrl(result.installerHash.url) &&
+           result.installerHash.name == result.installer.name + ".sha256";
 }
 QVersionNumber releaseVersion(const UpdateChecker::Result &result) {
     return QVersionNumber::fromString(result.tagName.startsWith('v') ? result.tagName.mid(1) : result.tagName);
@@ -126,7 +132,7 @@ UpdateChecker::Result UpdateChecker::parseReleases(const QByteArray &bytes, cons
             continue;
         if (!newest || QVersionNumber::compare(releaseVersion(result), releaseVersion(*newest)) > 0 ||
             (releaseVersion(result) == releaseVersion(*newest) &&
-             canAutoInstall(result, true, true) && !canAutoInstall(*newest, true, true)))
+             compatibleInstallerAssets(result, true, true) && !compatibleInstallerAssets(*newest, true, true)))
             newest = result;
     }
     return newest.value_or(failure(tr("发行信息不是有效的 EditHere 正式版本，请到发布页查看。"), source));
@@ -152,8 +158,8 @@ UpdateChecker::Result UpdateChecker::selectRelease(const Result &github, const R
         return order > 0 ? github : gitee;
     // Select one whole release: a mirror's checksum must never be paired with
     // the other mirror's binary. Prefer complete packages, then the Gitee mirror.
-    const bool githubComplete = canAutoInstall(github, true, true);
-    const bool giteeComplete = canAutoInstall(gitee, true, true);
+    const bool githubComplete = compatibleInstallerAssets(github, true, true);
+    const bool giteeComplete = compatibleInstallerAssets(gitee, true, true);
     return githubComplete && !giteeComplete ? github : gitee;
 }
 UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
@@ -323,7 +329,7 @@ void UpdateChecker::requestSource(Source source) {
         if (page.status != Failed &&
             (!giteeCandidate_ || QVersionNumber::compare(releaseVersion(page), releaseVersion(*giteeCandidate_)) > 0 ||
              (releaseVersion(page) == releaseVersion(*giteeCandidate_) &&
-              canAutoInstall(page, true, true) && !canAutoInstall(*giteeCandidate_, true, true))))
+              compatibleInstallerAssets(page, true, true) && !compatibleInstallerAssets(*giteeCandidate_, true, true))))
             giteeCandidate_ = page;
         // Gitee's "latest" means last edited and can be a preview. Read every
         // page of releases instead of relying on its ordering or that endpoint.
@@ -401,6 +407,10 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     emit installFailed(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
     return;
 #endif
+    if (!updateauth::publisherConfigured()) {
+        emit installFailed(tr("未配置可信发布者，程序内安装已停用。请前往发布页手动下载。"));
+        return;
+    }
     if (!isValidAssetUrl(package.url) || !isValidAssetUrl(hashAsset.url) ||
         !package.name.endsWith("-win-x64-setup.exe") ||
         QFileInfo(package.name).fileName() != package.name ||
@@ -624,9 +634,7 @@ QString UpdateChecker::installationResultMessage(const QJsonObject &receipt, con
     return {};
 }
 bool UpdateChecker::canAutoInstall(const Result &result, bool installed, bool windows) {
-    return windows && result.status == Available && (installed || result.portableInstallerSupported) &&
-           isValidAssetUrl(result.installer.url) && isValidAssetUrl(result.installerHash.url) &&
-           result.installerHash.name == result.installer.name + ".sha256";
+    return updateauth::publisherConfigured() && compatibleInstallerAssets(result, installed, windows);
 }
 bool UpdateChecker::verifyPackage(const QString &filePath, const QString &expectedHash, QString *error) {
     auto fail = [error](const QString &message) {
@@ -650,20 +658,56 @@ bool UpdateChecker::verifyPackage(const QString &filePath, const QString &expect
 }
 void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &expectedHash, bool isInstaller) {
     QString error;
-    if (!verifyPackage(filePath, expectedHash, &error)) {
-        failInstall(error);
-        return;
-    }
-    // Confirmation comes after downloading, before ANY external installer runs.
-    if (!confirmInstall_ || !confirmInstall_()) {
-        failInstall(tr("已取消更新，当前工作保持不变。"));
+    if (!updateauth::publisherConfigured()) {
+        failInstall(tr("未配置可信发布者，程序内安装已停用。请前往发布页手动下载。"));
         return;
     }
 #ifdef Q_OS_WIN
-    if (!prepareHandoff(filePath, expectedHash, &error)) {
-        failInstall(error);
+    // Keep the verified executable immutable until CreateProcess has mapped it.
+    // Sharing only reads prevents replacing it during the confirmation dialog.
+    const auto nativePath = QDir::toNativeSeparators(filePath);
+    const HANDLE handle = CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()), GENERIC_READ,
+                                      FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        failInstall(tr("无法读取并锁定已下载的安装包，已停止更新。"));
         return;
     }
+    std::unique_ptr<void, decltype(&CloseHandle)> packageLock(handle, &CloseHandle);
+#endif
+    const auto reject = [this
+#ifdef Q_OS_WIN
+                         , &packageLock
+#endif
+                        ](const QString &message) {
+#ifdef Q_OS_WIN
+        packageLock.reset();
+#endif
+        failInstall(message);
+    };
+    if (!verifyPackage(filePath, expectedHash, &error)) {
+        reject(error);
+        return;
+    }
+    if (!updateauth::verifyPublisherSignature(filePath, updateauth::publisherCertificateSha256(), &error)) {
+        reject(error);
+        return;
+    }
+    if (!startVerifiedInstaller(filePath, expectedHash, isInstaller, &error))
+        reject(error);
+}
+bool UpdateChecker::startVerifiedInstaller(const QString &filePath, const QString &expectedHash, bool isInstaller,
+                                           QString *error) {
+    const auto fail = [error](const QString &message) {
+        if (error) *error = message;
+        return false;
+    };
+    // Confirmation comes after downloading, before ANY external installer runs.
+    if (!confirmInstall_ || !confirmInstall_()) {
+        return fail(tr("已取消更新，当前工作保持不变。"));
+    }
+#ifdef Q_OS_WIN
+    if (!prepareHandoff(filePath, expectedHash, error))
+        return false;
     QProcess installer;
     installer.setProgram(filePath);
     installer.setArguments(isInstaller ? QStringList{"/S", "/UPDATE"}
@@ -676,8 +720,7 @@ void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &exp
     installer.setNativeArguments("/D=" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
     installer.setWorkingDirectory(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
     if (!(launchInstaller_ ? launchInstaller_(installer) : installer.startDetached())) {
-        failInstall(tr("无法启动更新安装器。") + "\n" + installer.errorString());
-        return;
+        return fail(tr("无法启动更新安装器。") + "\n" + installer.errorString());
     }
     // The detached NSIS process still needs this file after our QObject dies.
     downloadDirectory_->setAutoRemove(false);
@@ -685,8 +728,10 @@ void UpdateChecker::verifyAndInstall(const QString &filePath, const QString &exp
     handoffDeadline_.start();
     handoffTimer_.start();
     emit installerPreparing();
+    if (error) error->clear();
+    return true;
 #else
-    failInstall(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
+    return fail(tr("未找到适合当前系统的更新包，请前往发布页手动下载。"));
 #endif
 }
 } // namespace h2d

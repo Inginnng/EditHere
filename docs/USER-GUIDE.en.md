@@ -180,6 +180,10 @@ A move becomes an annotation the moment it happens, listed alongside text annota
 
 ## Save and export
 
+Copying an annotated image preserves the original pixel width of wide screenshots so small text stays readable, with numbered comments alongside it. Images exceeding the export size or memory limit report an error and can be saved as a project.
+
+The JSON attachment copied by “Copy JSON and images” uses the first annotation as its filename, limited to 80 characters with invalid filename characters replaced. With no text annotations it uses `feedback.json`. Each copy has its own folder, image references remain relative, and explicit CLI output paths are unchanged.
+
 | Action | Default shortcut | Result |
 | --- | --- | --- |
 | Save project | `Ctrl + S` | An `.edithere` file that always embeds the original image and the slice cache, and can be reopened to keep editing |
@@ -396,7 +400,7 @@ The keys on the capture toolbar (Enter, C, T, P, L, `Ctrl + C`, `Ctrl + S`, `Ctr
 ### Appearance
 
 - **Appearance mode**: Follow system, Light or Dark, defaulting to Follow system. After switching, the editor, annotation column, component sidebar, menus and Settings window update together; the original pixels of the source image and exported images are unaffected by the theme.
-- **Interface language**: Follow system, Simplified Chinese or English. Switching previews immediately, takes effect on save, and returns to the previous language on cancel. The system file dialogs, message boxes and colour picker follow it too. The JSON field values exported for AI do not change with the interface language.
+- **Interface language**: Follow system, Simplified Chinese, Traditional Chinese or English. Switching previews immediately, takes effect on save, and returns to the previous language on cancel. The system file dialogs, message boxes and colour picker follow it too. The JSON field values exported for AI do not change with the interface language.
 - **Recognition language**: Follow system, Simplified Chinese or English, used for text recognition on the capture toolbar and also switchable in place from the toolbar menu.
 
 ### Default behavior

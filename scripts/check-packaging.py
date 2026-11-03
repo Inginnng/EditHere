@@ -597,17 +597,19 @@ def check_translations_in_qm() -> list[Problem]:
 def check_english_names() -> list[Problem]:
     """REG-023  One feature keeps one English name in the interface and the README."""
     problems = []
+    # Only the English catalogue carries English names; the other catalogues are
+    # translated into their own languages and are checked by translations_in_qm.
+    english = ROOT / "app" / "translations" / "edithere_en.ts"
     stale = "Exploded view"
     if stale in read(ROOT / "README.en.md"):
         problems.append(
             f"README.en.md: still calls the feature {stale!r}; the interface, the code "
             f"identifiers and README.en.md all use 'Explode'."
         )
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        if stale in read(ts):
-            problems.append(
-                f"{ts.relative_to(ROOT).as_posix()}: still translates 大爆炸 as {stale!r}."
-            )
+    if stale in read(english):
+        problems.append(
+            f"{english.relative_to(ROOT).as_posix()}: still translates 大爆炸 as {stale!r}."
+        )
     if "Explode" not in read(ROOT / "README.en.md"):
         problems.append("README.en.md: the public English name 'Explode' disappeared.")
     # REG-154  长截图 reads "Scrolling capture" on the toolbar button, in the tray
@@ -615,38 +617,36 @@ def check_english_names() -> list[Problem]:
     # said "long capture" instead, so the same feature was named two ways
     # depending on which message you happened to hit. 超长截图 is a different
     # feature and keeps "Ultra-long capture".
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        for context in ET.parse(ts).getroot().findall("context"):
-            for message in context.findall("message"):
-                source = message.findtext("source") or ""
-                if "长截图" not in source or "超长" in source:
-                    continue
-                node = message.find("translation")
-                translation = "" if node is None else (node.text or "")
-                lowered = translation.lower()
-                if "long capture" in lowered and "scrolling capture" not in lowered:
-                    problems.append(
-                        f"{ts.name}: {source!r} is translated as {translation!r}; 长截图 is "
-                        f"'Scrolling capture' everywhere else. Give the feature one English name."
-                    )
+    for context in ET.parse(english).getroot().findall("context"):
+        for message in context.findall("message"):
+            source = message.findtext("source") or ""
+            if "长截图" not in source or "超长" in source:
+                continue
+            node = message.find("translation")
+            translation = "" if node is None else (node.text or "")
+            lowered = translation.lower()
+            if "long capture" in lowered and "scrolling capture" not in lowered:
+                problems.append(
+                    f"{english.name}: {source!r} is translated as {translation!r}; 长截图 is "
+                    f"'Scrolling capture' everywhere else. Give the feature one English name."
+                )
     if "scrolling capture" not in read(ROOT / "README.en.md").lower():
         problems.append("README.en.md: the public English name 'Scrolling capture' disappeared.")
     # REG-155  README.en.md quotes this button as the reader will look for it on
     # screen, but the catalogue shipped "Done, back to AI" while the README
     # advertised "Finish and return to AI": one button under two English names.
     wanted = "Finish and return to AI"
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        for context in ET.parse(ts).getroot().findall("context"):
-            for message in context.findall("message"):
-                if (message.findtext("source") or "") != "完成并返回 AI":
-                    continue
-                node = message.find("translation")
-                translation = "" if node is None else (node.text or "")
-                if translation != wanted:
-                    problems.append(
-                        f"{ts.name}: 完成并返回 AI is translated as {translation!r}, but "
-                        f"README.en.md quotes this button as {wanted!r}."
-                    )
+    for context in ET.parse(english).getroot().findall("context"):
+        for message in context.findall("message"):
+            if (message.findtext("source") or "") != "完成并返回 AI":
+                continue
+            node = message.find("translation")
+            translation = "" if node is None else (node.text or "")
+            if translation != wanted:
+                problems.append(
+                    f"{english.name}: 完成并返回 AI is translated as {translation!r}, but "
+                    f"README.en.md quotes this button as {wanted!r}."
+                )
     if wanted not in read(ROOT / "README.en.md"):
         problems.append(f"README.en.md: no longer quotes the interface button {wanted!r}.")
     return problems

@@ -16,6 +16,14 @@ process.env.EDITHERE_CLI = process.execPath;
 const connectorUrl = new URL('../connector/mcp-server.mjs', import.meta.url);
 const { runCli, cliResultToContent, statusContent, annotateResultToContent, feedbackImageCliArgs, pageContextCliArgs, TOOLS } = await import(connectorUrl);
 
+test('the running connector version matches the package and pinned market configuration', () => {
+  const readJson = (name) => JSON.parse(fs.readFileSync(new URL(`../connector/${name}`, import.meta.url), 'utf8'));
+  const manifest = readJson('package.json');
+  assert.equal(readJson('connector-meta.json').version, manifest.version);
+  assert.deepEqual(readJson('mcp.json').mcpServers.edithere.args, ['-y', `${manifest.name}@${manifest.version}`]);
+  assert.equal(JSON.parse(statusContent({ exitCode: 0, json: { ok: true } }).content[0].text).connector.version, manifest.version);
+});
+
 function videoFeedback(frameCount = 2) {
   const frames = Array.from({ length: frameCount }, (_, index) => ({
     id: `frame-${index}`,

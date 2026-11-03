@@ -17,17 +17,20 @@ TOOLS = ROOT / ".tools" / "linuxdeploy"
 ASSETS = {"x86_64": [
     ("AppImage/type2-runtime", "20251108", "runtime-x86_64",
      "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"),
-    # Bumped 2026-10-04: linuxdeploy rebuilt its continuous asset on
-    # 2026-08-01 and the previous pin no longer matched.
+    # Reviewed 2026-11-03: official continuous build from 2026-11-01,
+    # source 07333c6e942c7d71782b66be924c5d867f9dfdfc, Actions run 41349296615.
+    # Keep checking both GitHub's digest and the downloaded bytes.
     ("linuxdeploy/linuxdeploy", "continuous", "linuxdeploy-x86_64.AppImage",
-     "8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1"),
+     "df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5"),
     ("linuxdeploy/linuxdeploy-plugin-qt", "continuous", "linuxdeploy-plugin-qt-x86_64.AppImage",
      "cfc1055b2b9dbc08412b579f20990b7b41a17b61beaa5847dc9477c96c9e9617"),
 ], "aarch64": [
     ("AppImage/type2-runtime", "20251108", "runtime-aarch64",
      "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444"),
+    # Reviewed 2026-11-03 against GitHub's release digest and downloaded bytes;
+    # continuous source 07333c6e942c7d71782b66be924c5d867f9dfdfc.
     ("linuxdeploy/linuxdeploy", "continuous", "linuxdeploy-aarch64.AppImage",
-     "5c1fddf96066891e829831cac0d84424690f3b22846c7f8f1bb9990a5c6c73f4"),
+     "f38e4d7cebf20d8073ec4e00e0a167ac146cd8585fe2f8fe82df27d74f2bd8e1"),
     ("linuxdeploy/linuxdeploy-plugin-qt", "continuous", "linuxdeploy-plugin-qt-aarch64.AppImage",
      "d5b5a9020065cefda8c7af7c9500f686b23640eac50c88201a81752c6ee2e49c"),
 ]}

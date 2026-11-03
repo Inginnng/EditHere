@@ -71,6 +71,40 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 
 0.9.6 与 0.9.7 的命令行按自己的程序名推算通信端点，与桌面程序使用的名字不同：桌面程序在运行，`status` 也会返回 `running:false`，`open`、`capture`、`annotate` 报 `startup_timeout`。0.9.8 已修正。遇到这种组合先核对版本并升级，不要反复重启桌面程序。
 
+## VS Code Remote SSH：远程项目与本地 Windows 标注
+
+VS Code 通过 Remote SSH 打开项目时，远程扩展宿主、Codex 和终端通常在远程机器执行。本地 Windows 上的 EditHere 可以用于标注，文件需要交接回远程项目。远程进程无法直接访问 Windows 的本地 IPC；CLI 路径应配置给能在 Windows 当前用户桌面执行命令的入口。
+
+下面的命令在 **Windows 本地 PowerShell** 执行。先把 `$Remote`、两个远程路径和 `$EditHereCli` 改为实际值；远程截图应已生成，远程接收目录应已存在且可写。每轮创建独立目录，保留 JSON 与同目录原图、预览等附带文件的相对位置。
+
+```powershell
+$Remote = 'user@host'
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
+$RoundDirectory = Join-Path $env:TEMP ('EditHere-remote-' + [guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $RoundDirectory | Out-Null
+$InputPath = Join-Path $RoundDirectory 'input.png'
+$FeedbackPath = Join-Path $RoundDirectory 'feedback.json'
+
+scp "${Remote}:/home/user/project/.edithere/page.png" $InputPath
+if ($LASTEXITCODE -ne 0) { throw '远程截图下载失败。' }
+
+$ReplyText = & $EditHereCli annotate $InputPath --output $FeedbackPath --timeout 1800
+$ExitCode = $LASTEXITCODE
+$Reply = $ReplyText | ConvertFrom-Json
+if ($ExitCode -ne 0 -or -not $Reply.ok) { throw "本轮标注未完成：$($Reply.error.message)" }
+
+scp -r $RoundDirectory "${Remote}:/home/user/project/.edithere/"
+if ($LASTEXITCODE -ne 0) { throw '反馈上传失败；本地目录仍保留，可重试上传。' }
+```
+
+用户点击“完成并返回 AI”后，命令才继续上传。让远程 Codex 读取新上传目录中的 `feedback.json` 及其引用的附带文件，再修改远程项目。JSON 中的本地绝对路径可能在远端不存在，应使用上传目录里的对应文件。只有用户同意传输的图片和反馈才通过 SCP 交接；IPC token 保留在 Windows 本机，不需要复制或转发，也不需要开放 EditHere 网络监听端口。
+
+## 本地调用认证与权限
+
+此次未发布的安全修复后，桌面程序在持有单实例锁后生成本轮随机 IPC 能力令牌，CLI 和第二个桌面入口自动读取并随请求发送；两个端点都拒绝缺失、错误或上一轮令牌，旧裸命令不再分派。运行目录和令牌限制当前用户访问，Unix 同时核验对端用户身份。GUI 和 CLI 应来自同一版本；升级后保存编辑并重启桌面程序，再使用随包 CLI。
+
+Windows 提权运行时停用两个 IPC 服务，手动界面仍可使用；Agent 调用应连接正常权限的当前用户实例。令牌不写入日志或反馈，也无需用户手动复制。这个能力令牌不提供同一操作系统用户内的恶意程序隔离：能读取令牌或启动合法 CLI 的同用户进程仍处于信任范围；不要将它当作抵御已控制当前用户账号的防线。
+
 ## 命令一览
 
 | 命令 | 作用 | 是否等待用户提交反馈 |
