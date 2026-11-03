@@ -552,7 +552,7 @@ class UiTests : public QObject {
                 dialog->close();
         });
         action->trigger();
-        QVERIFY(opened);
+        QTRY_VERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
     void historySwitchDoesNotUseDetectionFromThePreviousPicture() {
