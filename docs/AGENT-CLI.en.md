@@ -71,6 +71,40 @@ Inside a restricted agent sandbox, a command may fail to reach the EditHere inst
 
 The 0.9.6 and 0.9.7 command lines inferred the communication endpoint from their own program name, which differed from the name used by the desktop app: even with the desktop app running, `status` still returned `running:false`, and `open`, `capture` and `annotate` reported `startup_timeout`. 0.9.8 fixed this. If you hit this combination, check the version and upgrade first rather than repeatedly restarting the desktop app.
 
+## VS Code Remote SSH: remote projects and local Windows annotation
+
+When VS Code opens a project through Remote SSH, its remote extension host, Codex and terminals usually execute on the remote machine. EditHere on your Windows desktop can annotate the image, with files handed back to the remote project. A remote process cannot directly reach Windows local IPC; configure the CLI path in an entry point that can execute on the current Windows user's desktop.
+
+Run the following in **local Windows PowerShell**. Replace `$Remote`, both remote paths and `$EditHereCli` with your actual values. The remote screenshot must already exist, and the remote destination directory must exist and be writable. A separate directory for each round keeps the JSON and companion originals or previews together with their relative paths intact.
+
+```powershell
+$Remote = 'user@host'
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
+$RoundDirectory = Join-Path $env:TEMP ('EditHere-remote-' + [guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $RoundDirectory | Out-Null
+$InputPath = Join-Path $RoundDirectory 'input.png'
+$FeedbackPath = Join-Path $RoundDirectory 'feedback.json'
+
+scp "${Remote}:/home/user/project/.edithere/page.png" $InputPath
+if ($LASTEXITCODE -ne 0) { throw 'Could not download the remote screenshot.' }
+
+$ReplyText = & $EditHereCli annotate $InputPath --output $FeedbackPath --timeout 1800
+$ExitCode = $LASTEXITCODE
+$Reply = $ReplyText | ConvertFrom-Json
+if ($ExitCode -ne 0 -or -not $Reply.ok) { throw "Annotation did not complete: $($Reply.error.message)" }
+
+scp -r $RoundDirectory "${Remote}:/home/user/project/.edithere/"
+if ($LASTEXITCODE -ne 0) { throw 'Could not upload feedback. The local directory is retained for retry.' }
+```
+
+The command waits for the user to click “Finish and return to AI” before uploading. Have remote Codex read `feedback.json` and its referenced companion files from the newly uploaded directory, then edit the remote project. Local absolute paths in the JSON may not exist remotely; use the corresponding files in the uploaded directory. Transfer only images and feedback the user has agreed to send. The IPC token stays on Windows and does not need copying or forwarding; EditHere does not need a network listening port.
+
+## Local authentication and permissions
+
+With this unreleased security fix, the desktop app generates a random IPC capability token for each run after acquiring its instance lock. The CLI and a second desktop entry point read and attach it automatically. Both endpoints reject missing, incorrect or previous-run tokens, and no longer dispatch legacy raw commands. The runtime directory and token are restricted to the current user; Unix endpoints also check the peer's user identity. Keep the GUI and CLI on the same version. After upgrading, save your edits and restart the desktop app before using the bundled CLI.
+
+An elevated Windows instance disables both IPC services while keeping the manual UI available. Agent requests should reach a normal-privilege instance of the current user. Tokens are not included in logs or feedback and do not need to be copied manually. This capability does not isolate malicious processes running as the same OS user: a process that can read the token or launch the legitimate CLI remains inside the trust boundary. It is not a defence against compromise of the current user's account.
+
 ## Command overview
 
 | Command | What it does | Waits for the user to submit feedback |

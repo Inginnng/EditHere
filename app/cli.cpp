@@ -1,5 +1,6 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
+#include "localauth.h"
 #include "agentlaunch.h"
 #include "diagnostics.h"
 #include "model.h"
@@ -148,9 +149,17 @@ int main(int argc, char **argv) {
     socket.setReadBufferSize(MaxAgentMessageBytes + 4);
     const auto connection = ensureAgentConnection(command != "status", EDITHERE_VERSION,
         [&](AgentEndpoint endpoint, int timeout) {
+            const QFileInfo directory(ipcRuntimeDirectory());
+            if (directory.exists() || directory.isSymLink()) {
+                if (const auto error = validateIpcDirectory(); !error.isEmpty())
+                    return AgentSocketResult{false, QLocalSocket::SocketAccessError, error};
+            }
             if (endpoint == AgentEndpoint::Agent) return connectAgentSocket(socket, agentServerName(), timeout);
             QLocalSocket desktop;
-            return connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+            const auto result = connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+            if (result.connected || result.error != QLocalSocket::ServerNotFoundError) return result;
+            // Detect an old GUI without sending any unauthenticated command.
+            return connectAgentSocket(desktop, previousDesktopServerName(), timeout);
         }, [] {
             const auto executable = guiExecutable();
             if (!QFileInfo(executable).isFile())
@@ -158,7 +167,12 @@ int main(int argc, char **argv) {
             return launchAgentDesktop(executable);
         });
     if (!connection.isEmpty()) return printResult(connection);
-    QJsonObject request{{"protocol", 1}, {"command", command}};
+    QByteArray token;
+    if (const auto error = readIpcCredentials(token); !error.isEmpty())
+        return printResult(agentError("authentication_required", error));
+    if (const auto error = ipcPeerError(socket); !error.isEmpty())
+        return printResult(agentError("authentication_required", error));
+    QJsonObject request{{"protocol", 1}, {"token", QString::fromLatin1(token)}, {"command", command}};
     if (withPath) request["input"] = input;
     if (pageSeen) request["pageContext"] = pageContext;
     if (outputSeen) { request["output"] = output; request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"; request["preview"] = options.preview; }

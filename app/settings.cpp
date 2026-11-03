@@ -35,6 +35,8 @@ QString languageName(LanguageMode mode) {
     switch (mode) {
     case LanguageMode::SimplifiedChinese:
         return "zh_CN";
+    case LanguageMode::TraditionalChinese:
+        return "zh_TW";
     case LanguageMode::English:
         return "en";
     case LanguageMode::System:
@@ -47,14 +49,16 @@ bool parseLanguage(const QString &name, LanguageMode *mode) {
         *mode = LanguageMode::System;
     else if (name == "zh_CN")
         *mode = LanguageMode::SimplifiedChinese;
+    else if (name == "zh_TW")
+        *mode = LanguageMode::TraditionalChinese;
     else if (name == "en")
         *mode = LanguageMode::English;
     else
         return false;
     return true;
 }
-// The recogniser and the interface use the same three choices, so they are stored
-// under the same names and only the type differs.
+// The recogniser offers the first three of those choices, stored under the same
+// names; only the type differs.
 QString languageName(OcrLanguageMode mode) {
     return languageName(static_cast<LanguageMode>(mode));
 }

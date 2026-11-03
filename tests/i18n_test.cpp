@@ -2,6 +2,7 @@
 #include "model.h"
 #include "settings.h"
 #include "settingsdialog.h"
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -10,6 +11,7 @@
 #include <QJsonObject>
 #include <QPushButton>
 #include <QLibraryInfo>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 #include <stdexcept>
@@ -31,6 +33,9 @@ QString errorFromProject(const QString &path) {
 QString prebuiltEnglishTranslation() {
     return QStringLiteral(QT_TESTCASE_SOURCEDIR "/app/translations/built/edithere_en.qm");
 }
+QString prebuiltTraditionalChineseTranslation() {
+    return QStringLiteral(QT_TESTCASE_SOURCEDIR "/app/translations/built/edithere_zh_TW.qm");
+}
 } // namespace
 class I18nTests : public QObject {
     Q_OBJECT
@@ -44,11 +49,13 @@ class I18nTests : public QObject {
     void languageModesResolveToLocaleIds() {
         QCOMPARE(resolveLanguage(LanguageMode::English), QString("en"));
         QCOMPARE(resolveLanguage(LanguageMode::SimplifiedChinese), QString("zh_CN"));
-        // System follows the UI language: Chinese locales use Simplified Chinese, the rest
-        // fall back to English.
+        QCOMPARE(resolveLanguage(LanguageMode::TraditionalChinese), QString("zh_TW"));
+        // System follows the UI language: traditional-script locales use Traditional
+        // Chinese, other Chinese locales Simplified Chinese, and the rest English.
         const auto system = resolveLanguage(LanguageMode::System);
-        QVERIFY2(system == "zh_CN" || system == "en", qPrintable(system));
+        QVERIFY2(system == "zh_CN" || system == "zh_TW" || system == "en", qPrintable(system));
         QCOMPARE(languageDisplayName(LanguageMode::SimplifiedChinese), QString::fromUtf8("简体中文"));
+        QCOMPARE(languageDisplayName(LanguageMode::TraditionalChinese), QString::fromUtf8("繁體中文"));
         QCOMPARE(languageDisplayName(LanguageMode::English), QString("English"));
     }
     void switchingLanguagesReachesEveryContext() {
@@ -94,6 +101,50 @@ class I18nTests : public QObject {
         QTest::qWait(1);
         QCOMPARE(dialog.windowTitle(), QString::fromUtf8("EditHere 设置"));
         QCOMPARE(dialog.findChild<QPushButton *>("exportDiagnostics")->text(), QString::fromUtf8("导出诊断日志…"));
+    }
+    void traditionalChineseReachesEveryContext() {
+        QVERIFY(QFile::exists(prebuiltTraditionalChineseTranslation()));
+        // Traditional Chinese is a translation like English, not a second source language,
+        // so it loads ":/i18n/edithere_zh_TW.qm" and still counts as a Chinese interface for
+        // the font choice.
+        QVERIFY(installLanguage(LanguageMode::TraditionalChinese));
+        QCOMPARE(currentLanguage(), QString("zh_TW"));
+        QVERIFY(isChineseInterface());
+        QTest::qWait(1);
+
+        // "EditHere": display labels change script, while the JSON identifiers stay put.
+        QCOMPARE(localizedLabel(QString::fromUtf8("色块区域")), QString::fromUtf8("色塊區域"));
+        // "h2d": free functions.
+        QCOMPARE(QCoreApplication::translate("h2d", "JSON 格式不正确"), QString::fromUtf8("JSON 格式不正確"));
+        // "h2d::SettingsDialog": long-lived chrome, and the language list itself.
+        SettingsDialog dialog(defaultSettings());
+        QCOMPARE(dialog.windowTitle(), QString::fromUtf8("EditHere 設定"));
+        auto language = dialog.findChild<QComboBox *>("interfaceLanguage");
+        QVERIFY(language);
+        const auto traditional = language->findData(static_cast<int>(LanguageMode::TraditionalChinese));
+        QVERIFY(traditional >= 0);
+        // Language names are written in their own script whatever the interface uses.
+        QCOMPARE(language->itemText(traditional), QString::fromUtf8("繁體中文"));
+        QCOMPARE(language->itemText(language->findData(static_cast<int>(LanguageMode::SimplifiedChinese))),
+                 QString::fromUtf8("简体中文"));
+
+        QVERIFY(installLanguage(LanguageMode::SimplifiedChinese));
+        QTest::qWait(1);
+        QCOMPARE(dialog.windowTitle(), QString::fromUtf8("EditHere 设置"));
+    }
+    void traditionalChinesePreferencePersists() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        auto settings = defaultSettings();
+        settings.language = LanguageMode::TraditionalChinese;
+        QVERIFY(validateSettings(settings).isEmpty());
+        QString error;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QCOMPARE(QSettings(path, QSettings::IniFormat).value("appearance/language").toString(), QString("zh_TW"));
+        QCOMPARE(loadSettings(path).language, LanguageMode::TraditionalChinese);
+        // The recogniser keeps its own three choices and is not affected by the new one.
+        QCOMPARE(loadSettings(path).ocrLanguage, OcrLanguageMode::System);
     }
     void brokenProjectMessagesStayOneString() {
         // Two messages used to be assembled as "prefix" + variable, which read badly in

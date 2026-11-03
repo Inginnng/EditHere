@@ -552,7 +552,7 @@ class UiTests : public QObject {
                 dialog->close();
         });
         action->trigger();
-        QVERIFY(opened);
+        QTRY_VERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
     void historySwitchDoesNotUseDetectionFromThePreviousPicture() {
@@ -2666,6 +2666,7 @@ class UiTests : public QObject {
         editor.findChild<QPushButton *>("copyJson")->click();
         const auto urls = QApplication::clipboard()->mimeData()->urls(); QCOMPARE(urls.size(), 2);
         const QString jsonPath = urls.first().toLocalFile();
+        QCOMPARE(QFileInfo(jsonPath).fileName(), QString("Move this control.json"));
         QFile json(jsonPath); QVERIFY(json.open(QIODevice::ReadOnly));
         const auto feedback = QJsonDocument::fromJson(json.readAll()).object(); const auto image = feedback["image"].toObject();
         QCOMPARE(image["mode"].toString(), QString("file")); QVERIFY(!image.contains("preview"));
@@ -2677,6 +2678,24 @@ class UiTests : public QObject {
         editor.findChild<QPushButton *>("copyJson")->click();
         QVERIFY(QApplication::clipboard()->mimeData()->urls().first().toLocalFile() != jsonPath);
         QVERIFY(QFileInfo::exists(jsonPath));
+        editor.hide();
+    }
+    void feedbackClipboardNamesAreSafeAndUseTheFirstComment() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        Editor editor; auto preferences = defaultSettings(); preferences.feedbackDir = temporary.path();
+        editor.setPreferences(preferences);
+        auto document = gridDocument();
+        Note note; note.comment = "../改成蓝色:  按钮?\n下一行"; document.notes.append(note);
+        editor.setDocument(document);
+        editor.findChild<QPushButton *>("copyJson")->click();
+        const auto path = QApplication::clipboard()->mimeData()->urls().first().toLocalFile();
+        QCOMPARE(QFileInfo(path).fileName(), QString("_改成蓝色_ 按钮_ 下一行.json"));
+        QVERIFY(QFileInfo::exists(path));
+        document.notes = {note}; document.notes[0].comment = "CON";
+        editor.setDocument(document); editor.findChild<QPushButton *>("copyJson")->click();
+        QCOMPARE(QFileInfo(QApplication::clipboard()->mimeData()->urls().first().toLocalFile()).fileName(), QString("_CON.json"));
+        document.notes.clear(); editor.setDocument(document); editor.findChild<QPushButton *>("copyJson")->click();
+        QCOMPARE(QFileInfo(QApplication::clipboard()->mimeData()->urls().first().toLocalFile()).fileName(), QString("feedback.json"));
         editor.hide();
     }
     void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {

@@ -3,7 +3,7 @@
     "edithere": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "edithere-mcp@0.2.0"],
+      "args": ["-y", "edithere-mcp@0.2.1"],
       "runtime": {
         "type": "node",
         "version": "20"

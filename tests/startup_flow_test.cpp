@@ -9,6 +9,7 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QFile>
 #include <QJsonDocument>
 #include <QSettings>
@@ -39,6 +40,9 @@ class StartupFlowTestAccess {
     static bool pending(const Controller &controller) { return controller.pendingStartupUpdate_.has_value(); }
     static void present(Controller &controller) { controller.presentStartupUpdate(); }
     static void setCapture(Controller &controller, bool value) { controller.capturing_ = value; }
+    static void holdCapture(Controller &controller) {
+        controller.captureIo_.prepare = [](QObject *, std::function<void()>, bool) {};
+    }
     static void setAgentSession(Controller &controller, bool value) {
         controller.agentSessionId_ = value ? QStringLiteral("test-session") : QString();
     }
@@ -532,9 +536,55 @@ class StartupFlowTests : public QObject {
         editor->setDocument(fromImage(picture, "file", "现有图片"));
         editor->hide();
         trayAction->trigger();
-        QVERIFY(editor->isVisible());
+        QTRY_VERIFY(editor->isVisible());
         QVERIFY(!editor->hasDocument());
         editor->hide();
+    }
+    void macTrayActivationOnlyOpensTheMenu() {
+#ifndef Q_OS_MACOS
+        QSKIP("Cocoa reports menu tracking as a tray Trigger.");
+#else
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        StartupFlowTestAccess::holdCapture(controller);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        QVERIFY(tray && editor);
+        QVERIFY(QMetaObject::invokeMethod(tray, "activated", Qt::DirectConnection,
+            Q_ARG(QSystemTrayIcon::ActivationReason, QSystemTrayIcon::Trigger)));
+        QTest::qWait(20);
+        QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        auto capture = editor->findChild<QAction *>("trayCapture");
+        QVERIFY(capture);
+        capture->trigger();
+        QTRY_VERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+#endif
+    }
+    void openingFromTrayDoesNotInterruptCapture() {
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        StartupFlowTestAccess::holdCapture(controller);
+        auto editor = editorOf(controller);
+        auto open = editor ? editor->findChild<QAction *>("trayOpen") : nullptr;
+        QVERIFY(editor && open);
+        controller.capture();
+        QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        bool dialogOpened = false;
+        QTimer closeUnexpectedDialog;
+        closeUnexpectedDialog.setInterval(10);
+        connect(&closeUnexpectedDialog, &QTimer::timeout, [&] {
+            for (auto widget : QApplication::topLevelWidgets())
+                if (auto dialog = qobject_cast<QFileDialog *>(widget)) {
+                    dialogOpened = true;
+                    dialog->reject();
+                }
+        });
+        closeUnexpectedDialog.start();
+        open->trigger();
+        QTest::qWait(50);
+        QVERIFY(!dialogOpened);
+        QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        QVERIFY(!editor->isVisible());
     }
     void annotationShortcutRespectsDiscardDecision_data() {
         QTest::addColumn<bool>("discard");
