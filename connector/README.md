@@ -45,7 +45,7 @@ connector/
 
 `edithere_annotate_start` + `edithere_annotate_poll` 是**推荐路径**：两次调用都在毫秒级返回，满足 WorkBuddy 连接器规范"单次请求建议 30 秒内响应"。标注本身依赖用户手动点击完成，天然是长任务；`edithere_annotate` 保留给支持长工具调用的客户端（Claude Code、Codex 等），语义与 0.1.x 完全一致，未做破坏性改动。
 
-`edithere_annotate` / `edithere_export` 成功后会读取输出 JSON，返回紧凑摘要（批注列表、布局变化、坐标语义提示），反馈原文与配套图片保存在临时目录 `edithere-feedback/`，可用文件工具按路径读取。传 `includeImage: true` 可在工具结果中附带原图内容块。`imageMode` 选择 `file`（默认）/ `embedded` / `none`，`preview:true` 另存编号 JPEG；旧 `noImage:true` 对应 none，与显式非 none 模式冲突时拒绝。`includeImage` 不改变磁盘导出模式。
+`edithere_annotate` / `edithere_export` 成功后会读取输出 JSON，返回紧凑摘要（批注列表、布局变化、坐标语义提示），反馈原文与配套图片保存在临时目录 `edithere-feedback/`，可用文件工具按路径读取。传 `includeImage: true` 可在工具结果中附带原图内容块。`imageMode` 选择 `file`（默认）/ `embedded` / `none`，`preview:true` 另存编号无损 PNG，并兼容读取旧 JPEG 预览；旧 `noImage:true` 对应 none，与显式非 none 模式冲突时拒绝。`includeImage` 不改变磁盘导出模式。
 
 ### 视频标注反馈
 

@@ -122,7 +122,9 @@ class VideoProjectTests : public QObject {
             const auto png = bundle.files.value(image["file"].toString());
             QVERIFY(!png.isEmpty()); QCOMPARE(QImage::fromData(png).size(), QSize(320, 180));
             QCOMPARE(image["sha256"].toString(), QString::fromLatin1(QCryptographicHash::hash(png, QCryptographicHash::Sha256).toHex()));
-            QVERIFY(!QImage::fromData(bundle.files.value(image["preview"].toString()), "JPEG").isNull());
+            const auto previewName = image["preview"].toString();
+            QVERIFY(previewName.endsWith(".annotated.png"));
+            QVERIFY(!QImage::fromData(bundle.files.value(previewName), "PNG").isNull());
         }
         QCOMPARE(loadVideoProject(path).frames.size(), 2);
         const auto firstImage = frames[0].toObject()["feedback"].toObject()["image"].toObject();

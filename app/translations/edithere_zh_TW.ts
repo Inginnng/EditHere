@@ -524,16 +524,6 @@
         <translation>原圖必須使用同目錄的 PNG 檔名</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1044"/>
-        <source>标注示意图必须使用同目录的 .annotated.jpg 文件名</source>
-        <translation>標註示意圖必須使用同目錄的 .annotated.jpg 檔名</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="1122"/>
-        <source>无法生成标注示意图</source>
-        <translation>無法產生標註示意圖</translation>
-    </message>
-    <message>
         <location filename="../model.cpp" line="1123"/>
         <source>标注示意图不能超过 48 MiB</source>
         <translation>標註示意圖不能超過 48 MiB</translation>
@@ -980,11 +970,6 @@
         <location filename="../model.cpp" line="1835"/>
         <source>无法读取标注示意图</source>
         <translation>無法讀取標註示意圖</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="1837"/>
-        <source>标注示意图必须是 JPEG 图片</source>
-        <translation>標註示意圖必須是 JPEG 圖片</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="1852"/>
@@ -3236,11 +3221,6 @@
         <location filename="../editor.cpp" line="2433"/>
         <source>未勾选时将 JSON 与原图作为独立文件复制。</source>
         <translation>未勾選時將 JSON 與原圖作為獨立檔案複製。</translation>
-    </message>
-    <message>
-        <location filename="../editor.cpp" line="2435"/>
-        <source>压缩内嵌原图（保持尺寸，可能轻微损失细节）</source>
-        <translation>壓縮內嵌原圖（保持尺寸，可能輕微損失細節）</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="2442"/>

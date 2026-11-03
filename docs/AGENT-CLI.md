@@ -116,7 +116,7 @@ Windows 提权运行时停用两个 IPC 服务，手动界面仍可使用；Agen
 | `export <image-video-project-or-feedback> --output <new.json>` | 将已保存项目（含视频项目）、图片或有效反馈 JSON 转为反馈 JSON | 否 |
 | `annotate <image-video-or-project> --output <new.json>` | 打开用户标注会话并等待明确提交 | **是** |
 
-`export` 和 `annotate` 默认将原图保存为 JSON 同目录的同名 PNG（`file`）；`--embed-image` 改为内嵌，`--no-image` 改为仅保留原图描述（两者互斥）。`--preview` 另存带编号的 JPEG，三种模式均可使用。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
+`export` 和 `annotate` 默认将原图保存为 JSON 同目录的同名 PNG（`file`）；`--embed-image` 改为内嵌，`--no-image` 改为仅保留原图描述（两者互斥）。`--preview` 另存带编号的无损 PNG，三种模式均可使用。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
 
 `open` 与 `annotate` 接受图片（PNG/JPEG/WebP/BMP）、视频（MP4/MOV/WebM 等）和 `.edithere` 项目（含视频项目）。视频在 EditHere 中播放，用户暂停到目标画面后批注；同一个位置在不同时间点的意见分别保留，不会合并。视频项目的 `export` 回执还含帧数 `frames` 与 `schemaVersion`（`video-feedback-1`）。
 
@@ -231,7 +231,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 | 旧格式 `annotations` | 文字批注，可用 `point`、`rectangle` 定位；只有 `text` 的批注针对整体；`change` 对应 `changes` 的零基索引 |
 | 旧格式 `changes` | 实际位置、尺寸变化；每项 `from` 指原图区域，`to` 指最终区域 |
 
-`image` 现在是原图描述对象：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均包含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 与原图实际编码字节的 `sha256`；不要按解码后像素计算哈希。可选 `image.preview` 指向同目录带编号的 JPEG，它是标注示意图。文件导入校验图片类型、尺寸和哈希，不接受跨目录路径或符号链接。旧字符串 `image` 和缺图时同名 PNG 的约定继续可读。
+`image` 现在是原图描述对象：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均包含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 与原图实际编码字节的 `sha256`；不要按解码后像素计算哈希。可选 `image.preview` 指向同目录带编号的无损 PNG 标注示意图，旧 JPEG 预览继续可读。文件导入校验图片类型、尺寸和哈希，不接受跨目录路径或符号链接。旧字符串 `image` 和缺图时同名 PNG 的约定继续可读。
 
 所有坐标以图像左上角为原点，单位为图像像素，不受编辑窗口位置或查看缩放影响。矩形的右下边界不包含自身，宽高为 `x2-x1` 与 `y2-y1`。新导出的坐标和位移均四舍五入为整数；缩放比最多两位小数，正缩放比下限为 0.01。缩放比取两位后为 1 时视为未缩放，目标宽高也恢复为原尺寸；各轴的 `scaleX/scaleY` 分别省略。旧文件的小数坐标、完整精度缩放比和显式 1 仍可读取，项目文件保留编辑精度。不能把这些值未经换算直接当成网页 CSS 像素或屏幕绝对坐标。
 
@@ -254,7 +254,7 @@ AI 应结合实际页面与源码，将反馈落实为布局、样式或内容�
 | `frames[].feedback` | 该帧的图片反馈，结构与 [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) 一致 |
 | `objects[]` | 同一批对象带上 `frameId` 与 `timestampMs` 的展开索引，可按时间顺序读 |
 
-`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。每帧使用同一原图模式：默认真实写入帧截图；`--embed-image` 内嵌每帧；`--no-image` 仅保留原图描述，不写原图。`--preview` 为每帧另存编号 JPEG。
+`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。每帧使用同一原图模式：默认真实写入帧截图；`--embed-image` 内嵌每帧；`--no-image` 仅保留原图描述，不写原图。`--preview` 为每帧另存带编号的无损 PNG。
 
 项目文件遵循 [video-project-v1.schema.json](../schema/video-project-v1.schema.json)：它保存每个已标注画面的截图与编辑状态，源视频只按地址引用，移动或丢失源视频不影响已保存内容。
 

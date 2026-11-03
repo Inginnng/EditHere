@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
                   "Feedback saves the original beside JSON by default. Output and sidecars must not exist; their parent must exist.\n"
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
-                  "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds numbered JPEG previews.\n"
+                  "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds lossless numbered PNG previews.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
                   "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
         if (!error.isEmpty()) return printResult(agentError("io_error", error));
     }
     options.imageFile = QFileInfo(output).completeBaseName() + ".png";
-    options.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
+    options.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
     auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     if (command == "export") {
         try {

@@ -16,7 +16,8 @@ test('three modes use actual encoded bytes, dimensions and nullable source pixel
 test('descriptor rejects unsafe paths, MIME/signature, digest and dimension tampering',()=>{
   const valid=I.descriptor(png,'embedded');for(const change of[{sha256:'0'.repeat(64)},{width:2},{mimeType:'image/jpeg'},{dataUrl:'https://example.invalid/a.png'},{devicePixelRatio:0},{extra:true}])assert.throws(()=>I.validate({...valid,...change}));
   for(const name of['../a.png','C:\\a.png','https://evil/a.png','a/b.png','CON.png','a.png:stream','a.png.',''])assert.throws(()=>I.descriptor(png,'file',name));
-  for(const preview of['../view.annotated.jpg','view.jpg','a\\view.annotated.jpg'])assert.throws(()=>I.descriptor(png,'none','unused.png',{preview}));
+  for(const preview of['../view.annotated.jpg','view.jpg','a\\view.annotated.jpg','view.annotated.gif','../view.annotated.png'])assert.throws(()=>I.descriptor(png,'none','unused.png',{preview}));
+  for(const preview of['view.annotated.png','view.annotated.jpg'])assert.equal(I.descriptor(png,'none','unused.png',{preview}).preview,preview);
   const folded=JSON.parse(F.preview(F.exportImage(document,'embedded')));assert.equal(folded.image.dataUrl,'data:image/png;base64,[图片编码已折叠]');assert.equal(F.exportImage(document,'embedded').image.dataUrl,png);
 });
 
@@ -44,8 +45,23 @@ test('none emits metadata and JSON only; embedded verifies bytes and receipts om
   const run=fixture();for(const change of[{sha256:'0'.repeat(64)},{width:2},{file:'../escape.png'}]){const feedback=F.exportImage(document,'file');feedback.image={...feedback.image,...change};assert.throws(()=>run.store.submit(run.token,feedback));}assert.equal(fs.existsSync(run.output),false);
 });
 
-test('all three modes publish requested annotated JPEG privately, verify restart and reject missing/colliding previews',()=>{
+test('all three modes publish lossless PNG and legacy JPEG previews, verify restart and reject missing/colliding previews',()=>{
   const jpeg=require('./image-fixture.cjs').jpeg;
-  for(const mode of['file','embedded','none']){const run=fixture({imageMode:mode,preview:true}),feedback=F.exportImage({...document,imageFile:'result.png',previewFile:'result.annotated.jpg'},mode);assert.throws(()=>run.store.submit(run.token,feedback),/preview data/);assert.equal(fs.existsSync(run.output),false);const receipt=run.store.submit(run.token,feedback,jpeg);assert.equal(receipt.previewPath,path.join(run.directory,'result.annotated.jpg'));assert.equal(fs.readFileSync(receipt.previewPath).toString('base64'),jpeg.split(',')[1]);assert(!JSON.stringify(receipt).includes('data:image/'));assert.deepEqual(readSessionStatus({directory:run.directory,sessionId:run.id}),receipt);assert.deepEqual(run.store.submit(run.token,feedback,jpeg),receipt);fs.writeFileSync(receipt.previewPath,'bad');assert.throws(()=>readSessionStatus({directory:run.directory,sessionId:run.id}));}
-  const run=fixture({preview:true}),feedback=F.exportImage({...document,previewFile:'result.annotated.jpg'},'none');fs.writeFileSync(path.join(run.directory,'result.annotated.jpg'),'foreign');assert.throws(()=>run.store.submit(run.token,feedback,jpeg),/exists|not overwritten/);assert.equal(fs.readFileSync(path.join(run.directory,'result.annotated.jpg'),'utf8'),'foreign');
+  for(const [extension,data] of[['png',png],['jpg',jpeg]])for(const mode of['file','embedded','none']){const run=fixture({imageMode:mode,preview:true}),feedback=F.exportImage({...document,imageFile:'result.png',previewFile:`result.annotated.${extension}`},mode);assert.throws(()=>run.store.submit(run.token,feedback),/preview data/);assert.equal(fs.existsSync(run.output),false);const receipt=run.store.submit(run.token,feedback,data);assert.equal(receipt.previewPath,path.join(run.directory,`result.annotated.${extension}`));assert.equal(fs.readFileSync(receipt.previewPath).toString('base64'),data.split(',')[1]);assert(!JSON.stringify(receipt).includes('data:image/'));assert.deepEqual(readSessionStatus({directory:run.directory,sessionId:run.id}),receipt);assert.deepEqual(run.store.submit(run.token,feedback,data),receipt);fs.writeFileSync(receipt.previewPath,'bad');assert.throws(()=>readSessionStatus({directory:run.directory,sessionId:run.id}));}
+  const run=fixture({preview:true}),feedback=F.exportImage({...document,previewFile:'result.annotated.png'},'none');fs.writeFileSync(path.join(run.directory,'result.annotated.png'),'foreign');assert.throws(()=>run.store.submit(run.token,feedback,png),/exists|not overwritten/);assert.equal(fs.readFileSync(path.join(run.directory,'result.annotated.png'),'utf8'),'foreign');
+});
+
+test('preview dimensions are independent of source dimensions and encoding must match its suffix',()=>{
+  const wide='data:image/png;base64,'+fs.readFileSync(path.join(__dirname,'../../tests/fixtures/ocr-small-url.png')).toString('base64');
+  const jpeg=require('./image-fixture.cjs').jpeg;
+  for(const [source,preview,extension] of[[png,wide,'png'],[wide,jpeg,'jpg']]){
+    const run=fixture({image:source,preview:true}),feedback=F.exportImage({...document,image:source,previewFile:`result.annotated.${extension}`},'none');
+    const receipt=run.store.submit(run.token,feedback,preview);
+    assert.deepEqual(readSessionStatus({directory:run.directory,sessionId:run.id}),receipt);
+    assert.notDeepEqual(I.inspect(preview).width,I.inspect(source).width);
+  }
+  for(const [extension,data] of[['png',jpeg],['jpg',png]]){
+    const run=fixture({preview:true}),feedback=F.exportImage({...document,previewFile:`result.annotated.${extension}`},'none');
+    assert.throws(()=>run.store.submit(run.token,feedback,data),/MIME.*filename/);assert.equal(fs.existsSync(run.output),false);
+  }
 });

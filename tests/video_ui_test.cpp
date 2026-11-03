@@ -1056,7 +1056,7 @@ class VideoUiTests : public QObject {
         const auto artifactFolder = qEnvironmentVariable("EDITHERE_VIDEO_TEST_ARTIFACTS");
         if (!artifactFolder.isEmpty()) {
             QVERIFY(QDir().mkpath(artifactFolder));
-            saveBytes(QDir(artifactFolder).filePath("video-ui-export-compressed.json"), copied);
+            saveBytes(QDir(artifactFolder).filePath("video-ui-export-lossless.json"), copied);
         }
         choices->setCurrentIndex(1); choices->activated(1);
         QCOMPARE(editor.document().image, firstFrame.document.image);

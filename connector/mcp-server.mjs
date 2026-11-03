@@ -344,8 +344,8 @@ function validateImageFilename(filename, location, preview = false) {
   if (typeof filename !== 'string' || filename.length > 255 || !filename
       || filename.startsWith('.') || /[\\/:*?"<>|\x00-\x1f]/.test(filename)
       || /[. ]$/.test(filename) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(filename)
-      || !(preview ? /\.annotated\.jpg$/i : /\.(png|jpe?g|webp|gif|bmp)$/i).test(filename)) {
-    throw new Error(`${location} 必须是反馈 JSON 同目录的安全图片文件名，不能包含路径${preview ? '，并以 .annotated.jpg 结尾' : ''}。`);
+      || !(preview ? /\.annotated\.(png|jpg)$/i : /\.(png|jpe?g|webp|gif|bmp)$/i).test(filename)) {
+    throw new Error(`${location} 必须是反馈 JSON 同目录的安全图片文件名，不能包含路径${preview ? '，并以 .annotated.png（或旧版 .annotated.jpg）结尾' : ''}。`);
   }
 }
 
@@ -456,8 +456,9 @@ function readFeedbackImage(image, feedbackPath, includeContent = true, maximumCh
   if (image.preview !== undefined) {
     const preview = readBundleFile(image.preview, feedbackPath);
     const info = encodedImageInfo(preview.bytes);
-    if (info.mimeType !== 'image/jpeg' || info.width < 1 || info.height < 1 || info.width > 32767 || info.height > 32767
-        || info.width * info.height > 32000000) throw new Error('预览附件不是有效的 JPEG 图片。');
+    const expectedMime = /\.png$/i.test(image.preview) ? 'image/png' : 'image/jpeg';
+    if (info.mimeType !== expectedMime || info.width < 1 || info.height < 1 || info.width > 32767 || info.height > 32767
+        || info.width * info.height > 32000000) throw new Error('预览附件不是与后缀一致的有效 PNG/JPEG 图片。');
     result.previewFile = preview.filename;
   }
   return result;
@@ -1117,11 +1118,11 @@ function finishSessionContent(session) {
 
 // ---------------------------------------------------------------- MCP 工具定义
 
-const FEEDBACK_NOTE = '返回结构化反馈摘要；视频反馈按帧提供时间戳、坐标及修改意见，同坐标的不同时间点不会合并。默认 imageMode=file，原图/帧截图作为 JSON 同目录附件；请一起保留。imageMode=embedded 使用 data URL，none 仅保留元信息。preview 可另存带标注的 JPEG 预览。includeImage 仅控制工具返回附图（视频最多 8 张），不改变保存格式。';
+const FEEDBACK_NOTE = '返回结构化反馈摘要；视频反馈按帧提供时间戳、坐标及修改意见，同坐标的不同时间点不会合并。默认 imageMode=file，原图/帧截图作为 JSON 同目录附件；请一起保留。imageMode=embedded 使用 data URL，none 仅保留元信息。preview 可另存带标注的无损 PNG 预览。includeImage 仅控制工具返回附图（视频最多 8 张），不改变保存格式。';
 
 const FEEDBACK_IMAGE_PROPERTIES = {
   imageMode: { type: 'string', enum: ['file', 'embedded', 'none'], default: 'file', description: '反馈截图保存方式：file 同目录附件（默认）、embedded 内嵌、none 仅元信息' },
-  preview: { type: 'boolean', default: false, description: '另存带标注预览 JPEG，位置记录在 image.preview' },
+  preview: { type: 'boolean', default: false, description: '另存带标注无损 PNG 预览，位置记录在 image.preview' },
   noImage: { type: 'boolean', description: '兼容旧参数；true 等同 imageMode=none，与其他显式 imageMode 冲突' },
 };
 

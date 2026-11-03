@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 高清批注图与原图保真（2026-11-03）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-206 | 高清原图保留像素后，批注侧栏和文字仍固定大小，整体缩放观看时文字极小；内嵌原图另有默认 JPEG 转码。批注版式随原图宽度统一放大，原图区对齐整数像素，移除内嵌有损转换，新预览使用 PNG 并兼容旧 JPEG | `annotatedPreviewPreservesHighResolutionSourcePixels` 验证 960/4K 比例、文字面积和 1366 宽非整数缩放像素；`annotatedClipboardKeepsHighResolutionPixels` 验证真实剪贴板；`legacyCompressionRequestKeepsOriginalBytesAndPixels` 验证原始字节及像素；现有 bundle/CLI/connector/Web 回归验证 PNG 和旧 JPEG 兼容 | ✅ |
+
 ## 本地请求认证与更新发布者验证（2026-11-03）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

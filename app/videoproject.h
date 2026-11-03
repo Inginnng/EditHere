@@ -27,6 +27,7 @@ bool isVideoProjectFile(const QString &path);
 VideoProject loadVideoProject(const QString &path);
 QByteArray serializeVideoProject(const VideoProject &project);
 QByteArray serializeVideoFeedback(const VideoProject &project, const FeedbackExportOptions &options = {});
+// The legacy compression argument is ignored; screenshot bytes stay lossless.
 QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress = false, bool includeRecognizedText = true);
 FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const FeedbackExportOptions &options = {});
 int videoAnnotationCount(const VideoProject &project);

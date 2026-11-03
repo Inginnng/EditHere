@@ -34,14 +34,18 @@
     const info=inspect(dataUrl),value={mode,mimeType:info.mimeType,width:info.width,height:info.height,devicePixelRatio:options.devicePixelRatio??null,sha256:info.sha256};
     if(mode==='file')value.file=file;if(mode==='embedded')value.dataUrl=dataUrl;if(options.preview)value.preview=options.preview;validate(value);return value;
   }
+  function previewMimeType(filename){
+    if(!safeName(filename)||!/^.+\.annotated\.(png|jpg)$/i.test(filename))throw new Error('Invalid annotated preview filename.');
+    return /\.png$/i.test(filename)?'image/png':'image/jpeg';
+  }
   function validate(value){
     if(!record(value))throw new Error('Invalid image descriptor.');const fields=['mode','mimeType','width','height','devicePixelRatio','sha256',...(value.mode==='file'?['file']:value.mode==='embedded'?['dataUrl']:[]),...(Object.hasOwn(value,'preview')?['preview']:[])];
     if(Object.keys(value).sort().join(',')!==fields.sort().join(',')||!['file','embedded','none'].includes(value.mode)||!['image/png','image/jpeg','image/webp','image/gif','image/bmp'].includes(value.mimeType)||!Number.isInteger(value.width)||!Number.isInteger(value.height)||value.width<1||value.height<1||value.width>32767||value.height>32767||value.width*value.height>32000000||!(value.devicePixelRatio===null||Number.isFinite(value.devicePixelRatio)&&value.devicePixelRatio>0)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(value.sha256))throw new Error('Invalid image descriptor fields.');
     if(value.mode==='file'&&(!safeName(value.file)||!({'image/png':/\.png$/i,'image/jpeg':/\.jpe?g$/i,'image/webp':/\.webp$/i,'image/gif':/\.gif$/i,'image/bmp':/\.bmp$/i}[value.mimeType]).test(value.file)))throw new Error('Invalid original image filename.');
-    if(Object.hasOwn(value,'preview')&&(!safeName(value.preview)||!/^.+\.annotated\.jpg$/i.test(value.preview)))throw new Error('Invalid annotated preview filename.');
+    if(Object.hasOwn(value,'preview'))previewMimeType(value.preview);
     if(value.mode==='embedded')verify(value,value.dataUrl);return value;
   }
   function verify(value,dataUrl){const info=inspect(dataUrl);if(info.mimeType!==value.mimeType||info.width!==value.width||info.height!==value.height||info.sha256!==value.sha256?.toLowerCase())throw new Error('Original image MIME, dimensions or SHA-256 do not match.');return info;}
   function dataUrlOf(value){return typeof value==='string'?value:record(value)&&value.mode==='embedded'?(validate(value),value.dataUrl):undefined;}
-  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,validate,verify,dataUrlOf};
+  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,previewMimeType,validate,verify,dataUrlOf};
 });

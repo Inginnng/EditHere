@@ -93,7 +93,7 @@ edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--e
 
 `status` 不启动 GUI。0.8.21 起仅在两个桌面接口都明确不存在时返回 `ok:true,running:false`。`desktop_access_required`（退出码 8）表示桌面访问受限；`connection_error` 表示其他连接异常，两者的 `running:null` 均表示未知，不能当作 false。若首次调用的执行环境不合适，且请求尚未受理，可通过获准的桌面入口重试同一次请求；没有该入口或审批被拒绝时，说明具体限制并停止依赖操作。`startup_failed` / `startup_timeout` 才表示启动动作失败 / 接口未及时就绪，结合 `connection` 诊断处理，不循环重启。
 
-`open` / `capture` 成功仅表示请求被受理，不能替代等待用户完成的 `annotate`。已有 `.edithere` 项目、图片或有效反馈 JSON 可直接 `export`，无需发起新的标注会话。成功的 `annotate` / `export` 响应含 `command`、绝对路径 `output`、批注数量 `annotations` 和 `imageIncluded`；它是结果回执，反馈正文在输出文件中。默认将 JSON 与原图分别保存，回执 `imageFile` / `previewFile` 是绝对路径或 null。`--embed-image` 内嵌原图，`--no-image` 仅保留原图描述，二者互斥；`--preview` 可另存编号 JPEG。一起交付 file 模式的配套文件。
+`open` / `capture` 成功仅表示请求被受理，不能替代等待用户完成的 `annotate`。已有 `.edithere` 项目、图片或有效反馈 JSON 可直接 `export`，无需发起新的标注会话。成功的 `annotate` / `export` 响应含 `command`、绝对路径 `output`、批注数量 `annotations` 和 `imageIncluded`；它是结果回执，反馈正文在输出文件中。默认将 JSON 与原图分别保存，回执 `imageFile` / `previewFile` 是绝对路径或 null。`--embed-image` 内嵌原图，`--no-image` 仅保留原图描述，二者互斥；`--preview` 可另存带编号的无损 PNG。一起交付 file 模式的配套文件。
 
 `open` 与 `annotate` 接受图片（PNG/JPEG/WebP/BMP）、视频（MP4/MOV/WebM 等）和 `.edithere` 项目（含视频项目）。视频在 EditHere 中播放，用户暂停到目标画面后批注；同一个位置在不同时间点的意见分别保留，不会合并。视频项目的 `export` 回执还含帧数 `frames` 与 `schemaVersion`（`video-feedback-1`），`annotations` 是所有帧的批注总数。
 
@@ -106,7 +106,7 @@ edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--e
 - 当前图片反馈版本为 `feedback-minimal-4`，新导出省略重复的根级 `$schema`；旧文件的 `urn:edithere:feedback-minimal:3` 或 `urn:edithere:feedback-minimal:4` 标识继续可读，提供时必须与 `schemaVersion` 匹配，对应随包 `schema/feedback-minimal-v4.schema.json`。v3、v2 仍可读取；`tool` 包含名称与实际版本。新导出省略 `exportedAt`（时间戳与图片、保存位置重复），旧文件中的该字段仍按带时区 ISO 时间校验。先按显式版本解析；无版本 `objects` 为 `feedback-minimal-1`，无版本 `annotations` + `changes` 为旧格式。未知显式版本应拒绝，不能猜测。CLI 图片成功回执含 `schemaVersion`。
 - `objects[].kind` 明确区分 `region`、`point`、`global`；区域的 `movement` 只保存一次最终矩形、累计位移和缩放，按原始 `source` 与 `movement.rect` 计算；没有移动时省略。旧版 `result` 与 `movements` 仍可读取。视频根索引与帧数据一致，只校验一次。
 
-- `image` 描述调整前原图：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 和实际编码字节的 `sha256`。可选 `image.preview` 指向同目录带编号的 JPEG。导入校验类型、尺寸和哈希，不接受跨目录路径或符号链接；旧字符串图片及同名 PNG 的约定继续可读。
+- `image` 描述调整前原图：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 和实际编码字节的 `sha256`。可选 `image.preview` 指向同目录带编号的无损 PNG，旧 JPEG 预览继续可读。导入校验类型、尺寸和哈希，不接受跨目录路径或符号链接；旧字符串图片及同名 PNG 的约定继续可读。
 - `annotationSpace` 固定为 `result`：所有批注位置对应调整后的画面。坐标原点在图像左上，单位是图像像素，独立于窗口位置与缩放；不能直接当作屏幕坐标或网页 CSS 像素。
 - 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、file 模式下与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。
 - **同一批批注不要执行两遍**：`frames[n].feedback.objects` 与根 `objects` 指同一批修改，按帧读取一次即可。
@@ -134,4 +134,4 @@ edithere-cli annotate <image-video-or-project> --output <new-feedback.json> [--e
 - **复制 JSON 内容** 默认不携带原图编码；`image.mode:"none"` 仍含尺寸、类型和 SHA-256。按钮旁竖向 **…** 可快速选择携带或不携带原图，选择会单独记住；携带时使用 `embedded`。这项选择不覆盖文件交付的嵌入选项。
 - 接收文本反馈时先检查 `image.mode`：`none` 必须另行取得同一原图，`file` 按回执或同目录文件读取，`embedded` 从 `dataUrl` 取得。不要把尺寸、哈希或标注示意图当成原图，也不要向对话输出完整 Base64。
 - 0.12.0 读取兼容图片反馈 v4/v3/v2、旧无版本 `objects`、`annotations` + `changes` 及桌面旧工程；视频继续使用 v1 容器。兼容方向是新程序读取旧数据，旧程序或旧 Skill 不一定理解 v4 的 `kind`、`movement`、`children` 和图片描述；需要接收新版反馈时同时更新程序与 Skill。对象 ID 仅在本份反馈中有效，不能当作跨轮永久身份。
-- 这些手动界面偏好不改变 CLI/API 的显式参数：默认 `file`，`--embed-image` / `--no-image` 和 `imageMode` 继续可用，`--preview` / `preview:true` 保留程序化编号 JPEG 能力。
+- 这些手动界面偏好不改变 CLI/API 的显式参数：默认 `file`，`--embed-image` / `--no-image` 和 `imageMode` 继续可用，`--preview` / `preview:true` 可程序化生成带编号的无损 PNG。

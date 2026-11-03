@@ -1038,10 +1038,10 @@ QByteArray Editor::projectBytes() {
     if (video_ && videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
 }
-QByteArray Editor::feedbackBytes(bool embed, bool compress) {
+QByteArray Editor::feedbackBytes(bool embed, bool /*compress*/) {
     finishNoteEdit(); commitVideoFrame();
     FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
+    options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
 }
 void Editor::toggleFullscreen() {
@@ -1995,7 +1995,7 @@ void Editor::copyJsonText() {
     try {
         FeedbackExportOptions options;
         options.mode = preferences_.copyJsonTextWithImage ? ImageExportMode::Embedded : ImageExportMode::None;
-        options.preview = false; options.compress = true;
+        options.preview = false;
         const auto bundle = agentFeedbackBundle(options);
         QApplication::clipboard()->setText(QString::fromUtf8(bundle.json));
         toast(preferences_.copyJsonTextWithImage ? tr("JSON 文本已复制（包含原图编码）") : tr("JSON 文本已复制（不含原图编码）"));
@@ -2022,7 +2022,7 @@ void Editor::copyJson() {
     try {
         FeedbackExportOptions options;
         options.mode = preferences_.imageExportMode == ImageExportMode::Embedded ? ImageExportMode::Embedded : ImageExportMode::File;
-        options.preview = false; options.compress = true;
+        options.preview = false;
         const auto bundle = agentFeedbackBundle(options);
         const QString path = writeFeedbackTempBundle(bundle, preferences_.feedbackDir);
         cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
@@ -2279,8 +2279,12 @@ void Editor::copyImage() {
     finishNoteEdit();
     if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (hasDocument()) {
-        QApplication::clipboard()->setImage(previewImage(doc_));
-        toast(tr("带批注图片已复制"));
+        try {
+            QApplication::clipboard()->setImage(previewImage(doc_));
+            toast(tr("带批注图片已复制"));
+        } catch (const std::exception &error) {
+            showError(QString::fromUtf8(error.what()));
+        }
     }
 }
 void Editor::showError(const QString &text) {
@@ -2535,8 +2539,6 @@ void Editor::exportJson() {
     embedded->setChecked(preferences_.imageExportMode == ImageExportMode::Embedded);
     embedded->setToolTip(tr("未勾选时将 JSON 与原图作为独立文件复制。"));
     layout->addWidget(embedded);
-    auto compress = new QCheckBox(tr("压缩内嵌原图（保持尺寸，可能轻微损失细节）"), &dialog);
-    compress->setObjectName("compressFeedbackImage"); compress->setChecked(true); layout->addWidget(compress);
     auto json = new JsonPreview(&dialog); json->setAccessibleName(tr("标准化 JSON")); json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth); json->setFont(QFont(h2d::monoFontFamily(), 10)); layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog); status->setObjectName("exportStatus"); status->setWordWrap(true); layout->addWidget(status);
@@ -2554,8 +2556,7 @@ void Editor::exportJson() {
         try {
             FeedbackExportOptions options;
             options.mode = embedded->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;
-            options.preview = false; options.compress = compress->isChecked();
-            compress->setEnabled(embedded->isChecked());
+            options.preview = false;
             bundle = agentFeedbackBundle(options);
             auto readable = QJsonDocument::fromJson(bundle.json).object();
             auto fold = [&](QJsonObject feedback) {
@@ -2585,7 +2586,7 @@ void Editor::exportJson() {
         try {
             FeedbackExportOptions options;
             options.mode = preferences_.copyJsonTextWithImage ? ImageExportMode::Embedded : ImageExportMode::None;
-            options.preview = false; options.compress = compress->isChecked();
+            options.preview = false;
             const auto textBundle = agentFeedbackBundle(options);
             QApplication::clipboard()->setText(QString::fromUtf8(textBundle.json));
             status->setText(preferences_.copyJsonTextWithImage ? tr("JSON 文本已复制（包含原图编码）") : tr("JSON 文本已复制（不含原图编码）"));
@@ -2596,7 +2597,6 @@ void Editor::exportJson() {
         preferences_.imageExportMode = enabled ? ImageExportMode::Embedded : ImageExportMode::File;
         emit exportPreferencesChanged(preferences_.imageExportMode, preferences_.copyJsonTextWithImage);
     });
-    connect(compress, &QCheckBox::toggled, &dialog, refresh);
     connect(this, &Editor::exportPreferencesChanged, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
     connect(copyText, &QPushButton::clicked, &dialog, copyTextContent);
