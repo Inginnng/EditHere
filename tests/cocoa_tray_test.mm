@@ -173,7 +173,8 @@ class CocoaTrayTests : public QObject {
         QVERIFY(opened.count() >= 1);
         QCOMPARE(activated.count(), 0);
         [nativeMenu performActionForItemAtIndex:0];
-        QCOMPARE(actions, 1);
+        // Cocoa queues delivery back through Qt's window-system event queue.
+        QTRY_COMPARE(actions, 1);
     }
 };
 
