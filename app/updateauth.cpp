@@ -10,6 +10,55 @@
 #include <softpub.h>
 #endif
 
+#ifdef Q_OS_WIN
+#ifdef __MINGW32__
+// MinGW headers (used for the packaged Windows build) predate the Win8
+// signature-settings API used to pin the primary embedded signer. Mirror the
+// Microsoft SDK declarations under project-private names: WinVerifyTrust reads
+// cbStruct, so the wider WINTRUST_DATA tail is accepted by the system provider.
+#ifndef WSS_VERIFY_SPECIFIC
+#define WSS_VERIFY_SPECIFIC 0x00000001
+#endif
+#ifndef WTD_DISABLE_MD2_MD4
+#define WTD_DISABLE_MD2_MD4 0x10000000
+#endif
+#ifndef WTD_MOTW
+#define WTD_MOTW 0x20000000
+#endif
+typedef struct _H2D_WINTRUST_SIGNATURE_SETTINGS {
+  DWORD cbStruct;
+  DWORD dwIndex;
+  DWORD dwFlags;
+  DWORD cSecondarySigs;
+  DWORD dwVerifiedSigIndex;
+  PCERT_STRONG_SIGN_PARA pCryptoPolicy;
+} H2D_WINTRUST_SIGNATURE_SETTINGS;
+// Field order mirrors the modern SDK's WINTRUST_DATA, whose MinGW counterpart
+// lacks the final pSignatureSettings member.
+typedef struct _H2D_WINTRUST_DATA {
+  DWORD cbStruct;
+  LPVOID pPolicyCallbackData;
+  LPVOID pSIPClientData;
+  DWORD dwUIChoice;
+  DWORD fdwRevocationChecks;
+  DWORD dwUnionChoice;
+  union {
+    PWINTRUST_FILE_INFO pFile;
+    PWINTRUST_CATALOG_INFO pCatalog;
+    PWINTRUST_BLOB_INFO pBlob;
+    PWINTRUST_SGNR_INFO pSgnr;
+    PWINTRUST_CERT_INFO pCert;
+  };
+  DWORD dwStateAction;
+  HANDLE hWVTStateData;
+  WCHAR *pwszURLReference;
+  DWORD dwProvFlags;
+  DWORD dwUIContext;
+  H2D_WINTRUST_SIGNATURE_SETTINGS *pSignatureSettings;
+} H2D_WINTRUST_DATA;
+#endif
+#endif
+
 #ifndef EDITHERE_UPDATE_PUBLISHER_CERT_SHA256
 #define EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 ""
 #endif
@@ -45,13 +94,21 @@ bool verifyPublisherSignature(const QString &filePath, const QString &certificat
     WINTRUST_FILE_INFO file{};
     file.cbStruct = sizeof(file);
     file.pcwszFilePath = reinterpret_cast<LPCWSTR>(nativePath.utf16());
+#ifdef __MINGW32__
+    H2D_WINTRUST_SIGNATURE_SETTINGS signature{};
+#else
     WINTRUST_SIGNATURE_SETTINGS signature{};
+#endif
     signature.cbStruct = sizeof(signature);
     // Verify the primary embedded signature specifically, then inspect its
     // verified signer. An unrelated secondary signature cannot supply the pin.
     signature.dwFlags = WSS_VERIFY_SPECIFIC;
     signature.dwIndex = 0;
+#ifdef __MINGW32__
+    H2D_WINTRUST_DATA trust{};
+#else
     WINTRUST_DATA trust{};
+#endif
     trust.cbStruct = sizeof(trust);
     trust.dwUIChoice = WTD_UI_NONE;
     trust.dwUnionChoice = WTD_CHOICE_FILE;
@@ -62,7 +119,8 @@ bool verifyPublisherSignature(const QString &filePath, const QString &certificat
     GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
     const HWND noInteractiveWindow = reinterpret_cast<HWND>(INVALID_HANDLE_VALUE);
     // WinVerifyTrust returns a LONG status; only zero denotes success.
-    const LONG status = WinVerifyTrust(noInteractiveWindow, &policy, &trust);
+    const LONG status = WinVerifyTrust(noInteractiveWindow, &policy,
+                                       reinterpret_cast<WINTRUST_DATA *>(&trust));
     QString signerHash;
     if (status == ERROR_SUCCESS) {
         const auto provider = WTHelperProvDataFromStateData(trust.hWVTStateData);
@@ -78,7 +136,7 @@ bool verifyPublisherSignature(const QString &filePath, const QString &certificat
     }
     // Every VERIFY call, including failures, must release provider state.
     trust.dwStateAction = WTD_STATEACTION_CLOSE;
-    WinVerifyTrust(noInteractiveWindow, &policy, &trust);
+    WinVerifyTrust(noInteractiveWindow, &policy, reinterpret_cast<WINTRUST_DATA *>(&trust));
     if (status != ERROR_SUCCESS)
         return fail(QCoreApplication::translate("h2d::UpdateChecker", "安装包的发布者签名无效或无法验证，已停止更新。请前往发布页手动下载。"));
     if (signerHash.isEmpty() || signerHash.compare(certificateSha256, Qt::CaseInsensitive) != 0)
