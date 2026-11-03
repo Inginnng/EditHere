@@ -931,22 +931,36 @@ class CoreTests : public QObject {
         // loses this pattern even when enlarged again by the receiving app.
         QCOMPARE(second.copy(96 + 1200, 96 + 100, 600, 200),
                  large.image.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
-        // The card and its type grow together. Fixed-size text on a 4K canvas
-        // would have roughly the same ink area, instead of sixteen times more.
-        const auto textInk = [](const QImage &image, QRect bounds) {
-            int count = 0;
+        // The card and its type grow together. Compare the text's geometry;
+        // antialiasing and font hinting change how much of a small glyph is dark,
+        // so the number of dark pixels is not proportional to its squared size.
+        const auto textBounds = [](const QImage &image, QRect bounds) {
+            QRect ink;
             for (int y = bounds.top(); y <= bounds.bottom(); ++y)
                 for (int x = bounds.left(); x <= bounds.right(); ++x) {
                     const auto color = image.pixelColor(x, y);
-                    count += color.red() < 100 && color.green() < 100 && color.blue() < 100;
+                    if (color.red() < 100 && color.green() < 100 && color.blue() < 100)
+                        ink |= QRect(x, y, 1, 1);
                 }
-            return count;
+            return ink;
         };
-        const int smallInk = textInk(first, {1038, 122, 288, 54});
-        const int largeInk = textInk(second, {4152, 488, 1152, 216});
-        QVERIFY(smallInk > 100);
-        QVERIFY(largeInk > smallInk * 12);
-        QVERIFY(largeInk < smallInk * 20);
+        const auto smallText = textBounds(first, {1038, 122, 288, 54});
+        const auto largeText = textBounds(second, {4152, 488, 1152, 216});
+        QVERIFY(!smallText.isEmpty());
+        QVERIFY(!largeText.isEmpty());
+        const QString textGeometry = QString("small text=(%1,%2,%3,%4), large text=(%5,%6,%7,%8)")
+            .arg(smallText.x()).arg(smallText.y()).arg(smallText.width()).arg(smallText.height())
+            .arg(largeText.x()).arg(largeText.y()).arg(largeText.width()).arg(largeText.height());
+        // Allow a logical pixel of small-font rasterization/hinting plus a
+        // device pixel at 4x, rounded up. Half-open edges avoid QRect's inclusive
+        // right/bottom off-by-one. Fixed-size text fails the right/bottom checks.
+        constexpr double textEdgeTolerance = 2;
+        QVERIFY2(qAbs(largeText.x() / 4.0 - smallText.x()) <= textEdgeTolerance, qPrintable(textGeometry));
+        QVERIFY2(qAbs(largeText.y() / 4.0 - smallText.y()) <= textEdgeTolerance, qPrintable(textGeometry));
+        QVERIFY2(qAbs((largeText.x() + largeText.width()) / 4.0 - (smallText.x() + smallText.width())) <= textEdgeTolerance,
+                 qPrintable(textGeometry));
+        QVERIFY2(qAbs((largeText.y() + largeText.height()) / 4.0 - (smallText.y() + smallText.height())) <= textEdgeTolerance,
+                 qPrintable(textGeometry));
         QCOMPARE(first.pixelColor(1020 + 28 - 9, 72 + 26), QColor("#007aff"));
         QCOMPARE(second.pixelColor((1020 + 28 - 9) * 4, (72 + 26) * 4), QColor("#007aff"));
         // Non-integer UI scales must not resample or subpixel-shift the source.
