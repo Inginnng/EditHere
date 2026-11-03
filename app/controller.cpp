@@ -958,17 +958,18 @@ void Controller::readScrollFrame() {
                 self->pauseScrollCapture(error.isEmpty() ? tr("屏幕选区采集失败，请重新选择区域。") : error);
                 return;
             }
-            if (self->scrollRun_.settleDeadline.elapsed() >= self->scrollIo_.settleTimeoutMs) {
-                self->pauseScrollCapture(self->scrollRun_.automatic
-                                            ? tr("页面一直在变化，等待稳定画面超时。请暂停动画后重试。")
-                                            : tr("画面采集超时，请返回选区重试。"));
+            // Continuous manual scrolling can keep producing valid frames for
+            // longer than the settling timeout. Every delivered frame restarts
+            // the manual deadline, so only a missing capture callback can trip
+            // the watchdog armed by beginScrollSettle; automatic capture keeps
+            // its original still-page deadline.
+            const bool automatic = self->scrollRun_.automatic;
+            if (!automatic)
+                self->scrollRun_.settleDeadline.restart();
+            if (automatic && self->scrollRun_.settleDeadline.elapsed() >= self->scrollIo_.settleTimeoutMs) {
+                self->pauseScrollCapture(tr("页面一直在变化，等待稳定画面超时。请暂停动画后重试。"));
                 return;
             }
-            // Continuous manual scrolling can keep producing valid frames for
-            // longer than the settling timeout. Wait for the user's pause while
-            // retaining a deadline only for a missing capture callback.
-            if (!self->scrollRun_.automatic)
-                self->scrollRun_.settleDeadline.restart();
             if (!self->scrollRun_.held.isNull() &&
                 frameDifference(self->scrollRun_.held, grabbed) <= kScrollStableDifference) {
                 self->placeScrollFrame(grabbed);
