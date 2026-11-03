@@ -15,10 +15,11 @@ TOOLS = ROOT / ".tools" / "linuxdeploy"
 ASSETS = [
     ("AppImage/type2-runtime", "20251108", "runtime-x86_64",
      "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"),
-    # Bumped 2026-10-04: linuxdeploy rebuilt its continuous asset on
-    # 2026-08-01 and the previous pin no longer matched.
+    # Reviewed 2026-11-03: official continuous build from 2026-11-01,
+    # source 07333c6e942c7d71782b66be924c5d867f9dfdfc, Actions run 41349296615.
+    # Keep checking both GitHub's digest and the downloaded bytes.
     ("linuxdeploy/linuxdeploy", "continuous", "linuxdeploy-x86_64.AppImage",
-     "8aea8da0f7f7039d2a2cecb14657d752a222a5e1d3825caeef186c82f751cdd1"),
+     "df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5"),
     ("linuxdeploy/linuxdeploy-plugin-qt", "continuous", "linuxdeploy-plugin-qt-x86_64.AppImage",
      "cfc1055b2b9dbc08412b579f20990b7b41a17b61beaa5847dc9477c96c9e9617"),
 ]
