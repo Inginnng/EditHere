@@ -1026,6 +1026,131 @@ def check_doc_links() -> list[Problem]:
     return problems
 
 
+SAVE_DIALOG_CALL = re.compile(r"getSaveFileName\s*\(")
+# A suggestion written as a plain string literal, with or without tr().
+LITERAL_ARGUMENT = re.compile(r"^(?:tr\(\s*\"(?P<tr>[^\"]*)\"\s*\)|\"(?P<raw>[^\"]*)\")$")
+
+
+def call_arguments(text: str, open_paren: int) -> list[str]:
+    """Split the argument list of the call whose '(' is at ``open_paren``.
+
+    Commas inside nested calls, string literals and brace initialisers do not
+    separate arguments, which is what every hand-written dialog call needs.
+    """
+    arguments: list[str] = []
+    current: list[str] = []
+    depth = 0
+    index = open_paren
+    in_string = False
+    while index < len(text):
+        character = text[index]
+        if in_string:
+            if character == "\\":
+                current.append(text[index:index + 2])
+                index += 2
+                continue
+            if character == '"':
+                in_string = False
+            current.append(character)
+        elif character == '"':
+            in_string = True
+            current.append(character)
+        elif character in "([{":
+            depth += 1
+            if depth > 1:
+                current.append(character)
+        elif character in ")]}":
+            depth -= 1
+            if depth == 0:
+                arguments.append("".join(current).strip())
+                return arguments
+            current.append(character)
+        elif character == "," and depth == 1:
+            arguments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+        index += 1
+    return arguments
+
+
+def ternary_branches(argument: str) -> list[str]:
+    """Split a conditional expression into the values it can evaluate to.
+
+    The shipped bug was ``projectPath_.isEmpty() ? tr("设计反馈.edithere") : projectPath_``:
+    the literal hid inside one branch, so checking only the whole argument would
+    have missed it. ``::`` and ``?:`` are left alone.
+    """
+    branches: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_string = False
+    index = 0
+    while index < len(argument):
+        character = argument[index]
+        if in_string:
+            if character == "\\":
+                current.append(argument[index:index + 2])
+                index += 2
+                continue
+            if character == '"':
+                in_string = False
+            current.append(character)
+        elif character == '"':
+            in_string = True
+            current.append(character)
+        elif character in "([{":
+            depth += 1
+            current.append(character)
+        elif character in ")]}":
+            depth -= 1
+            current.append(character)
+        elif depth == 0 and character in "?:":
+            doubled = (character == ":" and
+                       (argument[index - 1:index] == ":" or argument[index + 1:index + 2] == ":"))
+            if doubled:
+                current.append(character)
+            else:
+                branches.append("".join(current).strip())
+                current = []
+        else:
+            current.append(character)
+        index += 1
+    branches.append("".join(current).strip())
+    return branches
+
+
+def check_save_dialog_paths() -> list[Problem]:
+    """REG-199  A save dialog suggestion is a path, not a file name.
+
+    Both macOS and Windows resolve a bare file name against the process working
+    directory. For an application started by Finder that directory is "/", so the
+    dialog opened at the read-only file-system root and the save could not be
+    written at all (issue #39). Every suggestion has to be anchored, e.g. built
+    from QStandardPaths::writableLocation().
+    """
+    problems: list[Problem] = []
+    for path in sorted((ROOT / "app").glob("*.cpp")):
+        text = read(path)
+        for match in SAVE_DIALOG_CALL.finditer(text):
+            arguments = call_arguments(text, match.end() - 1)
+            if len(arguments) < 3:
+                continue
+            for branch in ternary_branches(arguments[2]):
+                literal = LITERAL_ARGUMENT.match(branch)
+                if not literal:
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                suggestion = literal.group("tr") or literal.group("raw") or ""
+                problems.append(
+                    f"app/{path.name}:{line}: getSaveFileName() suggests '{suggestion}', a bare "
+                    f"relative name. A macOS application started by Finder runs with \"/\" as its "
+                    f"working directory, so the dialog opens at the file-system root and the save "
+                    f"fails. Build the suggestion from QStandardPaths::writableLocation()."
+                )
+    return problems
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -1046,6 +1171,7 @@ CHECKS = [
     ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
     ("doc_links", check_doc_links),
+    ("save_dialog_paths", check_save_dialog_paths),
     ("mcp_build", check_mcp_build_freshness),
 ]
 

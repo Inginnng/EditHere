@@ -2259,8 +2259,14 @@ bool Editor::saveProject() {
     finishNoteEdit();
     if (!hasDocument() && !video_)
         return true;
+    // The suggestion has to be an absolute path. A bare file name is resolved
+    // against the process working directory, which is "/" for an application
+    // started by Finder, so macOS offered to save the project in the read-only
+    // file-system root and the write failed (issue #39).
+    const QString suggestion = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                                   .filePath(tr("设计反馈.edithere"));
     QString path = QFileDialog::getSaveFileName(this, tr("保存 EditHere 项目"),
-                                                projectPath_.isEmpty() ? tr("设计反馈.edithere") : projectPath_,
+                                                projectPath_.isEmpty() ? suggestion : projectPath_,
                                                 tr("EditHere 项目 (*.edithere)"));
     if (path.isEmpty())
         return false;
@@ -2457,13 +2463,18 @@ void Editor::saveImage(bool annotated) {
     if (!hasDocument())
         return;
     const bool layoutPreview = !annotated && doc_.layout.has_value();
+    // Anchored suggestions for the same reason as the project dialog: a bare
+    // "preview.png" is resolved against the working directory, which is "/" for
+    // an application started by Finder (issue #39).
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString suggested = annotated       ? QDir(pictures).filePath(QStringLiteral("preview.png"))
+                              : layoutPreview ? QDir(pictures).filePath(QStringLiteral("layout.png"))
+                                              : doc_.imageFile;
     QString path = QFileDialog::getSaveFileName(this,
                                                 annotated       ? tr("保存带批注图片")
                                                 : layoutPreview ? tr("保存调整效果")
                                                                 : tr("保存原图"),
-                                                annotated       ? "preview.png"
-                                                : layoutPreview ? "layout.png"
-                                                                : doc_.imageFile,
+                                                suggested,
                                                 tr("PNG 图片 (*.png)"));
     if (path.isEmpty())
         return;

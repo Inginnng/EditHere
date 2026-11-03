@@ -235,7 +235,7 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": {"name": "EditHere", "version": "0.12.3"},
+  "tool": {"name": "EditHere", "version": "0.12.4"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // 示意哈希；原图与 JSON 一起提供
