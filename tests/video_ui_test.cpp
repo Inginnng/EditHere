@@ -872,7 +872,8 @@ class VideoUiTests : public QObject {
                 if (!mime || !mime->hasUrls() || mime->urls().size() != savedFeedback["frames"].toArray().size() + 1 ||
                     !mime->urls().first().isLocalFile()) continue;
                 const QString candidate = QDir::cleanPath(QFileInfo(mime->urls().first().toLocalFile()).absoluteFilePath());
-                if (!candidate.startsWith(feedbackPrefix, Qt::CaseInsensitive) || QFileInfo(candidate).fileName() != "feedback.json") continue;
+                if (!candidate.startsWith(feedbackPrefix, Qt::CaseInsensitive) ||
+                    QFileInfo(candidate).fileName() != "First annotation retains its original press and PTS.json") continue;
                 const auto directory = QFileInfo(candidate).absolutePath();
                 bool complete = true;
                 for (const auto &url : mime->urls()) {
@@ -1021,7 +1022,8 @@ class VideoUiTests : public QObject {
             QVERIFY(urls.first().isLocalFile());
             bundleJsonPath = QDir::cleanPath(QFileInfo(urls.first().toLocalFile()).absoluteFilePath());
             QVERIFY(bundleJsonPath.startsWith(QDir::cleanPath(feedbackFiles.path()) + '/', Qt::CaseInsensitive));
-            QCOMPARE(QFileInfo(bundleJsonPath).fileName(), QString("feedback.json"));
+            QCOMPARE(QFileInfo(bundleJsonPath).fileName(),
+                     QString::fromUtf8("将底部“只有像素。”这行文字放大 20%，并向上移动 30 像素。.json"));
             const auto directory = QFileInfo(bundleJsonPath).absolutePath();
             for (const auto &url : urls) {
                 QVERIFY(url.isLocalFile());
