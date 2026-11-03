@@ -9,9 +9,11 @@
 namespace h2d {
 enum class ThemeMode { System, Light, Dark };
 // Interface language. "System" follows the operating system and falls back to
-// English on non-Chinese systems; the built-in source language is Simplified
-// Chinese, so zh_CN needs no translation file.
-enum class LanguageMode { System, SimplifiedChinese, English };
+// English on systems that speak neither Chinese script; the built-in source
+// language is Simplified Chinese, so zh_CN needs no translation file.
+// New choices are appended: OcrLanguageMode is cast to this enum and relies on
+// the first three values keeping their order.
+enum class LanguageMode { System, SimplifiedChinese, English, TraditionalChinese };
 // Language the screen reader uses. Kept apart from the interface language,
 // because reading a Chinese page on an English interface is a normal thing to do.
 enum class OcrLanguageMode { System, SimplifiedChinese, English };
