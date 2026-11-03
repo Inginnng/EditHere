@@ -694,14 +694,14 @@ class AgentCliTests : public QObject {
         QTemporaryDir directory; QVERIFY(directory.isValid());
         const auto document = loadDocument(inputProject(directory));
         FeedbackExportOptions options; options.imageFile = "original.png"; options.preview = true;
-        options.previewFile = "review.annotated.jpg";
+        options.previewFile = "review.annotated.png";
         const auto bundle = buildFeedbackBundle(document, options);
-        saveBytes(directory.filePath("review.annotated.jpg"), "owned by another process");
+        saveBytes(directory.filePath("review.annotated.png"), "owned by another process");
         QVERIFY_EXCEPTION_THROWN(writeNewFeedbackBundle(directory.filePath("result.json"), bundle), std::runtime_error);
         QVERIFY(!QFileInfo::exists(directory.filePath("original.png")));
         QVERIFY(!QFileInfo::exists(directory.filePath("result.json")));
-        QCOMPARE(readFile(directory.filePath("review.annotated.jpg")), QByteArray("owned by another process"));
-        QVERIFY(QFile::remove(directory.filePath("review.annotated.jpg")));
+        QCOMPARE(readFile(directory.filePath("review.annotated.png")), QByteArray("owned by another process"));
+        QVERIFY(QFile::remove(directory.filePath("review.annotated.png")));
         // A too-long final JSON filename fails after both sidecars were written.
         QVERIFY_EXCEPTION_THROWN(writeNewFeedbackBundle(directory.filePath(QString(300, 'x') + ".json"), bundle), std::runtime_error);
         QVERIFY(QDir(directory.path()).entryList({"*.png", "*.jpg", ".edithere-feedback-*"}, QDir::Files | QDir::Hidden).isEmpty());
@@ -724,10 +724,12 @@ class AgentCliTests : public QObject {
             const auto feedback = QJsonDocument::fromJson(readFile(output)).object();
             const auto image = feedback["image"].toObject(); QCOMPARE(image["mode"].toString(), test.mode);
             QCOMPARE(QFileInfo::exists(directory.filePath(test.name + ".png")), test.mode == "file");
-            QCOMPARE(QFileInfo::exists(directory.filePath(test.name + ".annotated.jpg")), test.preview);
+            QCOMPARE(QFileInfo::exists(directory.filePath(test.name + ".annotated.png")), test.preview);
             QCOMPARE(receipt["imageFile"].isNull(), test.mode != "file"); QCOMPARE(receipt["previewFile"].isNull(), !test.preview);
             if (test.preview) {
-                const QImage preview(receipt["previewFile"].toString()); QVERIFY(!preview.isNull());
+                QCOMPARE(image["preview"].toString(), test.name + ".annotated.png");
+                const auto bytes = readFile(receipt["previewFile"].toString());
+                const auto preview = QImage::fromData(bytes, "PNG"); QVERIFY(!preview.isNull());
                 QVERIFY(preview.width() >= original.image.width()); QVERIFY(preview.height() >= original.image.height());
             }
             const auto restored = test.mode == "none" ? loadFeedback(feedback, original.image, original.png) : loadDocument(output);

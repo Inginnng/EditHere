@@ -26,7 +26,7 @@ node web/install-skill.cjs
 
 MCP 页面的“反馈”先持久化完整桌面兼容 JSON，再请求宿主发送消息。保存成功、消息接受和 AI 实施分别报告；宿主拒绝或不支持消息时，已保存结果仍可读取，用户回到对话说“继续”。Agent 用原 sessionId 调用 read，核对 completed 与 SHA 后处理。宿主接受消息不代表已经修改代码，updateModelContext 也不会自行唤醒 AI。
 
-已确认保存的 MCP 草稿和会话默认位于 `~/.edithere/web-sessions`，可用 `EDITHERE_WEB_DATA_DIR` 指定持久绝对目录。宿主重启后可 open 原 sessionId 恢复草稿或查看已提交结果；停止/取消后不自动重开。输出默认是原生反馈 JSON 与同目录原图，可选内嵌或仅原图信息，并可附带编号 JPEG；read 回执省略图片编码。不要把私有会话、图片、令牌和日志加入分发包。
+已确认保存的 MCP 草稿和会话默认位于 `~/.edithere/web-sessions`，可用 `EDITHERE_WEB_DATA_DIR` 指定持久绝对目录。宿主重启后可 open 原 sessionId 恢复草稿或查看已提交结果；停止/取消后不自动重开。输出默认是原生反馈 JSON 与同目录原图，可选内嵌或仅原图信息，并可附带编号无损 PNG，兼容读取旧 JPEG 预览；原图不进行 JPEG 有损转码。read 回执省略图片编码。不要把私有会话、图片、令牌和日志加入分发包。
 
 普通浏览器兼容流程：
 

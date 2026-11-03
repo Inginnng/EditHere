@@ -116,7 +116,7 @@ An elevated Windows instance disables both IPC services while keeping the manual
 | `export <image-video-project-or-feedback> --output <new.json>` | Convert a saved project (including video projects), image or valid feedback JSON into feedback JSON | No |
 | `annotate <image-video-or-project> --output <new.json>` | Open a user annotation session and wait for an explicit submission | **Yes** |
 
-`export` and `annotate` default to `file`: a same-basename PNG beside the JSON. Use `--embed-image` for embedded data or `--no-image` for metadata only; these switches are mutually exclusive. `--preview` adds a numbered JPEG in any mode. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
+`export` and `annotate` default to `file`: a same-basename PNG beside the JSON. Use `--embed-image` for embedded data or `--no-image` for metadata only; these switches are mutually exclusive. `--preview` adds a numbered lossless PNG in any mode. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
 
 `open` and `annotate` take images (PNG/JPEG/WebP/BMP), videos (MP4/MOV/WebM and others) and `.edithere` projects, including video projects. A video plays inside EditHere and the user pauses on the picture they mean before annotating; notes about the same position at different times are kept apart rather than merged. The `export` receipt for a video project also carries the frame count `frames` and `schemaVersion` (`video-feedback-1`).
 
@@ -233,7 +233,7 @@ The file names under `schema/` denote the data format, not the application versi
 | Legacy `annotations` | Text annotations, located with `point` or `rectangle`; an annotation with only `text` applies to the whole image; `change` is a zero-based index into `changes` |
 | Legacy `changes` | The actual position and size changes; each entry's `from` is the source region and `to` is the final region |
 
-`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
+`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered lossless PNG in the same directory; legacy JPEG previews remain readable. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
 
 All coordinates take the image's top-left corner as the origin, are measured in image pixels, and are unaffected by the editor window's position or the current zoom. A rectangle's bottom-right boundary is exclusive, so the width and height are `x2-x1` and `y2-y1`. New exports round all coordinates and displacement to integers. Positive scale ratios are rounded to two decimal places, with a minimum of 0.01. A ratio rounding to 1 resets that target dimension to its original size and omits the corresponding scale field. Readers still accept older fractional coordinates, exact ratios and explicit unit scales; editable projects retain their precision. Do not treat these values as web CSS pixels or absolute screen coordinates without conversion.
 
@@ -256,7 +256,7 @@ A video project exports [video-feedback-v1.schema.json](../schema/video-feedback
 | `frames[].feedback` | That frame's image feedback, with the same shape as [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) |
 | `objects[]` | The same objects expanded with `frameId` and `timestampMs`, so they can be read in time order |
 
-`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. Each frame follows the selected mode: file writes real screenshots, `--embed-image` embeds them, and `--no-image` retains descriptors without originals. `--preview` adds a numbered JPEG per frame.
+`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. Each frame follows the selected mode: file writes real screenshots, `--embed-image` embeds them, and `--no-image` retains descriptors without originals. `--preview` adds a numbered lossless PNG per frame.
 
 Project files follow [video-project-v1.schema.json](../schema/video-project-v1.schema.json): each annotated picture keeps its screenshot and editing state, the source video is referenced by address only, and moving or losing it does not affect the saved content.
 

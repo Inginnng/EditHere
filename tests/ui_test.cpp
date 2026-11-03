@@ -1843,6 +1843,23 @@ class UiTests : public QObject {
         QCOMPARE(hide->accessibleName(), hide->toolTip());
         editor.hide();
     }
+    void annotatedClipboardKeepsHighResolutionPixels() {
+        QImage source(3840, 2160, QImage::Format_RGB32);
+        for (int y = 0; y < source.height(); ++y)
+            for (int x = 0; x < source.width(); ++x)
+                source.setPixel(x, y, qRgb((x * 37) % 256, (y * 53) % 256, (x + y) % 256));
+        auto document = fromImage(source, "file", "4K clipboard");
+        Note note; note.point = {480, 400}; note.comment = "Keep this detail sharp";
+        document.notes.append(note);
+        Editor editor; editor.setDocument(document);
+        auto copy = editor.findChild<QPushButton *>("copyImage"); QVERIFY(copy);
+        copy->click();
+        const auto copied = QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(copied.size(), QSize(5472, 2352));
+        QCOMPARE(copied.copy(96 + 1200, 96 + 100, 600, 200),
+                 source.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
+        editor.hide();
+    }
     void blankViewportWheelZoomsBothSurfacesWithoutChangingLayout() {
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), document.candidates);
@@ -2478,7 +2495,8 @@ class UiTests : public QObject {
         text->click();
         const auto embedded = clipboardJson().object()["image"].toObject();
         QCOMPARE(embedded["mode"].toString(), QString("embedded"));
-        QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/"));
+        QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/png;base64,"));
+        QCOMPARE(QByteArray::fromBase64(embedded["dataUrl"].toString().section(',', 1).toLatin1()), editor.document().png);
         QSignalSpy copies(text, &QPushButton::clicked);
         QTest::mouseClick(options, Qt::LeftButton);
         QVERIFY(copies.isEmpty());
@@ -2505,10 +2523,12 @@ class UiTests : public QObject {
             QVERIFY(!dialog->findChild<QPushButton *>("saveFeedbackBundle"));
             QVERIFY(!dialog->findChild<QComboBox *>("feedbackImageMode"));
             QVERIFY(!dialog->findChild<QCheckBox *>("feedbackPreview"));
+            QVERIFY(!dialog->findChild<QCheckBox *>("compressFeedbackImage"));
             QVERIFY(!embed->isChecked());
             artifact(*dialog, "json-preview-file-mode.png");
             copyText->click();
             QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("embedded"));
+            QCOMPARE(QByteArray::fromBase64(clipboardJson().object()["image"].toObject()["dataUrl"].toString().section(',', 1).toLatin1()), editor.document().png);
             dialogOptions->findChild<QAction *>("copyJsonTextWithoutImage")->trigger();
             copyText->click();
             QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("none"));
@@ -3575,6 +3595,17 @@ class UiTests : public QObject {
         QVERIFY_EXCEPTION_THROWN(previewImage(document), std::runtime_error);
         Editor editor; auto preferences = defaultSettings(); preferences.feedbackDir = directory.path();
         editor.setPreferences(preferences); editor.setDocument(document);
+        QApplication::clipboard()->setText("previous clipboard content");
+        bool warned = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto warning = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()); QVERIFY(warning);
+            QVERIFY(warning->text().contains("预览图片过大"));
+            warned = true; warning->accept();
+        });
+        QTimer::singleShot(3000, &editor, [] { if (auto dialog = QApplication::activeModalWidget()) dialog->close(); });
+        editor.findChild<QPushButton *>("copyImage")->click();
+        QVERIFY(warned);
+        QCOMPARE(QApplication::clipboard()->text(), QString("previous clipboard content"));
         bool exported = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()); QVERIFY(dialog);

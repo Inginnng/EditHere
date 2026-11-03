@@ -271,7 +271,7 @@
       }
     },
     "imageDescriptor": {
-      "description": "Encoded screenshot metadata. file is a same-directory attachment, embedded carries dataUrl, and none has no screenshot bytes. sha256 hashes the exact encoded image bytes. Unknown device pixel ratio is null. preview is an optional same-directory annotated JPEG, never the original image.",
+      "description": "Encoded screenshot metadata. file is a same-directory attachment, embedded carries dataUrl, and none has no screenshot bytes. sha256 hashes the exact encoded image bytes. Unknown device pixel ratio is null. preview is an optional same-directory annotated lossless PNG (legacy JPEG accepted), never the original image.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -338,7 +338,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 255,
-          "pattern": "^(?!\\.)(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|$))[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.[aA][nN][nN][oO][tT][aA][tT][eE][dD]\\.[jJ][pP][gG]$"
+          "pattern": "^(?!\\.)(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|$))[^\\\\/:*?\"<>|\\u0000-\\u001f]+\\.[aA][nN][nN][oO][tT][aA][tT][eE][dD]\\.(?:[pP][nN][gG]|[jJ][pP][gG])$"
         }
       },
       "allOf": [

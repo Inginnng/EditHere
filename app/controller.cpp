@@ -1700,7 +1700,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     if (request.contains("preview") && !request["preview"].isBool()) return agentError("invalid_arguments", "preview must be boolean.");
     exportOptions.preview = request["preview"].toBool();
     exportOptions.imageFile = QFileInfo(output).completeBaseName() + ".png";
-    exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
+    exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
     try {
         guidePending_ = false;
         editor_.loadMedia(input);

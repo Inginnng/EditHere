@@ -1014,18 +1014,6 @@ QJsonObject exportFeedback(const Document &input, const FeedbackExportOptions &o
                        {"annotationSpace", "result"}, {"objects", objects}};
     QByteArray encoded = doc.png;
     QString mime = "image/png";
-    if (options.mode == ImageExportMode::Embedded && options.compress) {
-        const QImage rgba = doc.image.convertToFormat(QImage::Format_ARGB32);
-        bool opaque = true;
-        for (int y = 0; opaque && y < rgba.height(); ++y) {
-            const auto row = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
-            for (int x = 0; x < rgba.width(); ++x) if (qAlpha(row[x]) != 255) { opaque = false; break; }
-        }
-        if (opaque) {
-            QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
-            if (doc.image.save(&buffer, "JPEG", 80) && jpeg.size() < encoded.size()) { encoded = jpeg; mime = "image/jpeg"; }
-        }
-    }
     QJsonObject image{{"mode", options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"},
                       {"mimeType", mime}, {"width", doc.image.width()}, {"height", doc.image.height()},
                       {"devicePixelRatio", QJsonValue(QJsonValue::Null)},
@@ -1039,19 +1027,19 @@ QJsonObject exportFeedback(const Document &input, const FeedbackExportOptions &o
         image.insert("dataUrl", "data:" + mime + ";base64," + QString::fromLatin1(encoded.toBase64()));
     }
     if (options.preview) {
-        const QString name = options.previewFile.isEmpty() ? QFileInfo(options.imageFile).completeBaseName() + ".annotated.jpg" : options.previewFile;
-        if (!safeFeedbackImageName(name, true) || !name.endsWith(".annotated.jpg", Qt::CaseInsensitive))
-            fail(tr("标注示意图必须使用同目录的 .annotated.jpg 文件名"));
+        const QString name = options.previewFile.isEmpty() ? QFileInfo(options.imageFile).completeBaseName() + ".annotated.png" : options.previewFile;
+        if (!safeFeedbackImageName(name) || !name.endsWith(".annotated.png", Qt::CaseInsensitive))
+            fail(tr("标注示意图文件名不正确"));
         image.insert("preview", name);
     }
     result.insert("image", image);
     if (!doc.capture.isEmpty()) result.insert("capture", exportCaptureContext(doc.capture, options.includeWindowTitle));
     return result;
 }
-QJsonObject exportFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
+QJsonObject exportFeedback(const Document &doc, bool embed, bool /*compress*/, bool includeRecognizedText) {
     FeedbackExportOptions options;
     options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    options.includeRecognizedText = includeRecognizedText;
     return exportFeedback(doc, options);
 }
 static QByteArray feedbackJsonValue(const QJsonValue &value, bool indented, int depth) {
@@ -1097,10 +1085,10 @@ QByteArray serializeFeedback(const Document &doc, const FeedbackExportOptions &o
     validateProjectStorageSize(bytes.size());
     return bytes;
 }
-QByteArray serializeFeedback(const Document &doc, bool embed, bool compress, bool includeRecognizedText) {
+QByteArray serializeFeedback(const Document &doc, bool embed, bool /*compress*/, bool includeRecognizedText) {
     FeedbackExportOptions options;
     options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    options.includeRecognizedText = includeRecognizedText;
     return serializeFeedback(doc, options);
 }
 FeedbackBundle buildFeedbackBundle(const Document &doc, const FeedbackExportOptions &options) {
@@ -1115,14 +1103,10 @@ FeedbackBundle buildFeedbackBundle(const Document &doc, const FeedbackExportOpti
         bundle.files.insert(bundle.imageFile, doc.png);
     }
     if (options.preview) {
-        QImage rendered = previewImage(doc);
-        QImage opaque(rendered.size(), QImage::Format_RGB32); opaque.fill(Qt::white);
-        QPainter painter(&opaque); painter.drawImage(0, 0, rendered); painter.end();
-        QByteArray jpeg; QBuffer buffer(&jpeg); buffer.open(QIODevice::WriteOnly);
-        if (!opaque.save(&buffer, "JPEG", options.compress ? 80 : 95)) fail(tr("无法生成标注示意图"));
-        if (jpeg.size() > MaxImageFileBytes) fail(tr("标注示意图不能超过 48 MiB"));
+        const auto png = encodePng(previewImage(doc));
+        if (png.size() > MaxImageFileBytes) fail(tr("标注示意图不能超过 48 MiB"));
         bundle.previewFile = image["preview"].toString();
-        bundle.files.insert(bundle.previewFile, jpeg);
+        bundle.files.insert(bundle.previewFile, png);
     }
     return bundle;
 }
@@ -1491,8 +1475,9 @@ static QJsonObject feedbackImageInfo(const QJsonValue &value) {
         (mime == "image/jpeg" ? !(info["file"].toString().endsWith(".jpg", Qt::CaseInsensitive) || info["file"].toString().endsWith(".jpeg", Qt::CaseInsensitive))
           : !info["file"].toString().endsWith("." + mime.mid(6), Qt::CaseInsensitive))))
         fail(tr("原图必须使用同目录的图片文件名"));
-    if (info.contains("preview") && (!info["preview"].isString() || !safeFeedbackImageName(info["preview"].toString(), true) ||
-        !info["preview"].toString().endsWith(".annotated.jpg", Qt::CaseInsensitive))) fail(tr("标注示意图文件名不正确"));
+    if (info.contains("preview") && (!info["preview"].isString() || !safeFeedbackImageName(info["preview"].toString()) ||
+        !(info["preview"].toString().endsWith(".annotated.png", Qt::CaseInsensitive) ||
+          info["preview"].toString().endsWith(".annotated.jpg", Qt::CaseInsensitive)))) fail(tr("标注示意图文件名不正确"));
     if (mode == "embedded" && !info["dataUrl"].isString()) fail(tr("内嵌图片必须是支持的图片 data URL"));
     return info;
 }
@@ -1834,7 +1819,8 @@ Document loadFeedbackFile(const QJsonObject &feedback, const QString &jsonPath, 
             QFile file(preview.absoluteFilePath());
             if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > MaxImageFileBytes) fail(tr("无法读取标注示意图"));
             const auto bytes = file.readAll();
-            if (feedbackImageMime(bytes) != "image/jpeg") fail(tr("标注示意图必须是 JPEG 图片"));
+            const auto expectedMime = preview.suffix().compare("png", Qt::CaseInsensitive) == 0 ? "image/png" : "image/jpeg";
+            if (feedbackImageMime(bytes) != expectedMime) fail(tr("标注示意图文件名不正确"));
             // A preview contains a notes panel and can be larger than the source.
             decodeFeedbackBytes(bytes);
         }
@@ -2179,12 +2165,15 @@ QImage exampleImage() {
     return image;
 }
 QImage previewImage(const Document &doc) {
-    // The annotated copy must keep small text in high-resolution screenshots
-    // readable. Enlarge small sources as before, but never downsample a source.
+    // Keep original pixels and scale the entire annotation design with the
+    // source width. Paint the image before the UI transform so fractional
+    // scale factors never shift its pixel grid.
     const int imageWidth = std::max(960, doc.image.width());
     const double imageScale = double(imageWidth) / doc.image.width();
+    const double uiScale = double(imageWidth) / 960;
+    const int margin = qRound(24 * uiScale);
     const double scaledHeight = doc.image.height() * imageScale;
-    if (scaledHeight > 32767 - 48) fail(tr("预览图片过大，请保存项目"));
+    if (scaledHeight > 32767 - margin * 2) fail(tr("预览图片过大，请保存项目"));
     const int imageHeight = std::max(1, qRound(scaledHeight));
     QFont font(h2d::cjkFontFamily(), 11);
     QFontMetrics fm(font);
@@ -2196,7 +2185,10 @@ QImage previewImage(const Document &doc) {
         heights.append(h);
         total += h + 12;
     }
-    int width = imageWidth + 408, height = std::max(imageHeight + 48, total + 24);
+    const double notesHeight = (total + 24) * uiScale;
+    if (notesHeight > 32767) fail(tr("预览图片过大，请保存项目"));
+    int width = imageWidth + qRound(408 * uiScale),
+        height = std::max(imageHeight + margin * 2, qCeil(notesHeight));
     if (qint64(width) * height > MaxPixels || width > 32767 || height > 32767)
         fail(tr("预览图片过大，请保存项目"));
     QImage image(width, height, QImage::Format_ARGB32);
@@ -2204,13 +2196,16 @@ QImage previewImage(const Document &doc) {
     QPainter p(&image);
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
-    p.drawImage(QRectF(24, 24, imageWidth, imageHeight),
+    p.drawImage(QRectF(margin, margin, imageWidth, imageHeight),
                 doc.layout ? renderLayout(doc.image, *doc.layout) : doc.image);
+    p.scale(uiScale, uiScale);
+    const double markerScale = imageScale / uiScale;
+    const QPointF imageOrigin(double(margin) / uiScale, double(margin) / uiScale);
     const auto markers = doc.layout ? movementMarkers(*doc.layout, doc.notes) : QVector<MovementMarker>{};
     for (const auto &marker : markers) {
         const auto trajectory = movementMarkerLine(marker);
-        const auto from = trajectory.p1() * imageScale + QPointF(24, 24);
-        const auto to = trajectory.p2() * imageScale + QPointF(24, 24);
+        const auto from = trajectory.p1() * markerScale + imageOrigin;
+        const auto to = trajectory.p2() * markerScale + imageOrigin;
         const QLineF line(from, to);
         if (line.length() <= 1e-7)
             continue;
@@ -2237,8 +2232,9 @@ QImage previewImage(const Document &doc) {
     for (const auto &marker : markers)
         if (marker.noteIndex >= 0)
             movementAnchors.insert(marker.noteIndex,
-                                   movementMarkerAnchor(marker, imageScale, QSizeF(imageWidth, imageHeight)) + QPointF(24, 24));
-    int y = 72, i = 0, x = imageWidth + 60;
+                                   movementMarkerAnchor(marker, markerScale, QSizeF(imageWidth / uiScale, imageHeight / uiScale)) + imageOrigin);
+    int y = 72, i = 0;
+    const double x = (imageWidth + qRound(60 * uiScale)) / uiScale;
     p.setFont(QFont(h2d::cjkFontFamily(), 13, QFont::DemiBold));
     p.setPen(QColor("#242426"));
     p.drawText(x, 44, QString(tr("批注 %1 条")).arg(doc.notes.size()));
@@ -2246,11 +2242,11 @@ QImage previewImage(const Document &doc) {
         if (!n.isGlobal && !n.isPoint) {
             p.setPen(QPen(QColor("#007aff"), 2));
             p.setBrush(Qt::NoBrush);
-            p.drawRect(QRectF(n.rect.x() * imageScale + 24, n.rect.y() * imageScale + 24,
-                             n.rect.width() * imageScale, n.rect.height() * imageScale));
+            p.drawRect(QRectF(QPointF(n.rect.topLeft()) * markerScale + imageOrigin,
+                             QSizeF(n.rect.size()) * markerScale));
         }
         if (!n.isGlobal)
-            badge(movementAnchors.value(i, QPointF(n.isPoint ? n.point : n.rect.topLeft()) * imageScale + QPointF(24, 24)),
+            badge(movementAnchors.value(i, QPointF(n.isPoint ? n.point : n.rect.topLeft()) * markerScale + imageOrigin),
                   i + 1);
         p.setPen(Qt::NoPen);
         p.setBrush(Qt::white);
@@ -2267,7 +2263,7 @@ QImage previewImage(const Document &doc) {
         p.drawText(x + 52, y + 31, coords);
         p.setPen(QColor("#242426"));
         p.setFont(font);
-        p.drawText(QRect(x + 18, y + 50, 288, heights[i] - 56), Qt::TextWordWrap, n.comment);
+        p.drawText(QRectF(x + 18, y + 50, 288, heights[i] - 56), Qt::TextWordWrap, n.comment);
         y += heights[i++] + 12;
     }
     return image;

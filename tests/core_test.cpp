@@ -578,10 +578,11 @@ class CoreTests : public QObject {
         }
         FeedbackExportOptions preview; preview.mode = ImageExportMode::None; preview.preview = true;
         const auto bundle = buildFeedbackBundle(doc, preview);
-        QVERIFY(bundle.imageFile.isEmpty()); QCOMPARE(bundle.previewFile, QString("feedback.annotated.jpg"));
+        QVERIFY(bundle.imageFile.isEmpty()); QCOMPARE(bundle.previewFile, QString("feedback.annotated.png"));
         QCOMPARE(bundle.files.size(), 1);
-        const auto rendered = QImage::fromData(bundle.files.value(bundle.previewFile), "JPEG");
+        const auto rendered = QImage::fromData(bundle.files.value(bundle.previewFile), "PNG");
         QVERIFY(!rendered.isNull()); QVERIFY(rendered.width() >= doc.image.width());
+        QCOMPARE(rendered, previewImage(doc));
         QVERIFY(!bundle.json.contains("data:image/"));
         const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
         if (!folder.isEmpty()) {
@@ -620,10 +621,21 @@ class CoreTests : public QObject {
         const auto bundle = buildFeedbackBundle(doc, withPreview);
         const auto path = directory.filePath("preview.json"); saveBytes(path, bundle.json);
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
-        saveBytes(directory.filePath(bundle.previewFile), doc.png);
+        saveBytes(directory.filePath(bundle.previewFile), "not a PNG preview");
         QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
         saveBytes(directory.filePath(bundle.previewFile), bundle.files.value(bundle.previewFile));
         QCOMPARE(loadDocument(path).image, doc.image);
+        // Previous releases wrote JPEG previews; existing bundles remain readable.
+        auto legacyPreview = QJsonDocument::fromJson(bundle.json).object();
+        auto legacyImage = legacyPreview["image"].toObject();
+        legacyImage["preview"] = "feedback.annotated.jpg";
+        legacyPreview["image"] = legacyImage;
+        saveBytes(path, QJsonDocument(legacyPreview).toJson());
+        QVERIFY(previewImage(doc).save(directory.filePath("feedback.annotated.jpg"), "JPEG"));
+        QCOMPARE(loadDocument(path).image, doc.image);
+        // Matching suffix and actual encoding are required in both directions.
+        saveBytes(directory.filePath("feedback.annotated.jpg"), doc.png);
+        QVERIFY_EXCEPTION_THROWN(loadDocument(path), std::runtime_error);
     }
     void recognizedScreenshotTextRoundTripsAndCanBeOmitted() {
         auto doc = fromImage(exampleImage(), "file", "OCR metadata");
@@ -914,14 +926,43 @@ class CoreTests : public QObject {
         const auto small = makeDocument(1), large = makeDocument(4);
         const auto first = previewImage(small), second = previewImage(large);
         QCOMPARE(first.width(), 960 + 408);
-        QCOMPARE(second.size(), QSize(3840 + 408, 2160 + 48));
+        QCOMPARE(second.size(), first.size() * 4);
         // Compare fine pixel detail away from the annotation. A 960px export
         // loses this pattern even when enlarged again by the receiving app.
-        QCOMPARE(second.copy(24 + 1200, 24 + 100, 600, 200),
+        QCOMPARE(second.copy(96 + 1200, 96 + 100, 600, 200),
                  large.image.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
+        // The card and its type grow together. Fixed-size text on a 4K canvas
+        // would have roughly the same ink area, instead of sixteen times more.
+        const auto textInk = [](const QImage &image, QRect bounds) {
+            int count = 0;
+            for (int y = bounds.top(); y <= bounds.bottom(); ++y)
+                for (int x = bounds.left(); x <= bounds.right(); ++x) {
+                    const auto color = image.pixelColor(x, y);
+                    count += color.red() < 100 && color.green() < 100 && color.blue() < 100;
+                }
+            return count;
+        };
+        const int smallInk = textInk(first, {1038, 122, 288, 54});
+        const int largeInk = textInk(second, {4152, 488, 1152, 216});
+        QVERIFY(smallInk > 100);
+        QVERIFY(largeInk > smallInk * 12);
+        QVERIFY(largeInk < smallInk * 20);
+        QCOMPARE(first.pixelColor(1020 + 28 - 9, 72 + 26), QColor("#007aff"));
+        QCOMPARE(second.pixelColor((1020 + 28 - 9) * 4, (72 + 26) * 4), QColor("#007aff"));
+        // Non-integer UI scales must not resample or subpixel-shift the source.
+        auto irregular = fromImage(large.image.copy(0, 0, 1366, 768), "file", "fractional scale");
+        const auto fractional = previewImage(irregular);
+        const int inset = qRound(24.0 * 1366 / 960);
+        QCOMPARE(fractional.copy(inset, inset, 1366, 768), irregular.image.convertToFormat(QImage::Format_ARGB32));
+        const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        if (!folder.isEmpty()) {
+            QVERIFY(QDir().mkpath(folder));
+            QVERIFY(first.save(QDir(folder).filePath("annotated-960.png")));
+            QVERIFY(second.save(QDir(folder).filePath("annotated-4k.png")));
+        }
         QCOMPARE(large.notes[0].rect, QRect(480, 400, 800, 600));
     }
-    void compressedFeedbackKeepsCoordinatesAndProjectPixels() {
+    void legacyCompressionRequestKeepsOriginalBytesAndPixels() {
         QImage image(640,480,QImage::Format_RGB32);
         quint32 seed=42;
         for(int y=0;y<image.height();++y) for(int x=0;x<image.width();++x) {
@@ -933,12 +974,15 @@ class CoreTests : public QObject {
         Note note; note.isPoint=true; note.point={230,170}; note.comment="测试"; doc.notes.append(note);
         const auto uncompressed=serializeFeedback(doc,true);
         const auto compressed=serializeFeedback(doc,true,true);
-        QVERIFY(compressed.size()<uncompressed.size());
+        QCOMPARE(compressed, uncompressed);
+        const auto descriptor = QJsonDocument::fromJson(compressed).object()["image"].toObject();
+        QCOMPARE(descriptor["mimeType"].toString(), QString("image/png"));
+        QCOMPARE(QByteArray::fromBase64(descriptor["dataUrl"].toString().section(',', 1).toLatin1()), original);
         const auto restored=loadFeedback(QJsonDocument::fromJson(compressed).object(),{});
-        QCOMPARE(restored.image.size(),image.size()); QCOMPARE(restored.notes[0].point,note.point);
+        QCOMPARE(restored.image.convertToFormat(QImage::Format_ARGB32),image.convertToFormat(QImage::Format_ARGB32));
+        QCOMPARE(restored.notes[0].point,note.point);
         QCOMPARE(doc.png,original);
         QVERIFY(!serializeDocument(restored,true).isEmpty());
-        qInfo("Compression sample: %lld -> %lld bytes",qint64(uncompressed.size()),qint64(compressed.size()));
     }
     void globalFeedbackAndPortableProject() {
         auto doc = fromImage(exampleImage(), "demo", "风格意见");

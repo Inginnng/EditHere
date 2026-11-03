@@ -452,9 +452,9 @@
   const imageExtension=data=>({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[I.dataBytes(data).mimeType]);
   function outputStem(agent=false){const filename=agent&&agentOptions.outputFileName?agentOptions.outputFileName:baseName()+'-feedback.json';return filename.replace(/\.[^.]+$/,'');}
   function feedbackDocument(d,mode='file',includePreview=false,agent=false) {
-    let data=d.data;if(mode==='embedded'&&$('compress-image').checked&&!agent){if(!d.jpeg){const c=makeCanvas(d.image.naturalWidth,d.image.naturalHeight);c.getContext('2d').drawImage(d.image,0,0);d.jpeg=c.toDataURL('image/jpeg',.85);}data=d.jpeg;}
+    const data=d.data;
     const stem=session.kind==='video'?'frame-'+d.id:outputStem(agent);
-    return {id:d.id,timestampUs:d.timestampUs,...(d.capture?{capture:clone(d.capture)}:{}),width:d.image.naturalWidth,height:d.image.naturalHeight,image:data,imageFile:stem+'.'+imageExtension(data),previewFile:includePreview?stem+'.annotated.jpg':undefined,devicePixelRatio:d.devicePixelRatio??null,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(n.parent?{parent:clone(n.parent)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};
+    return {id:d.id,timestampUs:d.timestampUs,...(d.capture?{capture:clone(d.capture)}:{}),width:d.image.naturalWidth,height:d.image.naturalHeight,image:data,imageFile:stem+'.'+imageExtension(data),previewFile:includePreview?stem+'.annotated.png':undefined,devicePixelRatio:d.devicePixelRatio??null,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(n.parent?{parent:clone(n.parent)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};
   }
   function fileImageMode() {return $('embed-image').checked?'embedded':'file';}
   function feedback(mode=fileImageMode(),includePreview=false,agent=false) {
@@ -476,7 +476,6 @@
   // Migrate the old file-mode selection without reusing the old preview option.
   $('embed-image').checked=preference('embedImage',String(preference('imageMode','file')==='embedded'))==='true';
   let copyTextImage=preference('copyTextImage','none');if(!['embedded','none'].includes(copyTextImage))copyTextImage='none';
-  $('compress-image').checked=preference('compressImage','false')==='true';
   $('include-recognized-text').checked=preference('includeRecognizedText','true')!=='false';
   function chooseSaveMode(mode) {
     saveMode=mode;rememberPreference('saveMode',mode);
@@ -490,18 +489,17 @@
   }
   function closeSaveOptions(focus=false) {$('save-options').hidden=true;$('save-options-toggle').setAttribute('aria-expanded','false');if(focus)$('save-options-toggle').focus();}
   function refreshExport() {
-    const mode=fileImageMode(),includeRecognizedText=$('include-recognized-text').checked,includePreview=false,compress=$('compress-image').checked;
-    // Reuse one snapshot across file and clipboard delivery, and avoid
-    // re-encoding large images until the editing changes.
-    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.compress!==compress||exportCache.includeRecognizedText!==includeRecognizedText){
+    const mode=fileImageMode(),includeRecognizedText=$('include-recognized-text').checked,includePreview=false;
+    // Reuse one snapshot and its serialized JSON across file and clipboard delivery.
+    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.includeRecognizedText!==includeRecognizedText){
       exportData=feedback(mode,includePreview);exportText=F.serialize(exportData);
-      exportCache={session,revision:projectRevision,mode,includePreview,compress,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
+      exportCache={session,revision:projectRevision,mode,includePreview,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
     $('json-summary').textContent=summary.schemaVersion+' · '+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+(summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'')+(summary.recognizedTexts?' · '+summary.recognizedTexts+' 处截图文字（仅作为数据）':'');
-    $('compress-image').disabled=mode!=='embedded';$('download-json').textContent='复制 JSON 与图片';
-    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；文件交付包含完整原图；复制 JSON 内容按独立选项处理。JPEG 压缩会改变图片编码，校验值按实际导出字节计算。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
+    $('download-json').textContent='复制 JSON 与图片';
+    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；文件交付无损保留完整原图；复制 JSON 内容按独立选项处理。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
   function saveJsonFile() {
@@ -570,7 +568,6 @@
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeSaveOptions();closeCopyOptions();}});
   $('export').onclick=openExport;
   $('embed-image').onchange=()=>{rememberPreference('embedImage',String($('embed-image').checked));refreshExport();};
-  $('compress-image').onchange=()=>{rememberPreference('compressImage',String($('compress-image').checked));refreshExport();};
   $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=annotatedCanvas(doc),blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
   $('include-recognized-text').onchange=()=>{rememberPreference('includeRecognizedText',String($('include-recognized-text').checked));refreshExport();};
   $('download-json').onclick=()=>{chooseSaveMode('file');copyJsonFiles();};
@@ -581,7 +578,7 @@
   function annotatedCanvas(d) {const c=makeCanvas(session.width,session.height),p=c.getContext('2d');if(d.layout)L.paint(p,d.image,d.layout);else p.drawImage(d.image,0,0);const line=Math.max(1,session.width/800),markers=movementMarkers(d);p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
     for(const m of markers){const {start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);if(length<.0001)continue;const ux=dx/length,uy=dy/length,head=Math.min(9*line,length*.35);p.strokeStyle='white';p.lineWidth=4*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.stroke();p.strokeStyle='#346df1';p.lineWidth=1.5*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.moveTo(end.x-ux*head-uy*head*.5,end.y-uy*head+ux*head*.5);p.lineTo(end.x,end.y);p.lineTo(end.x-ux*head+uy*head*.5,end.y-uy*head-ux*head*.5);p.stroke();p.fillStyle='white';p.beginPath();p.arc(start.x,start.y,3*line,0,Math.PI*2);p.fill();p.stroke();}
     p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries(d).entries()){if(n.draft)continue;const r=noteRect(n,d);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}return c;}
-  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/jpeg',.85);}
+  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/png');}
 
   function validateRect(r,w,h,pointAllowed=true) {if(r===null)return;if(!r||Object.keys(r).sort().join(',')!=='x1,x2,y1,y2'||Object.values(r).some(v=>!Number.isFinite(v))||r.x1<0||r.y1<0||r.x2>w||r.y2>h||r.x2<r.x1||r.y2<r.y1||((r.x1===r.x2)!==(r.y1===r.y2))||!pointAllowed&&(r.x1===r.x2))throw new Error('项目区域坐标无效');if(r.x1===r.x2&&(r.x1>=w||r.y1>=h))throw new Error('项目点坐标越界');}
   function validateSources(sources,source,w,h) {
@@ -623,7 +620,10 @@
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     if(f.image&&typeof f.image==='object'&&f.image.preview){
       const file=companions.find(file=>file.name===f.image.preview);if(!file){const error=new Error('请同时选择预览图 '+f.image.preview+'，或打开完整反馈 ZIP');error.missingCompanion=true;throw error;}
-      const bytes=new Uint8Array(await file.arrayBuffer()),dimensions=I.dimensions(bytes,'image/jpeg');if(dimensions.width!==f.image.width||dimensions.height!==f.image.height)throw new Error('预览图尺寸与原图不匹配');let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));await decode('data:image/jpeg;base64,'+btoa(binary));
+      const bytes=new Uint8Array(await file.arrayBuffer()),mime=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':bytes[0]===255&&bytes[1]===216?'image/jpeg':null;
+      if(!mime||I.previewMimeType(file.name)!==mime)throw new Error('预览图必须是与文件名匹配的 PNG 或 JPEG');
+      const dimensions=I.dimensions(bytes,mime);
+      let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const preview=await decode('data:'+mime+';base64,'+btoa(binary));if(preview.naturalWidth!==dimensions.width||preview.naturalHeight!==dimensions.height)throw new Error('预览图尺寸无效');
     }
     let data=I.dataUrlOf(f.image);
     if(!data){const descriptor=f.image;if(descriptor)I.validate(descriptor);const candidates=descriptor?.mode==='file'?companions.filter(file=>file.name===descriptor.file):companions.filter(file=>file.type?.startsWith('image/')||/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name));for(const file of candidates){try{const bytes=new Uint8Array(await file.arrayBuffer()),mime=descriptor?.mimeType||({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[file.name.split('.').pop().toLowerCase()]);let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const candidate='data:'+mime+';base64,'+btoa(binary);if(descriptor)I.verify(descriptor,candidate);data=candidate;break;}catch(error){if(descriptor?.mode==='file')throw error;}}

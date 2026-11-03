@@ -524,16 +524,6 @@
         <translation>The original must use a PNG filename in the same folder</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="1044"/>
-        <source>标注示意图必须使用同目录的 .annotated.jpg 文件名</source>
-        <translation>The numbered preview must use a .annotated.jpg filename in the same folder</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="1122"/>
-        <source>无法生成标注示意图</source>
-        <translation>Could not generate the numbered preview</translation>
-    </message>
-    <message>
         <location filename="../model.cpp" line="1123"/>
         <source>标注示意图不能超过 48 MiB</source>
         <translation>The numbered preview cannot exceed 48 MiB</translation>
@@ -980,11 +970,6 @@
         <location filename="../model.cpp" line="1835"/>
         <source>无法读取标注示意图</source>
         <translation>Could not read the numbered preview</translation>
-    </message>
-    <message>
-        <location filename="../model.cpp" line="1837"/>
-        <source>标注示意图必须是 JPEG 图片</source>
-        <translation>The numbered preview must be a JPEG image</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="1852"/>
@@ -3236,11 +3221,6 @@ Scroll back a little; stitching continues once it lines up.</translation>
         <location filename="../editor.cpp" line="2433"/>
         <source>未勾选时将 JSON 与原图作为独立文件复制。</source>
         <translation>When unchecked, copy JSON and the original image as separate files.</translation>
-    </message>
-    <message>
-        <location filename="../editor.cpp" line="2435"/>
-        <source>压缩内嵌原图（保持尺寸，可能轻微损失细节）</source>
-        <translation>Compress embedded original image (preserves dimensions; may lose some detail)</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="2442"/>
