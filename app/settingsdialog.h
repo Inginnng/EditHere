@@ -19,6 +19,7 @@ class SettingsDialog final : public QDialog {
     void offerUpdate(const UpdateChecker::Result &result, bool installNow = false);
     void showToolbar();
     void setLaunchAtLoginNotice(const QString &notice);
+    void setGlobalShortcutNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
     void setUpdatePreparationHandler(std::function<bool()> handler);
     // Cancelling also rolls the live language preview back. QDialog::reject() is a
@@ -57,6 +58,7 @@ class SettingsDialog final : public QDialog {
     class UpdateChecker *updater_;
     UpdateChecker::Result updateResult_{UpdateChecker::Failed, {}, {}, {}, {}, {}, {}, {}};
     QLabel *error_, *launchAtLoginNotice_;
+    QLabel *globalShortcutNotice_;
     // Labels styled through the "settingsSection" object name cannot carry a unique
     // object name of their own, so they are kept as members to stay retranslatable.
     QLabel *shortcutGlobalLabel_ = nullptr, *shortcutLocalLabel_ = nullptr;

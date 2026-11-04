@@ -271,7 +271,11 @@ void screenshotFallback(CaptureCallback callback) {
     request->start("org.freedesktop.portal.Screenshot", "Screenshot", {QString()}, {{"interactive", true}},
         [callback = std::move(callback)](uint code, QVariantMap result) {
             if (code != 0) {
-                callback({}, code == 1 ? QCoreApplication::translate("h2d", "截图已取消。") : QCoreApplication::translate("h2d", "截图授权失败，请确认桌面已安装截图 Portal。")); return;
+                QString error = code == 1 ? QCoreApplication::translate("h2d", "截图已取消。") :
+                    QCoreApplication::translate("h2d", "截图授权失败，请确认桌面已安装截图 Portal。");
+                const auto detail = result.value("error").toString();
+                if (code != 1 && !detail.isEmpty()) error += "\n" + detail;
+                callback({}, error); return;
             }
             const QUrl uri(result.value("uri").toString());
             QImageReader reader(uri.toLocalFile());
@@ -285,6 +289,7 @@ void screenshotFallback(CaptureCallback callback) {
             image.setDevicePixelRatio(1);
             ScreenFrame frame;
             frame.name = "portal"; frame.image = image;
+            frame.selectionComplete = true;
             frame.capturedAt = timestamp();
             frame.elementProbingAllowed = false;
             const auto size = image.size().scaled(screen->availableGeometry().size(), Qt::KeepAspectRatio);
