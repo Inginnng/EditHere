@@ -26,6 +26,7 @@
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
+<p align="center">国内 AtomGit 托管：<a href="https://atomgit.com/qq_30293075/EditHere">EditHere</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-zh.gif" width="960" alt="EditHere 与 AI 协作：AI 发起标注，你在 EditHere 中圈出位置、写下意见，点击「完成并返回 AI」后 AI 按反馈修改界面">
