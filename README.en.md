@@ -26,6 +26,7 @@
   <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
+<p align="center">AtomGit mirror in China: <a href="https://atomgit.com/qq_30293075/EditHere">EditHere</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-en.gif" width="960" alt="EditHere with an AI agent: the agent opens a review, you mark up the dashboard, click Finish and return to AI, and the agent applies the changes">
