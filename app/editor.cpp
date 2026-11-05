@@ -205,7 +205,14 @@ class JsonPreview final : public QPlainTextEdit {
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+#ifdef Q_OS_WIN
+    // This is an opaque editor, not a capture overlay. A translucent top-level
+    // uses a layered backing store on Windows, which can leave most of the
+    // surface transparent after moving between monitors with different DPI.
+    setAutoFillBackground(true);
+#else
     setAttribute(Qt::WA_TranslucentBackground);
+#endif
     setAcceptDrops(true);
     setMinimumSize(740, 400);
     auto outer = new QVBoxLayout(this);
@@ -216,7 +223,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto layout = new QVBoxLayout(shell);
     layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
-    auto bar = new DragBar(shell);
+    auto bar = new DragBar(shell, true);
+    bar->setObjectName("editorTitleBar");
     bar->setFixedHeight(42);
     auto header = new QHBoxLayout(bar);
     header->setContentsMargins(14, 0, 6, 0);

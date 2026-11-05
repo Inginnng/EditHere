@@ -19,6 +19,7 @@
 #include <QStyleHints>
 #include <QSvgRenderer>
 #include <QToolButton>
+#include <QWindow>
 
 // Reference the resource from the static library, including in test executables.
 static void initializeUiIcons() {
@@ -428,11 +429,18 @@ QLabel *mutedLabel(const QString &text, QWidget *parent) {
     l->setProperty("muted", true);
     return l;
 }
-DragBar::DragBar(QWidget *parent) : QWidget(parent) {
+DragBar::DragBar(QWidget *parent, bool canMaximize) : QWidget(parent), canMaximize_(canMaximize) {
     setCursor(Qt::OpenHandCursor);
 }
 void DragBar::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton && !window()->isFullScreen() && !window()->isMaximized()) {
+        // Let the window manager handle monitor/DPI transitions and snapping.
+        // Offscreen and platforms without system moves retain the manual path.
+        if (auto handle = window()->windowHandle(); handle && handle->startSystemMove()) {
+            dragging_ = false;
+            e->accept();
+            return;
+        }
         dragging_ = true;
         offset_ = e->globalPosition().toPoint() - window()->pos();
         setCursor(Qt::ClosedHandCursor);
@@ -445,5 +453,18 @@ void DragBar::mouseMoveEvent(QMouseEvent *e) {
 void DragBar::mouseReleaseEvent(QMouseEvent *) {
     dragging_ = false;
     setCursor(Qt::OpenHandCursor);
+}
+void DragBar::mouseDoubleClickEvent(QMouseEvent *e) {
+    dragging_ = false;
+    setCursor(Qt::OpenHandCursor);
+    if (canMaximize_ && e->button() == Qt::LeftButton && !window()->isFullScreen()) {
+        if (window()->isMaximized())
+            window()->showNormal();
+        else
+            window()->showMaximized();
+        e->accept();
+        return;
+    }
+    QWidget::mouseDoubleClickEvent(e);
 }
 } // namespace h2d

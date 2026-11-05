@@ -1094,6 +1094,74 @@ class UiTests : public QObject {
         artifact(*editor, "main-header-controls.png");
         editor->hide();
     }
+    void windowsEditorPaintsItsWholeSurfaceAfterMoveAndResize() {
+#ifdef Q_OS_WIN
+        Editor editor;
+        editor.openEmpty();
+        for (auto screen : QGuiApplication::screens()) {
+            editor.move(screen->availableGeometry().topLeft() + QPoint(12, 12));
+            for (const QSize size : {QSize(900, 580), QSize(1120, 700)}) {
+                editor.resize(size);
+                QTest::qWait(80);
+                const auto image = editor.grab().toImage();
+                QVERIFY(!image.isNull());
+                QCOMPARE(image.size(), (QSizeF(editor.size()) * image.devicePixelRatio()).toSize());
+                // The old layered surface left transparent pixels, including the
+                // rounded corners. Every output pixel now has a painted background.
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        if (image.pixelColor(x, y).alpha() != 255)
+                            QFAIL(qPrintable(QString("Unpainted editor pixel at %1,%2").arg(x).arg(y)));
+                QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
+                QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+            }
+        }
+        artifact(editor, "editor-window-surface.png");
+#else
+        QSKIP("Windows uses the opaque editor surface; other desktops keep translucent corners");
+#endif
+    }
+    void titleBarDoubleClickMaximizesAndRestoresWithoutChangingTheDocument() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        QVERIFY(bar);
+        QTest::qWait(60);
+        const auto geometry = editor.geometry();
+        const auto feedback = exportFeedback(editor.document(), true);
+        // Use the brand label too: unhandled label clicks must reach the bar.
+        auto brand = editor.findChild<QLabel *>("brand");
+        QVERIFY(brand);
+        // QWidget's mouseDClick sends the double-click press only. Release each
+        // button so this test cannot leave Qt Test's shared mouse state held.
+        QTest::mouseDClick(brand, Qt::LeftButton);
+        QTest::mouseRelease(brand, Qt::LeftButton);
+        QTRY_VERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), geometry);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
+        editor.showFullScreen();
+        QTRY_VERIFY(editor.isFullScreen());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isFullScreen());
+        editor.hide();
+
+        // Capture toolbar bars are movable tools, not maximizable editor chrome.
+        QWidget tool;
+        DragBar toolBar(&tool);
+        toolBar.resize(200, 42);
+        tool.show();
+        QTest::mouseDClick(&toolBar, Qt::LeftButton);
+        QTest::mouseRelease(&toolBar, Qt::LeftButton);
+        QVERIFY(!tool.isMaximized());
+    }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("maximized");
