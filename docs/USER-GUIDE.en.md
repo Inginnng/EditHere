@@ -4,7 +4,7 @@
 
 [Back to the product overview](../README.en.md) · [AI and the command line](AGENT-CLI.en.md) · [Changelog](../CHANGELOG.md) · [Development notes](DEVELOPMENT.en.md)
 
-This page covers **0.12.6** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
+This page covers **0.12.7** and describes capture, video annotation, comments, component adjustments, project saving, feedback export and platform limits. The public download links below point to GitHub's current public release. Paths are relative to the project root; see the [licence](../LICENSING.md) for download and usage terms.
 
 ## Contents
 
@@ -53,7 +53,11 @@ Older clients may not recognize the new download address after the rename, so fo
 
 ### Launch and tray
 
-The first manual launch shows the guide; after you finish or skip it, it no longer appears automatically. Afterwards press **Alt + Shift + 2** or click the tray icon to capture. A shortcut capture does not simulate key presses or activate a temporary window; the tray entry closes menus and pop-ups first, then captures the screen. After you cancel, copy or save the capture, the original window is restored. Existing shortcut settings are unchanged and can be restored to defaults in Settings. Only the capture mask stays on top; the editor window is an ordinary application window.
+The first manual launch shows the guide; after you finish or skip it, it no longer appears automatically. Afterwards press **Alt + Shift + 2** or single-click the tray icon with the default settings to capture. A shortcut capture does not simulate key presses or activate a temporary window; the tray entry closes menus and pop-ups first, then captures the screen. After you cancel, copy or save the capture, the original window is restored. Existing shortcut settings are unchanged and can be restored to defaults in Settings. Only the capture mask stays on top; the editor window is an ordinary application window.
+
+**Settings → Default behavior → Tray icon** lets you choose separate single- and double-click actions: Capture, New annotation (empty window), Show current window, Open image or project, and Do nothing. The defaults are single click to capture and double click to open an empty window. Save applies changes immediately and keeps them across restarts; Cancel discards changes, and restoring defaults also requires Save. Single clicks wait for the system double-click interval; double clicks cancel the pending single click. Menu actions and shortcuts respond immediately. Show current window preserves the document; opening an empty window retains the existing unsaved-edit, AI-session, capture and modal-dialog safeguards.
+
+Windows supports both gestures; on Linux, double-click events depend on the desktop tray. The native macOS status bar menu takes over on mouse-down, so custom single and double clicks are currently unavailable. Both controls are disabled with an explanation; use the menu or shortcuts.
 
 The tray menu, in order, is: **Capture**, **New annotation (empty window)** (both show the current global shortcut on the right), **Open image or project**, a separator, **Settings…**, **Check for updates…**, a separator and **Quit**. On macOS there is also an extra **Grant Accessibility permission** entry for reading system element boundaries; image detection still works without it.
 

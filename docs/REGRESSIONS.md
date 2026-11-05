@@ -15,6 +15,17 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## 托盘点击动作（0.12.7）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-209 | 托盘首次 Trigger 立即截图，第二次点击被截图遮罩接走。按系统双击间隔延迟单击，DoubleClick 取消待执行单击；明确菜单、快捷键、设置和退出取消待执行动作。Qt 6.8.3 Windows 已过滤双击后的释放，不再额外吞掉第三次点击 | `startup-flow::traySingleWaitsAndDoubleOpensEmptyWithoutCapture`、`traySingleCoalescesAndExplicitActionsCancelWaiting`、`trayActionsCanBeSwappedAndDisabled`；Windows `windowsNativeTrayDoubleReleaseAndThirdClick` 通过真实 Qt HWND 验证通知链 | 🆕 |
+| REG-210 | 托盘动作配置须用稳定标识保存，独立恢复非法值，不能仅存设置而不生效；显示当前窗口不能走 activate 的无文档截图分支 | `settings::trayPersistenceValidationAndDraft`、`trayControlsHaveStableActionIds`、`trayTranslationsAndScrollableLayout`；`startup-flow::trayShowPreservesDocumentAndShowsEmptyWithoutCapture`、`trayOpenUsesTheExistingFilePicker`，既有事务保存和批注保护回归新增托盘路径 | 🆕 |
+
+平台依据：[Qt 6.8.3 Windows](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp) 首次 NIN_SELECT 发 Trigger、WM_LBUTTONDBLCLK 发 DoubleClick 并吞掉随后一次 NIN_SELECT；[X11](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/util/qsystemtrayicon_x11.cpp) 第二次按下仅发 DoubleClick。后续 Trigger 是新点击，不做整段时间屏蔽。使用 [mouseDoubleClickInterval](https://doc.qt.io/qt-6.8/qstylehints.html#mouseDoubleClickInterval-prop) 和 PreciseTimer，避免定时器提前执行。Linux 托盘宿主不保证发送双击。
+
+macOS 继续遵守 REG-200/202：[Qt 6.8.3 Cocoa](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoasystemtrayicon.mm) 有原生菜单时，鼠标按下由菜单接管，菜单跟踪也会发 Trigger；[官方契约](https://doc.qt.io/qt-6.8/qsystemtrayicon.html#ActivationReason-enum) 明确有 contextMenu 时不保证 DoubleClick。保留非鼠标保护、原生菜单和 `cocoa-tray` 回归，禁用两项点击设置并说明限制。合成激活信号和 Windows 原生通知测试不代表 macOS 原生手势验收。
+
 ## 编辑窗口标题栏与跨屏绘制（0.12.6）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
