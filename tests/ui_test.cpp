@@ -1133,17 +1133,23 @@ class UiTests : public QObject {
         // Use the brand label too: unhandled label clicks must reach the bar.
         auto brand = editor.findChild<QLabel *>("brand");
         QVERIFY(brand);
+        // QWidget's mouseDClick sends the double-click press only. Release each
+        // button so this test cannot leave Qt Test's shared mouse state held.
         QTest::mouseDClick(brand, Qt::LeftButton);
+        QTest::mouseRelease(brand, Qt::LeftButton);
         QTRY_VERIFY(editor.isMaximized());
         QTest::mouseDClick(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
         QVERIFY(editor.isMaximized());
         QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
         QTRY_VERIFY(!editor.isMaximized());
         QTRY_COMPARE(editor.geometry(), geometry);
         QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         editor.showFullScreen();
         QTRY_VERIFY(editor.isFullScreen());
         QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
         QVERIFY(editor.isFullScreen());
         editor.hide();
 
@@ -1153,6 +1159,7 @@ class UiTests : public QObject {
         toolBar.resize(200, 42);
         tool.show();
         QTest::mouseDClick(&toolBar, Qt::LeftButton);
+        QTest::mouseRelease(&toolBar, Qt::LeftButton);
         QVERIFY(!tool.isMaximized());
     }
     void fullscreenPreservesTheEditingSession_data() {
