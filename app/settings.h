@@ -24,6 +24,8 @@ struct AppSettings {
     QMap<QString, QKeySequence> shortcuts;
     QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJsonText", "copyJson", "copyImage"};
     bool captureOnStartup = true;
+    QString traySingleClick = "capture";
+    QString trayDoubleClick = "annotate";
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true; // Legacy preference, retained for settings compatibility.
@@ -59,6 +61,7 @@ struct ToolbarActionDefinition {
 };
 QVector<ShortcutDefinition> shortcutDefinitions();
 QVector<ToolbarActionDefinition> toolbarActionDefinitions();
+QVector<ToolbarActionDefinition> trayActionDefinitions();
 AppSettings defaultSettings();
 bool recognizedTextExportEnabled(const QString &filePath = {});
 bool windowTitleExportEnabled(const QString &filePath = {});

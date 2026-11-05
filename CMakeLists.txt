@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.12.6 LANGUAGES C CXX)
+project(EditHere VERSION 0.12.7 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -268,6 +268,12 @@ target_link_libraries(canvas_feedback_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME canvas-feedback COMMAND canvas_feedback_tests -platform offscreen)
 qt_add_executable(settings_tests tests/settings_test.cpp)
 target_link_libraries(settings_tests PRIVATE h2d_ui Qt6::Test)
+qt_add_resources(settings_tests settings_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES
+    app/translations/built/edithere_en.qm
+    app/translations/built/edithere_zh_TW.qm)
 add_test(NAME settings COMMAND settings_tests -platform offscreen)
 qt_add_executable(diagnostics_tests tests/diagnostics_test.cpp)
 target_link_libraries(diagnostics_tests PRIVATE h2d_diagnostics Qt6::Test)

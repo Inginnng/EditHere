@@ -43,6 +43,8 @@ class SettingsDialog final : public QDialog {
     void applyLanguage(LanguageMode mode);
     void save();
     QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
+    QComboBox *traySingleClick_, *trayDoubleClick_;
+    QLabel *trayTitle_ = nullptr;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.

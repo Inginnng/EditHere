@@ -164,6 +164,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     appearanceLayout->addStretch();
     tabs->addTab(appearance, {});
     auto defaults = new QWidget;
+    defaults->setObjectName("settingsDefaultsContent");
     auto defaultsLayout = new QVBoxLayout(defaults);
     defaultsLayout->setContentsMargins(20, 22, 20, 20);
     defaultsLayout->setSpacing(18);
@@ -234,8 +235,48 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     toolLabel->setBuddy(defaultTool_);
     toolForm->addRow(toolLabel, defaultTool_);
     defaultsLayout->addLayout(toolForm);
+    trayTitle_ = new QLabel(defaults);
+    trayTitle_->setObjectName("settingsSection");
+    defaultsLayout->addWidget(trayTitle_);
+    auto trayForm = new QFormLayout;
+    trayForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    traySingleClick_ = new QComboBox(defaults);
+    traySingleClick_->setObjectName("traySingleClick");
+    trayDoubleClick_ = new QComboBox(defaults);
+    trayDoubleClick_->setObjectName("trayDoubleClick");
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->addItem(QString(), definition.id);
+        trayDoubleClick_->addItem(QString(), definition.id);
+    }
+    auto singleLabel = new QLabel(defaults);
+    singleLabel->setObjectName("traySingleClickLabel");
+    singleLabel->setBuddy(traySingleClick_);
+    auto doubleLabel = new QLabel(defaults);
+    doubleLabel->setObjectName("trayDoubleClickLabel");
+    doubleLabel->setBuddy(trayDoubleClick_);
+    trayForm->addRow(singleLabel, traySingleClick_);
+    trayForm->addRow(doubleLabel, trayDoubleClick_);
+    defaultsLayout->addLayout(trayForm);
+    auto trayHint = mutedLabel({}, defaults);
+    trayHint->setObjectName("trayClickHint");
+    trayHint->setWordWrap(true);
+    defaultsLayout->addWidget(trayHint);
+#ifdef Q_OS_MACOS
+    // Cocoa opens the assigned native menu on mouse-down and reports its
+    // tracking as Trigger. Keep REG-200/202 and do not advertise inert settings.
+    traySingleClick_->setEnabled(false);
+    trayDoubleClick_->setEnabled(false);
+#endif
+    for (auto combo : {traySingleClick_, trayDoubleClick_})
+        connect(combo, &QComboBox::currentIndexChanged, this, [this] { error_->hide(); });
     defaultsLayout->addStretch();
-    tabs->addTab(defaults, {});
+    auto defaultsScroll = new QScrollArea(tabs);
+    defaultsScroll->setObjectName("settingsDefaultsPage");
+    defaultsScroll->setWidgetResizable(true);
+    defaultsScroll->setFrameShape(QFrame::NoFrame);
+    defaultsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    defaultsScroll->setWidget(defaults);
+    tabs->addTab(defaultsScroll, {});
 
     auto scrollPage = new QWidget;
     scrollPage->setObjectName("settingsScrollPage");
@@ -549,7 +590,21 @@ void SettingsDialog::retranslate() {
     ocrLanguage_->setItemText(1, ocrLanguageLabel(OcrLanguageMode::SimplifiedChinese));
     ocrLanguage_->setItemText(2, ocrLanguageLabel(OcrLanguageMode::English));
     captureOnStartup_->setText(tr("启动后立即截图"));
-    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。"));
+    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；可使用托盘菜单或全局快捷键开始截图。"));
+    trayTitle_->setText(tr("托盘图标"));
+    findChild<QLabel *>("traySingleClickLabel")->setText(tr("单击"));
+    findChild<QLabel *>("trayDoubleClickLabel")->setText(tr("双击"));
+    traySingleClick_->setAccessibleName(tr("托盘图标：单击"));
+    trayDoubleClick_->setAccessibleName(tr("托盘图标：双击"));
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->setItemText(traySingleClick_->findData(definition.id), definition.label);
+        trayDoubleClick_->setItemText(trayDoubleClick_->findData(definition.id), definition.label);
+    }
+#ifdef Q_OS_MACOS
+    findChild<QLabel *>("trayClickHint")->setText(tr("macOS 使用原生状态栏菜单，暂不支持自定义单击和双击。请从菜单选择动作或使用快捷键。"));
+#else
+    findChild<QLabel *>("trayClickHint")->setText(tr("单击会等待系统双击间隔；菜单动作和快捷键立即响应。Linux 的双击支持取决于桌面托盘。"));
+#endif
     launchAtLogin_->setText(tr("开机时启动 EditHere"));
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
@@ -698,6 +753,8 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     language_->setCurrentIndex(language_->findData(static_cast<int>(settings.language)));
     ocrLanguage_->setCurrentIndex(ocrLanguage_->findData(static_cast<int>(settings.ocrLanguage)));
     captureOnStartup_->setChecked(settings.captureOnStartup);
+    traySingleClick_->setCurrentIndex(traySingleClick_->findData(settings.traySingleClick));
+    trayDoubleClick_->setCurrentIndex(trayDoubleClick_->findData(settings.trayDoubleClick));
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     legacyEmbedOriginal_ = settings.embedOriginal;
@@ -719,6 +776,8 @@ AppSettings SettingsDialog::settings() const {
     AppSettings result;
     result.captureStyle = captureStyle_;
     result.captureOnStartup = captureOnStartup_->isChecked();
+    result.traySingleClick = traySingleClick_->currentData().toString();
+    result.trayDoubleClick = trayDoubleClick_->currentData().toString();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.imageExportMode = embedFeedbackImage_->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;

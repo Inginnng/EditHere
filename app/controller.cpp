@@ -29,6 +29,8 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
+#include <QScopedValueRollback>
+#include <QStyleHints>
 #include <QTimer>
 #include <algorithm>
 namespace h2d {
@@ -61,9 +63,9 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
 #ifdef Q_OS_MACOS
         // Dialogs and capture overlays must start after native menu tracking
         // returns. Running them inside an NSMenu action can trap input there.
-        connect(action, &QAction::triggered, this, std::move(callback), Qt::QueuedConnection);
+        connect(action, &QAction::triggered, this, [this, callback] { trayClickTimer_.stop(); callback(); }, Qt::QueuedConnection);
 #else
-        connect(action, &QAction::triggered, this, std::move(callback));
+        connect(action, &QAction::triggered, this, [this, callback] { trayClickTimer_.stop(); callback(); });
 #endif
         return action;
     };
@@ -89,6 +91,10 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     menu->addSeparator();
     quitAction_ = addTrayAction([this] { quit(); });
     tray_.setContextMenu(menu);
+    connect(menu, &QMenu::aboutToShow, this, [this] { trayClickTimer_.stop(); });
+    trayClickTimer_.setSingleShot(true);
+    trayClickTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&trayClickTimer_, &QTimer::timeout, this, [this] { runTrayAction(settings_.traySingleClick); });
     retranslate();
     updateTrayShortcut();
 #ifdef Q_OS_MACOS
@@ -108,10 +114,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     // Cocoa emits Trigger when the native menu begins tracking, before an item
     // is chosen. Capturing here covers that menu and intercepts its next click.
     // macOS uses the explicit Capture menu action instead.
-    connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger)
-            beginCapture(true);
-    });
+    connect(&tray_, &QSystemTrayIcon::activated, this, &Controller::trayActivated);
 #endif
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&annotateShortcut_, &GlobalShortcut::triggered, this, &Controller::openAnnotation);
@@ -163,6 +166,50 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         tray_.showMessage("EditHere", tr("新建批注快捷键未能注册，请右键托盘打开设置修改。"));
     }
 }
+void Controller::trayActivated(QSystemTrayIcon::ActivationReason reason) {
+    if (reason == QSystemTrayIcon::Context) {
+        trayClickTimer_.stop();
+        return;
+    }
+    if (reason != QSystemTrayIcon::Trigger && reason != QSystemTrayIcon::DoubleClick)
+        return;
+    if (trayActionRunning_ || capturing_ || QApplication::activeModalWidget() ||
+        (tray_.contextMenu() && tray_.contextMenu()->isVisible())) {
+        trayClickTimer_.stop();
+        return;
+    }
+    if (reason == QSystemTrayIcon::DoubleClick) {
+        trayClickTimer_.stop();
+        runTrayAction(settings_.trayDoubleClick);
+    } else {
+        // Qt 6.8.3 Windows: Trigger on first release, DoubleClick on second
+        // press; Qt suppresses that second release. X11 likewise emits only
+        // DoubleClick for the second press. A following Trigger is a NEW click
+        // (e.g. triple-click), so do not swallow it with a time-based cooldown.
+        trayClickTimer_.start(QGuiApplication::styleHints()->mouseDoubleClickInterval());
+    }
+}
+void Controller::runTrayAction(const QString &id) {
+    if (trayActionRunning_ || capturing_ || QApplication::activeModalWidget())
+        return;
+    QScopedValueRollback<bool> running(trayActionRunning_, true);
+    if (id == "capture") beginCapture(true);
+    else if (id == "annotate") openAnnotation();
+    else if (id == "show") showCurrentWindow();
+    else if (id == "open") openFromTray();
+}
+void Controller::showCurrentWindow() {
+    trayClickTimer_.stop();
+    if (capturing_ || QApplication::activeModalWidget()) return;
+    scheduleStartupUpdate();
+    if (auto menu = tray_.contextMenu()) menu->close();
+    // Showing an empty editor must not enter activate()'s capture fallback or
+    // openEmpty()'s document replacement path.
+    editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
+    editor_.show();
+    editor_.raise();
+    editor_.activateWindow();
+}
 void Controller::retranslate() {
     shortcut_.setAction("capture", tr("截图"));
     annotateShortcut_.setAction("annotate", tr("新建批注（空窗口）"));
@@ -183,6 +230,7 @@ void Controller::updateTrayShortcut() {
     tray_.setToolTip(label.isEmpty() ? brand : brand + " · " + label);
 }
 void Controller::openAnnotation() {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -191,6 +239,7 @@ void Controller::openAnnotation() {
     editor_.openEmpty();
 }
 void Controller::openFromTray() {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
@@ -209,6 +258,7 @@ void Controller::openSettings(bool updates, bool toolbar) {
     openSettingsDialog(updates, toolbar);
 }
 void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release) {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -292,6 +342,7 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
             return error + restoreShortcuts();
         }
         settings_ = next;
+        trayClickTimer_.stop();
         editor_.setPreferences(settings_);
         editor_.setShortcuts(settings_.shortcuts);
         applyTheme(settings_.theme);
@@ -321,6 +372,7 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         showGuide();
 }
 void Controller::showGuide() {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
@@ -473,6 +525,7 @@ void Controller::raiseEditor() {
     editor_.activateWindow();
 }
 void Controller::activate() {
+    trayClickTimer_.stop();
     scheduleStartupUpdate();
     if (guidePending_) {
         showGuide();
@@ -488,6 +541,7 @@ void Controller::capture() {
     beginCapture(false);
 }
 void Controller::beginCapture(bool fromTray) {
+    trayClickTimer_.stop();
     if (fromTray)
         scheduleStartupUpdate();
     if (!agentSessionId_.isEmpty()) { activate(); return; }
@@ -1635,6 +1689,7 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     }
 }
 void Controller::quit() {
+    trayClickTimer_.stop();
     const bool pendingSession = !agentSessionId_.isEmpty();
     if (pendingSession)
         cancelAgentSession(agentSessionId_, "cancelled", "EditHere is exiting. No feedback was returned.");

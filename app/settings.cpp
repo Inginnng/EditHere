@@ -122,7 +122,26 @@ AppSettings defaultSettings() {
         settings.shortcuts.insert(definition.id, definition.defaultKey);
     return settings;
 }
+QVector<ToolbarActionDefinition> trayActionDefinitions() {
+    // Reuse the existing action IDs and translated labels for shared commands.
+    QVector<ToolbarActionDefinition> result;
+    for (const auto &definition : shortcutDefinitions())
+        if (definition.id == "capture" || definition.id == "annotate")
+            result.append({definition.id, definition.label});
+    result.append({"show", tr("显示当前窗口")});
+    for (const auto &definition : shortcutDefinitions())
+        if (definition.id == "open") result.append({definition.id, definition.label});
+    result.append({"none", tr("不执行操作")});
+    return result;
+}
+static bool validTrayAction(const QString &id) {
+    for (const auto &definition : trayActionDefinitions())
+        if (definition.id == id) return true;
+    return false;
+}
 QString validateSettings(const AppSettings &settings) {
+    if (!validTrayAction(settings.traySingleClick) || !validTrayAction(settings.trayDoubleClick))
+        return tr("请选择有效的托盘动作。");
     if (themeName(settings.theme).isEmpty())
         return tr("请选择有效的外观模式。");
     if (languageName(settings.language).isEmpty())
@@ -234,6 +253,10 @@ AppSettings loadSettings(const QString &filePath) {
         return fallback;
     };
     result.captureOnStartup = boolean("defaults/captureOnStartup", true);
+    const auto singleClick = source.value("tray/singleClick", result.traySingleClick).toString();
+    const auto doubleClick = source.value("tray/doubleClick", result.trayDoubleClick).toString();
+    if (validTrayAction(singleClick)) result.traySingleClick = singleClick;
+    if (validTrayAction(doubleClick)) result.trayDoubleClick = doubleClick;
     result.launchAtLogin = boolean("defaults/launchAtLogin", false);
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
@@ -331,6 +354,8 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setAtomicSyncRequired(true);
     target.setValue("version", 1);
     target.setValue("defaults/captureOnStartup", settings.captureOnStartup);
+    target.setValue("tray/singleClick", settings.traySingleClick);
+    target.setValue("tray/doubleClick", settings.trayDoubleClick);
     target.setValue("defaults/launchAtLogin", settings.launchAtLogin);
     target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
