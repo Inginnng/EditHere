@@ -197,6 +197,12 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 
 桌面版需要 AI 工具拥有本机终端和文件权限；Web 版还需要宿主支持 MCP Apps，不支持时走普通浏览器兼容入口。仅有网页聊天窗口无法安装本机程序。详细步骤见 [AI 安装指南](docs/AI-SETUP.md) 与 [网页版安装指南](web/AI-SETUP.md)。
 
+### VS Code Remote SSH：远程项目与本地 Windows 标注
+
+VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到本地 Windows，在 EditHere 中标注，再把反馈 JSON 和配套图片一起传回远程项目，供远程 AI 读取。命令在 **Windows 本地 PowerShell** 执行，现有方案需要文件往返，不提供远程直接控制本机 EditHere 的功能。
+
+完整命令与路径说明见 [AI 与命令行 · VS Code Remote SSH](docs/AGENT-CLI.md#vs-code-remote-ssh远程项目与本地-windows-标注)。
+
 ## 下载与安装
 
 | 平台                                | 下载                                                                                                       | 说明                                                          |
