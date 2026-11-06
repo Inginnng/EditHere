@@ -29,7 +29,7 @@ Windows 推荐使用[安装器](https://github.com/Inginnng/EditHere/releases/la
 
 Windows [免安装版压缩包](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip)：本地构建产物形如 `dist/EditHere-<版本>-win-x64.zip`。完整解压并运行 `EditHere.exe`，保留同目录 DLL 和插件文件夹；无需安装 Qt、Python、Node 或 .NET。免安装版不自动添加 PATH，可用完整路径运行 CLI。
 
-Windows 安装包尚未进行代码签名。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。在下载目录打开 PowerShell，可用 `Get-FileHash .\EditHere-win-x64-setup.exe -Algorithm SHA256` 计算安装包的哈希，与文件内同名条目比较。
+项目更新签名用于验证应用内下载，不是 Windows 公开信任的代码签名证书，“未知发布者”和 SmartScreen 提示仍可能出现。**0.12.7 及更早版本需要从发布页手动升级一次**，后续才能使用内置公钥验证更新。请从本仓库 Releases 下载，并核对[程序包 SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。在下载目录打开 PowerShell，可用 `Get-FileHash .\EditHere-win-x64-setup.exe -Algorithm SHA256` 计算安装包哈希，与文件内同名条目比较。
 
 macOS 下载[通用版 DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg)，打开后将 `EditHere.app` 拖到其中的 **Applications** 入口。CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`。首次截图需屏幕录制权限，系统元素识别需辅助功能权限；尚未实机验收和 Apple 公证。
 
@@ -43,11 +43,11 @@ Windows 安装器按清单替换程序文件，下载的安装包和用户文件
 
 ### 应用内更新
 
-在 **设置 → 关于与更新** 中点击**「检查更新」**，或右键托盘选择**「检查更新…」**。当前构建发现新版时显示**「打开发布页」**，供手动下载安装。只有配置了可信发布者、安装包签名与内置证书指纹匹配且存在兼容包的 Windows 构建，才提供**「立即更新」**；下载后校验 SHA-256 与发布者签名，先确认未保存的编辑，再等待安装器检查条件并报告准备就绪，最后退出程序进行更新。准备失败、取消或超时会保留当前程序。安装版和免安装版共用 NSIS，便携更新不会登记安装、修改 PATH 或创建快捷方式。便携更新要求目标发行版至少为 0.9.9；没有兼容包时以及 macOS 上，按钮打开发布页供手动下载。
+在 **设置 → 关于与更新** 中点击**「检查更新」**，或右键托盘选择**「检查更新…」**。Windows 安装版和免安装版在新版具有完整项目签名和同名校验文件时显示**「立即更新」**：下载后校验 SHA-256，并用程序内置公钥验证版本、安装包名和哈希，再确认未保存的编辑，等待安装器检查条件并报告准备就绪，最后退出程序更新。准备失败、取消或超时会保留当前程序。配置发布者证书的构建必须通过证书验证，不能回退到项目签名。两种分发共用 NSIS，便携更新不会登记安装、修改 PATH 或创建快捷方式。便携更新要求目标发行版至少为 0.9.9；没有信任根、缺少匹配签名或兼容包时以及 macOS 上，显示**「打开发布页」**供手动下载。
 
 更新先准备新程序并逐文件备份旧程序，需要目录写入权限及额外磁盘空间。提交前失败会尝试恢复程序文件、系统登记和快捷方式；中断后的独立安装会先恢复上次未完成的操作。成功后按清单回收旧程序，用户文件保持原位，修改过的旧程序文件保留在备份中。安装结果与日志位于 `%LOCALAPPDATA%\EditHere\Installer`；下次启动遇到对应更新失败时提示诊断入口。**「启动时检查更新」**默认开启，保留已保存的关闭设置。首次交互启动后异步检查一次，有新版时弹出**「打开发布页 / 跳过」**（满足可信安装条件的构建显示「立即更新」）；跳过后本次运行不再提示。没有新版或检查失败时不弹窗。截图、AI 会话、使用引导或其他对话框期间延后提醒，后台启动待用户手动使用后再检查。可在设置中关闭。
 
-检查更新同时查询 [GitHub](https://github.com/Inginnng/EditHere/releases) 与 [Gitee](https://gitee.com/InnGing/EditHere/releases) 的正式发行版，并按版本号选择较新的版本。同版本优先采用兼容程序包和对应 SHA-256 校验文件齐全的来源；下载与校验文件取自同一来源。一个来源失败时仍可使用另一个来源的结果，并提示检查未完成；两边均失败时显示具体错误。截图与批注数据不随更新上传。
+检查更新同时查询 [GitHub](https://github.com/Inginnng/EditHere/releases) 与 [Gitee](https://gitee.com/InnGing/EditHere/releases) 的正式发行版，并按版本号选择较新的版本。同版本优先采用兼容程序包、SHA-256 校验文件和更新签名齐全的来源，三者取自同一来源及版本。一个来源失败时仍可使用另一个来源的结果，并提示检查未完成；两边均失败时显示具体错误。截图与批注数据不随更新上传。
 
 旧版客户端在更名升级后可能不识别新的下载地址，首次更名升级请使用上面的下载入口手动下载一次。
 

@@ -462,7 +462,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
             progressBar->setRange(0, 100);
             progressBar->setValue(0);
             cancelUpdate->show();
-            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName);
+            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName,
+                                         result.installerSignature);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
             const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
@@ -729,6 +730,9 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
     releases->setProperty("updateAvailable", result.status == UpdateChecker::Available);
     releases->setProperty("releaseUrl", result.url);
     const bool automatic = UpdateChecker::canAutoInstall(result, installedCopy(), windowsUpdates);
+    if (windowsUpdates && result.status == UpdateChecker::Available && !automatic)
+        findChild<QLabel *>("updateStatus")->setText(result.message +
+            tr(" 此版本不满足可信安装条件，请前往发布页手动下载。"));
     releases->setProperty("automaticUpdate", automatic);
     releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
     // Use the release already checked at startup, including its matched package

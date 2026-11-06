@@ -147,11 +147,11 @@ class UpdateTests : public QObject {
                                           "https://github.com/Inginnng/EditHere/releases/tag/" + version}})
             .toJson();
     }
-    static QJsonObject asset(const QString &name) {
+    static QJsonObject asset(const QString &name, const QString &tag = "v0.9.9") {
         return QJsonObject{{"name", name},
                            {"size", 1024},
                            {"browser_download_url",
-                            "https://github.com/Inginnng/EditHere/releases/latest/download/" + name}};
+                            "https://github.com/Inginnng/EditHere/releases/download/" + tag + "/" + name}};
     }
     // Attach the Windows packages, either with the version in the file name
     // (historical layout) or without it (current layout).
@@ -161,8 +161,8 @@ class UpdateTests : public QObject {
         const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
         const QString portable = "EditHere" + suffix + "-win-x64.zip";
         auto object = QJsonDocument::fromJson(release(version)).object();
-        object["assets"] = QJsonArray{asset(installer), asset(installer + ".sha256"), asset(portable),
-                                      asset(portable + ".sha256")};
+        object["assets"] = QJsonArray{asset(installer, version), asset(installer + ".sha256", version), asset(portable, version),
+                                      asset(portable + ".sha256", version), asset(installer + ".sig", version)};
         return QJsonDocument(object).toJson();
     }
     static QJsonObject giteeAsset(const QString &name, const QString &version) {
@@ -179,7 +179,8 @@ class UpdateTests : public QObject {
             const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
             const QString portable = "EditHere" + suffix + "-win-x64.zip";
             object["assets"] = QJsonArray{giteeAsset(installer, version), giteeAsset(installer + ".sha256", version),
-                                          giteeAsset(portable, version), giteeAsset(portable + ".sha256", version)};
+                                          giteeAsset(portable, version), giteeAsset(portable + ".sha256", version),
+                                          giteeAsset(installer + ".sig", version)};
         }
         return QJsonDocument(object).toJson();
     }
@@ -268,7 +269,7 @@ class UpdateTests : public QObject {
         QVERIFY(!QFileInfo::exists(packageDirectory));
     }
     void missingPublisherPinBlocksDirectDownloadBeforeNetwork() {
-        if (updateauth::publisherConfigured())
+        if (updateauth::installationConfigured())
             QSKIP("This build embeds a publisher pin; unsigned-package rejection is covered separately.");
         UpdateChecker checker;
         QSignalSpy failed(&checker, &UpdateChecker::installFailed);
@@ -506,10 +507,10 @@ class UpdateTests : public QObject {
     }
     void automaticUpdatesRespectPlatformAndInstallerCapabilities() {
         auto old = UpdateChecker::parseRelease(releaseWithAssets("v0.9.8", false), "0.9.7");
-        QCOMPARE(UpdateChecker::canAutoInstall(old, true, true), updateauth::publisherConfigured());
+        QCOMPARE(UpdateChecker::canAutoInstall(old, true, true), updateauth::installationConfigured());
         QVERIFY(!UpdateChecker::canAutoInstall(old, false, true));
         auto next = UpdateChecker::parseRelease(releaseWithAssets("v0.9.9", false), "0.9.8");
-        QCOMPARE(UpdateChecker::canAutoInstall(next, false, true), updateauth::publisherConfigured());
+        QCOMPARE(UpdateChecker::canAutoInstall(next, false, true), updateauth::installationConfigured());
         QVERIFY(!UpdateChecker::canAutoInstall(next, false, false));
         QVERIFY(!UpdateChecker::canAutoInstall(next, true, false));
         next.installerHash = {};
@@ -517,8 +518,10 @@ class UpdateTests : public QObject {
     }
     void hashAssetMustBelongToSelectedPackage() {
         auto object = QJsonDocument::fromJson(releaseWithAssets("v0.9.9", false)).object();
-        auto assets = object["assets"].toArray();
-        assets.append(asset("EditHere-0.9.9-win-x64-setup.exe"));
+        // Neither filename has a complete bundle; a stable-name checksum must
+        // never authenticate the versioned installer (or vice versa).
+        auto assets = QJsonArray{asset("EditHere-0.9.9-win-x64-setup.exe"),
+                                  asset("EditHere-win-x64-setup.exe.sha256")};
         object["assets"] = assets;
         const auto result = UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.9.8");
         QCOMPARE(result.installer.name, QString("EditHere-0.9.9-win-x64-setup.exe"));
@@ -609,7 +612,7 @@ class UpdateTests : public QObject {
             QCOMPARE(result.installer.size, qint64(0));
             QVERIFY(!result.portable.url.isEmpty());
             QVERIFY(!result.portableHash.url.isEmpty());
-            QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::publisherConfigured());
+            QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
         }
         QCOMPARE(UpdateChecker::releasesUrl(UpdateChecker::Gitee),
                  QUrl("https://gitee.com/InnGing/EditHere/releases"));
@@ -696,7 +699,7 @@ class UpdateTests : public QObject {
         QCOMPARE(available.status, UpdateChecker::Available);
         QCOMPARE(available.tagName, QString("v0.10.10"));
         QCOMPARE(available.url.host(), QString("gitee.com"));
-        QCOMPARE(UpdateChecker::canAutoInstall(available, false, true), updateauth::publisherConfigured());
+        QCOMPARE(UpdateChecker::canAutoInstall(available, false, true), updateauth::installationConfigured());
         QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.10", UpdateChecker::Gitee).status,
                  UpdateChecker::Current);
         QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.11", UpdateChecker::Gitee).status,
@@ -741,7 +744,7 @@ class UpdateTests : public QObject {
         QCOMPARE(result.url.host(), expectedHost);
         QCOMPARE(result.installer.url.host(), expectedHost);
         QCOMPARE(result.installerHash.url.host(), expectedHost);
-        QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::publisherConfigured());
+        QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
     }
     void sameVersionKeepsPackageAndHashFromOneCompleteSource() {
         auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.10.3", false), "0.10.1");
@@ -789,7 +792,7 @@ class UpdateTests : public QObject {
                 QCOMPARE(result.status, github.status);
                 QCOMPARE(result.tagName, version);
                 if (result.status == UpdateChecker::Available) {
-                    QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::publisherConfigured());
+                    QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
                     QCOMPARE(result.installer.url.host(), result.url.host());
                     QCOMPARE(result.installerHash.url.host(), result.url.host());
                 } else {

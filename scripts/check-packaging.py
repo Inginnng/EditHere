@@ -1151,6 +1151,35 @@ def check_save_dialog_paths() -> list[Problem]:
     return problems
 
 
+def check_update_signing() -> list[Problem]:
+    """REG-211  Publishing must require a final-byte signature; no PR key use."""
+    workflow = read(ROOT / ".github/workflows/release.yml")
+    problems = []
+    marker = "${{ secrets.EDITHERE_UPDATE_SIGNING_KEY }}"
+    # Check the job and step boundary, not just the presence of a signing tool.
+    release_job = workflow.split("\n  release:\n", 1)[-1]
+    steps = release_job.split("\n      - ")
+    signing = [step for step in steps if marker in step]
+    if workflow.count(marker) != 1 or len(signing) != 1 or "--sign artifacts/EditHere-win-x64-setup.exe" not in signing[0]:
+        problems.append("release.yml: signing Secret must exist only in the final installer signing step of the release job")
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        if path.name != "release.yml" and "secrets.EDITHERE_UPDATE_SIGNING_KEY" in read(path):
+            problems.append(f"{path.name}: must not receive the update signing Secret")
+    ordered = [workflow.find(value) for value in (
+        "Publish assets under version-less names", "Generate SHA256SUMS", "Require tag and source version to match",
+        "--sign artifacts/EditHere-win-x64-setup.exe", "--verify artifacts/EditHere-win-x64-setup.exe", "Create GitHub Release")]
+    if any(value < 0 for value in ordered) or ordered != sorted(ordered):
+        problems.append("release.yml: must rename/checksum/validate, sign, independently verify, then publish final installer bytes")
+    if "artifacts/*.exe.sig" not in workflow:
+        problems.append("release.yml: detached installer signature is not a required release asset")
+    public_header = read(ROOT / "app/updatekey.h")
+    match = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]*)"', public_header)
+    fixture = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]+)"', read(ROOT / "tests/fixtures/update-signature-public.h"))
+    if not match or len(match[1]) not in (0, 128) or (fixture and match[1] == fixture[1]):
+        problems.append("app/updatekey.h: invalid production trust root or test fixture key copied to production")
+    return problems
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -1158,6 +1187,7 @@ CHECKS = [
     ("portable_zip_flat", check_portable_zip_flat),
     ("windows_qt_runtime", check_windows_qt_runtime),
     ("release_assets", check_release_assets),
+    ("update_signing", check_update_signing),
     ("release_notes", check_release_notes),
     ("download_links", check_download_links),
     ("stale_download", check_updater_stale_download),
