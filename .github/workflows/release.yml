@@ -53,7 +53,7 @@ jobs:
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
           $qtBin = (Resolve-Path ".tools/qt/6.8.3/mingw_64/bin").Path
           $env:PATH = "$qtBin;$mingwBin;$env:PATH"
-          ctest --test-dir build --output-on-failure -R '^(core|ui|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates)$'
+          ctest --test-dir build --output-on-failure -R '^(core|ui|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
           if ($LASTEXITCODE) { throw 'Capture, annotation, startup or update tests failed.' }
           $env:NSIS_MAKENSIS = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
           $env:EDITHERE_UPDATE_STUB = (Resolve-Path 'build/update_installer_stub.exe').Path
@@ -161,6 +161,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -215,12 +219,17 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            tag="${{ github.event.inputs.tag }}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
           else
             tag="${GITHUB_REF#refs/tags/}"
           fi
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          test "$GITHUB_REF" = "refs/tags/$tag" || exit 1
           version="${tag#v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -287,9 +296,8 @@ jobs:
           cat release-notes.md
 
       - name: Require tag and source version to match
-        if: github.event_name == 'workflow_dispatch'
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_TAG: ${{ steps.version.outputs.tag }}
           REF: ${{ github.ref }}
         run: |
           test "$REF" = "refs/tags/$INPUT_TAG" || {
@@ -302,6 +310,20 @@ jobs:
             echo "::error::CMake version does not match the release tag"
             exit 1
           }
+
+      # The key is exposed only to this step on the tag release job. PR jobs
+      # and platform builds receive no signing credentials. Sign final bytes
+      # under their stable public name, after packaging/renaming/checksums.
+      - name: Sign final Windows installer
+        env:
+          EDITHERE_UPDATE_SIGNING_KEY: ${{ secrets.EDITHERE_UPDATE_SIGNING_KEY }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: node scripts/sign-update.cjs --sign artifacts/EditHere-win-x64-setup.exe "$RELEASE_TAG"
+
+      - name: Verify final Windows update signature without private key
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: node scripts/sign-update.cjs --verify artifacts/EditHere-win-x64-setup.exe "$RELEASE_TAG"
       - name: Require every package before publishing
         # A tag without installers is a broken release: fail loudly here rather
         # than publishing a source-only release. The AppImage belongs on this
@@ -341,6 +363,7 @@ jobs:
             artifacts/*.zip
             artifacts/*.exe
             artifacts/*.exe.sha256
+            artifacts/*.exe.sig
             artifacts/*.zip.sha256
             artifacts/*.dmg
             artifacts/*.AppImage

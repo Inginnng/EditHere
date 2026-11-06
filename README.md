@@ -197,6 +197,12 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 
 桌面版需要 AI 工具拥有本机终端和文件权限；Web 版还需要宿主支持 MCP Apps，不支持时走普通浏览器兼容入口。仅有网页聊天窗口无法安装本机程序。详细步骤见 [AI 安装指南](docs/AI-SETUP.md) 与 [网页版安装指南](web/AI-SETUP.md)。
 
+### VS Code Remote SSH：远程项目与本地 Windows 标注
+
+VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到本地 Windows，在 EditHere 中标注，再把反馈 JSON 和配套图片一起传回远程项目，供远程 AI 读取。命令在 **Windows 本地 PowerShell** 执行，现有方案需要文件往返，不提供远程直接控制本机 EditHere 的功能。
+
+完整命令与路径说明见 [AI 与命令行 · VS Code Remote SSH](docs/AGENT-CLI.md#vs-code-remote-ssh远程项目与本地-windows-标注)。
+
 ## 下载与安装
 
 | 平台                                | 下载                                                                                                       | 说明                                                          |
@@ -213,7 +219,7 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 <summary>安装细节、平台说明与旧版升级</summary>
 
 - Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后需重新打开终端和 AI 工具才能读取新的 PATH。卸载会保留用户设置与项目。
-- Windows 安装包**尚未代码签名**，请从本仓库 Releases 下载，并核对 [SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
+- Windows 使用免费项目签名验证应用内更新；这不是 Windows 公开信任证书，“未知发布者”与 SmartScreen 提示仍可能出现。**0.12.7 及更早版本需手动升级一次**。请从本仓库 Releases 下载，并核对 [SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 - Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版无需另装 Qt、Python、Node 或 .NET。
 - macOS 要求 14+，**仍处于预览阶段，尚未 Apple 公证**；长截图后端已在 macOS 构建中编译通过。
 - Linux 预览版：Wayland 下先授权显示器，再由 EditHere 框选并手动长截图；缺少 PipeWire 或 ScreenCast 时回退系统选区，仅支持普通截图。X11 支持手动采集与自动纵向滚动。详见 [Linux 说明](docs/LINUX.md)。

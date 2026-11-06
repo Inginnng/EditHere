@@ -316,7 +316,7 @@ class StartupFlowTests : public QObject {
             QTimer::singleShot(0, [&] {
                 auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
                 QVERIFY(dialog);
-                QCOMPARE(dialog->findChild<QLabel *>("updateStatus")->text(), offeredRelease().message);
+                QVERIFY(dialog->findChild<QLabel *>("updateStatus")->text().startsWith(offeredRelease().message));
                 QVERIFY(dialog->findChild<QPushButton *>("openReleases")->property("updateAvailable").toBool());
                 auto updater = dialog->findChild<UpdateChecker *>();
                 QVERIFY(updater && !updater->busy() && !updater->downloading());

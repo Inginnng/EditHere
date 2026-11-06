@@ -4132,7 +4132,7 @@
     <name>h2d::SettingsDialog</name>
     <message>
         <location filename="../settingsdialog.cpp" line="212"/>
-        <location filename="../settingsdialog.cpp" line="628"/>
+        <location filename="../settingsdialog.cpp" line="629"/>
         <source>选择反馈临时目录</source>
         <translation>選擇回饋臨時目錄</translation>
     </message>
@@ -4142,28 +4142,28 @@
         <translation>正在檢查更新…</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="678"/>
-        <location filename="../settingsdialog.cpp" line="733"/>
+        <location filename="../settingsdialog.cpp" line="679"/>
+        <location filename="../settingsdialog.cpp" line="737"/>
         <source>立即更新</source>
         <translation>立即更新</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="678"/>
-        <location filename="../settingsdialog.cpp" line="733"/>
+        <location filename="../settingsdialog.cpp" line="679"/>
+        <location filename="../settingsdialog.cpp" line="737"/>
         <source>打开发布页</source>
         <translation>開啟發布頁</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="455"/>
-        <location filename="../settingsdialog.cpp" line="470"/>
+        <location filename="../settingsdialog.cpp" line="471"/>
         <source>无法打开浏览器，请访问：%1</source>
         <translation>無法開啟瀏覽器，請前往：%1</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="401"/>
         <location filename="../settingsdialog.cpp" line="406"/>
-        <location filename="../settingsdialog.cpp" line="666"/>
         <location filename="../settingsdialog.cpp" line="667"/>
+        <location filename="../settingsdialog.cpp" line="668"/>
         <source>作者留言</source>
         <translation>作者留言</translation>
     </message>
@@ -4183,306 +4183,311 @@
         <translation>正在下載安裝程式…</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="479"/>
+        <location filename="../settingsdialog.cpp" line="480"/>
         <source>正在检查安装条件并准备更新，当前工作将保留到安装器就绪。</source>
         <translation>正在檢查安裝條件並準備更新，目前工作將保留到安裝程式就緒。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="544"/>
+        <location filename="../settingsdialog.cpp" line="545"/>
         <source>EditHere 设置</source>
         <translation>EditHere 設定</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="546"/>
+        <location filename="../settingsdialog.cpp" line="547"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="548"/>
+        <location filename="../settingsdialog.cpp" line="549"/>
         <source>全局快捷键</source>
         <translation>全域快速鍵</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="550"/>
+        <location filename="../settingsdialog.cpp" line="551"/>
         <source>应用内快捷键</source>
         <translation>應用程式內快速鍵</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="557"/>
-        <location filename="../settingsdialog.cpp" line="563"/>
+        <location filename="../settingsdialog.cpp" line="558"/>
+        <location filename="../settingsdialog.cpp" line="564"/>
         <source>快捷键</source>
         <translation>快速鍵</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="558"/>
+        <location filename="../settingsdialog.cpp" line="559"/>
         <source>在其他应用中也可使用；清空则停用。</source>
         <translation>在其他應用程式中也可使用；清空則停用。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="559"/>
+        <location filename="../settingsdialog.cpp" line="560"/>
         <source>在 EditHere 编辑窗口中使用；清空则停用。</source>
         <translation>在 EditHere 編輯視窗中使用；清空則停用。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="561"/>
+        <location filename="../settingsdialog.cpp" line="562"/>
         <source>点击录制快捷键</source>
         <translation>點選錄製快速鍵</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="563"/>
+        <location filename="../settingsdialog.cpp" line="564"/>
         <source>外观</source>
         <translation>外觀</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="563"/>
+        <location filename="../settingsdialog.cpp" line="564"/>
         <source>默认行为</source>
         <translation>預設行為</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="563"/>
+        <location filename="../settingsdialog.cpp" line="564"/>
         <source>长截图</source>
         <translation>長截圖</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="564"/>
+        <location filename="../settingsdialog.cpp" line="565"/>
         <source>工具栏</source>
         <translation>工具列</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="564"/>
+        <location filename="../settingsdialog.cpp" line="565"/>
         <source>关于与更新</source>
         <translation>關於與更新</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="568"/>
-        <location filename="../settingsdialog.cpp" line="571"/>
+        <location filename="../settingsdialog.cpp" line="569"/>
+        <location filename="../settingsdialog.cpp" line="572"/>
         <source>外观模式</source>
         <translation>外觀模式</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="570"/>
+        <location filename="../settingsdialog.cpp" line="571"/>
         <source>选择适合你的界面。跟随系统会随系统外观自动切换。</source>
         <translation>選擇適合你的介面。跟隨系統會隨系統外觀自動切換。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="572"/>
-        <location filename="../settingsdialog.cpp" line="580"/>
-        <location filename="../settingsdialog.cpp" line="589"/>
+        <location filename="../settingsdialog.cpp" line="573"/>
+        <location filename="../settingsdialog.cpp" line="581"/>
+        <location filename="../settingsdialog.cpp" line="590"/>
         <source>跟随系统</source>
         <translation>跟隨系統</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="573"/>
+        <location filename="../settingsdialog.cpp" line="574"/>
         <source>亮色</source>
         <translation>亮色</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="574"/>
+        <location filename="../settingsdialog.cpp" line="575"/>
         <source>暗色</source>
         <translation>暗色</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="576"/>
-        <location filename="../settingsdialog.cpp" line="579"/>
+        <location filename="../settingsdialog.cpp" line="577"/>
+        <location filename="../settingsdialog.cpp" line="580"/>
         <source>界面语言</source>
         <translation>介面語言</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="578"/>
+        <location filename="../settingsdialog.cpp" line="579"/>
         <source>切换后立即预览；保存后生效，取消则回到原来的语言。</source>
         <translation>切換後立即預覽；儲存後生效，取消則回到原來的語言。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="585"/>
-        <location filename="../settingsdialog.cpp" line="588"/>
+        <location filename="../settingsdialog.cpp" line="586"/>
+        <location filename="../settingsdialog.cpp" line="589"/>
         <source>文字识别语言</source>
         <translation>文字辨識語言</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="587"/>
+        <location filename="../settingsdialog.cpp" line="588"/>
         <source>截图后点击文字识别或按 T 时使用的语言。跟随系统由系统已安装的识别语言决定。</source>
         <translation>截圖後點選文字辨識或按 T 時使用的語言。跟隨系統由系統已安裝的辨識語言決定。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="592"/>
+        <location filename="../settingsdialog.cpp" line="593"/>
         <source>启动后立即截图</source>
         <translation>啟動後立即截圖</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="608"/>
+        <location filename="../settingsdialog.cpp" line="609"/>
         <source>开机时启动 EditHere</source>
         <translation>開機時啟動 EditHere</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="609"/>
+        <location filename="../settingsdialog.cpp" line="610"/>
         <source>请保留程序所在文件夹；移动后需重新设置。</source>
         <translation>請保留程式所在資料夾；移動後需重新設定。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="610"/>
+        <location filename="../settingsdialog.cpp" line="611"/>
         <source>打开图片时自动适应窗口</source>
         <translation>開啟圖片時自動適應視窗</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="611"/>
+        <location filename="../settingsdialog.cpp" line="612"/>
         <source>关闭后以 100% 显示，仍可随时缩放或使用适应窗口。</source>
         <translation>關閉後以 100% 顯示，仍可隨時縮放或使用適應視窗。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="612"/>
+        <location filename="../settingsdialog.cpp" line="613"/>
         <source>导出时附带窗口标题</source>
         <translation>匯出時附帶視窗標題</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="613"/>
+        <location filename="../settingsdialog.cpp" line="614"/>
         <source>关闭后反馈 JSON 不包含窗口标题，应用名称与页面描述仍会保留。</source>
         <translation>關閉後回饋 JSON 不包含視窗標題，應用程式名稱與頁面描述仍會保留。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="614"/>
+        <location filename="../settingsdialog.cpp" line="615"/>
         <source>导出时附带区域文字</source>
         <translation>匯出時附帶區域文字</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="615"/>
+        <location filename="../settingsdialog.cpp" line="616"/>
         <source>自动在本机识别批注区域文字。关闭后导出 JSON 不包含识别文字，项目仍保留结果。</source>
         <translation>自動在本機辨識批註區域文字。關閉後匯出 JSON 不包含辨識文字，專案仍保留結果。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="616"/>
+        <location filename="../settingsdialog.cpp" line="617"/>
         <source>原图嵌入 JSON</source>
         <translation>原圖嵌入 JSON</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="617"/>
+        <location filename="../settingsdialog.cpp" line="618"/>
         <source>未勾选时将 JSON 与原图作为独立文件复制。</source>
         <translation>未勾選時將 JSON 與原圖作為獨立檔案複製。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="618"/>
+        <location filename="../settingsdialog.cpp" line="619"/>
         <source>复制 JSON 内容时携带原图信息</source>
         <translation>複製 JSON 內容時附帶原圖資訊</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="619"/>
+        <location filename="../settingsdialog.cpp" line="620"/>
         <source>默认不携带原图信息；也可在复制按钮内的选项中快速切换。</source>
         <translation>預設不附帶原圖資訊；也可在複製按鈕內的選項中快速切換。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="620"/>
+        <location filename="../settingsdialog.cpp" line="621"/>
         <source>关闭批注窗口时询问是否保存</source>
         <translation>關閉批註視窗時詢問是否儲存</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="622"/>
+        <location filename="../settingsdialog.cpp" line="623"/>
         <source>关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。</source>
         <translation>關閉後不再跳出「是否儲存目前修改」，直接放棄未儲存的批註。在批註視窗裡勾選「不再提醒」會關掉這一項。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="624"/>
+        <location filename="../settingsdialog.cpp" line="625"/>
         <source>反馈临时目录</source>
         <translation>回饋臨時目錄</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="625"/>
+        <location filename="../settingsdialog.cpp" line="626"/>
         <source>默认：缓存目录下的 feedback</source>
         <translation>預設：快取目錄下的 feedback</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="626"/>
+        <location filename="../settingsdialog.cpp" line="627"/>
         <source>自定义反馈 JSON 临时文件的保存位置。留空使用默认缓存目录。</source>
         <translation>自訂回饋 JSON 臨時檔案的儲存位置。留空使用預設快取目錄。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="630"/>
+        <location filename="../settingsdialog.cpp" line="631"/>
         <source>包含原图的 JSON 可独立还原。保存项目始终包含原图。</source>
         <translation>包含原圖的 JSON 可獨立還原。儲存專案一律包含原圖。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="632"/>
-        <location filename="../settingsdialog.cpp" line="642"/>
+        <location filename="../settingsdialog.cpp" line="633"/>
+        <location filename="../settingsdialog.cpp" line="643"/>
         <source>默认标注工具</source>
         <translation>預設標註工具</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="634"/>
+        <location filename="../settingsdialog.cpp" line="635"/>
         <source>长截图默认由你滚动页面；截取时仍可切换方向和自动裁剪。</source>
         <translation>長截圖預設由你捲動頁面；擷取時仍可切換方向和自動裁切。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="636"/>
+        <location filename="../settingsdialog.cpp" line="637"/>
         <source>默认截图方向</source>
         <translation>預設截圖方向</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="637"/>
+        <location filename="../settingsdialog.cpp" line="638"/>
         <source>垂直</source>
         <translation>垂直</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="638"/>
+        <location filename="../settingsdialog.cpp" line="639"/>
         <source>水平</source>
         <translation>水平</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="639"/>
+        <location filename="../settingsdialog.cpp" line="640"/>
         <source>反向滚动时自动裁剪</source>
         <translation>反向捲動時自動裁切</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="640"/>
+        <location filename="../settingsdialog.cpp" line="641"/>
         <source>超长截图（最长 200 万像素）</source>
         <translation>超長截圖（最長 200 萬像素）</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="641"/>
+        <location filename="../settingsdialog.cpp" line="642"/>
         <source>分块采集并保存 PNG；超过编辑器图像上限时可保存，复制、贴图和编辑受图像大小限制。</source>
         <translation>分塊擷取並儲存 PNG；超過編輯器影像上限時可儲存，複製、貼圖和編輯受影像大小限制。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="643"/>
+        <location filename="../settingsdialog.cpp" line="644"/>
         <source>智能选块</source>
         <translation>智慧選塊</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="643"/>
+        <location filename="../settingsdialog.cpp" line="644"/>
         <source>点标注</source>
         <translation>點標註</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="643"/>
+        <location filename="../settingsdialog.cpp" line="644"/>
         <source>框选标注</source>
         <translation>框選標註</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="643"/>
+        <location filename="../settingsdialog.cpp" line="644"/>
         <source>调整批注</source>
         <translation>調整批註</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="647"/>
+        <location filename="../settingsdialog.cpp" line="648"/>
         <source>显示在底部工具栏</source>
         <translation>顯示在底部工具列</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="653"/>
+        <location filename="../settingsdialog.cpp" line="654"/>
         <source>在工具栏显示</source>
         <translation>在工具列顯示</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="655"/>
+        <location filename="../settingsdialog.cpp" line="656"/>
         <source>保存包含批注和布局调整的图片。</source>
         <translation>儲存包含批註和佈局調整的圖片。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="662"/>
+        <location filename="../settingsdialog.cpp" line="663"/>
         <source>EditHere · 改这里</source>
         <translation>EditHere · 改這裡</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="664"/>
+        <location filename="../settingsdialog.cpp" line="665"/>
         <source>截图、批注与布局调整，让设计修改意见更清楚。</source>
         <translation>截圖、批註與佈局調整，讓設計修改意見更清楚。</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="735"/>
+        <source> 此版本不满足可信安装条件，请前往发布页手动下载。</source>
+        <translation> 此版本不符合可信安裝條件，請前往發行頁手動下載。</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="428"/>
@@ -4507,118 +4512,118 @@
 如果你覺得它有用，歡迎到 GitHub 點一個 Star，這對我很重要，或是把遇到的問題提給我。感謝使用它的你。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="593"/>
+        <location filename="../settingsdialog.cpp" line="594"/>
         <source>关闭后启动时只驻留托盘；可使用托盘菜单或全局快捷键开始截图。</source>
         <translation>關閉後啟動時只駐留系統匣；可使用系統匣選單或全域快捷鍵開始截圖。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="594"/>
+        <location filename="../settingsdialog.cpp" line="595"/>
         <source>托盘图标</source>
         <translation>系統匣圖示</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="595"/>
+        <location filename="../settingsdialog.cpp" line="596"/>
         <source>单击</source>
         <translation>按一下</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="596"/>
+        <location filename="../settingsdialog.cpp" line="597"/>
         <source>双击</source>
         <translation>按兩下</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="597"/>
+        <location filename="../settingsdialog.cpp" line="598"/>
         <source>托盘图标：单击</source>
         <translation>系統匣圖示：按一下</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="598"/>
+        <location filename="../settingsdialog.cpp" line="599"/>
         <source>托盘图标：双击</source>
         <translation>系統匣圖示：按兩下</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="604"/>
+        <location filename="../settingsdialog.cpp" line="605"/>
         <source>macOS 使用原生状态栏菜单，暂不支持自定义单击和双击。请从菜单选择动作或使用快捷键。</source>
         <translation>macOS 使用原生狀態列選單，暫不支援自訂按一下和按兩下。請從選單選擇動作或使用快捷鍵。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="606"/>
+        <location filename="../settingsdialog.cpp" line="607"/>
         <source>单击会等待系统双击间隔；菜单动作和快捷键立即响应。Linux 的双击支持取决于桌面托盘。</source>
         <translation>按一下會等待系統的按兩下間隔；選單動作和快捷鍵立即回應。Linux 的按兩下支援取決於桌面系統匣。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="668"/>
+        <location filename="../settingsdialog.cpp" line="669"/>
         <source>关于为什么做 EditHere，以及怎样参与。</source>
         <translation>關於為什麼做 EditHere，以及怎樣參與。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="671"/>
+        <location filename="../settingsdialog.cpp" line="672"/>
         <source>&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;查看许可说明&lt;/a&gt;</source>
         <translation>&lt;a href=&quot;https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md&quot;&gt;檢視許可說明&lt;/a&gt;</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="672"/>
+        <location filename="../settingsdialog.cpp" line="673"/>
         <source>启动时检查更新</source>
         <translation>啟動時檢查更新</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="674"/>
+        <location filename="../settingsdialog.cpp" line="675"/>
         <source>尚未检查更新。</source>
         <translation>尚未檢查更新。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="676"/>
+        <location filename="../settingsdialog.cpp" line="677"/>
         <source>检查更新</source>
         <translation>檢查更新</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="682"/>
+        <location filename="../settingsdialog.cpp" line="683"/>
         <source>也可以加入 QQ 群 1018416966（反馈信息专用）；加群时请说明来自 GitHub。</source>
         <translation>也可以加入 QQ 群 1018416966（回饋資訊專用）；加群時請說明來自 GitHub。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="684"/>
+        <location filename="../settingsdialog.cpp" line="685"/>
         <source>恢复默认</source>
         <translation>還原預設值</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="686"/>
+        <location filename="../settingsdialog.cpp" line="687"/>
         <source>使用引导</source>
         <translation>使用導覽</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="687"/>
+        <location filename="../settingsdialog.cpp" line="688"/>
         <source>关闭设置并打开使用引导；未保存的设置将不会保存。</source>
         <translation>關閉設定並開啟使用導覽；未儲存的設定將不會儲存。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="680"/>
-        <location filename="../settingsdialog.cpp" line="690"/>
+        <location filename="../settingsdialog.cpp" line="681"/>
+        <location filename="../settingsdialog.cpp" line="691"/>
         <source>取消</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="657"/>
+        <location filename="../settingsdialog.cpp" line="658"/>
         <source>打开 JSON 预览，可查看或复制反馈。</source>
         <translation>開啟 JSON 預覽，可檢視或複製回饋。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="659"/>
+        <location filename="../settingsdialog.cpp" line="660"/>
         <source>将 JSON 与配套原图文件复制到剪贴板。</source>
         <translation>將 JSON 與隨附原圖檔案複製到剪貼簿。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="692"/>
+        <location filename="../settingsdialog.cpp" line="693"/>
         <source>保存</source>
         <translation>儲存</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="699"/>
+        <location filename="../settingsdialog.cpp" line="700"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>介面語言載入失敗，請重新安裝 EditHere。</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.cpp" line="564"/>
+        <location filename="../settingsdialog.cpp" line="565"/>
         <source>诊断日志</source>
         <translation>診斷記錄檔</translation>
     </message>
@@ -4680,197 +4685,208 @@
 <context>
     <name>h2d::UpdateChecker</name>
     <message>
-        <location filename="../updatechecker.cpp" line="53"/>
-        <location filename="../updatechecker.cpp" line="124"/>
-        <location filename="../updatechecker.cpp" line="306"/>
+        <location filename="../updatechecker.cpp" line="69"/>
+        <location filename="../updatechecker.cpp" line="157"/>
+        <location filename="../updatechecker.cpp" line="338"/>
         <source>更新信息过大，请稍后重试。</source>
         <translation>更新資訊過大，請稍後重試。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="57"/>
-        <location filename="../updatechecker.cpp" line="127"/>
-        <location filename="../updatechecker.cpp" line="325"/>
+        <location filename="../updatechecker.cpp" line="73"/>
+        <location filename="../updatechecker.cpp" line="160"/>
+        <location filename="../updatechecker.cpp" line="357"/>
         <source>无法读取更新信息，请稍后重试。</source>
         <translation>無法讀取更新資訊，請稍後重試。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="76"/>
-        <location filename="../updatechecker.cpp" line="138"/>
+        <location filename="../updatechecker.cpp" line="93"/>
+        <location filename="../updatechecker.cpp" line="171"/>
         <source>发行信息不是有效的 EditHere 正式版本，请到发布页查看。</source>
         <translation>發行資訊不是有效的 EditHere 正式版本，請到發布頁檢視。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="80"/>
+        <location filename="../updatechecker.cpp" line="97"/>
         <source>版本号无法比较，请到发布页查看。</source>
         <translation>版本號無法比較，請到發布頁檢視。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="116"/>
+        <location filename="../updatechecker.cpp" line="149"/>
         <source>当前版本高于已发布的正式版 %1。</source>
         <translation>目前版本高於已發布的正式版 %1。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="118"/>
+        <location filename="../updatechecker.cpp" line="151"/>
         <source>已是最新正式版 %1。</source>
         <translation>已是最新正式版 %1。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="144"/>
+        <location filename="../updatechecker.cpp" line="177"/>
         <source>GitHub 和 Gitee 均无法检查更新，请检查网络后重试。</source>
         <translation>GitHub 和 Gitee 均無法檢查更新，請檢查網路後重試。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="150"/>
+        <location filename="../updatechecker.cpp" line="183"/>
         <source>%1 未能完成检查，以上结果来自 %2。</source>
         <translation>%1 未能完成檢查，以上結果來自 %2。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="152"/>
+        <location filename="../updatechecker.cpp" line="185"/>
         <source>已检查 %1，正式版为 %2；%3 未能完成检查，暂时无法确认最新版本。</source>
         <translation>已檢查 %1，正式版為 %2；%3 未能完成檢查，暫時無法確認最新版本。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="372"/>
+        <location filename="../updatechecker.cpp" line="404"/>
         <source>检查超时，请检查网络后重试。</source>
         <translation>檢查逾時，請檢查網路後重試。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="314"/>
+        <location filename="../updatechecker.cpp" line="346"/>
         <source>网络连接失败，暂时无法判断是否有更新。请稍后重试。</source>
         <translation>網路連線失敗，暫時無法判斷是否有更新。請稍後重試。</translation>
     </message>
     <message>
-        <location filename="../updateauth.cpp" line="148"/>
-        <location filename="../updatechecker.cpp" line="407"/>
-        <location filename="../updatechecker.cpp" line="734"/>
+        <location filename="../updateauth.cpp" line="224"/>
+        <location filename="../updatechecker.cpp" line="443"/>
+        <location filename="../updatechecker.cpp" line="833"/>
         <source>未找到适合当前系统的更新包，请前往发布页手动下载。</source>
         <translation>未找到適合目前系統的更新檔，請前往發布頁手動下載。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="432"/>
-        <location filename="../updatechecker.cpp" line="446"/>
-        <location filename="../updatechecker.cpp" line="462"/>
+        <location filename="../updatechecker.cpp" line="472"/>
+        <location filename="../updatechecker.cpp" line="486"/>
+        <location filename="../updatechecker.cpp" line="502"/>
         <source>无法写入更新文件：%1</source>
         <translation>無法寫入更新檔案：%1</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="456"/>
+        <location filename="../updatechecker.cpp" line="496"/>
         <source>下载失败，请检查网络后重试。</source>
         <translation>下載失敗，請檢查網路後重試。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="512"/>
-        <location filename="../updatechecker.cpp" line="706"/>
+        <location filename="../updatechecker.cpp" line="547"/>
+        <source>更新签名或校验文件过大，已停止更新。</source>
+        <translation>更新簽章或校驗檔案過大，已停止更新。</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="560"/>
+        <source>无法下载更新签名或校验文件，请检查网络后重试。</source>
+        <translation>無法下載更新簽章或校驗檔案，請檢查網路後再試。</translation>
+    </message>
+    <message>
+        <location filename="../updatechecker.cpp" line="585"/>
+        <location filename="../updatechecker.cpp" line="801"/>
         <source>已取消更新，当前工作保持不变。</source>
         <translation>已取消更新，目前工作保持不變。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="521"/>
+        <location filename="../updatechecker.cpp" line="594"/>
         <source>无法准备更新请求：安装目录或版本信息无效。</source>
         <translation>無法準備更新請求：安裝目錄或版本資訊無效。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="533"/>
+        <location filename="../updatechecker.cpp" line="606"/>
         <source>无法写入更新请求：%1</source>
         <translation>無法寫入更新請求：%1</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="559"/>
+        <location filename="../updatechecker.cpp" line="632"/>
         <source>安装器准备超时，更新已取消，当前工作保持不变。</source>
         <translation>安裝程式準備逾時，更新已取消，目前工作保持不變。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="566"/>
+        <location filename="../updatechecker.cpp" line="639"/>
         <source>无法读取安装器状态，更新已取消。</source>
         <translation>無法讀取安裝程式狀態，更新已取消。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="574"/>
-        <location filename="../updatechecker.cpp" line="597"/>
+        <location filename="../updatechecker.cpp" line="647"/>
+        <location filename="../updatechecker.cpp" line="670"/>
         <source>安装器状态无效，更新已取消。</source>
         <translation>安裝程式狀態無效，更新已取消。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="583"/>
+        <location filename="../updatechecker.cpp" line="656"/>
         <source>安装器状态与本次更新不一致，更新已取消。</source>
         <translation>安裝程式狀態與本次更新不一致，更新已取消。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="593"/>
+        <location filename="../updatechecker.cpp" line="666"/>
         <source>安装器准备失败，当前工作保持不变。</source>
         <translation>安裝程式準備失敗，目前工作保持不變。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="601"/>
+        <location filename="../updatechecker.cpp" line="674"/>
         <source>无法确认安装器已就绪，更新已取消。</source>
         <translation>無法確認安裝程式已就緒，更新已取消。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="631"/>
+        <location filename="../updatechecker.cpp" line="704"/>
         <source>上次安装未完成。请检查安装日志和恢复信息。</source>
         <translation>上次安裝未完成。請檢查安裝記錄檔和還原資訊。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="633"/>
+        <location filename="../updatechecker.cpp" line="706"/>
         <source>安装文件已切换，但当前运行版本与预期版本 %1 不一致。请检查启动路径。</source>
         <translation>安裝檔案已切換，但目前執行版本與預期版本 %1 不一致。請檢查啟動路徑。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="723"/>
+        <location filename="../updatechecker.cpp" line="822"/>
         <source>无法启动更新安装器。</source>
         <translation>無法啟動更新安裝程式。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="418"/>
+        <location filename="../updatechecker.cpp" line="457"/>
         <source>未找到校验文件，无法验证安装包完整性。</source>
         <translation>未找到檢查碼檔案，無法驗證安裝檔完整性。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="482"/>
-        <source>无法下载校验文件，请检查网络后重试。</source>
-        <translation>無法下載檢查碼檔案，請檢查網路後重試。</translation>
-    </message>
-    <message>
-        <location filename="../updatechecker.cpp" line="649"/>
+        <location filename="../updatechecker.cpp" line="723"/>
         <source>无法读取已下载的文件。</source>
         <translation>無法讀取已下載的檔案。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="112"/>
+        <location filename="../updatechecker.cpp" line="145"/>
         <source>发现新版本 %1。</source>
         <translation>發現新版本 %1。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="652"/>
+        <location filename="../updatechecker.cpp" line="726"/>
         <source>校验文件失败。</source>
         <translation>檢查碼檔案驗證失敗。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="473"/>
-        <location filename="../updatechecker.cpp" line="646"/>
-        <location filename="../updatechecker.cpp" line="655"/>
+        <location filename="../updatechecker.cpp" line="514"/>
+        <location filename="../updatechecker.cpp" line="720"/>
+        <location filename="../updatechecker.cpp" line="729"/>
         <source>校验失败：安装包已损坏或不完整。</source>
         <translation>驗證失敗：安裝檔已損壞或不完整。</translation>
     </message>
     <message>
-        <location filename="../updateauth.cpp" line="91"/>
-        <location filename="../updatechecker.cpp" line="411"/>
-        <location filename="../updatechecker.cpp" line="662"/>
+        <location filename="../updateauth.cpp" line="116"/>
+        <location filename="../updatechecker.cpp" line="769"/>
+        <source>更新签名无效或与本次安装包不一致，已停止更新。请前往发布页手动下载。</source>
+        <translation>更新簽章無效或與本次安裝套件不符，已停止更新。請前往發行頁手動下載。</translation>
+    </message>
+    <message>
+        <location filename="../updateauth.cpp" line="167"/>
+        <location filename="../updatechecker.cpp" line="447"/>
+        <location filename="../updatechecker.cpp" line="736"/>
         <source>未配置可信发布者，程序内安装已停用。请前往发布页手动下载。</source>
         <translation>未設定可信任的發布者，程式內安裝已停用。請前往發布頁手動下載。</translation>
     </message>
     <message>
-        <location filename="../updateauth.cpp" line="141"/>
+        <location filename="../updateauth.cpp" line="217"/>
         <source>安装包的发布者签名无效或无法验证，已停止更新。请前往发布页手动下载。</source>
         <translation>安裝套件的發布者簽章無效或無法驗證，已停止更新。請前往發布頁手動下載。</translation>
     </message>
     <message>
-        <location filename="../updateauth.cpp" line="143"/>
+        <location filename="../updateauth.cpp" line="219"/>
         <source>安装包签名与内置的可信发布者不一致，已停止更新。请前往发布页手动下载。</source>
         <translation>安裝套件簽章與內建的可信任發布者不一致，已停止更新。請前往發布頁手動下載。</translation>
     </message>
     <message>
-        <location filename="../updatechecker.cpp" line="672"/>
+        <location filename="../updatechecker.cpp" line="750"/>
         <source>无法读取并锁定已下载的安装包，已停止更新。</source>
         <translation>無法讀取並鎖定已下載的安裝套件，已停止更新。</translation>
     </message>
