@@ -59,6 +59,13 @@
 #include <QWheelEvent>
 using namespace h2d;
 
+// macOS keeps the system title bar, so close, minimize and zoom are the traffic
+// lights there and the editor draws no buttons of its own for them. The actions and
+// their regressions are the same on both, so a test asks which chrome this platform
+// has instead of assuming one.
+static bool hasOwnWindowButtons() {
+    return !usesNativeWindowControls();
+}
 // Where the crosshair is, which is where the window thinks the pointer is: a white
 // cross nine pixels each way on a screen that has nothing else as light. It is read off
 // the rendering rather than asked of the window, because what has to hold is what the
@@ -289,7 +296,8 @@ class UiTests : public QObject {
         auto hide = editor.findChild<QPushButton *>("hideAnnotations"); QVERIFY(hide);
         QVERIFY(!QRect(toggle->mapTo(&editor, QPoint()), toggle->size()).intersects(QRect(hide->mapTo(&editor, QPoint()), hide->size())));
         auto close = editor.findChild<QPushButton *>("closeWindow"); QVERIFY(close);
-        QVERIFY(editor.rect().contains(QRect(close->mapTo(&editor, QPoint()), close->size())));
+        if (hasOwnWindowButtons())
+            QVERIFY(editor.rect().contains(QRect(close->mapTo(&editor, QPoint()), close->size())));
         QStyleOptionButton style; style.initFrom(toggle);
         const auto contents = toggle->style()->subElementRect(QStyle::SE_PushButtonContents, &style, toggle);
         QVERIFY(contents.width() >= toggle->fontMetrics().horizontalAdvance(toggle->text()));
@@ -972,7 +980,8 @@ class UiTests : public QObject {
         QTest::qWait(80);
         auto minimize = editor.findChild<QPushButton *>("minimizeWindow");
         auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
-        QVERIFY(minimize && minimize->isVisible() && minimize->isEnabled() && imageScroll);
+        QVERIFY(minimize && minimize->isEnabled() && imageScroll);
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
         QCOMPARE(minimize->toolTip(), QString("最小化"));
         editor.explode();
         QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
@@ -1047,8 +1056,14 @@ class UiTests : public QObject {
         QVERIFY(settingsButton && minimize && fullscreen && close);
         QVERIFY(settingsButton->isVisible() && settingsButton->isEnabled());
         QCOMPARE(settingsButton->toolTip(), QString("设置"));
-        QVERIFY(minimize->geometry().right() < fullscreen->geometry().left());
-        QVERIFY(fullscreen->geometry().right() < close->geometry().left());
+        // macOS has the traffic lights instead, in the window's top-left corner.
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(close->isVisible(), hasOwnWindowButtons());
+        if (hasOwnWindowButtons()) {
+            QVERIFY(minimize->geometry().right() < fullscreen->geometry().left());
+            QVERIFY(fullscreen->geometry().right() < close->geometry().left());
+        }
         const auto before = exportFeedback(editor->document(), true);
         QSignalSpy requested(editor, &Editor::settingsRequested);
         int opened = 0;
@@ -1162,6 +1177,34 @@ class UiTests : public QObject {
         QTest::mouseRelease(&toolBar, Qt::LeftButton);
         QVERIFY(!tool.isMaximized());
     }
+    void windowControlsFollowThePlatformConvention() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        QTest::qWait(60);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        auto brand = editor.findChild<QLabel *>("brand");
+        auto minimize = editor.findChild<QPushButton *>("minimizeWindow");
+        auto fullscreen = editor.findChild<QPushButton *>("fullscreenWindow");
+        auto close = editor.findChild<QPushButton *>("closeWindow");
+        auto settings = editor.findChild<QPushButton *>("openSettings");
+        QVERIFY(bar && brand && minimize && fullscreen && close && settings);
+        // macOS: the system title bar keeps close, minimize and zoom as the traffic
+        // lights, so no editor-drawn window buttons remain in the bar's top right.
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(close->isVisible(), hasOwnWindowButtons());
+        // The brand starts clear of whatever occupies the corner: the traffic lights
+        // on macOS, the compact inset of our own bar elsewhere. One pixel of the
+        // figure is the shell's own inset.
+        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), hasOwnWindowButtons() ? 15 : 79);
+        // The tools stay in the top right, inside the bar and the window.
+        const QRect tools(settings->mapTo(&editor, QPoint()), settings->size());
+        QVERIFY(editor.rect().contains(tools));
+        QVERIFY(brand->mapTo(&editor, QPoint()).x() + brand->width() <= tools.left());
+        QVERIFY(bar->height() >= tools.height());
+        editor.hide();
+    }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("maximized");
@@ -1215,10 +1258,13 @@ class UiTests : public QObject {
 
         fullscreen->click();
         QTRY_VERIFY(editor.isFullScreen());
-        QVERIFY(fullscreen->isChecked() && fullscreen->isVisible());
+        // The button drives the state on every platform; only macOS hides it behind
+        // the system's green traffic light.
+        QVERIFY(fullscreen->isChecked());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
         QCOMPARE(fullscreen->toolTip(), QString("退出全屏"));
         QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
-        QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+        QCOMPARE(editor.findChild<QPushButton *>("closeWindow")->isVisible(), hasOwnWindowButtons());
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QCOMPARE(editor.explosionActive(), explosion);
         QVERIFY(!editor.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
@@ -1528,7 +1574,8 @@ class UiTests : public QObject {
         editor->setDocument(document);
         QTest::qWait(30);
         auto minimize = editor->findChild<QPushButton *>("minimizeWindow");
-        QVERIFY(minimize && minimize->isVisible());
+        QVERIFY(minimize);
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
         QSignalSpy hiddenToTray(editor, &Editor::hiddenToTray);
         minimize->click();
         QTRY_VERIFY(editor->isMinimized());

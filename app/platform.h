@@ -62,6 +62,10 @@ void captureScreens(CaptureCallback callback);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
 void configureNativeWindow(QWidget *window, bool overlay);
+// macOS draws close, minimize and zoom as traffic lights in the system title bar,
+// so the editor keeps that title bar and leaves the window controls to it. The
+// other desktops have no equivalent and use the editor's own buttons instead.
+bool usesNativeWindowControls();
 // Whether screen reads skip this window, so it can stay visible over a capture.
 bool excludedFromCapture(const QWidget *window);
 QString globalShortcutLabel();

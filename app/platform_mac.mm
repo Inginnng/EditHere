@@ -775,6 +775,9 @@ bool excludedFromCapture(const QWidget *widget) {
     return widget && QGuiApplication::platformName() == "cocoa" && scrollingSession &&
            scrollingSession->filter && scrollingSession->excludesOwnApplication;
 }
+bool usesNativeWindowControls() {
+    return true;
+}
 void configureNativeWindow(QWidget *widget, bool overlay) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
@@ -792,6 +795,15 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
         window.collectionBehavior = NSWindowCollectionBehaviorDefault;
         window.level = NSNormalWindowLevel;
         window.sharingType = NSWindowSharingReadWrite;
+        // Keep the standard title bar for the traffic lights, but hide its title
+        // and let the client area cover it, so the editor's own bar reaches the
+        // top edge and only the buttons stay on top of it. AppKit keeps the rest
+        // of that strip click-through: only the buttons take the click.
+        window.titleVisibility = NSWindowTitleHidden;
+        window.titlebarAppearsTransparent = YES;
+        window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+        // The separator would be drawn across the editor's own bar.
+        window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     }
 }
 QString globalShortcutLabel() {

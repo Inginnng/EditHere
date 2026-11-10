@@ -455,6 +455,9 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
 bool requestAccessibility() {
     return true;
 }
+bool usesNativeWindowControls() {
+    return false;
+}
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,

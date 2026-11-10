@@ -204,13 +204,18 @@ class JsonPreview final : public QPlainTextEdit {
 };
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    // macOS keeps the system title bar so close, minimize and zoom stay the
+    // traffic lights the platform expects; the title itself is hidden and the
+    // window's own bar is drawn over it (platform_mac.mm). The other desktops
+    // have no such controls and take the frameless window with our own buttons.
+    const bool nativeControls = usesNativeWindowControls();
+    setWindowFlags(nativeControls ? Qt::Window : Qt::Window | Qt::FramelessWindowHint);
 #ifdef Q_OS_WIN
     // This is an opaque editor, not a capture overlay. A translucent top-level
     // uses a layered backing store on Windows, which can leave most of the
     // surface transparent after moving between monitors with different DPI.
     setAutoFillBackground(true);
-#else
+#elif !defined(Q_OS_MAC)
     setAttribute(Qt::WA_TranslucentBackground);
 #endif
     setAcceptDrops(true);
@@ -227,7 +232,9 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     bar->setObjectName("editorTitleBar");
     bar->setFixedHeight(42);
     auto header = new QHBoxLayout(bar);
-    header->setContentsMargins(14, 0, 6, 0);
+    // The traffic lights sit in the window's top-left corner, so the brand starts
+    // clear of them; everywhere else the bar keeps its compact inset.
+    header->setContentsMargins(nativeControls ? 78 : 14, 0, 6, 0);
     auto brand = new QLabel(bar);
     brand->setObjectName("brand");
     header->addWidget(brand);
@@ -295,9 +302,18 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addWidget(capture);
     header->addWidget(settings);
     header->addWidget(help);
-    header->addWidget(minimize);
-    header->addWidget(fullscreen_);
-    header->addWidget(close);
+    // With the system title bar the traffic lights are the window controls: the
+    // editor's own three buttons would be a second, wrong set in the top right.
+    // They keep their actions (and remain the fullscreen state holder) but leave
+    // the layout, so the bar ends at the tools above.
+    if (nativeControls) {
+        for (auto button : {minimize, fullscreen_, close})
+            button->hide();
+    } else {
+        header->addWidget(minimize);
+        header->addWidget(fullscreen_);
+        header->addWidget(close);
+    }
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
