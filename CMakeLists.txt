@@ -10,20 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network Test Multimedia MultimediaWidgets)
 qt_standard_project_setup()
-# Reuse QtKeychain's native credential backends; API keys never enter settings.ini.
-# BSD-3-Clause, pinned source archive and hash, built statically to keep deployment
-# consistent with the existing desktop packages. See packaging/licenses/qtkeychain.
-include(FetchContent)
-set(BUILD_WITH_QT6 ON CACHE BOOL "Build QtKeychain against Qt 6" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build bundled dependencies statically" FORCE)
-set(BUILD_TRANSLATIONS OFF CACHE BOOL "Do not build QtKeychain translations" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "Do not build dependency tests" FORCE)
-FetchContent_Declare(qtkeychain
-  URL https://codeload.github.com/frankosterfeld/qtkeychain/tar.gz/refs/tags/0.15.0
-  URL_HASH SHA256=f4254dc8f0933b06d90672d683eab08ef770acd8336e44dfa030ce041dc2ca22
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_MakeAvailable(qtkeychain)
-set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
+add_subdirectory(features/ai-text)
+set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/imageset.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
 set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
   set(PLATFORM app/platform_win.cpp)
@@ -42,7 +30,7 @@ else()
   message(FATAL_ERROR "This release targets Windows, macOS and Linux.")
 endif()
 add_library(h2d_core STATIC ${CORE})
-target_include_directories(h2d_core PUBLIC app)
+target_include_directories(h2d_core PUBLIC app features/ai-text/include)
 target_compile_definitions(h2d_core PUBLIC EDITHERE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(h2d_core PUBLIC Qt6::Gui)
 add_library(h2d_agent STATIC app/agentprotocol.cpp app/agentconnection.cpp app/agentlaunch.cpp)
@@ -58,22 +46,12 @@ target_include_directories(edithere_zlib PUBLIC third_party/zlib)
 target_compile_definitions(edithere_zlib PUBLIC Z_SOLO)
 add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/tesseract.cpp app/videoplayback.cpp)
 target_sources(h2d_ui PRIVATE app/diagnosticspage.cpp)
-target_sources(h2d_ui PRIVATE app/aifeedback.cpp app/aicredentials.cpp
-  app/aisettingspage.cpp app/aiinstructionsdialog.cpp app/aifeedbacksnapshot.cpp app/aiprovidericons.cpp)
+target_sources(h2d_ui PRIVATE app/aifeedbacksnapshot.cpp)
+target_link_libraries(h2d_ui PUBLIC h2d_ai_text)
 target_include_directories(h2d_ui PUBLIC app)
 target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::MultimediaWidgets)
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
 target_link_libraries(h2d_ui PUBLIC h2d_diagnostics)
-target_link_libraries(h2d_ui PRIVATE qt6keychain)
-qt_add_resources(h2d_ui ai_assets
-  PREFIX "/ai"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ai"
-  FILES assets/ai/provider-presets.json assets/ai/instructions-prompt.txt)
-qt_add_resources(h2d_ui ai_provider_icons
-  PREFIX "/ai/providers"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ai/providers"
-  FILES assets/ai/providers/openai.svg assets/ai/providers/claude.svg
-    assets/ai/providers/deepseek.svg assets/ai/providers/glm.svg assets/ai/providers/kimi.svg)
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
@@ -101,6 +79,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES packaging/linux/com.edithere.capture.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
   install(FILES packaging/linux/com.edithere.capture.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages)
   install(FILES assets/icons/edithere-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME edithere.png)
+  install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/skills)
+  install(FILES docs/PROJECT-REVIEW.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
   install(FILES LICENSE packaging/THIRD-PARTY-NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
 endif()
 qt_add_executable(EditHere WIN32 MACOSX_BUNDLE app/main.cpp)
@@ -176,11 +156,16 @@ add_custom_command(TARGET EditHere POST_BUILD
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   VERBATIM)
 enable_testing()
-qt_add_executable(ai_feedback_tests tests/aifeedback_test.cpp)
+qt_add_executable(imageset_tests tests/imageset_test.cpp)
+target_link_libraries(imageset_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(imageset_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME image-set COMMAND imageset_tests -platform offscreen)
+
+qt_add_executable(ai_feedback_tests features/ai-text/tests/aifeedback_test.cpp)
 target_link_libraries(ai_feedback_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(ai_feedback_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 add_test(NAME ai-feedback COMMAND ai_feedback_tests)
-qt_add_executable(ai_instructions_tests tests/aiinstructionsdialog_test.cpp)
+qt_add_executable(ai_instructions_tests features/ai-text/tests/aiinstructionsdialog_test.cpp)
 target_link_libraries(ai_instructions_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(ai_instructions_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 add_test(NAME ai-instructions COMMAND ai_instructions_tests -platform offscreen)
@@ -204,7 +189,8 @@ if(Node_EXECUTABLE)
   set(WEB_TEST_SOURCES
     agent-session.test.cjs agent-recovery.test.cjs capture.test.cjs
     feedback-children.test.mjs feedback-v3.test.cjs feedback.test.cjs
-    image-modes.test.cjs install-skill.test.cjs layout.test.cjs movement.test.cjs)
+    image-modes.test.cjs image-set-session.test.cjs install-skill.test.cjs
+    layout.test.cjs movement.test.cjs)
   list(TRANSFORM WEB_TEST_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/web/tests/")
   add_test(NAME web COMMAND "${Node_EXECUTABLE}" --test ${WEB_TEST_SOURCES})
   set_tests_properties(web PROPERTIES TIMEOUT 180)

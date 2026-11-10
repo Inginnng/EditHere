@@ -1,0 +1,36 @@
+/* Shared by the desktop app and workbench. Theme tokens live in src/aistyle.cpp. */
+QDialog#aiInstructionsDialog { background:@surface; }
+QDialog#aiInstructionsDialog QWidget { font-size:13px; }
+QWidget#aiAnalysisHeader { background:@surface; border-bottom:1px solid @border; }
+QLabel#aiAnalysisMark { background:@tint; border-radius:12px; }
+QDialog#aiInstructionsDialog QLabel#aiAnalysisTitle { color:@text; font-size:21px; font-weight:600; }
+QWidget#aiAnalysisSources, QWidget#aiSourceNotes { background:@surface; }
+QWidget#aiAnalysisResult { background:@canvas; }
+QSplitter#aiAnalysisSplitter::handle { background:@border; }
+QDialog#aiInstructionsDialog QLabel[analysisSection="true"] { color:@text; font-size:14px; font-weight:600; }
+QDialog#aiInstructionsDialog QScrollArea { background:transparent; border:0; }
+QFrame#aiImageFrame { background:@canvas; border:1px solid @border; border-radius:9px; }
+QFrame#aiSourceNote { background:@canvas; border:0; border-radius:8px; }
+QDialog#aiInstructionsDialog QComboBox, QDialog#aiInstructionsDialog QLineEdit {
+    background:@surface; border:1px solid @border; border-radius:7px; padding:9px 12px; min-height:20px; color:@text;
+}
+QDialog#aiInstructionsDialog QLineEdit:focus { border-color:@accent; }
+QDialog#aiInstructionsDialog QLineEdit:disabled { color:@muted; background:@canvas; }
+QDialog#aiInstructionsDialog QPlainTextEdit#aiInstructionsText {
+    background:@surface; color:@text; border:1px solid @border; border-radius:10px;
+    padding:20px 22px; font-size:14px; selection-background-color:@accent;
+}
+QWidget#aiInstructionsEmpty { background:@surface; border:1px solid @border; border-radius:10px; }
+QLabel#aiAnalysisEmptyIcon { background:@tint; border-radius:14px; }
+QDialog#aiInstructionsDialog QLabel#aiAnalysisEmptyTitle { font-size:17px; font-weight:600; color:@text; }
+QWidget#aiAnalysisFooter { background:@surface; border-top:1px solid @border; }
+QLabel#aiInstructionsStatus { color:@muted; font-size:12px; }
+QLabel#aiInstructionsStatus[error="true"] { color:@error; }
+QLabel#aiInstructionsUsage { color:@muted; font-size:11px; }
+QDialog#aiInstructionsDialog QPushButton { padding:9px 15px; border-radius:7px; }
+QDialog#aiInstructionsDialog QPushButton[quiet="true"] { background:transparent; border:0; color:@muted; padding:5px 8px; }
+QDialog#aiInstructionsDialog QPushButton[quiet="true"]:hover { background:@hover; color:@text; }
+QDialog#aiInstructionsDialog QPushButton[primary="true"] { background:@accent; color:white; border:1px solid @accent; }
+QDialog#aiInstructionsDialog QPushButton[primary="true"]:disabled { background:@hover; color:@muted; border-color:@border; }
+QDialog#aiInstructionsDialog QProgressBar { border:0; background:@border; border-radius:1px; }
+QDialog#aiInstructionsDialog QProgressBar::chunk { background:@accent; }

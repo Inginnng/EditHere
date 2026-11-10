@@ -70,7 +70,8 @@ def find_tool(qt: str | None, name: str, explicit: str | None = None) -> str:
 def source_files() -> list[str]:
     # lupdate does not pick up Objective-C++ files when scanning a directory, so
     # every file is passed explicitly; the macOS strings must be translated too.
-    files = sorted(str(p) for p in APP.iterdir() if p.suffix in SOURCE_SUFFIXES)
+    roots = (APP, ROOT / "features" / "ai-text" / "src", ROOT / "features" / "ai-text" / "include")
+    files = sorted(str(p) for root in roots for p in root.iterdir() if p.suffix in SOURCE_SUFFIXES)
     if not files:
         sys.exit(f"error: no C++ sources found under {APP}")
     return files
@@ -82,7 +83,8 @@ def q_object_contexts() -> set[str]:
     pattern = re.compile(
         r"class\s+(\w+)\s*(?:final\s*)?(?::[^{]*)?\{(?P<body>[^}]*?Q_OBJECT)", re.S
     )
-    for path in sorted(APP.glob("*.h")):
+    headers = [*APP.glob("*.h"), *(ROOT / "features" / "ai-text" / "include").glob("*.h")]
+    for path in sorted(headers):
         for match in pattern.finditer(path.read_text(encoding="utf-8")):
             contexts.add(f"h2d::{match.group(1)}")
     return contexts
@@ -124,7 +126,8 @@ def main() -> int:
             fresh_path = Path(tmp) / ts.name
             shutil.copy(ts, fresh_path)
             result = subprocess.run(
-                [lupdate, *source_files(), "-ts", str(fresh_path), "-no-obsolete"],
+                [lupdate, "-I", str(APP), "-I", str(ROOT / "features" / "ai-text" / "include"),
+                 *source_files(), "-ts", str(fresh_path), "-no-obsolete"],
                 capture_output=True,
                 text=True,
             )

@@ -16,4 +16,4 @@ All source paths below are relative to that upstream commit. The SHA-256 hashes 
 
 The matching, complete upstream [MIT License](../../../packaging/licenses/lobehub-icons/LICENSE) is distributed as `licenses/lobehub-icons/LICENSE`. Its SHA-256 is `add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a`.
 
-`app/aiprovidericons.cpp` renders these embedded SVG paths at the requested device scale. Upstream `currentColor` fills follow the light/dark interface foreground; explicit brand colours are preserved. No path geometry is changed. Provider marks identify the selected service and do not imply endorsement; their respective owners retain their trademark rights.
+`features/ai-text/src/aiprovidericons.cpp` renders these embedded SVG paths at the requested device scale. Upstream `currentColor` fills follow the light/dark interface foreground; explicit brand colours are preserved. No path geometry is changed. Provider marks identify the selected service and do not imply endorsement; their respective owners retain their trademark rights.

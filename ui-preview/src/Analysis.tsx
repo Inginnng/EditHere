@@ -12,10 +12,7 @@ const example = `首页首屏修改意见
 将「EXPLORE THE EDIT」主按钮改为深绿色，圆角收小，文案改为「探索系列」。保持清晰的文字对比度。
 
 3. 图片位置
-将右侧椅子向右移动一些，为左侧文字留出更多空间。原批注没有指定具体距离，实施时根据画面平衡调整。
-
-保留项
-保留原有米白背景、衬线标题和整体排版。未提及的导航、文案与其他页面内容保持原样。`;
+将右侧椅子展示图向右移动，让图片右边缘与页面内容的右侧边界对齐，并拉开它与左侧标题的间距。`;
 
 export default function Analysis({provider,onSettings,onBack,onToast}:{provider:string;onSettings:()=>void;onBack:()=>void;onToast:(message:string)=>void}) {
   const [output,setOutput] = useState(example);

@@ -1,8 +1,8 @@
 # AI 修改意见的 API 预设
 
-桌面端通过独立 API 请求理解本次批注的 JSON 和图片，产出可编辑、复制的纯文本修改意见。每次请求只包含本次任务材料，不带入其他 Agent 对话历史。原始批注继续作为数值与坐标依据。
+桌面端通过独立 API 请求理解本次批注的 JSON 和图片，产出可编辑、复制的纯文本修改意见。解析模型根据画面理解像素定位、拖动与缩放，将它们转成对象身份和预期布局关系。原对话只接收自然语言需求；几何 JSON 与图片留在独立解析请求中，不随文字输出。
 
-预设保存在 `assets/ai/provider-presets.json`，编译时作为应用资源打包。选择服务商后会填入 API 基础地址、协议和默认视觉模型；用户填写对应开放平台的 API Key 即可。地址与模型均可修改，预设不保证账号已经开通相应模型或拥有余额。
+预设保存在 `features/ai-text/resources/provider-presets.json`，编译时作为应用资源打包。选择服务商后会填入 API 基础地址、协议和默认视觉模型；用户填写对应开放平台的 API Key 即可。地址与模型均可修改，预设不保证账号已经开通相应模型或拥有余额。
 
 `name`、`note` 为中文显示文字，`nameEn`、`noteEn` 为英文显示文字；两种界面共用同一组地址、模型和协议。
 
@@ -34,7 +34,7 @@ Kimi 官方模型列表提示，K2 系列从 2026-10-31 起停止向新注册用
 
 ## 密钥存储
 
-复用 [QtKeychain 0.15.0](https://github.com/frankosterfeld/qtkeychain/tree/0.15.0) 的系统凭据库后端。CMake 固定上游源码归档及 SHA-256，静态编入应用，许可证为 Modified BSD（BSD-3-Clause）；原始许可和来源随分发放在 `licenses/qtkeychain`，归属见 `packaging/THIRD-PARTY-NOTICES.md`。API Key 不写入普通设置文件，不启用明文存储回退。设置页的“保存密钥”和“删除密钥”直接操作系统凭据库，普通地址、模型和超时选项由底部“保存”持久化。
+复用 [QtKeychain 0.15.0](https://github.com/frankosterfeld/qtkeychain/tree/0.15.0) 的系统凭据库后端。CMake 固定上游源码归档及 SHA-256，静态编入应用，许可证为 Modified BSD（BSD-3-Clause）；原始许可和来源随分发放在 `licenses/qtkeychain`，归属见 `packaging/THIRD-PARTY-NOTICES.md`。API Key 不写入普通设置文件，不启用明文存储回退。密钥草稿与地址、模型和超时选项统一由底部“保存设置”保存；取消设置会丢弃尚未保存的修改。
 
 ## 复用 CC Switch 的范围
 

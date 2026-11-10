@@ -30,7 +30,7 @@ AiFeedbackInput aiFeedbackSnapshot(const VideoProject &project, FeedbackExportOp
     input.feedback = QJsonDocument::fromJson(buildVideoFeedbackBundle(project, options).json).object();
     const auto frames = input.feedback["frames"].toArray();
     if (frames.size() > 8)
-        throw std::runtime_error(tr("一次最多整理 8 个视频帧，请分批处理；未发送任何图片。").toUtf8().constData());
+        throw std::runtime_error(tr("一次可解析 8 个视频帧，请分批处理。").toUtf8().constData());
     for (const auto &value : frames) {
         const auto frame = value.toObject();
         for (const auto &source : project.frames) {
@@ -38,6 +38,20 @@ AiFeedbackInput aiFeedbackSnapshot(const VideoProject &project, FeedbackExportOp
             appendImages(input, source.document, tr("视频帧 %1，时间戳 %2 µs：")
                                                   .arg(source.document.id).arg(source.timestampUs));
             break;
+        }
+    }
+    return input;
+}
+AiFeedbackInput aiFeedbackSnapshot(const ImageSet &project, FeedbackExportOptions options) {
+    options.mode = ImageExportMode::None; options.preview = false;
+    AiFeedbackInput input;
+    input.feedback = QJsonDocument::fromJson(buildImageSetFeedbackBundle(project, options).json).object();
+    const auto pages = input.feedback["pages"].toArray();
+    if (pages.size() > 8) throw std::runtime_error("AI instruction parsing supports up to 8 annotated pages per request.");
+    for (const auto &value : pages) {
+        const auto page = value.toObject();
+        for (const auto &source : project.pages) if (source.id == page["id"].toString()) {
+            appendImages(input, source.document, source.name + " (" + source.id + "): "); break;
         }
     }
     return input;

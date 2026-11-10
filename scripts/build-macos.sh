@@ -42,6 +42,7 @@ for ai_file in docs/AI-INSTRUCTIONS.md docs/AI-INSTRUCTIONS.en.md docs/ai-provid
 done
 cp "$project_root/docs/AI-INSTRUCTIONS.md" "$project_root/docs/AI-INSTRUCTIONS.en.md" \
   "$project_root/docs/ai-providers.md" "$output/"
+cp "$project_root/docs/PROJECT-REVIEW.md" "$output/"
 cp -R "$project_root/skills" "$output/"
 sed -e 's|../skills/|skills/|g' -e 's|../schema/|schema/|g' -e 's|../README.md|https://github.com/Inginnng/EditHere|g' -e 's|USER-GUIDE.md|https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md|g' "$project_root/docs/AGENT-CLI.md" > "$output/AGENT-CLI.md"
 cp -R "$project_root/packaging/licenses" "$output/"

@@ -1,0 +1,27 @@
+QWidget#aiSettingsContent { background:@surface; }
+QWidget#aiSettingsContent QLabel, QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox,
+QWidget#aiSettingsContent QSpinBox, QWidget#aiSettingsContent QPlainTextEdit, QWidget#aiSettingsContent QPushButton { font-size:13px; }
+QWidget#aiSettingsContent QLabel#aiSettingsTitle { font-size:24px; font-weight:600; color:@text; }
+QWidget#aiSettingsContent QLabel[aiFieldLabel="true"] { font-weight:600; color:@text; }
+QWidget#aiSettingsContent QLabel#aiDescription, QWidget#aiSettingsContent QLabel#aiKeyStorageHint { color:@muted; font-size:12px; }
+QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox, QWidget#aiSettingsContent QSpinBox {
+    background:@surface; border:1px solid @border; border-radius:7px; padding:10px 12px; min-height:20px;
+}
+QWidget#aiSettingsContent QLineEdit:focus, QWidget#aiSettingsContent QComboBox:focus, QWidget#aiSettingsContent QSpinBox:focus { border-color:@accent; }
+QWidget#aiSettingsContent QLineEdit:disabled, QWidget#aiSettingsContent QComboBox:disabled, QWidget#aiSettingsContent QSpinBox:disabled { background:@hover; color:@muted; }
+QWidget#aiSettingsContent QComboBox { padding-right:30px; }
+QWidget#aiSettingsContent QComboBox::drop-down { border:0; width:26px; background:transparent; }
+QWidget#aiSettingsContent QComboBox::down-arrow { image:none; width:0; height:0; }
+QWidget#aiSettingsContent QSpinBox::up-button, QWidget#aiSettingsContent QSpinBox::down-button { border:0; background:transparent; width:22px; }
+QWidget#aiSettingsContent QPlainTextEdit { background:@surface; border:1px solid @border; border-radius:7px; padding:10px 12px; }
+QWidget#aiSettingsContent QPlainTextEdit:focus { border-color:@accent; }
+QPushButton[aiQuiet="true"] { background:transparent; border:0; color:@muted; padding:3px 0; min-height:20px; }
+QPushButton[aiQuiet="true"]:hover { color:@accent; }
+QPushButton[aiOutline="true"] { background:@surface; border:1px solid @border; padding:9px 16px; border-radius:7px; }
+QPushButton[aiOutline="true"]:hover { background:@hover; }
+QPushButton#aiKeyActions { background:transparent; padding:0; min-width:0; min-height:0; }
+QPushButton#aiKeyActions:hover { background:@hover; }
+QPushButton#aiKeyActions::menu-indicator { image:none; width:0; }
+QFrame#aiSettingsDivider { background:@border; border:0; }
+QWidget#aiSettingsContent QLabel#aiConnectionStatus { color:@muted; font-size:12px; }
+QWidget#aiSettingsContent QLabel#aiConnectionStatus[error="true"] { color:@error; }

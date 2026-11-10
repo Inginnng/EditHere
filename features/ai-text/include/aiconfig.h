@@ -19,4 +19,5 @@ QVector<AiProviderPreset> aiProviderPresets();
 AiConnectionSettings defaultAiConnection(const QString &providerId = "openai");
 QString validateAiConnection(const AiConnectionSettings &, bool requireModel = true);
 QString aiSystemPrompt();
+QString aiTextResource(const QString &name);
 } // namespace h2d

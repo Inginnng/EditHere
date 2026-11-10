@@ -45,6 +45,7 @@ Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $o
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/integrate.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs/PROJECT-REVIEW.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/AGENT-CLI.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/VIDEO-ANNOTATION.md") -Destination $outputPath
 foreach ($aiGuide in @("AI-INSTRUCTIONS.md", "AI-INSTRUCTIONS.en.md", "ai-providers.md")) {

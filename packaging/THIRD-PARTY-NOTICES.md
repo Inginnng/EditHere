@@ -107,7 +107,7 @@ mappings are recorded in docs/ai-providers.md in the EditHere source tree.
 AI provider brand artwork uses five SVGs from Lobe Icons, copyright (c) 2023
 LobeHub, under the MIT License, https://github.com/lobehub/lobe-icons . The fixed
 upstream commit, source paths and SHA-256 hashes are recorded in
-assets/ai/providers/README.md in the EditHere source tree. The unmodified artwork
+features/ai-text/resources/providers/README.md in the EditHere source tree. The unmodified artwork
 is embedded in the desktop application; its currentColor regions follow the
 interface theme at rendering time. The complete license ships in
 licenses/lobehub-icons/LICENSE. Provider names and marks identify the selected

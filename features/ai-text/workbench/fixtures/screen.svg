@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#f6f3ed"/>
+  <text x="64" y="68" font-family="Georgia" font-size="33" fill="#29392f">morrow.</text>
+  <g font-family="Segoe UI, sans-serif" font-size="15" fill="#60685e">
+    <text x="460" y="62">Collection</text><text x="592" y="62">Our story</text><text x="716" y="62">Journal</text>
+    <text x="1030" y="62">Bag (0)</text>
+  </g>
+  <path d="M64 100H1136" stroke="#dddcd4"/>
+  <text x="66" y="224" font-family="Segoe UI" font-size="13" letter-spacing="3" fill="#79816f">OBJECTS FOR EVERYDAY LIVING</text>
+  <g font-family="Georgia" font-size="68" fill="#2e3b31"><text x="62" y="326">A quieter kind</text><text x="62" y="410">of home.</text></g>
+  <g font-family="Segoe UI" font-size="19" fill="#70776c"><text x="66" y="470">Thoughtfully made. Naturally at home.</text><text x="66" y="501">A little space for the things that matter.</text></g>
+  <rect x="66" y="554" width="239" height="57" rx="11" fill="#879179"/>
+  <text x="91" y="590" fill="white" font-family="Segoe UI" font-size="14" letter-spacing="1">EXPLORE THE EDIT</text>
+  <path d="M270 577l8 7-8 7" stroke="white" fill="none"/>
+  <g transform="translate(-45 0)">
+  <rect x="655" y="168" width="478" height="492" rx="180" fill="#e5e1d5"/>
+  <ellipse cx="905" cy="629" rx="163" ry="19" fill="#d7d3c5"/>
+  <g stroke="#72654d" stroke-width="15" stroke-linecap="round"><path d="M820 517l-18 113M1000 517l28 113"/><path d="M834 484l-17-157M992 484l16-157"/></g>
+  <path d="M808 345Q902 305 1016 341L1004 468Q904 435 820 471Z" fill="#8b9a77"/>
+  <path d="M793 480Q903 446 1021 480L1036 512Q909 545 788 514Z" fill="#6c7f5b"/>
+  <path d="M771 483L765 438M1045 483l6-45" stroke="#72654d" stroke-width="13" stroke-linecap="round"/>
+  </g>
+  <path d="M64 715H1136" stroke="#dddcd4"/>
+  <text x="66" y="755" font-family="Segoe UI" font-size="12" letter-spacing="2" fill="#7f8779">CONSIDERED DESIGN. LASTING COMFORT.</text>
+  <text x="1000" y="755" font-family="Segoe UI" font-size="12" fill="#7f8779">01 / 03</text>
+  <g fill="#3777cd" stroke="#f6f3ed" stroke-width="4"><circle cx="573" cy="324" r="18"/><circle cx="323" cy="571" r="18"/><circle cx="1052" cy="226" r="18"/></g>
+  <g fill="white" font-family="Segoe UI" font-size="16" font-weight="600" text-anchor="middle"><text x="573" y="330">1</text><text x="323" y="577">2</text><text x="1052" y="232">3</text></g>
+</svg>

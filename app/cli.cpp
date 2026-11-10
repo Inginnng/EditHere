@@ -5,6 +5,7 @@
 #include "model.h"
 #include "settings.h"
 #include "videoproject.h"
+#include "imageset.h"
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QDir>
@@ -73,6 +74,7 @@ int main(int argc, char **argv) {
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
                   "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds numbered JPEG previews.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
+                  "Project image-set manifests (edithere-image-set-1) keep stable page IDs; only annotated pages are returned.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
                   "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
         return 0;
@@ -125,6 +127,11 @@ int main(int argc, char **argv) {
     auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     if (command == "export") {
         try {
+            if (isImageSetFile(input)) {
+                const auto project = loadImageSet(input);
+                writeNewFeedbackBundle(output, buildImageSetFeedbackBundle(project, options));
+                return printResult({{"ok", true}, {"command", "export"}, {"output", output}, {"annotations", imageSetAnnotationCount(project)}, {"pages", project.pages.size()}, {"imageIncluded", options.mode != ImageExportMode::None}, {"schemaVersion", ImageSetFeedbackVersion}});
+            }
             if (isVideoProjectFile(input)) {
                 const auto project = loadVideoProject(input);
                 const auto bundle = buildVideoFeedbackBundle(project, options);

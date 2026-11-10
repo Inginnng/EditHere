@@ -34,7 +34,7 @@ AI 解析与连接测试使用明确标注的演示数据，不调用付费 API�
 
 ## 开源素材
 
-品牌图标沿用项目已有的 Lobe Icons SVG，来源与固定版本见上级 `assets/ai/providers/README.md`，MIT 许可在 `public/licenses/lobe-icons-MIT.txt`。
+品牌图标沿用项目已有的 Lobe Icons SVG，来源与固定版本见上级 `features/ai-text/resources/providers/README.md`，MIT 许可在 `public/licenses/lobe-icons-MIT.txt`。
 界面图标使用 Lucide React（ISC），许可在 `public/licenses/lucide-ISC.txt`。
 Radix UI 和 React 按各自 MIT 许可使用，原始许可随运行文件夹分发。只参考 Magpie 的设计原则，未复制其 GPL 实现。
 工作台中的 Morrow 家居设计稿为本预览使用 SVG 绘制的原创示例。

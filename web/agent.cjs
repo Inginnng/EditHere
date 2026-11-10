@@ -18,7 +18,7 @@ function options(args) {
   const result = {command:args[0]};
   for (let index = 1; index < args.length; index += 2) {
     const name = args[index];
-    if (!/^--(image|output|name|timeout|session|wait|image-mode|preview|page-context)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
+    if (!/^--(image|project|output|name|timeout|session|wait|image-mode|preview|page-context)$/.test(name) || args[index + 1] === undefined || Object.hasOwn(result, name.slice(2))) throw new Error('Invalid or duplicate argument: ' + name);
     result[name.slice(2)] = args[index + 1];
   }
   return result;
@@ -41,6 +41,12 @@ async function run(args) {
   const opts = options(args);
   if (!['start','poll','wait','cancel'].includes(opts.command)) throw new Error('Usage: node web/agent.cjs start --image ABS --output ABS [--name NAME] [--page-context PAGE] [--timeout 900]; wait|poll|cancel --session ID [--wait 55]');
   if (opts.command === 'start') {
+    if (opts.project) {
+      if (opts.image || opts.session || opts.wait || !path.isAbsolute(opts.project) || !opts.output || !path.isAbsolute(opts.output)) throw new Error('Use --project ABS --output ABS for a project review.');
+      const input = require('./image-set.cjs').snapshotManifest(opts.project);
+      await ensurePreview({requireBridge:true});
+      return request('POST','/__edithere_agent/sessions',{...input,output:path.resolve(opts.output),name:opts.name||input.name,timeoutSeconds:opts.timeout===undefined?900:Number(opts.timeout)});
+    }
     if (!opts.image || !path.isAbsolute(opts.image) || !opts.output || !path.isAbsolute(opts.output)) throw new Error('--image and --output must be absolute paths.');
     if (opts.session || opts.wait) throw new Error('start does not accept --session or --wait.');
     const inputPath = path.resolve(opts.image);
@@ -56,7 +62,7 @@ async function run(args) {
     return request('POST', '/__edithere_agent/sessions', {image,inputPath,pageContext,output:path.resolve(opts.output),name:opts.name || path.basename(inputPath),imageMode:opts['image-mode'],preview:opts.preview===undefined?undefined:opts.preview==='true',timeoutSeconds:opts.timeout === undefined ? 900 : Number(opts.timeout)});
   }
   if (!/^[a-f0-9]{32}$/.test(opts.session || '')) throw new Error('--session must be the sessionId returned by start.');
-  if (opts.image || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview||opts['page-context']!==undefined) throw new Error('Only --session and optional --wait are accepted for this command.');
+  if (opts.image || opts.project || opts.output || opts.name || opts.timeout||opts['image-mode']||opts.preview||opts['page-context']!==undefined) throw new Error('Only --session and optional --wait are accepted for this command.');
   const endpoint = '/__edithere_agent/sessions/' + opts.session;
   if (opts.command === 'cancel') {
     await ensurePreview({requireBridge:true});

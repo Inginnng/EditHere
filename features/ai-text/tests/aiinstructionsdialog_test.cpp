@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMimeData>
 #include <QPainter>
 #include <QPlainTextEdit>
@@ -114,6 +115,20 @@ void artifact(QWidget &widget, const QString &name) {
 class AiInstructionsTests final : public QObject {
     Q_OBJECT
   private slots:
+    void projectSetSnapshotOnlyIncludesAnnotatedPages() {
+        auto annotated = annotatedDocument();
+        auto clean = fromImage(annotated.image, "file", "Home");
+        ImageSet set; set.name = "Project review";
+        set.pages = {{"home", "Home", clean}, {"settings", "Settings", annotated}};
+        const auto snapshot = aiFeedbackSnapshot(set);
+        const auto pages = snapshot.feedback["pages"].toArray();
+        QCOMPARE(pages.size(), 1);
+        QCOMPARE(pages[0].toObject()["id"].toString(), QString("settings"));
+        QVERIFY(!snapshot.images.isEmpty());
+        QVERIFY(snapshot.imageLabels.first().startsWith("Settings (settings)"));
+        QVERIFY(!QJsonDocument(snapshot.feedback).toJson().contains("data:image"));
+    }
+
     void initTestCase() {
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #ifdef Q_OS_WIN
@@ -293,6 +308,53 @@ class AiInstructionsTests final : public QObject {
         QTRY_VERIFY(!client->isRunning());
         QTRY_COMPARE(api.disconnections, 1);
         QCOMPARE(api.requests, 1);
+    }
+    void stoppingRegenerationKeepsEditedTextVisibleAndEditable() {
+        DialogApi api;
+        TestCredentials credentials;
+        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials);
+        auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
+        auto *cancel = dialog.findChild<QPushButton *>("aiInstructionsCancel");
+        auto *output = dialog.findChild<QPlainTextEdit *>("aiInstructionsText");
+        auto *status = dialog.findChild<QLabel *>("aiInstructionsStatus");
+        dialog.show(); QTRY_VERIFY(generate->isEnabled()); generate->click();
+        QTRY_VERIFY(!output->toPlainText().isEmpty());
+        output->appendPlainText("手动补充：按钮文字沿用原文。");
+        const auto edited = output->toPlainText();
+        api.respond = false; generate->click(); QTRY_COMPARE(api.requests, 2);
+        QVERIFY(output->isVisible()); QVERIFY(output->isReadOnly());
+        QCOMPARE(output->toPlainText(), edited);
+        cancel->click(); QTRY_VERIFY(generate->isEnabled());
+        QVERIFY(output->isVisible()); QVERIFY(!output->isReadOnly());
+        QCOMPARE(output->toPlainText(), edited); QVERIFY(!status->property("error").toBool());
+        // Clearing a draft keeps the editor open so users can write a replacement.
+        output->clear(); QVERIFY(output->isVisible());
+        QVERIFY(!dialog.findChild<QPushButton *>("aiInstructionsCopy")->isEnabled());
+    }
+    void perRunPreferencesAndDraftSurviveApiSettings() {
+        DialogApi api;
+        TestCredentials credentials;
+        const auto snapshot = aiFeedbackSnapshot(annotatedDocument());
+        AiInstructionsDraft draft{"手动编辑的说明", QString("使用中文，保持简短。")};
+        AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials, draft);
+        auto *extra = dialog.findChild<QLineEdit *>("aiRunInstructions");
+        auto *output = dialog.findChild<QPlainTextEdit *>("aiInstructionsText");
+        auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
+        dialog.show(); QTRY_VERIFY(generate->isEnabled());
+        QCOMPARE(output->toPlainText(), draft.text); QVERIFY(output->isVisible());
+        QCOMPARE(extra->text(), draft.extraInstructions.value());
+        extra->setText("按优先级排列。"); generate->click(); QTRY_COMPARE(api.requests, 1);
+        const auto content = api.request["input"].toArray().first().toObject()["content"].toArray();
+        const auto task = QJsonDocument::fromJson(content.first().toObject()["text"].toString().toUtf8()).object();
+        QCOMPARE(task["additionalUserPreferences"].toString(), extra->text());
+        QTRY_VERIFY(generate->isEnabled()); output->appendPlainText("附加的一句。");
+        const auto saved = dialog.draft();
+        dialog.findChild<QPushButton *>("aiInstructionsSettings")->click();
+        QCOMPARE(dialog.result(), int(AiInstructionsDialog::Configure));
+        AiInstructionsDialog reopened(api.settings("kimi-cn"), snapshot, nullptr, &credentials, saved);
+        reopened.show();
+        QCOMPARE(reopened.findChild<QPlainTextEdit *>("aiInstructionsText")->toPlainText(), saved.text);
+        QCOMPARE(reopened.findChild<QLineEdit *>("aiRunInstructions")->text(), saved.extraInstructions.value());
     }
 };
 QTEST_MAIN(AiInstructionsTests)

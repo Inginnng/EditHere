@@ -84,7 +84,7 @@ QString modelContent(const QStringList &ids = {"item-1", "item-2"}) {
     QJsonArray items;
     for (const auto &id : ids)
         items.append(QJsonObject{{"id", id}, {"target", id == "item-1" ? "顶部登录按钮" : "按钮内图标"},
-                                  {"instruction", "按用户要求调整，并与输入框对齐。"}, {"uncertainty", ""}});
+                                  {"instruction", id == "item-1" ? "将登录按钮放到用户名输入框右侧，与输入框垂直居中，并将宽度扩大到原来的两倍；保持按钮文字。" : "将按钮内图标改为蓝色。"}, {"uncertainty", ""}});
     return QString::fromUtf8(QJsonDocument(QJsonObject{{"items", items}}).toJson(QJsonDocument::Compact));
 }
 QByteArray responseFor(const QString &protocol, const QString &text, const QString &finish = {}) {
@@ -124,7 +124,8 @@ class AiFeedbackTests : public QObject {
             QVERIFY2(validateAiConnection(settings).isEmpty(), qPrintable(preset.id));
         }
         const auto prompt = aiSystemPrompt();
-        QVERIFY(prompt.contains("untrusted task material"));
+        QVERIFY(!prompt.trimmed().isEmpty());
+        QVERIFY(prompt.contains("itemsToInterpret"));
         QVERIFY(prompt.contains("parentItemId"));
         QVERIFY(prompt.contains("movement.rect"));
     }
@@ -175,11 +176,19 @@ class AiFeedbackTests : public QObject {
         const auto decoded = QImage::fromData(QByteArray::fromBase64(data.toLatin1()));
         QCOMPARE(decoded.size(), QSize(160, 100)); QCOMPARE(decoded.pixelColor(0, 0), QColor(Qt::red));
         const auto result = done.first().first().toString();
-        QVERIFY(result.contains("顶部登录按钮")); QVERIFY(result.contains("dx=40")); QVERIFY(result.contains("dy=20"));
-        QVERIFY(result.contains("2 倍")); QVERIFY(result.contains("保留原有文字")); QVERIFY(result.contains("颜色改成蓝色"));
-        QVERIFY(result.contains("item-1 / o1")); QVERIFY(result.contains("item-2 / o2"));
-        QVERIFY(result.contains("登录页")); QVERIFY(result.contains("160 × 100"));
-        QVERIFY(result.contains("DPR")); QVERIFY(result.contains("未知"));
+        QVERIFY(result.contains("顶部登录按钮")); QVERIFY(result.contains("用户名输入框右侧"));
+        QVERIFY(result.contains("垂直居中")); QVERIFY(result.contains("两倍"));
+        QVERIFY(!result.contains("dx=")); QVERIFY(!result.contains("dy="));
+        QVERIFY(!result.contains("区域：")); QVERIFY(!result.contains("图像像素"));
+        QVERIFY(QJsonDocument(metadata).toJson().contains(QString("保留原有文字").toUtf8()));
+        QVERIFY(QJsonDocument(metadata).toJson().contains(QString("颜色改成蓝色").toUtf8()));
+        QVERIFY(!result.contains("item-1 / o1"));
+        QVERIFY(result.contains("1. 顶部登录按钮")); QVERIFY(result.contains("2. 按钮内图标"));
+        QVERIFY(result.contains("登录页")); QVERIFY(!result.contains("160 × 100"));
+        QVERIFY(!result.contains("DPR"));
+        const auto supplied = metadata["itemsToInterpret"].toArray().first().toObject();
+        QCOMPARE(supplied["movement"].toObject()["dx"].toInt(), 40);
+        QCOMPARE(supplied["movement"].toObject()["scaleX"].toInt(), 2);
         QCOMPARE(usage.size(), 1); QCOMPARE(usage.first()[0].toLongLong(), 124); QCOMPARE(usage.first()[1].toLongLong(), 30);
         QVERIFY(!client.isRunning());
     }
@@ -190,6 +199,16 @@ class AiFeedbackTests : public QObject {
         client.generate(settings, "secret", input()); QTRY_COMPARE(done.size(), 1);
         QCOMPARE(api.paths.first(), QByteArray("/v1/responses"));
     }
+    void replayEndpointOverridesProviderAddress() {
+        FakeAiApi api; api.response = responseFor("anthropic-messages", modelContent());
+        auto settings = defaultAiConnection("claude");
+        AiFeedbackClient client; client.setEndpointOverride(QUrl(api.base() + "/replay"));
+        QSignalSpy done(&client, &AiFeedbackClient::completed), errors(&client, &AiFeedbackClient::failed);
+        client.generate(settings, "local-key", input()); QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(errors.size(), 0); QCOMPARE(api.requests.size(), 1);
+        QCOMPARE(api.paths.first(), QByteArray("/v1/replay"));
+        QVERIFY(api.requests.first().contains("system"));
+    }
     void connectionTestUsesOnlyBuiltInImage() {
         FakeAiApi api; api.response = responseFor("responses", "BLUE");
         AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed);
@@ -199,17 +218,69 @@ class AiFeedbackTests : public QObject {
         QVERIFY(bytes.contains("input_image"));
         QVERIFY(!bytes.contains("BLUE")); // The text does not reveal the visual answer.
     }
-    void missingDuplicateOrUnknownObjectsAreRejected_data() {
+    void uninterpretedChangesAreNotReplacedWithRawNotes_data() {
         QTest::addColumn<QStringList>("ids");
         QTest::newRow("missing-child") << QStringList{"item-1"};
         QTest::newRow("duplicate") << QStringList{"item-1", "item-1"};
         QTest::newRow("unknown") << QStringList{"item-1", "item-3"};
     }
-    void missingDuplicateOrUnknownObjectsAreRejected() {
+    void uninterpretedChangesAreNotReplacedWithRawNotes() {
         QFETCH(QStringList, ids);
         FakeAiApi api; api.response = responseFor("responses", modelContent(ids));
         AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed), errors(&client, &AiFeedbackClient::failed);
         client.generate(config(api), "secret", input()); QTRY_COMPARE(errors.size(), 1); QCOMPARE(done.size(), 0);
+        QVERIFY(errors.first().first().toString().contains("未转成文字需求"));
+    }
+    void plainTextAndWrappedJsonAreUsable_data() {
+        QTest::addColumn<QString>("text");
+        QTest::newRow("plain") << QString("将顶部按钮与下方输入框对齐，按钮内图标改成蓝色。");
+        QTest::newRow("fenced-text") << QString("```text\n将顶部按钮右移。\n```");
+        QTest::newRow("explicit-design-size") << QString("将主按钮文字设为 24px，并与用户名输入框垂直居中。");
+        QTest::newRow("wrapped-json") << QString("修改清单如下：\n```json\n%1\n```").arg(modelContent());
+    }
+    void plainTextAndWrappedJsonAreUsable() {
+        QFETCH(QString, text);
+        FakeAiApi api; api.response = responseFor("responses", text);
+        AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed), errors(&client, &AiFeedbackClient::failed);
+        client.generate(config(api), "secret", input()); QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(errors.size(), 0);
+        const auto result = done.first().first().toString();
+        QVERIFY(result.contains("按钮")); QVERIFY(!result.contains("dx="));
+        QVERIFY(!result.contains("位置参考")); QVERIFY(!result.contains("图像像素"));
+        QVERIFY(!result.contains("DPR")); QVERIFY(!result.contains("(10, 20)"));
+        QVERIFY(!result.contains("```")); QVERIFY(!result.contains("\"items\""));
+        if (!text.contains("\"items\"")) {
+            const auto expected = text.startsWith("```") ? text.section('\n', 1, 1) : text;
+            QCOMPARE(result, expected);
+        }
+    }
+    void geometryOnlyChangeBecomesAnObjectAndLayoutRequirement() {
+        auto data = input(); auto object = data.feedback["objects"].toArray().first().toObject();
+        object["annotations"] = QJsonArray{}; object.remove("children");
+        data.feedback["objects"] = QJsonArray{object};
+        FakeAiApi api; api.response = responseFor("responses", modelContent({"item-1"}));
+        AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed);
+        client.generate(config(api), "secret", data); QTRY_COMPARE(done.size(), 1);
+        const auto output = done.first().first().toString();
+        QVERIFY(output.contains("登录按钮")); QVERIFY(output.contains("输入框右侧"));
+        QVERIFY(output.contains("垂直居中")); QVERIFY(output.contains("两倍"));
+        QVERIFY(!output.contains("按记录的位置")); QVERIFY(!output.contains("dx="));
+        QVERIFY(!output.contains("(10, 20)")); QVERIFY(!output.contains("图像像素"));
+        const auto task = QJsonDocument::fromJson(sentUserContent(api.requests.first(), "responses").first().toObject()["text"].toString().toUtf8()).object();
+        const auto supplied = task["itemsToInterpret"].toArray().first().toObject();
+        QVERIFY(supplied["annotations"].toArray().isEmpty());
+        QCOMPARE(supplied["movement"].toObject()["dx"].toInt(), 40);
+    }
+    void fileAndCaptureMetadataAreNotAddedToRequirements() {
+        auto data = input();
+        data.feedback["capture"] = QJsonObject{{"fileName", "screen-160x100.png"}, {"windowTitle", "Test capture window"}};
+        FakeAiApi api; api.response = responseFor("responses", modelContent());
+        AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed);
+        client.generate(config(api), "secret", data); QTRY_COMPARE(done.size(), 1);
+        const auto output = done.first().first().toString();
+        QVERIFY(!output.contains("screen-160x100.png")); QVERIFY(!output.contains("Test capture window"));
+        QVERIFY(!output.contains("DPR")); QVERIFY(!output.contains("图像像素"));
+        QVERIFY(output.contains("用户名输入框右侧"));
     }
     void truncatedResponseFails_data() {
         QTest::addColumn<QString>("protocol"); QTest::addColumn<QString>("reason");
@@ -271,15 +342,16 @@ class AiFeedbackTests : public QObject {
         QCOMPARE(done.size(), 0); QVERIFY(errors.first().first().toString().contains("2 MiB"));
         QVERIFY(!client.isRunning());
     }
-    void oversizedUncertaintyIsRejected() {
+    void longClarificationDoesNotDiscardUsefulInstructions() {
         auto content = QJsonDocument::fromJson(modelContent().toUtf8()).object();
         auto items = content["items"].toArray(); auto first = items[0].toObject();
         first["uncertainty"] = QString(2001, 'x'); items[0] = first; content["items"] = items;
         FakeAiApi api; api.response = responseFor("responses", QString::fromUtf8(QJsonDocument(content).toJson()));
         AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed), errors(&client, &AiFeedbackClient::failed);
-        client.generate(config(api), "secret", input()); QTRY_COMPARE(errors.size(), 1); QCOMPARE(done.size(), 0);
+        client.generate(config(api), "secret", input()); QTRY_COMPARE(done.size(), 1); QCOMPARE(errors.size(), 0);
+        QVERIFY(done.first().first().toString().contains("顶部登录按钮"));
     }
-    void exactGeometryAndUserAmbiguitySurviveModelInterpretation() {
+    void geometryRemainsModelInputWhileOutputDescribesRelationships() {
         auto data = input(); auto objects = data.feedback["objects"].toArray(); auto first = objects[0].toObject();
         auto geometry = first["source"].toObject(); geometry["x1"] = 10.123456789012345; first["source"] = geometry;
         first["annotations"] = QJsonArray{"大概移到右边？", QJsonObject{{"number", 3}, {"text", "但不要改变顺序。\n保留两行"}}};
@@ -292,10 +364,17 @@ class AiFeedbackTests : public QObject {
         client.generate(config(api), "secret", data); QTRY_COMPARE(done.size(), 1);
         const auto output = done.first().first().toString();
         const auto encoded = QJsonDocument(QJsonArray{geometry["x1"]}).toJson(QJsonDocument::Compact);
-        QVERIFY(output.contains(QString::fromUtf8(encoded.mid(1, encoded.size() - 2))));
-        QVERIFY(output.contains("DPR）：1.25")); QVERIFY(output.contains("大概移到右边？"));
-        QVERIFY(output.contains("但不要改变顺序。\n保留两行")); QVERIFY(output.contains("需确认向右移动的对齐基准。"));
-        QVERIFY(output.contains("所属对象：item-1")); QVERIFY(output.contains("dx=40"));
+        QVERIFY(!output.contains(QString::fromUtf8(encoded.mid(1, encoded.size() - 2))));
+        QVERIFY(!output.contains("DPR")); QVERIFY(!output.contains("区域："));
+        const auto task = QJsonDocument::fromJson(sentUserContent(api.requests.first(), "responses").first().toObject()["text"].toString().toUtf8()).object();
+        QCOMPARE(task["itemsToInterpret"].toArray().first().toObject()["source"].toObject()["x1"], geometry["x1"]);
+        QCOMPARE(task["feedbackContext"].toObject()["image"].toObject()["devicePixelRatio"].toDouble(), 1.25);
+        QVERIFY(output.contains("需确认向右移动的对齐基准。"));
+        const auto sent = QJsonDocument(api.requests.first()).toJson();
+        QVERIFY(sent.contains(QString("大概移到右边？").toUtf8()));
+        QVERIFY(sent.contains(QString("但不要改变顺序。").toUtf8()));
+        QVERIFY(output.contains("按钮内图标")); QVERIFY(output.contains("用户名输入框右侧"));
+        QVERIFY(!output.contains("dx="));
     }
     void kimiUsesCompletionTokenBudget() {
         FakeAiApi api; api.response = responseFor("chat-completions", modelContent());
@@ -321,9 +400,10 @@ class AiFeedbackTests : public QObject {
     }
     void cancellationFinishesAndAllowsNextRequest() {
         FakeAiApi api; api.respond = false;
-        AiFeedbackClient client; QSignalSpy errors(&client, &AiFeedbackClient::failed), done(&client, &AiFeedbackClient::completed);
+        AiFeedbackClient client; QSignalSpy errors(&client, &AiFeedbackClient::failed), done(&client, &AiFeedbackClient::completed), cancelled(&client, &AiFeedbackClient::cancelled);
         client.generate(config(api), "secret", input()); QTRY_COMPARE(api.requests.size(), 1);
-        QVERIFY(client.isRunning()); client.cancel(); QTRY_COMPARE(errors.size(), 1); QVERIFY(!client.isRunning());
+        QVERIFY(client.isRunning()); client.cancel(); QTRY_COMPARE(cancelled.size(), 1); QVERIFY(!client.isRunning());
+        QCOMPARE(errors.size(), 0);
         api.respond = true; api.response = responseFor("responses", modelContent());
         client.generate(config(api), "secret", input()); QTRY_COMPARE(done.size(), 1); QCOMPARE(api.requests.size(), 2);
     }
@@ -347,18 +427,32 @@ class AiFeedbackTests : public QObject {
         data.images[0] = QImage(8193, 1, QImage::Format_RGB32); data.images[0].fill(Qt::white);
         client.generate(settings, "secret", data); QCOMPARE(errors.size(), 2); QCOMPARE(api.requests.size(), 0);
     }
-    void videoFramesKeepSeparateTimestampsAndSkipRootIndex() {
-        FakeAiApi api; api.response = responseFor("responses", modelContent({"item-1", "item-2", "item-3", "item-4"}));
+    void videoRequirementsIdentifyMomentsWithoutMachineTimestamps() {
+        auto reply = QJsonDocument::fromJson(modelContent({"item-1", "item-2", "item-3", "item-4"}).toUtf8()).object();
+        auto items = reply["items"].toArray();
+        for (int i = 0; i < items.size(); ++i) {
+            auto item = items[i].toObject();
+            item["target"] = (i < 2 ? "00:12 登录界面中的" : "00:22 登录界面中的") + item["target"].toString();
+            items[i] = item;
+        }
+        reply["items"] = items;
+        FakeAiApi api; api.response = responseFor("responses", QString::fromUtf8(QJsonDocument(reply).toJson()));
         auto data = input(); const auto imageFeedback = data.feedback;
         data.feedback = QJsonObject{{"schemaVersion", "video-feedback-1"},
-                                      {"frames", QJsonArray{QJsonObject{{"id", "f1"}, {"timestampMs", 123}, {"timestampUs", 123456}, {"feedback", imageFeedback}},
-                                                             QJsonObject{{"id", "f2"}, {"timestampMs", 222}, {"timestampUs", 222999}, {"feedback", imageFeedback}}}},
+                                      {"frames", QJsonArray{QJsonObject{{"id", "f1"}, {"timestampMs", 12345}, {"timestampUs", 12345678}, {"feedback", imageFeedback}},
+                                                             QJsonObject{{"id", "f2"}, {"timestampMs", 22222}, {"timestampUs", 22222999}, {"feedback", imageFeedback}}}},
                                       {"objects", QJsonArray{QJsonObject{{"id", "duplicate-root-index"}}}}};
         AiFeedbackClient client; QSignalSpy done(&client, &AiFeedbackClient::completed);
         client.generate(config(api), "secret", data); QTRY_COMPARE(done.size(), 1);
         const auto output = done.first().first().toString();
-        QVERIFY(output.contains("123 ms / 123456 µs")); QVERIFY(output.contains("222 ms / 222999 µs"));
+        QVERIFY(output.contains("00:12")); QVERIFY(output.contains("00:22"));
+        QVERIFY(!output.contains("12345678")); QVERIFY(!output.contains("µs"));
         QVERIFY(!output.contains("duplicate-root-index"));
+        const auto task = QJsonDocument::fromJson(sentUserContent(api.requests.first(), "responses").first().toObject()["text"].toString().toUtf8()).object();
+        const auto facts = task["itemsToInterpret"].toArray();
+        QCOMPARE(facts.size(), 4);
+        QCOMPARE(facts[0].toObject()["timestampUs"].toInteger(), qint64(12345678));
+        QCOMPARE(facts[2].toObject()["timestampUs"].toInteger(), qint64(22222999));
     }
 };
 QTEST_GUILESS_MAIN(AiFeedbackTests)

@@ -23,20 +23,20 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION = re.compile(r"\d+\.\d+\.\d+")
 SKIP = {"AppDir", "licenses", "node_modules", ".git", "tests", "validation", "plugins", "qml"}
 LEGAL = ("LICENSE", "NOTICE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "TRADEMARK-POLICY.md", "packaging/THIRD-PARTY-NOTICES.md")
-WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
+WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "image-set.cjs", "EditHere.dsh.html", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "src/image-format.js", "src/bundle.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
 MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/package-lock.json", "web/mcp/build.mjs",
                         "assets/ui-icons/manifest.json", "assets/ui-icons/LICENSE"}
 MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", "web/MCP-THIRD-PARTY-NOTICES.md"}
 WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
 PACKAGE_FILES = {
     "web-skill": tuple("web/skills/edithere-web/" + name for name in (
-        "SKILL.md", "agents/openai.yaml", "references/capture.md", "references/follow-up.md")),
+        "SKILL.md", "agents/openai.yaml", "references/capture.md", "references/follow-up.md", "references/project-review.md", "scripts/image-set.mjs", "scripts/image-set.cjs")),
     "desktop-mcp": tuple("connector/" + name for name in (
         "package.json", "mcp-server.mjs", "README.md", "LICENSE", "NOTICE", "icon.svg",
-        "connector-meta.json", "mcp.json", "skills/edithere/SKILL.md")),
+        "connector-meta.json", "mcp.json", "skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs")),
     "trae-plugin": tuple("trae-plugin/" + name for name in (
-        "package.json", "connector.json", ".trae-plugin/plugin.json", "assets/edithere-icon.svg", "skills/edithere/SKILL.md")),
-    "desktop-skill": ("skills/edithere/SKILL.md",),
+        "package.json", "connector.json", ".trae-plugin/plugin.json", "assets/edithere-icon.svg", "skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs")),
+    "desktop-skill": ("skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs"),
 }
 GENERIC_WEB_INSTALLATION = """# 本机网页入口
 
@@ -261,6 +261,9 @@ def write_web_packages(root: Path, output: Path, source_version: str, commit: st
     agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
                      **{name: root / "web" / name for name in WEB_GUIDES},
                      **archive_entries(root, "web-skill")}
+    agent_entries.update({"dsh/" + str(file.relative_to(root / "dsh")).replace("\\", "/"): file for file in (root / "dsh").rglob("*") if file.is_file() and "tests" not in file.parts})
+    agent_entries["scripts/image-set.mjs"] = root / "scripts/image-set.mjs"
+    agent_entries["docs/PROJECT-REVIEW.md"] = root / "docs/PROJECT-REVIEW.md"
     agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
     agent_entries["README.md"] = """# EditHere Web Agent
 

@@ -1699,11 +1699,12 @@ void Controller::finishAgentSession() {
         cancelAgentSession(id, "io_error", QString::fromUtf8(error.what()));
         return;
     }
+    editor_.markFeedbackSubmitted();
     auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
                             {"imageFile", receiptPath(bundle.imageFile)}, {"previewFile", receiptPath(bundle.previewFile)},
                             {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None},
-                            {"schemaVersion", editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
+                            {"schemaVersion", editor_.hasImageSet() ? ImageSetFeedbackVersion : editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);

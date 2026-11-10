@@ -49,6 +49,7 @@
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTabBar>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QLabel>
@@ -368,6 +369,24 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     emptyWell_->hide();
     layout->addLayout(content, 1);
+    setBar_ = new QWidget(shell);
+    setBar_->setObjectName("imageSetBar");
+    auto setRow = new QHBoxLayout(setBar_);
+    setRow->setContentsMargins(14, 6, 14, 6);
+    setTitle_ = new QLabel(setBar_);
+    setTabs_ = new QTabBar(setBar_);
+    setTabs_->setObjectName("imageSetTabs");
+    setTabs_->setExpanding(false);
+    setTabs_->setUsesScrollButtons(true);
+    setRow->addWidget(setTitle_);
+    setRow->addWidget(setTabs_, 1);
+    auto groupNotes = textButton(tr("整组意见"), false, setBar_);
+    groupNotes->setObjectName("imageSetGroupNotes");
+    setRow->addWidget(groupNotes);
+    connect(groupNotes, &QPushButton::clicked, this, &Editor::editGroupNotes);
+    connect(setTabs_, &QTabBar::currentChanged, this, &Editor::selectSetPage);
+    setBar_->hide();
+    layout->addWidget(setBar_);
     layout->addWidget(videoPlayback_);
     videoPlayback_->hide();
     connect(videoPlayback_, &VideoPlayback::framePaused, this, &Editor::showVideoPreview);
@@ -711,7 +730,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     const auto previousMode = canvas_->mode();
     const auto previousOrigin = imageScroll_->imageOrigin();
     const bool previousFitted = fitted_;
-    if (!switchingVideoFrame_) clearVideo();
+    if (!switchingVideoFrame_ && !switchingSetPage_) { clearVideo(); clearImageSet(); }
     if (!preserveView) {
         annotationsVisible_ = true;
         updateAnnotationVisibility();
@@ -722,7 +741,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     normalizeNoteParents(doc_);
     for (const auto &note : doc_.notes) recognizedRegions_.insert(note.id, recognitionKey(note));
     videoPreview_ = false;
-    if (!switchingVideoFrame_) projectPath_ = projectPath;
+    if (!switchingVideoFrame_ && !switchingSetPage_) projectPath_ = projectPath;
     detailsStack_->setEnabled(true);
     undoHistory_.clear();
     redoHistory_.clear();
@@ -746,7 +765,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     QRect available = QGuiApplication::screenAt(QCursor::pos())
                           ? QGuiApplication::screenAt(QCursor::pos())->availableGeometry()
                           : QGuiApplication::primaryScreen()->availableGeometry();
-    if (!switchingVideoFrame_ && !isFullScreen() && !isMaximized()) {
+    if (!switchingVideoFrame_ && !switchingSetPage_ && !isFullScreen() && !isMaximized()) {
         resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
         move(available.center() - rect().center());
     }
@@ -795,6 +814,76 @@ void Editor::detectCurrentFrame(int generation) {
     });
     watcher->setFuture(QtConcurrent::run([image = doc_.image] { return detectBlocks(image); }));
 }
+void Editor::clearImageSet() {
+    imageSet_.reset(); setPageIndex_ = -1;
+    if (setBar_) setBar_->hide();
+}
+void Editor::commitSetPage() {
+    if (!imageSet_ || switchingSetPage_ || setPageIndex_ < 0 || setPageIndex_ >= imageSet_->pages.size()) return;
+    imageSet_->pages[setPageIndex_].document = doc_;
+    if (doc_.dirty) imageSet_->dirty = true;
+}
+void Editor::updateSetPages() {
+    if (!imageSet_ || !setTabs_) return;
+    QSignalBlocker blocked(setTabs_);
+    while (setTabs_->count() > imageSet_->pages.size()) setTabs_->removeTab(setTabs_->count() - 1);
+    for (int i = 0; i < imageSet_->pages.size(); ++i) {
+        const auto &page = imageSet_->pages[i];
+        int count = page.document.notes.size();
+        if (page.document.layout) for (const auto &marker : movementMarkers(*page.document.layout, page.document.notes)) if (marker.noteIndex < 0) ++count;
+        const QString label = count ? QString("%1 · %2").arg(page.name).arg(count) : page.name;
+        if (i >= setTabs_->count()) setTabs_->addTab(label); else setTabs_->setTabText(i, label);
+        setTabs_->setTabToolTip(i, page.name);
+    }
+    setTabs_->setCurrentIndex(setPageIndex_);
+    setTitle_->setText(imageSet_->name);
+    setTitle_->setToolTip(tr("只返回有批注的页面；AI 按页面 ID 维护组图"));
+    setBar_->show();
+}
+void Editor::selectSetPage(int index) {
+    if (!imageSet_ || index < 0 || index >= imageSet_->pages.size() || index == setPageIndex_) return;
+    finishNoteEdit(); commitSetPage();
+    setPageIndex_ = index;
+    switchingSetPage_ = true;
+    setDocument(imageSet_->pages[index].document);
+    switchingSetPage_ = false;
+    updateSetPages();
+}
+void Editor::setImageSet(ImageSet project, const QString &path) {
+    validateImageSet(project);
+    finishNoteEdit(); clearVideo(); clearImageSet();
+    imageSet_ = std::move(project); setPageIndex_ = -1;
+    projectPath_ = path;
+    selectSetPage(0);
+}
+void Editor::editGroupNotes() {
+    if (!imageSet_) return;
+    finishNoteEdit();
+    QDialog dialog(this); dialog.setWindowTitle(tr("整组意见")); dialog.resize(520, 320);
+    auto layout = new QVBoxLayout(&dialog);
+    auto hint = new QLabel(tr("针对整个项目的要求会单独返回给 AI，无需给每一页重复批注。"), &dialog);
+    hint->setWordWrap(true); layout->addWidget(hint);
+    auto text = new QPlainTextEdit(&dialog);
+    QStringList previous;
+    for (const auto &note : imageSet_->groupNotes) previous.append(note.toObject()["text"].toString());
+    text->setPlainText(previous.join("\n\n")); layout->addWidget(text);
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted || !imageSet_) return;
+    const auto value = text->toPlainText().trimmed();
+    if (value == previous.join("\n\n")) return;
+    if (value.size() > 10000) { showError(tr("整组意见不能超过 10000 字符")); return; }
+    imageSet_->groupNotes = {};
+    if (!value.isEmpty()) imageSet_->groupNotes.append(QJsonObject{{"number", 1}, {"text", value}});
+    imageSet_->dirty = true; updateSetPages();
+}
+void Editor::markFeedbackSubmitted() {
+    doc_.dirty = false;
+    if (imageSet_) { imageSet_->dirty = false; for (auto &page : imageSet_->pages) page.document.dirty = false; }
+    if (video_) { video_->dirty = false; for (auto &frame : video_->frames) frame.document.dirty = false; }
+}
 void Editor::clearVideo() {
     video_.reset(); videoFrameUs_ = -1;
     videoPreview_ = false;
@@ -803,7 +892,8 @@ void Editor::clearVideo() {
     if (detailsStack_) detailsStack_->setEnabled(true);
 }
 void Editor::loadMedia(const QString &path) {
-    if (isVideoFile(path)) {
+    if (isImageSetFile(path)) { setImageSet(loadImageSet(path), path.endsWith(".edithere", Qt::CaseInsensitive) ? path : QString()); }
+    else if (isVideoFile(path)) {
         if (!QFileInfo(path).isFile()) throw std::runtime_error(tr("视频文件不存在").toStdString());
         VideoProject project;
         project.source = QFileInfo(path).absoluteFilePath();
@@ -816,6 +906,7 @@ void Editor::loadMedia(const QString &path) {
     }
 }
 void Editor::setVideoProject(VideoProject project, const QString &path) {
+    clearImageSet();
     dismissGuide(); finishNoteEdit(); clearVideo(); resetLayoutTools(); ++generation_;
     video_ = std::move(project); projectPath_ = path;
     doc_ = {}; canvas_->setDocument(nullptr); undoHistory_.clear(); redoHistory_.clear();
@@ -969,16 +1060,19 @@ VideoProject Editor::videoProject() {
     return *video_;
 }
 int Editor::totalAnnotationCount() {
+    if (imageSet_) { finishNoteEdit(); commitSetPage(); return imageSetAnnotationCount(*imageSet_); }
     if (video_) { finishNoteEdit(); commitVideoFrame(); return videoAnnotationCount(*video_); }
     return annotationCount(doc_);
 }
 QByteArray Editor::projectBytes() {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); return serializeImageSet(*imageSet_); }
     if (video_ && videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
 }
 QByteArray Editor::feedbackBytes(bool embed, bool compress) {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); FeedbackExportOptions setOptions; setOptions.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None; setOptions.compress = compress; setOptions.includeRecognizedText = preferences_.includeRecognizedText; setOptions.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, setOptions).json; }
     FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
     options.compress = compress; options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
@@ -1962,6 +2056,7 @@ void Editor::changed(bool contentChanged) {
     if (contentChanged)
         doc_.dirty = true;
     if (video_) { if (contentChanged) video_->dirty = true; commitVideoFrame(); }
+    if (imageSet_) { if (contentChanged) imageSet_->dirty = true; commitSetPage(); updateSetPages(); }
     canvas_->refresh();
     if (layoutCanvas_)
         layoutCanvas_->setAnnotations(doc_.notes);
@@ -2229,6 +2324,7 @@ bool Editor::saveProject() {
         saveBytes(path, bytes);
         projectPath_ = path;
         doc_.dirty = false;
+        if (imageSet_) { imageSet_->dirty = false; for (auto &page : imageSet_->pages) page.document.dirty = false; }
         if (video_) { video_->dirty = false; for (auto &frame : video_->frames) frame.document.dirty = false; }
         QString associationError;
         if (!QStandardPaths::isTestModeEnabled())
@@ -2251,7 +2347,7 @@ void Editor::setAgentSession(bool active) {
 bool Editor::hasUnsavedChanges() {
     finishNoteEdit();
     // Agent requests also protect images that exist only in this editor.
-    return doc_.dirty || (video_ && video_->dirty) || (hasDocument() && projectPath_.isEmpty() &&
+    return doc_.dirty || (imageSet_ && imageSet_->dirty) || (video_ && video_->dirty) || (hasDocument() && projectPath_.isEmpty() &&
                           (doc_.source == "screen" || doc_.source == "clipboard"));
 }
 QByteArray Editor::agentFeedback(bool embed) {
@@ -2260,6 +2356,7 @@ QByteArray Editor::agentFeedback(bool embed) {
 }
 FeedbackBundle Editor::agentFeedbackBundle(FeedbackExportOptions options) {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, options); }
     // The bundle contains every annotated frame. Reveal the unresolved frame
     // before reporting the same validation error used by all export boundaries.
     auto revealUnresolved = [this](const Document &document, qint64 frameUs) {
@@ -2289,7 +2386,7 @@ bool Editor::allowReplace() {
         return false;
     }
     finishNoteEdit();
-    if (!doc_.dirty && (!video_ || !video_->dirty))
+    if (!doc_.dirty && (!imageSet_ || !imageSet_->dirty) && (!video_ || !video_->dirty))
         return true;
     auto answer = QMessageBox::question(
         this, tr("保留当前修改？"), tr("当前批注或布局修改尚未保存。是否先保存项目？"),
@@ -2307,7 +2404,7 @@ void Editor::openEmpty() {
         return;
     ++generation_;
     cancelRegionRecognition();
-    clearVideo();
+    clearVideo(); clearImageSet();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};
@@ -2358,7 +2455,7 @@ void Editor::updateEmptyState() {
 }
 bool Editor::confirmDiscardOnClose() {
     finishNoteEdit();
-    if (!doc_.dirty && (!video_ || !video_->dirty))
+    if (!doc_.dirty && (!imageSet_ || !imageSet_->dirty) && (!video_ || !video_->dirty))
         return true;
     // What the box said the last time it was shown: from then on closing throws the
     // changes away. Saving is still one button away while the window is open, so
@@ -2384,9 +2481,20 @@ bool Editor::confirmDiscardOnClose() {
 }
 void Editor::openFile(const QString &provided) {
     QString path = provided;
-    if (path.isEmpty())
-        path = QFileDialog::getOpenFileName(this, tr("打开图片、视频或项目"), {},
+    if (path.isEmpty()) {
+        const auto paths = QFileDialog::getOpenFileNames(this, tr("打开图片、视频或项目"), {},
             tr("图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)"));
+        if (paths.size() > 1) {
+            if (!allowReplace()) return;
+            try {
+                ImageSet set; set.name = tr("项目组图");
+                for (const auto &file : paths) { auto document = loadDocument(file); set.pages.append({uniqueId(), QFileInfo(file).completeBaseName(), std::move(document)}); }
+                setImageSet(std::move(set));
+            } catch (const std::exception &error) { showError(QString::fromUtf8(error.what())); }
+            return;
+        }
+        if (!paths.isEmpty()) path = paths.first();
+    }
     if (path.isEmpty())
         return;
     try {
@@ -2483,10 +2591,11 @@ void Editor::exportJson() {
                 if (image.contains("dataUrl")) image["dataUrl"] = image["dataUrl"].toString().section(',', 0, 0) + tr(",[图片编码已折叠]");
                 feedback["image"] = image; return feedback;
             };
-            if (video_) {
-                auto frames = readable["frames"].toArray();
+            if (video_ || imageSet_) {
+                const QString key = imageSet_ ? "pages" : "frames";
+                auto frames = readable[key].toArray();
                 for (qsizetype index = 0; index < frames.size(); ++index) { auto frame = frames[index].toObject(); frame["feedback"] = fold(frame["feedback"].toObject()); frames[index] = frame; }
-                readable["frames"] = frames;
+                readable[key] = frames;
             } else readable = fold(readable);
             json->setPlainText(QString::fromUtf8(formatFeedbackJson(readable, true)));
             copy->setEnabled(true); copyText->setEnabled(true); textOptions->setEnabled(true);
@@ -2541,15 +2650,18 @@ void Editor::generateInstructions() {
         agentFeedbackBundle(options);
         options.includeRecognizedText = preferences_.includeRecognizedText;
         options.includeWindowTitle = preferences_.includeWindowTitle;
-        input = video_ ? aiFeedbackSnapshot(*video_, options) : aiFeedbackSnapshot(doc_, options);
+        commitSetPage();
+        input = imageSet_ ? aiFeedbackSnapshot(*imageSet_, options) : video_ ? aiFeedbackSnapshot(*video_, options) : aiFeedbackSnapshot(doc_, options);
     } catch (const std::exception &error) {
         showError(QString::fromUtf8(error.what())); return;
     }
+    AiInstructionsDraft draft;
     for (;;) {
         int result;
         {
-            AiInstructionsDialog dialog(preferences_, input, this);
+            AiInstructionsDialog dialog(preferences_, input, this, nullptr, draft);
             result = dialog.exec();
+            draft = dialog.draft();
         }
         if (result != AiInstructionsDialog::Configure) break;
         emit aiSettingsRequested();
@@ -2604,7 +2716,7 @@ void Editor::closeEvent(QCloseEvent *e) {
         return;
     ++generation_;
     cancelRegionRecognition();
-    clearVideo();
+    clearVideo(); clearImageSet();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};
@@ -2641,6 +2753,20 @@ void Editor::dropEvent(QDropEvent *e) {
         return;
     }
     const auto urls = e->mimeData()->urls();
+    if (urls.size() > 1) {
+        if (!allowReplace()) return;
+        try {
+            ImageSet set; set.name = tr("项目组图");
+            for (const auto &url : urls) {
+                if (!url.isLocalFile()) throw std::runtime_error("Only local images can be added to a set.");
+                auto document = loadDocument(url.toLocalFile());
+                set.pages.append({uniqueId(), QFileInfo(url.toLocalFile()).completeBaseName(), std::move(document)});
+            }
+            setImageSet(std::move(set)); e->acceptProposedAction();
+        } catch (const std::exception &error) { e->ignore(); showError(QString::fromUtf8(error.what())); }
+        return;
+    }
+
     if (!urls.isEmpty() && urls.first().isLocalFile()) {
         openFile(urls.first().toLocalFile());
         e->acceptProposedAction();

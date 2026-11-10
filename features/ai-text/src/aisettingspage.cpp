@@ -3,6 +3,7 @@
 #include "aifeedback.h"
 #include "aiprovidericons.h"
 #include "ui.h"
+#include "aistyle.h"
 #include <QAction>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -295,6 +296,9 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
         retranslate();
         setStatus(message, true);
     });
+    connect(client_, &AiFeedbackClient::cancelled, this, [this] {
+        credentialBusy(credentialsBusy_); retranslate(); setStatus(tr("已停止测试。"));
+    });
     connect(credentials_, &AiCredentials::loaded, this, [this](const QString &id, const QString &key) {
         const bool accept = !loadedKeys_.contains(id) && !dirtyKeys_.contains(id);
         if (accept) keysByProvider_[id] = key;
@@ -519,41 +523,7 @@ void AiSettingsPage::syncProviderChoices() {
 void AiSettingsPage::updateAppearance() {
     if (updatingAppearance_) return;
     updatingAppearance_ = true;
-    const bool dark = isDarkTheme();
-    const QString surface = dark ? "#24262c" : "#ffffff";
-    const QString hover = dark ? "#30333b" : "#f2f4f7";
-    const QString border = dark ? "#424650" : "#dfe3e8";
-    const QString muted = dark ? "#a6abb8" : "#76808f";
-    const QString text = dark ? "#e9ecf1" : "#253041";
-    const QString css = QString(R"(
-QWidget#aiSettingsContent { background:%1; }
-QWidget#aiSettingsContent QLabel, QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox,
-QWidget#aiSettingsContent QSpinBox, QWidget#aiSettingsContent QPlainTextEdit, QWidget#aiSettingsContent QPushButton { font-size:13px; }
-QWidget#aiSettingsContent QLabel#aiSettingsTitle { font-size:24px; font-weight:600; color:%5; }
-QWidget#aiSettingsContent QLabel[aiFieldLabel="true"] { font-weight:600; color:%5; }
-QWidget#aiSettingsContent QLabel#aiDescription, QWidget#aiSettingsContent QLabel#aiKeyStorageHint { color:%4; font-size:12px; }
-QWidget#aiSettingsContent QLineEdit, QWidget#aiSettingsContent QComboBox, QWidget#aiSettingsContent QSpinBox {
-    background:%1; border:1px solid %3; border-radius:7px; padding:10px 12px; min-height:20px;
-}
-QWidget#aiSettingsContent QLineEdit:focus, QWidget#aiSettingsContent QComboBox:focus, QWidget#aiSettingsContent QSpinBox:focus { border-color:%6; }
-QWidget#aiSettingsContent QLineEdit:disabled, QWidget#aiSettingsContent QComboBox:disabled, QWidget#aiSettingsContent QSpinBox:disabled { background:%2; color:%4; }
-QWidget#aiSettingsContent QComboBox { padding-right:30px; }
-QWidget#aiSettingsContent QComboBox::drop-down { border:0; width:26px; background:transparent; }
-QWidget#aiSettingsContent QComboBox::down-arrow { image:none; width:0; height:0; }
-QWidget#aiSettingsContent QSpinBox::up-button, QWidget#aiSettingsContent QSpinBox::down-button { border:0; background:transparent; width:22px; }
-QWidget#aiSettingsContent QPlainTextEdit { background:%1; border:1px solid %3; border-radius:7px; padding:10px 12px; }
-QWidget#aiSettingsContent QPlainTextEdit:focus { border-color:%6; }
-QPushButton[aiQuiet="true"] { background:transparent; border:0; color:%4; padding:3px 0; min-height:20px; }
-QPushButton[aiQuiet="true"]:hover { color:%6; }
-QPushButton[aiOutline="true"] { background:%1; border:1px solid %3; padding:9px 16px; border-radius:7px; }
-QPushButton[aiOutline="true"]:hover { background:%2; }
-QPushButton#aiKeyActions { background:transparent; padding:0; min-width:0; min-height:0; }
-QPushButton#aiKeyActions:hover { background:%2; }
-QPushButton#aiKeyActions::menu-indicator { image:none; width:0; }
-QFrame#aiSettingsDivider { background:%3; border:0; }
-QWidget#aiSettingsContent QLabel#aiConnectionStatus { color:%4; font-size:12px; }
-QWidget#aiSettingsContent QLabel#aiConnectionStatus[error="true"] { color:%7; }
-)").arg(surface, hover, border, muted, text, accent().name(), dark ? "#ff8a8a" : "#c63636");
+    const QString css = aiTextStyleSheet("settings.qss");
     if (styleSheet() != css) setStyleSheet(css);
     showKey_->setIcon(glyph(showKey_->isChecked() ? "eye-off" : "eye"));
     keyMore_->setIcon(glyph("more"));
@@ -572,7 +542,7 @@ void AiSettingsPage::retranslate() {
     syncProviderChoices();
     updateNote();
     title_->setText(tr("AI 解析"));
-    description_->setText(tr("将截图与批注整理为文字，发给 Agent 前先在这里连接模型。"));
+    description_->setText(tr("选择服务商，连接用于解析批注的模型。"));
     providerLabel_->setText(tr("服务商"));
     provider_->setAccessibleName(providerLabel_->text());
     family_->setAccessibleName(providerLabel_->text());
@@ -587,7 +557,7 @@ void AiSettingsPage::retranslate() {
     keyMore_->setToolTip(tr("密钥操作"));
     keyMore_->setAccessibleName(keyMore_->toolTip());
     test_->setText(client_->isRunning() ? tr("取消测试") : tr("测试连接"));
-    keyHint_->setText(tr("密钥存入系统凭据库，随“保存设置”一起生效。"));
+    keyHint_->setText(tr("点击“保存设置”后生效。"));
     keyHint_->setToolTip(tr("截图仅在你点击解析时发送给所选提供商，API 调用可能计费。"));
     test_->setToolTip(tr("发送内置小图验证连接和识图能力，不发送当前截图或批注。"));
     advancedButton_->setText(tr("高级选项"));
@@ -605,7 +575,7 @@ void AiSettingsPage::retranslate() {
     timeout_->setAccessibleName(timeoutLabel_->text());
     extraLabel_->setText(tr("补充要求"));
     extra_->setAccessibleName(extraLabel_->text());
-    extra_->setPlaceholderText(tr("可选，例如：使用中文；按页面分组。内置精度规则始终保留。"));
+    extra_->setPlaceholderText(tr("例如：使用中文、按页面区域分组、精简说明。"));
     reset_->setText(tr("恢复连接预设"));
     reset_->setToolTip(tr("恢复地址、模型和协议，保留密钥草稿。"));
     prompt_->setText(tr("内置提示词"));

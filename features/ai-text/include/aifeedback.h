@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QStringList>
 #include <QTimer>
+#include <QUrl>
 #include <QVector>
 
 class QNetworkReply;
@@ -17,8 +18,8 @@ struct AiFeedbackInput {
     QList<QImage> images;
     QStringList imageLabels;
 };
-// The feedback JSON supplies exact numbers and user quotations. Images must be
-// provided explicitly; the client never follows paths or URLs from task data.
+// Screenshots and geometric edits are evidence for the interpreter. The returned
+// requirements must identify the objects and desired relationships using text alone.
 class AiFeedbackClient final : public QObject {
     Q_OBJECT
   public:
@@ -28,9 +29,12 @@ class AiFeedbackClient final : public QObject {
     void testConnection(const AiConnectionSettings &, const QString &apiKey);
     void cancel();
     bool isRunning() const { return !reply_.isNull(); }
+    // A local development host can replay responses through its own endpoint.
+    void setEndpointOverride(const QUrl &url) { if (!isRunning()) endpointOverride_ = url; }
   signals:
     void completed(const QString &text);
     void failed(const QString &message);
+    void cancelled();
     void usageAvailable(qint64 inputTokens, qint64 outputTokens);
   private:
     void start(const AiConnectionSettings &, const QString &, const AiFeedbackInput &, bool test);
@@ -39,6 +43,7 @@ class AiFeedbackClient final : public QObject {
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QTimer timeout_;
+    QUrl endpointOverride_;
     QByteArray response_;
     AiConnectionSettings connection_;
     QJsonArray facts_;
@@ -46,5 +51,6 @@ class AiFeedbackClient final : public QObject {
     QString key_;
     QString terminalError_;
     bool testing_ = false;
+    bool cancelled_ = false;
 };
 } // namespace h2d

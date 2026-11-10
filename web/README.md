@@ -2,6 +2,8 @@
 
 [English](README.en.md)
 
+项目组图支持 AI 按固定页面 ID 维护截图、用户统一批注、只反馈已批注图片，见 [项目组图与结果审批](../docs/PROJECT-REVIEW.md)。
+
 双击本目录的 **EditHere.html** 即可使用。也可以把这个 HTML 放到普通静态网站，让用户在线打开；页面加载完成后，素材读取、批注、布局调整与导出均在浏览器本地完成。独立 HTML 没有服务端处理、CDN、账号或外部运行时依赖，内容安全策略禁止网络连接。下文的 MCP Apps 模式由宿主管理 stdio 与内嵌 HTML；普通浏览器兼容模式使用本机服务。
 
 在 Agent 的浏览器侧栏预览时，在项目根目录运行 `node web/preview.cjs`（需要已安装的 Node.js），再打开 `http://127.0.0.1:7330/EditHere.html`。端口被其它工作区占用时，可设置 `EDITHERE_WEB_PORT`（1–65535）；预览服务和 `web/agent.cjs` 必须使用相同的值。兼容启动脚本会复用本项目的现有服务，或尝试启动后台服务并验证当前 HTML 的响应；进程可能随宿主停止而结束，不能保证独立常驻。“拒绝建立连接”表示本地服务没有监听，刷新页面不能代替启动服务。预览仅监听本机，不上传素材。
@@ -86,6 +88,7 @@ node web/tests/panel.test.cjs
 node web/tests/save-flow.test.cjs
 node web/tests/latest-parity.test.cjs
 node web/tests/native-video-boundaries.test.cjs
+node web/tests/image-set-flow.test.cjs
 ```
 
 `web` 注册全部不依赖浏览器的模型/会话单元测试，覆盖 `.test.cjs` 和
@@ -102,6 +105,8 @@ node web/tests/native-video-boundaries.test.cjs
 `panel.test.cjs` 重点检查九种正方形和竖向面板中的短批注占高、原图居中和可见比例、自动展开、批注计数、多条意见滚动、精确数值编辑，以及大爆炸动效、反复开关保留内容和减少动态效果设置。
 
 `latest-parity.test.cjs` 对照桌面已有测试检查位移占位、建立顺序、补字与撤销、空批注项目重载、复位及完整导出数据；`native-video-boundaries.test.cjs` 检查原生空视频反馈、重新关联视频和最后一毫秒内的微秒时间点。所有 JSON 断言读取实际下载文件，预览文字单独验证。
+
+`image-set-flow.test.cjs` 是组图的浏览器验收：真实截图建组、逐页批注、替换某一页后重新审查、离线 HTML 导入导出，并在同一脚本里启动 `dsh/server.mjs` 走一遍 DSH 回传，检查未批注页面只留索引、回执不含 base64。它依赖 Chrome 和 Playwright，不在 CTest 里运行；不含浏览器的组图模型与会话检查由 `image-set-session.test.cjs` 覆盖，已注册进 `web`。
 
 仓库根目录的许可同样适用于此实现。
 
