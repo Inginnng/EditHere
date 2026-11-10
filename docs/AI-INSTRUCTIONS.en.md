@@ -1,8 +1,8 @@
-# AI analysis (0.13.0)
+# AI analysis (preview, 0.13.0)
 
 [简体中文](AI-INSTRUCTIONS.md)
 
-Desktop EditHere can turn screenshots, component moves and annotations into plain-text modification instructions. Images are processed in a separate API request. Only text is copied to the target agent conversation, reducing image context in that conversation. The vision request still uses your provider's API credits.
+Desktop EditHere can turn screenshots, component moves and annotations into plain-text modification instructions. Images are processed in a separate API request. Only text is copied to the target agent conversation, reducing image context in that conversation. The vision request still uses your provider's API credits. This is a preview feature: check the model's interpretation before using it.
 
 ## Set up once
 
@@ -11,7 +11,7 @@ Desktop EditHere can turn screenshots, component moves and annotations into plai
 3. Click **Test connection**. The test uses the key currently entered and sends only a built-in small image, never the current screenshot.
 4. Click **Save settings** at the bottom to save both the key and configuration. Keys go into the system credential store; other options go into ordinary settings. Cancel discards unsaved key drafts.
 
-Settings uses a left navigation sidebar. The AI page has a provider selector with brand icons, with the API key, model and API address always visible; GLM and Kimi offer China and global region selectors. China, global and Coding Plan services may use different accounts and credits. Edit the common settings directly; **Advanced options** contains only the protocol, timeout and additional instructions. You can also choose a custom service. See [provider presets and open-source sources (Chinese)](ai-providers.md). You can view the built-in prompt in Settings; additional instructions can specify an output language or wording. Clear a key and save to delete that provider's stored key.
+Settings uses a left navigation sidebar. The AI page has a provider selector with brand icons, with the API key, model and API address always visible; GLM and Kimi offer China and global region selectors. China, global and Coding Plan services may use different accounts and credits. Edit the common settings directly; **Advanced options** contains only the protocol, timeout and additional instructions. You can also choose a custom service. See [provider presets and open-source sources (Chinese)](ai-providers.md). **System prompt** opens the prompt currently in use for direct editing, with a one-click restore to the default; save it, then save settings to apply. Additional instructions can specify an output language or wording. Clear a key and save to delete that provider's stored key.
 
 ## Generate and hand off
 

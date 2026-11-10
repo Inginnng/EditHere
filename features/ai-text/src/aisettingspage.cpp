@@ -335,18 +335,32 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
     connect(prompt_, &QPushButton::clicked, this, [this] {
         QDialog dialog(this);
         dialog.setObjectName("aiPromptDialog");
-        dialog.setWindowTitle(tr("EditHere 内置提示词"));
-        dialog.resize(680, 520);
+        dialog.setWindowTitle(tr("EditHere 系统提示词"));
+        dialog.resize(680, 560);
         auto *body = new QVBoxLayout(&dialog);
         body->setContentsMargins(24, 24, 24, 24);
+        auto *hint = mutedLabel(tr("这段提示词会随每次解析一起发送给所选服务商。修改只影响本机，可随时恢复默认。"), &dialog);
+        hint->setWordWrap(true);
+        body->addWidget(hint);
         auto *text = new QPlainTextEdit(&dialog);
         text->setObjectName("aiBuiltinPrompt");
-        text->setReadOnly(true);
-        text->setPlainText(aiSystemPrompt());
-        body->addWidget(text);
-        auto *close = textButton(tr("关闭"), false, &dialog);
-        body->addWidget(close, 0, Qt::AlignRight);
-        connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+        text->setPlainText(systemPrompt_.isEmpty() ? aiSystemPrompt() : systemPrompt_);
+        body->addWidget(text, 1);
+        auto *actions = new QHBoxLayout;
+        auto *reset = textButton(tr("恢复默认"), false, &dialog);
+        auto *close = textButton(tr("取消"), false, &dialog);
+        auto *save = textButton(tr("保存"), true, &dialog);
+        actions->addWidget(reset); actions->addStretch(); actions->addWidget(close); actions->addWidget(save);
+        body->addLayout(actions);
+        connect(reset, &QPushButton::clicked, text, [text] { text->setPlainText(aiSystemPrompt()); });
+        connect(close, &QPushButton::clicked, &dialog, &QDialog::reject);
+        connect(save, &QPushButton::clicked, &dialog, [this, text, &dialog] {
+            const auto value = text->toPlainText();
+            systemPrompt_ = value.trimmed().isEmpty() || value == aiSystemPrompt() ? QString() : value;
+            updatePromptButton();
+            setStatus(systemPrompt_.isEmpty() ? tr("已恢复内置系统提示词。") : tr("系统提示词已修改，保存设置后生效。"));
+            dialog.accept();
+        });
         dialog.exec();
     });
     connect(docs_, &QPushButton::clicked, this, [this] {
@@ -377,6 +391,7 @@ void AiSettingsPage::rememberConnection() {
 void AiSettingsPage::setSettings(const AppSettings &settings) {
     client_->cancel();
     connections_ = settings.aiProviders;
+    systemPrompt_ = settings.aiSystemPrompt;
     currentProvider_.clear();
     const QSignalBlocker blocker(provider_);
     int index = provider_->findData(settings.aiProviderId);
@@ -390,6 +405,7 @@ void AiSettingsPage::setSettings(const AppSettings &settings) {
 void AiSettingsPage::applyTo(AppSettings &settings) const {
     settings.aiProviderId = currentProvider_;
     settings.aiProviders = connections_;
+    settings.aiSystemPrompt = systemPrompt_;
     const auto config = currentConnection();
     if (config == defaultAiConnection(currentProvider_)) settings.aiProviders.remove(currentProvider_);
     else settings.aiProviders[currentProvider_] = config;
@@ -408,6 +424,7 @@ void AiSettingsPage::switchProvider() {
     showKey_->setChecked(false);
     setStatus(dirtyKeys_.contains(currentProvider_) ? tr("有未保存的密钥修改。") : QString());
     updateNote();
+    updatePromptButton();
     if (currentProvider_ == "custom") advancedButton_->setChecked(true);
     if (isVisible()) loadKey();
 }
@@ -541,8 +558,8 @@ void AiSettingsPage::retranslate() {
     for (int i = 0; i < family_->count(); ++i) family_->setItemText(i, labels.value(family_->itemData(i).toString()));
     syncProviderChoices();
     updateNote();
-    title_->setText(tr("AI 解析"));
-    description_->setText(tr("选择服务商，连接用于解析批注的模型。"));
+    title_->setText(tr("AI 解析（预览）"));
+    description_->setText(tr("选择服务商，连接用于解析批注的模型。预览功能，结果请核对后再用。"));
     providerLabel_->setText(tr("服务商"));
     provider_->setAccessibleName(providerLabel_->text());
     family_->setAccessibleName(providerLabel_->text());
@@ -578,7 +595,14 @@ void AiSettingsPage::retranslate() {
     extra_->setPlaceholderText(tr("例如：使用中文、按页面区域分组、精简说明。"));
     reset_->setText(tr("恢复连接预设"));
     reset_->setToolTip(tr("恢复地址、模型和协议，保留密钥草稿。"));
-    prompt_->setText(tr("内置提示词"));
+    prompt_->setText(tr("系统提示词"));
     docs_->setText(tr("官方文档 ↗"));
+    updatePromptButton();
+}
+void AiSettingsPage::updatePromptButton() {
+    if (!prompt_) return;
+    prompt_->setText(systemPrompt_.isEmpty() ? tr("系统提示词") : tr("系统提示词 · 已修改"));
+    prompt_->setToolTip(systemPrompt_.isEmpty() ? tr("查看并手动修改发给模型的系统提示词。")
+                                                : tr("正在使用你修改过的系统提示词，点开可继续编辑或恢复默认。"));
 }
 } // namespace h2d

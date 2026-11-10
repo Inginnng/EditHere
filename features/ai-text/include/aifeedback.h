@@ -25,7 +25,8 @@ class AiFeedbackClient final : public QObject {
   public:
     explicit AiFeedbackClient(QObject *parent = nullptr);
     ~AiFeedbackClient() override;
-    void generate(const AiConnectionSettings &, const QString &apiKey, const AiFeedbackInput &);
+    void generate(const AiConnectionSettings &, const QString &apiKey, const AiFeedbackInput &,
+                  const QString &systemPrompt = {});
     void testConnection(const AiConnectionSettings &, const QString &apiKey);
     void cancel();
     bool isRunning() const { return !reply_.isNull(); }
@@ -37,7 +38,8 @@ class AiFeedbackClient final : public QObject {
     void cancelled();
     void usageAvailable(qint64 inputTokens, qint64 outputTokens);
   private:
-    void start(const AiConnectionSettings &, const QString &, const AiFeedbackInput &, bool test);
+    void start(const AiConnectionSettings &, const QString &, const AiFeedbackInput &, bool test,
+               const QString &systemPrompt = {});
     void finish();
     void fail(const QString &message);
     QNetworkAccessManager network_;

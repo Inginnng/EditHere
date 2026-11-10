@@ -39,12 +39,15 @@ class AiSettingsPage final : public QWidget {
     void credentialBusy(bool busy);
     void syncProviderChoices();
     void updateAppearance();
+    void updatePromptButton();
     void saveNextCredential();
     void finishCredentialSave(bool success);
     QMap<QString, AiConnectionSettings> connections_;
     QMap<QString, QString> keysByProvider_;
     QSet<QString> loadedKeys_, dirtyKeys_;
     QString currentProvider_, loadingProvider_, savingProvider_;
+    // Empty means the built-in prompt; any other text is the user's own version.
+    QString systemPrompt_;
     QStringList saveQueue_;
     std::function<void(bool)> saveFinished_;
     AiCredentials *credentials_;

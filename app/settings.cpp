@@ -146,6 +146,8 @@ AppSettings defaultSettings() {
 QString validateSettings(const AppSettings &settings) {
     if (!validAiProviderId(settings.aiProviderId))
         return tr("请选择有效的 API 提供商。");
+    if (settings.aiSystemPrompt.size() > 20000)
+        return tr("系统提示词过长，请精简到 20000 字以内。");
     for (auto it = settings.aiProviders.cbegin(); it != settings.aiProviders.cend(); ++it)
         if (!validStoredAiConnection(it.value(), it.key()))
             return tr("API 配置无效，请检查服务地址、协议和超时时间。");
@@ -273,6 +275,9 @@ AppSettings loadSettings(const QString &filePath) {
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
     const auto selectedProvider = source.value("ai/provider", "openai").toString();
     if (validAiProviderId(selectedProvider)) result.aiProviderId = selectedProvider;
+    const auto customPrompt = source.value("ai/systemPrompt").toString();
+    if (!customPrompt.isEmpty() && customPrompt.size() <= 20000 && !customPrompt.contains(QChar(0)))
+        result.aiSystemPrompt = customPrompt;
     source.beginGroup("ai/providers");
     for (const auto &id : source.childGroups()) {
         if (!validAiProviderId(id)) continue;
@@ -391,6 +396,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("ai/provider", settings.aiProviderId);
+    target.setValue("ai/systemPrompt", settings.aiSystemPrompt);
     target.remove("ai/providers");
     target.beginGroup("ai/providers");
     for (auto it = settings.aiProviders.cbegin(); it != settings.aiProviders.cend(); ++it) {

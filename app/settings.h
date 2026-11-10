@@ -39,6 +39,8 @@ struct AppSettings {
     bool checkUpdatesOnStartup = true;
     QString aiProviderId = "openai";
     QMap<QString, AiConnectionSettings> aiProviders;
+    // Hand-edited system prompt for AI analysis. Empty means the built-in prompt.
+    QString aiSystemPrompt;
     QString feedbackDir; // Empty = default CacheLocation/feedback.
     int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.
     // The corner radius, border and shadow every capture starts from. Set from the

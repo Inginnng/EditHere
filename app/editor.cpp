@@ -1208,7 +1208,9 @@ void Editor::updateToolbar() {
                 ? (preferences_.copyJsonTextWithImage
                     ? tr("复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。")
                     : tr("复制 JSON 文本（默认不携带原图信息），适用于无法发送文件的 Agent。"))
-                : definition.label);
+                : definition.id == "generateInstructions"
+                    ? tr("AI 解析（预览）：把画面与批注转成文字需求，结果请核对。")
+                    : definition.label);
         button->setAccessibleName(definition.label);
         const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" || definition.id == "generateInstructions" ||
                               definition.id == "exportJson" || (!compact && definition.id == "copyImage");
@@ -2565,6 +2567,7 @@ void Editor::exportJson() {
     auto ai = textButton(tr("AI解析"), false, &dialog);
     ai->setObjectName("generateInstructions");
     ai->setIcon(glyph("notes"));
+    ai->setToolTip(tr("AI 解析（预览）：把画面与批注转成文字需求，结果请核对。"));
     connect(ai, &QPushButton::clicked, &dialog, [&] {
         dialog.accept(); QTimer::singleShot(0, this, &Editor::generateInstructions);
     });

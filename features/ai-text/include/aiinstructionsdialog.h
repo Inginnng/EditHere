@@ -37,6 +37,7 @@ class AiInstructionsDialog final : public QDialog {
     void updateSourceWidth();
     AiConnectionSettings connection_;
     AiFeedbackInput input_;
+    QString systemPrompt_;
     QString key_;
     bool credentialsLoaded_ = false, busy_ = false, hasOutput_ = false, refreshingStyle_ = false;
     AiCredentials *credentials_;

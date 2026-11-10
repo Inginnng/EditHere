@@ -117,6 +117,7 @@ int main(int argc, char **argv) {
     parser.addOption({"fail-once", "本地示例的第一次请求返回错误"});
     parser.addOption({"fixtures", "示例输入目录（screen.svg、feedback.json、reply.json）", "folder"});
     parser.addOption({"render", "导出本地示例界面截图并退出", "folder"});
+    parser.addOption({"render-settings", "导出连接设置与系统提示词窗口截图并退出", "folder"});
     parser.process(app);
     if (parser.isSet("live") && parser.isSet("render")) return 2;
     auto assets = QDir(QCoreApplication::applicationDirPath()).filePath("resources");
@@ -163,6 +164,30 @@ int main(int argc, char **argv) {
     AppSettings settings; settings.aiProviders["openai"] = defaultAiConnection();
     AiInstructionsDraft draft;
     if (parser.isSet("settings") || parser.isSet("live")) settingsDialog(settings, credentials, replay.get());
+    if (parser.isSet("render-settings")) {
+        const auto output = QDir(parser.value("render-settings"));
+        if (!output.mkpath(".")) return 6;
+        QDialog dialog;
+        dialog.setWindowTitle("AI 文字工作台 · 连接设置");
+        dialog.resize(660, 760);
+        auto *body = new QVBoxLayout(&dialog); body->setContentsMargins(0, 0, 0, 16);
+        auto *scroll = new QScrollArea(&dialog); scroll->setWidgetResizable(true);
+        auto *page = new AiSettingsPage(scroll, &credentials); page->setSettings(settings);
+        scroll->setWidget(page); body->addWidget(scroll, 1);
+        dialog.show();
+        QApplication::processEvents();
+        dialog.grab().save(output.filePath("settings.png"));
+        QTimer::singleShot(60, &dialog, [&dialog, output] {
+            for (auto *widget : QApplication::topLevelWidgets())
+                if (auto *prompt = qobject_cast<QDialog *>(widget);
+                    prompt && prompt->isVisible() && prompt->objectName() == "aiPromptDialog") {
+                    prompt->grab().save(output.filePath("prompt.png"));
+                    prompt->reject();
+                }
+        });
+        if (auto *button = page->findChild<QPushButton *>("aiViewPrompt")) button->click();
+        return 0;
+    }
     for (;;) {
         AiInstructionsDialog dialog(settings, input, nullptr, &credentials, draft);
         dialog.setWindowTitle(replay ? "AI 文字工作台 · 本地示例" : "AI 文字工作台 · 真实 API");

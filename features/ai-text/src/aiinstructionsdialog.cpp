@@ -56,11 +56,12 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     : QDialog(parent), input_(std::move(input)),
       credentials_(credentials ? credentials : new AiCredentials(this)), client_(new AiFeedbackClient(this)) {
     setObjectName("aiInstructionsDialog");
-    setWindowTitle(tr("AI 解析"));
+    setWindowTitle(tr("AI 解析（预览）"));
     setMinimumSize(760, 580);
     const auto available = screen()->availableGeometry().size() - QSize(48, 64);
     resize(QSize(1120, 780).boundedTo(available).expandedTo(minimumSize()));
     connection_ = settings.aiProviders.value(settings.aiProviderId, defaultAiConnection(settings.aiProviderId));
+    systemPrompt_ = settings.aiSystemPrompt;
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
 
@@ -70,8 +71,8 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     mark->setAlignment(Qt::AlignCenter); mark->setPixmap(glyph("edit").pixmap(22, 22));
     heading->addWidget(mark);
     auto *titles = new QVBoxLayout; titles->setSpacing(4);
-    auto *title = new QLabel(tr("AI 解析"), header); title->setObjectName("aiAnalysisTitle");
-    titles->addWidget(title); titles->addWidget(mutedLabel(tr("把图形化修改，转成不看图也能理解的文字需求。"), header));
+    auto *title = new QLabel(tr("AI 解析（预览）"), header); title->setObjectName("aiAnalysisTitle");
+    titles->addWidget(title); titles->addWidget(mutedLabel(tr("预览功能：把图形化修改转成文字需求，结果请核对后再交给 Agent。"), header));
     heading->addLayout(titles, 1);
     QString providerName = settings.aiProviderId;
     for (const auto &preset : aiProviderPresets()) if (preset.id == settings.aiProviderId) providerName = preset.name;
@@ -240,7 +241,7 @@ void AiInstructionsDialog::generate() {
     if (client_->isRunning() || !credentialsLoaded_ || key_.isEmpty()) return;
     setBusy(true); usage_->clear(); usage_->hide(); setStatus(tr("正在理解画面与布局调整…"));
     auto connection = connection_; connection.extraInstructions = extra_->text();
-    client_->generate(connection, key_, input_);
+    client_->generate(connection, key_, input_, systemPrompt_);
 }
 void AiInstructionsDialog::setStatus(const QString &text, bool error) {
     status_->setText(text); status_->setProperty("error", error);

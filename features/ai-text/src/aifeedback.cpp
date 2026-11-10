@@ -95,8 +95,9 @@ AiFeedbackClient::~AiFeedbackClient() {
     }
     key_.fill(QChar('\0'));
 }
-void AiFeedbackClient::generate(const AiConnectionSettings &settings, const QString &key, const AiFeedbackInput &input) {
-    start(settings, key, input, false);
+void AiFeedbackClient::generate(const AiConnectionSettings &settings, const QString &key, const AiFeedbackInput &input,
+                                const QString &systemPrompt) {
+    start(settings, key, input, false, systemPrompt);
 }
 void AiFeedbackClient::testConnection(const AiConnectionSettings &settings, const QString &key) {
     AiFeedbackInput input;
@@ -104,7 +105,8 @@ void AiFeedbackClient::testConnection(const AiConnectionSettings &settings, cons
     input.images.append(image); input.imageLabels.append("Connection test image; no user screenshot.");
     start(settings, key, input, true);
 }
-void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString &key, const AiFeedbackInput &input, bool test) {
+void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString &key, const AiFeedbackInput &input, bool test,
+                             const QString &systemPrompt) {
     if (isRunning()) { emit failed(tr("已有请求正在进行，请等待或取消。")); return; }
     const auto validation = validateAiConnection(settings);
     if (!validation.isEmpty()) { emit failed(validation); return; }
@@ -119,8 +121,9 @@ void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString
     facts_ = {};
     QString error;
     if (!test && !aiCollectFacts(input.feedback, &facts_, &error)) { emit failed(error); return; }
-    QString prompt = test ? "Identify the dominant color in the attached image. Reply with one English color name only." : aiSystemPrompt();
-    if (prompt.isEmpty()) { emit failed(tr("内置提示词缺失，无法发送请求。")); return; }
+    QString prompt = test ? "Identify the dominant color in the attached image. Reply with one English color name only."
+                          : systemPrompt.trimmed().isEmpty() ? aiSystemPrompt() : systemPrompt;
+    if (prompt.isEmpty()) { emit failed(tr("系统提示词为空，无法发送请求。")); return; }
     auto metadata = aiFeedbackData(input.feedback).toObject();
     metadata.remove("objects");
     // Frame-local facts were flattened above. Keep only frame metadata here so

@@ -2103,6 +2103,11 @@
             <source>视频帧 %1，时间戳 %2 µs：</source>
             <translation>Video frame %1, timestamp %2 µs:</translation>
         </message>
+        <message>
+            <location filename="../settings.cpp" line="150" />
+            <source>系统提示词过长，请精简到 20000 字以内。</source>
+            <translation>The system prompt is too long; keep it under 20,000 characters.</translation>
+        </message>
     </context>
     <context>
         <name>h2d::AiCredentials</name>
@@ -2195,11 +2200,6 @@
             <translation>The number of screenshots does not match the number of image descriptions.</translation>
         </message>
         <message>
-            <location filename="../../features/ai-text/src/aifeedback.cpp" line="123" />
-            <source>内置提示词缺失，无法发送请求。</source>
-            <translation>The built-in prompt is missing. The request cannot be sent.</translation>
-        </message>
-        <message>
             <location filename="../../features/ai-text/src/aifeedback.cpp" line="145" />
             <source>截图解码失败，未发送请求。</source>
             <translation>Failed to decode the screenshot. No request was sent.</translation>
@@ -2240,15 +2240,14 @@
             <source>连接成功，模型已接受测试图片。</source>
             <translation>Connected. The model accepted the test image.</translation>
         </message>
+        <message>
+            <location filename="../../features/ai-text/src/aifeedback.cpp" line="126" />
+            <source>系统提示词为空，无法发送请求。</source>
+            <translation>The system prompt is empty, so the request was not sent.</translation>
+        </message>
     </context>
     <context>
         <name>h2d::AiInstructionsDialog</name>
-        <message>
-            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="59" />
-            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="73" />
-            <source>AI 解析</source>
-            <translation>AI analysis</translation>
-        </message>
         <message>
             <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="80" />
             <source>API 设置</source>
@@ -2263,11 +2262,6 @@
             <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="97" />
             <source>选择画面</source>
             <translation>Choose image</translation>
-        </message>
-        <message>
-            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="74" />
-            <source>把图形化修改，转成不看图也能理解的文字需求。</source>
-            <translation>Turn visual edits into requirements an agent can understand without images.</translation>
         </message>
         <message>
             <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="91" />
@@ -2462,6 +2456,17 @@
             <source>重新解析</source>
             <translation>Analyze again</translation>
         </message>
+        <message>
+            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="59" />
+            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="74" />
+            <source>AI 解析（预览）</source>
+            <translation>AI analysis (preview)</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aiinstructionsdialog.cpp" line="75" />
+            <source>预览功能：把图形化修改转成文字需求，结果请核对后再交给 Agent。</source>
+            <translation>Preview: turns visual edits into written requirements. Review the result before handing it to an agent.</translation>
+        </message>
     </context>
     <context>
         <name>h2d::AiSettingsPage</name>
@@ -2481,19 +2486,9 @@
             <translation>Cancel test</translation>
         </message>
         <message>
-            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="338" />
-            <source>EditHere 内置提示词</source>
-            <translation>EditHere built-in prompt</translation>
-        </message>
-        <message>
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="300" />
             <source>已停止测试。</source>
             <translation>Connection test stopped.</translation>
-        </message>
-        <message>
-            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="347" />
-            <source>关闭</source>
-            <translation>Close</translation>
         </message>
         <message>
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="516" />
@@ -2514,11 +2509,6 @@
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="540" />
             <source>自定义服务</source>
             <translation>Custom service</translation>
-        </message>
-        <message>
-            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="545" />
-            <source>选择服务商，连接用于解析批注的模型。</source>
-            <translation>Choose a provider and connect a model to interpret annotations.</translation>
         </message>
         <message>
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="553" />
@@ -2554,11 +2544,6 @@
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="578" />
             <source>例如：使用中文、按页面区域分组、精简说明。</source>
             <translation>For example: use English, group by page region, keep it concise.</translation>
-        </message>
-        <message>
-            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="581" />
-            <source>内置提示词</source>
-            <translation>Built-in prompt</translation>
         </message>
         <message>
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="559" />
@@ -2600,11 +2585,6 @@
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="459" />
             <source>密钥修改已保存。</source>
             <translation>Key changes saved.</translation>
-        </message>
-        <message>
-            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="544" />
-            <source>AI 解析</source>
-            <translation>AI analysis</translation>
         </message>
         <message>
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="546" />
@@ -2680,6 +2660,72 @@
             <location filename="../../features/ai-text/src/aisettingspage.cpp" line="582" />
             <source>官方文档 ↗</source>
             <translation>Official docs ↗</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="561" />
+            <source>AI 解析（预览）</source>
+            <translation>AI analysis (preview)</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="562" />
+            <source>选择服务商，连接用于解析批注的模型。预览功能，结果请核对后再用。</source>
+            <translation>Choose a provider and connect the model that interprets annotations. This is a preview; review the result before use.</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="338" />
+            <source>EditHere 系统提示词</source>
+            <translation>EditHere system prompt</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="342" />
+            <source>这段提示词会随每次解析一起发送给所选服务商。修改只影响本机，可随时恢复默认。</source>
+            <translation>This prompt is sent to the selected provider with every analysis. Changes stay on this machine, and you can restore the default at any time.</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="350" />
+            <source>恢复默认</source>
+            <translation>Restore default</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="351" />
+            <source>取消</source>
+            <translation>Cancel</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="352" />
+            <source>保存</source>
+            <translation>Save</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="361" />
+            <source>已恢复内置系统提示词。</source>
+            <translation>Restored the built-in system prompt.</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="361" />
+            <source>系统提示词已修改，保存设置后生效。</source>
+            <translation>System prompt changed; save settings to apply it.</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="598" />
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="604" />
+            <source>系统提示词</source>
+            <translation>System prompt</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="604" />
+            <source>系统提示词 · 已修改</source>
+            <translation>System prompt · edited</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="605" />
+            <source>查看并手动修改发给模型的系统提示词。</source>
+            <translation>View and edit the system prompt sent to the model.</translation>
+        </message>
+        <message>
+            <location filename="../../features/ai-text/src/aisettingspage.cpp" line="606" />
+            <source>正在使用你修改过的系统提示词，点开可继续编辑或恢复默认。</source>
+            <translation>Using your edited system prompt. Open it to edit again or restore the default.</translation>
         </message>
     </context>
     <context>
@@ -4002,6 +4048,12 @@ Scroll back a little; stitching continues once it lines up.</translation>
         <source>项目组图</source>
         <translation>Project image set</translation>
     </message>
+        <message>
+            <location filename="../editor.cpp" line="1207" />
+            <location filename="../editor.cpp" line="2570" />
+            <source>AI 解析（预览）：把画面与批注转成文字需求，结果请核对。</source>
+            <translation>AI analysis (preview): turns screenshots and annotations into written requirements; review the result.</translation>
+        </message>
 </context>
     <context>
         <name>h2d::GlobalShortcut</name>
