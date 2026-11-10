@@ -458,6 +458,7 @@ bool requestAccessibility() {
 bool usesNativeWindowControls() {
     return false;
 }
+void ensureNativeTitleBar(QWidget *) {}
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,

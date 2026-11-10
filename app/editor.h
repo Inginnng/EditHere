@@ -93,6 +93,8 @@ class Editor final : public QWidget {
     bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void moveEvent(QMoveEvent *) override;
     void changeEvent(QEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;

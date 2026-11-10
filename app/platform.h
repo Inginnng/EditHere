@@ -66,6 +66,10 @@ void configureNativeWindow(QWidget *window, bool overlay);
 // so the editor keeps that title bar and leaves the window controls to it. The
 // other desktops have no equivalent and use the editor's own buttons instead.
 bool usesNativeWindowControls();
+// Re-asserts the title bar layout after the system has changed the window: a style
+// mask applied while the window is being ordered on screen can be dropped, which
+// would leave the editor's own bar pushed down by a titlebar it should cover.
+void ensureNativeTitleBar(QWidget *window);
 // Whether screen reads skip this window, so it can stay visible over a capture.
 bool excludedFromCapture(const QWidget *window);
 QString globalShortcutLabel();

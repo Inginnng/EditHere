@@ -778,6 +778,34 @@ bool excludedFromCapture(const QWidget *widget) {
 bool usesNativeWindowControls() {
     return true;
 }
+namespace {
+// The editor keeps the standard title bar for the traffic lights, hides its title and
+// lets the client area cover it, so the editor's own bar reaches the window's top edge
+// and only the buttons stay on top of it. AppKit keeps the rest of that strip
+// click-through: only the buttons take the click.
+bool nativeTitleBarIsApplied(NSWindow *window) {
+    return (window.styleMask & NSWindowStyleMaskFullSizeContentView) != 0 &&
+           std::abs(window.contentView.frame.size.height - window.frame.size.height) < 1;
+}
+void applyNativeTitleBar(NSWindow *window) {
+    window.titleVisibility = NSWindowTitleHidden;
+    window.titlebarAppearsTransparent = YES;
+    // The separator would be drawn across the editor's own bar.
+    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+    window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+}
+} // namespace
+void ensureNativeTitleBar(QWidget *widget) {
+    if (!widget || QGuiApplication::platformName() != "cocoa")
+        return;
+    NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
+    NSWindow *window = view.window;
+    // A window that is still being ordered on screen can drop a style mask change,
+    // which leaves the title hidden but the editor's bar pushed down by a titlebar
+    // it should have covered. Re-assert instead of trusting the one call.
+    if (window && !nativeTitleBarIsApplied(window))
+        applyNativeTitleBar(window);
+}
 void configureNativeWindow(QWidget *widget, bool overlay) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
@@ -795,15 +823,11 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
         window.collectionBehavior = NSWindowCollectionBehaviorDefault;
         window.level = NSNormalWindowLevel;
         window.sharingType = NSWindowSharingReadWrite;
-        // Keep the standard title bar for the traffic lights, but hide its title
-        // and let the client area cover it, so the editor's own bar reaches the
-        // top edge and only the buttons stay on top of it. AppKit keeps the rest
-        // of that strip click-through: only the buttons take the click.
-        window.titleVisibility = NSWindowTitleHidden;
-        window.titlebarAppearsTransparent = YES;
-        window.styleMask |= NSWindowStyleMaskFullSizeContentView;
-        // The separator would be drawn across the editor's own bar.
-        window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+        applyNativeTitleBar(window);
+        // The window is usually configured in the same event that shows it, where the
+        // style mask can be lost; ask again once the window has settled.
+        for (int delay : {0, 120, 400})
+            QTimer::singleShot(delay, widget, [widget] { ensureNativeTitleBar(widget); });
     }
 }
 QString globalShortcutLabel() {

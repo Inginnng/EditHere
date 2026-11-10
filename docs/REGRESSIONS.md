@@ -19,9 +19,9 @@
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
-| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状 | `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
+| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
 
-平台依据：`titlebarAppearsTransparent` + `titleVisibility = NSWindowTitleHidden` + `NSWindowStyleMaskFullSizeContentView` 之后，AppKit 只让标题栏里的红绿灯接点击，这条带其余位置透传给客户区（`cocoa-window` 实测），所以编辑器的工具栏仍能贴着窗口顶端排布。红绿灯位置由系统决定（窗口顶端 9–23 点），不额外挪动：AppKit 在每次调整窗口大小后都会重置按钮位置，挪动只会在缩放时跳回原处。
+平台依据：`titlebarAppearsTransparent` + `titleVisibility = NSWindowTitleHidden` + `NSWindowStyleMaskFullSizeContentView` 之后，AppKit 只让标题栏里的红绿灯接点击，这条带其余位置透传给客户区（`cocoa-window` 实测），所以编辑器的工具栏仍能贴着窗口顶端排布。红绿灯位置由系统决定（窗口顶端 9–23 点），不额外挪动：AppKit 在每次调整窗口大小后都会重置按钮位置，挪动只会在缩放时跳回原处。Qt 6.8.3 自己重设样式位时会保留 `NSWindowStyleMaskFullSizeContentView`（`qcocoawindow.mm` 的 `windowStyleMask()` 先读旧掩码），所以补回只需在本项目这一侧做；`ensureNativeTitleBar` 判据是「样式位在，且客户区高度等于窗口高度」，不成立就整段重设。
 
 ## Windows 免费更新签名（0.12.8）
 
@@ -485,8 +485,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `capture_tests`（29 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079/105/106 |
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
 | `ui_tests::windowControlsFollowThePlatformConvention` | `tests/ui_test.cpp`，CTest 名 `ui` | REG-213 |
-| `cocoa-window` | `tests/cocoa_window_test.mm`，CTest 名 `cocoa-window`（仅 macOS，且需要真实 Cocoa 窗口） | REG-213 |
-| 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
+| `cocoa-window` | `tests/cocoa_window_test.mm`，CTest 名 `cocoa-window`（仅 macOS，且需要真实 Cocoa 窗口） | REG-213 || 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
 | 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包与两种 Web 包任一缺失即失败（Web 包由 `build-web` 作业调用 `scripts/prepare-distribution.py --web-only --channel release` 打包） | REG-109/122/157/177 |

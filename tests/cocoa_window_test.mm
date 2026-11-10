@@ -75,6 +75,31 @@ class CocoaWindowTest : public QObject {
         }
         window.hide();
     }
+    void droppedClientAreaIsPutBackInPlace() {
+        if (QGuiApplication::platformName() != "cocoa")
+            QSKIP("this test needs a real Cocoa window");
+        QWidget window;
+        window.setWindowFlags(Qt::Window);
+        window.resize(640, 420);
+        window.show();
+        QTest::qWaitForWindowExposed(&window);
+        h2d::configureNativeWindow(&window, false);
+        QTest::qWait(250);
+        NSWindow *nsWindow = nativeWindow(window);
+        QVERIFY(nsWindow);
+        QVERIFY(nsWindow.styleMask & NSWindowStyleMaskFullSizeContentView);
+
+        // A real session was reported with the title hidden but the client area back
+        // under a titlebar, which is what a dropped style mask leaves behind. The
+        // editor has to put the full-height client area back rather than accept it.
+        nsWindow.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+        QVERIFY(!(nsWindow.styleMask & NSWindowStyleMaskFullSizeContentView));
+        QVERIFY(nsWindow.contentView.frame.size.height < nsWindow.frame.size.height);
+        h2d::ensureNativeTitleBar(&window);
+        QVERIFY(nsWindow.styleMask & NSWindowStyleMaskFullSizeContentView);
+        QCOMPARE(nsWindow.contentView.frame.size.height, nsWindow.frame.size.height);
+        window.hide();
+    }
 };
 
 QTEST_MAIN(CocoaWindowTest)

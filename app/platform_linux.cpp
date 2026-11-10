@@ -473,6 +473,7 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excluded) { return linu
 bool requestAccessibility() { return false; }
 void configureNativeWindow(QWidget *, bool) {}
 bool usesNativeWindowControls() { return false; }
+void ensureNativeTitleBar(QWidget *) {}
 bool excludedFromCapture(const QWidget *) { return false; }
 void captureScreens(CaptureCallback callback) {
     if (!wayland()) {

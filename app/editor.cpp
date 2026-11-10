@@ -1112,8 +1112,12 @@ void Editor::updateFullscreenButton() {
 }
 void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange)
+    if (event->type() == QEvent::WindowStateChange) {
         updateFullscreenButton();
+        // Entering or leaving full screen has the system re-apply the window's style
+        // mask, which can drop the full-height client area the bar sits under.
+        ensureNativeTitleBar(this);
+    }
     if (event->type() == QEvent::LanguageChange) {
         // Cards cache their own placeholder and fold labels, so commit the pending
         // edit and let renderNotes() build them again in the new language.
@@ -1177,6 +1181,18 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, [this] {
             if (fitted_) fit();
         });
+}
+void Editor::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    // macOS: the window is ordered on screen here, and a style mask set while that is
+    // happening can be dropped, which would push the whole window's content down.
+    ensureNativeTitleBar(this);
+}
+void Editor::moveEvent(QMoveEvent *event) {
+    QWidget::moveEvent(event);
+    // macOS: moving the window, including a native drag of the title bar, has the
+    // system reconfigure it; the full-height client area has to survive that.
+    ensureNativeTitleBar(this);
 }
 void Editor::setPreferences(const AppSettings &settings) {
     const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;
