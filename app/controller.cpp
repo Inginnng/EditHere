@@ -405,8 +405,18 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
     if (!background) {
         if (guidePending_)
             showGuide();
-        else if (path.isEmpty() && !demo && settings_.captureOnStartup)
-            capture();
+        else if (path.isEmpty() && !demo && settings_.captureOnStartup) {
+            // A launch that cannot read the screen yet should not open with an error to
+            // dismiss: the tray is enough, and the first capture asked for by hand says
+            // what is missing. macOS grants screen recording per build and only to a
+            // newly started process, so this is the ordinary state after an update.
+            QString reason;
+            if (screenCaptureAllowed(&reason))
+                capture();
+            else
+                diagnostics::write(diagnostics::Level::Info, "startup.capture_skipped",
+                                   "Screen capture is not available yet", {{"reason", reason}});
+        }
     }
 }
 void Controller::scheduleStartupUpdate() {

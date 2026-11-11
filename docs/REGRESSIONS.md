@@ -15,6 +15,19 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## macOS 窗口按钮（未发布）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
+| REG-215 | 注意状态谱系：0.12.6 及更早的 macOS 界面**没有红绿灯**，最小化 / 全屏 / 关闭自绘在右上角，标题栏只有一行（REG-213 之前的样式）；REG-213 把窗口控制交给系统红绿灯之后，才出现下面这个未发布的两行状态。用户反馈（实机截图）：「红绿灯和控件不在同一行」——红绿灯在窗口顶端那一行，而品牌、尺寸和工具整行落在下面 32 点处。真实原因不是样式位没补回：客户区确实铺满了整个窗口，但**只要客户区盖住标题栏，Qt 就给「窗口控件」以及「填满它的那个子控件」塞上一条等于标题栏高度的顶部内容边距**，而且这条边距清不掉（`setContentsMargins(0,…)` 读回来仍是 32），顶层布局因此从标题栏下方开始，整个外壳被整体压下 32 点。规则按控件到窗口顶部的距离逐层退让（顶部 y=0 为 32、y=4 为 28……y≥32 为 0），所以连标签的文字矩形也被压到这条带下方。修复：外壳、标题栏、正文三者改为手工定位（`fitShell`），布局只留在再下一层；标题栏那一行用自己忽略父控件内容边距的 `TitleRowLayout`，两个标签用按自身矩形绘制的 `RowLabel`；行高与左边距取自 AppKit 实测的红绿灯行列（`nativeTitleBarRow`：中线 16 点、右缘 69 点），工具放不下时贴着栏顶排而不是伸出窗口 | `cocoa-window::theReportedRowIsTheOneTheSystemDraws`：上报的行与 AppKit 实际按钮几何一致，并钉住「带内控件有内容边距、带外没有、清不掉」这条平台行为；`ui::theTitleBarSharesTheSystemControlsRow`：栏顶与窗口顶端对齐（外壳 y=0、标题栏 y≤2），工具行中线与红绿灯中线相差 ≤4 点，品牌在红绿灯右缘之后；其余平台走「栏内居中」分支。实机 `EDITHERE_WINDOW_DEBUG=1` 日志可复看 `barPos` / `toolRow` / `rowCenterY` | 🆕 |
+
+平台依据：`titlebarAppearsTransparent` + `titleVisibility = NSWindowTitleHidden` + `NSWindowStyleMaskFullSizeContentView` 之后，AppKit 只让标题栏里的红绿灯接点击，这条带其余位置透传给客户区（`cocoa-window` 实测），所以编辑器可以把自己的工具栏画在这条带上。红绿灯位置由系统决定（窗口顶端 9–23 点，中线 16 点），不额外挪动：AppKit 在每次调整窗口大小后都会重置按钮位置，挪动只会在缩放时跳回原处——因此反过来把编辑器的行对齐到红绿灯，行内控件按「中线 16 点、高 32 点以内」计算。Qt 6.8.3 没有 `Qt::ExpandedClientAreaHint`（6.9 才有），也没有 `safeAreaMargins`，客户区盖住标题栏时它用不可清除的内容边距代替，这条边距就是 REG-215 的成因；`ensureNativeTitleBar` 判据是「样式位在，且客户区高度等于窗口高度」，不成立就整段重设，可见期间每秒再核对一次（判据相同，成立时只读两个属性）。工具自身高 36 点（文字按钮的 7 点内边距 + 20 点最小高度），比红绿灯中线以上的空间高，所以这一行只能贴着栏顶排，中线落在 19 点——与红绿灯相差 3 点，比原来的 32 点整行错位小一个数量级；要完全重合需要把栏内按钮压到 32 点以下，会切到中文字形，故不做。
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-214 | 反馈：「明明允许了屏幕录制，还老是弹权限申请」。macOS 的录屏授权按具体构建的代码哈希记录，且只对之后新启动的进程生效：重打包后列表里的开关仍然亮着，但管不到新程序；而「启动后立即截图」默认开启，于是每次启动都截图失败并弹出“截图未完成”，看起来像反复索要权限。启动截图前先做**不触发系统弹窗**的 preflight，缺权限时静默驻留托盘并写诊断，手动截图时才说明缺哪项权限 | 无自动化覆盖：`screenCaptureAllowed()` 在非 cocoa 平台恒为真，离屏 CI 走不到该分支；改动只影响启动分支，`startup-flow` 既有用例继续保证有图/空窗/托盘路径不变，实机需确认“无权限启动不弹窗、手动截图仍提示” | ⚠️ |
+
 ## Windows 免费更新签名（0.12.8）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -476,6 +489,8 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | 小图 OCR 与放大边界 | `tests/ocr_test.cpp` 的 `aNineteenPixelHighUrlIsReadBack`、`narrowCropsAreEnlargedWithoutMovingRelativeBoxes`、`enlargingSmallPicturesRespectsTheEngineAndMemoryLimits`，CTest 名 `ocr` | REG-160 |
 | `capture_tests`（29 例） | `tests/capture_test.cpp`，CTest 名 `capture` | REG-059/060/066/067/069/070/071/072/073/074/075/077/079/105/106 |
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
+| `ui_tests::windowControlsFollowThePlatformConvention` | `tests/ui_test.cpp`，CTest 名 `ui` | REG-213 |
+| `cocoa-window` | `tests/cocoa_window_test.mm`，CTest 名 `cocoa-window`（仅 macOS，且需要真实 Cocoa 窗口） | REG-213 |
 | 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
