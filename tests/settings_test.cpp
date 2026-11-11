@@ -281,7 +281,11 @@ class SettingsTests : public QObject {
         QTRY_COMPARE(key->text(), QString("old-openai-key"));
         key->selectAll(); QTest::keyClicks(key, "new-openai-key");
         provider->setCurrentIndex(provider->findData("claude"));
-        QTRY_VERIFY(key->isEnabled());
+        // Wait for the provider switch to finish loading the (empty) Claude key,
+        // otherwise a late load can overwrite the text typed below and only one
+        // dirty provider remains. The empty key reports isEnabled() before the
+        // load starts, so the load counter is the reliable signal.
+        QTRY_VERIFY(credentials.loads >= 2 && key->isEnabled());
         QTest::keyClicks(key, "new-claude-key");
         QCOMPARE(credentials.saves, 0);
         credentials.holdWrites = true;
