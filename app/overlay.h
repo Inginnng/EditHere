@@ -133,10 +133,8 @@ class Overlay final : public QWidget {
     // what a plain arrow does: the region stays where the user put it, and the aim is
     // what moves.
     void movePointer(int dx, int dy);
-    // The screen with the dimming and the frame around the region painted on it.
-    // `viewport` is the piece of the window to paint, in the window's own coordinates:
-    // the window asks for all of it, the enlargement for the few pixels under the
-    // pointer, and both have to get the same picture.
+    // The screen with the dimming and selection decorations painted on it.
+    // The magnifier reads the original frame instead of this decorated scene.
     void drawScene(QPainter &painter, const QRectF &viewport);
     void drawMagnifier(QPainter &painter, QPointF at);
     // The next click reads a colour instead of touching the region.

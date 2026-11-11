@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QLocalSocket>
 #include <QRandomGenerator>
+#include <cstring>
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -27,20 +28,57 @@ struct Handle {
     explicit Handle(HANDLE handle) : value(handle) {}
     ~Handle() { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); }
 };
+// TokenUser and TokenIntegrityLevel both contain a SID_AND_ATTRIBUTES followed
+// by the SID. Keep that self-referencing result in one aligned, immovable buffer.
+struct TokenSid {
+    alignas(SID_AND_ATTRIBUTES) BYTE bytes[sizeof(SID_AND_ATTRIBUTES) + SECURITY_MAX_SID_SIZE]{};
+    DWORD length = 0;
+    TokenSid() = default;
+    TokenSid(const TokenSid &) = delete;
+    TokenSid &operator=(const TokenSid &) = delete;
+    PSID sid() const {
+        if (length < sizeof(SID_AND_ATTRIBUTES) || length > sizeof(bytes)) return nullptr;
+        const auto value = reinterpret_cast<const SID_AND_ATTRIBUTES *>(bytes)->Sid;
+        const auto begin = reinterpret_cast<quintptr>(bytes);
+        const auto address = reinterpret_cast<quintptr>(value);
+        // Check the SID header before asking Win32 to inspect its variable tail.
+        if (address < begin + sizeof(SID_AND_ATTRIBUTES)
+            || address > begin + length - GetSidLengthRequired(0)) return nullptr;
+        const auto count = *GetSidSubAuthorityCount(value);
+        if (!count || count > SID_MAX_SUB_AUTHORITIES
+            || GetSidLengthRequired(count) > begin + length - address
+            || !IsValidSid(value)) return nullptr;
+        return value;
+    }
+    bool read(HANDLE token, TOKEN_INFORMATION_CLASS kind) {
+        DWORD written = 0;
+        length = 0;
+        if (!GetTokenInformation(token, kind, bytes, DWORD(sizeof(bytes)), &written)) return false;
+        length = written;
+        return sid() != nullptr;
+    }
+};
+bool tokenIntegrityLevel(HANDLE token, DWORD &level) {
+    TokenSid information;
+    if (!information.read(token, TokenIntegrityLevel)) return false;
+    const auto sid = information.sid();
+    const SID_IDENTIFIER_AUTHORITY mandatory = SECURITY_MANDATORY_LABEL_AUTHORITY;
+    if (*GetSidSubAuthorityCount(sid) != 1
+        || std::memcmp(GetSidIdentifierAuthority(sid), &mandatory, sizeof(mandatory)) != 0) return false;
+    level = *GetSidSubAuthority(sid, 0);
+    return true;
+}
 struct Security {
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, FALSE};
-    QByteArray user;
+    TokenSid user;
     Security() {
         HANDLE raw = nullptr;
         if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw)) return;
         Handle token(raw);
-        DWORD size = 0;
-        GetTokenInformation(raw, TokenUser, nullptr, 0, &size);
-        user.resize(int(size));
-        if (!GetTokenInformation(raw, TokenUser, user.data(), size, &size)) { user.clear(); return; }
+        if (!user.read(raw, TokenUser)) return;
         LPWSTR sid = nullptr;
-        if (!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER *>(user.data())->User.Sid, &sid)) return;
+        if (!ConvertSidToStringSidW(user.sid(), &sid)) return;
         // Protected DACL: only this user and the OS, with no inherited broad ACEs.
         const auto sddl = QString("O:%1D:P(A;;FA;;;%1)(A;;FA;;;SY)").arg(QString::fromWCharArray(sid));
         LocalFree(sid);
@@ -48,7 +86,7 @@ struct Security {
             attributes.lpSecurityDescriptor = descriptor;
     }
     ~Security() { if (descriptor) LocalFree(descriptor); }
-    PSID sid() const { return user.isEmpty() ? nullptr : reinterpret_cast<const TOKEN_USER *>(user.constData())->User.Sid; }
+    PSID sid() const { return user.sid(); }
 };
 bool privateHandle(HANDLE handle, const Security &security, bool directory) {
     BY_HANDLE_FILE_INFORMATION information{};
@@ -127,13 +165,9 @@ QString ipcServerPolicyError() {
     TOKEN_ELEVATION elevation{}; DWORD size = 0;
     if (!GetTokenInformation(raw, TokenElevation, &elevation, sizeof(elevation), &size))
         return "Unable to verify the process privilege level. IPC is disabled.";
-    DWORD required = 0;
-    GetTokenInformation(raw, TokenIntegrityLevel, nullptr, 0, &required);
-    QByteArray integrity(int(required), '\0');
-    if (!GetTokenInformation(raw, TokenIntegrityLevel, integrity.data(), required, &required))
+    DWORD level = 0;
+    if (!tokenIntegrityLevel(raw, level))
         return "Unable to verify the process integrity level. IPC is disabled.";
-    const auto sid = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(integrity.data())->Label.Sid;
-    const auto level = *GetSidSubAuthority(sid, *GetSidSubAuthorityCount(sid) - 1);
     if (elevation.TokenIsElevated || level >= SECURITY_MANDATORY_HIGH_RID)
         return "IPC is disabled when EditHere runs with elevated privileges. Start EditHere normally to use the CLI or desktop forwarding.";
 #endif
@@ -261,26 +295,18 @@ QString ipcPeerError(const QLocalSocket &socket, bool serverSide) {
     if (process.value == INVALID_HANDLE_VALUE || !OpenProcessToken(process.value, TOKEN_QUERY, &raw))
         return "Unable to verify the IPC peer identity.";
     Handle peerToken(raw);
-    DWORD size = 0;
-    GetTokenInformation(raw, TokenUser, nullptr, 0, &size);
-    QByteArray user(int(size), '\0');
-    if (!GetTokenInformation(raw, TokenUser, user.data(), size, &size)) return "Unable to verify the IPC peer identity.";
+    TokenSid user;
+    if (!user.read(raw, TokenUser)) return "Unable to verify the IPC peer identity.";
     Security local;
-    if (!local.sid() || !EqualSid(local.sid(), reinterpret_cast<TOKEN_USER *>(user.data())->User.Sid))
+    if (!local.sid() || !EqualSid(local.sid(), user.sid()))
         return "IPC requests from another OS user are not permitted.";
-    GetTokenInformation(raw, TokenIntegrityLevel, nullptr, 0, &size);
-    QByteArray integrity(int(size), '\0');
-    if (!GetTokenInformation(raw, TokenIntegrityLevel, integrity.data(), size, &size)) return "Unable to verify the IPC peer integrity level.";
-    const auto peerSid = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(integrity.data())->Label.Sid;
-    const auto peerLevel = *GetSidSubAuthority(peerSid, *GetSidSubAuthorityCount(peerSid) - 1);
+    DWORD peerLevel = 0;
+    if (!tokenIntegrityLevel(raw, peerLevel)) return "Unable to verify the IPC peer integrity level.";
     HANDLE localRaw = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &localRaw)) return "Unable to verify the IPC integrity level.";
     Handle localToken(localRaw);
-    GetTokenInformation(localRaw, TokenIntegrityLevel, nullptr, 0, &size);
-    integrity.resize(int(size));
-    if (!GetTokenInformation(localRaw, TokenIntegrityLevel, integrity.data(), size, &size)) return "Unable to verify the IPC integrity level.";
-    const auto localSid = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(integrity.data())->Label.Sid;
-    const auto localLevel = *GetSidSubAuthority(localSid, *GetSidSubAuthorityCount(localSid) - 1);
+    DWORD localLevel = 0;
+    if (!tokenIntegrityLevel(localRaw, localLevel)) return "Unable to verify the IPC integrity level.";
     if (peerLevel != localLevel)
         return "IPC between different process integrity levels is not permitted.";
     return {};
