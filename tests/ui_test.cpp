@@ -1197,7 +1197,8 @@ class UiTests : public QObject {
         // The brand starts clear of whatever occupies the corner: the traffic lights
         // on macOS, the compact inset of our own bar elsewhere. One pixel of the
         // figure is the shell's own inset.
-        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), hasOwnWindowButtons() ? 15 : 79);
+        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
+        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), row.available ? row.controlsRight + 10 : 15);
         // The tools stay in the top right, inside the bar and the window.
         const QRect tools(settings->mapTo(&editor, QPoint()), settings->size());
         QVERIFY(editor.rect().contains(tools));
