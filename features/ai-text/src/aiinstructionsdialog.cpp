@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -52,15 +53,19 @@ class SourceImageView final : public QWidget {
 };
 }
 AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedbackInput input,
-                                         QWidget *parent, AiCredentials *credentials, AiInstructionsDraft draft)
+                                         QWidget *parent, AiCredentials *credentials, AiInstructionsDraft draft,
+                                         AiCredentials *providerProbe)
     : QDialog(parent), input_(std::move(input)),
-      credentials_(credentials ? credentials : new AiCredentials(this)), client_(new AiFeedbackClient(this)) {
+      credentials_(credentials ? credentials : new AiCredentials(this)),
+      providerProbe_(providerProbe), client_(new AiFeedbackClient(this)) {
     setObjectName("aiInstructionsDialog");
     setWindowTitle(tr("AI 解析（预览）"));
     setMinimumSize(760, 580);
     const auto available = screen()->availableGeometry().size() - QSize(48, 64);
     resize(QSize(1120, 780).boundedTo(available).expandedTo(minimumSize()));
+    settings_ = settings;
     connection_ = settings.aiProviders.value(settings.aiProviderId, defaultAiConnection(settings.aiProviderId));
+    connection_.providerId = settings.aiProviderId;
     systemPrompt_ = settings.aiSystemPrompt;
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
@@ -74,11 +79,11 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     auto *title = new QLabel(tr("AI 解析（预览）"), header); title->setObjectName("aiAnalysisTitle");
     titles->addWidget(title); titles->addWidget(mutedLabel(tr("预览功能：把图形化修改转成文字需求，结果请核对后再交给 Agent。"), header));
     heading->addLayout(titles, 1);
-    QString providerName = settings.aiProviderId;
-    for (const auto &preset : aiProviderPresets()) if (preset.id == settings.aiProviderId) providerName = preset.name;
-    configure_ = textButton(providerName, false, header); configure_->setObjectName("aiInstructionsSettings");
+    configure_ = textButton(tr("API 设置"), false, header);
+    configure_->setObjectName("aiInstructionsSettings");
     configure_->setIcon(aiProviderIcon(connection_.providerId)); configure_->setIconSize({20, 20});
-    configure_->setToolTip(tr("API 设置") + " · " + connection_.model); configure_->setAccessibleName(tr("API 设置"));
+    // The label follows what is actually configured, not a built-in default.
+    configure_->setToolTip(tr("正在读取已配置的服务商…")); configure_->setAccessibleName(tr("API 设置"));
     heading->addWidget(configure_); layout->addWidget(header);
 
     splitter_ = new QSplitter(Qt::Horizontal, this); splitter_->setObjectName("aiAnalysisSplitter");
@@ -147,8 +152,8 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     }
     noteLayout->addStretch(); noteScroll->setWidget(notes); imageLayout->addWidget(noteScroll, 1);
     sources->addWidget(imagePage, 1);
-    auto *model = mutedLabel(connection_.model, sourcePanel_); model->setTextFormat(Qt::PlainText); model->setWordWrap(true);
-    model->setToolTip(connection_.baseUrl); sources->addWidget(model);
+    modelLabel_ = mutedLabel(connection_.model, sourcePanel_); modelLabel_->setTextFormat(Qt::PlainText);
+    modelLabel_->setWordWrap(true); modelLabel_->setToolTip(connection_.baseUrl); sources->addWidget(modelLabel_);
 
     auto *resultCard = new QWidget(splitter_); resultCard->setObjectName("aiAnalysisResult"); resultCard->setMinimumWidth(360);
     auto *resultLayout = new QVBoxLayout(resultCard); resultLayout->setContentsMargins(24, 22, 24, 20); resultLayout->setSpacing(14);
@@ -220,13 +225,18 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     });
     connect(credentials_, &AiCredentials::loaded, this, [this, itemCount = facts.size()](const QString &id, const QString &key) {
         if (id != connection_.providerId) return;
-        key_ = key; credentialsLoaded_ = true; setBusy(false);
+        key_ = key; credentialsLoaded_ = true; activeProbeDone_ = true;
+        if (!key.isEmpty() && !configuredProviders_.contains(id)) configuredProviders_.append(id);
+        setBusy(false);
         setStatus(key.isEmpty() ? tr("先在 API 设置中保存 Key。") : tr("%1 条批注，准备就绪。").arg(itemCount));
+        updateProviderButtonIfReady();
     });
     connect(credentials_, &AiCredentials::failed, this, [this](const QString &message) {
-        credentialsLoaded_ = false; setBusy(false); setStatus(message, true);
+        credentialsLoaded_ = false; activeProbeDone_ = true; setBusy(false); setStatus(message, true);
+        updateProviderButtonIfReady();
     });
     hasOutput_ = !draft.text.isEmpty(); output_->setPlainText(draft.text);
+    probeConfiguredProviders();
     setBusy(false); updateSourceWidth(); splitter_->setSizes({330, 740}); refreshStyle();
     QTimer::singleShot(0, this, [this] {
         const auto error = validateAiConnection(connection_);
@@ -272,6 +282,99 @@ void AiInstructionsDialog::updateOutputActions() {
             button->setProperty("primary", primary); button->style()->unpolish(button); button->style()->polish(button);
         }
     }
+}
+QString AiInstructionsDialog::providerDisplayName(const QString &providerId) const {
+    for (const auto &preset : aiProviderPresets())
+        if (preset.id == providerId) return preset.name;
+    return providerId.isEmpty() ? tr("未配置") : providerId;
+}
+void AiInstructionsDialog::probeConfiguredProviders() {
+    // Ask the credential store which providers really have a key, so the header
+    // never advertises a built-in provider that was never configured.
+    const auto active = connection_.providerId;
+    QStringList others;
+    for (const auto &preset : aiProviderPresets())
+        if (preset.id != active) others.append(preset.id);
+    pendingProviderProbes_ = others.size();
+    providerProbeDone_ = others.isEmpty();
+    activeProbeDone_ = false;
+    if (pendingProviderProbes_ > 0) {
+        auto *probe = providerProbe_ ? providerProbe_ : new AiCredentials(this);
+        const auto step = [this] {
+            if (--pendingProviderProbes_ <= 0) {
+                pendingProviderProbes_ = 0;
+                providerProbeDone_ = true;
+                updateProviderButtonIfReady();
+            }
+        };
+        connect(probe, &AiCredentials::loaded, this, [this, step](const QString &id, const QString &key) {
+            if (!key.isEmpty() && !configuredProviders_.contains(id)) configuredProviders_.append(id);
+            step();
+        });
+        connect(probe, &AiCredentials::failed, this, [step](const QString &) { step(); });
+        for (const auto &id : others) probe->load(id);
+    }
+    updateProviderButtonIfReady();
+}
+void AiInstructionsDialog::updateProviderButtonIfReady() {
+    if (providerProbeDone_ && activeProbeDone_) updateProviderButton();
+}
+void AiInstructionsDialog::updateProviderButton() {
+    if (!configure_) return;
+    if (modelLabel_) modelLabel_->setVisible(!configuredProviders_.isEmpty());
+    if (configuredProviders_.isEmpty()) {
+        configure_->setText(tr("配置 API…"));
+        configure_->setIcon(QIcon());
+        configure_->setToolTip(tr("还没有配置任何服务商，点击打开 API 设置。"));
+        configure_->setAccessibleName(configure_->toolTip());
+        providerMenu_ = nullptr;
+        configure_->setMenu(nullptr);
+        return;
+    }
+    // Use a provider that actually has a key, instead of a built-in default.
+    if (!configuredProviders_.contains(connection_.providerId)) switchConnection(configuredProviders_.first());
+    configure_->setIcon(aiProviderIcon(connection_.providerId));
+    configure_->setText(providerDisplayName(connection_.providerId));
+    configure_->setToolTip(configuredProviders_.size() > 1
+        ? tr("已配置 %1 个服务商，点击切换，或进入 API 设置。").arg(configuredProviders_.size())
+        : tr("API 设置") + " · " + connection_.model);
+    configure_->setAccessibleName(configure_->toolTip());
+    if (configuredProviders_.size() < 2) {
+        providerMenu_ = nullptr;
+        configure_->setMenu(nullptr);
+        return;
+    }
+    if (!providerMenu_) {
+        providerMenu_ = new QMenu(this);
+        providerMenu_->setObjectName("aiProviderMenu");
+    }
+    providerMenu_->clear();
+    for (const auto &id : configuredProviders_) {
+        auto *action = providerMenu_->addAction(aiProviderIcon(id), providerDisplayName(id));
+        action->setCheckable(true);
+        action->setChecked(id == connection_.providerId);
+        connect(action, &QAction::triggered, this, [this, id] { switchConnection(id); });
+    }
+    providerMenu_->addSeparator();
+    auto *settingsAction = providerMenu_->addAction(tr("API 设置…"));
+    connect(settingsAction, &QAction::triggered, this, [this] { done(Configure); });
+    // A button with a menu draws the drop-down indicator itself, which keeps the
+    // affordance readable in every UI font.
+    configure_->setMenu(providerMenu_);
+}
+void AiInstructionsDialog::switchConnection(const QString &providerId) {
+    connection_ = settings_.aiProviders.value(providerId, defaultAiConnection(providerId));
+    connection_.providerId = providerId;
+    key_.clear(); credentialsLoaded_ = false; activeProbeDone_ = false;
+    if (modelLabel_) {
+        modelLabel_->setText(connection_.model);
+        modelLabel_->setToolTip(connection_.baseUrl);
+    }
+    setBusy(false);
+    const auto error = validateAiConnection(connection_);
+    if (!error.isEmpty()) { setStatus(error, true); return; }
+    setStatus(tr("正在读取连接配置…"));
+    credentials_->load(providerId);
 }
 void AiInstructionsDialog::changeEvent(QEvent *event) {
     QDialog::changeEvent(event);

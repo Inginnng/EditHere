@@ -118,6 +118,7 @@ int main(int argc, char **argv) {
     parser.addOption({"fixtures", "示例输入目录（screen.svg、feedback.json、reply.json）", "folder"});
     parser.addOption({"render", "导出本地示例界面截图并退出", "folder"});
     parser.addOption({"render-settings", "导出连接设置与系统提示词窗口截图并退出", "folder"});
+    parser.addOption({"no-keys", "不提供任何已保存的密钥，用于查看未配置状态"});
     parser.process(app);
     if (parser.isSet("live") && parser.isSet("render")) return 2;
     auto assets = QDir(QCoreApplication::applicationDirPath()).filePath("resources");
@@ -159,7 +160,8 @@ int main(int argc, char **argv) {
         replay = std::make_unique<LocalReplay>(fixture(folder, "reply.json"));
         if (!replay->server.isListening()) return 5;
         replay->failNext = parser.isSet("fail-once");
-        for (const auto &preset : aiProviderPresets()) credentials.keys[preset.id] = "local-workbench-key";
+        if (!parser.isSet("no-keys"))
+            for (const auto &preset : aiProviderPresets()) credentials.keys[preset.id] = "local-workbench-key";
     }
     AppSettings settings; settings.aiProviders["openai"] = defaultAiConnection();
     AiInstructionsDraft draft;
@@ -189,7 +191,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     for (;;) {
-        AiInstructionsDialog dialog(settings, input, nullptr, &credentials, draft);
+        AiInstructionsDialog dialog(settings, input, nullptr, &credentials, draft, &credentials);
         dialog.setWindowTitle(replay ? "AI 文字工作台 · 本地示例" : "AI 文字工作台 · 真实 API");
         auto *client = dialog.findChild<AiFeedbackClient *>();
         if (replay) client->setEndpointOverride(replay->endpoint());

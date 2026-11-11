@@ -2477,6 +2477,30 @@
         <source>重新解析</source>
         <translation>重新解析</translation>
     </message>
+        <message>
+            <source>正在读取已配置的服务商…</source>
+            <translation>正在讀取已設定的服務提供者…</translation>
+        </message>
+        <message>
+            <source>未配置</source>
+            <translation>未設定</translation>
+        </message>
+        <message>
+            <source>配置 API…</source>
+            <translation>設定 API…</translation>
+        </message>
+        <message>
+            <source>还没有配置任何服务商，点击打开 API 设置。</source>
+            <translation>還沒有設定任何服務提供者，點選開啟 API 設定。</translation>
+        </message>
+        <message>
+            <source>已配置 %1 个服务商，点击切换，或进入 API 设置。</source>
+            <translation>已設定 %1 個服務提供者，點選切換，或進入 API 設定。</translation>
+        </message>
+        <message>
+            <source>API 设置…</source>
+            <translation>API 設定…</translation>
+        </message>
 </context>
 <context>
     <name>h2d::AiSettingsPage</name>

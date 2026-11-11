@@ -2477,6 +2477,30 @@
         <source>重新解析</source>
         <translation>Analyze again</translation>
     </message>
+        <message>
+            <source>正在读取已配置的服务商…</source>
+            <translation>Reading the configured providers…</translation>
+        </message>
+        <message>
+            <source>未配置</source>
+            <translation>Not configured</translation>
+        </message>
+        <message>
+            <source>配置 API…</source>
+            <translation>Configure API…</translation>
+        </message>
+        <message>
+            <source>还没有配置任何服务商，点击打开 API 设置。</source>
+            <translation>No provider is configured yet. Click to open the API settings.</translation>
+        </message>
+        <message>
+            <source>已配置 %1 个服务商，点击切换，或进入 API 设置。</source>
+            <translation>%1 providers are configured. Click to switch, or open the API settings.</translation>
+        </message>
+        <message>
+            <source>API 设置…</source>
+            <translation>API settings…</translation>
+        </message>
 </context>
 <context>
     <name>h2d::AiSettingsPage</name>

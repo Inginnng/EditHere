@@ -13,6 +13,7 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -27,15 +28,20 @@ namespace {
 class TestCredentials final : public AiCredentials {
   public:
     QString key = "test-dialog-key";
+    // Only these providers report a stored key, so the dialog can tell
+    // "configured once", "configured several times" and "not configured" apart.
+    QStringList configured{"openai"};
     QString error;
     QString requestedProvider;
     int loads = 0;
+    QMap<QString, int> loadsByProvider;
     void load(const QString &providerId) override {
         requestedProvider = providerId;
         ++loads;
+        ++loadsByProvider[providerId];
         QTimer::singleShot(0, this, [this, providerId] {
             if (!error.isEmpty()) emit failed(error);
-            else emit loaded(providerId, key);
+            else emit loaded(providerId, configured.contains(providerId) ? key : QString());
         });
     }
 };
@@ -206,7 +212,7 @@ class AiInstructionsTests final : public QObject {
         DialogApi api;
         TestCredentials credentials;
         auto snapshot = aiFeedbackSnapshot(annotatedDocument());
-        AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials);
+        AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials, {}, &credentials);
         dialog.resize(1080, 740);
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
         auto *copy = dialog.findChild<QPushButton *>("aiInstructionsCopy");
@@ -217,7 +223,7 @@ class AiInstructionsTests final : public QObject {
         QVERIFY(!copy->isEnabled());
         dialog.show();
         QTRY_VERIFY(generate->isEnabled());
-        QCOMPARE(credentials.loads, 1);
+        QCOMPARE(credentials.loadsByProvider.value("openai"), 1);
         QCOMPARE(api.requests, 0); // Opening this dialog never spends API tokens.
         QVERIFY(!output->isVisible());
         QVERIFY(copy->isHidden());
@@ -266,13 +272,13 @@ class AiInstructionsTests final : public QObject {
         TestCredentials credentials;
         if (failure) credentials.error = "Credential store unavailable";
         else credentials.key.clear();
-        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials);
+        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials, {}, &credentials);
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
         auto *configure = dialog.findChild<QPushButton *>("aiInstructionsSettings");
         auto *status = dialog.findChild<QLabel *>("aiInstructionsStatus");
         QVERIFY(generate && configure && status);
         dialog.show();
-        QTRY_COMPARE(credentials.loads, 1);
+        QTRY_COMPARE(credentials.loadsByProvider.value("openai"), 1);
         if (failure) QTRY_VERIFY(status->text().contains("unavailable"));
         else QTRY_VERIFY(status->text().contains("Key"));
         QVERIFY(!generate->isEnabled());
@@ -285,7 +291,8 @@ class AiInstructionsTests final : public QObject {
         QVERIFY(!dialog.isVisible());
         // A fresh dialog after settings picks up the new provider and credentials.
         TestCredentials changed;
-        AiInstructionsDialog reopened(api.settings("kimi-cn"), aiFeedbackSnapshot(annotatedDocument()), nullptr, &changed);
+        changed.configured = {"kimi-cn"};
+        AiInstructionsDialog reopened(api.settings("kimi-cn"), aiFeedbackSnapshot(annotatedDocument()), nullptr, &changed, {}, &changed);
         reopened.show();
         auto *newGenerate = reopened.findChild<QPushButton *>("aiInstructionsGenerate");
         QTRY_VERIFY(newGenerate->isEnabled());
@@ -295,7 +302,7 @@ class AiInstructionsTests final : public QObject {
         DialogApi api;
         api.respond = false;
         TestCredentials credentials;
-        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials);
+        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials, {}, &credentials);
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
         auto *client = dialog.findChild<AiFeedbackClient *>();
         QVERIFY(generate && client);
@@ -312,7 +319,7 @@ class AiInstructionsTests final : public QObject {
     void stoppingRegenerationKeepsEditedTextVisibleAndEditable() {
         DialogApi api;
         TestCredentials credentials;
-        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials);
+        AiInstructionsDialog dialog(api.settings(), aiFeedbackSnapshot(annotatedDocument()), nullptr, &credentials, {}, &credentials);
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
         auto *cancel = dialog.findChild<QPushButton *>("aiInstructionsCancel");
         auto *output = dialog.findChild<QPlainTextEdit *>("aiInstructionsText");
@@ -336,7 +343,7 @@ class AiInstructionsTests final : public QObject {
         TestCredentials credentials;
         const auto snapshot = aiFeedbackSnapshot(annotatedDocument());
         AiInstructionsDraft draft{"手动编辑的说明", QString("使用中文，保持简短。")};
-        AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials, draft);
+        AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &credentials, draft, &credentials);
         auto *extra = dialog.findChild<QLineEdit *>("aiRunInstructions");
         auto *output = dialog.findChild<QPlainTextEdit *>("aiInstructionsText");
         auto *generate = dialog.findChild<QPushButton *>("aiInstructionsGenerate");
@@ -351,10 +358,52 @@ class AiInstructionsTests final : public QObject {
         const auto saved = dialog.draft();
         dialog.findChild<QPushButton *>("aiInstructionsSettings")->click();
         QCOMPARE(dialog.result(), int(AiInstructionsDialog::Configure));
-        AiInstructionsDialog reopened(api.settings("kimi-cn"), snapshot, nullptr, &credentials, saved);
+        AiInstructionsDialog reopened(api.settings("kimi-cn"), snapshot, nullptr, &credentials, saved, &credentials);
         reopened.show();
         QCOMPARE(reopened.findChild<QPlainTextEdit *>("aiInstructionsText")->toPlainText(), saved.text);
         QCOMPARE(reopened.findChild<QLineEdit *>("aiRunInstructions")->text(), saved.extraInstructions.value());
+    }
+    void providerEntryShowsWhatIsActuallyConfigured() {
+        DialogApi api;
+        const auto snapshot = aiFeedbackSnapshot(annotatedDocument());
+        {
+            TestCredentials none;
+            none.configured.clear();
+            AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &none, {}, &none);
+            auto *configure = dialog.findChild<QPushButton *>("aiInstructionsSettings");
+            QVERIFY(configure);
+            QTRY_COMPARE(configure->text(), QString("配置 API…"));
+            QVERIFY(configure->toolTip().contains("还没有配置"));
+            QSignalSpy finished(&dialog, &QDialog::finished);
+            configure->click();
+            QCOMPARE(finished.size(), 1);
+            QCOMPARE(finished.first().first().toInt(), int(AiInstructionsDialog::Configure));
+        }
+        {
+            TestCredentials one;
+            one.configured = {"deepseek"};
+            AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &one, {}, &one);
+            auto *configure = dialog.findChild<QPushButton *>("aiInstructionsSettings");
+            QTRY_COMPARE(configure->text(), QString("DeepSeek"));
+            QVERIFY(!configure->menu());
+        }
+        {
+            TestCredentials two;
+            two.configured = {"openai", "deepseek"};
+            AiInstructionsDialog dialog(api.settings(), snapshot, nullptr, &two, {}, &two);
+            auto *configure = dialog.findChild<QPushButton *>("aiInstructionsSettings");
+            QTRY_COMPARE(configure->text(), QString("OpenAI"));
+            QVERIFY(configure->menu());
+            auto *menu = dialog.findChild<QMenu *>("aiProviderMenu");
+            QVERIFY(menu);
+            QCOMPARE(menu->actions().size(), 4);
+            QAction *deepseek = nullptr;
+            for (auto *action : menu->actions())
+                if (action->text() == QString("DeepSeek")) deepseek = action;
+            QVERIFY(deepseek);
+            deepseek->trigger();
+            QTRY_COMPARE(two.requestedProvider, QString("deepseek"));
+        }
     }
 };
 QTEST_MAIN(AiInstructionsTests)
