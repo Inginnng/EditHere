@@ -283,6 +283,50 @@ class AgentCliTests : public QObject {
         QCOMPARE(cliDesktop, guiDesktop);
         QCOMPARE(agentStateLocation(), guiState);
     }
+#ifdef Q_OS_WIN
+    void windowsIpcPolicyMatchesTheNativeProcessToken() {
+        HANDLE token = nullptr;
+        QVERIFY(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token));
+        struct CloseToken { HANDLE token; ~CloseToken() { CloseHandle(token); } } close{token};
+        TOKEN_ELEVATION elevation{};
+        DWORD written = 0;
+        QVERIFY(GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &written));
+        alignas(TOKEN_MANDATORY_LABEL) BYTE label[sizeof(TOKEN_MANDATORY_LABEL) + SECURITY_MAX_SID_SIZE]{};
+        QVERIFY(GetTokenInformation(token, TokenIntegrityLevel, label, sizeof(label), &written));
+        const auto sid = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(label)->Label.Sid;
+        QVERIFY(IsValidSid(sid));
+        QVERIFY(*GetSidSubAuthorityCount(sid) > 0);
+        const DWORD rid = *GetSidSubAuthority(sid, *GetSidSubAuthorityCount(sid) - 1);
+        const bool elevated = elevation.TokenIsElevated || rid >= SECURITY_MANDATORY_HIGH_RID;
+        for (int attempt = 0; attempt < 128; ++attempt) {
+            const QString error = ipcServerPolicyError();
+            if (elevated)
+                QVERIFY2(error.contains("elevated privileges"), qPrintable(error));
+            else
+                QVERIFY2(error.isEmpty(), qPrintable(error));
+        }
+    }
+    void windowsIpcChecksBothEndsOfTheRealNamedPipe() {
+        if (!ipcServerPolicyError().isEmpty())
+            QSKIP("named-pipe acceptance requires a non-elevated process");
+        QLocalServer server;
+        QVERIFY(server.listen(isolatedSocketName()));
+        QLocalSocket client;
+        client.connectToServer(server.serverName());
+        QVERIFY(client.waitForConnected(1000));
+        QTRY_VERIFY(server.hasPendingConnections());
+        const auto peer = server.nextPendingConnection();
+        QVERIFY(peer);
+        // Identity and integrity must be accepted from both sides, independently
+        // of the token comparison performed later by the application protocol.
+        for (int attempt = 0; attempt < 128; ++attempt) {
+            const auto serverError = ipcPeerError(*peer, true);
+            const auto clientError = ipcPeerError(client, false);
+            QVERIFY2(serverError.isEmpty(), qPrintable(serverError));
+            QVERIFY2(clientError.isEmpty(), qPrintable(clientError));
+        }
+    }
+#endif
     void realTransportKeepsMissingErrorAndDesktopProbeSendsNothing() {
         QLocalSocket socket;
         // macOS prepends its long per-user temp path to Unix socket names.
