@@ -1,11 +1,26 @@
 ---
 name: edithere-web
-description: 用 EditHere 在支持 MCP Apps 的 Agent 内批注截图、移动和缩放组件，并读取用户提交的结构化反馈；不支持内嵌时使用本机网页兼容入口。适用于批注页面、设计图及处理 EditHere 反馈，普通代码修改无需启动。
+description: 用 EditHere 在支持 MCP Apps 的 Agent 内批注截图、移动和缩放组件，并读取用户提交的结构化反馈；不支持内嵌时使用本机网页兼容入口。适用于批注页面、设计图及处理 EditHere 反馈，普通代码修改无需启动。 支持由 AI 维护项目组图、逐页更新截图并统一收集结果审批意见。
 ---
 
 # EditHere 网页批注
 
 将本轮实际图片交给 EditHere，用户提交后读取同一会话的反馈，继续当前已授权任务。优先使用已连接的 EditHere Web MCP；用户明确指定桌面程序时沿用桌面入口。
+
+## 项目组图与多轮结果审批
+
+用户要评审项目、多个页面或开发结果时，由 AI 准备和维护组图。运行实际项目，截取相关页面与关键状态；用户提供的设计稿可直接使用并注明用途。按任务选择覆盖范围，用户只需查看结果、批注和提交。
+
+在项目内保留 `.edithere/results/project.json` 清单，用稳定的 `id` 对应每个页面。当前 skill 的 `scripts/image-set.mjs` 支持 `create`、`upsert --id <页面ID> --image <截图路径> [--name <名称>]`、`list`、`remove` 和 `bundle --output <新的网页项目.json>`。重复 upsert 只更新同一页，保留顺序和其他页面。截图变化后同步清单校验值。
+
+MCP Apps 使用 `edithere_web_open` 的 `projectPath` 传清单绝对路径；恢复本轮仍只传原 `sessionId`。普通浏览器使用 Web CLI `start --project <清单绝对路径> --output <本轮新的反馈绝对路径>`。离线入口先用 `bundle` 生成内嵌全部页面的网页项目，再打开 EditHere 导入。
+
+每轮使用新的反馈输出路径。只在用户明确提交后读取 `image-set-feedback-1`：`pages[]` 只含已批注或实际移动的页面，按 `pages[].id` 对回清单；`pageIndex` 只是整组索引，未批注页不附图片；`groupNotes` 是整组意见。页内继续按该版本图片反馈规则读取，坐标以各页原图为准。没有批注意味着本轮没有提出修改意见，不额外推断功能测试结论。
+
+按反馈修改、完成验证，重新截取发生变化的页面并按原 ID 更新清单，再展示更新后的同一组图。正在审核的是截图快照，不能把旧批注套到新图片上；历史反馈保留在各轮目录。截图整理和换图由 AI 完成。取消或超时后不自动重开另一轮，也不替用户点击提交。
+
+完整格式和命令见 [项目组图说明](references/project-review.md)。
+
 
 ## 取得图片
 

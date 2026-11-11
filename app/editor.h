@@ -2,6 +2,7 @@
 #include "canvas.h"
 #include "settings.h"
 #include "videoproject.h"
+#include "imageset.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QPointer>
@@ -14,6 +15,7 @@ class QPushButton;
 class QStackedWidget;
 class QShortcut;
 class QPlainTextEdit;
+class QTabBar;
 class QTimer;
 namespace h2d {
 class LayoutCanvas;
@@ -54,6 +56,9 @@ class Editor final : public QWidget {
     // Throws on invalid input; used by CLI requests without swallowing errors in a dialog.
     void loadMedia(const QString &path);
     void setVideoProject(VideoProject project, const QString &projectPath = {});
+    void setImageSet(ImageSet project, const QString &projectPath = {});
+    bool hasImageSet() const { return imageSet_.has_value(); }
+    void markFeedbackSubmitted();
     bool hasVideo() const { return video_.has_value(); }
     int totalAnnotationCount();
     QByteArray projectBytes();
@@ -65,6 +70,7 @@ class Editor final : public QWidget {
     void openEmpty();
     void pasteImage();
     void exportJson();
+    void generateInstructions();
     void fit();
     void showGuide();
     void dismissGuide();
@@ -84,6 +90,7 @@ class Editor final : public QWidget {
     void hiddenToTray();
     void toolbarSettingsRequested();
     void settingsRequested();
+    void aiSettingsRequested();
     // The editor changed a preference itself — the "don't ask again" box does — and the
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();
@@ -157,6 +164,12 @@ class Editor final : public QWidget {
     void setMode(Canvas::Mode mode);
     void updateControls();
     void clearVideo();
+    void clearImageSet();
+    void commitSetPage();
+    void selectSetPage(int index);
+    void updateSetPages();
+    void editGroupNotes();
+
     void commitVideoFrame();
     void displayVideoFrame(const QImage &image, qint64 timestampUs);
     void showVideoPreview(const QSize &size, qint64 timestampUs);
@@ -176,6 +189,13 @@ class Editor final : public QWidget {
     QWidget *agentBanner_ = nullptr;
     bool agentSession_ = false;
     Document doc_;
+    std::optional<ImageSet> imageSet_;
+    int setPageIndex_ = -1;
+    bool switchingSetPage_ = false;
+    QWidget *setBar_ = nullptr;
+    QTabBar *setTabs_ = nullptr;
+    QLabel *setTitle_ = nullptr;
+
     std::optional<VideoProject> video_;
     qint64 videoFrameUs_ = -1;
     bool switchingVideoFrame_ = false;

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "nameEn": "OpenAI",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-6.1-sol",
+    "protocol": "responses",
+    "docsUrl": "https://developers.openai.com/api/docs/guides/images-vision",
+    "note": "OpenAI 官方 API；支持图片输入。填写 OpenAI Platform API Key，ChatGPT 订阅与 API 额度分别管理。",
+    "noteEn": "Official OpenAI API with image input. Enter an OpenAI Platform API key. ChatGPT subscriptions and API credits are managed separately."
+  },
+  {
+    "id": "claude",
+    "name": "Claude",
+    "nameEn": "Claude",
+    "baseUrl": "https://api.anthropic.com/v1",
+    "model": "claude-sonnet-5-5",
+    "protocol": "anthropic-messages",
+    "docsUrl": "https://platform.claude.com/docs/en/models/overview",
+    "note": "Anthropic 官方 Messages API；支持图片输入。填写 Claude Console API Key，Claude 订阅与 API 额度分别管理。",
+    "noteEn": "Official Anthropic Messages API with image input. Enter a Claude Console API key. Claude subscriptions and API credits are managed separately."
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "nameEn": "DeepSeek",
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "protocol": "chat-completions",
+    "docsUrl": "https://api-docs.deepseek.com/guides/vision/",
+    "note": "DeepSeek 官方 API；deepseek-flash 已支持图片输入。旧视觉实验模型已退役，预设使用当前 Flash 模型。",
+    "noteEn": "Official DeepSeek API. deepseek-flash supports image input. The earlier experimental vision model has been retired; this preset uses the current Flash model."
+  },
+  {
+    "id": "glm-cn",
+    "name": "GLM（中国）",
+    "nameEn": "GLM (China)",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-4.6v",
+    "protocol": "chat-completions",
+    "docsUrl": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-4.6v",
+    "note": "智谱开放平台普通 API，使用视觉模型 GLM-4.6V。请填写此平台的 API Key；GLM Coding Plan 的专用地址和额度不等同于普通 API。",
+    "noteEn": "Standard BigModel API using the GLM-4.6V vision model. Enter a key from this platform. GLM Coding Plan uses a separate endpoint and quota."
+  },
+  {
+    "id": "glm-global",
+    "name": "GLM / Z.AI（全球）",
+    "nameEn": "GLM / Z.AI (Global)",
+    "baseUrl": "https://api.z.ai/api/paas/v4",
+    "model": "glm-4.6v",
+    "protocol": "chat-completions",
+    "docsUrl": "https://docs.z.ai/guides/vlm/glm-4.6v",
+    "note": "Z.AI 普通 API，使用视觉模型 GLM-4.6V。请填写 Z.AI API Key；中国站、全球站与 Coding Plan 的账号和额度需分别核对。",
+    "noteEn": "Standard Z.AI API using the GLM-4.6V vision model. Enter a Z.AI API key. Verify account access and quotas separately for China, Global, and Coding Plan."
+  },
+  {
+    "id": "kimi-cn",
+    "name": "Kimi（中国）",
+    "nameEn": "Kimi (China)",
+    "baseUrl": "https://api.moonshot.cn/v1",
+    "model": "kimi-k3",
+    "protocol": "chat-completions",
+    "docsUrl": "https://platform.kimi.com/docs/api/chat",
+    "note": "Kimi 中国开放平台普通 API；Kimi K3 支持视觉输入。请填写中国站 API Key；Kimi Code Key、会员额度与普通 API 分开。",
+    "noteEn": "Standard Kimi China API with Kimi K3 vision input. Enter a China platform API key. Kimi Code keys and membership quotas are separate from the standard API."
+  },
+  {
+    "id": "kimi-global",
+    "name": "Kimi（全球）",
+    "nameEn": "Kimi (Global)",
+    "baseUrl": "https://api.moonshot.ai/v1",
+    "model": "kimi-k3",
+    "protocol": "chat-completions",
+    "docsUrl": "https://platform.kimi.ai/docs/api/chat",
+    "note": "Kimi 全球开放平台普通 API；Kimi K3 支持视觉输入。请填写全球站 API Key；中国站 Key、Kimi Code Key 与此 API 不可混用。",
+    "noteEn": "Standard Kimi Global API with Kimi K3 vision input. Enter a Global platform API key. China platform keys and Kimi Code keys do not work with this endpoint."
+  },
+  {
+    "id": "custom",
+    "name": "自定义",
+    "nameEn": "Custom",
+    "baseUrl": "",
+    "model": "",
+    "protocol": "chat-completions",
+    "docsUrl": "",
+    "note": "填写兼容服务的 API 基础地址和支持图片输入的模型，选择实际使用的协议。服务商需要支持完整的多模态请求。",
+    "noteEn": "Enter the compatible service's API base URL and a model with image input, then select its protocol. The service must support complete multimodal requests."
+  }
+]

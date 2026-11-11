@@ -33,6 +33,24 @@ async function connect(context,paths,{apps=true}={}) {
   return client;
 }
 const call=(client,name,args)=>client.callTool({name,arguments:args});
+test('MCP project review transports stable pages privately, resumes drafts and submits only annotated pages',async context=>{
+  const paths=fixture(),client=await connect(context,paths),projectPath=path.join(paths.directory,'project.json');
+  const {snapshotManifest}=await import('../image-set.cjs');
+  const F=(await import('../src/feedback.js')).default;
+  fs.writeFileSync(projectPath,JSON.stringify({schemaVersion:'edithere-image-set-1',name:'Desktop review',pages:[{id:'home',name:'Home',path:paths.imagePath},{id:'settings',name:'Settings',path:paths.imagePath}]}));
+  const opened=await call(client,'edithere_web_open',{projectPath,outputPath:paths.outputPath}),meta=opened._meta.edithere;
+  assert.equal(meta.kind,'set');assert.deepEqual(meta.pages.map(page=>page.id),['home','settings']);assert.equal(JSON.stringify(opened.structuredContent).includes('base64'),false);
+  const {sessionId,token}=meta;
+  const chunk=await call(client,'edithere_web_image',{sessionId,token,pageId:'settings',offset:0});assert.equal(chunk._meta.edithereImageChunk,image);
+  assert.equal((await call(client,'edithere_web_image',{sessionId,token,pageId:'other',offset:0})).isError,true);
+  const project={schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:'set',name:'Desktop review',width:1,height:1,pages:meta.pages.map(page=>({id:page.id,name:page.name,width:1,height:1,timestampUs:null,notes:page.id==='settings'?[{id:'n1',source:null,text:'Improve settings'}]:[],layout:null})),groupNotes:[]};
+  assert.equal((await call(client,'edithere_web_draft',{sessionId,token,project})).structuredContent.state,'pending');
+  const resume=await call(client,'edithere_web_open',{sessionId});assert.equal(resume._meta.edithere.draft.pages[1].notes[0].text,'Improve settings');
+  const snapshot=snapshotManifest(projectPath),value=F.exportSet({name:snapshot.name,pageIndex:snapshot.pages.map(page=>({id:page.id,name:page.name,width:1,height:1})),pages:[{id:'settings',name:'Settings',width:1,height:1,feedback:F.exportImage({image,notes:[{source:null,text:'Improve settings'}],movements:[]},'embedded')}],groupNotes:[]});
+  delete value.pages[0].feedback.image.dataUrl;
+  const saved=await call(client,'edithere_web_submit',{sessionId,token,feedback:value});assert.equal(saved.structuredContent.state,'completed');assert.equal(saved.structuredContent.feedback.pages.length,1);assert.equal(JSON.stringify(saved.structuredContent).includes('base64'),false);
+  const disk=JSON.parse(fs.readFileSync(paths.outputPath,'utf8'));assert.equal(disk.pages[0].id,'settings');assert.equal(disk.pages[0].feedback.image.dataUrl,image);assert.equal(disk.pageIndex[0].imageFile,undefined);
+});
 function draft(name='游戏主页') {
   return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:'image',name,width:1,height:1,
     document:{id:'frame-1',timestampUs:null,image,notes:[{id:'n-1',source:null,text:'增加游戏说明'}],layout:null}};

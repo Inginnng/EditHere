@@ -284,3 +284,8 @@ Claude Code 使用同样方式，将目标父目录改为 `~/.claude/skills`。m
 对于免安装版，在**已配置的 skill 目录**中保存 `references/local-installation.md`，记录 CLI 绝对路径、程序目录、版本及免安装模式。AI 每次使用 skill 时先读取该记录，因此无需依赖 PATH；程序移动后更新记录。这是本机配置，不要提交到源码仓库。`EDITHERE_CLI` 也可供 skill 定位，但不要求设置全局环境变量。
 
 新反馈只在 `objects[].movement` 保存一次最终目标；`result` 和 `movements` 仅用于读取旧文件。对象按侧栏批注创建顺序排列，同一对象的多条意见占其第一条批注的位置；空白位移批注导入后保留原顺序。删除位移批注会同时恢复对应组件的位置和尺寸，保留独立移动的子组件及其他意见，整个操作支持撤销、重做。
+
+
+## 项目组图
+
+`open`、`annotate`、离线 `export` 接受 `edithere-image-set-1` 清单与保存的组图项目。使用 `scripts/image-set.mjs upsert` 维护固定页面 ID，用户完成后只反馈有批注的页面。完整流程见 [项目组图与结果审批](PROJECT-REVIEW.md)。

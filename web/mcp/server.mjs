@@ -10,6 +10,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {registerAppTool, registerAppResource, getUiCapability, RESOURCE_MIME_TYPE} from '@modelcontextprotocol/ext-apps/server';
 import {z} from 'zod';
 import sessionModule from '../agent-session.cjs';
+import setModule from '../image-set.cjs';
 
 const {AgentSessions, MAX_BODY, imageData, defaultSessionDirectory, readSessionStatus} = sessionModule;
 const imageFormat=sessionModule.imageFormat;
@@ -61,21 +62,24 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
 
   registerAppTool(server, 'edithere_web_open', {
     title:'Open EditHere', description:'Open a local screenshot in EditHere for the user to annotate and move components. Pass an absolute imagePath, optional pageContext describing the page (for example 游戏主页面), and optional unique outputPath, or only a previously returned sessionId to resume its persisted draft/receipt. Wait for user feedback; do not invent edits or repeatedly poll. A host without MCP Apps receives an explicit compatibility fallback.',
-    inputSchema:{imagePath:z.string().optional(), outputPath:z.string().optional(), name:z.string().min(1).max(200).optional(), imageMode:z.enum(['file','embedded','none']).optional(),preview:z.boolean().optional(),pageContext:z.string().trim().min(1).max(500).refine(value=>!value.includes('\u0000'),'Page context must not contain NUL.').optional(),sessionId:sessionIdSchema.optional()},
+    inputSchema:{imagePath:z.string().optional(), projectPath:z.string().optional().describe('Absolute project image set manifest path.'), outputPath:z.string().optional(), name:z.string().min(1).max(200).optional(), imageMode:z.enum(['file','embedded','none']).optional(),preview:z.boolean().optional(),pageContext:z.string().trim().min(1).max(500).refine(value=>!value.includes('\u0000'),'Page context must not contain NUL.').optional(),sessionId:sessionIdSchema.optional()},
     annotations:{readOnlyHint:false, destructiveHint:false, idempotentHint:false, openWorldHint:false},
     _meta:{ui:{resourceUri:UI_URI, visibility:['model']}}
   }, guarded(async args => {
     const uiSupport = getUiCapability(server.server.getClientCapabilities())?.mimeTypes?.includes(RESOURCE_MIME_TYPE) ? 'supported' : 'unsupported';
     let session;
     if (args.sessionId) {
-      if (args.imagePath !== undefined || args.outputPath !== undefined || args.name !== undefined||args.imageMode!==undefined||args.preview!==undefined||args.pageContext!==undefined) throw new Error('To resume, pass only sessionId.');
+      if (args.imagePath !== undefined || args.projectPath !== undefined || args.outputPath !== undefined || args.name !== undefined||args.imageMode!==undefined||args.preview!==undefined||args.pageContext!==undefined) throw new Error('To resume, pass only sessionId.');
       session = sessions.byId(args.sessionId);
     } else {
-      const input = imageInput(args.imagePath);
+      if (args.imagePath && args.projectPath) throw new Error('Pass imagePath or projectPath, not both.');
+      if (args.projectPath && !path.isAbsolute(args.projectPath)) throw new Error('projectPath must be absolute.');
+      const input = args.projectPath ? setModule.snapshotManifest(args.projectPath) : imageInput(args.imagePath);
       const outputPath = args.outputPath ?? path.join(path.dirname(input.inputPath), '.edithere', 'feedback-' + crypto.randomUUID() + '.json');
       if (!path.isAbsolute(outputPath)) throw new Error('outputPath must be absolute.');
+      if(input.kind==='set'&&uiSupport==='unsupported')return result({state:'unsupported',uiSupport,fallback:{...fallback(input.inputPath,path.resolve(outputPath),args.name),args:[path.resolve(directory,'../agent.cjs'),'start','--project',input.inputPath,'--output',path.resolve(outputPath)]}});
       if (uiSupport === 'unsupported') return result({state:'unsupported', uiSupport, fallback:fallback(input.inputPath, path.resolve(outputPath), args.name,args.imageMode,args.preview,args.pageContext)});
-      const created = sessions.create({...input, output:outputPath, name:args.name,imageMode:args.imageMode,preview:args.preview,pageContext:args.pageContext, timeoutSeconds:86400});
+      const created = sessions.create({...input, output:outputPath, name:args.name??input.name,imageMode:args.imageMode,preview:args.preview,pageContext:args.pageContext, timeoutSeconds:86400});
       session = sessions.byId(created.sessionId);
     }
     const receipt = publicReceipt(session.state === 'completed' ? readSessionStatus({directory:dataDirectory, sessionId:session.id}) : sessions.status(session));
@@ -84,7 +88,8 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
     // SDK stdio clients commonly cap one incoming message at 10 MiB. A draft
     // never repeats its immutable image; larger images cross the same official
     // tool bridge in bounded private chunks instead of increasing host limits.
-    if (session.image.length < INLINE_IMAGE_LIMIT && Buffer.byteLength(JSON.stringify(meta)) + session.image.length < INLINE_IMAGE_LIMIT) meta.image = session.image;
+    if (session.kind === 'set') { meta.kind = 'set'; meta.pages = session.pages.map(page => ({id:page.id,name:page.name,imageInfo:{length:page.image.length}})); }
+    else if (session.image.length < INLINE_IMAGE_LIMIT && Buffer.byteLength(JSON.stringify(meta)) + session.image.length < INLINE_IMAGE_LIMIT) meta.image = session.image;
     else meta.imageInfo = {length:session.image.length};
     return result({...receipt, uiSupport, ...(uiSupport === 'unsupported' ? {fallback:fallback(session.inputPath, session.output, session.name,session.imageMode,session.preview,session.capture?.page)} : {})}, meta);
   }));
@@ -103,17 +108,19 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
     registerAppTool(server, name, {title, inputSchema, annotations:{readOnlyHint:false, destructiveHint:false, idempotentHint:true, openWorldHint:false},
       _meta:{ui:{resourceUri:UI_URI, visibility:['app']}}}, guarded(callback));
   }
-  appTool('edithere_web_image', 'Read EditHere image chunk', {sessionId:sessionIdSchema, token:tokenSchema, offset:z.number().int().min(0).default(0)}, async ({sessionId,token,offset}) => {
+  appTool('edithere_web_image', 'Read EditHere image chunk', {sessionId:sessionIdSchema, token:tokenSchema, pageId:z.string().optional(), offset:z.number().int().min(0).default(0)}, async ({sessionId,token,pageId,offset}) => {
     const session = authorized(sessionId, token);
-    if (offset > session.image.length) throw new Error('Image chunk offset is outside this session\'s image.');
-    const chunk = session.image.slice(offset, offset + IMAGE_CHUNK_SIZE);
-    return {...result({offset, nextOffset:offset + chunk.length, totalLength:session.image.length}), _meta:{edithereImageChunk:chunk}};
+    const image = session.kind === 'set' ? session.pages.find(page => page.id === pageId)?.image : session.image;
+    if (typeof image !== 'string' || offset > image.length) throw new Error('Unknown page or invalid image chunk offset.');
+    const chunk = image.slice(offset, offset + IMAGE_CHUNK_SIZE);
+    return {...result({offset, nextOffset:offset + chunk.length, totalLength:image.length}), _meta:{edithereImageChunk:chunk}};
   });
   appTool('edithere_web_submit', 'Save EditHere feedback', {sessionId:sessionIdSchema, token:tokenSchema, feedback:z.unknown(),previewDataUrl:z.string().optional()}, async ({sessionId,token,feedback,previewDataUrl}) => {
     const session = authorized(sessionId, token);
     // The immutable original belongs to the authorized session. Apps upload
     // only changes; callers that explicitly supply another image are rejected
     // by the unchanged strict native validator below.
+    if(session.kind==='set'){const complete={...feedback,pages:(feedback?.pages||[]).map(page=>({...page,feedback:{...page.feedback,image:typeof page.feedback?.image==='object'?{...page.feedback.image,dataUrl:page.feedback.image.dataUrl??session.pages.find(original=>original.id===page.id)?.image}:page.feedback?.image??session.pages.find(original=>original.id===page.id)?.image}}))};return result(publicReceipt(sessions.submit(token,complete)));}
     const extension={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[imageFormat.dataBytes(session.image).mimeType];
     const base=path.basename(session.output,path.extname(session.output)),file=base+'.'+extension;
     let complete = feedback && typeof feedback === 'object' && !Array.isArray(feedback) && !Object.hasOwn(feedback, 'image') ? {...feedback, image:sessionModule.feedbackFormat.isImageVersion(feedback.schemaVersion)?imageFormat.descriptor(session.image,session.imageMode??'file',file,{preview:session.preview?base+'.annotated.png':undefined}):session.image} : feedback;
@@ -122,7 +129,7 @@ export function createEditHereMcpServer({dataDirectory = defaultSessionDirectory
   });
   appTool('edithere_web_draft', 'Save EditHere draft', {sessionId:sessionIdSchema, token:tokenSchema, project:z.unknown()}, async ({sessionId,token,project}) => {
     const session = authorized(sessionId, token), document = project?.document;
-    const complete = document && typeof document === 'object' && !Array.isArray(document) && !Object.hasOwn(document, 'image') ? {...project, document:{...document, image:session.image}} : project;
+    const complete = session.kind === 'set' ? {...project,pages:(project?.pages || []).map(page => ({...page,image:page.image ?? session.pages.find(original => original.id === page.id)?.image}))} : document && typeof document === 'object' && !Array.isArray(document) && !Object.hasOwn(document, 'image') ? {...project, document:{...document, image:session.image}} : project;
     return result(sessions.saveDraft(token, complete));
   });
   appTool('edithere_web_cancel', 'Cancel EditHere session', {sessionId:sessionIdSchema, token:tokenSchema}, async ({sessionId,token}) => {

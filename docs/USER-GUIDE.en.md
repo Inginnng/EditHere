@@ -196,7 +196,7 @@ The JSON attachment copied by “Copy JSON and images” uses the first annotati
 | Copy annotated image | `Ctrl + C` | Preserve high-resolution source pixels; scale indices, text, sidebar and spacing with the image width to keep the existing design |
 | Copy JSON and image / Copy JSON content / Save image / Hide marks / Global annotation | Not bound by default | Assign them yourself in Settings |
 
-The bottom toolbar shows **Save project**, **Save image**, **View JSON**, **Copy JSON content**, **Copy JSON and image**, **Copy annotated image**, **Retake screenshot** and **Fit image** by default; which buttons appear is chosen in **Settings → Toolbar**, and unchecked buttons do not appear in the bottom bar.
+The bottom toolbar shows **Save project**, **Save image**, **View JSON**, **AI analysis**, **Copy JSON content**, **Copy JSON and image** and **Copy annotated image** by default; which buttons appear is chosen in **Settings → Toolbar**, and unchecked buttons do not appear in the bottom bar.
 
 The **“Need help?”** entry on the toolbar and at the top of the annotation window explains what to do when an agent cannot take the feedback.
 
@@ -206,6 +206,7 @@ The **View JSON** window provides these options and actions:
 - **Original image fidelity**: embedded and companion originals retain their PNG pixels. The lossy JPEG compression option has been removed.
 - **Copy JSON and image**: writes the JSON and companion original into an independent temporary folder and copies the files together. Embedded mode copies a JSON containing the original. Configure the folder in **Settings → Default behavior → Feedback temporary folder**.
 - **Copy JSON content**: omits original-image bytes by default while retaining dimensions and the checksum. Click the button text to copy; the vertical **⋯** menu inside the button remembers a separate include-image choice and takes no separate toolbar slot. Including the image uses embedded encoding and does not change file handoff.
+- **AI analysis (0.13.0)**: visible directly on the editor's bottom toolbar, styled like its neighboring actions, and also available in **View JSON**. A separate API request processes the current screenshots and annotations into plain text that you can review, edit, copy or save. First select a provider and save your own key under **Settings → AI API**; see [AI analysis](AI-INSTRUCTIONS.en.md).
 
 The viewer no longer offers a numbered-preview checkbox or an extra **Save JSON and image** action. Use the existing image-saving action for annotated images; programmatic CLI/API `--preview` / `preview` output remains available.
 
@@ -425,7 +426,11 @@ Windows uses the current user's startup entry and needs no administrator privile
 ### Toolbar
 
 - **Default annotation tool**: Smart select, Point, Box or Adjust; sets the tool selected by default after opening an image.
-- **Shown in the bottom toolbar**: Save project, Save image, View JSON, Copy JSON content, Copy JSON and image, Copy annotated image, Retake screenshot and Fit image. Unchecking removes a button from the bottom bar; the feature is still available through a shortcut or the menu.
+- **Shown in the bottom toolbar**: Save project, Save image, View JSON, AI analysis, Copy JSON content, Copy JSON and image, Copy annotated image, Retake screenshot and Fit image. Unchecking removes a button from the bottom bar; the feature is still available through a shortcut or the menu.
+
+### AI / API
+
+Open AI API in the left navigation sidebar and choose OpenAI, Claude, DeepSeek, GLM, Kimi or a compatible custom service from the provider selector with brand icons. Presets supply the base address, vision model and protocol; GLM and Kimi have China and global region selectors. The API key, model and API address are visible for direct editing. **Advanced options** contains only the protocol, timeout and additional instructions. **Save settings** at the bottom saves both the configuration and keys, with keys stored in the system credential store. Cancel discards unsaved key drafts; clear a key and save to delete it. **Test connection** uses the key currently entered and sends only a built-in small image, never the current screenshot. See [AI analysis](AI-INSTRUCTIONS.en.md) for the workflow, request limits and data handling.
 
 ### Diagnostics
 

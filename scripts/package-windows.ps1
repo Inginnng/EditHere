@@ -4,7 +4,8 @@
     [string]$VcVars = "",
     [string]$BuildDirectory = "build",
     [string]$OutputDirectory = "",
-    [string]$ValidationDirectory = ""
+    [string]$ValidationDirectory = "",
+    [switch]$SkipArchive
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -30,6 +31,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/project-v3.sche
 foreach ($videoFile in @("docs/VIDEO-ANNOTATION.md", "schema/video-feedback-v1.schema.json", "schema/video-project-v1.schema.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $videoFile))) { throw "Video usage material is missing: $videoFile" }
 }
+foreach ($aiFile in @("docs/AI-INSTRUCTIONS.md", "docs/AI-INSTRUCTIONS.en.md", "docs/ai-providers.md", "packaging/licenses/qtkeychain/COPYING", "packaging/licenses/cc-switch/LICENSE", "packaging/licenses/lobehub-icons/LICENSE")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $aiFile))) { throw "AI usage or license material is missing: $aiFile" }
+}
 if ($ValidationDirectory) { $ValidationDirectory = (Resolve-Path -LiteralPath (Join-Path $projectRoot $ValidationDirectory)).Path }
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $notice))) { throw "Application license material is missing: $notice" }
@@ -41,8 +45,12 @@ Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $o
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/integrate.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs/PROJECT-REVIEW.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/AGENT-CLI.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/VIDEO-ANNOTATION.md") -Destination $outputPath
+foreach ($aiGuide in @("AI-INSTRUCTIONS.md", "AI-INSTRUCTIONS.en.md", "ai-providers.md")) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot "docs/$aiGuide") -Destination $outputPath
+}
 if ($ValidationDirectory) { Copy-Item -LiteralPath $ValidationDirectory -Destination (Join-Path $outputPath "validation") -Recurse }
 $previousEnvironment = @{}
 Get-ChildItem Env: | ForEach-Object { $previousEnvironment[$_.Name] = $_.Value }
@@ -158,6 +166,8 @@ $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outpu
 # updater extracts this archive straight onto the app directory with
 # "tar -xf <zip> -C <appdir>", and a wrapped folder would land the new files in
 # a nested subdirectory instead of replacing the app.
-Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
+if (-not $SkipArchive) {
+    Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
+}
 Write-Host "Portable folder: $outputPath"
-Write-Host "ZIP: $outputPath.zip"
+if (-not $SkipArchive) { Write-Host "ZIP: $outputPath.zip" }

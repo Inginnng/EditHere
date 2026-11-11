@@ -129,6 +129,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
+    connect(&editor_, &Editor::aiSettingsRequested, this, [this] { openSettingsDialog(false, false, nullptr, true); });
     connect(&editor_, &Editor::preferencesChanged, this, [this] {
         // The editor turned a preference off by itself — the "don't ask again" box on
         // the close question does — and an answer the user gave has to outlive the
@@ -257,8 +258,8 @@ void Controller::openFromTray() {
 void Controller::openSettings(bool updates, bool toolbar) {
     openSettingsDialog(updates, toolbar);
 }
-void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release) {
-    trayClickTimer_.stop();
+    void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
+        trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -293,6 +294,8 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         dialog.showUpdates(true);
     else if (toolbar)
         dialog.showToolbar();
+    else if (ai)
+        dialog.showAi();
     dialog.setApplyHandler([this](const AppSettings &next) -> QString {
         if (auto error = validateSettings(next); !error.isEmpty())
             return error;
@@ -1812,11 +1815,12 @@ void Controller::finishAgentSession() {
         cancelAgentSession(id, "io_error", QString::fromUtf8(error.what()));
         return;
     }
+    editor_.markFeedbackSubmitted();
     auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     const QJsonObject result{{"ok", true}, {"command", "annotate"}, {"output", output},
                             {"imageFile", receiptPath(bundle.imageFile)}, {"previewFile", receiptPath(bundle.previewFile)},
                             {"annotations", editor_.totalAnnotationCount()}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None},
-                            {"schemaVersion", editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
+                            {"schemaVersion", editor_.hasImageSet() ? ImageSetFeedbackVersion : editor_.hasVideo() ? "video-feedback-1" : FeedbackSchemaVersion}};
     agentSessionId_.clear();
     agentOutput_.clear();
     editor_.setAgentSession(false);

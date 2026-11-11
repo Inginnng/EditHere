@@ -1,0 +1,32 @@
+{
+  "name": "edithere-ui-preview",
+  "private": true,
+  "version": "0.13.0",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4313 --strictPort",
+    "build": "tsc -b && vite build",
+    "desktop": "npm run build && electron .",
+    "test:desktop": "node scripts/verify-desktop.mjs",
+    "package:desktop": "npm run build && node scripts/package-desktop.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.3.1",
+    "@radix-ui/react-dropdown-menu": "^2.2.1",
+    "@radix-ui/react-switch": "^1.4.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@playwright/test": "^1.64.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^45.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}

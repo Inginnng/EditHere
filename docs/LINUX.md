@@ -34,7 +34,7 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra
 
 ## 构建与打包
 
-依赖 GCC、CMake、Ninja、Qt 6.8.3 gcc_64、X11、XTest 和 AT-SPI 开发库。Wayland 长截图还需要可选的 PipeWire 1.0.4 及以上开发库；缺少时构建保留普通截图。启用 PipeWire 的 AppImage 会携带匹配版本的客户端主库、模块、SPA 插件与配置，打包环境须提供 `libpipewire-0.3-modules`、`libspa-0.2-modules` 和 `pipewire-bin`。完整依赖清单见 `.github/workflows/native-linux.yml`；Qt Wayland 随基础 SDK 提供，不是 aqt 的可选模块。
+依赖 GCC、CMake、Ninja、Qt 6.8.3 gcc_64、X11、XTest、AT-SPI 和 libsecret（`libsecret-1-dev`）开发库。QtKeychain 由 CMake 获取固定版本，API Key 的运行时凭据服务由桌面会话提供；不可用时明确报错，不退回明文。Wayland 长截图还需要可选的 PipeWire 1.0.4 及以上开发库；缺少时构建保留普通截图。启用 PipeWire 的 AppImage 会携带匹配版本的客户端主库、模块、SPA 插件与配置，打包环境须提供 `libpipewire-0.3-modules`、`libspa-0.2-modules` 和 `pipewire-bin`。完整依赖清单见 `.github/workflows/native-linux.yml`；Qt Wayland 随基础 SDK 提供，不是 aqt 的可选模块。
 
 ```bash
 export QT_ROOT=/path/to/Qt/6.8.3/gcc_64

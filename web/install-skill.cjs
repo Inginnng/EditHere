@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 
-const runtimeFiles = ['EditHere.html', 'EditHere.mcp.html', 'agent.cjs', 'agent-session.cjs', 'preview.cjs', 'preview-server.cjs', 'src/feedback.js', 'src/layout.js', 'mcp/server.bundle.cjs', 'mcp/mcp.json', 'mcp/build-info.json', 'MCP-THIRD-PARTY-NOTICES.md'];
+const runtimeFiles = ['EditHere.html', 'EditHere.mcp.html', 'agent.cjs', 'agent-session.cjs', 'image-set.cjs', 'preview.cjs', 'preview-server.cjs', 'src/feedback.js', 'src/layout.js', 'src/image-format.js', 'src/bundle.js', 'mcp/server.bundle.cjs', 'mcp/mcp.json', 'mcp/build-info.json', 'MCP-THIRD-PARTY-NOTICES.md'];
 
 function exists(file) {
   try { fs.lstatSync(file); return true; }

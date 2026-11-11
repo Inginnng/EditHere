@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:edithere:image-set-feedback:1",
+  "title": "EditHere image set feedback",
+  "description": "Multiple screens of one product. Only pages with annotations or real movements appear in pages[]; pageIndex keeps the full context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "tool",
+    "exportedAt",
+    "annotationSpace",
+    "set",
+    "pageIndex",
+    "pages",
+    "groupNotes"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "urn:edithere:image-set-feedback:1"
+    },
+    "schemaVersion": {
+      "const": "image-set-feedback-1"
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "EditHere"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "annotationSpace": {
+      "const": "result"
+    },
+    "set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "pageCount",
+        "annotatedPageCount"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "pageCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "annotatedPageCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "pageIndex": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "index",
+          "width",
+          "height",
+          "annotated"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32767
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32767
+          },
+          "annotated": {
+            "type": "boolean"
+          },
+          "imageFile": {
+            "type": "string"
+          },
+          "annotatedImage": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "index",
+          "width",
+          "height",
+          "imageFile",
+          "feedback"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32767
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32767
+          },
+          "imageFile": {
+            "type": "string"
+          },
+          "annotatedImage": {
+            "type": "string"
+          },
+          "feedback": {
+            "type": "object",
+            "required": [
+              "schemaVersion",
+              "annotationSpace",
+              "objects"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "enum": [
+                  "feedback-minimal-2",
+                  "feedback-minimal-3",
+                  "feedback-minimal-4"
+                ]
+              },
+              "annotationSpace": {
+                "const": "result"
+              },
+              "objects": {
+                "type": "array"
+              }
+            }
+          }
+        }
+      }
+    },
+    "groupNotes": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number",
+          "text"
+        ],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          }
+        }
+      }
+    },
+    "dsh": {
+      "type": "object",
+      "description": "Present only in packages written by the local DSH bridge.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

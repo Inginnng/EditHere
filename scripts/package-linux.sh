@@ -15,6 +15,12 @@ appdir="$output/AppDir"
 DESTDIR="$appdir" cmake --install "$build_path"
 cp "$project_root/packaging/linux/AppRun" "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
+for ai_file in docs/AI-INSTRUCTIONS.md docs/AI-INSTRUCTIONS.en.md docs/ai-providers.md \
+    packaging/licenses/qtkeychain/COPYING packaging/licenses/cc-switch/LICENSE; do
+  [[ -f "$project_root/$ai_file" ]] || { echo "AI usage or license material is missing: $ai_file" >&2; exit 1; }
+done
+cp "$project_root/docs/AI-INSTRUCTIONS.md" "$project_root/docs/AI-INSTRUCTIONS.en.md" \
+  "$project_root/docs/ai-providers.md" "$appdir/usr/share/doc/edithere/"
 cp -R "$project_root/skills" "$project_root/schema" "$appdir/usr/share/doc/edithere/"
 cp -R "$project_root/packaging/licenses" "$appdir/usr/share/doc/edithere/"
 mkdir -p "$appdir/usr/share/doc/edithere/licenses/ui-icons"
@@ -56,7 +62,9 @@ for copyright in /usr/share/doc/libatspi2.0-0/copyright /usr/share/doc/libglib2.
   /usr/share/doc/libdbus-1-3/copyright /usr/share/doc/libpcre2-8-0/copyright /usr/share/doc/libffi8/copyright \
   /usr/share/doc/libgcc-s1/copyright /usr/share/doc/libstdc++6/copyright \
   /usr/share/doc/libxtst6/copyright /usr/share/doc/libpipewire-0.3-0t64/copyright \
-  /usr/share/doc/libpipewire-0.3-0/copyright /usr/share/doc/libspa-0.2-modules/copyright; do
+  /usr/share/doc/libpipewire-0.3-0/copyright /usr/share/doc/libspa-0.2-modules/copyright \
+  /usr/share/doc/libsecret-1-0/copyright /usr/share/doc/libsecret-common/copyright \
+  /usr/share/doc/libgcrypt20/copyright /usr/share/doc/libgpg-error0/copyright; do
   if [[ -f "$copyright" ]]; then
     package="$(basename "$(dirname "$copyright")")"
     cp "$copyright" "$appdir/usr/share/doc/edithere/licenses/linux/$package.txt"
@@ -85,7 +93,11 @@ echo '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d '"$LDAI_R
 plugin_directory="$(dirname "$LINUXDEPLOY_PLUGIN_QT")"
 export PATH="$plugin_directory:$QT_ROOT/bin:$PATH"
 cd "$output"
-deployment_args=()
+# QtKeychain resolves libsecret functions through QLibrary. An as-needed linker
+# can drop its direct dependency, so linuxdeploy must be given the runtime.
+libsecret_runtime="$(pkg-config --variable=libdir libsecret-1)/libsecret-1.so.0"
+[[ -f "$libsecret_runtime" ]] || { echo 'libsecret runtime is missing; install libsecret-1-0.' >&2; exit 1; }
+deployment_args=(--library "$libsecret_runtime")
 if grep -q '^PIPEWIRE_FOUND:INTERNAL=1$' "$build_path/CMakeCache.txt"; then
   # linuxdeploy blacklists PipeWire by default. This client library must match
   # the client modules above, so explicitly request its deployment.
@@ -94,6 +106,7 @@ fi
 "$LINUXDEPLOY" --appdir "$appdir" "${deployment_args[@]}" --plugin qt --custom-apprun "$project_root/packaging/linux/AppRun" --output appimage
 [[ -s "$OUTPUT" ]] || { echo 'AppImage was not produced' >&2; exit 1; }
 [[ -s "$appdir/usr/plugins/platforms/libqoffscreen.so" ]] || { echo 'Headless CLI preview platform plugin is missing' >&2; exit 1; }
+[[ -s "$appdir/usr/lib/libsecret-1.so.0" ]] || { echo 'API credential runtime libsecret is missing from the AppImage.' >&2; exit 1; }
 cp "$project_root/packaging/linux/edithere-cli" "$output/edithere-cli"
 chmod +x "$output/edithere-cli"
 sha256sum "$OUTPUT" > "$OUTPUT.sha256"

@@ -82,7 +82,7 @@ async function sessionImage(value) {
   const chunks=[];let offset=0;
   document.body.dataset.imageState='loading';
   do{
-    const result=await callResult('edithere_web_image',{sessionId:value.sessionId,token:value.token,offset});
+    const result=await callResult('edithere_web_image',{sessionId:value.sessionId,token:value.token,...(value.pageId?{pageId:value.pageId}:{}),offset});
     const info=toolValue(result).value, chunk=result?._meta?.edithereImageChunk;
     length??=info.totalLength;
     if(!Number.isSafeInteger(length)||length<1||length>maximum)throw new Error('会话图片信息无效');
@@ -121,7 +121,7 @@ function persistDraft() {
     const project=editor.project();
     // The immutable original is already persisted by this session. Removing
     // its encoding keeps autosaves under the host's tool message size limit.
-    delete project.document.image;
+    if(project.kind==='set')project.pages.forEach(page=>delete page.image);else delete project.document.image;
     const value=await call('edithere_web_draft',{sessionId:session.sessionId,token:session.token,project});
     if(value.state!=='pending')throw new Error('草稿会话已结束');
     if(!alive)return;
@@ -177,7 +177,7 @@ async function sendSavedFeedback() {
 }
 async function complete() {
   if(working||!alive||!session||receipt)return;
-  if($('note-dialog').open){editor.notify('请先保存或关闭正在编辑的批注');return;}
+  if($('note-dialog').open||$('group-note-dialog').open){editor.notify('请先保存或关闭正在编辑的批注');return;}
   setBusy(true);label(submit,'保存中');clearTimeout(draftTimer);
   $('workspace').inert=true;document.body.dataset.agentLocked='true';
   try{
@@ -185,6 +185,7 @@ async function complete() {
     // A draft failure must not prevent the final, idempotent feedback save.
     await persistDraft().catch(()=>{});
     const {feedback,previewDataUrl}=snapshot;
+    if(feedback.schemaVersion==='image-set-feedback-1')feedback.pages.forEach(page=>{if(page.feedback.image?.mode==='embedded')delete page.feedback.image.dataUrl;else delete page.feedback.image;});
     if(feedback.image?.mode==='embedded')delete feedback.image.dataUrl;
     receipt=await call('edithere_web_submit',{sessionId:session.sessionId,token:session.token,feedback,...(previewDataUrl?{previewDataUrl}:{})});
     if(receipt.state!=='completed'){receipt=null;throw new Error('反馈尚未保存，请重试');}
@@ -219,11 +220,17 @@ async function openResult(result) {
     return;
   }
   void expandForEditing();
-  const image=await sessionImage(privateData);
+  const pages=[];
+  if(privateData.kind==='set')for(const page of privateData.pages)pages.push({...page,image:await sessionImage({...privateData,...page,pageId:page.id})});
+  const image=privateData.kind==='set'?undefined:await sessionImage(privateData);
   if(!alive)return;
-  session={...privateData,image,state:value.state||privateData.state};receipt=privateData.receipt||null;
+  session={...privateData,image,pages,state:value.state||privateData.state};receipt=privateData.receipt||null;
   editor.bindAgent();
-  if(receipt?.state==='completed'&&receipt.feedback){
+  if(session.kind==='set'){
+    if(receipt?.state==='completed'&&receipt.feedback)await editor.loadAgentSetFeedback({...session,feedback:receipt.feedback});
+    else if(session.draft){await editor.loadAgentSetProject({...session.draft,pages:session.draft.pages.map(page=>({...page,image:pages.find(item=>item.id===page.id).image}))});lastDraftRevision=editor.projectRevision();}
+    else await editor.loadAgentSet(session);
+  }else if(receipt?.state==='completed'&&receipt.feedback){
     await editor.loadAgentFeedback({...session,feedback:receipt.feedback});
   }else if(session.draft){
     const draft=session.draft;

@@ -5,6 +5,8 @@
 #include <QSettings>
 #include <QSet>
 #include <QStandardPaths>
+#include <QRegularExpression>
+#include <QUrl>
 namespace h2d {
 namespace {
 // Raised whenever the look a capture starts with changes, so a settings file written
@@ -81,6 +83,28 @@ bool validCombination(QKeyCombination combination) {
     return key != Qt::Key_unknown && key != 0 && key != Qt::Key_Shift && key != Qt::Key_Control &&
            key != Qt::Key_Alt && key != Qt::Key_Meta && key != Qt::Key_AltGr;
 }
+bool validAiProviderId(const QString &id) {
+    static const QRegularExpression pattern(QStringLiteral("^[a-z0-9][a-z0-9-]{0,63}$"));
+    return pattern.match(id).hasMatch();
+}
+bool validStoredAiConnection(const AiConnectionSettings &connection, const QString &id) {
+    static const QRegularExpression invalidModel(QStringLiteral("[\\x{0000}-\\x{001f}\\x{007f}]"));
+    static const QRegularExpression invalidAddress(QStringLiteral("[\\x{0000}-\\x{0020}\\x{007f}]"));
+    if (!validAiProviderId(id) || connection.providerId != id || connection.baseUrl.size() > 4096 ||
+        connection.model.size() > 200 || invalidModel.match(connection.model).hasMatch() ||
+        invalidAddress.match(connection.baseUrl).hasMatch() || connection.extraInstructions.size() > 10000 ||
+        connection.timeoutSeconds < 10 || connection.timeoutSeconds > 600)
+        return false;
+    if (connection.protocol != "responses" && connection.protocol != "chat-completions" &&
+        connection.protocol != "anthropic-messages")
+        return false;
+    if (connection.baseUrl.isEmpty()) return true; // An unfinished custom setup remains editable.
+    const QUrl url(connection.baseUrl, QUrl::StrictMode);
+    const bool local = url.host() == "localhost" || url.host() == "127.0.0.1" || url.host() == "::1";
+    return url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty() &&
+        !url.hasQuery() && !url.hasFragment() &&
+        (url.scheme() == "https" || (url.scheme() == "http" && local));
+}
 } // namespace
 QVector<ShortcutDefinition> shortcutDefinitions() {
     return {{"capture", tr("截图"), true, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_2)},
@@ -110,6 +134,7 @@ QVector<ToolbarActionDefinition> toolbarActionDefinitions() {
     return {{"saveProject", tr("保存项目")},
             {"saveImage", tr("保存图片")},
             {"exportJson", tr("查看 JSON")},
+            {"generateInstructions", tr("AI解析")},
             {"copyJsonText", tr("复制 JSON 内容")},
             {"copyJson", tr("复制 JSON 与图片")},
             {"copyImage", tr("复制带批注图片")},
@@ -140,6 +165,14 @@ static bool validTrayAction(const QString &id) {
     return false;
 }
 QString validateSettings(const AppSettings &settings) {
+    if (!validAiProviderId(settings.aiProviderId))
+        return tr("请选择有效的 API 提供商。");
+    if (settings.aiSystemPrompt.size() > 20000)
+        return tr("系统提示词过长，请精简到 20000 字以内。");
+    for (auto it = settings.aiProviders.cbegin(); it != settings.aiProviders.cend(); ++it)
+        if (!validStoredAiConnection(it.value(), it.key()))
+            return tr("API 配置无效，请检查服务地址、协议和超时时间。");
+
     if (!validTrayAction(settings.traySingleClick) || !validTrayAction(settings.trayDoubleClick))
         return tr("请选择有效的托盘动作。");
     if (themeName(settings.theme).isEmpty())
@@ -269,6 +302,27 @@ AppSettings loadSettings(const QString &filePath) {
     result.includeWindowTitle = boolean("defaults/includeWindowTitle", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
+    const auto selectedProvider = source.value("ai/provider", "openai").toString();
+    if (validAiProviderId(selectedProvider)) result.aiProviderId = selectedProvider;
+    const auto customPrompt = source.value("ai/systemPrompt").toString();
+    if (!customPrompt.isEmpty() && customPrompt.size() <= 20000 && !customPrompt.contains(QChar(0)))
+        result.aiSystemPrompt = customPrompt;
+    source.beginGroup("ai/providers");
+    for (const auto &id : source.childGroups()) {
+        if (!validAiProviderId(id)) continue;
+        source.beginGroup(id);
+        AiConnectionSettings connection;
+        connection.providerId = id;
+        connection.baseUrl = source.value("baseUrl").toString();
+        connection.model = source.value("model").toString();
+        connection.protocol = source.value("protocol", "responses").toString();
+        connection.extraInstructions = source.value("extraInstructions").toString();
+        connection.timeoutSeconds = source.value("timeoutSeconds", 120).toInt();
+        source.endGroup();
+        // Ignore a broken AI profile rather than resetting unrelated shortcuts.
+        if (validStoredAiConnection(connection, id)) result.aiProviders.insert(id, connection);
+    }
+    source.endGroup();
     const QString scrollAxis = source.value("capture/scrollAxis", QStringLiteral("vertical")).toString();
     result.scrollAxis = scrollAxis == QLatin1String("horizontal") ? Qt::Horizontal : Qt::Vertical;
     result.scrollAutoCrop = boolean("capture/scrollAutoCrop", false);
@@ -308,6 +362,11 @@ AppSettings loadSettings(const QString &filePath) {
         if (validateToolbarActions(actions).isEmpty())
             result.toolbarActions = actions;
     }
+    // AI parsing used to live only under More. Show its new first-class action
+    // once for existing installations, while respecting later customisation.
+    if (source.value("toolbar/actionsVersion", 0).toInt() < 1 &&
+        !result.toolbarActions.contains("generateInstructions"))
+        result.toolbarActions.append("generateInstructions");
     bool validTool = false;
     const auto tool = source.value("defaults/tool", 0).toInt(&validTool);
     if (validTool && tool >= 0 && tool <= 3)
@@ -368,6 +427,20 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
+    target.setValue("ai/provider", settings.aiProviderId);
+    target.setValue("ai/systemPrompt", settings.aiSystemPrompt);
+    target.remove("ai/providers");
+    target.beginGroup("ai/providers");
+    for (auto it = settings.aiProviders.cbegin(); it != settings.aiProviders.cend(); ++it) {
+        target.beginGroup(it.key());
+        target.setValue("baseUrl", it.value().baseUrl);
+        target.setValue("model", it.value().model);
+        target.setValue("protocol", it.value().protocol);
+        target.setValue("extraInstructions", it.value().extraInstructions);
+        target.setValue("timeoutSeconds", it.value().timeoutSeconds);
+        target.endGroup();
+    }
+    target.endGroup();
     target.setValue("defaults/feedbackDir", settings.feedbackDir);
     target.setValue("capture/scrollAxis", settings.scrollAxis == Qt::Horizontal ? "horizontal" : "vertical");
     target.setValue("capture/scrollAutoCrop", settings.scrollAutoCrop);
@@ -389,6 +462,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     // say from one that did.
     target.setValue("capture/styleVersion", kCaptureStyleVersion);
     target.setValue("toolbar/actions", settings.toolbarActions);
+    target.setValue("toolbar/actionsVersion", 1);
     for (const auto &definition : shortcutDefinitions())
         target.setValue("shortcuts/" + definition.id,
                         settings.shortcuts.value(definition.id).toString(QKeySequence::PortableText));

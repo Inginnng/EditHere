@@ -98,12 +98,17 @@
 
 格式说明见 [视频标注说明](docs/VIDEO-ANNOTATION.md)。
 
+### 项目组图：AI 维护结果，用户集中批注
+
+AI 将首页、设置页、关键状态等真实结果组成项目组图，按固定页面 ID 更新截图；用户切换页面批注后统一提交。反馈只附有批注或布局调整的图片，其余页面只保留索引。桌面、Web、MCP Apps 和 DSH 共用这条流程，详见 [项目组图与结果审批](docs/PROJECT-REVIEW.md)。
+
 ### 🤖 一键交给 AI
 
-EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
+EditHere 提供结构化反馈，也可通过你配置的 API 把批注整理成纯文本：
 
 - **手动**：复制 JSON 内容 / JSON 与图片 / 带批注图片，粘贴给任意 AI。
 - **自动**：配合仓库内的 [`edithere` skill](skills/edithere/SKILL.md) 和 `edithere-cli`，AI 执行 `edithere-cli annotate` 打开画面并等待；你点击 **「完成并返回 AI」** 后，AI 立即收到反馈继续修改。取消或超时不会把未提交的编辑当成修改要求。
+- **纯文本（0.13.0）**：在「设置 → AI 接口」选择提供商并保存自己的 Key，再用「更多 → 生成修改意见」。截图和批注在独立 API 请求中理解，核对后只复制文字给目标 Agent，减少该对话的图片上下文占用。详见[生成修改意见](docs/AI-INSTRUCTIONS.md)。
 
 默认交付 JSON 与独立原图，也可勾选“原图嵌入 JSON”。“复制 JSON 内容”默认不携带原图编码，按钮内部的竖向「⋯」可切换并记住选择。新程序兼容读取旧反馈与工程；旧程序不保证能读取 v4。
 
@@ -145,17 +150,17 @@ EditHere 本身**不调用任何模型**，它只负责把反馈整理清楚：
 | ------------- | ------------------------------------------------------------ |
 | 💾 **项目保存**   | `.edithere` 项目内嵌原图、批注与编辑状态，随时重新打开接着改；视频项目引用源文件并保存已标注帧。       |
 | 📥 **多种输入**   | 截图、打开、拖入或粘贴 PNG / JPEG / WebP / BMP，以及 MP4 / MOV / WebM 等视频。 |
+<<<<<<< HEAD
+| 🎨 **外观与快捷键** | 浅色 / 深色主题，简体中文 / English 界面，22 项快捷键与底部工具栏均可自定义。              |
+| 🔒 **本地优先**   | 截图、元素识别、OCR、编辑在本机完成；使用可选的 API 生成功能时，才向所选提供商发送本次图文。           |
+=======
 | 🎨 **外观与快捷键** | 浅色 / 深色主题，简体中文 / 繁體中文 / English 界面，22 项快捷键与底部工具栏均可自定义。   |
 | 🔒 **本地优先**   | 截图、元素识别、OCR、编辑全部在本机完成，EditHere 不会上传你的画面。           |
+>>>>>>> github/codex/native
 | 🖥️ **跨平台**   | Windows 10 1809+ 正式支持；macOS 14+ 与 Linux（Ubuntu 24.04）为预览版。   |
 
-## 桌面版与网页版
-
-同一套批注与「大爆炸」，两种用法：**桌面版是主力**，负责截屏、视频、长截图和与本地 Agent 的自动闭环；**网页版是一个独立的 HTML 文件**，双击即用、可放到任意静态站点，素材不出本机。
-
 | 能力                          | 💻 桌面版                            | 🌐 网页版                                         |
-| :-------------------------- | :-------------------------------- | :--------------------------------------------- |
-| **定位** | 日常高频使用，快捷键随时唤起，功能完整，与本地 AI 工具联动 | 免安装、不占地方，可作为 WorkBuddy / Codex 等 AI 工作台右侧的批注面板 |
+同一套批注与「大爆炸」，两种用法：**桌面版是主力**，负责截屏、视频、长截图和与本地 Agent 的自动闭环；**网页版是一个独立的 HTML 文件**，双击即用、可放到任意静态站点，素材不出本机。
 | **图片批注**（点 / 框 / 智能选块 / 全局） | ✅                                 | ✅                                              |
 | **💥 大爆炸移位与缩放**             | ✅                                 | ✅                                              |
 | **🎬 视频按时间点批注**             | ✅                                 | ✅                                              |
@@ -197,29 +202,33 @@ Web 版本（MCP Apps / 浏览器兼容入口）：
 
 桌面版需要 AI 工具拥有本机终端和文件权限；Web 版还需要宿主支持 MCP Apps，不支持时走普通浏览器兼容入口。仅有网页聊天窗口无法安装本机程序。详细步骤见 [AI 安装指南](docs/AI-SETUP.md) 与 [网页版安装指南](web/AI-SETUP.md)。
 
+<<<<<<< HEAD
+=======
 ### VS Code Remote SSH：远程项目与本地 Windows 标注
 
 VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到本地 Windows，在 EditHere 中标注，再把反馈 JSON 和配套图片一起传回远程项目，供远程 AI 读取。命令在 **Windows 本地 PowerShell** 执行，现有方案需要文件往返，不提供远程直接控制本机 EditHere 的功能。
 
 完整命令与路径说明见 [AI 与命令行 · VS Code Remote SSH](docs/AGENT-CLI.md#vs-code-remote-ssh远程项目与本地-windows-标注)。
 
+>>>>>>> github/codex/native
 ## 下载与安装
 
 | 平台                                | 下载                                                                                                       | 说明                                                          |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | **Windows x64 · 推荐**              | [安装器 EXE](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe)      | 当前用户安装，无需管理员权限；提供开始菜单、卸载入口和项目文件关联。                          |
-| **Windows x64 · 免安装**             | [ZIP 压缩包](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip)            | 完整解压后运行 `EditHere.exe`，保留同目录的 DLL 和插件文件夹。                   |
-| **macOS · Apple Silicon / Intel** | [通用版 DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg)    | 将 `EditHere.app` 拖入 Applications；首次截图需授予屏幕录制权限。             |
 | **Linux x86_64 · 预览**             | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后直接运行，目标环境 Ubuntu 24.04；详见 [Linux 说明](docs/LINUX.md)。 |
 | **网页版 · 免安装**                     | [Web 压缩包](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip)                | 解压后双击 `EditHere.html`，或放到静态站点；详见[网页版说明](web/README.md)。     |
 
 下载入口始终指向最新正式版，具体版本以 [Releases](https://github.com/Inginnng/EditHere/releases) 页面和包内 `version.txt` 为准。
 
 <details>
-<summary>安装细节、平台说明与旧版升级</summary>
 
 - Windows 安装器默认安装到 `%LOCALAPPDATA%\Programs\EditHere`。组件页可选择登录时启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级时保留已有启动登记状态。安装后需重新打开终端和 AI 工具才能读取新的 PATH。卸载会保留用户设置与项目。
+<<<<<<< HEAD
+- Windows 安装包**尚未代码签名**，请从本仓库 Releases 下载，并核对 [SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
+=======
 - Windows 使用免费项目签名验证应用内更新；这不是 Windows 公开信任证书，“未知发布者”与 SmartScreen 提示仍可能出现。**0.12.7 及更早版本需手动升级一次**。请从本仓库 Releases 下载，并核对 [SHA-256 校验和](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
+>>>>>>> github/codex/native
 - Windows 最低构建目标为 Windows 10 1809+，在 Windows 11 上开发与测试；免安装版无需另装 Qt、Python、Node 或 .NET。
 - macOS 要求 14+，**仍处于预览阶段，尚未 Apple 公证**；长截图后端已在 macOS 构建中编译通过。
 - Linux 预览版：Wayland 下先授权显示器，再由 EditHere 框选并手动长截图；缺少 PipeWire 或 ScreenCast 时回退系统选区，仅支持普通截图。X11 支持手动采集与自动纵向滚动。详见 [Linux 说明](docs/LINUX.md)。
@@ -232,17 +241,17 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
 2. **截取画面**：按全局快捷键 `Alt + Shift + 2`，或对 AI 说「用 EditHere 帮我标注主页面」。
 3. **写下意见**：点、框、全局意见、大爆炸，怎么说得清楚就怎么来。
 4. **交给 AI**：点「完成并返回 AI」，或复制 JSON 发给任意 AI。
-
-更多操作、快捷键和示例见 [使用指南](docs/USER-GUIDE.md)。
-
 ## 结构化反馈 JSON
-
 导出的 `feedback-minimal-4` 把原图校验信息、批注点位、框选区域与大爆炸位移分开存放，方便任何 Agent 或工作流解析：
 
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
+<<<<<<< HEAD
+  "tool": {"name": "EditHere", "version": "0.13.0"},
+=======
   "tool": {"name": "EditHere", "version": "0.12.5"},
+>>>>>>> github/codex/native
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // 示意哈希；原图与 JSON 一起提供
@@ -259,11 +268,7 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
 ```
 
 `objects` 里的每一项都是一处修改：`source` 是它原本的位置，`movement` 记录大爆炸拖到了哪里、位移了多少像素，`annotations` 是你写的原话。原图默认作为独立文件一起交付，也可选择内嵌进 JSON。
-
 完整字段见 [使用指南 · 反馈 JSON](docs/USER-GUIDE.md#反馈-json)，命令与示例见 [AI 与命令行](docs/AGENT-CLI.md)。
-
-## 常见问题
-
 <details>
 <summary><b>截个图画个框也能发给 AI，为什么还要 EditHere？</b></summary>
 
@@ -279,13 +284,13 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
 <details>
 <summary><b>截图会自动上传吗？</b></summary>
 
-不会。截图、图像识别和编辑都在本机完成。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动检查更新或默认开启的启动检查时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。可在设置中关闭启动检查。
+不会自动上传。截图、图像识别和编辑都在本机完成。使用可选的「生成修改意见」或「测试连接」时，EditHere 会调用你配置的 API：生成发送当前批注快照与截图，连接测试只发送内置小图。你自行发送反馈，或允许接入的 AI 工具读取反馈后，是否上传取决于该工具；手动检查更新或默认开启的启动检查时，EditHere 会查询 GitHub 与 [Gitee](https://gitee.com/InnGing/EditHere) 的正式发行版，选择较新的版本。可在设置中关闭启动检查。
 </details>
 
 <details>
 <summary><b>只能配合 Codex / Claude Code 使用吗？</b></summary>
 
-不是。反馈以 JSON 和图片交付，不绑定任何模型服务。Codex、Claude Code 可使用配套 skill，其他工具可通过 CLI 或手动导入接收反馈。EditHere 不内置模型调用，也不提供模型额度。
+不是。反馈以 JSON 和图片交付，不绑定任何模型服务。Codex、Claude Code 可使用配套 skill，其他工具可通过 CLI 或手动导入接收反馈。桌面端另有可选的 API 生成功能，支持 OpenAI、Claude、DeepSeek、GLM、Kimi 及自定义兼容服务，需要你自己的 API Key 和额度。
 </details>
 
 <details>
@@ -306,6 +311,10 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
 | ---------------------------------- | ------------------------------------ |
 | [使用指南](docs/USER-GUIDE.md)         | 截图、批注、大爆炸、导出、设置与快捷键的完整说明             |
 | [AI 与命令行](docs/AGENT-CLI.md)       | `edithere-cli` 命令、skill 配置与 Agent 接入 |
+<<<<<<< HEAD
+| [生成修改意见](docs/AI-INSTRUCTIONS.md)  | 配置模型 API，把截图和批注整理成纯文本                |
+=======
+>>>>>>> github/codex/native
 | [AI 安装指南](docs/AI-SETUP.md)        | 让 AI 自动完成安装与配置                       |
 | [网页版说明](web/README.md)             | 独立 HTML、MCP Apps 与浏览器兼容模式            |
 | [视频标注说明](docs/VIDEO-ANNOTATION.md) | 视频反馈格式与使用方式                          |
@@ -327,10 +336,7 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
   <a href="https://linux.do/"><img src="assets/readme/thanks/linux-do.png" width="76" alt="LINUX DO"></a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://hellogithub.com/repository/Inginnng/EditHere"><img src="assets/readme/thanks/hellogithub.png" width="76" alt="HelloGitHub"></a>
-</p>
 
-- **[LINUX DO](https://linux.do/)**：中文技术社区，社区口号是「Where possible begins」。EditHere 在这里收获了许多建议与反馈，不少细节因此被改好。
-- **[HelloGitHub](https://hellogithub.com/repository/Inginnng/EditHere)**：发现和分享有趣、入门级开源项目的社区，EditHere 收录于[《HelloGitHub 月刊》第 127 期](https://hellogithub.com/periodical/volume/127)。
 
 ## 作者的话
 

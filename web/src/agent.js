@@ -49,7 +49,7 @@
   }
   async function complete() {
     if (sending || document.body.dataset.agentState !== 'pending') return;
-    if ($('note-dialog').open) { app.notify('请先保存或关闭正在编辑的批注');return; }
+    if ($('note-dialog').open || $('group-note-dialog').open) { app.notify('请先保存或关闭正在编辑的批注');return; }
     sending=true;submit.disabled=true;cancel.disabled=true;label(submit,'返回中');
     pendingFeedback ||= app.feedbackSubmission();$('workspace').inert=true;document.body.dataset.agentLocked='true';
     try {
@@ -83,7 +83,9 @@
         app.notify(value.state==='completed'?'这次反馈已保存，请回到对话说“继续”':'这次 AI 批注会话已结束，可以重新发起');
         return;
       }
-      await app.loadAgentImage(value);
+      if(value.kind==='set'){
+        if(value.draft)await app.loadAgentSetProject(value.draft);else await app.loadAgentSet(value);
+      }else await app.loadAgentImage(value);
       document.body.dataset.agentSession=value.sessionId;
       document.body.dataset.agentState=value.state;
       label(submit,'反馈');submit.title='完成并返回 AI (Ctrl / ⌘ + E)';submit.setAttribute('aria-label','完成并返回 AI');
