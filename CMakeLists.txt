@@ -5,6 +5,11 @@ endif()
 project(EditHere VERSION 0.13.0 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# The AI module pulls in QtKeychain, whose Apple backend is Objective-C++. Enable
+# the language before add_subdirectory(), or CMake cannot generate its rules.
+if(APPLE)
+  enable_language(OBJCXX)
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
