@@ -100,6 +100,49 @@ class CocoaWindowTest : public QObject {
         QCOMPARE(nsWindow.contentView.frame.size.height, nsWindow.frame.size.height);
         window.hide();
     }
+    // The editor centers its own bar on the row the traffic lights are drawn in, so the
+    // reported row has to be the one AppKit actually uses.
+    void theReportedRowIsTheOneTheSystemDraws() {
+        if (QGuiApplication::platformName() != "cocoa")
+            QSKIP("this test needs a real Cocoa window");
+        QWidget window;
+        window.setWindowFlags(Qt::Window);
+        window.resize(640, 420);
+        window.show();
+        QTest::qWaitForWindowExposed(&window);
+        h2d::configureNativeWindow(&window, false);
+        QTest::qWait(250);
+        NSWindow *nsWindow = nativeWindow(window);
+        QVERIFY(nsWindow);
+        NSButton *close = [nsWindow standardWindowButton:NSWindowCloseButton];
+        NSButton *zoom = [nsWindow standardWindowButton:NSWindowZoomButton];
+        QVERIFY(close && zoom);
+        const NSRect closeInWindow = inWindow(close);
+        const NSRect zoomInWindow = inWindow(zoom);
+        // The client area covers the title bar, so the buttons' row is counted from the
+        // window's top edge.
+        const NSView *content = nsWindow.contentView;
+        const CGFloat clientTop =
+            nsWindow.frame.size.height - (content.frame.origin.y + content.frame.size.height);
+
+        const h2d::NativeTitleBarRow row = h2d::nativeTitleBarRow(&window);
+        QVERIFY(row.available);
+        QCOMPARE(row.centerY, qRound(nsWindow.frame.size.height - NSMidY(closeInWindow) - clientTop));
+        QCOMPARE(row.controlsRight, qRound(NSMaxX(zoomInWindow)));
+
+        // Qt keeps widget content out of that strip: every widget in it gets a matching
+        // top content margin, and the margin cannot be cleared. The editor therefore
+        // places its bar and body by hand instead of through a layout. If this ever
+        // stops being true the margin assertions below are the ones to revisit.
+        QWidget strip(&window), below(&window);
+        strip.setGeometry(0, 0, 120, 40);
+        below.setGeometry(0, row.centerY * 2, 120, 40);
+        QCOMPARE(strip.contentsMargins().top(), row.centerY * 2);
+        QCOMPARE(below.contentsMargins().top(), 0);
+        window.setContentsMargins(0, 0, 0, 0);
+        QVERIFY(window.contentsMargins().top() > 0);
+        window.hide();
+    }
 };
 
 QTEST_MAIN(CocoaWindowTest)

@@ -1205,6 +1205,43 @@ class UiTests : public QObject {
         QVERIFY(bar->height() >= tools.height());
         editor.hide();
     }
+    // macOS draws close, minimize and zoom as traffic lights in the system title bar.
+    // What the editor draws has to share that bar's row: a bar pushed a titlebar down,
+    // or a row centered below the lights, is the "second row" users reported.
+    void theTitleBarSharesTheSystemControlsRow() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        editor.show();
+        QTest::qWaitForWindowExposed(&editor);
+        QTest::qWait(220);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        auto brand = editor.findChild<QLabel *>("brand");
+        auto tool = editor.findChild<QPushButton *>("openSettings");
+        QVERIFY(bar && brand && tool);
+        // Nothing is reserved above the bar: it starts at the window's own top edge.
+        QVERIFY(bar->parentWidget());
+        QCOMPARE(bar->parentWidget()->mapTo(&editor, QPoint()).y(), 0);
+        QVERIFY2(bar->mapTo(&editor, QPoint()).y() <= 2,
+                 qPrintable(QString("the bar starts %1 pixels down").arg(bar->mapTo(&editor, QPoint()).y())));
+        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
+        if (!row.available) {
+            // No system controls to share a row with: the bar just centers its own row.
+            QCOMPARE(brand->y() + brand->height() / 2, bar->height() / 2);
+            editor.hide();
+            return;
+        }
+        const int toolCenter = bar->y() + tool->y() + tool->height() / 2;
+        QVERIFY2(std::abs(toolCenter - row.centerY) <= 4,
+                 qPrintable(QString("the tools are centered on %1, the window controls on %2")
+                                .arg(toolCenter).arg(row.centerY)));
+        // The brand starts clear of the traffic lights' right edge.
+        QVERIFY2(brand->mapTo(&editor, QPoint()).x() > row.controlsRight,
+                 qPrintable(QString("the brand starts at %1, the window controls end at %2")
+                                .arg(brand->mapTo(&editor, QPoint()).x())
+                                .arg(row.controlsRight)));
+        editor.hide();
+    }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("maximized");

@@ -778,6 +778,13 @@ bool excludedFromCapture(const QWidget *widget) {
 bool usesNativeWindowControls() {
     return true;
 }
+bool screenCaptureAllowed(QString *reason) {
+    if (QGuiApplication::platformName() != "cocoa")
+        return true;
+    // Preflight only: asking here would put a system prompt in front of a launch that
+    // has not been asked to capture yet.
+    return screenRecordingAllowed(reason, false);
+}
 namespace {
 // The editor keeps the standard title bar for the traffic lights, hides its title and
 // lets the client area cover it, so the editor's own bar reaches the window's top edge
@@ -794,16 +801,87 @@ void applyNativeTitleBar(NSWindow *window) {
     window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     window.styleMask |= NSWindowStyleMaskFullSizeContentView;
 }
+// The client area's top edge, counted down from the window's top edge: 0 while it covers
+// the title bar, one titlebar high once the system has dropped that.
+CGFloat clientTopInset(NSWindow *window) {
+    const NSRect content = window.contentView.frame;
+    return window.frame.size.height - (content.origin.y + content.size.height);
+}
 } // namespace
+NativeTitleBarRow nativeTitleBarRow(QWidget *widget) {
+    NativeTitleBarRow row;
+    if (!widget || QGuiApplication::platformName() != "cocoa")
+        return row;
+    NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
+    NSWindow *window = view.window;
+    // Full screen hides the title bar and its buttons, and a window without a titled
+    // frame has none to align with either.
+    if (!window || !(window.styleMask & NSWindowStyleMaskTitled) ||
+        (window.styleMask & NSWindowStyleMaskFullScreen))
+        return row;
+    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+    NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
+    if (!close || !zoom || close.hidden)
+        return row;
+    // Window coordinates grow upwards from the bottom-left corner, so the buttons' row is
+    // counted from the top edge and then moved into the client area's own coordinates.
+    const CGFloat top = clientTopInset(window);
+    const NSRect closeInWindow = [close convertRect:close.bounds toView:nil];
+    const NSRect zoomInWindow = [zoom convertRect:zoom.bounds toView:nil];
+    row.available = true;
+    row.centerY = qRound(window.frame.size.height - NSMidY(closeInWindow) - top);
+    row.controlsRight = qRound(NSMaxX(zoomInWindow));
+    return row;
+}
 void ensureNativeTitleBar(QWidget *widget) {
     if (!widget || QGuiApplication::platformName() != "cocoa")
         return;
     NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
     NSWindow *window = view.window;
-    // A window that is still being ordered on screen can drop a style mask change,
-    // which leaves the title hidden but the editor's bar pushed down by a titlebar
-    // it should have covered. Re-assert instead of trusting the one call.
-    if (window && !nativeTitleBarIsApplied(window))
+    if (!window)
+        return;
+    // The state as found: a dropped full-height client area, or a bar that is not on the
+    // traffic lights' row, is what the diagnostic log has to show, so it is recorded
+    // before any repair.
+    if (qEnvironmentVariableIsSet("EDITHERE_WINDOW_DEBUG")) {
+        QWidget *bar = widget->findChild<QWidget *>("editorTitleBar");
+        QJsonObject fields;
+        fields["styleMask"] = qint64(window.styleMask);
+        fields["frameY"] = window.frame.origin.y;
+        fields["frameHeight"] = window.frame.size.height;
+        fields["contentY"] = window.contentView.frame.origin.y;
+        fields["contentHeight"] = window.contentView.frame.size.height;
+        fields["contentClass"] = QString::fromUtf8(NSStringFromClass(window.contentView.class).UTF8String);
+        fields["viewY"] = view.frame.origin.y;
+        fields["viewHeight"] = view.frame.size.height;
+        fields["viewSuper"] = QString::fromUtf8(NSStringFromClass(view.superview.class).UTF8String);
+        fields["widgetHeight"] = widget->height();
+        fields["clientTop"] = double(clientTopInset(window));
+        // Qt reserves this strip as a content margin on every widget in it, which is why
+        // the editor places its bar by hand; the value itself is worth logging.
+        const QMargins margins = widget->contentsMargins();
+        fields["widgetMargins"] = QString("%1,%2,%3,%4").arg(margins.left()).arg(margins.top())
+                                      .arg(margins.right()).arg(margins.bottom());
+        // The two rows the window has to keep on one line: the system's traffic lights
+        // and the editor's own bar.
+        const NativeTitleBarRow row = nativeTitleBarRow(widget);
+        fields["rowCenterY"] = row.centerY;
+        fields["rowControlsRight"] = row.controlsRight;
+        if (bar) {
+            fields["barPos"] = QString("%1,%2").arg(bar->x()).arg(bar->y());
+            fields["barSize"] = QString("%1x%2").arg(bar->width()).arg(bar->height());
+            if (auto tool = bar->findChild<QWidget *>("captureImage"))
+                fields["toolRow"] = QString("%1..%2").arg(tool->y() + bar->y())
+                                        .arg(tool->y() + bar->y() + tool->height());
+        }
+        fields["inFullScreen"] = bool(window.styleMask & NSWindowStyleMaskFullScreen);
+        diagnostics::write(diagnostics::Level::Info, "window.debug", "state", fields);
+    }
+    // A window that is still being ordered on screen, or one the system reconfigures
+    // later, can drop the full-height client area, which leaves the title hidden but
+    // the editor's bar pushed down by a titlebar it should have covered. Re-assert
+    // instead of trusting the one call.
+    if (!nativeTitleBarIsApplied(window))
         applyNativeTitleBar(window);
 }
 void configureNativeWindow(QWidget *widget, bool overlay) {

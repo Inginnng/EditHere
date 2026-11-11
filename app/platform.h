@@ -66,6 +66,19 @@ void configureNativeWindow(QWidget *window, bool overlay);
 // so the editor keeps that title bar and leaves the window controls to it. The
 // other desktops have no equivalent and use the editor's own buttons instead.
 bool usesNativeWindowControls();
+// Whether screen reads can start now, with `reason` naming what to allow when they
+// cannot. It never asks for permission itself, so a launch that cannot capture stays
+// quiet instead of raising a dialog the user has to dismiss.
+bool screenCaptureAllowed(QString *reason = nullptr);
+// Where the system draws its own window controls, in the window's own coordinates with
+// zero at the top-left of its client area. A row of editor controls can then share that
+// row instead of guessing an inset the platform may not use.
+struct NativeTitleBarRow {
+    bool available = false; // false where the platform draws no such controls
+    int centerY = 0;        // vertical center of the controls, from the client area's top
+    int controlsRight = 0;  // right edge of the last control, from the client area's left
+};
+NativeTitleBarRow nativeTitleBarRow(QWidget *window);
 // Re-asserts the title bar layout after the system has changed the window: a style
 // mask applied while the window is being ordered on screen can be dropped, which
 // would leave the editor's own bar pushed down by a titlebar it should cover.
