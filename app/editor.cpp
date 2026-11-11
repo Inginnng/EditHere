@@ -45,6 +45,7 @@
 #include <QTransform>
 #include <QWheelEvent>
 #include <QUrl>
+#include <algorithm>
 #include <cmath>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -57,6 +58,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -66,6 +68,7 @@
 #include <QShortcut>
 #include <QSizeGrip>
 #include <QStackedWidget>
+#include <QStyleOption>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -179,6 +182,39 @@ void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configu
         parent.rmdir(name);
     }
 }
+// The editor's own bar: its height, and the inset the shell keeps around the client
+// area inside the window frame.
+constexpr int kTitleBarHeight = 42;
+constexpr int kShellInset = 1;
+// Qt keeps widget content out of the strip the window's title bar occupies — on macOS
+// that strip is where the traffic lights are — by giving every widget in it a matching
+// content margin, and that margin cannot be cleared. The editor's bar belongs in that
+// strip on purpose, so its row lays itself out over the bar's whole rect and the two
+// labels it carries paint over their own rect instead of a shrunk content rect.
+class TitleRowLayout final : public QHBoxLayout {
+  public:
+    using QHBoxLayout::QHBoxLayout;
+    void setGeometry(const QRect &rect) override {
+        QWidget *parent = parentWidget();
+        QHBoxLayout::setGeometry(parent ? parent->rect() : rect);
+    }
+};
+class RowLabel final : public QLabel {
+  public:
+    using QLabel::QLabel;
+
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        QStyleOption opt;
+        opt.initFrom(this);
+        style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+        painter.setPen(palette().color(foregroundRole()));
+        painter.setFont(font());
+        painter.drawText(rect(), int(alignment()) | Qt::TextSingleLine, text());
+    }
+};
+
 class JsonPreview final : public QPlainTextEdit {
   public:
     using QPlainTextEdit::QPlainTextEdit;
@@ -208,34 +244,63 @@ class JsonPreview final : public QPlainTextEdit {
 };
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    // macOS keeps the system title bar so close, minimize and zoom stay the
+    // traffic lights the platform expects; the title itself is hidden and the
+    // window's own bar is drawn over it (platform_mac.mm). The other desktops
+    // have no such controls and take the frameless window with our own buttons.
+    const bool nativeControls = usesNativeWindowControls();
+    setWindowFlags(nativeControls ? Qt::Window : Qt::Window | Qt::FramelessWindowHint);
+    if (nativeControls) {
+        // AppKit can drop the full-height client area at a moment that delivers no event
+        // of its own, and the bar would then sit a titlebar lower than the traffic
+        // lights. Re-checking while the window is visible keeps them on one row.
+        titleBarGuard_ = new QTimer(this);
+        titleBarGuard_->setInterval(1000);
+        connect(titleBarGuard_, &QTimer::timeout, this, [this] {
+            ensureNativeTitleBar(this);
+            alignNativeTitleBarRow();
+        });
+    }
 #ifdef Q_OS_WIN
     // This is an opaque editor, not a capture overlay. A translucent top-level
     // uses a layered backing store on Windows, which can leave most of the
     // surface transparent after moving between monitors with different DPI.
     setAutoFillBackground(true);
-#else
+#elif !defined(Q_OS_MAC)
     setAttribute(Qt::WA_TranslucentBackground);
 #endif
     setAcceptDrops(true);
     setMinimumSize(740, 400);
-    auto outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    auto shell = new QWidget(this);
-    shell->setObjectName("editorShell");
-    outer->addWidget(shell);
+    // macOS: once the client area covers the title bar, Qt reserves that bar as a top
+    // content margin of this window and of the one widget filling it, and the margin
+    // cannot be cleared. A layout in either of them would then start a titlebar down,
+    // with the bar's tools on the row below the traffic lights. So the shell and the bar
+    // are placed against the window by hand, and only the body they leave below takes a
+    // layout — that deep, Qt no longer adds the margin.
+    shell_ = new QWidget(this);
+    shell_->setObjectName("editorShell");
+    auto bar = new DragBar(shell_, true);
+    bar_ = bar;
+    body_ = new QWidget(shell_);
+    QWidget *shell = body_;
+    fitShell();
     auto layout = new QVBoxLayout(shell);
-    layout->setContentsMargins(1, 1, 1, 1);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    auto bar = new DragBar(shell, true);
     bar->setObjectName("editorTitleBar");
-    bar->setFixedHeight(42);
-    auto header = new QHBoxLayout(bar);
-    header->setContentsMargins(14, 0, 6, 0);
-    auto brand = new QLabel(bar);
+    bar->setFixedHeight(kTitleBarHeight);
+    auto header = new TitleRowLayout(bar);
+    // The traffic lights sit in the window's top-left corner, so the brand starts
+    // clear of them; everywhere else the bar keeps its compact inset. On macOS the row
+    // is re-fitted to the system's own row once the window exists.
+    header->setContentsMargins(nativeControls ? 78 : 14, 0, 6, 0);
+    titleRow_ = header;
+    nativeControls_ = nativeControls;
+    auto brand = new RowLabel(bar);
     brand->setObjectName("brand");
     header->addWidget(brand);
-    meta_ = mutedLabel({}, bar);
+    meta_ = new RowLabel({}, bar);
+    meta_->setProperty("muted", true);
     meta_->setObjectName("captureContextLabel"); meta_->setTextFormat(Qt::PlainText);
     meta_->setMaximumWidth(360); meta_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     header->addSpacing(10);
@@ -299,15 +364,23 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addWidget(capture);
     header->addWidget(settings);
     header->addWidget(help);
-    header->addWidget(minimize);
-    header->addWidget(fullscreen_);
-    header->addWidget(close);
+    // With the system title bar the traffic lights are the window controls: the
+    // editor's own three buttons would be a second, wrong set in the top right.
+    // They keep their actions (and remain the fullscreen state holder) but leave
+    // the layout, so the bar ends at the tools above.
+    if (nativeControls) {
+        for (auto button : {minimize, fullscreen_, close})
+            button->hide();
+    } else {
+        header->addWidget(minimize);
+        header->addWidget(fullscreen_);
+        header->addWidget(close);
+    }
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
     connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
     connect(close, &QPushButton::clicked, this, &QWidget::close);
-    layout->addWidget(bar);
     agentBanner_ = new QWidget(shell);
     agentBanner_->setObjectName("agentSessionBanner");
     auto agentRow = new QHBoxLayout(agentBanner_);
@@ -1194,8 +1267,14 @@ void Editor::updateFullscreenButton() {
 }
 void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange)
+    if (event->type() == QEvent::WindowStateChange) {
         updateFullscreenButton();
+        // Entering or leaving full screen has the system re-apply the window's style
+        // mask, which can drop the full-height client area the bar sits under, and it
+        // takes the traffic lights away with the title bar.
+        ensureNativeTitleBar(this);
+        alignNativeTitleBarRow();
+    }
     if (event->type() == QEvent::LanguageChange) {
         // Cards cache their own placeholder and fold labels, so commit the pending
         // edit and let renderNotes() build them again in the new language.
@@ -1248,8 +1327,21 @@ void Editor::zoomAt(double value, QPointF viewportAnchor) {
     imageScroll_->setImageOrigin(viewportAnchor - imagePoint * canvas_->zoom());
     zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
 }
+void Editor::fitShell() {
+    if (!shell_)
+        return;
+    const int width = this->width(), height = this->height();
+    const int inner = std::max(0, width - 2 * kShellInset);
+    shell_->setGeometry(0, 0, width, height);
+    if (bar_)
+        bar_->setGeometry(kShellInset, kShellInset, inner, kTitleBarHeight);
+    if (body_)
+        body_->setGeometry(kShellInset, kShellInset + kTitleBarHeight, inner,
+                           std::max(0, height - 2 * kShellInset - kTitleBarHeight));
+}
 void Editor::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
+    fitShell();
     if (wave_)
         wave_->setGeometry(imageScroll_->viewport()->rect());
     if (emptyWell_)
@@ -1259,6 +1351,50 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, [this] {
             if (fitted_) fit();
         });
+}
+void Editor::alignNativeTitleBarRow() {
+    if (!titleRow_ || !nativeControls_)
+        return;
+    const NativeTitleBarRow row = nativeTitleBarRow(this);
+    // Without a system row of its own (full screen, or a platform that draws no traffic
+    // lights) the bar keeps its own compact inset and centers normally.
+    const int left = row.available ? std::max(row.controlsRight + 9, 0) : 14;
+    // With one, the bar shares that row: its controls are centered on the traffic lights
+    // and the brand starts clear of their right edge. A control is taller than the room
+    // above that center, so the row stops at the bar's top edge and every control stays
+    // inside the window instead of hanging out of it.
+    int tallest = 0;
+    for (int i = 0; i < titleRow_->count(); ++i)
+        if (QWidget *item = titleRow_->itemAt(i)->widget(); item && !item->isHidden())
+            tallest = std::max(tallest, item->sizeHint().height());
+    int bottom = 0;
+    if (row.available)
+        bottom = std::clamp(kTitleBarHeight + 2 * kShellInset - 2 * row.centerY, 0,
+                            std::max(0, kTitleBarHeight - tallest));
+    const QMargins wanted(left, 0, 6, bottom);
+    if (titleRow_->contentsMargins() != wanted)
+        titleRow_->setContentsMargins(wanted);
+}
+void Editor::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    fitShell();
+    // macOS: the window is ordered on screen here, and a style mask set while that is
+    // happening can be dropped, which would push the whole window's content down.
+    ensureNativeTitleBar(this);
+    alignNativeTitleBarRow();
+    if (titleBarGuard_)
+        titleBarGuard_->start();
+}
+void Editor::hideEvent(QHideEvent *event) {
+    QWidget::hideEvent(event);
+    if (titleBarGuard_)
+        titleBarGuard_->stop();
+}
+void Editor::moveEvent(QMoveEvent *event) {
+    QWidget::moveEvent(event);
+    // macOS: moving the window, including a native drag of the title bar, has the
+    // system reconfigure it; the full-height client area has to survive that.
+    ensureNativeTitleBar(this);
 }
 void Editor::setPreferences(const AppSettings &settings) {
     const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;

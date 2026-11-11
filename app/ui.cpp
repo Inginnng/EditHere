@@ -183,6 +183,12 @@ QMenu::item:disabled { color:@disabled@; }
 QMenu::separator { height:1px; margin:5px 8px; background:@border@; }
 QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0; }
 )");
+#ifdef Q_OS_MAC
+    // macOS draws the window frame itself, and the traffic lights live in its title
+    // bar. A rounded, bordered shell inside that frame would draw a second edge just
+    // inside the real one, so a later rule of the same specificity removes it.
+    css += QStringLiteral("QWidget#editorShell { border:0; border-radius:0; }\n");
+#endif
     const QList<std::pair<QString, QColor>> colors{
         {"text", palette.color(QPalette::WindowText)},
         {"window", palette.color(QPalette::Window)},

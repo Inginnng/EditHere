@@ -16,6 +16,7 @@ class QStackedWidget;
 class QShortcut;
 class QPlainTextEdit;
 class QTabBar;
+class QTimer;
 namespace h2d {
 class LayoutCanvas;
 class ImageArea;
@@ -100,11 +101,19 @@ class Editor final : public QWidget {
     bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
+    void moveEvent(QMoveEvent *) override;
     void changeEvent(QEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 
   private:
+    // macOS: puts the editor bar's controls on the row the system draws its traffic
+    // lights in, so the window controls and the editor's own tools read as one line.
+    void alignNativeTitleBarRow();
+    // Keeps the shell against the client area; the window's own layout cannot do it.
+    void fitShell();
     void editNote(Note note, bool fresh, QPoint global);
     // A child annotation needs its component's card above it, so an unannotated
     // movement gets one before the child is inserted.
@@ -240,6 +249,17 @@ class Editor final : public QWidget {
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
     QPushButton *fullscreen_ = nullptr;
+    // macOS: keeps the window's client area covering its title bar. The system can
+    // drop that while nothing else is happening, so it is re-checked while visible.
+    QTimer *titleBarGuard_ = nullptr;
+    // macOS: the bar's own row, which is re-fitted to the system's traffic lights.
+    QHBoxLayout *titleRow_ = nullptr;
+    bool nativeControls_ = false;
+    // The client area's single child, placed by fitShell() rather than by a layout.
+    QWidget *shell_ = nullptr;
+    // The bar and the body below it, both placed by fitShell().
+    QWidget *bar_ = nullptr;
+    QWidget *body_ = nullptr;
     Qt::WindowStates beforeFullscreenState_;
     QRect beforeFullscreenGeometry_;
     QPointF beforeFullscreenOrigin_;

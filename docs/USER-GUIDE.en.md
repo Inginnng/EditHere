@@ -135,6 +135,7 @@ Click the scissors icon and choose the up/down crop button (left/right in horizo
 - The Adjust tool moves or resizes annotation boxes; click an index to edit its text. `Ctrl + Z` undoes, `Ctrl + Y` redoes, and `Delete` removes the selected annotation.
 - You can open, drop or paste PNG / JPEG / WebP / BMP, and reopen a `.edithere` project or feedback JSON.
 - Closing the current capture prompts you to save unsaved changes, then releases the capture and slice caches; the app stays in the tray.
+- On macOS, close, minimize and full screen are the traffic lights in the window's top-left corner, and the editor no longer draws its own set in the top right; other desktops keep the window buttons at the right end of the title bar.
 - The **eye** button at the top hides the marks on the image and keeps the annotation text on the right, to view the original or export a clean comparison image.
 
 Mac editing shortcuts use Command and redo is Command + Shift + Z; global capture uses Option + Shift + 2, and new annotation uses Option + Shift + 1. Mac has not yet been verified on a real machine.
