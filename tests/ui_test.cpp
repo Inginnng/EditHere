@@ -257,6 +257,95 @@ class UiTests : public QObject {
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
   private slots:
+    void regionOcrTogglePreservesTextAndStopsPendingRecognition() {
+        auto document = gridDocument();
+        Note existing; existing.isPoint = false; existing.rect = {60, 60, 120, 90}; existing.comment = "Keep title";
+        existing.recognizedText = {{"text", "Existing title"}, {"engine", "windows-ocr"}};
+        Note pending; pending.isPoint = false; pending.rect = {180, 60, 120, 90}; pending.comment = "Pending title";
+        document.notes = {existing, pending};
+        Editor editor; editor.setDocument(document);
+        auto toggle = editor.findChild<QPushButton *>("toggleRegionOcr"); QVERIFY(toggle && toggle->isVisible());
+        QVERIFY(toggle->isCheckable()); QVERIFY(toggle->isChecked());
+        // Qt draws a tooltip in a QLabel parented to the widget, so a rule the button
+        // applies to itself reaches the tooltip too: a width there clipped the OCR
+        // hint down to one character.
+        QLabel tooltip(toggle->toolTip(), toggle);
+        tooltip.show();
+        QCOMPARE(tooltip.maximumWidth(), QWIDGETSIZE_MAX);
+        tooltip.hide();
+        QSignalSpy preferences(&editor, &Editor::regionOcrPreferenceChanged);
+        QTest::mouseClick(toggle, Qt::LeftButton);
+        QVERIFY(!toggle->isChecked()); QVERIFY(toggle->toolTip().contains("开启"));
+        QCOMPARE(preferences.size(), 1); QCOMPARE(preferences.first().first().toBool(), false);
+        QTest::qWait(350);
+        QVERIFY(!editor.findChild<OcrEngine *>("regionTextRecognizer"));
+        QCOMPARE(editor.document().notes[0].recognizedText, existing.recognizedText);
+        QVERIFY(editor.document().notes[1].recognizedText.isEmpty());
+        const auto feedback = QJsonDocument::fromJson(editor.agentFeedback(true)).object();
+        QCOMPARE(feedback["objects"].toArray()[0].toObject()["ocrtext"].toString(), QString("Existing title"));
+        artifact(editor, "region-ocr-disabled.png");
+        editor.resize(740, 500); QTest::qWait(30);
+        QCOMPARE(editor.width(), 740);
+        QVERIFY(toggle->isVisible());
+        auto hide = editor.findChild<QPushButton *>("hideAnnotations"); QVERIFY(hide);
+        QVERIFY(!QRect(toggle->mapTo(&editor, QPoint()), toggle->size()).intersects(QRect(hide->mapTo(&editor, QPoint()), hide->size())));
+        auto close = editor.findChild<QPushButton *>("closeWindow"); QVERIFY(close);
+        QVERIFY(editor.rect().contains(QRect(close->mapTo(&editor, QPoint()), close->size())));
+        QStyleOptionButton style; style.initFrom(toggle);
+        const auto contents = toggle->style()->subElementRect(QStyle::SE_PushButtonContents, &style, toggle);
+        QVERIFY(contents.width() >= toggle->fontMetrics().horizontalAdvance(toggle->text()));
+        artifact(editor, "region-ocr-compact.png");
+        editor.hide();
+    }
+    void regionOcrToggleCancelsInFlightAndResumes() {
+#ifndef Q_OS_WIN
+        QSKIP("this automatic recognition integration fixture uses the Windows system recognizer");
+#endif
+        if (!OcrEngine::supported() || !OcrEngine::availableLanguages().contains("en-US", Qt::CaseInsensitive))
+            QSKIP("English system recognizer is unavailable");
+        QImage image(600, 180, QImage::Format_ARGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(Qt::black); painter.setFont(QFont("Segoe UI", 36));
+        painter.drawText(image.rect(), Qt::AlignCenter, "EDITHERE"); painter.end();
+        auto document = fromImage(image, "file", "OCR toggle");
+        Note note; note.isPoint = false; note.rect = image.rect(); note.comment = "Change title"; document.notes = {note};
+        auto settings = defaultSettings(); settings.regionOcrEnabled = false; settings.ocrLanguage = OcrLanguageMode::English;
+        Editor editor; editor.setPreferences(settings); editor.setDocument(document);
+        auto toggle = editor.findChild<QPushButton *>("toggleRegionOcr"); QVERIFY(toggle && !toggle->isChecked());
+        QTest::qWait(350); QVERIFY(!editor.findChild<OcrEngine *>("regionTextRecognizer"));
+        toggle->click(); QVERIFY(toggle->isChecked());
+        QTRY_VERIFY_WITH_TIMEOUT(editor.findChild<OcrEngine *>("regionTextRecognizer") &&
+                                editor.findChild<OcrEngine *>("regionTextRecognizer")->busy(), 5000);
+        toggle->click(); QVERIFY(!toggle->isChecked());
+        QVERIFY(!editor.findChild<OcrEngine *>("regionTextRecognizer")->busy());
+        QTest::qWait(350); QVERIFY(editor.document().notes[0].recognizedText.isEmpty());
+        toggle->click(); QVERIFY(toggle->isChecked());
+        QTRY_VERIFY_WITH_TIMEOUT(editor.document().notes[0].recognizedText["text"].toString().contains("EDITHERE", Qt::CaseInsensitive), 45000);
+        const auto recognized = editor.document().notes[0].recognizedText;
+        toggle->click();
+        QCOMPARE(editor.document().notes[0].recognizedText, recognized);
+        artifact(editor, "region-ocr-resumed.png");
+        editor.hide();
+    }
+    void regionOcrPreferenceSurvivesControllerRestart() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        const auto path = temporary.filePath("settings.ini");
+        auto settings = defaultSettings();
+        settings.shortcuts["capture"] = {}; settings.shortcuts["annotate"] = {};
+        settings.captureOnStartup = false; settings.checkUpdatesOnStartup = false;
+        for (int session = 0; session < 2; ++session) {
+            Controller controller(nullptr, session == 0 ? settings : loadSettings(path), path);
+            auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray"); QVERIFY(tray && tray->contextMenu());
+            auto editor = qobject_cast<Editor *>(tray->contextMenu()->parentWidget()); QVERIFY(editor);
+            editor->setDocument(gridDocument());
+            auto toggle = editor->findChild<QPushButton *>("toggleRegionOcr"); QVERIFY(toggle);
+            QCOMPARE(toggle->isChecked(), session == 0);
+            toggle->click();
+            QCOMPARE(loadSettings(path).regionOcrEnabled, session != 0);
+            QVERIFY(loadSettings(path).includeRecognizedText);
+            QVERIFY(loadSettings(path).confirmBeforeDiscard);
+            editor->hide();
+        }
+    }
     void recognizedTextEditingAndDeletionApplyToGroupedMovements() {
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), {{{20, 20, 100, 60}, manualTarget()}});
@@ -464,7 +553,7 @@ class UiTests : public QObject {
                 dialog->close();
         });
         action->trigger();
-        QVERIFY(opened);
+        QTRY_VERIFY(opened);
         QVERIFY(QApplication::activeModalWidget() == nullptr);
     }
     void historySwitchDoesNotUseDetectionFromThePreviousPicture() {
@@ -1005,6 +1094,74 @@ class UiTests : public QObject {
         QVERIFY(!QFileInfo::exists(settingsFile));
         artifact(*editor, "main-header-controls.png");
         editor->hide();
+    }
+    void windowsEditorPaintsItsWholeSurfaceAfterMoveAndResize() {
+#ifdef Q_OS_WIN
+        Editor editor;
+        editor.openEmpty();
+        for (auto screen : QGuiApplication::screens()) {
+            editor.move(screen->availableGeometry().topLeft() + QPoint(12, 12));
+            for (const QSize size : {QSize(900, 580), QSize(1120, 700)}) {
+                editor.resize(size);
+                QTest::qWait(80);
+                const auto image = editor.grab().toImage();
+                QVERIFY(!image.isNull());
+                QCOMPARE(image.size(), (QSizeF(editor.size()) * image.devicePixelRatio()).toSize());
+                // The old layered surface left transparent pixels, including the
+                // rounded corners. Every output pixel now has a painted background.
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        if (image.pixelColor(x, y).alpha() != 255)
+                            QFAIL(qPrintable(QString("Unpainted editor pixel at %1,%2").arg(x).arg(y)));
+                QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
+                QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+            }
+        }
+        artifact(editor, "editor-window-surface.png");
+#else
+        QSKIP("Windows uses the opaque editor surface; other desktops keep translucent corners");
+#endif
+    }
+    void titleBarDoubleClickMaximizesAndRestoresWithoutChangingTheDocument() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        QVERIFY(bar);
+        QTest::qWait(60);
+        const auto geometry = editor.geometry();
+        const auto feedback = exportFeedback(editor.document(), true);
+        // Use the brand label too: unhandled label clicks must reach the bar.
+        auto brand = editor.findChild<QLabel *>("brand");
+        QVERIFY(brand);
+        // QWidget's mouseDClick sends the double-click press only. Release each
+        // button so this test cannot leave Qt Test's shared mouse state held.
+        QTest::mouseDClick(brand, Qt::LeftButton);
+        QTest::mouseRelease(brand, Qt::LeftButton);
+        QTRY_VERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), geometry);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
+        editor.showFullScreen();
+        QTRY_VERIFY(editor.isFullScreen());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isFullScreen());
+        editor.hide();
+
+        // Capture toolbar bars are movable tools, not maximizable editor chrome.
+        QWidget tool;
+        DragBar toolBar(&tool);
+        toolBar.resize(200, 42);
+        tool.show();
+        QTest::mouseDClick(&toolBar, Qt::LeftButton);
+        QTest::mouseRelease(&toolBar, Qt::LeftButton);
+        QVERIFY(!tool.isMaximized());
     }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
@@ -1755,6 +1912,23 @@ class UiTests : public QObject {
         QCOMPARE(hide->accessibleName(), hide->toolTip());
         editor.hide();
     }
+    void annotatedClipboardKeepsHighResolutionPixels() {
+        QImage source(3840, 2160, QImage::Format_RGB32);
+        for (int y = 0; y < source.height(); ++y)
+            for (int x = 0; x < source.width(); ++x)
+                source.setPixel(x, y, qRgb((x * 37) % 256, (y * 53) % 256, (x + y) % 256));
+        auto document = fromImage(source, "file", "4K clipboard");
+        Note note; note.point = {480, 400}; note.comment = "Keep this detail sharp";
+        document.notes.append(note);
+        Editor editor; editor.setDocument(document);
+        auto copy = editor.findChild<QPushButton *>("copyImage"); QVERIFY(copy);
+        copy->click();
+        const auto copied = QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        QCOMPARE(copied.size(), QSize(5472, 2352));
+        QCOMPARE(copied.copy(96 + 1200, 96 + 100, 600, 200),
+                 source.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
+        editor.hide();
+    }
     void blankViewportWheelZoomsBothSurfacesWithoutChangingLayout() {
         auto document = gridDocument();
         document.layout = createLayout(document.image.size(), document.candidates);
@@ -2371,9 +2545,10 @@ class UiTests : public QObject {
         auto options = editor.findChild<QPushButton *>("copyJsonTextOptions");
         QVERIFY(text && file && options && text->isVisible() && file->isVisible() && options->isVisible());
         QCOMPARE(options->parentWidget(), text);
-        QTRY_VERIFY(text->rect().contains(options->geometry()));
-        for (auto layout : editor.findChildren<QLayout *>())
-            QCOMPARE(layout->indexOf(options), -1); // No separate toolbar slot.
+        QVERIFY(text->rect().contains(options->geometry()));
+        QStyleOptionButton style; style.initFrom(text);
+        const auto contents = text->style()->subElementRect(QStyle::SE_PushButtonContents, &style, text);
+        QVERIFY(contents.right() < options->geometry().left());
         QVERIFY(!options->icon().isNull());
         QVERIFY(text->toolTip().contains("默认不携带原图信息"));
         text->click();
@@ -2389,14 +2564,15 @@ class UiTests : public QObject {
         text->click();
         const auto embedded = clipboardJson().object()["image"].toObject();
         QCOMPARE(embedded["mode"].toString(), QString("embedded"));
-        QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/"));
-        const auto copiedBeforeOptions = QApplication::clipboard()->text();
-        QSignalSpy copiedOnMainClick(text, &QPushButton::clicked);
+        QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/png;base64,"));
+        QCOMPARE(QByteArray::fromBase64(embedded["dataUrl"].toString().section(',', 1).toLatin1()), editor.document().png);
+        const auto clipboardBeforeOptions = QApplication::clipboard()->text();
+        QSignalSpy copies(text, &QPushButton::clicked);
         QTest::mouseClick(options, Qt::LeftButton);
+        QVERIFY(copies.isEmpty());
         auto textMenu = options->findChild<QMenu *>("copyJsonTextOptionsMenu");
         QVERIFY(textMenu && textMenu->isVisible());
-        QCOMPARE(copiedOnMainClick.size(), 0);
-        QCOMPARE(QApplication::clipboard()->text(), copiedBeforeOptions);
+        QCOMPARE(QApplication::clipboard()->text(), clipboardBeforeOptions);
         artifact(*textMenu, "json-text-options.png");
         textMenu->close();
         file->click();
@@ -2418,10 +2594,12 @@ class UiTests : public QObject {
             QVERIFY(!dialog->findChild<QPushButton *>("saveFeedbackBundle"));
             QVERIFY(!dialog->findChild<QComboBox *>("feedbackImageMode"));
             QVERIFY(!dialog->findChild<QCheckBox *>("feedbackPreview"));
+            QVERIFY(!dialog->findChild<QCheckBox *>("compressFeedbackImage"));
             QVERIFY(!embed->isChecked());
             artifact(*dialog, "json-preview-file-mode.png");
             copyText->click();
             QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("embedded"));
+            QCOMPARE(QByteArray::fromBase64(clipboardJson().object()["image"].toObject()["dataUrl"].toString().section(',', 1).toLatin1()), editor.document().png);
             dialogOptions->findChild<QAction *>("copyJsonTextWithoutImage")->trigger();
             copyText->click();
             QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("none"));
@@ -2570,6 +2748,9 @@ class UiTests : public QObject {
         QTimer::singleShot(2000, &editor, [] { if (auto popup = QApplication::activePopupWidget()) popup->close(); });
         editor.findChild<QPushButton *>("moreActions")->click(); QVERIFY(selected);
         text->click(); QCOMPARE(clipboardJson().object()["image"].toObject()["mode"].toString(), QString("embedded"));
+        editor.resize(1280, 850); QTest::qWait(60);
+        QVERIFY(text->isVisible() && options->isVisible());
+        QVERIFY(text->rect().contains(options->geometry()));
         editor.hide();
     }
     void aiParsingIsVisibleInDefaultAndMinimumToolbars() {
@@ -2607,6 +2788,7 @@ class UiTests : public QObject {
         editor.findChild<QPushButton *>("copyJson")->click();
         const auto urls = QApplication::clipboard()->mimeData()->urls(); QCOMPARE(urls.size(), 2);
         const QString jsonPath = urls.first().toLocalFile();
+        QCOMPARE(QFileInfo(jsonPath).fileName(), QString("Move this control.json"));
         QFile json(jsonPath); QVERIFY(json.open(QIODevice::ReadOnly));
         const auto feedback = QJsonDocument::fromJson(json.readAll()).object(); const auto image = feedback["image"].toObject();
         QCOMPARE(image["mode"].toString(), QString("file")); QVERIFY(!image.contains("preview"));
@@ -2618,6 +2800,24 @@ class UiTests : public QObject {
         editor.findChild<QPushButton *>("copyJson")->click();
         QVERIFY(QApplication::clipboard()->mimeData()->urls().first().toLocalFile() != jsonPath);
         QVERIFY(QFileInfo::exists(jsonPath));
+        editor.hide();
+    }
+    void feedbackClipboardNamesAreSafeAndUseTheFirstComment() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        Editor editor; auto preferences = defaultSettings(); preferences.feedbackDir = temporary.path();
+        editor.setPreferences(preferences);
+        auto document = gridDocument();
+        Note note; note.comment = "../改成蓝色:  按钮?\n下一行"; document.notes.append(note);
+        editor.setDocument(document);
+        editor.findChild<QPushButton *>("copyJson")->click();
+        const auto path = QApplication::clipboard()->mimeData()->urls().first().toLocalFile();
+        QCOMPARE(QFileInfo(path).fileName(), QString("_改成蓝色_ 按钮_ 下一行.json"));
+        QVERIFY(QFileInfo::exists(path));
+        document.notes = {note}; document.notes[0].comment = "CON";
+        editor.setDocument(document); editor.findChild<QPushButton *>("copyJson")->click();
+        QCOMPARE(QFileInfo(QApplication::clipboard()->mimeData()->urls().first().toLocalFile()).fileName(), QString("_CON.json"));
+        document.notes.clear(); editor.setDocument(document); editor.findChild<QPushButton *>("copyJson")->click();
+        QCOMPARE(QFileInfo(QApplication::clipboard()->mimeData()->urls().first().toLocalFile()).fileName(), QString("feedback.json"));
         editor.hide();
     }
     void primaryCopiesCompleteJsonAndSmallButtonOpensPreview() {
@@ -3497,6 +3697,17 @@ class UiTests : public QObject {
         QVERIFY_EXCEPTION_THROWN(previewImage(document), std::runtime_error);
         Editor editor; auto preferences = defaultSettings(); preferences.feedbackDir = directory.path();
         editor.setPreferences(preferences); editor.setDocument(document);
+        QApplication::clipboard()->setText("previous clipboard content");
+        bool warned = false;
+        QTimer::singleShot(60, &editor, [&] {
+            auto warning = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()); QVERIFY(warning);
+            QVERIFY(warning->text().contains("预览图片过大"));
+            warned = true; warning->accept();
+        });
+        QTimer::singleShot(3000, &editor, [] { if (auto dialog = QApplication::activeModalWidget()) dialog->close(); });
+        editor.findChild<QPushButton *>("copyImage")->click();
+        QVERIFY(warned);
+        QCOMPARE(QApplication::clipboard()->text(), QString("previous clipboard content"));
         bool exported = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()); QVERIFY(dialog);

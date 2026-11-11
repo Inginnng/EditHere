@@ -8,17 +8,26 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 "$ENV{EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}" CACHE STRING
+  "SHA-256 of the trusted Windows update publisher certificate (DER); nonempty selects strict Authenticode mode")
+if(NOT EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 STREQUAL "")
+  string(LENGTH "${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}" publisher_pin_length)
+  if(NOT publisher_pin_length EQUAL 64 OR NOT EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 MATCHES "^[0-9A-Fa-f]+$")
+    message(FATAL_ERROR "EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 must contain exactly 64 hexadecimal characters")
+  endif()
+  string(TOUPPER "${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}" EDITHERE_UPDATE_PUBLISHER_CERT_SHA256)
+endif()
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network Test Multimedia MultimediaWidgets)
 qt_standard_project_setup()
 add_subdirectory(features/ai-text)
 set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/imageset.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
-set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
+set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
   set(PLATFORM app/platform_win.cpp)
 elseif(APPLE)
   enable_language(OBJCXX)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "" FORCE)
-  set(PLATFORM app/platform_mac.mm app/autostart_mac.mm app/ocr_mac.mm)
+  set(PLATFORM app/platform_mac.mm app/autostart_mac.mm app/ocr_mac.mm app/trayeventguard_mac.mm)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(Qt6 REQUIRED COMPONENTS DBus)
   find_package(X11 REQUIRED)
@@ -33,9 +42,12 @@ add_library(h2d_core STATIC ${CORE})
 target_include_directories(h2d_core PUBLIC app features/ai-text/include)
 target_compile_definitions(h2d_core PUBLIC EDITHERE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(h2d_core PUBLIC Qt6::Gui)
-add_library(h2d_agent STATIC app/agentprotocol.cpp app/agentconnection.cpp app/agentlaunch.cpp)
+add_library(h2d_agent STATIC app/agentprotocol.cpp app/agentconnection.cpp app/agentlaunch.cpp app/localauth.cpp)
 target_include_directories(h2d_agent PUBLIC app)
 target_link_libraries(h2d_agent PUBLIC Qt6::Core Qt6::Network)
+if(WIN32)
+  target_link_libraries(h2d_agent PRIVATE advapi32)
+endif()
 add_library(h2d_diagnostics STATIC app/diagnostics.cpp)
 target_include_directories(h2d_diagnostics PUBLIC app)
 target_link_libraries(h2d_diagnostics PUBLIC Qt6::Core)
@@ -52,6 +64,8 @@ target_include_directories(h2d_ui PUBLIC app)
 target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::MultimediaWidgets)
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
 target_link_libraries(h2d_ui PUBLIC h2d_diagnostics)
+target_compile_definitions(h2d_ui PRIVATE
+  EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}")
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
@@ -60,7 +74,7 @@ qt_add_resources(h2d_ui ui_icons
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons"
   FILES assets/ui-icons/manifest.json ${UI_ICON_SVGS})
 if(WIN32)
-  target_link_libraries(h2d_ui PRIVATE user32 gdi32 dwmapi ole32 oleaut32 uuid advapi32)
+  target_link_libraries(h2d_ui PRIVATE user32 gdi32 dwmapi ole32 oleaut32 uuid advapi32 wintrust crypt32 bcrypt)
 elseif(APPLE)
   target_compile_options(h2d_ui PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
   target_link_libraries(h2d_ui PRIVATE "-framework Cocoa" "-framework ScreenCaptureKit" "-framework ApplicationServices" "-framework Carbon" "-framework ServiceManagement" "-framework Vision")
@@ -119,18 +133,23 @@ if(WIN32)
     FILES app/ocrbridge.ps1)
 endif()
 # Interface translations. Simplified Chinese is the source language written in the
-# code, so only English needs a .ts. The Linguist tools compile it when they are
-# installed; the minimal Qt used by CI has no Linguist, which is why the compiled
-# .qm is committed under app/translations/built and used as the fallback.
+# code, so only English and Traditional Chinese need a .ts. The Linguist tools compile
+# them when they are installed; the minimal Qt used by CI has no Linguist, which is why
+# the compiled .qm files are committed under app/translations/built and used as the
+# fallback.
 find_package(Qt6 QUIET COMPONENTS LinguistTools)
 if(Qt6LinguistTools_FOUND)
-  qt_add_translations(EditHere TS_FILES app/translations/edithere_en.ts)
+  qt_add_translations(EditHere TS_FILES
+    app/translations/edithere_en.ts
+    app/translations/edithere_zh_TW.ts)
 else()
   message(STATUS "Qt Linguist tools not found; embedding the prebuilt translations.")
   qt_add_resources(EditHere app_translations
     PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
-    FILES app/translations/built/edithere_en.qm)
+    FILES
+      app/translations/built/edithere_en.qm
+      app/translations/built/edithere_zh_TW.qm)
 endif()
 if(WIN32)
   enable_language(RC)
@@ -169,6 +188,25 @@ qt_add_executable(ai_instructions_tests features/ai-text/tests/aiinstructionsdia
 target_link_libraries(ai_instructions_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(ai_instructions_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 add_test(NAME ai-instructions COMMAND ai_instructions_tests -platform offscreen)
+
+if(APPLE)
+  qt_add_executable(cocoa_tray_tests tests/cocoa_tray_test.mm)
+  target_link_libraries(cocoa_tray_tests PRIVATE h2d_ui Qt6::Test Qt6::WidgetsPrivate "-framework Cocoa")
+  target_compile_options(cocoa_tray_tests PRIVATE -fobjc-arc)
+  set_target_properties(cocoa_tray_tests PROPERTIES MACOSX_BUNDLE FALSE)
+  add_test(NAME cocoa-tray COMMAND cocoa_tray_tests)
+  set_tests_properties(cocoa-tray PROPERTIES TIMEOUT 30)
+
+  # The capture test compiles the actual backend with a deferred native submit
+  # method, without h2d_ui, and therefore cannot capture the runner's desktop.
+  qt_add_executable(cocoa_capture_tests tests/cocoa_capture_test.mm app/platform.h)
+  target_link_libraries(cocoa_capture_tests PRIVATE h2d_core h2d_diagnostics Qt6::Widgets Qt6::Test
+    "-framework Cocoa" "-framework ScreenCaptureKit" "-framework ApplicationServices" "-framework Carbon")
+  target_compile_options(cocoa_capture_tests PRIVATE -fobjc-arc)
+  set_target_properties(cocoa_capture_tests PROPERTIES MACOSX_BUNDLE FALSE)
+  add_test(NAME cocoa-capture COMMAND cocoa_capture_tests -platform offscreen)
+  set_tests_properties(cocoa-capture PROPERTIES TIMEOUT 30)
+endif()
 qt_add_executable(video_project_tests tests/video_project_test.cpp)
 target_link_libraries(video_project_tests PRIVATE h2d_core Qt6::Test)
 add_dependencies(video_project_tests edithere-cli)
@@ -253,7 +291,9 @@ target_link_libraries(settings_tests PRIVATE h2d_ui Qt6::Test)
 qt_add_resources(settings_tests settings_test_translations
   PREFIX "/i18n"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
-  FILES app/translations/built/edithere_en.qm)
+  FILES
+    app/translations/built/edithere_en.qm
+    app/translations/built/edithere_zh_TW.qm)
 add_test(NAME settings COMMAND settings_tests -platform offscreen)
 qt_add_executable(diagnostics_tests tests/diagnostics_test.cpp)
 target_link_libraries(diagnostics_tests PRIVATE h2d_diagnostics Qt6::Test)
@@ -261,12 +301,14 @@ set_target_properties(diagnostics_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX
 add_test(NAME diagnostics COMMAND diagnostics_tests)
 qt_add_executable(i18n_tests tests/i18n_test.cpp)
 target_link_libraries(i18n_tests PRIVATE h2d_ui Qt6::Test)
-# installLanguage() resolves ":/i18n/edithere_en.qm", which the application embeds. The
-# test embeds the same committed file so it exercises that lookup instead of a path.
+# installLanguage() resolves ":/i18n/edithere_<locale>.qm", which the application embeds.
+# The test embeds the same committed files so it exercises that lookup instead of a path.
 qt_add_resources(i18n_tests i18n_test_translations
   PREFIX "/i18n"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
-  FILES app/translations/built/edithere_en.qm)
+  FILES
+    app/translations/built/edithere_en.qm
+    app/translations/built/edithere_zh_TW.qm)
 add_test(NAME i18n COMMAND i18n_tests -platform offscreen)
 qt_add_executable(guide_tests tests/guide_test.cpp)
 target_link_libraries(guide_tests PRIVATE h2d_ui Qt6::Test)
@@ -280,6 +322,31 @@ add_test(NAME startup-flow COMMAND startup_flow_tests -platform offscreen)
 qt_add_executable(update_tests tests/update_test.cpp)
 target_link_libraries(update_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME updates COMMAND update_tests)
+# Isolate the public test trust root and synthetic transport from h2d_ui and
+# every distributable target. The fixture has no corresponding committed key.
+qt_add_executable(update_signature_tests tests/update_signature_test.cpp app/updatechecker.cpp app/updateauth.cpp)
+target_include_directories(update_signature_tests PRIVATE app)
+target_compile_definitions(update_signature_tests PRIVATE EDITHERE_UPDATE_TEST_TRUST=1 EDITHERE_VERSION="${PROJECT_VERSION}")
+target_link_libraries(update_signature_tests PRIVATE Qt6::Test Qt6::Network h2d_diagnostics)
+if(WIN32)
+  target_link_libraries(update_signature_tests PRIVATE bcrypt wintrust crypt32)
+endif()
+add_test(NAME update-signatures COMMAND update_signature_tests)
+qt_add_executable(update_certificate_tests tests/update_signature_test.cpp app/updatechecker.cpp app/updateauth.cpp)
+target_include_directories(update_certificate_tests PRIVATE app)
+target_compile_definitions(update_certificate_tests PRIVATE EDITHERE_UPDATE_TEST_TRUST=1
+  EDITHERE_VERSION="${PROJECT_VERSION}"
+  EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="0000000000000000000000000000000000000000000000000000000000000000")
+target_link_libraries(update_certificate_tests PRIVATE Qt6::Test Qt6::Network h2d_diagnostics)
+if(WIN32)
+  target_link_libraries(update_certificate_tests PRIVATE bcrypt wintrust crypt32)
+endif()
+add_test(NAME update-certificate-policy COMMAND update_certificate_tests)
+find_program(EDITHERE_NODE_EXECUTABLE NAMES node node.exe)
+if(EDITHERE_NODE_EXECUTABLE)
+  add_test(NAME update-signer COMMAND "${EDITHERE_NODE_EXECUTABLE}" --test "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_signer_test.cjs")
+  set_tests_properties(update-signer PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 qt_add_executable(ocr_tests tests/ocr_test.cpp)
 target_link_libraries(ocr_tests PRIVATE h2d_ui Qt6::Test)
 qt_add_resources(ocr_tests small_ocr_fixture

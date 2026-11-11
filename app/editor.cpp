@@ -103,6 +103,31 @@ QString feedbackTempDir(const QString &configured = {}) {
 }
 // Each clipboard file bundle gets an owned directory, so relative references
 // remain valid when several exports coexist. All URLs are copied together.
+QString feedbackClipboardName(const FeedbackBundle &bundle) {
+    const auto feedback = QJsonDocument::fromJson(bundle.json).object();
+    auto firstComment = [](const QJsonObject &imageFeedback) {
+        for (const auto &object : imageFeedback["objects"].toArray())
+            for (const auto &annotation : object.toObject()["annotations"].toArray()) {
+                const auto text = annotation.toObject()["text"].toString().simplified();
+                if (!text.isEmpty()) return text;
+            }
+        return QString{};
+    };
+    QString stem = firstComment(feedback);
+    if (stem.isEmpty())
+        for (const auto &frame : feedback["frames"].toArray()) {
+            stem = firstComment(frame.toObject()["feedback"].toObject());
+            if (!stem.isEmpty()) break;
+        }
+    stem.replace(QRegularExpression("[\\\\/:*?\"<>|\\x{0000}-\\x{001f}\\x{007f}]"), "_");
+    stem = stem.left(80);
+    if (!stem.isEmpty() && stem.back().isHighSurrogate()) stem.chop(1);
+    while (stem.startsWith('.') || stem.startsWith(' ')) stem.remove(0, 1);
+    while (stem.endsWith('.') || stem.endsWith(' ')) stem.chop(1);
+    if (stem.isEmpty()) stem = "feedback";
+    if (!safeFeedbackImageName(stem + ".png")) stem.prepend('_');
+    return stem + ".json";
+}
 QString writeFeedbackTempBundle(const FeedbackBundle &bundle, const QString &configuredDir = {}) {
     const QDir parent(feedbackTempDir(configuredDir));
     const QString name = "edithere-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + "-" + uniqueId();
@@ -110,8 +135,9 @@ QString writeFeedbackTempBundle(const FeedbackBundle &bundle, const QString &con
     const QDir directory(parent.filePath(name));
     const QString marker = directory.filePath(".edithere-feedback-bundle");
     try {
-        saveBytes(marker, "1\n");
-        const QString path = directory.filePath("feedback.json");
+        const QString jsonName = feedbackClipboardName(bundle);
+        saveBytes(marker, "2\n" + jsonName.toUtf8() + "\n");
+        const QString path = directory.filePath(jsonName);
         writeNewFeedbackBundle(path, bundle);
         return path;
     } catch (...) {
@@ -137,10 +163,17 @@ void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configu
         const QDir directory(folder.absoluteFilePath());
         const QFileInfo marker(directory.filePath(".edithere-feedback-bundle"));
         if (!marker.isFile() || marker.isSymLink()) continue;
+        QFile markerFile(marker.absoluteFilePath());
+        if (!markerFile.open(QIODevice::ReadOnly)) continue;
+        const auto markerLines = markerFile.read(1024).split('\n');
+        const QString jsonName = markerLines.value(0) == "1" ? QStringLiteral("feedback.json")
+            : markerLines.value(0) == "2" ? QString::fromUtf8(markerLines.value(1)) : QString{};
+        markerFile.close();
+        if (!jsonName.endsWith(".json") || jsonName.contains('/') || jsonName.contains('\\')) continue;
         const auto entries = directory.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
         bool owned = true;
         for (const auto &entry : entries) if (!entry.isFile() || entry.isSymLink() ||
-            !(entry.fileName() == ".edithere-feedback-bundle" || entry.fileName() == "feedback.json" || safeFeedbackImageName(entry.fileName()))) { owned = false; break; }
+            !(entry.fileName() == ".edithere-feedback-bundle" || entry.fileName() == jsonName || safeFeedbackImageName(entry.fileName()))) { owned = false; break; }
         if (!owned) continue;
         for (const auto &entry : entries) QFile::remove(entry.absoluteFilePath());
         parent.rmdir(name);
@@ -176,7 +209,14 @@ class JsonPreview final : public QPlainTextEdit {
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+#ifdef Q_OS_WIN
+    // This is an opaque editor, not a capture overlay. A translucent top-level
+    // uses a layered backing store on Windows, which can leave most of the
+    // surface transparent after moving between monitors with different DPI.
+    setAutoFillBackground(true);
+#else
     setAttribute(Qt::WA_TranslucentBackground);
+#endif
     setAcceptDrops(true);
     setMinimumSize(740, 400);
     auto outer = new QVBoxLayout(this);
@@ -187,7 +227,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     auto layout = new QVBoxLayout(shell);
     layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
-    auto bar = new DragBar(shell);
+    auto bar = new DragBar(shell, true);
+    bar->setObjectName("editorTitleBar");
     bar->setFixedHeight(42);
     auto header = new QHBoxLayout(bar);
     header->setContentsMargins(14, 0, 6, 0);
@@ -209,6 +250,14 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     hideAnnotations_->setCheckable(true);
     header->addWidget(hideAnnotations_);
     connect(hideAnnotations_, &QPushButton::clicked, this, &Editor::toggleAnnotations);
+    regionOcrToggle_ = textButton(QStringLiteral("OCR"), false, bar);
+    regionOcrToggle_->setObjectName("toggleRegionOcr");
+    regionOcrToggle_->setProperty("tool", true);
+    regionOcrToggle_->setFixedSize(44, 34);
+    styleControl(regionOcrToggle_, QStringLiteral("padding:4px; min-width:34px; max-width:34px;"));
+    regionOcrToggle_->setCheckable(true);
+    header->addWidget(regionOcrToggle_);
+    connect(regionOcrToggle_, &QPushButton::toggled, this, &Editor::setRegionOcrEnabled);
     auto magnifier=iconButton("magnifier", {}, bar);
     magnifier->setObjectName("toggleMagnifier");
     magnifier->setCheckable(true); magnifier->setChecked(true);
@@ -606,6 +655,7 @@ void Editor::retranslate() {
     tooltip("zoomIn", tr("放大"));
     tooltip("moreActions", tr("更多操作"));
     updateAnnotationVisibility();
+    updateRegionOcrButton();
     if (auto magnifier = findChild<QPushButton *>("toggleMagnifier"))
         tooltip("toggleMagnifier", magnifier->isChecked() ? tr("关闭放大镜") : tr("开启放大镜"));
     if (auto agentHint = findChild<QLabel *>("agentSessionHint"))
@@ -941,13 +991,36 @@ void Editor::setVideoProject(VideoProject project, const QString &path) {
 void Editor::commitVideoFrame() {
     if (!video_ || videoFrameUs_ < 0 || doc_.image.isNull()) return;
     if (doc_.dirty) video_->dirty = true;
-    const bool annotated = !exportFeedback(doc_)["objects"].toArray().isEmpty();
+    auto document = doc_;
+    if (!editingId_.isEmpty()) {
+        for (auto &note : document.notes) {
+            if (note.id != editingId_ || note.movementSource || !note.comment.trimmed().isEmpty()) continue;
+            if (note.id == draftId_) {
+                // OCR can finish before the user writes anything. Keep the
+                // committed notes, excluding this draft and any parent card
+                // created for it; the live document still owns its OCR result.
+                document.notes = editingBaseline_.notes;
+            } else {
+                // Clearing an existing comment is temporary until editing ends.
+                // Preserve its text while keeping newly recognised metadata.
+                for (const auto &before : editingBaseline_.notes)
+                    if (before.id == note.id) { note.comment = before.comment; break; }
+            }
+            break;
+        }
+    }
+    // This is an editable-frame snapshot, not an export boundary. Serialising
+    // it here used to validate an unfinished comment from an OCR callback and
+    // let the resulting exception escape through Qt's event loop.
+    const bool annotated = std::any_of(document.notes.cbegin(), document.notes.cend(), [](const Note &note) {
+        return !note.comment.trimmed().isEmpty() || !note.recognizedText.value("text").toString().trimmed().isEmpty();
+    }) || (document.layout && !movementMarkers(*document.layout, document.notes).isEmpty());
     auto it = std::find_if(video_->frames.begin(), video_->frames.end(), [this](const VideoFrame &frame) {
         return frame.timestampUs == videoFrameUs_;
     });
     if (annotated) {
-        if (it == video_->frames.end()) video_->frames.append({videoFrameUs_, doc_});
-        else it->document = doc_;
+        if (it == video_->frames.end()) video_->frames.append({videoFrameUs_, std::move(document)});
+        else it->document = std::move(document);
     } else if (it != video_->frames.end()) video_->frames.erase(it);
     std::sort(video_->frames.begin(), video_->frames.end(), [](const VideoFrame &a, const VideoFrame &b) {
         return a.timestampUs < b.timestampUs;
@@ -1070,11 +1143,11 @@ QByteArray Editor::projectBytes() {
     if (video_ && videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
 }
-QByteArray Editor::feedbackBytes(bool embed, bool compress) {
+QByteArray Editor::feedbackBytes(bool embed, bool /*compress*/) {
     finishNoteEdit(); commitVideoFrame();
-    if (imageSet_) { commitSetPage(); FeedbackExportOptions setOptions; setOptions.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None; setOptions.compress = compress; setOptions.includeRecognizedText = preferences_.includeRecognizedText; setOptions.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, setOptions).json; }
+    if (imageSet_) { commitSetPage(); FeedbackExportOptions setOptions; setOptions.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None; setOptions.includeRecognizedText = preferences_.includeRecognizedText; setOptions.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, setOptions).json; }
     FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
+    options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
 }
 void Editor::toggleFullscreen() {
@@ -1188,7 +1261,13 @@ void Editor::resizeEvent(QResizeEvent *e) {
         });
 }
 void Editor::setPreferences(const AppSettings &settings) {
+    const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;
     preferences_ = settings;
+    if (recognitionChanged) {
+        cancelRegionRecognition();
+        if (preferences_.regionOcrEnabled) scheduleRegionRecognition();
+    }
+    updateRegionOcrButton();
     if (zoom_) updateToolbar();
 }
 void Editor::updateToolbar() {
@@ -1226,15 +1305,12 @@ void Editor::updateToolbar() {
     }
     // Keep the permanent tools accessible when optional actions exceed the window width.
     if (dock_) {
-        if (copyJsonTextOptions_)
-            copyJsonTextOptions_->setVisible(!outputButtons_.value("copyJsonText")->isHidden());
         dock_->invalidate();
         const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson", "generateInstructions"};
         for (const auto &id : overflowOrder) {
             if (dock_->sizeHint().width() <= width()-2) break;
             if (auto button = outputButtons_.value(id); button && !button->isHidden()) {
                 button->hide();
-                if (id == "copyJsonText" && copyJsonTextOptions_) copyJsonTextOptions_->hide();
                 dock_->invalidate();
             }
         }
@@ -1725,8 +1801,24 @@ void Editor::cancelRegionRecognition() {
     recognizedRegions_.clear();
     if (regionOcr_) regionOcr_->cancel();
 }
+void Editor::setRegionOcrEnabled(bool enabled) {
+    if (preferences_.regionOcrEnabled == enabled) return;
+    preferences_.regionOcrEnabled = enabled;
+    cancelRegionRecognition();
+    updateRegionOcrButton();
+    if (enabled) scheduleRegionRecognition();
+    emit regionOcrPreferenceChanged(enabled);
+}
+void Editor::updateRegionOcrButton() {
+    if (!regionOcrToggle_) return;
+    const QSignalBlocker blocker(regionOcrToggle_);
+    regionOcrToggle_->setChecked(preferences_.regionOcrEnabled);
+    const auto label = preferences_.regionOcrEnabled ? tr("关闭区域文字识别（OCR）") : tr("开启区域文字识别（OCR）");
+    regionOcrToggle_->setToolTip(label);
+    regionOcrToggle_->setAccessibleName(label);
+}
 void Editor::scheduleRegionRecognition() {
-    if (recognitionScheduled_ || !hasDocument()) return;
+    if (!preferences_.regionOcrEnabled || recognitionScheduled_ || !hasDocument()) return;
     recognitionScheduled_ = true;
     const int generation = recognitionGeneration_;
     QTimer::singleShot(200, this, [this, generation] {
@@ -1736,7 +1828,7 @@ void Editor::scheduleRegionRecognition() {
     });
 }
 void Editor::recognizeNextRegion() {
-    if (!hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
+    if (!preferences_.regionOcrEnabled || !hasDocument() || (regionOcr_ && regionOcr_->busy())) return;
     for (auto &note : doc_.notes) {
         // OCR belongs to the selected screenshot content. Rearranging that
         // content must preserve both saved text and an in-flight first result.
@@ -1753,7 +1845,7 @@ void Editor::recognizeNextRegion() {
         QPointer<Editor> self(this);
         regionOcr_->recognize(picture, preferences_.ocrLanguage,
             [self, generation, documentId, id, key](OcrResult result) {
-                if (!self || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
+                if (!self || !self->preferences_.regionOcrEnabled || generation != self->recognitionGeneration_ || documentId != self->doc_.id) return;
                 for (auto &current : self->doc_.notes) {
                     if (current.id != id || current.recognizedText.value("edited") == true ||
                         !self->recognizedRegions_.contains(id) || self->recognizedRegions_.value(id) != key) continue;
@@ -1822,14 +1914,6 @@ void Editor::updateAnnotationVisibility() {
     if (layoutCanvas_) layoutCanvas_->setAnnotationsVisible(annotationsVisible_);
 }
 bool Editor::eventFilter(QObject *object, QEvent *event) {
-    // The options affordance belongs to the copy button's hit area, never to a
-    // separate toolbar layout slot. This also serves the JSON preview dialog.
-    if ((event->type() == QEvent::Resize || event->type() == QEvent::Show) &&
-        object->property("embeddedJsonOptions").toBool()) {
-        if (auto button = qobject_cast<QPushButton *>(object))
-            if (auto options = button->findChild<QPushButton *>("copyJsonTextOptions", Qt::FindDirectChildrenOnly))
-                options->setGeometry(button->width() - 29, 3, 26, button->height() - 6);
-    }
     if (auto owner = qobject_cast<QWidget *>(object); owner && owner->window() != this)
         return QWidget::eventFilter(object, event);
     // An unresolved note shows a compact "归属待确认" chip that turns into the
@@ -1962,20 +2046,23 @@ void Editor::toast(const QString &message) {
     hint_->setText(message);
     QToolTip::showText(mapToGlobal(QPoint(width()/2,height()-65)),message,this,{},2000);
 }
-QPushButton *Editor::makeCopyJsonTextOptions(QWidget *parent, const QString &name) {
-    parent->setProperty("embeddedJsonOptions", true);
-    parent->setStyleSheet("QPushButton { padding-right:34px; }");
-    parent->installEventFilter(this);
+QPushButton *Editor::makeCopyJsonTextOptions(QPushButton *parent, const QString &name) {
+    // Reserve the trailing edge of the copy button for its options. The child
+    // follows the button's visibility and never takes a separate toolbar slot.
+    parent->setStyleSheet("QPushButton#copyJsonText { padding-right:32px; }");
     auto button = textButton({}, false, parent);
     button->setIcon(QIcon(glyph("more", QColor("#80848e")).pixmap(36, 36)
                               .transformed(QTransform().rotate(90))));
     button->setIconSize(QSize(18, 18));
     button->setObjectName(name);
-    button->setFixedSize(26, 28);
-    button->setStyleSheet("QPushButton { background:transparent; border:0; border-left:1px solid palette(midlight);"
-                         "border-radius:0; padding:0; min-width:0; min-height:0; }"
-                         "QPushButton:hover { background:palette(midlight); border-radius:4px; }");
-    button->move(parent->width() - 29, 3);
+    button->setFixedSize(24, 28);
+    button->setProperty("tool", true);
+    styleControl(button, QStringLiteral("padding:0; min-width:0; min-height:0; border:0;"));
+    auto row = new QHBoxLayout(parent);
+    row->setContentsMargins(0, 0, 3, 0);
+    row->setSpacing(0);
+    row->addStretch();
+    row->addWidget(button);
     button->setToolTip(tr("复制 JSON 内容选项"));
     button->setAccessibleName(tr("复制 JSON 内容选项"));
     auto menu = new QMenu(button);
@@ -2016,7 +2103,7 @@ void Editor::copyJsonText() {
     try {
         FeedbackExportOptions options;
         options.mode = preferences_.copyJsonTextWithImage ? ImageExportMode::Embedded : ImageExportMode::None;
-        options.preview = false; options.compress = true;
+        options.preview = false;
         const auto bundle = agentFeedbackBundle(options);
         QApplication::clipboard()->setText(QString::fromUtf8(bundle.json));
         toast(preferences_.copyJsonTextWithImage ? tr("JSON 文本已复制（包含原图编码）") : tr("JSON 文本已复制（不含原图编码）"));
@@ -2029,7 +2116,7 @@ void Editor::showJsonHelp() {
     help.setTextFormat(Qt::RichText);
     help.setText(tr(
         "<h3>1. 发送 JSON 文本被截断，又无法发送 JSON 文件？</h3>"
-        "<p>在“复制 JSON 内容”旁的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。</p>"
+        "<p>在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。</p>"
         "<h3>2. 都不支持上传，只支持对话怎么办？</h3>"
         "<p>可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。</p>"
         "<h3>3. AI 没认出来原图信息怎么办？</h3>"
@@ -2043,7 +2130,7 @@ void Editor::copyJson() {
     try {
         FeedbackExportOptions options;
         options.mode = preferences_.imageExportMode == ImageExportMode::Embedded ? ImageExportMode::Embedded : ImageExportMode::File;
-        options.preview = false; options.compress = true;
+        options.preview = false;
         const auto bundle = agentFeedbackBundle(options);
         const QString path = writeFeedbackTempBundle(bundle, preferences_.feedbackDir);
         cleanupOldFeedbackTempFiles(path, preferences_.feedbackDir);
@@ -2301,8 +2388,12 @@ void Editor::copyImage() {
     finishNoteEdit();
     if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (hasDocument()) {
-        QApplication::clipboard()->setImage(previewImage(doc_));
-        toast(tr("带批注图片已复制"));
+        try {
+            QApplication::clipboard()->setImage(previewImage(doc_));
+            toast(tr("带批注图片已复制"));
+        } catch (const std::exception &error) {
+            showError(QString::fromUtf8(error.what()));
+        }
     }
 }
 void Editor::showError(const QString &text) {
@@ -2314,8 +2405,14 @@ bool Editor::saveProject() {
     finishNoteEdit();
     if (!hasDocument() && !video_)
         return true;
+    // The suggestion has to be an absolute path. A bare file name is resolved
+    // against the process working directory, which is "/" for an application
+    // started by Finder, so macOS offered to save the project in the read-only
+    // file-system root and the write failed (issue #39).
+    const QString suggestion = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                                   .filePath(tr("设计反馈.edithere"));
     QString path = QFileDialog::getSaveFileName(this, tr("保存 EditHere 项目"),
-                                                projectPath_.isEmpty() ? tr("设计反馈.edithere") : projectPath_,
+                                                projectPath_.isEmpty() ? suggestion : projectPath_,
                                                 tr("EditHere 项目 (*.edithere)"));
     if (path.isEmpty())
         return false;
@@ -2525,13 +2622,18 @@ void Editor::saveImage(bool annotated) {
     if (!hasDocument())
         return;
     const bool layoutPreview = !annotated && doc_.layout.has_value();
+    // Anchored suggestions for the same reason as the project dialog: a bare
+    // "preview.png" is resolved against the working directory, which is "/" for
+    // an application started by Finder (issue #39).
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString suggested = annotated       ? QDir(pictures).filePath(QStringLiteral("preview.png"))
+                              : layoutPreview ? QDir(pictures).filePath(QStringLiteral("layout.png"))
+                                              : doc_.imageFile;
     QString path = QFileDialog::getSaveFileName(this,
                                                 annotated       ? tr("保存带批注图片")
                                                 : layoutPreview ? tr("保存调整效果")
                                                                 : tr("保存原图"),
-                                                annotated       ? "preview.png"
-                                                : layoutPreview ? "layout.png"
-                                                                : doc_.imageFile,
+                                                suggested,
                                                 tr("PNG 图片 (*.png)"));
     if (path.isEmpty())
         return;
@@ -2559,8 +2661,6 @@ void Editor::exportJson() {
     embedded->setChecked(preferences_.imageExportMode == ImageExportMode::Embedded);
     embedded->setToolTip(tr("未勾选时将 JSON 与原图作为独立文件复制。"));
     layout->addWidget(embedded);
-    auto compress = new QCheckBox(tr("压缩内嵌原图（保持尺寸，可能轻微损失细节）"), &dialog);
-    compress->setObjectName("compressFeedbackImage"); compress->setChecked(true); layout->addWidget(compress);
     auto json = new JsonPreview(&dialog); json->setAccessibleName(tr("标准化 JSON")); json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth); json->setFont(QFont(h2d::monoFontFamily(), 10)); layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog); status->setObjectName("exportStatus"); status->setWordWrap(true); layout->addWidget(status);
@@ -2578,15 +2678,14 @@ void Editor::exportJson() {
     close->setProperty("glyphName", "close"); close->setIcon(glyph("close"));
     copy->setProperty("glyphName", "json-copy-file"); copy->setIcon(glyph("json-copy-file", Qt::white));
     copyText->setProperty("glyphName", "json-copy-text"); copyText->setIcon(glyph("json-copy-text"));
-    auto textOptions = makeCopyJsonTextOptions(copyText, "copyJsonTextOptions");
+    makeCopyJsonTextOptions(copyText, "copyJsonTextOptions");
     row->addWidget(ai); row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(copy); layout->addLayout(row);
     FeedbackBundle bundle;
     auto refresh = [&] {
         try {
             FeedbackExportOptions options;
             options.mode = embedded->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;
-            options.preview = false; options.compress = compress->isChecked();
-            compress->setEnabled(embedded->isChecked());
+            options.preview = false;
             bundle = agentFeedbackBundle(options);
             auto readable = QJsonDocument::fromJson(bundle.json).object();
             auto fold = [&](QJsonObject feedback) {
@@ -2601,11 +2700,11 @@ void Editor::exportJson() {
                 readable[key] = frames;
             } else readable = fold(readable);
             json->setPlainText(QString::fromUtf8(formatFeedbackJson(readable, true)));
-            copy->setEnabled(true); copyText->setEnabled(true); textOptions->setEnabled(true);
+            copy->setEnabled(true); copyText->setEnabled(true);
             status->setText(options.mode == ImageExportMode::File ? tr("原图作为配套文件保存；请将 JSON 与图片一起交给 Agent。")
                 : tr("图片编码仅在预览中折叠，复制文件包含完整原图。"));
         } catch (const std::exception &error) {
-            bundle = {}; json->clear(); copy->setEnabled(false); copyText->setEnabled(false); textOptions->setEnabled(false);
+            bundle = {}; json->clear(); copy->setEnabled(false); copyText->setEnabled(false);
             status->setText(QString::fromUtf8(error.what()));
         }
         copyText->setToolTip(preferences_.copyJsonTextWithImage
@@ -2617,7 +2716,7 @@ void Editor::exportJson() {
         try {
             FeedbackExportOptions options;
             options.mode = preferences_.copyJsonTextWithImage ? ImageExportMode::Embedded : ImageExportMode::None;
-            options.preview = false; options.compress = compress->isChecked();
+            options.preview = false;
             const auto textBundle = agentFeedbackBundle(options);
             QApplication::clipboard()->setText(QString::fromUtf8(textBundle.json));
             status->setText(preferences_.copyJsonTextWithImage ? tr("JSON 文本已复制（包含原图编码）") : tr("JSON 文本已复制（不含原图编码）"));
@@ -2628,7 +2727,6 @@ void Editor::exportJson() {
         preferences_.imageExportMode = enabled ? ImageExportMode::Embedded : ImageExportMode::File;
         emit exportPreferencesChanged(preferences_.imageExportMode, preferences_.copyJsonTextWithImage);
     });
-    connect(compress, &QCheckBox::toggled, &dialog, refresh);
     connect(this, &Editor::exportPreferencesChanged, &dialog, refresh);
     connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
     connect(copyText, &QPushButton::clicked, &dialog, copyTextContent);

@@ -15,6 +15,82 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## Windows 免费更新签名（0.12.8）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-211 | 未配置公开发布者证书时只能检测新版，无法在应用内安装。引入编译公钥、域分离的版本/精确文件名/SHA-256 签名，CNG P-256 原生验证；配置证书时严格无回退，无信任根仍禁用。客户端拒绝旧版本重放，下载保持同源同版本同名集合 | `update-signatures`：独立 Node 正/错钥夹具经 CNG 验证、真实入口确认前拒绝各类篡改、有效签名通过确认并进入受锁保护的启动阶段，安装/便携分发、签名/校验文件超限、缺失、取消、销毁与重试；`update-certificate-policy`：有效项目签名不能绕过失败证书；`update-signer`：工具互操作、CLI 最终字节、错钥/版本/名称/元数据拒绝及不覆盖；既有 `updates` 和安装事务检查保留。最终生产密钥/正式包和真实用户机器验收须分别记录，测试根不代表生产验收 | 🆕 |
+| REG-212 | 安装确认开启嵌套事件循环时，取消/销毁更新器可能丢失仍被 Windows 文件锁占用的临时包，或在回调后使用已销毁对象。确认和启动回调先复制，使用存活与目录身份检查，局部目录所有权保留至文件锁释放后 | `update-signatures::cancellationOrDestructionDuringConfirmationReclaimsLockedPackage`：真实验签后在确认回调取消或销毁，不启动、不重复报错、目录最终回收；现有 READY/ACK/回滚回归继续执行 | 🆕 |
+
+发行使用最终稳定名称和字节生成独立 `.sig`，标签/源码版本及公私钥匹配均验证；Secret 仅标签发布签名步骤可见，独立无私钥复验后才上传。规范与模式见 [SECURITY.md](SECURITY.md)。
+
+## 托盘点击动作（0.12.7）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-209 | 托盘首次 Trigger 立即截图，第二次点击被截图遮罩接走。按系统双击间隔延迟单击，DoubleClick 取消待执行单击；明确菜单、快捷键、设置和退出取消待执行动作。Qt 6.8.3 Windows 已过滤双击后的释放，不再额外吞掉第三次点击 | `startup-flow::traySingleWaitsAndDoubleOpensEmptyWithoutCapture`、`traySingleCoalescesAndExplicitActionsCancelWaiting`、`trayActionsCanBeSwappedAndDisabled`；Windows `windowsNativeTrayDoubleReleaseAndThirdClick` 通过真实 Qt HWND 验证通知链 | 🆕 |
+| REG-210 | 托盘动作配置须用稳定标识保存，独立恢复非法值，不能仅存设置而不生效；显示当前窗口不能走 activate 的无文档截图分支 | `settings::trayPersistenceValidationAndDraft`、`trayControlsHaveStableActionIds`、`trayTranslationsAndScrollableLayout`；`startup-flow::trayShowPreservesDocumentAndShowsEmptyWithoutCapture`、`trayOpenUsesTheExistingFilePicker`，既有事务保存和批注保护回归新增托盘路径 | 🆕 |
+
+平台依据：[Qt 6.8.3 Windows](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp) 首次 NIN_SELECT 发 Trigger、WM_LBUTTONDBLCLK 发 DoubleClick 并吞掉随后一次 NIN_SELECT；[X11](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/util/qsystemtrayicon_x11.cpp) 第二次按下仅发 DoubleClick。后续 Trigger 是新点击，不做整段时间屏蔽。使用 [mouseDoubleClickInterval](https://doc.qt.io/qt-6.8/qstylehints.html#mouseDoubleClickInterval-prop) 和 PreciseTimer，避免定时器提前执行。Linux 托盘宿主不保证发送双击。
+
+macOS 继续遵守 REG-200/202：[Qt 6.8.3 Cocoa](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoasystemtrayicon.mm) 有原生菜单时，鼠标按下由菜单接管，菜单跟踪也会发 Trigger；[官方契约](https://doc.qt.io/qt-6.8/qsystemtrayicon.html#ActivationReason-enum) 明确有 contextMenu 时不保证 DoubleClick。保留非鼠标保护、原生菜单和 `cocoa-tray` 回归，禁用两项点击设置并说明限制。合成激活信号和 Windows 原生通知测试不代表 macOS 原生手势验收。
+
+## 编辑窗口标题栏与跨屏绘制（0.12.6）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-207 | #51：`DragBar` 只有按下、移动和释放，没有双击处理。编辑器单独启用左键双击最大化/还原，忽略全屏与右键；截图工具栏保持工具窗口行为。拖动优先走 `QWindow::startSystemMove`，不支持时保留手动路径 | `ui::titleBarDoubleClickMaximizesAndRestoresWithoutChangingTheDocument`：标题文字事件冒泡、最大化/还原几何与文档保留、右键/全屏保护、截图工具栏不最大化 | 🆕 |
+| REG-208 | #51：Windows 编辑器为圆角启用透明分层窗口，跨屏后报告只有左上区域可见。Windows 编辑器改为不透明背景，避开该分层绘制路径，截图覆盖层保持原实现。真实混合 DPI 复现尚待反馈者确认 | `ui::windowsEditorPaintsItsWholeSurfaceAfterMoveAndResize`：遍历可用屏幕和两种尺寸，逐像素验证整个窗口不透明并检查标题控件；单屏/固定缩放检查不能替代真实混合 DPI 双屏验收 | ⚠️ |
+
+## 高清批注图与原图保真（2026-11-03）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-206 | 高清原图保留像素后，批注侧栏和文字仍固定大小，整体缩放观看时文字极小；内嵌原图另有默认 JPEG 转码。批注版式随原图宽度统一放大，原图区对齐整数像素，移除内嵌有损转换，新预览使用 PNG 并兼容旧 JPEG | `annotatedPreviewPreservesHighResolutionSourcePixels` 验证 960/4K 比例、文字面积和 1366 宽非整数缩放像素；`annotatedClipboardKeepsHighResolutionPixels` 验证真实剪贴板；`legacyCompressionRequestKeepsOriginalBytesAndPixels` 验证原始字节及像素；现有 bundle/CLI/connector/Web 回归验证 PNG 和旧 JPEG 兼容 | ✅ |
+
+## 本地请求认证与更新发布者验证（2026-11-03）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-205 | #8：桌面转发和 Agent 仅依赖 socket 的用户权限，更新只校验同源 SHA-256。两个 IPC 端点改用每轮随机 token，并双向验证 OS 用户身份；Windows 同时要求完整性级别一致，提权 GUI 停用 IPC。Windows 更新增加 Authenticode 和编译内置证书 pin，验证至启动保持文件锁；未配置 pin 时默认转到手动发布页。反馈发布继续使用原子 no-overwrite，目标被抢占时失败而不覆盖。详见 `SECURITY.md` | `agent-cli`：缺失/错误/旧 token、私有凭据轮换、桌面旧裸命令拒绝、真实 CLI 重连及反馈目标竞争；`updates`：签名 fixture 匹配/错误 pin/篡改、unsigned 包拒绝、未配 pin 在网络访问前拒绝且不确认/启动安装。Windows MSVC / Qt 6.8.0：50 + 48 passed，0 failed；在线视频、live release 各 1 项 opt-in skipped。本轮未运行 Unix 原生校验，macOS/Linux 由原生 CI 复核；项目发布签名和可信 pin 尚未配置 | ⚠️ |
+
+## macOS 菜单栏与异步长截图（2026-11-03）
+
+同批反馈导出回归：
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-203 | #42：带批注图片固定把原图缩到 960px，导致大截图的小字和细节丢失。宽图改为保留原始像素宽度，侧栏继续附编号与意见，超过像素或边长上限明确拒绝 | `core::annotatedPreviewPreservesHighResolutionSourcePixels`：3840px 细密图案逐像素比较；现有 clipboard 图像回归 | 🆕 |
+| REG-204 | #38：会话里所有手动 JSON 附件都叫 feedback.json，无法从名称识别意见。改用首条批注命名、清洗路径和保留字、限制长度；每轮仍为独立目录，v2 marker 记录实际 JSON 名以兼容清理 | `ui::feedbackFileClipboardIncludesOriginalWithoutLegacyPreview`、`feedbackClipboardNamesAreSafeAndUseTheFirstComment`：命名、相对原图引用、重复复制、路径字符与 CON、无批注回退 | 🆕 |
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-200 | #11：Qt 6.8.3 的 Cocoa 托盘委托直接读取 `NSApp.currentEvent.clickCount`，macOS 27 的非鼠标菜单事件触发 AppKit 断言。复用经过方法签名检查的两个委托局部防护，非鼠标事件跳过激活解析；不兼容时隐藏托盘、保留编辑窗口并写诊断 | macOS `cocoa-tray`：真实 Qt 委托的 KitDefined 负对照、非鼠标/空事件、鼠标类型、重复安装、原生菜单和动作。Windows 不编译 Objective-C++，macOS 27 原生手势需实机复测 | ⚠️ |
+| REG-201 | #41：0.12.4 Intel 报告为 `EXC_BAD_ACCESS`、主线程 Qt queued callback，区别于 #39 的异常。`captureSessionRegion` 的 `shared_ptr` 引用参数被逃逸的 Objective-C block 按引用保存；调用方局部对象离开作用域后，完成回调再拷入 Qt lambda 时访问失效引用。改为值参数，让 block 独立持有请求与会话；把异常处理放在真正执行的 Qt queued lambda 内，配置构造也纳入兜底 | macOS `cocoa-capture` 编译真实后端、替换原生提交入口，延迟真实完成 block 到调用栈退出后：弱引用确认请求仍存活、返回正确帧、取消后不污染新会话、超时后迟到帧只完成一次。无需录屏权限；Windows 无法执行，需 macOS CI/实机验证 | ⚠️ |
+| REG-202 | #44：Cocoa 开始跟踪菜单也发送托盘 `Trigger`，通用单击截图处理把尚未选择动作的菜单直接覆盖；「打开图片」没有采集/模态检查，随后又嵌套文件对话框。macOS 只由明确的截图菜单项启动采集，原生菜单动作排队到 tracking 返回后；打开文件检查采集与模态状态并延后对话框 | `startup-flow::macTrayActivationOnlyOpensTheMenu`：菜单激活不截图、明确截图动作仍生效；`openingFromTrayDoesNotInterruptCapture`：捕捉期间不能弹文件对话框；现有新建批注入口回归继续验证 | ⚠️ |
+
+## macOS 长截图崩溃与保存路径（0.12.4）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-198 | macOS 15.7 上框选区域开始长截图后，进程在读第一帧画面时直接消失，系统弹出「意外退出」；诊断日志停在 `long_capture.controls_fallback`，没有任何后续记录，可见是进程级崩溃而非程序内报错（#39）。ScreenCaptureKit 在参数不被支持时抛 Objective-C 异常，`platform_mac.mm` 里没有任何 `@try`，异常无人接住即终止进程。修复：长截图不再请求只有它才会用的 `sourceRect` 子区域参数，改为整屏采集后在本地裁出选区，与一次性截图走同一条已被验证的采集路径；`getShareableContent` 与 `captureImage` 的提交与完成回调全部包进 `@try/@catch`，异常写入 `scroll.capture.exception` 并作为提示返回；补 `scroll.capture.request`/`content`/`frame` 三段诊断，失败时能看出停在哪一步 | 只能 macOS 实机复测：Windows 与 CI 都无法执行真实屏幕采集（macOS 运行器拿不到屏幕录制授权，`.mm` 也无法在本机构建）。装上 0.12.4 复现一次即可定位——若仍崩溃，诊断包会留下最后到达的阶段与异常名，可按 `scroll.capture.*` 直接判断是取内容、建过滤器还是抓帧 | ⚠️ |
+| REG-199 | macOS 上从 Finder 启动的程序工作目录是 `/`，而「保存 EditHere 项目」的默认文件名是相对名 `设计反馈.edithere`，保存对话框因此打开在只读的磁盘根目录，保存必然失败（#39 诊断日志中的 `Read-only file system`）。同一处「保存带批注图片 / 调整效果」也以 `preview.png`、`layout.png` 裸文件名作为默认值。修复：默认值改为「文稿」与「图片」目录下的完整路径 | `packaging`：`save_dialog_paths` 解析 `app/*.cpp` 里每个 `getSaveFileName()` 的第三个参数，对三元表达式的每个分支求值，出现裸字符串字面量即失败；用原始代码与修复后的代码分别验证过命中与不误报 | 🆕 |
+
+## 视频批注闪退（0.12.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-197 | 视频批注尚未输入文字或已有意见被临时清空时，OCR 成功回调触发内部帧保存；内部保存误用正式反馈导出，空草稿校验抛出未捕获异常而退出。内部帧快照排除未完成的新草稿，临时清空的已有批注保留已提交文字及最新 OCR；正式导出校验不变。旧版真实视频用例缺素材即跳过，且仍引用过时的单文件附件和已移除导出按钮 | `video-ui::blankVideoDraftSurvivesOcrAndCanBeCommittedOrCancelled`（新帧/已有帧）、`clearingAnExistingVideoCommentDuringOcrPreservesItsCommittedText`：真实 Windows OCR 完成前保持空白，验证提交/取消；发布检查纳入 video-ui/video-project/ocr，并设置 `EDITHERE_REQUIRE_VIDEO_OCR_TESTS`，缺识别器时失败；真实视频导出测试同步当前附件和按钮契约 | 🆕 |
+
+## 批注页操作（0.12.2）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-193 | 「复制 JSON 内容」的选项按钮单独占用底栏和导出弹窗位置，挤占主操作空间。将选项嵌入复制按钮，文字区继续直接复制，选项区独立打开原图菜单 | `ui::separateJsonClipboardFormatsAndHelp`：嵌套位置、真实鼠标命中、菜单与复制行为；`ui::compactToolbarKeepsJsonTextOptionsInMoreMenu`：窄窗溢出与恢复宽窗 | 🆕 |
+| REG-194 | 批注区域自动 OCR 缺少就地开关，关闭时仍可能收到旧识别回调。新增持久化开关，关闭时取消待处理识别并抑制旧结果，保留已有文字，重新开启后识别缺少结果的区域 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`、`regionOcrToggleCancelsInFlightAndResumes`、`regionOcrPreferenceSurvivesControllerRestart`；`settings::regionOcrPreferencePersistsIndependentlyOfExport` | 🆕 |
+| REG-195 | 控件的样式规则也作用到它自己的提示：Qt 把提示做成该控件的子标签，OCR 开关上的 `max-width` 把悬停提示裁成一个字。样式改由 `styleControl()` 只作用于控件本身，提示沿用全局样式 | `ui::regionOcrTogglePreservesTextAndStopsPendingRecognition`：提示标签的 `maximumWidth` 未被限制（旧写法下为 42 px） | 🆕 |
+| REG-196 | 产品版本写在 `CMakeLists.txt` 里，而它同时是 MCP 打包清单的输入。改版本后忘了重新生成 `web/mcp` 产物时，`build-web` 要等原生包全部构建完才报 `Stale MCP build file`，只能移动标签重跑一次发布 | `packaging`：`mcp_build` 按 `web/mcp/build-info.json` 逐条重算源文件与产物摘要，版本号一变即失败并提示 `node web/mcp/build.mjs` | 🆕 |
+
 ## 反馈格式升级（0.12.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -390,7 +466,8 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 
 | 检查 | 位置 | 覆盖条目 |
 | --- | --- | --- |
-| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158 |
+| `packaging` | `scripts/check-packaging.py`，注册为 CTest 测试 | REG-001/002/004/005/006/007/008/009/010/011/012/019/020/022/023/056/057/058/061/063/111/151/152/153/154/155/156/157/158/196 |
+| `save_dialog_paths` | `scripts/check-packaging.py` 的一项，随 `packaging` 一起执行 | REG-199 |
 | `translations` | `scripts/check-translations.py`，注册为 CTest 测试（需要 Linguist） | REG-021 |
 | `update_tests::staleDownloadIsDroppedBeforeAppending` | `tests/update_test.cpp` | REG-003 |
 | `i18n_tests::brokenProjectMessagesStayOneString` | `tests/i18n_test.cpp` | REG-026 |

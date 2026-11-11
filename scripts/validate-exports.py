@@ -204,7 +204,9 @@ def check_image(document):
             width, height = image["width"], image["height"]
         if "preview" in image:
             preview_mime, preview_width, preview_height = image_info(attachment(image["preview"]))
-            assert preview_mime == "image/jpeg" and 0 < preview_width <= 32767 and 0 < preview_height <= 32767
+            preview_extension = Path(image["preview"]).suffix.lower()
+            assert preview_mime == {".png": "image/png", ".jpg": "image/jpeg"}.get(preview_extension)
+            assert 0 < preview_width <= 32767 and 0 < preview_height <= 32767
             assert preview_width * preview_height <= 32_000_000
     assert 0 < width <= 32767 and 0 < height <= 32767 and width * height <= 32_000_000
     return width, height
@@ -238,6 +240,7 @@ for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.
     for image in (None, "data:image/png;base64,YQ==", descriptor_probe,
                   dict(descriptor_probe, mode="file", file="feedback.png"),
                   dict(descriptor_probe, mode="embedded", dataUrl="data:image/png;base64,YQ=="),
+                  dict(descriptor_probe, preview="feedback.annotated.png"),
                   dict(descriptor_probe, preview="feedback.annotated.jpg")):
         validate(schema_name, dict(image_probe, **({"image": image} if image is not None else {})))
     invalid_images = [
@@ -248,8 +251,11 @@ for schema_name in ("feedback-minimal-v2.schema.json", "feedback-minimal.schema.
         dict(descriptor_probe, mode="file", file="nul.png"),
         dict(descriptor_probe, mode="file", file="feedback.jpg"),
         dict(descriptor_probe, mode="embedded", dataUrl="data:image/jpeg;base64,YQ=="),
+        dict(descriptor_probe, preview="../feedback.annotated.png"),
         dict(descriptor_probe, preview="../feedback.annotated.jpg"),
         dict(descriptor_probe, preview="feedback.png"),
+        dict(descriptor_probe, preview="feedback.jpg"),
+        dict(descriptor_probe, preview="feedback.annotated.webp"),
         dict(descriptor_probe, sha256="incorrect"),
         dict(descriptor_probe, devicePixelRatio=0),
         dict(descriptor_probe, width=0),

@@ -119,6 +119,20 @@ test('versioned image metadata reaches the saved file and MCP read receipt uncha
   assert.equal(JSON.stringify(submitted.structuredContent).includes('base64'),false);
 });
 
+test('requested previews receive a lossless PNG filename when MCP supplies the image descriptor',async context=>{
+  const paths=fixture(),client=await connect(context,paths);
+  const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,imageMode:'none',preview:true});
+  const {sessionId,token}=opened._meta.edithere;
+  const changes=feedbackFormat.exportImage({image,notes:[{source:null,text:'Keep small text clear'}],movements:[]},'none');delete changes.image;
+  const submitted=await call(client,'edithere_web_submit',{sessionId,token,feedback:changes,previewDataUrl:image});
+  assert.notEqual(submitted.isError,true,JSON.stringify(submitted.content));
+  assert.equal(submitted.structuredContent.feedback.image.preview,'feedback.annotated.png');
+  assert.equal(submitted.structuredContent.previewPath,path.join(paths.directory,'feedback.annotated.png'));
+  assert.equal(fs.readFileSync(submitted.structuredContent.previewPath).toString('base64'),image.split(',')[1]);
+  await client.close();const restarted=await connect(context,paths);
+  assert.deepEqual((await call(restarted,'edithere_web_read',{sessionId})).structuredContent,submitted.structuredContent);
+});
+
 test('pending draft resumes with the original image after the host closes the stdio connection',async context=>{
   const paths=fixture(),client=await connect(context,paths);
   const opened=await call(client,'edithere_web_open',{imagePath:paths.imagePath,outputPath:paths.outputPath,name:'游戏主页'}),{sessionId,token}=opened._meta.edithere;

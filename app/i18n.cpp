@@ -14,9 +14,13 @@ QString installedLocale;
 QString systemLocale() {
     const auto languages = QLocale::system().uiLanguages();
     for (const auto &language : languages) {
-        const auto id = QLocale(language).name();
-        if (id.startsWith("zh"))
-            return "zh_CN";
+        const QLocale locale(language);
+        const auto id = locale.name();
+        if (id.startsWith("zh")) {
+            // Locales written in the traditional script get Traditional Chinese; every
+            // other Chinese locale is written in simplified characters.
+            return locale.script() == QLocale::TraditionalHanScript ? "zh_TW" : "zh_CN";
+        }
         if (id.startsWith("en"))
             return "en";
     }
@@ -42,6 +46,8 @@ QString languageDisplayName(LanguageMode mode) {
     switch (mode) {
     case LanguageMode::SimplifiedChinese:
         return QString::fromUtf8("简体中文");
+    case LanguageMode::TraditionalChinese:
+        return QString::fromUtf8("繁體中文");
     case LanguageMode::English:
         return QString::fromUtf8("English");
     case LanguageMode::System:
@@ -53,6 +59,8 @@ QString resolveLanguage(LanguageMode mode) {
     switch (mode) {
     case LanguageMode::SimplifiedChinese:
         return "zh_CN";
+    case LanguageMode::TraditionalChinese:
+        return "zh_TW";
     case LanguageMode::English:
         return "en";
     case LanguageMode::System:

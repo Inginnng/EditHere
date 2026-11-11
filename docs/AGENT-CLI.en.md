@@ -4,7 +4,7 @@
 
 New exports use `feedback-minimal-4`. Readers retain support for v2/v3 image feedback, unversioned `objects`, older `annotations` + `changes`, string `image` values and the same-name PNG fallback. Desktop projects support 1.0.0, 1.1.0, 2.0.0 and 3.0.0; videos retain their v1 container. An unknown explicit version is rejected, not guessed to be legacy. This is new-reader/old-data compatibility: older apps are not guaranteed to understand v4 `kind`, `movement`, `children` or image descriptors.
 
-Manual file handoff defaults to JSON and a companion original; **Embed original image in JSON** selects `embedded`. **Copy JSON content** defaults to `none`; its adjacent vertical … menu remembers a separate include-image choice. CLI/API file / embedded / none modes and optional numbered previews remain available and are not overridden by manual preferences.
+Manual file handoff defaults to JSON and a companion original; **Embed original image in JSON** selects `embedded`. **Copy JSON content** defaults to `none`; the vertical ⋯ menu inside the button remembers a separate include-image choice. CLI/API file / embedded / none modes and optional numbered previews remain available and are not overridden by manual preferences.
 
 
 [简体中文](AGENT-CLI.md) · **English**
@@ -71,6 +71,40 @@ Inside a restricted agent sandbox, a command may fail to reach the EditHere inst
 
 The 0.9.6 and 0.9.7 command lines inferred the communication endpoint from their own program name, which differed from the name used by the desktop app: even with the desktop app running, `status` still returned `running:false`, and `open`, `capture` and `annotate` reported `startup_timeout`. 0.9.8 fixed this. If you hit this combination, check the version and upgrade first rather than repeatedly restarting the desktop app.
 
+## VS Code Remote SSH: remote projects and local Windows annotation
+
+When VS Code opens a project through Remote SSH, its remote extension host, Codex and terminals usually execute on the remote machine. EditHere on your Windows desktop can annotate the image, with files handed back to the remote project. A remote process cannot directly reach Windows local IPC; configure the CLI path in an entry point that can execute on the current Windows user's desktop.
+
+Run the following in **local Windows PowerShell**. Replace `$Remote`, both remote paths and `$EditHereCli` with your actual values. The remote screenshot must already exist, and the remote destination directory must exist and be writable. A separate directory for each round keeps the JSON and companion originals or previews together with their relative paths intact.
+
+```powershell
+$Remote = 'user@host'
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
+$RoundDirectory = Join-Path $env:TEMP ('EditHere-remote-' + [guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $RoundDirectory | Out-Null
+$InputPath = Join-Path $RoundDirectory 'input.png'
+$FeedbackPath = Join-Path $RoundDirectory 'feedback.json'
+
+scp "${Remote}:/home/user/project/.edithere/page.png" $InputPath
+if ($LASTEXITCODE -ne 0) { throw 'Could not download the remote screenshot.' }
+
+$ReplyText = & $EditHereCli annotate $InputPath --output $FeedbackPath --timeout 1800
+$ExitCode = $LASTEXITCODE
+$Reply = $ReplyText | ConvertFrom-Json
+if ($ExitCode -ne 0 -or -not $Reply.ok) { throw "Annotation did not complete: $($Reply.error.message)" }
+
+scp -r $RoundDirectory "${Remote}:/home/user/project/.edithere/"
+if ($LASTEXITCODE -ne 0) { throw 'Could not upload feedback. The local directory is retained for retry.' }
+```
+
+The command waits for the user to click “Finish and return to AI” before uploading. Have remote Codex read `feedback.json` and its referenced companion files from the newly uploaded directory, then edit the remote project. Local absolute paths in the JSON may not exist remotely; use the corresponding files in the uploaded directory. Transfer only images and feedback the user has agreed to send. The IPC token stays on Windows and does not need copying or forwarding; EditHere does not need a network listening port.
+
+## Local authentication and permissions
+
+With this unreleased security fix, the desktop app generates a random IPC capability token for each run after acquiring its instance lock. The CLI and a second desktop entry point read and attach it automatically. Both endpoints reject missing, incorrect or previous-run tokens, and no longer dispatch legacy raw commands. The runtime directory and token are restricted to the current user; Unix endpoints also check the peer's user identity. Keep the GUI and CLI on the same version. After upgrading, save your edits and restart the desktop app before using the bundled CLI.
+
+An elevated Windows instance disables both IPC services while keeping the manual UI available. Agent requests should reach a normal-privilege instance of the current user. Tokens are not included in logs or feedback and do not need to be copied manually. This capability does not isolate malicious processes running as the same OS user: a process that can read the token or launch the legitimate CLI remains inside the trust boundary. It is not a defence against compromise of the current user's account.
+
 ## Command overview
 
 | Command | What it does | Waits for the user to submit feedback |
@@ -82,7 +116,7 @@ The 0.9.6 and 0.9.7 command lines inferred the communication endpoint from their
 | `export <image-video-project-or-feedback> --output <new.json>` | Convert a saved project (including video projects), image or valid feedback JSON into feedback JSON | No |
 | `annotate <image-video-or-project> --output <new.json>` | Open a user annotation session and wait for an explicit submission | **Yes** |
 
-`export` and `annotate` default to `file`: a same-basename PNG beside the JSON. Use `--embed-image` for embedded data or `--no-image` for metadata only; these switches are mutually exclusive. `--preview` adds a numbered JPEG in any mode. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
+`export` and `annotate` default to `file`: a same-basename PNG beside the JSON. Use `--embed-image` for embedded data or `--no-image` for metadata only; these switches are mutually exclusive. `--preview` adds a numbered lossless PNG in any mode. `annotate` supports `--timeout <seconds>`, defaulting to 1800 seconds, with a range of 1–86400 seconds.
 
 `open` and `annotate` take images (PNG/JPEG/WebP/BMP), videos (MP4/MOV/WebM and others) and `.edithere` projects, including video projects. A video plays inside EditHere and the user pauses on the picture they mean before annotating; notes about the same position at different times are kept apart rather than merged. The `export` receipt for a video project also carries the frame count `frames` and `schemaVersion` (`video-feedback-1`).
 
@@ -199,7 +233,7 @@ The file names under `schema/` denote the data format, not the application versi
 | Legacy `annotations` | Text annotations, located with `point` or `rectangle`; an annotation with only `text` applies to the whole image; `change` is a zero-based index into `changes` |
 | Legacy `changes` | The actual position and size changes; each entry's `from` is the source region and `to` is the final region |
 
-`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered JPEG in the same directory. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
+`image` describes the original: `mode` is `file` (default, a companion image), `embedded` (a `dataUrl`) or `none` (the receiver already has the original). All modes retain `mimeType`, pixel `width/height`, `devicePixelRatio` (`null` when unknown), and the SHA-256 of actual encoded bytes, not decoded pixels. Optional `image.preview` names a numbered lossless PNG in the same directory; legacy JPEG previews remain readable. Imports verify format, dimensions and hash and reject directory traversal and symlinks. Legacy string images and the same-name PNG fallback remain readable.
 
 All coordinates take the image's top-left corner as the origin, are measured in image pixels, and are unaffected by the editor window's position or the current zoom. A rectangle's bottom-right boundary is exclusive, so the width and height are `x2-x1` and `y2-y1`. New exports round all coordinates and displacement to integers. Positive scale ratios are rounded to two decimal places, with a minimum of 0.01. A ratio rounding to 1 resets that target dimension to its original size and omits the corresponding scale field. Readers still accept older fractional coordinates, exact ratios and explicit unit scales; editable projects retain their precision. Do not treat these values as web CSS pixels or absolute screen coordinates without conversion.
 
@@ -222,7 +256,7 @@ A video project exports [video-feedback-v1.schema.json](../schema/video-feedback
 | `frames[].feedback` | That frame's image feedback, with the same shape as [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) |
 | `objects[]` | The same objects expanded with `frameId` and `timestampMs`, so they can be read in time order |
 
-`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. Each frame follows the selected mode: file writes real screenshots, `--embed-image` embeds them, and `--no-image` retains descriptors without originals. `--preview` adds a numbered JPEG per frame.
+`frames[].feedback.objects` and the root `objects` are the same annotations: **do not apply them twice**. Each frame follows the selected mode: file writes real screenshots, `--embed-image` embeds them, and `--no-image` retains descriptors without originals. `--preview` adds a numbered lossless PNG per frame.
 
 Project files follow [video-project-v1.schema.json](../schema/video-project-v1.schema.json): each annotated picture keeps its screenshot and editing state, the source video is referenced by address only, and moving or losing it does not affect the saved content.
 

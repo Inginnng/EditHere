@@ -1,5 +1,6 @@
 #include "agentprotocol.h"
 #include "agentconnection.h"
+#include "localauth.h"
 #include "agentlaunch.h"
 #include "diagnostics.h"
 #include "model.h"
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
                   "Feedback saves the original beside JSON by default. Output and sidecars must not exist; their parent must exist.\n"
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
-                  "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds numbered JPEG previews.\n"
+                  "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds lossless numbered PNG previews.\n"
                   "open/capture only acknowledge acceptance; status never starts the app.\n"
                   "Project image-set manifests (edithere-image-set-1) keep stable page IDs; only annotated pages are returned.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
@@ -123,7 +124,7 @@ int main(int argc, char **argv) {
         if (!error.isEmpty()) return printResult(agentError("io_error", error));
     }
     options.imageFile = QFileInfo(output).completeBaseName() + ".png";
-    options.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
+    options.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
     auto receiptPath = [&](const QString &name) -> QJsonValue { return name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(QFileInfo(output).dir().filePath(name)); };
     if (command == "export") {
         try {
@@ -155,9 +156,17 @@ int main(int argc, char **argv) {
     socket.setReadBufferSize(MaxAgentMessageBytes + 4);
     const auto connection = ensureAgentConnection(command != "status", EDITHERE_VERSION,
         [&](AgentEndpoint endpoint, int timeout) {
+            const QFileInfo directory(ipcRuntimeDirectory());
+            if (directory.exists() || directory.isSymLink()) {
+                if (const auto error = validateIpcDirectory(); !error.isEmpty())
+                    return AgentSocketResult{false, QLocalSocket::SocketAccessError, error};
+            }
             if (endpoint == AgentEndpoint::Agent) return connectAgentSocket(socket, agentServerName(), timeout);
             QLocalSocket desktop;
-            return connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+            const auto result = connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+            if (result.connected || result.error != QLocalSocket::ServerNotFoundError) return result;
+            // Detect an old GUI without sending any unauthenticated command.
+            return connectAgentSocket(desktop, previousDesktopServerName(), timeout);
         }, [] {
             const auto executable = guiExecutable();
             if (!QFileInfo(executable).isFile())
@@ -165,7 +174,12 @@ int main(int argc, char **argv) {
             return launchAgentDesktop(executable);
         });
     if (!connection.isEmpty()) return printResult(connection);
-    QJsonObject request{{"protocol", 1}, {"command", command}};
+    QByteArray token;
+    if (const auto error = readIpcCredentials(token); !error.isEmpty())
+        return printResult(agentError("authentication_required", error));
+    if (const auto error = ipcPeerError(socket); !error.isEmpty())
+        return printResult(agentError("authentication_required", error));
+    QJsonObject request{{"protocol", 1}, {"token", QString::fromLatin1(token)}, {"command", command}};
     if (withPath) request["input"] = input;
     if (pageSeen) request["pageContext"] = pageContext;
     if (outputSeen) { request["output"] = output; request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"; request["preview"] = options.preview; }

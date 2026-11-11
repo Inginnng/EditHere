@@ -52,6 +52,8 @@ class SettingsDialog final : public QDialog {
     void updateAppearance();
     void setSaving(bool saving);
     QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
+    QComboBox *traySingleClick_, *trayDoubleClick_;
+    QLabel *trayTitle_ = nullptr;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.
@@ -60,6 +62,7 @@ class SettingsDialog final : public QDialog {
         *confirmBeforeDiscard_, *checkUpdatesOnStartup_, *scrollAutoCrop_, *scrollUltraLong_;
     bool legacyEmbedOriginal_ = true;
     bool legacyIncludeFeedbackPreview_ = false;
+    bool regionOcrEnabled_ = true;
     QLineEdit *feedbackDir_;
     QTabWidget *tabs_ = nullptr;
     QWidget *sidebar_ = nullptr, *navigation_ = nullptr, *footer_ = nullptr, *pageHeader_ = nullptr;

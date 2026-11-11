@@ -19,12 +19,18 @@
 #include "settingsdialog.h"
 #include "ui.h"
 #include "updatechecker.h"
+#ifdef Q_OS_MACOS
+#include "trayeventguard_mac.h"
+#endif
+#include "updateauth.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
+#include <QScopedValueRollback>
+#include <QStyleHints>
 #include <QTimer>
 #include <algorithm>
 namespace h2d {
@@ -52,17 +58,25 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     editor_.setShortcuts(settings_.shortcuts);
     tray_.setObjectName("edithereTray");
     auto menu = new QMenu(&editor_);
-    captureAction_ = menu->addAction(QString(), this, [this] { beginCapture(true); });
+    const auto addTrayAction = [this, menu](auto callback) {
+        auto *action = menu->addAction(QString());
+#ifdef Q_OS_MACOS
+        // Dialogs and capture overlays must start after native menu tracking
+        // returns. Running them inside an NSMenu action can trap input there.
+        connect(action, &QAction::triggered, this, [this, callback] { trayClickTimer_.stop(); callback(); }, Qt::QueuedConnection);
+#else
+        connect(action, &QAction::triggered, this, [this, callback] { trayClickTimer_.stop(); callback(); });
+#endif
+        return action;
+    };
+    captureAction_ = addTrayAction([this] { beginCapture(true); });
     captureAction_->setObjectName("trayCapture");
-    annotateAction_ = menu->addAction(QString(), this, &Controller::openAnnotation);
+    annotateAction_ = addTrayAction([this] { openAnnotation(); });
     annotateAction_->setObjectName("trayAnnotate");
-    openAction_ = menu->addAction(QString(), &editor_, [this] {
-        scheduleStartupUpdate();
-        editor_.openFile();
-        if (guidePending_ && editor_.hasDocument()) showGuide();
-    });
+    openAction_ = addTrayAction([this] { openFromTray(); });
+    openAction_->setObjectName("trayOpen");
 #ifdef Q_OS_MAC
-    accessibilityAction_ = menu->addAction(QString(), this, [this] {
+    accessibilityAction_ = addTrayAction([this] {
         if (requestAccessibility())
             tray_.showMessage("EditHere", tr("已启用系统元素识别"));
         else
@@ -70,26 +84,38 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     });
 #endif
     menu->addSeparator();
-    settingsAction_ = menu->addAction(QString(), this, [this] { openSettings(); });
+    settingsAction_ = addTrayAction([this] { openSettings(); });
     settingsAction_->setObjectName("traySettings");
-    updatesAction_ = menu->addAction(QString(), this, [this] { openSettings(true); });
+    updatesAction_ = addTrayAction([this] { openSettings(true); });
     updatesAction_->setObjectName("trayUpdates");
     menu->addSeparator();
-    quitAction_ = menu->addAction(QString(), this, &Controller::quit);
+    quitAction_ = addTrayAction([this] { quit(); });
     tray_.setContextMenu(menu);
+    connect(menu, &QMenu::aboutToShow, this, [this] { trayClickTimer_.stop(); });
+    trayClickTimer_.setSingleShot(true);
+    trayClickTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&trayClickTimer_, &QTimer::timeout, this, [this] { runTrayAction(settings_.traySingleClick); });
     retranslate();
     updateTrayShortcut();
-    tray_.show();
+#ifdef Q_OS_MACOS
+    QString trayGuardError;
+    if (!installCocoaTrayEventGuard(&trayGuardError))
+        diagnostics::write(diagnostics::Level::Error, "startup.tray_guard", trayGuardError);
+    else
+#endif
+        tray_.show();
 #ifdef Q_OS_LINUX
     connect(&editor_, &Editor::hiddenToTray, this, [] {
         if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable())
             QCoreApplication::quit();
     });
 #endif
-    connect(&tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger)
-            beginCapture(true);
-    });
+#ifndef Q_OS_MACOS
+    // Cocoa emits Trigger when the native menu begins tracking, before an item
+    // is chosen. Capturing here covers that menu and intercepts its next click.
+    // macOS uses the explicit Capture menu action instead.
+    connect(&tray_, &QSystemTrayIcon::activated, this, &Controller::trayActivated);
+#endif
     connect(&shortcut_, &GlobalShortcut::triggered, this, &Controller::capture);
     connect(&annotateShortcut_, &GlobalShortcut::triggered, this, &Controller::openAnnotation);
     connect(&editor_, &Editor::captureRequested, this, &Controller::capture);
@@ -124,6 +150,14 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
             tray_.showMessage("EditHere", tr("设置未能保存：") + error);
         }
     });
+    connect(&editor_, &Editor::regionOcrPreferenceChanged, this, [this](bool enabled) {
+        settings_.regionOcrEnabled = enabled;
+        QString error;
+        if (!saveSettings(settings_, &error, settingsFile_)) {
+            diagnostics::write(diagnostics::Level::Error, "settings.persist", error);
+            tray_.showMessage("EditHere", tr("设置未能保存：") + error);
+        }
+    });
     if (!shortcut_.start(settings_.shortcuts.value("capture"))) {
         diagnostics::write(diagnostics::Level::Warning, "shortcuts.register", shortcut_.lastError());
         tray_.showMessage("EditHere", tr("截图快捷键未能注册，请右键托盘打开设置修改。"));
@@ -132,6 +166,50 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         diagnostics::write(diagnostics::Level::Warning, "shortcuts.annotate.register", annotateShortcut_.lastError());
         tray_.showMessage("EditHere", tr("新建批注快捷键未能注册，请右键托盘打开设置修改。"));
     }
+}
+void Controller::trayActivated(QSystemTrayIcon::ActivationReason reason) {
+    if (reason == QSystemTrayIcon::Context) {
+        trayClickTimer_.stop();
+        return;
+    }
+    if (reason != QSystemTrayIcon::Trigger && reason != QSystemTrayIcon::DoubleClick)
+        return;
+    if (trayActionRunning_ || capturing_ || QApplication::activeModalWidget() ||
+        (tray_.contextMenu() && tray_.contextMenu()->isVisible())) {
+        trayClickTimer_.stop();
+        return;
+    }
+    if (reason == QSystemTrayIcon::DoubleClick) {
+        trayClickTimer_.stop();
+        runTrayAction(settings_.trayDoubleClick);
+    } else {
+        // Qt 6.8.3 Windows: Trigger on first release, DoubleClick on second
+        // press; Qt suppresses that second release. X11 likewise emits only
+        // DoubleClick for the second press. A following Trigger is a NEW click
+        // (e.g. triple-click), so do not swallow it with a time-based cooldown.
+        trayClickTimer_.start(QGuiApplication::styleHints()->mouseDoubleClickInterval());
+    }
+}
+void Controller::runTrayAction(const QString &id) {
+    if (trayActionRunning_ || capturing_ || QApplication::activeModalWidget())
+        return;
+    QScopedValueRollback<bool> running(trayActionRunning_, true);
+    if (id == "capture") beginCapture(true);
+    else if (id == "annotate") openAnnotation();
+    else if (id == "show") showCurrentWindow();
+    else if (id == "open") openFromTray();
+}
+void Controller::showCurrentWindow() {
+    trayClickTimer_.stop();
+    if (capturing_ || QApplication::activeModalWidget()) return;
+    scheduleStartupUpdate();
+    if (auto menu = tray_.contextMenu()) menu->close();
+    // Showing an empty editor must not enter activate()'s capture fallback or
+    // openEmpty()'s document replacement path.
+    editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
+    editor_.show();
+    editor_.raise();
+    editor_.activateWindow();
 }
 void Controller::retranslate() {
     shortcut_.setAction("capture", tr("截图"));
@@ -153,6 +231,7 @@ void Controller::updateTrayShortcut() {
     tray_.setToolTip(label.isEmpty() ? brand : brand + " · " + label);
 }
 void Controller::openAnnotation() {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -160,10 +239,27 @@ void Controller::openAnnotation() {
         menu->close();
     editor_.openEmpty();
 }
+void Controller::openFromTray() {
+    trayClickTimer_.stop();
+    if (capturing_ || QApplication::activeModalWidget())
+        return;
+    if (auto menu = tray_.contextMenu())
+        menu->close();
+    // A native Cocoa menu action still runs inside AppKit's tracking loop.
+    // Let it unwind before a file dialog starts another modal event loop.
+    QTimer::singleShot(0, this, [this] {
+        if (capturing_ || QApplication::activeModalWidget())
+            return;
+        scheduleStartupUpdate();
+        editor_.openFile();
+        if (guidePending_ && editor_.hasDocument()) showGuide();
+    });
+}
 void Controller::openSettings(bool updates, bool toolbar) {
     openSettingsDialog(updates, toolbar);
 }
-void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
+    void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
+        trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -249,6 +345,7 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
             return error + restoreShortcuts();
         }
         settings_ = next;
+        trayClickTimer_.stop();
         editor_.setPreferences(settings_);
         editor_.setShortcuts(settings_.shortcuts);
         applyTheme(settings_.theme);
@@ -278,6 +375,7 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         showGuide();
 }
 void Controller::showGuide() {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     if (auto menu = tray_.contextMenu())
@@ -288,6 +386,10 @@ void Controller::showGuide() {
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
     if (!background)
         scheduleStartupUpdate();
+#ifdef Q_OS_MACOS
+    if (!tray_.isVisible())
+        editor_.show();
+#endif
 #ifdef Q_OS_LINUX
     // GNOME may have no tray host. Keep a visible entry point in that case.
     if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)
@@ -350,7 +452,7 @@ void Controller::presentStartupUpdate() {
     QMessageBox prompt(QMessageBox::Information, tr("EditHere 更新"),
                        tr("发现新版本 %1。").arg(release.tagName), QMessageBox::NoButton, &editor_);
     prompt.setObjectName("startupUpdatePrompt");
-    auto update = prompt.addButton(tr("立即更新"), QMessageBox::AcceptRole);
+    auto update = prompt.addButton(updateauth::publisherConfigured() ? tr("立即更新") : tr("打开发布页"), QMessageBox::AcceptRole);
     auto skip = prompt.addButton(tr("跳过"), QMessageBox::RejectRole);
     prompt.setDefaultButton(skip);
     prompt.setEscapeButton(skip);
@@ -426,6 +528,7 @@ void Controller::raiseEditor() {
     editor_.activateWindow();
 }
 void Controller::activate() {
+    trayClickTimer_.stop();
     scheduleStartupUpdate();
     if (guidePending_) {
         showGuide();
@@ -441,6 +544,7 @@ void Controller::capture() {
     beginCapture(false);
 }
 void Controller::beginCapture(bool fromTray) {
+    trayClickTimer_.stop();
     if (fromTray)
         scheduleStartupUpdate();
     if (!agentSessionId_.isEmpty()) { activate(); return; }
@@ -911,17 +1015,18 @@ void Controller::readScrollFrame() {
                 self->pauseScrollCapture(error.isEmpty() ? tr("屏幕选区采集失败，请重新选择区域。") : error);
                 return;
             }
-            if (self->scrollRun_.settleDeadline.elapsed() >= self->scrollIo_.settleTimeoutMs) {
-                self->pauseScrollCapture(self->scrollRun_.automatic
-                                            ? tr("页面一直在变化，等待稳定画面超时。请暂停动画后重试。")
-                                            : tr("画面采集超时，请返回选区重试。"));
+            // Continuous manual scrolling can keep producing valid frames for
+            // longer than the settling timeout. Every delivered frame restarts
+            // the manual deadline, so only a missing capture callback can trip
+            // the watchdog armed by beginScrollSettle; automatic capture keeps
+            // its original still-page deadline.
+            const bool automatic = self->scrollRun_.automatic;
+            if (!automatic)
+                self->scrollRun_.settleDeadline.restart();
+            if (automatic && self->scrollRun_.settleDeadline.elapsed() >= self->scrollIo_.settleTimeoutMs) {
+                self->pauseScrollCapture(tr("页面一直在变化，等待稳定画面超时。请暂停动画后重试。"));
                 return;
             }
-            // Continuous manual scrolling can keep producing valid frames for
-            // longer than the settling timeout. Wait for the user's pause while
-            // retaining a deadline only for a missing capture callback.
-            if (!self->scrollRun_.automatic)
-                self->scrollRun_.settleDeadline.restart();
             if (!self->scrollRun_.held.isNull() &&
                 frameDifference(self->scrollRun_.held, grabbed) <= kScrollStableDifference) {
                 self->placeScrollFrame(grabbed);
@@ -1587,6 +1692,7 @@ void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate>
     }
 }
 void Controller::quit() {
+    trayClickTimer_.stop();
     const bool pendingSession = !agentSessionId_.isEmpty();
     if (pendingSession)
         cancelAgentSession(agentSessionId_, "cancelled", "EditHere is exiting. No feedback was returned.");
@@ -1653,7 +1759,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     if (request.contains("preview") && !request["preview"].isBool()) return agentError("invalid_arguments", "preview must be boolean.");
     exportOptions.preview = request["preview"].toBool();
     exportOptions.imageFile = QFileInfo(output).completeBaseName() + ".png";
-    exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.jpg";
+    exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
     try {
         guidePending_ = false;
         editor_.loadMedia(input);

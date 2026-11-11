@@ -4,7 +4,7 @@
 
 0.12.0 的新导出使用 `feedback-minimal-4`。读取端继续接受 v2/v3 图片反馈、无版本 `objects`、更早的 `annotations` + `changes`，并保留旧字符串 `image` 与同名 PNG 回退；桌面项目读取 1.0.0、1.1.0、2.0.0、3.0.0，视频继续使用 v1 容器。未知显式版本不会被猜成旧格式。这里承诺新程序读取旧数据，不承诺旧程序能读取新版的 `kind`、`movement`、`children` 或图片描述。
 
-手动文件交付默认 JSON 与独立原图，勾选“原图嵌入 JSON”改用 `embedded`；“复制 JSON 内容”默认 `none`，其竖向 … 菜单可单独选择并记住是否内嵌。CLI/API 仍提供 file / embedded / none 三种模式及可选编号预览，不受这些手动偏好覆盖。
+手动文件交付默认 JSON 与独立原图，勾选“原图嵌入 JSON”改用 `embedded`；“复制 JSON 内容”默认 `none`，按钮内部的竖向 ⋯ 菜单可单独选择并记住是否内嵌。CLI/API 仍提供 file / embedded / none 三种模式及可选编号预览，不受这些手动偏好覆盖。
 
 
 **简体中文** · [English](AGENT-CLI.en.md)
@@ -71,6 +71,40 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 
 0.9.6 与 0.9.7 的命令行按自己的程序名推算通信端点，与桌面程序使用的名字不同：桌面程序在运行，`status` 也会返回 `running:false`，`open`、`capture`、`annotate` 报 `startup_timeout`。0.9.8 已修正。遇到这种组合先核对版本并升级，不要反复重启桌面程序。
 
+## VS Code Remote SSH：远程项目与本地 Windows 标注
+
+VS Code 通过 Remote SSH 打开项目时，远程扩展宿主、Codex 和终端通常在远程机器执行。本地 Windows 上的 EditHere 可以用于标注，文件需要交接回远程项目。远程进程无法直接访问 Windows 的本地 IPC；CLI 路径应配置给能在 Windows 当前用户桌面执行命令的入口。
+
+下面的命令在 **Windows 本地 PowerShell** 执行。先把 `$Remote`、两个远程路径和 `$EditHereCli` 改为实际值；远程截图应已生成，远程接收目录应已存在且可写。每轮创建独立目录，保留 JSON 与同目录原图、预览等附带文件的相对位置。
+
+```powershell
+$Remote = 'user@host'
+$EditHereCli = 'D:\Tools\EditHere\edithere-cli.exe'
+$RoundDirectory = Join-Path $env:TEMP ('EditHere-remote-' + [guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $RoundDirectory | Out-Null
+$InputPath = Join-Path $RoundDirectory 'input.png'
+$FeedbackPath = Join-Path $RoundDirectory 'feedback.json'
+
+scp "${Remote}:/home/user/project/.edithere/page.png" $InputPath
+if ($LASTEXITCODE -ne 0) { throw '远程截图下载失败。' }
+
+$ReplyText = & $EditHereCli annotate $InputPath --output $FeedbackPath --timeout 1800
+$ExitCode = $LASTEXITCODE
+$Reply = $ReplyText | ConvertFrom-Json
+if ($ExitCode -ne 0 -or -not $Reply.ok) { throw "本轮标注未完成：$($Reply.error.message)" }
+
+scp -r $RoundDirectory "${Remote}:/home/user/project/.edithere/"
+if ($LASTEXITCODE -ne 0) { throw '反馈上传失败；本地目录仍保留，可重试上传。' }
+```
+
+用户点击“完成并返回 AI”后，命令才继续上传。让远程 Codex 读取新上传目录中的 `feedback.json` 及其引用的附带文件，再修改远程项目。JSON 中的本地绝对路径可能在远端不存在，应使用上传目录里的对应文件。只有用户同意传输的图片和反馈才通过 SCP 交接；IPC token 保留在 Windows 本机，不需要复制或转发，也不需要开放 EditHere 网络监听端口。
+
+## 本地调用认证与权限
+
+此次未发布的安全修复后，桌面程序在持有单实例锁后生成本轮随机 IPC 能力令牌，CLI 和第二个桌面入口自动读取并随请求发送；两个端点都拒绝缺失、错误或上一轮令牌，旧裸命令不再分派。运行目录和令牌限制当前用户访问，Unix 同时核验对端用户身份。GUI 和 CLI 应来自同一版本；升级后保存编辑并重启桌面程序，再使用随包 CLI。
+
+Windows 提权运行时停用两个 IPC 服务，手动界面仍可使用；Agent 调用应连接正常权限的当前用户实例。令牌不写入日志或反馈，也无需用户手动复制。这个能力令牌不提供同一操作系统用户内的恶意程序隔离：能读取令牌或启动合法 CLI 的同用户进程仍处于信任范围；不要将它当作抵御已控制当前用户账号的防线。
+
 ## 命令一览
 
 | 命令 | 作用 | 是否等待用户提交反馈 |
@@ -82,7 +116,7 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 | `export <image-video-project-or-feedback> --output <new.json>` | 将已保存项目（含视频项目）、图片或有效反馈 JSON 转为反馈 JSON | 否 |
 | `annotate <image-video-or-project> --output <new.json>` | 打开用户标注会话并等待明确提交 | **是** |
 
-`export` 和 `annotate` 默认将原图保存为 JSON 同目录的同名 PNG（`file`）；`--embed-image` 改为内嵌，`--no-image` 改为仅保留原图描述（两者互斥）。`--preview` 另存带编号的 JPEG，三种模式均可使用。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
+`export` 和 `annotate` 默认将原图保存为 JSON 同目录的同名 PNG（`file`）；`--embed-image` 改为内嵌，`--no-image` 改为仅保留原图描述（两者互斥）。`--preview` 另存带编号的无损 PNG，三种模式均可使用。`annotate` 支持 `--timeout <seconds>`，默认 1800 秒，范围为 1–86400 秒。
 
 `open` 与 `annotate` 接受图片（PNG/JPEG/WebP/BMP）、视频（MP4/MOV/WebM 等）和 `.edithere` 项目（含视频项目）。视频在 EditHere 中播放，用户暂停到目标画面后批注；同一个位置在不同时间点的意见分别保留，不会合并。视频项目的 `export` 回执还含帧数 `frames` 与 `schemaVersion`（`video-feedback-1`）。
 
@@ -197,7 +231,7 @@ AI 已知当前页面时，可在打开图片、视频或项目时传入页面�
 | 旧格式 `annotations` | 文字批注，可用 `point`、`rectangle` 定位；只有 `text` 的批注针对整体；`change` 对应 `changes` 的零基索引 |
 | 旧格式 `changes` | 实际位置、尺寸变化；每项 `from` 指原图区域，`to` 指最终区域 |
 
-`image` 现在是原图描述对象：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均包含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 与原图实际编码字节的 `sha256`；不要按解码后像素计算哈希。可选 `image.preview` 指向同目录带编号的 JPEG，它是标注示意图。文件导入校验图片类型、尺寸和哈希，不接受跨目录路径或符号链接。旧字符串 `image` 和缺图时同名 PNG 的约定继续可读。
+`image` 现在是原图描述对象：`mode` 为 `file`（默认，同目录图片）、`embedded`（`dataUrl` 内嵌）或 `none`（接收方已有原图）。三者均包含 `mimeType`、像素 `width/height`、未知时为 `null` 的 `devicePixelRatio` 与原图实际编码字节的 `sha256`；不要按解码后像素计算哈希。可选 `image.preview` 指向同目录带编号的无损 PNG 标注示意图，旧 JPEG 预览继续可读。文件导入校验图片类型、尺寸和哈希，不接受跨目录路径或符号链接。旧字符串 `image` 和缺图时同名 PNG 的约定继续可读。
 
 所有坐标以图像左上角为原点，单位为图像像素，不受编辑窗口位置或查看缩放影响。矩形的右下边界不包含自身，宽高为 `x2-x1` 与 `y2-y1`。新导出的坐标和位移均四舍五入为整数；缩放比最多两位小数，正缩放比下限为 0.01。缩放比取两位后为 1 时视为未缩放，目标宽高也恢复为原尺寸；各轴的 `scaleX/scaleY` 分别省略。旧文件的小数坐标、完整精度缩放比和显式 1 仍可读取，项目文件保留编辑精度。不能把这些值未经换算直接当成网页 CSS 像素或屏幕绝对坐标。
 
@@ -220,7 +254,7 @@ AI 应结合实际页面与源码，将反馈落实为布局、样式或内容�
 | `frames[].feedback` | 该帧的图片反馈，结构与 [feedback-minimal.schema.json](../schema/feedback-minimal.schema.json) 一致 |
 | `objects[]` | 同一批对象带上 `frameId` 与 `timestampMs` 的展开索引，可按时间顺序读 |
 
-`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。每帧使用同一原图模式：默认真实写入帧截图；`--embed-image` 内嵌每帧；`--no-image` 仅保留原图描述，不写原图。`--preview` 为每帧另存编号 JPEG。
+`frames[].feedback.objects` 与根 `objects` 是同一批批注，**不要按两遍执行**。每帧使用同一原图模式：默认真实写入帧截图；`--embed-image` 内嵌每帧；`--no-image` 仅保留原图描述，不写原图。`--preview` 为每帧另存带编号的无损 PNG。
 
 项目文件遵循 [video-project-v1.schema.json](../schema/video-project-v1.schema.json)：它保存每个已标注画面的截图与编辑状态，源视频只按地址引用，移动或丢失源视频不影响已保存内容。
 

@@ -113,14 +113,17 @@ $ffmpegVersion = (Get-ChildItem -LiteralPath (Join-Path $QtRoot "bin") -Filter "
 [PSCustomObject]@{ qt = $qtVersion; mediaBackend = "ffmpeg"; ffmpeg = $ffmpegVersion; ffmpegLibraries = $ffmpegLibraries } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outputPath "dependency-versions.json") -Encoding utf8
 # Qt's own strings (file dialogs, standard message box buttons) follow the interface
 # language through qtbase_<locale>.qm. windeployqt runs with --no-translations above to
-# keep the package small, so only the one language the interface offers besides its own
-# source language is copied in. Skipping this leaves Qt's chrome in English while the
-# rest of the interface is Chinese.
+# keep the package small, so only the Chinese catalogues the interface needs are copied
+# in; English is Qt's own source language. Skipping this leaves Qt's chrome in English
+# while the rest of the interface is Chinese.
 $qtTranslationSource = Join-Path (Join-Path $QtRoot "translations") "qtbase_zh_CN.qm"
 if (-not (Test-Path -LiteralPath $qtTranslationSource)) { throw "Qt translation for Simplified Chinese is missing: $qtTranslationSource" }
+$qtTraditionalTranslationSource = Join-Path (Join-Path $QtRoot "translations") "qtbase_zh_TW.qm"
+if (-not (Test-Path -LiteralPath $qtTraditionalTranslationSource)) { throw "Qt translation for Traditional Chinese is missing: $qtTraditionalTranslationSource" }
 $translationPath = Join-Path $outputPath "translations"
 [IO.Directory]::CreateDirectory($translationPath) | Out-Null
 Copy-Item -LiteralPath $qtTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_CN.qm")
+Copy-Item -LiteralPath $qtTraditionalTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_TW.qm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse
 $iconLicensePath = Join-Path $outputPath "licenses/ui-icons"
 [IO.Directory]::CreateDirectory($iconLicensePath) | Out-Null

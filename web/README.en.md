@@ -71,7 +71,7 @@ The existing `assets/icons/edithere.svg` and `assets/brand/edithere-lockup*.svg`
 - Ordinary static/offline pages cannot read arbitrary local paths or automatically return feedback to an Agent. Embedded return uses MCP Apps; browser compatibility mode saves through a local image session and the Agent reads it.
 - Reopening a hosted page offline depends on browser caching. Download the HTML for reliable offline reopening. This version has no Service Worker.
 
-File exports default to a companion original (`file`); the embed-original checkbox selects `embedded`. Copied JSON text defaults to `none` and its vertical … menu remembers the choice. CLI/API exports retain all three modes and optional numbered JPEG output. Multi-file downloads use ZIP. Import a ZIP or select the JSON and its companion images together; imports verify MIME, dimensions and SHA-256. Agent sessions publish companion files beside their JSON and keep base64 out of read summaries.
+File exports default to a companion original (`file`); the embed-original checkbox selects `embedded`. Copied JSON text defaults to `none` and its vertical … menu remembers the choice. Originals are no longer converted to lossy JPEG. CLI/API exports retain all three modes and optional numbered lossless PNG output; older JPEG previews remain readable. Multi-file downloads use ZIP. Import a ZIP or select the JSON and its companion images together; imports verify MIME, dimensions and SHA-256. Agent sessions publish companion files beside their JSON and keep base64 out of read summaries.
 
 ## Develop and verify
 

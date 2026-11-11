@@ -5,7 +5,7 @@ display_name_en: EditHere
 description: 用 EditHere（改这里）让用户在截图或设计图上批注、移动和缩放组件，读取用户明确提交的结构化反馈后继续实现。适用于用户要求用 EditHere 标注修改、想在图上直接画出改法，或需要处理 EditHere 反馈 JSON 的场景。 支持由 AI 维护项目组图、逐页更新截图并统一收集结果审批意见。
 description_zh: 在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI，适用于难以用文字描述清楚的界面调整。
 description_en: Let the user annotate a screenshot or mockup, move and resize components, then read the structured feedback the user submits and continue implementing.
-version: 0.2.0
+version: 0.2.1
 author: EditHere
 ---
 
@@ -93,7 +93,7 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 
 - 图片反馈的新导出使用 `schemaVersion: "feedback-minimal-4"`，省略重复的根级 `$schema`；旧文件的 `urn:edithere:feedback-minimal:3` 或 `urn:edithere:feedback-minimal:4` 标识继续可读，提供时必须与 `schemaVersion` 匹配。连接器继续读取 v3、v2、无版本对象和旧并行数组，另有 `tool`；新导出省略 `exportedAt`，旧文件的该字段仍按带时区 ISO 时间校验。该 URN 是格式标识，无需联网获取；遇到未知显式版本应停止解读并核对版本。
 - 属于同一个被移动组件的批注收在父对象的 `children` 数组里：父项是带 `movement` 的 `kind:"region"`，子项结构与父项相同，但不含 `children`。按「父对象管整体、子批注管局部」解释，不要把子批注再当成独立区域处理；导出只嵌套一层，遇到更深嵌套时按父→子顺序展开后再解释。子批注没有自己的 `movement`，位置相对调整后的画面；`children` 排在父对象字段之后，子批注在列表中也紧跟父对象。
-- `image` 描述调整前原图，默认 `mode:"file"` 指向同目录图片，也可 `embedded` 使用 `dataUrl`，或 `none` 仅保留原图信息。均含 MIME、像素宽高、未知时为 null 的 devicePixelRatio、实际编码字节的 SHA-256；可选 `image.preview` 是带编号的 JPEG。一起保留 file 模式的原图，不将预览图当成原图；旧字符串 image 与缺图时的同名 PNG 继续兼容。
+- `image` 描述调整前原图，默认 `mode:"file"` 指向同目录图片，也可 `embedded` 使用 `dataUrl`，或 `none` 仅保留原图信息。均含 MIME、像素宽高、未知时为 null 的 devicePixelRatio、实际编码字节的 SHA-256；可选 `image.preview` 是带编号的无损 PNG，兼容读取旧 JPEG。一起保留 file 模式的原图，不将预览图当成原图；旧字符串 image 与缺图时的同名 PNG 继续兼容。
 - `annotationSpace` 固定为 `result`：批注位置对应**调整后**的画面。坐标原点在图像左上角，单位是**图像像素**，独立于窗口位置与缩放——**不能**直接当作屏幕坐标或网页 CSS 像素。
 - 对象使用 `kind` 区分 `region`、`point`、`global`；区域保留正尺寸 `source`，点使用 `point:{x,y}`，全局省略 `source`。有移动的区域带 `movement:{rect,dx,dy}`，由原始 `source` 与最终目标 `movement.rect` 计算；缩放时增加最多两位小数的 `scaleX/scaleY`，各轴未缩放时分别省略，缺省为 1。连接器兼容旧版完整精度缩放比，并拒绝不一致或伪造的结果。视频帧和根索引保留相同对象数据，根索引只用于校验，不要重复执行。
 - 反馈 JSON 的 `schemaVersion` 为 `video-feedback-1` 时按视频处理：`video.source` 只是源视频的路径或地址（源文件可以已不在），`video.durationMs` 与宽高描述该视频；`frames[]` 每项含唯一 `id`、画面时间 `timestampMs`（另有微秒口径 `timestampUs`）、与 JSON 同目录的帧截图 `imageFile`，以及结构与图片反馈相同的 `feedback`；根 `objects[]` 是同一批对象带上 `timestampMs`、`frameId` 的展开索引。
@@ -113,7 +113,7 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 
 实施后运行与修改相符的验证，并向用户说明反馈如何落实、还有哪些歧义需要确认。
 
-导出默认生成 JSON 与配套原图；`imageMode` 选择 file / embedded / none，`preview:true` 附带编号 JPEG。CLI 用 `--embed-image` / `--no-image` 切换，两者互斥。回执 `imageFile` / `previewFile` 为绝对路径或 null；`includeImage` 只控制 MCP 回复附图，不改变文件导出模式。
+导出默认生成 JSON 与配套原图；`imageMode` 选择 file / embedded / none，`preview:true` 附带编号 PNG。CLI 用 `--embed-image` / `--no-image` 切换，两者互斥。回执 `imageFile` / `previewFile` 为绝对路径或 null；`includeImage` 只控制 MCP 回复附图，不改变文件导出模式。
 
 ## 页面上下文
 
@@ -129,4 +129,4 @@ EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直�
 - **复制 JSON 内容** 默认不携带原图编码；`image.mode:"none"` 仍含尺寸、类型和 SHA-256。按钮旁竖向 **…** 可快速选择携带或不携带原图，选择会单独记住；携带时使用 `embedded`。这项选择不覆盖文件交付的嵌入选项。
 - 接收文本反馈时先检查 `image.mode`：`none` 必须另行取得同一原图，`file` 按回执或同目录文件读取，`embedded` 从 `dataUrl` 取得。不要把尺寸、哈希或标注示意图当成原图，也不要向对话输出完整 Base64。
 - 0.12.0 读取兼容图片反馈 v4/v3/v2、旧无版本 `objects`、`annotations` + `changes` 及桌面旧工程；视频继续使用 v1 容器。兼容方向是新程序读取旧数据，旧程序或旧 Skill 不一定理解 v4 的 `kind`、`movement`、`children` 和图片描述；需要接收新版反馈时同时更新程序与 Skill。对象 ID 仅在本份反馈中有效，不能当作跨轮永久身份。
-- 这些手动界面偏好不改变 CLI/API 的显式参数：默认 `file`，`--embed-image` / `--no-image` 和 `imageMode` 继续可用，`--preview` / `preview:true` 保留程序化编号 JPEG 能力。
+- 这些手动界面偏好不改变 CLI/API 的显式参数：默认 `file`，`--embed-image` / `--no-image` 和 `imageMode` 继续可用，`--preview` / `preview:true` 可程序化生成带编号的无损 PNG。

@@ -37,6 +37,8 @@ QString languageName(LanguageMode mode) {
     switch (mode) {
     case LanguageMode::SimplifiedChinese:
         return "zh_CN";
+    case LanguageMode::TraditionalChinese:
+        return "zh_TW";
     case LanguageMode::English:
         return "en";
     case LanguageMode::System:
@@ -49,14 +51,16 @@ bool parseLanguage(const QString &name, LanguageMode *mode) {
         *mode = LanguageMode::System;
     else if (name == "zh_CN")
         *mode = LanguageMode::SimplifiedChinese;
+    else if (name == "zh_TW")
+        *mode = LanguageMode::TraditionalChinese;
     else if (name == "en")
         *mode = LanguageMode::English;
     else
         return false;
     return true;
 }
-// The recogniser and the interface use the same three choices, so they are stored
-// under the same names and only the type differs.
+// The recogniser offers the first three of those choices, stored under the same
+// names; only the type differs.
 QString languageName(OcrLanguageMode mode) {
     return languageName(static_cast<LanguageMode>(mode));
 }
@@ -143,6 +147,23 @@ AppSettings defaultSettings() {
         settings.shortcuts.insert(definition.id, definition.defaultKey);
     return settings;
 }
+QVector<ToolbarActionDefinition> trayActionDefinitions() {
+    // Reuse the existing action IDs and translated labels for shared commands.
+    QVector<ToolbarActionDefinition> result;
+    for (const auto &definition : shortcutDefinitions())
+        if (definition.id == "capture" || definition.id == "annotate")
+            result.append({definition.id, definition.label});
+    result.append({"show", tr("显示当前窗口")});
+    for (const auto &definition : shortcutDefinitions())
+        if (definition.id == "open") result.append({definition.id, definition.label});
+    result.append({"none", tr("不执行操作")});
+    return result;
+}
+static bool validTrayAction(const QString &id) {
+    for (const auto &definition : trayActionDefinitions())
+        if (definition.id == id) return true;
+    return false;
+}
 QString validateSettings(const AppSettings &settings) {
     if (!validAiProviderId(settings.aiProviderId))
         return tr("请选择有效的 API 提供商。");
@@ -151,6 +172,9 @@ QString validateSettings(const AppSettings &settings) {
     for (auto it = settings.aiProviders.cbegin(); it != settings.aiProviders.cend(); ++it)
         if (!validStoredAiConnection(it.value(), it.key()))
             return tr("API 配置无效，请检查服务地址、协议和超时时间。");
+
+    if (!validTrayAction(settings.traySingleClick) || !validTrayAction(settings.trayDoubleClick))
+        return tr("请选择有效的托盘动作。");
     if (themeName(settings.theme).isEmpty())
         return tr("请选择有效的外观模式。");
     if (languageName(settings.language).isEmpty())
@@ -262,6 +286,10 @@ AppSettings loadSettings(const QString &filePath) {
         return fallback;
     };
     result.captureOnStartup = boolean("defaults/captureOnStartup", true);
+    const auto singleClick = source.value("tray/singleClick", result.traySingleClick).toString();
+    const auto doubleClick = source.value("tray/doubleClick", result.trayDoubleClick).toString();
+    if (validTrayAction(singleClick)) result.traySingleClick = singleClick;
+    if (validTrayAction(doubleClick)) result.trayDoubleClick = doubleClick;
     result.launchAtLogin = boolean("defaults/launchAtLogin", false);
     result.fitImageOnOpen = boolean("defaults/fitImageOnOpen", true);
     result.embedOriginal = boolean("defaults/embedOriginal", true);
@@ -270,6 +298,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.includeFeedbackPreview = boolean("defaults/includeFeedbackPreview", false);
     result.copyJsonTextWithImage = boolean("defaults/copyJsonTextWithImage", false);
     result.includeRecognizedText = boolean("defaults/includeRecognizedText", true);
+    result.regionOcrEnabled = boolean("defaults/regionOcrEnabled", true);
     result.includeWindowTitle = boolean("defaults/includeWindowTitle", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
@@ -384,6 +413,8 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setAtomicSyncRequired(true);
     target.setValue("version", 1);
     target.setValue("defaults/captureOnStartup", settings.captureOnStartup);
+    target.setValue("tray/singleClick", settings.traySingleClick);
+    target.setValue("tray/doubleClick", settings.trayDoubleClick);
     target.setValue("defaults/launchAtLogin", settings.launchAtLogin);
     target.setValue("defaults/fitImageOnOpen", settings.fitImageOnOpen);
     target.setValue("defaults/embedOriginal", settings.embedOriginal);
@@ -391,6 +422,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/includeFeedbackPreview", settings.includeFeedbackPreview);
     target.setValue("defaults/copyJsonTextWithImage", settings.copyJsonTextWithImage);
     target.setValue("defaults/includeRecognizedText", settings.includeRecognizedText);
+    target.setValue("defaults/regionOcrEnabled", settings.regionOcrEnabled);
     target.setValue("defaults/includeWindowTitle", settings.includeWindowTitle);
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);

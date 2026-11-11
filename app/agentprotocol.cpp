@@ -1,4 +1,5 @@
 #include "agentprotocol.h"
+#include "localauth.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -31,8 +32,12 @@ QString agentStateLocation() {
     return state;
 }
 QString agentServerName() {
+#ifndef Q_OS_WIN
+    return QDir(ipcRuntimeDirectory()).filePath("a");
+#else
     const auto state = agentStateLocation();
-    return "EditHere-agent-v1-" + QString::fromLatin1(QCryptographicHash::hash(state.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
+    return "EditHere-agent-v2-" + QString::fromLatin1(QCryptographicHash::hash(state.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
+#endif
 }
 QByteArray encodeAgentMessage(const QJsonObject &message) {
     const auto json = QJsonDocument(message).toJson(QJsonDocument::Compact);
@@ -70,7 +75,7 @@ int agentExitCode(const QJsonObject &response) {
     if (code == "io_error") return 5;
     if (code == "cancelled") return 6;
     if (code == "timeout") return 7;
-    if (code == "desktop_access_required") return 8;
+    if (code == "desktop_access_required" || code == "authentication_required") return 8;
     return 3;
 }
 QString validateNewFeedbackPath(const QString &path) {
@@ -98,10 +103,14 @@ void writeNewFeedback(const QString &path, const QByteArray &bytes) {
         temp.setAutoRemove(false);
     }
 #ifdef Q_OS_WIN
+    // The initial path check is only a friendly error. Publication itself is
+    // atomic and must refuse a target created after that check.
     if (!MoveFileExW(reinterpret_cast<LPCWSTR>(temporary.path.utf16()), reinterpret_cast<LPCWSTR>(path.utf16()), MOVEFILE_WRITE_THROUGH))
         fail(QString("Unable to publish feedback without replacement (Windows error %1).").arg(GetLastError()));
 #else
     const auto source = QFile::encodeName(temporary.path), target = QFile::encodeName(path);
+    // link() atomically refuses an existing destination, including a symlink.
+    // AT_SYMLINK_FOLLOW would change source resolution, not this guarantee.
     if (::link(source.constData(), target.constData()) != 0)
         fail(QString("Unable to publish feedback without replacement: %1").arg(QString::fromLocal8Bit(std::strerror(errno))));
 #endif

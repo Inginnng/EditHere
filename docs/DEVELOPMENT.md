@@ -18,10 +18,10 @@
 
 ## 发布流程
 
-打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，`build-web` 作业打包两种 Web 包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新同时检查 `Inginnng/EditHere` 的 GitHub 正式发行版与 [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) 的正式发行版，选择最高版本；同版本优先选择兼容程序包与对应 SHA-256 文件齐全的来源。一个来源失败时保留另一来源的结果并提示检查未完成，两边均失败时汇总错误。程序包与校验文件保持同一来源；现有 GitHub 发布工作流不会自动向 Gitee 发布。
+打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，`build-web` 作业打包两种 Web 包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新同时检查 `Inginnng/EditHere` 的 GitHub 正式发行版与 [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) 的正式发行版，选择最高版本；同版本优先选择兼容程序包、对应 SHA-256 和独立更新签名齐全的来源。一个来源失败时保留另一来源的结果并提示检查未完成，两边均失败时汇总错误。程序包、校验文件与签名保持同一来源及版本；现有 GitHub 发布工作流不会自动向 Gitee 发布。
 
 - **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 与两种 Web 包（`EditHere-web.zip`、`EditHere-web-agent.zip`）均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。Web 包由 `build-web` 作业调用 `python scripts/prepare-distribution.py --web-only --channel release` 生成；内嵌素材与随包法律文本的行尾由 `.gitattributes` 固定，各平台与 CI 重建出同样的 `web/EditHere.html` 与同样的两种 ZIP。发布前按下发给用户的字节复核两种 Web 包：`node scripts/web-package-check.cjs <ZIP 路径>`。
-- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`；Web 包同样按无版本名发布为 `EditHere-web.zip` 与 `EditHere-web-agent.zip`。
+- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`，Windows 安装器另附 `EditHere-win-x64-setup.exe.sig`；Web 包同样按无版本名发布为 `EditHere-web.zip` 与 `EditHere-web-agent.zip`。
 - 包下载到 release 任务后所在目录由 `upload-artifact` 决定，不要预测：它只保留第一个通配符之前那段固定前缀之后的路径，`dist/linux-*/<文件>` 因此落在 `linux-<版本>/` 下而不是 `dist/linux-<版本>/`，Web 包落在 `web/<版本>-<短哈希>/` 下。release 任务按文件名在任意深度把原生包与 Web 包搬到归档根目录，改收集方式时不要退回"按目录搬"（REG-157）。
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
 - 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」（发布页是单字段，没有语言切换；英文用真正的标题而不是折叠块，否则指向它的锚点点不开）。只写中文时 `check-packaging.py` 的检查会失败。
@@ -90,7 +90,7 @@ Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 
 
 请将示例中的 NSIS 路径换为实际位置。0.8.21 的安装器输出为 `dist/EditHere-0.8.21-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
 
-应用内 Windows 更新与手动安装共用 NSIS 载荷及 `maintain.ps1` 维护事务。便携更新参数为 `/S /UPDATE /PORTABLE /D=<原目录>`，`/D=` 必须最后且不加引号；旧版调用方式仍兼容。原安装包直接执行，暂存载荷后按清单逐文件备份和发布，目标根目录与未知文件保持原位。维护进程统一处理目标锁、清单及哈希校验、空间预检、系统集成快照、运行版本验证与中断恢复；便携模式跳过系统集成。0.10.4 程序内更新增加带令牌的 READY/ACK 交接，准备就绪前不退出应用。schema2 文件事务保留 schema1 历史恢复入口。最终结果与日志位于安装目标之外，旧文件仅在可证实安全时回收。完整约定见 [Windows 安装与维护](INSTALLATION.md)。下载仍使用 Qt 独立临时目录、原子写入和同名 SHA-256 校验。macOS 当前仅提供手动下载入口。
+应用内 Windows 更新与手动安装共用 NSIS 载荷及 `maintain.ps1` 事务，保留目录锁、SHA-256、包锁定、编辑确认、READY/ACK 交接、文件备份/回滚和结果回执。便携更新跳过系统集成；协议见 [Windows 安装与维护](INSTALLATION.md)。无证书指纹时使用 `app/updatekey.h` 编译的 P-256 公钥，经 Windows CNG 验证独立项目更新签名；配置 `EDITHERE_UPDATE_PUBLISHER_CERT_SHA256` 时严格执行 Authenticode，无回退。两个信任根均未配置则只提供手动下载。详细签名字节、版本/资产绑定、信任选择及凭据约束见 [安全边界](SECURITY.md)。0.12.7 及以前需手动升级一次，项目签名不会消除 Windows 安全提示。macOS 当前仅提供手动下载入口。
 
 保留 Qt 与 NSIS，并将文件及登记变更收敛到一个维护进程。`tests/installer_transaction_test.py` 验证真实 NSIS 的原地执行、目录、参数及隔离 HKCU 系统集成，需要 `NSIS_MAKENSIS` 与 `EDITHERE_UPDATE_STUB`；`tests/maintenance_test.py` 使用真实文件操作及 JSON 系统集成替身验证恢复、并发和卸载。`tests/installer_ui_flow_test.py` 在独立隐藏 Windows 桌面上操作真实安装页，验证首次安装与重复安装的页面顺序和标题。`tests/installer_shell_notification_test.py` 在含原生 NSIS System.dll 的工作目录执行生产通知逻辑，验证 .NET 引用解析及非致命警告。无害程序桩显式跳过运行版本检查。测试作用域必须有隔离标记，不能改写开发者真实 PATH、关联或快捷方式。以上检查在 Windows 发行工作流中执行。`tests/installer_package_acceptance.py` 通过 `EDITHERE_ACCEPT_PACKAGE` 和 `EDITHERE_ACCEPT_OLD_PACKAGE` 接收完整的新旧 Windows 包，在真实 NSIS/隔离 HKCU 下验收，并启用实际 CLI 运行版本检查；隔离验收与干净系统成品验收分别记录。
 

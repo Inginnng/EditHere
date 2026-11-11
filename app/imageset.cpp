@@ -125,8 +125,11 @@ FeedbackBundle buildImageSetFeedbackBundle(const ImageSet &set, const FeedbackEx
     return bundle;
 }
 QByteArray serializeImageSetFeedback(const ImageSet &set, bool embed, bool compress, bool includeRecognizedText) {
+    // The legacy compress flag is ignored: embedded originals stay lossless, the
+    // same rule app/model.h documents for single-picture feedback.
+    Q_UNUSED(compress);
     FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    options.includeRecognizedText = includeRecognizedText;
     return buildImageSetFeedbackBundle(set, options).json;
 }
 int imageSetAnnotationCount(const ImageSet &set) {

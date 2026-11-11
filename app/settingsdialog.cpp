@@ -207,6 +207,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     language_->setObjectName("interfaceLanguage");
     language_->addItem({}, static_cast<int>(LanguageMode::System));
     language_->addItem({}, static_cast<int>(LanguageMode::SimplifiedChinese));
+    language_->addItem({}, static_cast<int>(LanguageMode::TraditionalChinese));
     language_->addItem({}, static_cast<int>(LanguageMode::English));
     language_->setMinimumHeight(36);
     appearanceLayout->addWidget(language_);
@@ -229,6 +230,9 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     appearanceLayout->addStretch();
     tabs->addTab(scrollPage(appearance), {});
     auto defaults = new QWidget;
+    // scrollPage() moves this name to the surrounding QScrollArea, so the tab
+    // page keeps the object name the settings test and screenshots look for.
+    defaults->setObjectName("settingsDefaultsPage");
     auto defaultsLayout = new QVBoxLayout(defaults);
     defaultsLayout->setContentsMargins(32, 0, 32, 28);
     defaultsLayout->setSpacing(18);
@@ -300,6 +304,40 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     toolLabel->setBuddy(defaultTool_);
     toolForm->addRow(toolLabel, defaultTool_);
     defaultsLayout->addLayout(toolForm);
+    trayTitle_ = new QLabel(defaults);
+    trayTitle_->setObjectName("settingsSection");
+    defaultsLayout->addWidget(trayTitle_);
+    auto trayForm = new QFormLayout;
+    trayForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    traySingleClick_ = new QComboBox(defaults);
+    traySingleClick_->setObjectName("traySingleClick");
+    trayDoubleClick_ = new QComboBox(defaults);
+    trayDoubleClick_->setObjectName("trayDoubleClick");
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->addItem(QString(), definition.id);
+        trayDoubleClick_->addItem(QString(), definition.id);
+    }
+    auto singleLabel = new QLabel(defaults);
+    singleLabel->setObjectName("traySingleClickLabel");
+    singleLabel->setBuddy(traySingleClick_);
+    auto doubleLabel = new QLabel(defaults);
+    doubleLabel->setObjectName("trayDoubleClickLabel");
+    doubleLabel->setBuddy(trayDoubleClick_);
+    trayForm->addRow(singleLabel, traySingleClick_);
+    trayForm->addRow(doubleLabel, trayDoubleClick_);
+    defaultsLayout->addLayout(trayForm);
+    auto trayHint = mutedLabel({}, defaults);
+    trayHint->setObjectName("trayClickHint");
+    trayHint->setWordWrap(true);
+    defaultsLayout->addWidget(trayHint);
+#ifdef Q_OS_MACOS
+    // Cocoa opens the assigned native menu on mouse-down and reports its
+    // tracking as Trigger. Keep REG-200/202 and do not advertise inert settings.
+    traySingleClick_->setEnabled(false);
+    trayDoubleClick_->setEnabled(false);
+#endif
+    for (auto combo : {traySingleClick_, trayDoubleClick_})
+        connect(combo, &QComboBox::currentIndexChanged, this, [this] { error_->hide(); });
     defaultsLayout->addStretch();
     tabs->addTab(scrollPage(defaults), {});
 
@@ -522,7 +560,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
             progressBar->setRange(0, 100);
             progressBar->setValue(0);
             cancelUpdate->show();
-            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName);
+            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName,
+                                         result.installerSignature);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
             const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
@@ -658,7 +697,8 @@ void SettingsDialog::retranslate() {
     language_->setAccessibleName(tr("界面语言"));
     language_->setItemText(0, tr("跟随系统"));
     language_->setItemText(1, languageDisplayName(LanguageMode::SimplifiedChinese));
-    language_->setItemText(2, languageDisplayName(LanguageMode::English));
+    language_->setItemText(2, languageDisplayName(LanguageMode::TraditionalChinese));
+    language_->setItemText(3, languageDisplayName(LanguageMode::English));
     if (ocrTitle_)
         ocrTitle_->setText(tr("文字识别语言"));
     if (auto description = findChild<QLabel *>("ocrLanguageDescription"))
@@ -668,7 +708,21 @@ void SettingsDialog::retranslate() {
     ocrLanguage_->setItemText(1, ocrLanguageLabel(OcrLanguageMode::SimplifiedChinese));
     ocrLanguage_->setItemText(2, ocrLanguageLabel(OcrLanguageMode::English));
     captureOnStartup_->setText(tr("启动后立即截图"));
-    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。"));
+    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；可使用托盘菜单或全局快捷键开始截图。"));
+    trayTitle_->setText(tr("托盘图标"));
+    findChild<QLabel *>("traySingleClickLabel")->setText(tr("单击"));
+    findChild<QLabel *>("trayDoubleClickLabel")->setText(tr("双击"));
+    traySingleClick_->setAccessibleName(tr("托盘图标：单击"));
+    trayDoubleClick_->setAccessibleName(tr("托盘图标：双击"));
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->setItemText(traySingleClick_->findData(definition.id), definition.label);
+        trayDoubleClick_->setItemText(trayDoubleClick_->findData(definition.id), definition.label);
+    }
+#ifdef Q_OS_MACOS
+    findChild<QLabel *>("trayClickHint")->setText(tr("macOS 使用原生状态栏菜单，暂不支持自定义单击和双击。请从菜单选择动作或使用快捷键。"));
+#else
+    findChild<QLabel *>("trayClickHint")->setText(tr("单击会等待系统双击间隔；菜单动作和快捷键立即响应。Linux 的双击支持取决于桌面托盘。"));
+#endif
     launchAtLogin_->setText(tr("开机时启动 EditHere"));
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
@@ -680,7 +734,7 @@ void SettingsDialog::retranslate() {
     embedFeedbackImage_->setText(tr("原图嵌入 JSON"));
     embedFeedbackImage_->setToolTip(tr("未勾选时将 JSON 与原图作为独立文件复制。"));
     copyJsonTextWithImage_->setText(tr("复制 JSON 内容时携带原图信息"));
-    copyJsonTextWithImage_->setToolTip(tr("默认不携带原图信息；也可在复制按钮旁的选项中快速切换。"));
+    copyJsonTextWithImage_->setToolTip(tr("默认不携带原图信息；也可在复制按钮内的选项中快速切换。"));
     confirmBeforeDiscard_->setText(tr("关闭批注窗口时询问是否保存"));
     confirmBeforeDiscard_->setToolTip(
         tr("关闭后不再弹出「是否保存当前修改」，直接放弃未保存的批注。在批注窗口里勾选「不再提醒」会关掉这一项。"));
@@ -798,6 +852,9 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
     releases->setProperty("updateAvailable", result.status == UpdateChecker::Available);
     releases->setProperty("releaseUrl", result.url);
     const bool automatic = UpdateChecker::canAutoInstall(result, installedCopy(), windowsUpdates);
+    if (windowsUpdates && result.status == UpdateChecker::Available && !automatic)
+        findChild<QLabel *>("updateStatus")->setText(result.message +
+            tr(" 此版本不满足可信安装条件，请前往发布页手动下载。"));
     releases->setProperty("automaticUpdate", automatic);
     releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
     // Use the release already checked at startup, including its matched package
@@ -826,12 +883,15 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     language_->setCurrentIndex(language_->findData(static_cast<int>(settings.language)));
     ocrLanguage_->setCurrentIndex(ocrLanguage_->findData(static_cast<int>(settings.ocrLanguage)));
     captureOnStartup_->setChecked(settings.captureOnStartup);
+    traySingleClick_->setCurrentIndex(traySingleClick_->findData(settings.traySingleClick));
+    trayDoubleClick_->setCurrentIndex(trayDoubleClick_->findData(settings.trayDoubleClick));
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     legacyEmbedOriginal_ = settings.embedOriginal;
     embedFeedbackImage_->setChecked(settings.imageExportMode == ImageExportMode::Embedded);
     copyJsonTextWithImage_->setChecked(settings.copyJsonTextWithImage);
     legacyIncludeFeedbackPreview_ = settings.includeFeedbackPreview;
+    regionOcrEnabled_ = settings.regionOcrEnabled;
     includeRecognizedText_->setChecked(settings.includeRecognizedText);
     includeWindowTitle_->setChecked(settings.includeWindowTitle);
     confirmBeforeDiscard_->setChecked(settings.confirmBeforeDiscard);
@@ -847,12 +907,15 @@ AppSettings SettingsDialog::settings() const {
     aiPage_->applyTo(result);
     result.captureStyle = captureStyle_;
     result.captureOnStartup = captureOnStartup_->isChecked();
+    result.traySingleClick = traySingleClick_->currentData().toString();
+    result.trayDoubleClick = trayDoubleClick_->currentData().toString();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.imageExportMode = embedFeedbackImage_->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;
     result.copyJsonTextWithImage = copyJsonTextWithImage_->isChecked();
     result.embedOriginal = legacyEmbedOriginal_;
     result.includeFeedbackPreview = legacyIncludeFeedbackPreview_;
+    result.regionOcrEnabled = regionOcrEnabled_;
     result.includeRecognizedText = includeRecognizedText_->isChecked();
     result.includeWindowTitle = includeWindowTitle_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();

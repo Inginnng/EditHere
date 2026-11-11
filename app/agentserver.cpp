@@ -1,14 +1,16 @@
 #include "agentserver.h"
 #include "agentprotocol.h"
 #include "controller.h"
+#include "localauth.h"
 #include <QLocalSocket>
 #include <QTimer>
 #include <memory>
 namespace h2d {
-AgentServer::AgentServer(Controller &controller, QObject *parent) : QLocalServer(parent) {
+AgentServer::AgentServer(Controller &controller, const QByteArray &token, QObject *parent) : QLocalServer(parent), token_(token) {
     setSocketOptions(QLocalServer::UserAccessOption);
     connect(this, &QLocalServer::newConnection, this, [this, &controller] {
         while (auto socket = nextPendingConnection()) {
+            if (!ipcPeerError(*socket, true).isEmpty()) { socket->abort(); socket->deleteLater(); continue; }
             socket->setReadBufferSize(MaxAgentMessageBytes + 4);
             struct State { QByteArray bytes; bool received = false; QString session; };
             auto state = std::make_shared<State>();
@@ -24,7 +26,7 @@ AgentServer::AgentServer(Controller &controller, QObject *parent) : QLocalServer
                 if (!state->session.isEmpty()) controller.cancelAgentSession(state->session, "cancelled", "Agent disconnected. Your edits remain in EditHere.");
                 socket->deleteLater();
             });
-            connect(socket, &QLocalSocket::readyRead, socket, [socket, state, deadline, reply, &controller] {
+            connect(socket, &QLocalSocket::readyRead, socket, [this, socket, state, deadline, reply, &controller] {
                 if (state->received) { socket->readAll(); return; }
                 state->bytes += socket->readAll();
                 QJsonObject request;
@@ -41,6 +43,10 @@ AgentServer::AgentServer(Controller &controller, QObject *parent) : QLocalServer
                     reply(agentError("protocol_error", "Unsupported IPC protocol."));
                     return;
                 }
+                if (!ipcTokenMatches(token_, request["token"].toString())) {
+                    reply(agentError("authentication_required", "A valid IPC credential for this desktop session is required."));
+                    return;
+                }
                 const auto response = controller.handleAgentRequest(request);
                 if (!response["pending"].toBool()) { reply(response); return; }
                 state->session = response["session"].toString();
@@ -54,6 +60,7 @@ AgentServer::AgentServer(Controller &controller, QObject *parent) : QLocalServer
     });
 }
 bool AgentServer::start() {
+    if (token_.size() != 64 || !ipcServerPolicyError().isEmpty() || !validateIpcDirectory().isEmpty()) return false;
     const auto name = agentServerName();
     QLocalServer::removeServer(name);
     return listen(name);

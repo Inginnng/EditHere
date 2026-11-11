@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
+#include <QTimer>
 namespace h2d {
 class OcrDialog;
 class PinWindow;
@@ -38,6 +39,12 @@ class Controller final : public QObject {
     friend class ReadmeRecorder;
     void beginCapture(bool fromTray);
     void openAnnotation();
+    void openFromTray();
+    void trayActivated(QSystemTrayIcon::ActivationReason reason);
+    void runTrayAction(const QString &id);
+    void showCurrentWindow();
+    QTimer trayClickTimer_;
+    bool trayActionRunning_ = false;
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
     quint64 captureGeneration_ = 0;

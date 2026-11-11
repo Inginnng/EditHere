@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -333,6 +334,45 @@ def check_linux_release_package(release_workflow: str) -> list[Problem]:
         )
     return problems
 
+def check_mcp_build_freshness() -> list[Problem]:
+    """REG-196  The MCP bundle pins the digest of every input, CMakeLists.txt included.
+
+    A product version bump therefore invalidates the committed bundle, and the only
+    place that noticed was the release job's packaging step -- after every native
+    build had already run, so the release had to be re-tagged. Recompute the digests
+    here, where the local pre-release run and every CI job see them.
+    """
+    problems: list[Problem] = []
+    manifest_file = ROOT / "web/mcp/build-info.json"
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"web/mcp/build-info.json is missing or invalid: {error}"]
+    if not isinstance(manifest, dict) or manifest.get("hashEncoding") != "utf8-lf":
+        return ["web/mcp/build-info.json: unsupported manifest; run node web/mcp/build.mjs"]
+    for group in ("sources", "artifacts"):
+        entries = manifest.get(group)
+        if not isinstance(entries, dict) or not entries:
+            problems.append(f"web/mcp/build-info.json: no {group} recorded")
+            continue
+        for relative, digest in entries.items():
+            file = ROOT / relative
+            if not file.is_file():
+                problems.append(f"{relative} is pinned in build-info.json but missing")
+                continue
+            try:
+                normalized = file.read_bytes().decode("utf-8").replace("\r\n", "\n").encode("utf-8")
+            except UnicodeDecodeError:
+                problems.append(f"{relative} is not UTF-8; the MCP build cannot hash it")
+                continue
+            if hashlib.sha256(normalized).hexdigest() != digest:
+                problems.append(
+                    f"{relative} changed after the MCP bundle was built; "
+                    "run node web/mcp/build.mjs before tagging"
+                )
+    return problems
+
+
 def check_release_notes() -> list[Problem]:
     """REG-011  Generated notes only list merged pull requests, and this repo pushes commits."""
     problems = []
@@ -557,17 +597,19 @@ def check_translations_in_qm() -> list[Problem]:
 def check_english_names() -> list[Problem]:
     """REG-023  One feature keeps one English name in the interface and the README."""
     problems = []
+    # Only the English catalogue carries English names; the other catalogues are
+    # translated into their own languages and are checked by translations_in_qm.
+    english = ROOT / "app" / "translations" / "edithere_en.ts"
     stale = "Exploded view"
     if stale in read(ROOT / "README.en.md"):
         problems.append(
             f"README.en.md: still calls the feature {stale!r}; the interface, the code "
             f"identifiers and README.en.md all use 'Explode'."
         )
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        if stale in read(ts):
-            problems.append(
-                f"{ts.relative_to(ROOT).as_posix()}: still translates 大爆炸 as {stale!r}."
-            )
+    if stale in read(english):
+        problems.append(
+            f"{english.relative_to(ROOT).as_posix()}: still translates 大爆炸 as {stale!r}."
+        )
     if "Explode" not in read(ROOT / "README.en.md"):
         problems.append("README.en.md: the public English name 'Explode' disappeared.")
     # REG-154  长截图 reads "Scrolling capture" on the toolbar button, in the tray
@@ -575,38 +617,36 @@ def check_english_names() -> list[Problem]:
     # said "long capture" instead, so the same feature was named two ways
     # depending on which message you happened to hit. 超长截图 is a different
     # feature and keeps "Ultra-long capture".
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        for context in ET.parse(ts).getroot().findall("context"):
-            for message in context.findall("message"):
-                source = message.findtext("source") or ""
-                if "长截图" not in source or "超长" in source:
-                    continue
-                node = message.find("translation")
-                translation = "" if node is None else (node.text or "")
-                lowered = translation.lower()
-                if "long capture" in lowered and "scrolling capture" not in lowered:
-                    problems.append(
-                        f"{ts.name}: {source!r} is translated as {translation!r}; 长截图 is "
-                        f"'Scrolling capture' everywhere else. Give the feature one English name."
-                    )
+    for context in ET.parse(english).getroot().findall("context"):
+        for message in context.findall("message"):
+            source = message.findtext("source") or ""
+            if "长截图" not in source or "超长" in source:
+                continue
+            node = message.find("translation")
+            translation = "" if node is None else (node.text or "")
+            lowered = translation.lower()
+            if "long capture" in lowered and "scrolling capture" not in lowered:
+                problems.append(
+                    f"{english.name}: {source!r} is translated as {translation!r}; 长截图 is "
+                    f"'Scrolling capture' everywhere else. Give the feature one English name."
+                )
     if "scrolling capture" not in read(ROOT / "README.en.md").lower():
         problems.append("README.en.md: the public English name 'Scrolling capture' disappeared.")
     # REG-155  README.en.md quotes this button as the reader will look for it on
     # screen, but the catalogue shipped "Done, back to AI" while the README
     # advertised "Finish and return to AI": one button under two English names.
     wanted = "Finish and return to AI"
-    for ts in sorted((ROOT / "app" / "translations").glob("edithere_*.ts")):
-        for context in ET.parse(ts).getroot().findall("context"):
-            for message in context.findall("message"):
-                if (message.findtext("source") or "") != "完成并返回 AI":
-                    continue
-                node = message.find("translation")
-                translation = "" if node is None else (node.text or "")
-                if translation != wanted:
-                    problems.append(
-                        f"{ts.name}: 完成并返回 AI is translated as {translation!r}, but "
-                        f"README.en.md quotes this button as {wanted!r}."
-                    )
+    for context in ET.parse(english).getroot().findall("context"):
+        for message in context.findall("message"):
+            if (message.findtext("source") or "") != "完成并返回 AI":
+                continue
+            node = message.find("translation")
+            translation = "" if node is None else (node.text or "")
+            if translation != wanted:
+                problems.append(
+                    f"{english.name}: 完成并返回 AI is translated as {translation!r}, but "
+                    f"README.en.md quotes this button as {wanted!r}."
+                )
     if wanted not in read(ROOT / "README.en.md"):
         problems.append(f"README.en.md: no longer quotes the interface button {wanted!r}.")
     return problems
@@ -987,6 +1027,160 @@ def check_doc_links() -> list[Problem]:
     return problems
 
 
+SAVE_DIALOG_CALL = re.compile(r"getSaveFileName\s*\(")
+# A suggestion written as a plain string literal, with or without tr().
+LITERAL_ARGUMENT = re.compile(r"^(?:tr\(\s*\"(?P<tr>[^\"]*)\"\s*\)|\"(?P<raw>[^\"]*)\")$")
+
+
+def call_arguments(text: str, open_paren: int) -> list[str]:
+    """Split the argument list of the call whose '(' is at ``open_paren``.
+
+    Commas inside nested calls, string literals and brace initialisers do not
+    separate arguments, which is what every hand-written dialog call needs.
+    """
+    arguments: list[str] = []
+    current: list[str] = []
+    depth = 0
+    index = open_paren
+    in_string = False
+    while index < len(text):
+        character = text[index]
+        if in_string:
+            if character == "\\":
+                current.append(text[index:index + 2])
+                index += 2
+                continue
+            if character == '"':
+                in_string = False
+            current.append(character)
+        elif character == '"':
+            in_string = True
+            current.append(character)
+        elif character in "([{":
+            depth += 1
+            if depth > 1:
+                current.append(character)
+        elif character in ")]}":
+            depth -= 1
+            if depth == 0:
+                arguments.append("".join(current).strip())
+                return arguments
+            current.append(character)
+        elif character == "," and depth == 1:
+            arguments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+        index += 1
+    return arguments
+
+
+def ternary_branches(argument: str) -> list[str]:
+    """Split a conditional expression into the values it can evaluate to.
+
+    The shipped bug was ``projectPath_.isEmpty() ? tr("设计反馈.edithere") : projectPath_``:
+    the literal hid inside one branch, so checking only the whole argument would
+    have missed it. ``::`` and ``?:`` are left alone.
+    """
+    branches: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_string = False
+    index = 0
+    while index < len(argument):
+        character = argument[index]
+        if in_string:
+            if character == "\\":
+                current.append(argument[index:index + 2])
+                index += 2
+                continue
+            if character == '"':
+                in_string = False
+            current.append(character)
+        elif character == '"':
+            in_string = True
+            current.append(character)
+        elif character in "([{":
+            depth += 1
+            current.append(character)
+        elif character in ")]}":
+            depth -= 1
+            current.append(character)
+        elif depth == 0 and character in "?:":
+            doubled = (character == ":" and
+                       (argument[index - 1:index] == ":" or argument[index + 1:index + 2] == ":"))
+            if doubled:
+                current.append(character)
+            else:
+                branches.append("".join(current).strip())
+                current = []
+        else:
+            current.append(character)
+        index += 1
+    branches.append("".join(current).strip())
+    return branches
+
+
+def check_save_dialog_paths() -> list[Problem]:
+    """REG-199  A save dialog suggestion is a path, not a file name.
+
+    Both macOS and Windows resolve a bare file name against the process working
+    directory. For an application started by Finder that directory is "/", so the
+    dialog opened at the read-only file-system root and the save could not be
+    written at all (issue #39). Every suggestion has to be anchored, e.g. built
+    from QStandardPaths::writableLocation().
+    """
+    problems: list[Problem] = []
+    for path in sorted((ROOT / "app").glob("*.cpp")):
+        text = read(path)
+        for match in SAVE_DIALOG_CALL.finditer(text):
+            arguments = call_arguments(text, match.end() - 1)
+            if len(arguments) < 3:
+                continue
+            for branch in ternary_branches(arguments[2]):
+                literal = LITERAL_ARGUMENT.match(branch)
+                if not literal:
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                suggestion = literal.group("tr") or literal.group("raw") or ""
+                problems.append(
+                    f"app/{path.name}:{line}: getSaveFileName() suggests '{suggestion}', a bare "
+                    f"relative name. A macOS application started by Finder runs with \"/\" as its "
+                    f"working directory, so the dialog opens at the file-system root and the save "
+                    f"fails. Build the suggestion from QStandardPaths::writableLocation()."
+                )
+    return problems
+
+
+def check_update_signing() -> list[Problem]:
+    """REG-211  Publishing must require a final-byte signature; no PR key use."""
+    workflow = read(ROOT / ".github/workflows/release.yml")
+    problems = []
+    marker = "${{ secrets.EDITHERE_UPDATE_SIGNING_KEY }}"
+    # Check the job and step boundary, not just the presence of a signing tool.
+    release_job = workflow.split("\n  release:\n", 1)[-1]
+    steps = release_job.split("\n      - ")
+    signing = [step for step in steps if marker in step]
+    if workflow.count(marker) != 1 or len(signing) != 1 or "--sign artifacts/EditHere-win-x64-setup.exe" not in signing[0]:
+        problems.append("release.yml: signing Secret must exist only in the final installer signing step of the release job")
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        if path.name != "release.yml" and "secrets.EDITHERE_UPDATE_SIGNING_KEY" in read(path):
+            problems.append(f"{path.name}: must not receive the update signing Secret")
+    ordered = [workflow.find(value) for value in (
+        "Publish assets under version-less names", "Generate SHA256SUMS", "Require tag and source version to match",
+        "--sign artifacts/EditHere-win-x64-setup.exe", "--verify artifacts/EditHere-win-x64-setup.exe", "Create GitHub Release")]
+    if any(value < 0 for value in ordered) or ordered != sorted(ordered):
+        problems.append("release.yml: must rename/checksum/validate, sign, independently verify, then publish final installer bytes")
+    if "artifacts/*.exe.sig" not in workflow:
+        problems.append("release.yml: detached installer signature is not a required release asset")
+    public_header = read(ROOT / "app/updatekey.h")
+    match = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]*)"', public_header)
+    fixture = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]+)"', read(ROOT / "tests/fixtures/update-signature-public.h"))
+    if not match or len(match[1]) not in (0, 128) or (fixture and match[1] == fixture[1]):
+        problems.append("app/updatekey.h: invalid production trust root or test fixture key copied to production")
+    return problems
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -994,6 +1188,7 @@ CHECKS = [
     ("portable_zip_flat", check_portable_zip_flat),
     ("windows_qt_runtime", check_windows_qt_runtime),
     ("release_assets", check_release_assets),
+    ("update_signing", check_update_signing),
     ("release_notes", check_release_notes),
     ("download_links", check_download_links),
     ("stale_download", check_updater_stale_download),
@@ -1007,6 +1202,8 @@ CHECKS = [
     ("layout_schema", check_layout_schema),
     ("build_recipe", check_build_recipe),
     ("doc_links", check_doc_links),
+    ("save_dialog_paths", check_save_dialog_paths),
+    ("mcp_build", check_mcp_build_freshness),
 ]
 
 

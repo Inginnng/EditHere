@@ -123,7 +123,7 @@ function bindFeedbackCapture(value,session){
 function validateSavedFeedback(session,feedback){
   if(session.kind==='set')return validateSessionFeedback(feedback,session);
   const valid=validateFeedback(bindFeedbackCapture(feedback,session),session.image,(name,mime)=>outputImage(session,name,mime));
-  if(valid.image?.preview){const data=outputImage(session,valid.image.preview,'image/jpeg'),info=imageFormat.inspect(data);if(info.width!==valid.image.width||info.height!==valid.image.height)fail('Annotated preview dimensions do not match.');if(session.previewSha256&&digest(info.bytes)!==session.previewSha256)fail('Annotated preview SHA-256 does not match.');}
+  if(valid.image?.preview){const data=outputImage(session,valid.image.preview,imageFormat.previewMimeType(valid.image.preview)),info=imageFormat.inspect(data);if(session.previewSha256&&digest(info.bytes)!==session.previewSha256)fail('Annotated preview SHA-256 does not match.');}
   return valid;
 }
 
@@ -416,7 +416,7 @@ class AgentSessions {
     if (session.state !== 'pending') fail('This session is ' + session.state + '.', 409);
     const companions=[];
     if(feedback.image?.mode==='file')companions.push({name:feedback.image.file,bytes:Buffer.from(imageFormat.dataBytes(session.image).bytes)});
-    if(feedback.image?.preview){if(!previewDataUrl)fail('Annotated preview data is required.');const info=imageFormat.inspect(previewDataUrl);if(info.mimeType!=='image/jpeg'||info.width!==feedback.image.width||info.height!==feedback.image.height)fail('Invalid annotated JPEG preview.');companions.push({name:feedback.image.preview,bytes:Buffer.from(info.bytes)});session.previewSha256=digest(info.bytes);}
+    if(feedback.image?.preview){if(!previewDataUrl)fail('Annotated preview data is required.');const info=imageFormat.inspect(previewDataUrl);if(info.mimeType!==imageFormat.previewMimeType(feedback.image.preview))fail('Annotated preview MIME does not match its filename.');companions.push({name:feedback.image.preview,bytes:Buffer.from(info.bytes)});session.previewSha256=digest(info.bytes);}
     if(companions.some(item=>item.name===path.basename(session.output))||new Set(companions.map(item=>item.name)).size!==companions.length)fail('Companion filenames conflict with feedback output.');
     const previousPending=session.pendingFiles||[];
     session.pendingFiles=previousPending;

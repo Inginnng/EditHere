@@ -1,4 +1,5 @@
 #include "updatechecker.h"
+#include "updateauth.h"
 #include <QDir>
 #include <QCryptographicHash>
 #include <QFile>
@@ -11,10 +12,16 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <utility>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <wincrypt.h>
+#endif
 using namespace h2d;
 namespace h2d {
-// Exercise the real verification/confirmation/launcher boundary without network
-// traffic or ever running an installer against the developer's application.
+// Exercise the real confirmation/launcher/handoff stage without network traffic
+// or ever running an installer against the developer's application. Those tests
+// supply an already-authenticated package; separate tests exercise the production
+// authentication boundary, which has no runtime policy override.
 class UpdateCheckerTestAccess {
   public:
     static QString prepareInstall(UpdateChecker &checker, const QString &directory,
@@ -57,6 +64,13 @@ class UpdateCheckerTestAccess {
     }
     static void install(UpdateChecker &checker, const QString &path, const QString &hash) {
         checker.installing_ = true;
+        QString error;
+        if (!UpdateChecker::verifyPackage(path, hash, &error) ||
+            !checker.startVerifiedInstaller(path, hash, true, &error))
+            checker.failInstall(error);
+    }
+    static void installUntrusted(UpdateChecker &checker, const QString &path, const QString &hash) {
+        checker.installing_ = true;
         checker.verifyAndInstall(path, hash, true);
     }
     static QString beginDownload(UpdateChecker &checker, const QString &directory) {
@@ -89,6 +103,39 @@ class UpdateCheckerTestAccess {
 }
 class UpdateTests : public QObject {
     Q_OBJECT
+#ifdef Q_OS_WIN
+    static QString embeddedSignerHash(const QString &path) {
+        HCERTSTORE store = nullptr;
+        HCRYPTMSG message = nullptr;
+        const auto nativePath = QDir::toNativeSeparators(path);
+        if (!CryptQueryObject(CERT_QUERY_OBJECT_FILE, nativePath.utf16(),
+                              CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED, CERT_QUERY_FORMAT_FLAG_BINARY,
+                              0, nullptr, nullptr, nullptr, &store, &message, nullptr))
+            return {};
+        QString hash;
+        DWORD size = 0;
+        if (CryptMsgGetParam(message, CMSG_SIGNER_INFO_PARAM, 0, nullptr, &size) && size <= 65536) {
+            QByteArray bytes(size, '\0');
+            if (CryptMsgGetParam(message, CMSG_SIGNER_INFO_PARAM, 0, bytes.data(), &size)) {
+                const auto signer = reinterpret_cast<PCMSG_SIGNER_INFO>(bytes.data());
+                CERT_INFO info{};
+                info.Issuer = signer->Issuer;
+                info.SerialNumber = signer->SerialNumber;
+                const auto certificate = CertFindCertificateInStore(store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                                                                    0, CERT_FIND_SUBJECT_CERT, &info, nullptr);
+                if (certificate) {
+                    const auto encoded = QByteArray::fromRawData(
+                        reinterpret_cast<const char *>(certificate->pbCertEncoded), certificate->cbCertEncoded);
+                    hash = QString::fromLatin1(QCryptographicHash::hash(encoded, QCryptographicHash::Sha256).toHex());
+                    CertFreeCertificateContext(certificate);
+                }
+            }
+        }
+        CryptMsgClose(message);
+        CertCloseStore(store, 0);
+        return hash;
+    }
+#endif
     static QString payloadHash() {
         return QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex());
     }
@@ -100,11 +147,11 @@ class UpdateTests : public QObject {
                                           "https://github.com/Inginnng/EditHere/releases/tag/" + version}})
             .toJson();
     }
-    static QJsonObject asset(const QString &name) {
+    static QJsonObject asset(const QString &name, const QString &tag = "v0.9.9") {
         return QJsonObject{{"name", name},
                            {"size", 1024},
                            {"browser_download_url",
-                            "https://github.com/Inginnng/EditHere/releases/latest/download/" + name}};
+                            "https://github.com/Inginnng/EditHere/releases/download/" + tag + "/" + name}};
     }
     // Attach the Windows packages, either with the version in the file name
     // (historical layout) or without it (current layout).
@@ -114,8 +161,8 @@ class UpdateTests : public QObject {
         const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
         const QString portable = "EditHere" + suffix + "-win-x64.zip";
         auto object = QJsonDocument::fromJson(release(version)).object();
-        object["assets"] = QJsonArray{asset(installer), asset(installer + ".sha256"), asset(portable),
-                                      asset(portable + ".sha256")};
+        object["assets"] = QJsonArray{asset(installer, version), asset(installer + ".sha256", version), asset(portable, version),
+                                      asset(portable + ".sha256", version), asset(installer + ".sig", version)};
         return QJsonDocument(object).toJson();
     }
     static QJsonObject giteeAsset(const QString &name, const QString &version) {
@@ -132,11 +179,108 @@ class UpdateTests : public QObject {
             const QString installer = "EditHere" + suffix + "-win-x64-setup.exe";
             const QString portable = "EditHere" + suffix + "-win-x64.zip";
             object["assets"] = QJsonArray{giteeAsset(installer, version), giteeAsset(installer + ".sha256", version),
-                                          giteeAsset(portable, version), giteeAsset(portable + ".sha256", version)};
+                                          giteeAsset(portable, version), giteeAsset(portable + ".sha256", version),
+                                          giteeAsset(installer + ".sig", version)};
         }
         return QJsonDocument(object).toJson();
     }
   private slots:
+    void publisherPinMustBePresentAndWellFormed() {
+        QString error;
+        for (const auto &pin : {QString(), QString(" "), QString(64, 'z'), QString(63, '0'), QString(64, '0') + "\n"}) {
+            QVERIFY(!updateauth::verifyPublisherSignature("missing.exe", pin, &error));
+            QVERIFY(!error.isEmpty());
+        }
+    }
+    void unsignedPackageCannotBeAuthenticatedWithAnyPin() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("package.exe");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("payload"), qint64(7));
+        file.close();
+        QString error;
+        // A matching download hash provides integrity, not publisher identity.
+        QVERIFY(UpdateChecker::verifyPackage(path, payloadHash(), &error));
+        QVERIFY(!updateauth::verifyPublisherSignature(path, QString(64, '0'), &error));
+        QVERIFY(!error.isEmpty());
+    }
+    void authenticodeRequiresMatchingVerifiedSignerAndRejectsTampering() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows Authenticode verification");
+#else
+        // Read public signer metadata from an installed, signed executable.
+        // No certificates are generated or added to the user's trust stores.
+        const QStringList candidates{
+            QDir(qEnvironmentVariable("SystemRoot")).filePath("System32/WindowsPowerShell/v1.0/powershell.exe"),
+            QDir(qEnvironmentVariable("ProgramFiles(x86)")).filePath("Microsoft/Edge/Application/msedge.exe"),
+            QDir(qEnvironmentVariable("ProgramFiles")).filePath("Microsoft/Edge/Application/msedge.exe")};
+        QString source, signerHash;
+        for (const auto &candidate : candidates) {
+            const auto candidateHash = embeddedSignerHash(candidate);
+            if (!candidateHash.isEmpty()) {
+                source = candidate;
+                signerHash = candidateHash;
+                break;
+            }
+        }
+        if (signerHash.isEmpty())
+            QSKIP("No embedded-signed Windows PowerShell or Edge fixture is available.");
+        QString error;
+        QVERIFY2(updateauth::verifyPublisherSignature(source, signerHash, &error), qPrintable(error));
+        QVERIFY(!updateauth::verifyPublisherSignature(source, QString(64, '0'), &error));
+        QVERIFY(!error.isEmpty());
+        QTemporaryDir directory;
+        const auto tampered = directory.filePath("tampered.exe");
+        QVERIFY(QFile::copy(source, tampered));
+        QFile file(tampered);
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.seek(1024));
+        const auto original = file.read(1);
+        QCOMPARE(original.size(), 1);
+        QVERIFY(file.seek(1024));
+        QCOMPARE(file.write(QByteArray(1, char(uchar(original[0]) ^ 1))), qint64(1));
+        file.close();
+        QVERIFY(!updateauth::verifyPublisherSignature(tampered, signerHash, &error));
+        QVERIFY(!error.isEmpty());
+#endif
+    }
+    void untrustedPackageNeverConfirmsOrLaunchesAndIsReclaimed() {
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy preparing(&checker, &UpdateChecker::installerPreparing);
+        int confirmations = 0, launches = 0;
+        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        const auto path = UpdateCheckerTestAccess::prepareInstall(checker, directory.path(), [&](QProcess &) {
+            ++launches;
+            return true;
+        });
+        QVERIFY(!path.isEmpty());
+        const auto packageDirectory = QFileInfo(path).absolutePath();
+        UpdateCheckerTestAccess::installUntrusted(checker, path, payloadHash());
+        QCOMPARE(confirmations, 0);
+        QCOMPARE(launches, 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(preparing.size(), 0);
+        QVERIFY(!checker.downloading());
+        QVERIFY(!QFileInfo::exists(packageDirectory));
+    }
+    void missingPublisherPinBlocksDirectDownloadBeforeNetwork() {
+        if (updateauth::installationConfigured())
+            QSKIP("This build embeds a publisher pin; unsigned-package rejection is covered separately.");
+        UpdateChecker checker;
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        QSignalSpy progress(&checker, &UpdateChecker::downloadProgress);
+        const auto result = UpdateChecker::parseRelease(releaseWithAssets("v99.0.0", false), "0.10.5");
+        QVERIFY(!UpdateChecker::canAutoInstall(result, true, true));
+        checker.downloadAndInstall(result.installer, result.installerHash, true, result.tagName);
+        QCOMPARE(failed.size(), 1);
+        QVERIFY(!checker.downloading());
+        QCOMPARE(progress.size(), 0);
+    }
     void cancellingDownloadRemovesPartialFilesWithoutConfirmingOrLaunching() {
         QTemporaryDir directory;
         UpdateChecker checker;
@@ -363,10 +507,10 @@ class UpdateTests : public QObject {
     }
     void automaticUpdatesRespectPlatformAndInstallerCapabilities() {
         auto old = UpdateChecker::parseRelease(releaseWithAssets("v0.9.8", false), "0.9.7");
-        QVERIFY(UpdateChecker::canAutoInstall(old, true, true));
+        QCOMPARE(UpdateChecker::canAutoInstall(old, true, true), updateauth::installationConfigured());
         QVERIFY(!UpdateChecker::canAutoInstall(old, false, true));
         auto next = UpdateChecker::parseRelease(releaseWithAssets("v0.9.9", false), "0.9.8");
-        QVERIFY(UpdateChecker::canAutoInstall(next, false, true));
+        QCOMPARE(UpdateChecker::canAutoInstall(next, false, true), updateauth::installationConfigured());
         QVERIFY(!UpdateChecker::canAutoInstall(next, false, false));
         QVERIFY(!UpdateChecker::canAutoInstall(next, true, false));
         next.installerHash = {};
@@ -374,8 +518,10 @@ class UpdateTests : public QObject {
     }
     void hashAssetMustBelongToSelectedPackage() {
         auto object = QJsonDocument::fromJson(releaseWithAssets("v0.9.9", false)).object();
-        auto assets = object["assets"].toArray();
-        assets.append(asset("EditHere-0.9.9-win-x64-setup.exe"));
+        // Neither filename has a complete bundle; a stable-name checksum must
+        // never authenticate the versioned installer (or vice versa).
+        auto assets = QJsonArray{asset("EditHere-0.9.9-win-x64-setup.exe"),
+                                  asset("EditHere-win-x64-setup.exe.sha256")};
         object["assets"] = assets;
         const auto result = UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.9.8");
         QCOMPARE(result.installer.name, QString("EditHere-0.9.9-win-x64-setup.exe"));
@@ -466,7 +612,7 @@ class UpdateTests : public QObject {
             QCOMPARE(result.installer.size, qint64(0));
             QVERIFY(!result.portable.url.isEmpty());
             QVERIFY(!result.portableHash.url.isEmpty());
-            QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+            QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
         }
         QCOMPARE(UpdateChecker::releasesUrl(UpdateChecker::Gitee),
                  QUrl("https://gitee.com/InnGing/EditHere/releases"));
@@ -553,7 +699,7 @@ class UpdateTests : public QObject {
         QCOMPARE(available.status, UpdateChecker::Available);
         QCOMPARE(available.tagName, QString("v0.10.10"));
         QCOMPARE(available.url.host(), QString("gitee.com"));
-        QVERIFY(UpdateChecker::canAutoInstall(available, false, true));
+        QCOMPARE(UpdateChecker::canAutoInstall(available, false, true), updateauth::installationConfigured());
         QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.10", UpdateChecker::Gitee).status,
                  UpdateChecker::Current);
         QCOMPARE(UpdateChecker::parseReleases(bytes, "0.10.11", UpdateChecker::Gitee).status,
@@ -598,7 +744,7 @@ class UpdateTests : public QObject {
         QCOMPARE(result.url.host(), expectedHost);
         QCOMPARE(result.installer.url.host(), expectedHost);
         QCOMPARE(result.installerHash.url.host(), expectedHost);
-        QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+        QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
     }
     void sameVersionKeepsPackageAndHashFromOneCompleteSource() {
         auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.10.3", false), "0.10.1");
@@ -646,7 +792,7 @@ class UpdateTests : public QObject {
                 QCOMPARE(result.status, github.status);
                 QCOMPARE(result.tagName, version);
                 if (result.status == UpdateChecker::Available) {
-                    QVERIFY(UpdateChecker::canAutoInstall(result, false, true));
+                    QCOMPARE(UpdateChecker::canAutoInstall(result, false, true), updateauth::installationConfigured());
                     QCOMPARE(result.installer.url.host(), result.url.host());
                     QCOMPARE(result.installerHash.url.host(), result.url.host());
                 } else {

@@ -10,9 +10,11 @@
 namespace h2d {
 enum class ThemeMode { System, Light, Dark };
 // Interface language. "System" follows the operating system and falls back to
-// English on non-Chinese systems; the built-in source language is Simplified
-// Chinese, so zh_CN needs no translation file.
-enum class LanguageMode { System, SimplifiedChinese, English };
+// English on systems that speak neither Chinese script; the built-in source
+// language is Simplified Chinese, so zh_CN needs no translation file.
+// New choices are appended: OcrLanguageMode is cast to this enum and relies on
+// the first three values keeping their order.
+enum class LanguageMode { System, SimplifiedChinese, English, TraditionalChinese };
 // Language the screen reader uses. Kept apart from the interface language,
 // because reading a Chinese page on an English interface is a normal thing to do.
 enum class OcrLanguageMode { System, SimplifiedChinese, English };
@@ -23,6 +25,8 @@ struct AppSettings {
     QMap<QString, QKeySequence> shortcuts;
     QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "generateInstructions", "copyJsonText", "copyJson", "copyImage"};
     bool captureOnStartup = true;
+    QString traySingleClick = "capture";
+    QString trayDoubleClick = "annotate";
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true; // Legacy preference, retained for settings compatibility.
@@ -31,6 +35,7 @@ struct AppSettings {
     bool includeFeedbackPreview = false;
     bool includeWindowTitle = true;
     bool includeRecognizedText = true;
+    bool regionOcrEnabled = true;
     // Whether closing the annotation window asks about unsaved changes. Turning it off
     // is what the "don't ask again" box on that question does: from then on closing
     // throws the changes away instead of stopping to ask. It is a preference rather
@@ -61,6 +66,7 @@ struct ToolbarActionDefinition {
 };
 QVector<ShortcutDefinition> shortcutDefinitions();
 QVector<ToolbarActionDefinition> toolbarActionDefinitions();
+QVector<ToolbarActionDefinition> trayActionDefinitions();
 AppSettings defaultSettings();
 bool recognizedTextExportEnabled(const QString &filePath = {});
 bool windowTitleExportEnabled(const QString &filePath = {});

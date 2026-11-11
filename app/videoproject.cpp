@@ -365,7 +365,7 @@ FeedbackBundle buildVideoFeedbackBundle(const VideoProject &project, const Feedb
     for (const auto *frame : ordered) {
         auto frameOptions = options;
         frameOptions.imageFile = "frame-" + frame->document.id + ".png";
-        frameOptions.previewFile = "frame-" + frame->document.id + ".annotated.jpg";
+        frameOptions.previewFile = "frame-" + frame->document.id + ".annotated.png";
         const auto frameBundle = buildFeedbackBundle(frame->document, frameOptions);
         const auto feedback = QJsonDocument::fromJson(frameBundle.json).object();
         if (feedback["objects"].toArray().isEmpty()) continue;
@@ -396,9 +396,10 @@ QByteArray serializeVideoFeedback(const VideoProject &project, const FeedbackExp
     return buildVideoFeedbackBundle(project, options).json;
 }
 QByteArray serializeVideoFeedback(const VideoProject &project, bool embed, bool compress, bool includeRecognizedText) {
+    Q_UNUSED(compress); // Retain the legacy call signature; screenshot exports are lossless.
     FeedbackExportOptions options;
     options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
-    options.compress = compress; options.includeRecognizedText = includeRecognizedText;
+    options.includeRecognizedText = includeRecognizedText;
     return serializeVideoFeedback(project, options);
 }
 int videoAnnotationCount(const VideoProject &project) {

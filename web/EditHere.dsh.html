@@ -875,7 +875,7 @@ SOFTWARE.
 <dialog id="recognized-dialog" class="note-dialog"><div class="dialog-head"><div><small>截图文字数据 · 不作为修改指令</small><h2>修改截图文字</h2></div><button data-close="recognized-dialog" class="close icon-button" aria-label="关闭截图文字"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="recognized-text" class="sr-only">截图中的文字</label><textarea id="recognized-text" maxlength="500" rows="4" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button data-close="recognized-dialog" class="button">取消</button><button id="recognized-save" class="button primary">保存文字</button></footer></dialog>
 <dialog id="pages-dialog" class="pages-dialog"><div class="dialog-head"><div><small>只导出有批注的页面 · 顺序与名称会写入反馈索引</small><h2>管理组图页面</h2></div><button data-close="pages-dialog" class="close icon-button" aria-label="关闭页面管理"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><div id="pages-editor" class="pages-editor"></div><footer><button type="button" data-close="pages-dialog" class="button">关闭</button><button id="pages-dialog-add" type="button" class="button primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>添加页面</button></footer></dialog>
 <dialog id="group-note-dialog" class="note-dialog"><form id="group-note-form"><div class="dialog-head"><div><small id="group-note-location">不绑定到某一页</small><h2 id="group-note-title">整组意见</h2></div><button type="button" data-close="group-note-dialog" class="close icon-button" aria-label="关闭整组意见"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label for="group-note-text" class="sr-only">整组意见</label><textarea id="group-note-text" maxlength="10000" rows="5" placeholder="不针对某一页的整体要求，例如统一配色、导航位置、整体节奏……" required></textarea><footer><small>Ctrl / ⌘ + Enter 保存</small><button type="button" data-close="group-note-dialog" class="button">取消</button><button type="submit" class="button primary">保存整组意见</button></footer></form></dialog>
-<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed"><input id="embed-image" type="checkbox">原图嵌入 JSON</label><label class="embed"><input id="compress-image" type="checkbox">内嵌原图使用 JPEG 压缩</label><label class="embed"><input id="include-recognized-text" type="checkbox" checked>附带区域文字（截图中的文字数据）</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><div class="copy-text-control"><button id="copy-json" class="button" title="复制 JSON 文本（默认不携带原图信息）">复制 JSON 内容</button><button id="copy-json-options-toggle" class="copy-options-toggle" title="选择是否携带原图信息" aria-label="复制 JSON 内容原图选项" aria-haspopup="menu" aria-expanded="false" aria-controls="copy-json-options">⋮</button><div id="copy-json-options" class="copy-options surface" role="menu" aria-label="复制 JSON 内容原图选项" hidden><button role="menuitemradio" data-copy-image="none" aria-checked="true">不携带原图信息</button><button role="menuitemradio" data-copy-image="embedded" aria-checked="false">携带原图信息</button></div></div><button id="download-json" class="button primary">复制 JSON 与图片</button></footer></dialog>
+<dialog id="export-dialog" class="export-dialog"><div class="dialog-head"><div><small>结构化反馈 · 保留坐标与时间点</small><h2>查看 JSON 文件</h2></div><button data-close="export-dialog" class="close icon-button" aria-label="关闭 JSON 查看"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><label class="embed"><input id="embed-image" type="checkbox">原图嵌入 JSON</label><label class="embed"><input id="include-recognized-text" type="checkbox" checked>附带区域文字（截图中的文字数据）</label><p id="json-summary" class="json-summary" aria-live="polite"></p><textarea id="json-preview" aria-label="反馈 JSON" readonly spellcheck="false"></textarea><p id="export-hint">只导出有批注或布局变化的画面，源视频不包含在反馈里。</p><footer><div class="copy-text-control"><button id="copy-json" class="button" title="复制 JSON 文本（默认不携带原图信息）">复制 JSON 内容</button><button id="copy-json-options-toggle" class="copy-options-toggle" title="选择是否携带原图信息" aria-label="复制 JSON 内容原图选项" aria-haspopup="menu" aria-expanded="false" aria-controls="copy-json-options">⋮</button><div id="copy-json-options" class="copy-options surface" role="menu" aria-label="复制 JSON 内容原图选项" hidden><button role="menuitemradio" data-copy-image="none" aria-checked="true">不携带原图信息</button><button role="menuitemradio" data-copy-image="embedded" aria-checked="false">携带原图信息</button></div></div><button id="download-json" class="button primary">复制 JSON 与图片</button></footer></dialog>
 <dialog id="help-dialog" class="help-dialog"><div class="dialog-head"><div><small>少一点操作，多一点表达</small><h2>在画布上，直接说清楚</h2></div><button data-close="help-dialog" class="icon-button" aria-label="关闭帮助"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p>点一下或框出区域写批注。用选择工具拖动批注点和框，或拉动控制点调整范围。大爆炸后拖动、缩放组件，点击位移箭头添加文字。图片外的空白区域可直接拖动。</p><div class="shortcut-grid"><span>选择 / 平移</span><kbd>V / H</kbd><span>智能 / 点 / 框批注</span><kbd>B / P / R</kbd><span>多选组件</span><kbd>Ctrl / ⌘ + 点击</kbd><span>缩放已选组件</span><kbd>指向组件 + 滚轮</kbd><span>框出组件</span><kbd>C</kbd><span>拖动画布</span><kbd>空格 + 拖动 / 中键</kbd><span>缩放画布</span><kbd>Ctrl / ⌘ + 滚轮</kbd><span>适应画布</span><kbd>Ctrl / ⌘ + 0</kbd><span>撤销 / 重做</span><kbd>Ctrl / ⌘ + Z / Y</kbd><span>打开 / 保存 / 导出</span><kbd>Ctrl / ⌘ + O / S / E</kbd><span>微调组件 / 加速</span><kbd>方向键 / Shift</kbd><span>删除批注 / 取消</span><kbd>Delete / Esc</kbd></div><p class="help-footnote">移动和缩放使用原图像素坐标。系统截图与 OCR 仍需桌面 EditHere；网页可导入图片、视频和网页项目。</p></dialog>
 <script>(function (root, factory) {
   'use strict';
@@ -1348,16 +1348,20 @@ SOFTWARE.
     const info=inspect(dataUrl),value={mode,mimeType:info.mimeType,width:info.width,height:info.height,devicePixelRatio:options.devicePixelRatio??null,sha256:info.sha256};
     if(mode==='file')value.file=file;if(mode==='embedded')value.dataUrl=dataUrl;if(options.preview)value.preview=options.preview;validate(value);return value;
   }
+  function previewMimeType(filename){
+    if(!safeName(filename)||!/^.+\.annotated\.(png|jpg)$/i.test(filename))throw new Error('Invalid annotated preview filename.');
+    return /\.png$/i.test(filename)?'image/png':'image/jpeg';
+  }
   function validate(value){
     if(!record(value))throw new Error('Invalid image descriptor.');const fields=['mode','mimeType','width','height','devicePixelRatio','sha256',...(value.mode==='file'?['file']:value.mode==='embedded'?['dataUrl']:[]),...(Object.hasOwn(value,'preview')?['preview']:[])];
     if(Object.keys(value).sort().join(',')!==fields.sort().join(',')||!['file','embedded','none'].includes(value.mode)||!['image/png','image/jpeg','image/webp','image/gif','image/bmp'].includes(value.mimeType)||!Number.isInteger(value.width)||!Number.isInteger(value.height)||value.width<1||value.height<1||value.width>32767||value.height>32767||value.width*value.height>32000000||!(value.devicePixelRatio===null||Number.isFinite(value.devicePixelRatio)&&value.devicePixelRatio>0)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(value.sha256))throw new Error('Invalid image descriptor fields.');
     if(value.mode==='file'&&(!safeName(value.file)||!({'image/png':/\.png$/i,'image/jpeg':/\.jpe?g$/i,'image/webp':/\.webp$/i,'image/gif':/\.gif$/i,'image/bmp':/\.bmp$/i}[value.mimeType]).test(value.file)))throw new Error('Invalid original image filename.');
-    if(Object.hasOwn(value,'preview')&&(!safeName(value.preview)||!/^.+\.annotated\.jpg$/i.test(value.preview)))throw new Error('Invalid annotated preview filename.');
+    if(Object.hasOwn(value,'preview'))previewMimeType(value.preview);
     if(value.mode==='embedded')verify(value,value.dataUrl);return value;
   }
   function verify(value,dataUrl){const info=inspect(dataUrl);if(info.mimeType!==value.mimeType||info.width!==value.width||info.height!==value.height||info.sha256!==value.sha256?.toLowerCase())throw new Error('Original image MIME, dimensions or SHA-256 do not match.');return info;}
   function dataUrlOf(value){return typeof value==='string'?value:record(value)&&value.mode==='embedded'?(validate(value),value.dataUrl):undefined;}
-  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,validate,verify,dataUrlOf};
+  return{safeName,sha256,dataBytes,dimensions,inspect,descriptor,previewMimeType,validate,verify,dataUrlOf};
 });
 </script><script>(function (root, factory) {
   'use strict';
@@ -2109,7 +2113,7 @@ function dilate(input,w,h,rx,ry) {
           <article><h3>${icon('send')}反馈 JSON</h3><p>给 Agent 读取的修改意见、坐标与位移。展开顶栏保存按钮，选择「复制 JSON 与图片」「复制 JSON 内容」「保存项目」或「查看 JSON 文件」；选择只记住方式，不会复制、下载或打开窗口。点击主保存按钮才执行，以后保留你上次的选择。</p></article>
           <article><h3>${icon('save')}项目文件</h3><p>保留原图或批注帧、布局与可编辑状态。顶栏保存菜单选「保存项目」后点击主按钮，或点击左下「更多工具」里的「保存项目」备份。下次通过「打开」继续编辑；视频继续播放需重新选择源视频。</p></article>
         </div>
-        <div class="help-callout"><strong>图片怎么交付？</strong><p>默认将 JSON 与原图作为配套文件交付；浏览器不能复制文件时下载 ZIP。勾选「原图嵌入 JSON」后可用单文件交付，并可选 JPEG 压缩。「复制 JSON 内容」默认不携带原图信息，旁边的「⋮」可切换携带原图并记住选择；复制文字与文件的选项互不影响。</p></div>
+        <div class="help-callout"><strong>图片怎么交付？</strong><p>默认将 JSON 与原图作为配套文件交付；浏览器不能复制文件时下载 ZIP。勾选「原图嵌入 JSON」后可用单文件交付，完整保留原图编码与像素。「复制 JSON 内容」默认不携带原图信息，旁边的「⋮」可切换携带原图并记住选择；复制文字与文件的选项互不影响。</p></div>
         <p>下载文件和复制内容包含相同的修改意见。重新导入可打开反馈 ZIP，或同时选择 JSON 与配套图片；校验值不一致的图片不会用于恢复批注。把文件交给 Agent，并说明「按照这些批注修改」。</p>
         <p class="help-footnote">显示「已保存」只代表反馈落盘；显示「已发送」代表宿主接收消息。Agent 是否已继续，以对话中的回复和修改结果为准。</p>
       </section>
@@ -2797,7 +2801,7 @@ function dilate(input,w,h,rx,ry) {
   const imageExtension=data=>({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/bmp':'bmp'}[I.dataBytes(data).mimeType]);
   function outputStem(agent=false){const filename=agent&&agentOptions.outputFileName?agentOptions.outputFileName:baseName()+'-feedback.json';return filename.replace(/\.[^.]+$/,'');}
   function feedbackDocument(d,mode='file',includePreview=false,agent=false) {
-    let data=d.data;if(mode==='embedded'&&$('compress-image').checked&&!agent){if(!d.jpeg){const c=makeCanvas(d.image.naturalWidth,d.image.naturalHeight);c.getContext('2d').drawImage(d.image,0,0);d.jpeg=c.toDataURL('image/jpeg',.85);}data=d.jpeg;}
+    let data=d.data;
     const stem=isSet()?'page-'+(pageIndexOf(d.id)+1)+'-'+d.id:session.kind==='video'?'frame-'+d.id:outputStem(agent);
     return {id:d.id,timestampUs:d.timestampUs,...(d.capture?{capture:clone(d.capture)}:{}),width:d.image.naturalWidth,height:d.image.naturalHeight,image:data,imageFile:stem+'.'+imageExtension(data),previewFile:includePreview?stem+'.annotated.jpg':undefined,devicePixelRatio:d.devicePixelRatio??null,includeRecognizedText:$('include-recognized-text').checked,movements:rawMovements(d),notes:d.notes.map(n=>({source:clone(n.movementSource?n.source:componentNoteBounds(n,d)||n.source),text:n.text,...(n.movementSource?{movementSource:clone(n.movementSource)}:{}),...(n.parent?{parent:clone(n.parent)}:{}),...(Object.hasOwn(n,'recognizedText')?{recognizedText:clone(n.recognizedText)}:{})}))};
   }
@@ -2832,7 +2836,6 @@ function dilate(input,w,h,rx,ry) {
   // Migrate the old file-mode selection without reusing the old preview option.
   $('embed-image').checked=preference('embedImage',String(preference('imageMode','file')==='embedded'))==='true';
   let copyTextImage=preference('copyTextImage','none');if(!['embedded','none'].includes(copyTextImage))copyTextImage='none';
-  $('compress-image').checked=preference('compressImage','false')==='true';
   $('include-recognized-text').checked=preference('includeRecognizedText','true')!=='false';
   function chooseSaveMode(mode) {
     saveMode=mode;rememberPreference('saveMode',mode);
@@ -2846,18 +2849,17 @@ function dilate(input,w,h,rx,ry) {
   }
   function closeSaveOptions(focus=false) {$('save-options').hidden=true;$('save-options-toggle').setAttribute('aria-expanded','false');if(focus)$('save-options-toggle').focus();}
   function refreshExport() {
-    const mode=fileImageMode(),includeRecognizedText=$('include-recognized-text').checked,includePreview=false,compress=$('compress-image').checked;
-    // Reuse one snapshot across file and clipboard delivery, and avoid
-    // re-encoding large images until the editing changes.
-    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.compress!==compress||exportCache.includeRecognizedText!==includeRecognizedText){
+    const mode=fileImageMode(),includeRecognizedText=$('include-recognized-text').checked,includePreview=false;
+    // Reuse one snapshot and its serialized JSON across file and clipboard delivery.
+    if(!exportCache||exportCache.session!==session||exportCache.revision!==projectRevision||exportCache.mode!==mode||exportCache.includePreview!==includePreview||exportCache.includeRecognizedText!==includeRecognizedText){
       exportData=feedback(mode,includePreview);exportText=F.serialize(exportData);
-      exportCache={session,revision:projectRevision,mode,includePreview,compress,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
+      exportCache={session,revision:projectRevision,mode,includePreview,includeRecognizedText,preview:F.preview(exportData),summary:F.summary(exportData,exportText)};
     }
     $('json-preview').value=exportCache.preview;
     const summary=exportCache.summary,size=bytes=>bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/1024/1024).toFixed(2)+' MB';
     $('json-summary').textContent=summary.schemaVersion+' · '+(isSet()?summary.annotatedPageCount+' / '+summary.pageCount+' 个页面 · ':'')+summary.annotations+' 条意见 · '+summary.movements+' 次位移 · '+size(summary.bytes)+(summary.imageBytes?'（图片 '+size(summary.imageBytes)+'）':'')+(summary.recognizedTexts?' · '+summary.recognizedTexts+' 处截图文字（仅作为数据）':'');
-    $('compress-image').disabled=mode!=='embedded';$('download-json').textContent='复制 JSON 与图片';
-    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；文件交付包含完整原图；复制 JSON 内容按独立选项处理。JPEG 压缩会改变图片编码，校验值按实际导出字节计算。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
+    $('download-json').textContent='复制 JSON 与图片';
+    $('export-hint').textContent=mode==='file'?'下载 ZIP 包含 JSON 与配套原图。复制 JSON 后还需同时交付引用的图片；重新导入时可选择 ZIP，或同时选择 JSON 和配套图片。':mode==='embedded'?'预览已折叠图片编码；文件交付无损保留完整原图；复制 JSON 内容按独立选项处理。':'JSON 仅记录原图尺寸和校验值；AI 需已持有相同原图。恢复编辑时须同时选择原图。';
     if(isSet())$('export-hint').textContent=summary.annotatedPageCount+' 个已批注页面将反馈给 AI；其余页面只保留名称索引。';
   }
   function openExport() {try{closeSaveOptions();refreshExport();if(!$('export-dialog').open)$('export-dialog').showModal();}catch(error){notify(error.message);}}
@@ -2927,7 +2929,6 @@ function dilate(input,w,h,rx,ry) {
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeSaveOptions();closeCopyOptions();}});
   $('export').onclick=openExport;
   $('embed-image').onchange=()=>{rememberPreference('embedImage',String($('embed-image').checked));refreshExport();};
-  $('compress-image').onchange=()=>{rememberPreference('compressImage',String($('compress-image').checked));refreshExport();};
   $('preview').onclick=()=>run(async()=>{if(!doc)throw new Error('请先在当前画面添加批注');const c=annotatedCanvas(doc),blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法保存图片');download(baseName()+(session.kind==='video'?'-'+doc.timestampUs:'')+'-annotations.png',blob);});
   $('include-recognized-text').onchange=()=>{rememberPreference('includeRecognizedText',String($('include-recognized-text').checked));refreshExport();};
   $('download-json').onclick=()=>{chooseSaveMode('file');copyJsonFiles();};
@@ -2943,7 +2944,7 @@ function dilate(input,w,h,rx,ry) {
     p.lineWidth=line*2;p.lineCap='round';p.lineJoin='round';
     for(const m of markers){const {start,end}=markerLine(m),dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);if(length<.0001)continue;const ux=dx/length,uy=dy/length,head=Math.min(9*line,length*.35);p.strokeStyle='white';p.lineWidth=4*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.stroke();p.strokeStyle='#346df1';p.lineWidth=1.5*line;p.beginPath();p.moveTo(start.x,start.y);p.lineTo(end.x,end.y);p.moveTo(end.x-ux*head-uy*head*.5,end.y-uy*head+ux*head*.5);p.lineTo(end.x,end.y);p.lineTo(end.x-ux*head+uy*head*.5,end.y-uy*head-ux*head*.5);p.stroke();p.fillStyle='white';p.beginPath();p.arc(start.x,start.y,3*line,0,Math.PI*2);p.fill();p.stroke();}
     p.lineWidth=line*2;p.strokeStyle='#346df1';p.font=`bold ${Math.round(line*13)}px sans-serif`;for(const [i,n] of noteEntries(d).entries()){if(n.draft)continue;const r=noteRect(n,d);if(!r)continue;if(!n.movement&&r.x2>r.x1)p.strokeRect(r.x1,r.y1,r.x2-r.x1,r.y2-r.y1);const marker=markers.find(m=>m.noteId===n.id),at=marker?markerAnchor(marker,1):{x:r.x1,y:r.y1},x=clamp(at.x,12*line,c.width-12*line),y=clamp(at.y,12*line,c.height-12*line);p.fillStyle='#346df1';p.beginPath();p.arc(x,y,line*12,0,Math.PI*2);p.fill();p.fillStyle='#fff';p.textAlign='center';p.textBaseline='middle';p.fillText(String(i+1),x,y);}return c;}
-  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/jpeg',.85);}
+  function annotatedData(d) {return annotatedCanvas(d).toDataURL('image/png');}
 
   function annotatedPageExports() {
     if(!isSet())return [];
@@ -2989,7 +2990,10 @@ function dilate(input,w,h,rx,ry) {
     if(!f||f.annotationSpace!=='result'||!Array.isArray(f.objects)||f.objects.length>9704)throw new Error('反馈格式不支持，请导入 EditHere objects 格式');
     if(f.image&&typeof f.image==='object'&&f.image.preview){
       const file=companions.find(file=>file.name===f.image.preview);if(!file){const error=new Error('请同时选择预览图 '+f.image.preview+'，或打开完整反馈 ZIP');error.missingCompanion=true;throw error;}
-      const bytes=new Uint8Array(await file.arrayBuffer()),dimensions=I.dimensions(bytes,'image/jpeg');if(dimensions.width!==f.image.width||dimensions.height!==f.image.height)throw new Error('预览图尺寸与原图不匹配');let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));await decode('data:image/jpeg;base64,'+btoa(binary));
+      const bytes=new Uint8Array(await file.arrayBuffer()),mime=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':bytes[0]===255&&bytes[1]===216?'image/jpeg':null;
+      if(!mime||I.previewMimeType(file.name)!==mime)throw new Error('预览图必须是与文件名匹配的 PNG 或 JPEG');
+      const dimensions=I.dimensions(bytes,mime);
+      let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const preview=await decode('data:'+mime+';base64,'+btoa(binary));if(preview.naturalWidth!==dimensions.width||preview.naturalHeight!==dimensions.height)throw new Error('预览图尺寸无效');
     }
     let data=I.dataUrlOf(f.image);
     if(!data){const descriptor=f.image;if(descriptor)I.validate(descriptor);const candidates=descriptor?.mode==='file'?companions.filter(file=>file.name===descriptor.file):companions.filter(file=>file.type?.startsWith('image/')||/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name));for(const file of candidates){try{const bytes=new Uint8Array(await file.arrayBuffer()),mime=descriptor?.mimeType||({'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp','gif':'image/gif','bmp':'image/bmp'}[file.name.split('.').pop().toLowerCase()]);let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));const candidate='data:'+mime+';base64,'+btoa(binary);if(descriptor)I.verify(descriptor,candidate);data=candidate;break;}catch(error){if(descriptor?.mode==='file')throw error;}}

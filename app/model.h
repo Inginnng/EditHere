@@ -85,6 +85,7 @@ Document fromImage(const QImage &image, const QString &source, const QString &ti
 Document loadDocument(const QString &path);
 Document loadDocumentObject(QJsonObject root, const QString &path);
 QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &options = {});
+// The legacy compress argument is ignored; originals always remain lossless.
 QJsonObject exportFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);
 // Decide which moved component, if any, a new note belongs to. A box that sits
 // entirely inside a moved component becomes its child without asking; a partial

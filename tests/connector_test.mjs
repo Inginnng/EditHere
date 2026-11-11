@@ -16,6 +16,14 @@ process.env.EDITHERE_CLI = process.execPath;
 const connectorUrl = new URL('../connector/mcp-server.mjs', import.meta.url);
 const { runCli, cliResultToContent, statusContent, annotateResultToContent, feedbackImageCliArgs, pageContextCliArgs, TOOLS } = await import(connectorUrl);
 
+test('the running connector version matches the package and pinned market configuration', () => {
+  const readJson = (name) => JSON.parse(fs.readFileSync(new URL(`../connector/${name}`, import.meta.url), 'utf8'));
+  const manifest = readJson('package.json');
+  assert.equal(readJson('connector-meta.json').version, manifest.version);
+  assert.deepEqual(readJson('mcp.json').mcpServers.edithere.args, ['-y', `${manifest.name}@${manifest.version}`]);
+  assert.equal(JSON.parse(statusContent({ exitCode: 0, json: { ok: true } }).content[0].text).connector.version, manifest.version);
+});
+
 function videoFeedback(frameCount = 2) {
   const frames = Array.from({ length: frameCount }, (_, index) => ({
     id: `frame-${index}`,
@@ -294,17 +302,23 @@ test('J03 rejects tampered, missing, misplaced and malformed attachments before 
   assert.match(resultText(feedbackResult(versionedImageFeedback({ image }))), /图片内容不是有效/);
 });
 
-test('J03 annotated previews are separate JPEG attachments and survive metadata-only exports', () => {
+test('J03 annotated PNG previews and legacy JPEG stay separate and accept independent dimensions', () => {
   const jpeg = Buffer.from(encodedFixtures.jpeg, 'base64');
-  const image = { ...imageDescriptor('none'), preview: 'feedback.annotated.jpg' };
-  const result = feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: jpeg });
-  assert.equal(result.isError, false);
-  assert.match(resultText(result), /previewFile: .*feedback\.annotated\.jpg/);
-  assert.equal(result.content.filter((item) => item.type === 'image').length, 0, 'preview must never silently replace the source image');
-  assert.equal(feedbackResult(versionedImageFeedback({ image })).isError, true, 'a promised preview must exist');
-  assert.match(resultText(feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: bundlePng })), /JPEG/);
-  image.preview = '../private.annotated.jpg';
-  assert.match(resultText(feedbackResult(versionedImageFeedback({ image }))), /不能包含路径/);
+  for (const [extension, bytes, original] of [
+    ['png', bundlePng, imageDescriptor('none', jpeg, 'image/jpeg', 2, 3)],
+    ['jpg', jpeg, imageDescriptor('none')],
+  ]) {
+    const image = { ...original, preview: `feedback.annotated.${extension}` };
+    const result = feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: bytes });
+    assert.equal(result.isError, false, resultText(result));
+    assert.match(resultText(result), new RegExp(`previewFile: .*feedback\\.annotated\\.${extension}`));
+    assert.equal(result.content.filter((item) => item.type === 'image').length, 0, 'preview must never silently replace the source image');
+    assert.equal(feedbackResult(versionedImageFeedback({ image })).isError, true, 'a promised preview must exist');
+    const wrongBytes = extension === 'png' ? jpeg : bundlePng;
+    assert.match(resultText(feedbackResult(versionedImageFeedback({ image }), {}, { [image.preview]: wrongBytes })), /PNG\/JPEG/);
+    image.preview = `../private.annotated.${extension}`;
+    assert.match(resultText(feedbackResult(versionedImageFeedback({ image }))), /不能包含路径/);
+  }
 });
 
 test('J03 all video frames validate independently of tool attachment limits and root index remains frame-local', () => {

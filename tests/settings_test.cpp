@@ -5,6 +5,8 @@
 #include "diagnostics.h"
 #include "i18n.h"
 #include "ui.h"
+#include "i18n.h"
+#include <QScrollArea>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDesktopServices>
@@ -538,6 +540,130 @@ class SettingsTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void regionOcrPreferencePersistsIndependentlyOfExport() {
+        QVERIFY(defaultSettings().regionOcrEnabled);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+        auto settings = defaultSettings(); settings.regionOcrEnabled = false;
+        QString error; QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        const auto restored = loadSettings(path);
+        QVERIFY(!restored.regionOcrEnabled);
+        QVERIFY(restored.includeRecognizedText);
+        SettingsDialog dialog(restored);
+        QVERIFY(!dialog.settings().regionOcrEnabled);
+        auto exportText = dialog.findChild<QCheckBox *>("includeRecognizedText"); QVERIFY(exportText);
+        exportText->setChecked(false);
+        QVERIFY(!dialog.settings().includeRecognizedText);
+        QVERIFY(!dialog.settings().regionOcrEnabled);
+        settings.regionOcrEnabled = true; settings.includeRecognizedText = false;
+        QVERIFY2(saveSettings(settings, &error, path), qPrintable(error));
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+        QVERIFY(!loadSettings(path).includeRecognizedText);
+        { QSettings malformed(path, QSettings::IniFormat); malformed.setValue("defaults/regionOcrEnabled", "invalid"); malformed.sync(); }
+        QVERIFY(loadSettings(path).regionOcrEnabled);
+    }
+    void trayControlsHaveStableActionIds() {
+        SettingsDialog dialog(defaultSettings());
+        auto single = dialog.findChild<QComboBox *>("traySingleClick");
+        auto twice = dialog.findChild<QComboBox *>("trayDoubleClick");
+        QVERIFY(single && twice);
+        QCOMPARE(single->currentData().toString(), QString("capture"));
+        QCOMPARE(twice->currentData().toString(), QString("annotate"));
+        for (const auto &id : {"capture", "annotate", "show", "open", "none"}) {
+            QVERIFY(single->findData(id) >= 0);
+            QVERIFY(twice->findData(id) >= 0);
+        }
+        QCOMPARE(single->count(), 5);
+#ifdef Q_OS_MACOS
+        QVERIFY(!single->isEnabled());
+        QVERIFY(!twice->isEnabled());
+#else
+        QVERIFY(single->isEnabled());
+        QVERIFY(twice->isEnabled());
+#endif
+    }
+    void trayPersistenceValidationAndDraft() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("settings.ini");
+        auto settings = loadSettings(path);
+        QCOMPARE(settings.traySingleClick, QString("capture"));
+        QCOMPARE(settings.trayDoubleClick, QString("annotate"));
+        settings.theme = ThemeMode::Dark;
+        for (const auto &id : {"capture", "annotate", "show", "open", "none"}) {
+            settings.traySingleClick = id;
+            settings.trayDoubleClick = id;
+            QVERIFY(saveSettings(settings, nullptr, path));
+            QVERIFY(loadSettings(path) == settings);
+            QSettings raw(path, QSettings::IniFormat);
+            QCOMPARE(raw.value("tray/singleClick").toString(), QString(id));
+            QCOMPARE(raw.value("tray/doubleClick").toString(), QString(id));
+        }
+        settings.traySingleClick = "quit";
+        QVERIFY(!validateSettings(settings).isEmpty());
+        QVERIFY(!saveSettings(settings, nullptr, path));
+        QCOMPARE(loadSettings(path).traySingleClick, QString("none"));
+        settings.traySingleClick = "show";
+        settings.trayDoubleClick = "截图";
+        QVERIFY(!saveSettings(settings, nullptr, path));
+        QSettings raw(path, QSettings::IniFormat);
+        raw.setValue("tray/singleClick", "unknown");
+        raw.setValue("tray/doubleClick", 1);
+        raw.sync();
+        auto recovered = loadSettings(path);
+        QCOMPARE(recovered.traySingleClick, QString("capture"));
+        QCOMPARE(recovered.trayDoubleClick, QString("annotate"));
+        QCOMPARE(recovered.theme, ThemeMode::Dark);
+        raw.remove("tray"); raw.sync();
+        QVERIFY(loadSettings(path) == recovered);
+
+        SettingsDialog dialog(recovered);
+        AppSettings applied = recovered;
+        dialog.setApplyHandler([&](const AppSettings &next) { applied = next; return QString(); });
+        auto single = dialog.findChild<QComboBox *>("traySingleClick");
+        auto twice = dialog.findChild<QComboBox *>("trayDoubleClick");
+        single->setCurrentIndex(single->findData("show"));
+        twice->setCurrentIndex(twice->findData("none"));
+        dialog.reject();
+        QVERIFY(applied == recovered);
+        dialog.findChild<QPushButton *>("settingsSave")->click();
+        QCOMPARE(applied.traySingleClick, QString("show"));
+        QCOMPARE(applied.trayDoubleClick, QString("none"));
+        dialog.findChild<QPushButton *>("settingsReset")->click();
+        QVERIFY(dialog.settings() == defaultSettings());
+    }
+    void trayTranslationsAndScrollableLayout() {
+        SettingsDialog dialog(defaultSettings());
+        auto tabs = dialog.findChild<QTabWidget *>("settingsTabs");
+        auto page = dialog.findChild<QScrollArea *>("settingsDefaultsPage");
+        auto single = dialog.findChild<QComboBox *>("traySingleClick");
+        auto twice = dialog.findChild<QComboBox *>("trayDoubleClick");
+        auto hint = dialog.findChild<QLabel *>("trayClickHint");
+        QVERIFY(tabs && page && single);
+        tabs->setCurrentWidget(page);
+        single->setCurrentIndex(single->findData("show"));
+        dialog.resize(620, 680);
+        dialog.show();
+        for (auto language : {LanguageMode::English, LanguageMode::TraditionalChinese, LanguageMode::SimplifiedChinese}) {
+            QVERIFY(installLanguage(language));
+            QTest::qWait(10);
+            QCOMPARE(single->currentData().toString(), QString("show"));
+            QCOMPARE(single->currentText(), language == LanguageMode::English ? QString("Show current window") :
+                     language == LanguageMode::TraditionalChinese ? QString("顯示目前視窗") : QString("显示当前窗口"));
+            page->ensureWidgetVisible(hint);
+            QTest::qWait(10);
+            QVERIFY(page->viewport()->rect().contains(single->mapTo(page->viewport(), single->rect().center())));
+            QVERIFY(page->viewport()->rect().contains(twice->mapTo(page->viewport(), twice->rect().center())));
+            QVERIFY(single->width() >= single->fontMetrics().horizontalAdvance(single->currentText()) + 30);
+            artifact(dialog, "tray-settings-" + resolveLanguage(language) + ".png");
+        }
+        dialog.resize(500, 440);
+        page->ensureWidgetVisible(hint);
+        QTest::qWait(10);
+        QVERIFY(page->viewport()->rect().contains(single->mapTo(page->viewport(), single->rect().center())));
+        artifact(dialog, "tray-settings-small.png");
+        dialog.reject();
     }
     void recognizedTextExportPreferencePersistsAndDefaultsOn() {
         QVERIFY(defaultSettings().includeRecognizedText);
