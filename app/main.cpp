@@ -83,10 +83,17 @@ int main(int argc, char **argv) {
         ~LogLifetime() { diagnostics::stop(); }
     } logLifetime;
     app.setQuitOnLastWindowClosed(false);
+#ifndef Q_OS_MACOS
+    // The Dock takes its icon from the bundle (edithere.icns, which carries the
+    // rounded-square plate macOS expects and gets the system's own treatment). A
+    // window icon replaces that with these flat rasters, because Qt hands
+    // QGuiApplication::windowIcon() to AppKit as NSApplication.applicationIconImage,
+    // and the Dock draws that instead of the bundle icon.
     QIcon appIcon;
     for (const int size : {16, 20, 24, 32, 48, 64, 128, 256, 512})
         appIcon.addFile(QString(":/icons/edithere-%1.png").arg(size), QSize(size, size));
     app.setWindowIcon(appIcon);
+#endif
     const auto startupSettings = loadSettings();
     applyTheme(startupSettings.theme);
     // The translators have to be installed before any widget exists, because every

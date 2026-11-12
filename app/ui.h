@@ -34,6 +34,10 @@ bool isDarkTheme();
 void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());
 QStringList glyphNames();
+// The tray icon. macOS shows it in the menu bar, where AppKit tints a template
+// image with the system colour and uses only its alpha channel, so the brand
+// symbol is rendered as that silhouette instead of the coloured app icon.
+QIcon trayIcon();
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent = nullptr);
 QPushButton *textButton(const QString &text, bool primary = false, QWidget *parent = nullptr);
 // Applies declarations to `widget` alone. A rule written without a selector also
