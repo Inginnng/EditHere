@@ -4,6 +4,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_AUTOMOC ON)
+  if(APPLE)
+    enable_language(OBJCXX)
+  endif()
   find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Network Test)
   qt_standard_project_setup()
 endif()
@@ -24,6 +27,8 @@ set(BUILD_TESTING OFF CACHE BOOL "Do not build dependency tests" FORCE)
 FetchContent_Declare(qtkeychain
   URL https://codeload.github.com/frankosterfeld/qtkeychain/tar.gz/refs/tags/0.15.0
   URL_HASH SHA256=f4254dc8f0933b06d90672d683eab08ef770acd8336e44dfa030ce041dc2ca22
+  PATCH_COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=<SOURCE_DIR>"
+    -P "${EDITHERE_ROOT}/cmake/PatchQtKeychain.cmake"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(qtkeychain)
 
@@ -54,6 +59,9 @@ file(GLOB AI_TEXT_UI_ICONS CONFIGURE_DEPENDS "${EDITHERE_ROOT}/assets/ui-icons/i
 qt_add_resources(ai_text_workbench_host ui_icons PREFIX "/ui-icons"
   BASE "${EDITHERE_ROOT}/assets/ui-icons"
   FILES "${EDITHERE_ROOT}/assets/ui-icons/manifest.json" ${AI_TEXT_UI_ICONS})
+qt_add_resources(ai_text_workbench_host brand_symbol PREFIX "/brand"
+  BASE "${EDITHERE_ROOT}/assets/icons"
+  FILES "${EDITHERE_ROOT}/assets/icons/edithere.svg")
 qt_add_executable(ai_text_workbench WIN32 EXCLUDE_FROM_ALL workbench/main.cpp)
 target_compile_definitions(ai_text_workbench PRIVATE AI_TEXT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ai_text_workbench PRIVATE h2d_ai_text ai_text_workbench_host)
