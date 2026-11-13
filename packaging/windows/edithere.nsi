@@ -350,7 +350,10 @@ Section -Maintain
         StrCpy $DesktopChoice 1
     ${EndIf}
     !insertmacro WorkerContext
-    StrCpy $WorkerArguments '$WorkerArguments -StageDirectory "$StageDirectory" -Startup $StartupChoice -AddToPath $PathChoice -Desktop $DesktopChoice -Portable $PortableMode -HandoffId "$HandoffId"'
+    StrCpy $WorkerArguments '$WorkerArguments -StageDirectory "$StageDirectory" -Startup $StartupChoice -AddToPath $PathChoice -Desktop $DesktopChoice -Portable $PortableMode'
+    ${If} $HandoffId != ""
+        StrCpy $WorkerArguments '$WorkerArguments -HandoffId "$HandoffId"'
+    ${EndIf}
     StrCpy $WorkerStarted 1
     ; Cancellation is handled before READY/ACK. Once the synchronous worker
     ; owns the transaction it must commit or restore it before the UI exits.

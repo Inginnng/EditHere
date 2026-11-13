@@ -29,6 +29,10 @@ function fixture(t) {
   fs.writeFileSync(path.join(skill, 'agents', 'openai.yaml'), 'interface: {}\n');
   fs.writeFileSync(path.join(skill, 'references', 'capture.md'), 'capture fixture\n');
   fs.writeFileSync(path.join(skill, 'references', 'local-installation.md'), 'old placeholder\n');
+  fs.mkdirSync(path.join(skill, 'scripts'));
+  for (const name of ['image-set.mjs','image-set.cjs']) {
+    fs.copyFileSync(path.join(__dirname, '../skills/edithere-web/scripts', name), path.join(skill, 'scripts', name));
+  }
   return {root, web, target:path.join(root, '测试 技能目录', 'edithere-web')};
 }
 
@@ -39,7 +43,7 @@ function run(web, args, environment = {}) {
 }
 
 test('installs from Chinese and spaced paths and records this runtime without changing the desktop skill', t => {
-  const {web, target} = fixture(t);
+  const {root, web, target} = fixture(t);
   const desktop = path.join(path.dirname(target), 'edithere', 'SKILL.md');
   fs.mkdirSync(path.dirname(desktop), {recursive:true});
   fs.writeFileSync(desktop, 'preserve desktop skill\n');
@@ -59,6 +63,18 @@ test('installs from Chinese and spaced paths and records this runtime without ch
   assert.ok(!reference.includes('old placeholder'));
   assert.equal(fs.readFileSync(path.join(target, 'references', 'capture.md'), 'utf8'), 'capture fixture\n');
   assert.equal(fs.readFileSync(desktop, 'utf8'), 'preserve desktop skill\n');
+  const manifest=path.join(root,'installed-review.json'),image=path.resolve(__dirname,'../../tests/fixtures/ocr-small-url.png');
+  const helper=path.join(target,'scripts','image-set.mjs');
+  const runHelper=(...args)=>{
+    const command=spawnSync(process.execPath,[helper,...args],{cwd:target,encoding:'utf8',windowsHide:true});
+    assert.equal(command.status,0,command.stderr);
+    return JSON.parse(command.stdout);
+  };
+  runHelper('create',manifest,'--name','Installed skill review');
+  runHelper('upsert',manifest,'--id','settings.ai','--image',image);
+  const bundled=path.join(root,'installed-review-bundle.json');
+  assert.equal(runHelper('bundle',manifest,'--output',bundled).pageCount,1);
+  assert.equal(JSON.parse(fs.readFileSync(bundled,'utf8')).pages[0].id,'settings.ai');
 });
 
 test('uses CODEX_HOME by default', t => {

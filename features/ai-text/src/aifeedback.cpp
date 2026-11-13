@@ -8,6 +8,7 @@
 #include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QUrl>
+#include <limits>
 namespace h2d {
 namespace {
 constexpr qsizetype MaxResponseBytes = 2 * 1024 * 1024;
@@ -113,46 +114,108 @@ void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString
     if (key.trimmed().isEmpty() || key.contains(QRegularExpression("[\\x{0000}-\\x{0020}\\x{007f}]"))) {
         emit failed(tr("请填写有效的 API Key。")); return;
     }
-    if (input.images.isEmpty()) { emit failed(tr("没有可用于理解批注的截图。")); return; }
-    if (input.images.size() > MaxImages) { emit failed(tr("一次可解析 16 张图片，请分批处理。")); return; }
+    const bool imageSet = !test && aiIsImageSet(input.feedback);
+    if (!imageSet && input.images.isEmpty()) { emit failed(tr("没有可用于理解批注的截图。")); return; }
+    if (!imageSet && input.images.size() > MaxImages) { emit failed(tr("一次可解析 16 张图片，请分批处理。")); return; }
     if (!input.imageLabels.isEmpty() && input.imageLabels.size() != input.images.size()) {
         emit failed(tr("截图与图像说明数量不一致。")); return;
     }
-    facts_ = {};
+    if (imageSet) {
+        qsizetype count = 0;
+        for (const auto n : input.pageImageCounts) {
+            if (n < 1 || n > 2) { emit failed(tr("组图批注与截图不匹配。")); return; }
+            count += n;
+        }
+        if (input.pageImageCounts.size() != input.feedback["pages"].toArray().size() || count != input.images.size()) {
+            emit failed(tr("组图批注与截图不匹配。")); return;
+        }
+    }
+    QJsonArray facts;
     QString error;
-    if (!test && !aiCollectFacts(input.feedback, &facts_, &error)) { emit failed(error); return; }
-    QString prompt = test ? "Identify the dominant color in the attached image. Reply with one English color name only."
-                          : systemPrompt.trimmed().isEmpty() ? aiSystemPrompt() : systemPrompt;
+    if (!test && !aiCollectFacts(input.feedback, &facts, &error)) { emit failed(error); return; }
+    const QString prompt = test ? "Identify the dominant color in the attached image. Reply with one English color name only."
+                                : systemPrompt.trimmed().isEmpty() ? aiSystemPrompt() : systemPrompt;
     if (prompt.isEmpty()) { emit failed(tr("系统提示词为空，无法发送请求。")); return; }
+
+    connection_ = settings; key_ = key; testing_ = test; imageSet_ = imageSet; prompt_ = prompt;
+    context_ = test ? QString() : aiInputContext(input);
+    pending_.append(input);
+    sendNext();
+}
+
+namespace {
+bool splitImageSet(const AiFeedbackInput &input, QList<AiFeedbackInput> &pending) {
+    const auto pages = input.feedback["pages"].toArray();
+    if (pages.isEmpty() || (pages.size() == 1 && input.feedback["groupNotes"].toArray().isEmpty())) return false;
+
+    // A page's original and result must stay together. Group notes belong in the
+    // final batch only, including when that batch can be sent as text alone.
+    const auto middle = (pages.size() + 1) / 2;
+    qsizetype imageCount = 0;
+    QJsonArray firstPages, lastPages;
+    for (qsizetype i = 0; i < pages.size(); ++i) {
+        if (i < middle) {
+            firstPages.append(pages.at(i));
+            imageCount += input.pageImageCounts.at(i);
+        } else lastPages.append(pages.at(i));
+    }
+    auto first = input.feedback, last = input.feedback;
+    first["pages"] = firstPages; first.remove("groupNotes");
+    last["pages"] = lastPages;
+    pending.prepend({last, input.images.sliced(imageCount),
+                     input.imageLabels.isEmpty() ? QStringList() : QStringList(input.imageLabels.sliced(imageCount)),
+                     input.pageImageCounts.sliced(middle)});
+    pending.prepend({first, input.images.first(imageCount),
+                     input.imageLabels.isEmpty() ? QStringList() : QStringList(input.imageLabels.first(imageCount)),
+                     input.pageImageCounts.first(middle)});
+    return true;
+}
+
+QByteArray requestBody(const AiConnectionSettings &settings, const QString &prompt, const AiFeedbackInput &input,
+                       const QJsonArray &facts, bool test, QString *error) {
     auto metadata = aiFeedbackData(input.feedback).toObject();
     metadata.remove("objects");
-    // Frame-local facts were flattened above. Keep only frame metadata here so
-    // video root indices and nested objects are not presented twice.
-    if (metadata.contains("frames")) {
-        QJsonArray frames;
-        for (const auto &value : metadata["frames"].toArray()) {
-            auto frame = value.toObject(); auto feedback = frame["feedback"].toObject();
-            feedback.remove("objects"); frame["feedback"] = feedback; frames.append(frame);
+    // Supply batch-local context, with actionable objects only in itemsToInterpret.
+    if (aiIsImageSet(metadata)) {
+        metadata.remove("pageIndex");
+        metadata.remove("groupNotes");
+    }
+    for (const auto &key : {"frames", "pages"}) {
+        if (!metadata.contains(key)) continue;
+        QJsonArray contexts;
+        for (const auto &value : metadata[key].toArray()) {
+            auto entry = value.toObject(); auto feedback = entry["feedback"].toObject();
+            feedback.remove("objects"); entry["feedback"] = feedback; contexts.append(entry);
         }
-        metadata["frames"] = frames;
+        metadata[key] = contexts;
     }
     const QString userText = test ? "What is the dominant color of this image? Reply with one English color name only." :
-        QString::fromUtf8(QJsonDocument(QJsonObject{{"feedbackContext", metadata}, {"itemsToInterpret", facts_},
+        QString::fromUtf8(QJsonDocument(QJsonObject{{"feedbackContext", metadata}, {"itemsToInterpret", facts},
                                                    {"additionalUserPreferences", settings.extraInstructions}}).toJson(QJsonDocument::Compact));
     QJsonArray content;
     const bool responses = settings.protocol == "responses";
     const bool anthropic = settings.protocol == "anthropic-messages";
     content.append(QJsonObject{{"type", responses ? "input_text" : "text"}, {"text", userText}});
+    qsizetype imageBytes = 0;
     for (qsizetype index = 0; index < input.images.size(); ++index) {
         const auto &image = input.images[index];
-        if (image.isNull()) { emit failed(tr("截图解码失败，未发送请求。")); return; }
+        if (image.isNull()) {
+            *error = QCoreApplication::translate("h2d::AiFeedbackClient", "截图解码失败，未发送请求。"); return {};
+        }
         const int edgeLimit = anthropic ? 8000 : settings.providerId == "deepseek" ? (input.images.size() >= 15 ? 4096 : 8192) : 32767;
         if (image.width() > edgeLimit || image.height() > edgeLimit) {
-            emit failed(tr("此接口支持的图片边长为 %1 像素以内，请分区批注。").arg(edgeLimit)); return;
+            *error = QCoreApplication::translate("h2d::AiFeedbackClient", "此接口支持的图片边长为 %1 像素以内，请分区批注。").arg(edgeLimit);
+            return {};
         }
         QByteArray png; QBuffer buffer(&png); buffer.open(QIODevice::WriteOnly);
-        if (!image.save(&buffer, "PNG")) { emit failed(tr("无法编码截图。")); return; }
-        if (png.size() > 5 * 1024 * 1024) { emit failed(tr("单张图片超过 5 MiB，请分区批注。")); return; }
+        if (!image.save(&buffer, "PNG")) {
+            *error = QCoreApplication::translate("h2d::AiFeedbackClient", "无法编码截图。"); return {};
+        }
+        if (png.size() > 5 * 1024 * 1024) {
+            *error = QCoreApplication::translate("h2d::AiFeedbackClient", "单张图片超过 5 MiB，请分区批注。"); return {};
+        }
+        imageBytes += ((png.size() + 2) / 3) * 4;
+        if (imageBytes > MaxRequestBytes) return {}; // Over budget even before adding text.
         const auto label = input.imageLabels.isEmpty() ? QString("Image %1").arg(index + 1) : input.imageLabels[index];
         content.append(QJsonObject{{"type", responses ? "input_text" : "text"},
                                    {"text", QString("Image %1: %2; dimensions %3 × %4 image pixels.")
@@ -177,18 +240,40 @@ void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString
         body["messages"] = QJsonArray{QJsonObject{{"role", "system"}, {"content", prompt}}, QJsonObject{{"role", "user"}, {"content", content}}};
         body[settings.providerId.startsWith("kimi-") ? "max_completion_tokens" : "max_tokens"] = maxOutput;
     }
-    const auto bytes = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    if (bytes.size() > MaxRequestBytes) { emit failed(tr("本次图片总量超过 32 MiB，请分批解析。")); return; }
-    connection_ = settings; key_ = key; testing_ = test; context_ = test ? QString() : aiInputContext(input);
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+} // namespace
+
+void AiFeedbackClient::sendNext() {
+    QByteArray bytes;
+    for (;;) {
+        const auto input = pending_.takeFirst();
+        // DeepSeek has a stricter edge limit at 15 images, so keep set batches below it.
+        const auto maxImages = imageSet_ && connection_.providerId == "deepseek" ? 14 : MaxImages;
+        if (input.images.size() > maxImages) {
+            if (imageSet_ && splitImageSet(input, pending_)) continue;
+            fail(tr("一次可解析 16 张图片，请分批处理。")); return;
+        }
+        QString error;
+        facts_ = {};
+        if (!testing_ && !aiCollectFacts(input.feedback, &facts_, &error, renderedCount_)) { fail(error); return; }
+        bytes = requestBody(connection_, prompt_, input, facts_, testing_, &error);
+        if (!error.isEmpty()) { fail(error); return; }
+        if (!bytes.isEmpty() && bytes.size() <= MaxRequestBytes) break;
+        if (!imageSet_ || !splitImageSet(input, pending_)) {
+            fail(tr("本次图片总量超过 32 MiB，请分批解析。")); return;
+        }
+        bytes.clear();
+    }
     response_.clear(); terminalError_.clear(); cancelled_ = false;
-    QNetworkRequest request(endpointOverride_.isEmpty() ? endpoint(settings) : endpointOverride_);
+    QNetworkRequest request(endpointOverride_.isEmpty() ? endpoint(connection_) : endpointOverride_);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
     request.setRawHeader("User-Agent", "EditHere/" EDITHERE_VERSION);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
-    request.setTransferTimeout(settings.timeoutSeconds * 1000);
-    if (anthropic) { request.setRawHeader("x-api-key", key.toUtf8()); request.setRawHeader("anthropic-version", "2023-06-01"); }
-    else request.setRawHeader("Authorization", "Bearer " + key.toUtf8());
+    request.setTransferTimeout(connection_.timeoutSeconds * 1000);
+    if (connection_.protocol == "anthropic-messages") { request.setRawHeader("x-api-key", key_.toUtf8()); request.setRawHeader("anthropic-version", "2023-06-01"); }
+    else request.setRawHeader("Authorization", "Bearer " + key_.toUtf8());
     reply_ = network_.post(request, bytes);
     reply_->setReadBufferSize(64 * 1024);
     connect(reply_, &QNetworkReply::readyRead, this, [this] {
@@ -197,7 +282,7 @@ void AiFeedbackClient::start(const AiConnectionSettings &settings, const QString
         if (response_.size() > MaxResponseBytes) { terminalError_ = tr("API 回复超过 2 MiB，已停止接收。"); reply_->abort(); }
     });
     connect(reply_, &QNetworkReply::finished, this, &AiFeedbackClient::finish);
-    timeout_.start(settings.timeoutSeconds * 1000);
+    timeout_.start(connection_.timeoutSeconds * 1000);
 }
 void AiFeedbackClient::cancel() {
     if (!reply_) return;
@@ -205,8 +290,13 @@ void AiFeedbackClient::cancel() {
 }
 void AiFeedbackClient::fail(const QString &message) {
     const auto safe = safeMessage(message, key_);
-    key_.fill(QChar('\0')); key_.clear(); facts_ = {}; context_.clear(); response_.clear();
+    resetRun();
     emit failed(safe);
+}
+void AiFeedbackClient::resetRun() {
+    key_.fill(QChar('\0')); key_.clear();
+    facts_ = {}; context_.clear(); prompt_.clear(); response_.clear(); pending_.clear(); results_.clear();
+    renderedCount_ = 0; inputTokens_ = 0; outputTokens_ = 0; usageKnown_ = true; cancelled_ = false;
 }
 void AiFeedbackClient::finish() {
     if (!reply_) return;
@@ -215,8 +305,7 @@ void AiFeedbackClient::finish() {
     if (reply->isOpen()) response_ += reply->readAll();
     reply->deleteLater();
     if (cancelled_) {
-        key_.fill(QChar('\0')); key_.clear(); facts_ = {}; context_.clear(); response_.clear();
-        cancelled_ = false;
+        resetRun();
         emit cancelled();
         return;
     }
@@ -247,17 +336,27 @@ void AiFeedbackClient::finish() {
         }
         text = tr("连接成功，模型已接受测试图片。");
     } else {
-        text = aiFormatResult(content, facts_, context_, &error);
+        text = aiFormatResult(content, facts_, results_.isEmpty() ? context_ : QString(), &error, renderedCount_, imageSet_);
         if (!error.isEmpty()) { fail(error); return; }
     }
     const auto usage = object["usage"].toObject();
     const auto inputCount = usage.contains("input_tokens") ? usage["input_tokens"] : usage["prompt_tokens"];
     const auto outputCount = usage.contains("output_tokens") ? usage["output_tokens"] : usage["completion_tokens"];
     const auto inputTokens = inputCount.toInteger(-1), outputTokens = outputCount.toInteger(-1);
-    key_.fill(QChar('\0')); key_.clear(); facts_ = {}; context_.clear();
-    // An omitted/non-numeric usage field is unavailable, never zero usage.
-    if (inputCount.isDouble() && outputCount.isDouble() && inputTokens >= 0 && outputTokens >= 0)
-        emit usageAvailable(inputTokens, outputTokens);
-    emit completed(text);
+    // Don't show a partial token count if any batch omitted usage.
+    const auto maxTokens = std::numeric_limits<qint64>::max();
+    usageKnown_ = usageKnown_ && inputCount.isDouble() && outputCount.isDouble() && inputTokens >= 0 && outputTokens >= 0
+                  && inputTokens <= maxTokens - inputTokens_ && outputTokens <= maxTokens - outputTokens_;
+    if (usageKnown_) { inputTokens_ += inputTokens; outputTokens_ += outputTokens; }
+    renderedCount_ += facts_.size();
+    results_.append(text);
+    if (!pending_.isEmpty()) { sendNext(); return; }
+
+    const auto result = results_.join("\n\n");
+    const auto totalInput = inputTokens_, totalOutput = outputTokens_;
+    const bool usageKnown = usageKnown_;
+    resetRun();
+    if (usageKnown) emit usageAvailable(totalInput, totalOutput);
+    emit completed(result);
 }
 } // namespace h2d

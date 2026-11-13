@@ -67,3 +67,34 @@ test('manifest CLI can create, replace, bundle and remove a page using its stabl
   const output=path.join(dir,'offline.json');assert.equal(run('bundle',manifest,'--output',output).pageCount,1);assert.equal(JSON.parse(fs.readFileSync(output)).kind,'set');
   assert.equal(run('remove',manifest,'--id','home').pages.length,0);
 });
+
+for (const [label,relative] of [
+  ['desktop','skills/edithere'],['web','web/skills/edithere-web'],
+  ['connector','connector/skills/edithere'],['trae','trae-plugin/skills/edithere'],
+  ['dsh','dsh/skill/edithere-dsh']
+]) test(`the ${label} skill maintains review rounds outside the source repository`,context=>{
+  const {dir,image}=fixture(context),portable=path.join(dir,'standalone-skill');
+  fs.cpSync(path.resolve(__dirname,'../..',relative),portable,{recursive:true});
+  const cli=path.join(portable,'scripts/image-set.mjs'),manifest=path.join(dir,'review.json');
+  const run=(...args)=>JSON.parse(execFileSync(process.execPath,[cli,...args],{cwd:portable,encoding:'utf8',windowsHide:true}));
+  run('create',manifest,'--name','Review rounds');
+  run('upsert',manifest,'--id','home','--name','Home','--image',image);
+  run('upsert',manifest,'--id','settings.ai','--name','AI settings','--image',image);
+  const first=run('list',manifest),roundOne=path.join(dir,'round-one.json');
+  run('bundle',manifest,'--output',roundOne);
+  const firstProject=JSON.parse(fs.readFileSync(roundOne,'utf8'));
+  const replacement=path.join(dir,'settings-v2.png');
+  fs.copyFileSync(path.resolve(__dirname,'../../tests/fixtures/ocr-small-url.png'),replacement);
+  run('upsert',manifest,'--id','settings.ai','--name','AI preferences','--image',replacement);
+  const second=run('list',manifest),roundTwo=path.join(dir,'round-two.json');
+  assert.deepEqual(second.pages.map(page=>page.id),['home','settings.ai']);
+  assert.deepEqual(second.pages[0],first.pages[0]);
+  assert.notEqual(second.pages[1].sha256,first.pages[1].sha256);
+  assert.equal(run('bundle',manifest,'--output',roundTwo).pageCount,2);
+  const secondProject=JSON.parse(fs.readFileSync(roundTwo,'utf8'));
+  assert.equal(secondProject.pages[0].image,firstProject.pages[0].image);
+  assert.notEqual(secondProject.pages[1].image,firstProject.pages[1].image);
+  assert.deepEqual(JSON.parse(fs.readFileSync(roundOne,'utf8')),firstProject,'the reviewed round remains intact');
+  assert.deepEqual(run('remove',manifest,'--id','settings.ai').pages.map(page=>page.id),['home']);
+  assert(fs.existsSync(replacement),'removing a page reference preserves its screenshot');
+});

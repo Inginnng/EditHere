@@ -34,8 +34,23 @@ $installer=Join-Path $output "EditHere-$version-win-x64-setup.exe"
 if(Test-Path -LiteralPath $installer){throw 'Installer already exists. Use a fresh OutputDirectory.'}
 # The same installed manifest drives upgrades, rollback and uninstallation.
 # Do not generate a second, current-version-only deletion list.
-& $NsisCompiler '/V2' '/WX' '/INPUTCHARSET' 'UTF8' "/DAPP_VERSION=$version" "/DPROJECT_ROOT=$projectRoot" "/DPACKAGE_DIR=$package" "/DOUTPUT_FILE=$installer" (Join-Path $projectRoot 'packaging/windows/edithere.nsi')
-if($LASTEXITCODE){throw 'Installer compilation failed.'}
+# NSIS creates memory-mapped temporary files once the payload grows. Keep those
+# beside the output, where write access has already been established.
+$compilerTemp=Join-Path $output ('.nsis-'+[guid]::NewGuid().ToString('N'))
+$previousTemp=$env:TEMP
+$previousTmp=$env:TMP
+[IO.Directory]::CreateDirectory($compilerTemp) | Out-Null
+try {
+    $env:TEMP=$compilerTemp
+    $env:TMP=$compilerTemp
+    & $NsisCompiler '/V2' '/WX' '/INPUTCHARSET' 'UTF8' "/DAPP_VERSION=$version" "/DPROJECT_ROOT=$projectRoot" "/DPACKAGE_DIR=$package" "/DOUTPUT_FILE=$installer" (Join-Path $projectRoot 'packaging/windows/edithere.nsi')
+    if($LASTEXITCODE){throw 'Installer compilation failed.'}
+} finally {
+    $env:TEMP=$previousTemp
+    $env:TMP=$previousTmp
+    if(!$compilerTemp.StartsWith($output+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe compiler temporary directory.'}
+    if([IO.Directory]::Exists($compilerTemp)){Remove-Item -LiteralPath $compilerTemp -Recurse -Force}
+}
 $hash=(Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText(($installer+'.sha256'),$hash+'  '+[IO.Path]::GetFileName($installer)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
 Write-Host "Installer: $installer"

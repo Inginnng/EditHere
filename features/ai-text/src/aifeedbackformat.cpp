@@ -22,7 +22,8 @@ QJsonValue aiFeedbackData(const QJsonValue &value) {
     for (auto it = object.begin(); it != object.end(); ++it) it.value() = aiFeedbackData(it.value());
     return object;
 }
-bool aiCollectFacts(const QJsonObject &feedback, QJsonArray *facts, QString *error) {
+bool aiIsImageSet(const QJsonObject &feedback) { return feedback["schemaVersion"] == "image-set-feedback-1"; }
+bool aiCollectFacts(const QJsonObject &feedback, QJsonArray *facts, QString *error, qsizetype firstIndex) {
     std::function<bool(const QJsonArray &, const QJsonObject &, const QString &)> collect;
     collect = [&](const QJsonArray &objects, const QJsonObject &frame, const QString &parent) {
         for (const auto &value : objects) {
@@ -31,7 +32,7 @@ bool aiCollectFacts(const QJsonObject &feedback, QJsonArray *facts, QString *err
             const auto children = object.take("children").toArray();
             if (facts->size() >= MaxObjects) { *error = tr("一次最多整理 100 个批注对象，请分批处理。"); return false; }
             const auto originalId = object["id"].toString();
-            const auto id = QString("item-%1").arg(facts->size() + 1);
+            const auto id = QString("item-%1").arg(firstIndex + facts->size() + 1);
             object["objectId"] = originalId;
             object["id"] = id;
             if (!parent.isEmpty()) object["parentItemId"] = parent;
@@ -50,6 +51,16 @@ bool aiCollectFacts(const QJsonObject &feedback, QJsonArray *facts, QString *err
                                       {"timestampUs", frame["timestampUs"]}};
             if (!collect(frame["feedback"].toObject()["objects"].toArray(), context, {})) return false;
         }
+    } else if (aiIsImageSet(feedback)) {
+        for (const auto &value : feedback["pages"].toArray()) {
+            const auto page = value.toObject();
+            const QJsonObject context{{"pageId", page["id"]}, {"pageName", page["name"]}, {"pageNumber", page["index"]}};
+            if (!collect(page["feedback"].toObject()["objects"].toArray(), context, {})) return false;
+        }
+        QJsonArray groupNotes;
+        for (const auto &value : feedback["groupNotes"].toArray())
+            groupNotes.append(QJsonObject{{"kind", "global"}, {"annotations", QJsonArray{value.toObject()["text"]}}});
+        if (!collect(groupNotes, {{"scope", "entire image set"}}, {})) return false;
     } else if (!collect(feedback["objects"].toArray(), {}, {})) return false;
     if (facts->isEmpty()) { *error = tr("请先添加批注或调整组件，再生成修改意见。"); return false; }
     return true;
@@ -61,6 +72,11 @@ QString aiOriginalNotes(const QJsonObject &fact) {
         if (!text.trimmed().isEmpty()) notes << text;
     }
     return notes.join('\n');
+}
+QString aiFactScope(const QJsonObject &fact) {
+    if (fact["scope"] == "entire image set") return tr("整组意见");
+    const auto name = fact["pageName"].toString();
+    return name.isEmpty() ? QString() : tr("第 %1 页：%2").arg(fact["pageNumber"].toInt()).arg(name);
 }
 namespace {
 QString unfenced(QString text) {
@@ -75,9 +91,11 @@ QString unfenced(QString text) {
 }
 QString aiInputContext(const AiFeedbackInput &input) {
     // A human page name can identify the task; capture metadata is model input only.
+    if (aiIsImageSet(input.feedback)) return input.feedback["set"].toObject()["name"].toString().trimmed();
     return input.feedback["capture"].toObject()["page"].toString().trimmed();
 }
-QString aiFormatResult(QString content, const QJsonArray &facts, const QString &context, QString *error) {
+QString aiFormatResult(QString content, const QJsonArray &facts, const QString &context, QString *error,
+                       qsizetype firstIndex, bool requireStructured) {
     content = unfenced(content);
     auto document = QJsonDocument::fromJson(content.toUtf8());
     if (document.isNull()) {
@@ -86,7 +104,7 @@ QString aiFormatResult(QString content, const QJsonArray &facts, const QString &
     }
     const bool structured = document.isObject() && document.object()["items"].isArray();
     if (!structured) {
-        if (content.isEmpty() || content.startsWith('{') || content.startsWith('[')) {
+        if (requireStructured || content.isEmpty() || content.startsWith('{') || content.startsWith('[')) {
             *error = tr("未能读出修改说明，请重新解析。");
             return {};
         }
@@ -108,12 +126,16 @@ QString aiFormatResult(QString content, const QJsonArray &facts, const QString &
     }
     QStringList sections;
     if (!context.isEmpty()) sections << context;
-    int index = 0;
+    auto index = firstIndex;
     for (const auto &value : facts) {
-        const auto item = byId.value(value.toObject()["id"].toString());
+        const auto fact = value.toObject();
+        const auto item = byId.value(fact["id"].toString());
         const auto target = item["target"].toString().trimmed();
         const auto instruction = item["instruction"].toString().trimmed();
-        QString section = QString("%1. %2").arg(++index).arg(target.isEmpty() ? instruction : target + '\n' + instruction);
+        const auto scope = aiFactScope(fact);
+        QString section = QString("%1. ").arg(++index);
+        if (!scope.isEmpty()) section += scope + '\n';
+        section += target.isEmpty() ? instruction : target + '\n' + instruction;
         const auto uncertainty = item["uncertainty"].toString().trimmed();
         if (!uncertainty.isEmpty()) section += '\n' + tr("待确认：%1").arg(uncertainty);
         sections << section;

@@ -571,8 +571,12 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     });
     connect(updater_, &UpdateChecker::downloadProgress, this,
             [progressBar](qint64 received, qint64 total) {
-                if (total > 0)
+                if (total > 0) {
+                    progressBar->setRange(0, 100);
                     progressBar->setValue(static_cast<int>(received * 100 / total));
+                } else {
+                    progressBar->setRange(0, 0);
+                }
             });
     connect(updater_, &UpdateChecker::installerPreparing, this, [this, status, progressBar] {
         status->setText(tr("正在检查安装条件并准备更新，当前工作将保留到安装器就绪。"));

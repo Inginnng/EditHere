@@ -321,13 +321,13 @@ def check_linux_release_package(release_workflow: str) -> list[Problem]:
             "release job is guessing the directory upload-artifact will use; "
             "dist/linux-*/<file> arrives under linux-<version>/ (REG-157)."
         )
-    required = [line for line in release_lines if line.startswith("packages=")]
-    if not required or LINUX_APPIMAGE not in required[0]:
+    required_step = release_workflow.partition("- name: Require every package before publishing\n")[2].split("\n      - ", 1)[0]
+    if f"artifacts/{LINUX_APPIMAGE}" not in {line.strip() for line in required_step.splitlines()}:
         problems.append(
             f"release.yml: {LINUX_APPIMAGE} is not one of the packages the release "
             f"insists on, so a tag can still publish without Linux."
         )
-    if "artifacts/*.AppImage" not in release_lines:
+    if "files: ${{ steps.release-assets.outputs.paths }}" not in release_lines:
         problems.append(
             f"release.yml: the AppImage is not attached to the release assets, so the "
             f"release would look complete while Linux is missing."
@@ -1153,7 +1153,7 @@ def check_save_dialog_paths() -> list[Problem]:
 
 
 def check_update_signing() -> list[Problem]:
-    """REG-211  Publishing must require a final-byte signature; no PR key use."""
+    """REG-211/218  Publish only after signing final bytes and checking the uploaded draft."""
     workflow = read(ROOT / ".github/workflows/release.yml")
     problems = []
     marker = "${{ secrets.EDITHERE_UPDATE_SIGNING_KEY }}"
@@ -1168,11 +1168,17 @@ def check_update_signing() -> list[Problem]:
             problems.append(f"{path.name}: must not receive the update signing Secret")
     ordered = [workflow.find(value) for value in (
         "Publish assets under version-less names", "Generate SHA256SUMS", "Require tag and source version to match",
-        "--sign artifacts/EditHere-win-x64-setup.exe", "--verify artifacts/EditHere-win-x64-setup.exe", "Create GitHub Release")]
+        "--sign artifacts/EditHere-win-x64-setup.exe", "--verify artifacts/EditHere-win-x64-setup.exe",
+        "Create GitHub Release draft", "node scripts/verify-release-assets.cjs", "gh api --method PATCH")]
     if any(value < 0 for value in ordered) or ordered != sorted(ordered):
-        problems.append("release.yml: must rename/checksum/validate, sign, independently verify, then publish final installer bytes")
-    if "artifacts/*.exe.sig" not in workflow:
-        problems.append("release.yml: detached installer signature is not a required release asset")
+        problems.append("release.yml: must prepare, sign, independently verify, stage as draft, verify uploaded bytes, then publish")
+    draft_step = next((step for step in steps if step.startswith("name: Create GitHub Release draft")), "")
+    if "draft: true" not in draft_step or "fail_on_unmatched_files: true" not in draft_step:
+        problems.append("release.yml: uploads must remain a draft and require all listed files")
+    required_step = next((step for step in steps if step.startswith("name: Require every package before publishing")), "")
+    inventory_lines = {line.strip() for line in required_step.splitlines()}
+    if not {f"artifacts/EditHere-win-x64-setup.exe{suffix}" for suffix in ("", ".sha256", ".sig")} <= inventory_lines:
+        problems.append("release.yml: installer, checksum and detached signature must all be required release assets")
     public_header = read(ROOT / "app/updatekey.h")
     match = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]*)"', public_header)
     fixture = re.search(r'ProjectPublicKeyHex\[\] = "([0-9a-f]+)"', read(ROOT / "tests/fixtures/update-signature-public.h"))

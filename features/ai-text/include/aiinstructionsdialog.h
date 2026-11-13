@@ -26,6 +26,7 @@ class AiInstructionsDialog final : public QDialog {
                          AiCredentials *providerProbe = nullptr);
     ~AiInstructionsDialog() override;
     AiInstructionsDraft draft() const;
+    void applyTo(AppSettings &settings) const;
     void done(int result) override;
   protected:
     void changeEvent(QEvent *) override;
@@ -63,7 +64,7 @@ class AiInstructionsDialog final : public QDialog {
     QSplitter *splitter_ = nullptr;
     QWidget *sourcePanel_ = nullptr;
     QProgressBar *progress_;
-    QPushButton *generate_, *cancel_, *copy_, *save_, *configure_;
+    QPushButton *generate_, *cancel_, *copy_, *save_, *configure_, *providerSwitch_, *prompt_;
     QMenu *providerMenu_ = nullptr;
 };
 } // namespace h2d
