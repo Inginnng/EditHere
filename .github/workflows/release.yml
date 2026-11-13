@@ -8,6 +8,10 @@ on:
       tag:
         description: "Tag to release (e.g. v0.8.22)"
         required: true
+      validate_only:
+        description: "Build and verify all packages without publishing"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -31,7 +35,17 @@ jobs:
           scripts\build-windows.ps1 -QtRoot ".tools/qt/6.8.3/mingw_64" -Compiler "$mingwBin\g++.exe" -Ninja "ninja.exe" -SkipTests
 
       - name: Install NSIS
-        run: choco install nsis -y --no-progress
+        run: |
+          choco install nsis -y --no-progress
+          choco install ffmpeg -y --no-progress
+
+      - name: Prepare real video decoding regression fixture
+        run: |
+          New-Item -ItemType Directory -Path build/test-fixtures -Force | Out-Null
+          ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=1920x1080:rate=30' -t 120 -an -c:v libx264 -preset ultrafast -crf 35 -pix_fmt yuv420p -g 30 build/test-fixtures/seek.mp4
+          if ($LASTEXITCODE) { throw 'Could not generate the video decoding fixture.' }
+          $videoPath = (Resolve-Path 'build/test-fixtures/seek.mp4').Path
+          "EDITHERE_VIDEO_TEST_SOURCE=$videoPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Ensure English system OCR is available
         shell: powershell
@@ -49,12 +63,17 @@ jobs:
       - name: Verify capture regressions, startup updates and installer transactions
         env:
           EDITHERE_REQUIRE_VIDEO_OCR_TESTS: "1"
+          QTEST_FUNCTION_TIMEOUT: "60000"
         run: |
+          # Run without Qt or MinGW on PATH so this also verifies CTest's runtime setup.
+          ctest --test-dir build --interactive-debug-mode 0 --output-on-failure --timeout 180 --output-junit build/test-results.xml -R '^(core|ui|image-set|ai-feedback|ai-instructions|agent-cli|windows-ipc-validation|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
+          if ($LASTEXITCODE) {
+            if (Test-Path 'build/agent-cli-test.log') { Get-Content 'build/agent-cli-test.log' }
+            throw 'Capture, annotation, startup or update tests failed.'
+          }
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
           $qtBin = (Resolve-Path ".tools/qt/6.8.3/mingw_64/bin").Path
           $env:PATH = "$qtBin;$mingwBin;$env:PATH"
-          ctest --test-dir build --output-on-failure -R '^(core|ui|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
-          if ($LASTEXITCODE) { throw 'Capture, annotation, startup or update tests failed.' }
           $env:NSIS_MAKENSIS = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
           $env:EDITHERE_UPDATE_STUB = (Resolve-Path 'build/update_installer_stub.exe').Path
           python tests/installer_transaction_test.py
@@ -157,13 +176,20 @@ jobs:
 
   release:
     needs: [build-windows, build-macos, build-linux, build-web]
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.validate_only }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: github-release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Test draft asset verification
+        run: node --test tests/release_assets_test.cjs
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -324,34 +350,56 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: node scripts/sign-update.cjs --verify artifacts/EditHere-win-x64-setup.exe "$RELEASE_TAG"
+
       - name: Require every package before publishing
-        # A tag without installers is a broken release: fail loudly here rather
-        # than publishing a source-only release. The AppImage belongs on this
-        # list too -- 0.9.9 shipped without it because no job built one
-        # (REG-109, REG-122), and the web ZIPs since 0.11.1 (REG-177).
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+        id: release-assets
+        # Use one exact list for the local check, upload and remote check.
         run: |
-          cd artifacts
-          packages="EditHere-win-x64-setup.exe EditHere-win-x64.zip EditHere-macos-universal.dmg EditHere-linux-x86_64.AppImage EditHere-web.zip EditHere-web-agent.zip"
-          missing=0
-          for package in $packages; do
-            if [[ ! -s "$package" ]]; then
-              echo "::error::Missing or empty release package: $package"
-              missing=1
-            fi
+          assets=(
+            artifacts/EditHere-win-x64-setup.exe
+            artifacts/EditHere-win-x64-setup.exe.sha256
+            artifacts/EditHere-win-x64-setup.exe.sig
+            artifacts/EditHere-win-x64.zip
+            artifacts/EditHere-win-x64.zip.sha256
+            artifacts/EditHere-macos-universal.dmg
+            artifacts/EditHere-linux-x86_64.AppImage
+            artifacts/EditHere-linux-x86_64.AppImage.sha256
+            artifacts/EditHere-web.zip
+            artifacts/EditHere-web.zip.sha256
+            artifacts/EditHere-web-agent.zip
+            artifacts/EditHere-web-agent.zip.sha256
+            artifacts/edithere-cli
+            artifacts/SHA256SUMS.txt
+          )
+          for asset in "${assets[@]}"; do
+            [[ -f "$asset" && -s "$asset" ]] || {
+              echo "::error::Missing or empty release asset: $asset"
+              exit 1
+            }
           done
-          if [[ "$missing" != "0" ]]; then
-            ls -l
+          {
+            echo 'paths<<EOF'
+            printf '%s\n' "${assets[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to replace an already published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          published_tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false) | .tag_name')
+          if grep -Fxq -- "$RELEASE_TAG" <<< "$published_tags"; then
+            echo "::error::$RELEASE_TAG is already public. Release reruns may only upload to a draft."
             exit 1
           fi
-          echo "All packages present for $VERSION:"
-          ls -l $packages
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release draft
+        id: draft
         uses: softprops/action-gh-release@v2
         with:
-          # Never publish a release whose assets did not land.
+          draft: true
           fail_on_unmatched_files: true
           tag_name: ${{ steps.version.outputs.tag }}
           name: EditHere ${{ steps.version.outputs.version }}
@@ -359,14 +407,20 @@ jobs:
           # the "Full Changelog" compare link.
           body_path: release-notes.md
           generate_release_notes: true
-          files: |
-            artifacts/*.zip
-            artifacts/*.exe
-            artifacts/*.exe.sha256
-            artifacts/*.exe.sig
-            artifacts/*.zip.sha256
-            artifacts/*.dmg
-            artifacts/*.AppImage
-            artifacts/*.AppImage.sha256
-            artifacts/edithere-cli
-            artifacts/SHA256SUMS.txt
+          files: ${{ steps.release-assets.outputs.paths }}
+
+      - name: Verify uploaded draft and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          ASSET_PATHS: ${{ steps.release-assets.outputs.paths }}
+        run: |
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]
+          release_api="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          draft_json="$RUNNER_TEMP/edithere-draft.json"
+          mapfile -t assets <<< "$ASSET_PATHS"
+          # Read back the exact draft we uploaded, independently of the upload action.
+          gh api "$release_api" > "$draft_json"
+          node scripts/verify-release-assets.cjs "$draft_json" "$RELEASE_TAG" "${assets[@]}"
+          gh api --method PATCH "$release_api" -F draft=false -f make_latest=legacy --jq '.html_url'

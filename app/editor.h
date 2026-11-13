@@ -91,6 +91,7 @@ class Editor final : public QWidget {
     void toolbarSettingsRequested();
     void settingsRequested();
     void aiSettingsRequested();
+    void aiPreferencesChanged(const QString &providerId, const QString &systemPrompt);
     // The editor changed a preference itself — the "don't ask again" box does — and the
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();

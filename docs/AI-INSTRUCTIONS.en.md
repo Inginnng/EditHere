@@ -20,6 +20,8 @@ Settings uses a left navigation sidebar. The AI page has a provider selector wit
 3. Review the identified objects, original comments, exact values and items marked for review. You can edit the result directly.
 4. Click **Copy text** to hand it to an agent, or **Save as…** to export UTF-8 TXT / Markdown.
 
+Image set analysis sends only pages with annotations or layout adjustments. The result identifies each page by number and name. Feedback about the whole set can be sent as text alone. When a set exceeds the image count or request size limit, EditHere batches it by page, keeps the original and adjusted image together, and combines the results once all batches succeed.
+
 Closing the dialog or clicking **Stop** cancels a running request. Failed, cancelled and timed-out requests are not automatically retried. The original images and annotations remain in the current project; save the project separately to keep them between sessions.
 
 Results correspond to the annotation objects. The app preserves original coordinates, displacement, scaling, video timestamps and the user's exact comments; the model adds object identity, spatial relationships and the modification description. Moves use original-image coordinates; ordinary and child annotations use the adjusted layout's coordinates. Values are image pixels and must not be assumed to be CSS pixels. Each frame with layout changes supplies both the original and a full-resolution adjusted image.
@@ -28,7 +30,7 @@ The **⋯** menu sits inside **Copy JSON content** on the editor's bottom toolba
 
 ## Current limits
 
-A request accepts at most 100 objects, 8 video frames and 16 images, with up to 5 MiB per PNG and 32 MiB for the whole request. Providers may impose additional image dimension limits. Oversized input stops locally with a prompt to split the task; the app does not silently downscale or drop frames. A truncated response or a response missing objects is rejected instead of presented as a complete instruction list.
+An analysis can cover at most 100 objects and 8 video frames. Each request can carry up to 16 images and 32 MiB, with up to 5 MiB per PNG. Providers may impose additional image dimension limits. If the input still exceeds a limit, the app reports an error instead of silently downscaling or dropping pages. A truncated response or a response missing objects is rejected instead of presented as a complete instruction list.
 
 Structural and numeric checks cannot prove that the model understood every visual detail correctly. Review the text before using it. Keep the original project for complex visual changes so the relevant area can be interpreted again if needed.
 

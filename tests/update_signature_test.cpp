@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSignalSpy>
@@ -23,9 +24,10 @@ class Reply final : public QNetworkReply {
         : QNetworkReply(parent), data_(std::move(data)) {
         setRequest(request); setUrl(request.url()); open(QIODevice::ReadOnly);
     }
-    void deliver(bool error = false) {
+    void deliver(NetworkError error = NoError, int status = 0) {
         if (aborted) return;
-        if (error) setError(QNetworkReply::ContentNotFoundError, "missing fixture");
+        if (status) setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
+        if (error != NoError) setError(error, "synthetic download failure");
         emit readyRead();
         if (aborted) return;
         setFinished(true); emit finished();
@@ -65,10 +67,11 @@ class UpdateCheckerTestAccess {
 }
 class SignatureTests : public QObject {
     Q_OBJECT
-    QByteArray metadata() {
-        QFile file(QFINDTESTDATA("fixtures/update-signature.txt"));
-        if (!file.open(QIODevice::ReadOnly)) return {};
-        return file.readAll();
+    QByteArray signedMetadata_;
+    static QString fixturePath(const QString &name) {
+        // The compiler supplies a UTF-8 source path. QFINDTESTDATA decodes it
+        // with the system code page on Windows, breaking non-ASCII checkouts.
+        return QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/") + name);
     }
     QString hash() { return QString::fromLatin1(QCryptographicHash::hash("payload", QCryptographicHash::Sha256).toHex()); }
     QByteArray release(UpdateChecker::Source source, const QString &version = "99.0.0", bool signedSet = true) {
@@ -84,25 +87,31 @@ class SignatureTests : public QObject {
             {"html_url", base + "/tag/v" + version}, {"assets", assets}}).toJson();
     }
   private slots:
+    void initTestCase() {
+        QFile file(fixturePath(QStringLiteral("update-signature.txt")));
+        QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(file.fileName()));
+        signedMetadata_ = file.readAll();
+        QVERIFY(signedMetadata_.size() > 10); // Mutation cases edit bytes near the end.
+    }
     void independentNodeFixtureVerifiesInCng() {
 #ifndef Q_OS_WIN
         QSKIP("CNG is Windows-only; signer and parsing tests run on every platform.");
 #else
         QString error;
-        QVERIFY2(updateauth::verifyProjectSignature(metadata(), "99.0.0", "EditHere-win-x64-setup.exe", hash(), &error), qPrintable(error));
+        QVERIFY2(updateauth::verifyProjectSignature(signedMetadata_, "99.0.0", "EditHere-win-x64-setup.exe", hash(), &error), qPrintable(error));
 #endif
     }
     void rejectsMalformedOrChangedSignedIdentity() {
-        const auto good = metadata();
-        QVERIFY(!good.isEmpty());
+        const auto good = signedMetadata_;
         QList<QByteArray> bad{QByteArray(), QByteArray(1025, 'x'), good + '\n', good.left(good.size() - 1)};
         auto changed = good; changed[changed.size() - 10] ^= 1; bad << changed;
         changed = good; changed.replace("99.0.0", "98.0.0"); bad << changed;
         changed = good; changed.replace("\n", "\r\n"); bad << changed;
         changed = good; changed[good.size() - 2] = '!'; bad << changed;
         changed = good; changed[good.size() - 90] = char(0x80); bad << changed;
-        QFile wrongKey(QFINDTESTDATA("fixtures/update-signature-wrong-key.txt"));
-        QVERIFY(wrongKey.open(QIODevice::ReadOnly)); bad << wrongKey.readAll();
+        QFile wrongKey(fixturePath(QStringLiteral("update-signature-wrong-key.txt")));
+        QVERIFY2(wrongKey.open(QIODevice::ReadOnly), qPrintable(wrongKey.fileName()));
+        bad << wrongKey.readAll();
         for (const auto &value : bad) {
             QString error;
             QVERIFY(!updateauth::verifyProjectSignature(value, "99.0.0", "EditHere-win-x64-setup.exe", hash(), &error));
@@ -168,7 +177,7 @@ class SignatureTests : public QObject {
             if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
             return false; // Observe launch without running any external process.
         });
-        auto sig = metadata(); auto version = QString("99.0.0"); auto name = QString("EditHere-win-x64-setup.exe"); auto digest = hash();
+        auto sig = signedMetadata_; auto version = QString("99.0.0"); auto name = QString("EditHere-win-x64-setup.exe"); auto digest = hash();
         if (mutation == 1) sig.clear();
         if (mutation == 2) sig[sig.size()-10] ^= 1;
         if (mutation == 3) version = "100.0.0";
@@ -190,7 +199,7 @@ class SignatureTests : public QObject {
 #else
         if (updateauth::certificateMode()) return; // The real entry above proves no project fallback.
         const auto result = UpdateChecker::parseRelease(release(UpdateChecker::GitHub), "1.0.0");
-        const auto sig = metadata();
+        const auto sig = signedMetadata_;
         for (int scenario = 0; scenario < 8; ++scenario) {
             auto checker = std::make_unique<UpdateChecker>();
             QSignalSpy failed(checker.get(), &UpdateChecker::installFailed);
@@ -212,7 +221,10 @@ class SignatureTests : public QObject {
                     ? hash().toLatin1() + "  EditHere-win-x64-setup.exe\n" : QByteArray("payload");
                 if (oversize && name.endsWith(scenario == 1 ? ".sha256" : ".sig")) body = QByteArray(5000, 'x');
                 auto *reply = new Reply(request, body, checker.get()); replies << reply;
-                if (!(hold && name.endsWith(".sig"))) QTimer::singleShot(0, reply, [reply, missing, name] { reply->deliver(missing && name.endsWith(".sig")); });
+                if (!(hold && name.endsWith(".sig"))) QTimer::singleShot(0, reply, [reply, missing, name] {
+                    if (missing && name.endsWith(".sig")) reply->deliver(QNetworkReply::ContentNotFoundError, 404);
+                    else reply->deliver();
+                });
                 return reply;
             });
             const auto start = [&] { checker->downloadAndInstall(result.installer, result.installerHash,
@@ -230,6 +242,7 @@ class SignatureTests : public QObject {
                 QTRY_COMPARE(failed.size(), 1);
                 QCOMPARE(confirmations, int(scenario == 0 || scenario == 6 || scenario == 7));
                 QCOMPARE(launches, int(scenario == 0 || scenario == 6));
+                if (missing) QCOMPARE(replies.size(), 3); // A 404 never schedules a retry.
             }
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
             for (const auto &reply : replies) QVERIFY(reply.isNull());
@@ -240,6 +253,92 @@ class SignatureTests : public QObject {
             const int previous = failed.size(); start(); QTRY_COMPARE(failed.size(), previous + 1);
             QVERIFY(!checker->downloading());
         }
+#endif
+    }
+    void transientErrorsRetryTheAffectedFileAndStillVerifyTheCompleteUpdate() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows download/install");
+#else
+        if (updateauth::certificateMode()) return;
+        const auto result = UpdateChecker::parseRelease(release(UpdateChecker::GitHub), "1.0.0");
+        const auto installer = result.installer.name;
+        const auto checksum = result.installerHash.name;
+        const auto signature = result.installerSignature.name;
+        UpdateChecker checker;
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        int confirmations = 0;
+        int launches = 0;
+        checker.setInstallConfirmation([&] { ++confirmations; return true; });
+        UpdateCheckerTestAccess::launcher(checker, [&](QProcess &) { ++launches; return false; });
+        QStringList requests;
+        UpdateCheckerTestAccess::transport(checker, [&](const QNetworkRequest &request) {
+            const auto name = request.url().fileName();
+            const bool firstRequest = !requests.contains(name);
+            requests.append(name);
+            const bool interrupted = name == installer && firstRequest;
+            const bool unavailable = name == signature && firstRequest;
+            QByteArray body = name == installer ? QByteArray("payload") : name == signature ? signedMetadata_ :
+                hash().toLatin1() + "  " + installer.toLatin1() + '\n';
+            if (interrupted) body = "partial installer bytes";
+            if (unavailable) body = QByteArray(5000, 'x'); // CDN error page, not oversized signature data.
+            auto *reply = new Reply(request, body, &checker);
+            QTimer::singleShot(0, reply, [reply, interrupted, unavailable] {
+                if (interrupted) {
+                    emit reply->readyRead();
+                    reply->deliver(QNetworkReply::RemoteHostClosedError);
+                } else if (unavailable) {
+                    reply->deliver(QNetworkReply::ServiceUnavailableError, 503);
+                } else {
+                    reply->deliver();
+                }
+            });
+            return reply;
+        });
+        checker.downloadAndInstall(result.installer, result.installerHash, true, result.tagName, result.installerSignature);
+        QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 7000); // The launch stub reports failure after verification.
+        QCOMPARE(requests, QStringList({installer, installer, checksum, signature, signature}));
+        QCOMPARE(confirmations, 1);
+        QCOMPARE(launches, 1);
+#endif
+    }
+    void downloadRetriesAreBoundedAndCancelledRetriesCannotRestartANewerUpdate() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows download/install");
+#else
+        const auto result = UpdateChecker::parseRelease(release(UpdateChecker::GitHub), "1.0.0");
+        UpdateChecker checker;
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        QSignalSpy progress(&checker, &UpdateChecker::downloadProgress);
+        int requests = 0;
+        bool hold = false;
+        UpdateCheckerTestAccess::transport(checker, [&](const QNetworkRequest &request) {
+            ++requests;
+            auto *reply = new Reply(request, {}, &checker);
+            if (!hold) QTimer::singleShot(0, reply, [reply] { reply->deliver(QNetworkReply::OperationCanceledError); });
+            return reply;
+        });
+        const auto start = [&] {
+            checker.downloadAndInstall(result.installer, result.installerHash, true, result.tagName, result.installerSignature);
+        };
+        start();
+        QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 7000);
+        QCOMPARE(requests, 3);
+        QVERIFY(!checker.downloading());
+
+        progress.clear();
+        start();
+        QTRY_COMPARE(progress.size(), 1);
+        QCOMPARE(requests, 4);
+        QVERIFY(checker.downloading());
+        checker.cancelDownload();
+        QCOMPARE(failed.size(), 2);
+        hold = true;
+        start();
+        QCOMPARE(requests, 5);
+        QTest::qWait(1100); // Let the cancelled operation's first retry become due.
+        QCOMPARE(requests, 5);
+        QVERIFY(checker.downloading());
+        checker.cancelDownload();
 #endif
     }
     void cancellationOrDestructionDuringConfirmationReclaimsLockedPackage() {
@@ -259,7 +358,7 @@ class SignatureTests : public QObject {
                 if (destroy) checker.reset(); else checker->cancelDownload();
                 return true;
             });
-            UpdateCheckerTestAccess::install(*checker, directory.path(), "EditHere-win-x64-setup.exe", "99.0.0", hash(), metadata());
+            UpdateCheckerTestAccess::install(*checker, directory.path(), "EditHere-win-x64-setup.exe", "99.0.0", hash(), signedMetadata_);
             QCOMPARE(launches, 0);
             QCOMPARE(failed.size(), destroy ? 0 : 1);
             QVERIFY(!download.isEmpty()); QVERIFY(!QFileInfo::exists(download));

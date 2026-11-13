@@ -17,6 +17,8 @@ struct AiFeedbackInput {
     QJsonObject feedback;
     QList<QImage> images;
     QStringList imageLabels;
+    // For image sets, each exported page owns the next one or two images.
+    QList<qsizetype> pageImageCounts;
 };
 // Screenshots and geometric edits are evidence for the interpreter. The returned
 // requirements must identify the objects and desired relationships using text alone.
@@ -40,8 +42,10 @@ class AiFeedbackClient final : public QObject {
   private:
     void start(const AiConnectionSettings &, const QString &, const AiFeedbackInput &, bool test,
                const QString &systemPrompt = {});
+    void sendNext();
     void finish();
     void fail(const QString &message);
+    void resetRun();
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QTimer timeout_;
@@ -50,8 +54,15 @@ class AiFeedbackClient final : public QObject {
     AiConnectionSettings connection_;
     QJsonArray facts_;
     QString context_;
+    QString prompt_;
     QString key_;
     QString terminalError_;
+    QList<AiFeedbackInput> pending_;
+    QStringList results_;
+    qsizetype renderedCount_ = 0;
+    qint64 inputTokens_ = 0, outputTokens_ = 0;
+    bool usageKnown_ = true;
+    bool imageSet_ = false;
     bool testing_ = false;
     bool cancelled_ = false;
 };

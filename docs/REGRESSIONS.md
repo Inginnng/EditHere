@@ -15,11 +15,99 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## Windows CI 的实际权限前提（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-238 | GitHub Windows 运行器实际为提权进程，生产 IPC 策略正确拒绝连接，原有普通权限成功路径却继续等待回包并超时。测试从原生进程令牌独立判定前提，提权环境只跳过需要普通权限成功连接的用例；原生令牌与生产策略对照、畸形令牌和其它 CLI 检查仍执行，生产代码不放宽策略 | 本机普通权限完整 `agent-cli` 与 40 组 CTest 通过；Windows CI 执行提权拒绝与令牌校验，明确列出普通权限接受路径的跳过 | ⚠️ |
+
+## 组图更新与真实视频定位（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-235 | Windows 暂时占用组图索引文件时，原子替换可能报 EPERM/EBUSY。对临时共享占用做有限重试，全程保留上一份有效索引，持续失败则回报错误并清理新临时文件；五个平台技能使用相同脚本 | `image-set-session` 注入短暂与持续占用，检查提交前旧索引可读、成功后页面保留、失败后旧索引和临时文件清理；各技能独立分发检查 | 🆕 |
+| REG-236 | 暂停或定位结束后，解码器中旧位置的排队帧仍覆盖当前图像与时间戳，导致视频跳转回退、首次批注关联错误画面。定格后只接受新的播放/定位动作所需帧，忽略迟到帧；Windows 发布生成可重复的两分钟视频，执行真实解码回归 | `video-ui::settledPauseRejectsLateDecoderFrames` 注入错误尺寸、时间戳的迟到帧；实际视频的快速跳转、首次批注和重开用例；Windows 发布不再跳过真实解码 | 🆕 |
+| REG-237 | 过深临时路径下 NSIS 与 PowerShell 对测试载荷路径的处理不同，产生暂存目录校验及清理失败。Windows 测试支持配置独立短目录，运行时与 Node/Python 共用，不修改全局系统环境 | 本机在短路径运行真实 NSIS 22 项事务与取消交接清理；Windows 发布的标准临时目录继续执行安装事务及维护回归 | ⚠️ |
+
+## AI 提示词换行一致性（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-234 | Windows 检出将默认提示词写成 CRLF，但编辑框返回 LF，直接比较会把未修改的默认内容误记为自定义，也使弹窗测试在断言失败后等待。文本资源按文本模式读取，默认提示词固定 LF；弹窗测试在断言失败时也关闭对话框，发布检查覆盖 AI 模块 | `ai-feedback::windowsPromptLineEndingsMatchTheTextEditor` 使用真实 CRLF 文件验证；`ai-instructions::systemPromptButtonEditsTheActualRequestAndKeepsCancelledChangesOut` 检查编辑、取消、保存与真实请求 | 🆕 |
+
+## Windows 正式工具链与独立工作台（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-233 | QtKeychain 0.15.0 为所有 Windows 编译器添加 MSVC 专用 `/utf-8`，导致 MinGW 发布构建失败。对已固定哈希的依赖应用最小 CMake 补丁，仅 MSVC 添加该参数；独立工作台同时补齐 #64 新增的品牌资源和导出依赖 | `Release` 的 Windows MinGW 实际构建与打包；本机用相同工具链构建 `ai_text_workbench`，独立导出的源码同样配置并链接 | 🆕 |
+
+## 图片剪贴板兼容（0.13.0，#65）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-232 | Antigravity Windows 据报只粘贴文件列表中的 JSON。保留原有多文件交付，独立图片复制同时提供 PNG 字节与系统图像格式，并在帮助中指明分步粘贴和隐藏按钮入口。尚未在 Antigravity 实机确认一次粘贴行为，不能据此声明其多附件问题已修复 | `ui::annotatedClipboardKeepsHighResolutionPixels` 同时解码 `image/png` 与系统图像，逐像素核对 4K 原图细节，确认没有残留 JSON 文本或文件列表；既有 JSON 文件列表测试保留 | ⚠️ |
+
+## IPC 与截图操作（0.13.0，#58 / #59 / #62）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-229 | #58 报告 Windows 普通进程被误判提权、CLI 无法连接。以固定对齐且不可复制的缓冲区读取 TokenUser / TokenIntegrityLevel，检查返回长度、SID 指针范围、变长尾部及 mandatory authority；启动与连接双方复用完整性检查。读取失败仍明确拒绝，不能回退为允许 IPC。本机旧版连接正常，尚未在报告者环境复现或确认根因 | `windows-ipc-validation`：普通/提权/高完整性令牌与 11 种读取失败或畸形 SID 注入；`agent-cli::windowsIpcPolicyMatchesTheNativeProcessToken` 对照原生令牌重复验证；`windowsIpcChecksBothEndsOfTheRealNamedPipe` 双向命名管道验证；既有凭据轮换、越权文件拒绝、真实 CLI 跨进程重连 | ⚠️ |
+| REG-230 | #59 拖动更新了鼠标起点但仍引用最初选区，后续位移被抵消；移到边界又裁掉原像素。固定按按下时的鼠标与选区计算总位移，只约束位置，保留原尺寸 | `ui::aSettledSelectionFollowsTheWholeDrag`：100% / 125% / 200%，连续移动、重复坐标、两侧边界、返回起点及负坐标显示器；旧实现三组均失败 | 🆕 |
+| REG-231 | #62 放大镜把蓝色选框与遮罩一起放大，覆盖需要定位的原像素。改采原始截图，单个网格对应一个设备像素。此需求替代 REG-080 / REG-086 的历史蓝框放大行为 | `ui::theMagnifierShowsRawPixelsAtTheScreenEdge`；`theMagnifierKeepsSelectionEdgePixelsVisible`：100% / 125% / 200%，绘制中与定格后，跨选框边缘逐像素校验；`theMagnifierPanelKeepsClearOfTheTools` 保留工具避让与原像素可见性检查 | 🆕 |
+
+## 组图技能闭环与独立分发（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-227 | 仓库的技能已有组图片段，但本机仍加载旧技能，且开发后全页面收集、AI 修改源码与按需换图的闭环不明确。五个入口统一工作流，并同步本机技能及其配套脚本；每份技能都能脱离开发仓库维护稳定页面 ID | `image-set-session.test.cjs` 分别复制桌面、Web、连接器、Trae、DSH 技能到独立目录，执行首轮建组、单页换图、第二轮导出与保留历史；`install-skill.test.cjs` 实际安装后运行组图脚本 | 🆕 |
+
+## 全量测试补齐（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-225 | Web Agent 的批注预览已经按原尺寸输出无损 PNG，但反馈仍使用 `.annotated.jpg` 文件名，造成文件名与内容格式冲突。预览文件名改为 `.annotated.png` | `web/tests/image-modes-browser.test.cjs` 在 file、embedded、none 三种模式下检查预览后缀、MIME 与解码像素 | ✅ |
+| REG-226 | 分发测试样本没有提供组图新增的说明和命令行文件，六项分发回归在读文件时失败。补齐样本，并检查组图说明与命令行确实进入 Web Agent 包 | `tests/distribution_test.py` 的分发结构、隐私隔离及 Web 独立打包用例 | ✅ |
+
+## AI 解析交互（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-223 | AI 解析窗口切换服务商后只改变临时连接，关闭重开会恢复旧服务商。关闭窗口时将所选服务商及手动修改的系统提示词回写编辑器和应用设置；服务商设置入口与独立下拉按钮分开 | `ai-instructions` 的 `providerChoiceSurvivesClosingAndReloadingSettings` 验证切换、关闭、保存、重新加载与重开；`providerEntryShowsWhatIsActuallyConfigured` 验证单个与多个服务商入口 | 🆕 |
+| REG-224 | 系统提示词只能从设置页进入，且入口外观类似链接。设置页改用描边按钮，解析窗口增加同名按钮，共用提示词编辑器；取消不应用，保存后的提示词用于下一次解析 | `ai-instructions` 的 `systemPromptButtonEditsTheActualRequestAndKeepsCancelledChangesOut` 验证编辑、取消、真实请求内容及解析中禁用编辑 | 🆕 |
+
+## Windows 安装入口（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-221 | 独立运行安装包时没有更新交接编号，传给 Windows PowerShell 的空 `-HandoffId` 参数会丢失值，维护程序在开始安装前退出。只有实际存在交接编号时才追加该参数 | `installer_transaction_test.py` 的首次安装、重复安装和独立更新；`installer_package_acceptance.py` 用完整 Qt 包验证安装、更新交接及卸载 | 🆕 |
+| REG-222 | 本地工程目录继承了 NTFS Low 完整性标签，生成的 EXE 也以 Low 级别运行，NSIS 无法写入普通临时目录或用户注册表，分别报临时文件错误或拒绝访问。交付安装包按字节复制到普通下载目录，保留相同 SHA-256；本地编译与验收工具也从普通目录运行 | 本机用 `icacls` 核对交付 EXE 未继承 Low 标签，再运行安装事务与完整包验收；工程目录本身的权限未调整 | ⚠️ |
+
+## GitHub 发布完整性（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-218 | 本地签名及上传成功后，发布流程没有核对 GitHub 草稿实际收到的资产。用同一清单检查、上传并读回草稿，逐个核对上传状态、大小和 SHA-256，全部一致后才公开；已公开的同标签发行版拒绝被重跑覆盖 | `node --test tests/release_assets_test.cjs` 检查完整草稿、缺签名、上传未完成、长度或哈希不符及错标签；`scripts/check-packaging.py` 检查验签、上传草稿、验包、公开的顺序 | 🆕 |
+| REG-219 | Windows 中文工程路径下，Qt 测试找错签名样本所在目录，后续改写空样本时崩溃。验签测试按 UTF-8 解析源文件路径，在运行任何用例前确认样本可读 | 在含中文路径的 Windows 构建目录运行 `update-signatures`、`update-certificate-policy` | ✅ |
+| REG-220 | Windows 应用内更新遇到临时断线或下载服务器暂时不可用时，原先会直接失败。现在每轮更新最多自动重试两次，只重下失败的同版本文件，仍须通过原有校验和验签 | `update-signatures`：部分安装包断线后从头重下、签名请求返回 503 后可恢复、重试预算耗尽及取消后重开均正确处理 | 🆕 |
+
+## 组图 AI 解析（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-217 | 组图快照有批注，但 AI 请求只认单图和视频的对象，导致无法解析。按原页序读取有改动页面的批注和布局调整，忽略未改页面；大请求按页拆分，整组意见无需截图 | `ai-instructions`：检查 64 页中只发送有改动页面、原图和结果图同批、跨批次结果顺序、纯整组意见不附图 | 🆕 |
+
+## Windows 测试运行库（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-216 | Windows 新构建目录缺少 Qt DLL 时，测试进程逐个触发系统错误弹窗。本机实测仅把 Qt 放进 PATH 仍无法加载。CTest 在运行原生用例前将当前工具链的运行库与 Qt 平台插件放入构建目录；缺少所需文件时只报告准备失败，跳过依赖它的测试 | Windows 发布检查从未添加 Qt 或 MinGW 到 PATH 的步骤直接执行原生 CTest；`windows-qt-runtime` 为整批测试准备运行库，单独用 `-R` 选原生测试时也会执行 | 🆕 |
+
 ## macOS 窗口按钮（0.13.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
-| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
+| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-tray::statusIconIsATemplateMask` | `tests/cocoa_tray_test.mm`，CTest 名 `cocoa-tray`（仅 macOS） | REG-228 |
+| `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
 | REG-215 | 注意状态谱系：0.12.6 及更早的 macOS 界面**没有红绿灯**，最小化 / 全屏 / 关闭自绘在右上角，标题栏只有一行（REG-213 之前的样式）；REG-213 把窗口控制交给系统红绿灯之后，才出现下面这个未发布的两行状态。用户反馈（实机截图）：「红绿灯和控件不在同一行」——红绿灯在窗口顶端那一行，而品牌、尺寸和工具整行落在下面 32 点处。真实原因不是样式位没补回：客户区确实铺满了整个窗口，但**只要客户区盖住标题栏，Qt 就给「窗口控件」以及「填满它的那个子控件」塞上一条等于标题栏高度的顶部内容边距**，而且这条边距清不掉（`setContentsMargins(0,…)` 读回来仍是 32），顶层布局因此从标题栏下方开始，整个外壳被整体压下 32 点。规则按控件到窗口顶部的距离逐层退让（顶部 y=0 为 32、y=4 为 28……y≥32 为 0），所以连标签的文字矩形也被压到这条带下方。修复：外壳、标题栏、正文三者改为手工定位（`fitShell`），布局只留在再下一层；标题栏那一行用自己忽略父控件内容边距的 `TitleRowLayout`，两个标签用按自身矩形绘制的 `RowLabel`；行高与左边距取自 AppKit 实测的红绿灯行列（`nativeTitleBarRow`：中线 16 点、右缘 69 点），工具放不下时贴着栏顶排而不是伸出窗口 | `cocoa-window::theReportedRowIsTheOneTheSystemDraws`：上报的行与 AppKit 实际按钮几何一致，并钉住「带内控件有内容边距、带外没有、清不掉」这条平台行为；`ui::theTitleBarSharesTheSystemControlsRow`：栏顶与窗口顶端对齐（外壳 y=0、标题栏 y≤2），工具行中线与红绿灯中线相差 ≤4 点，品牌在红绿灯右缘之后；其余平台走「栏内居中」分支。实机 `EDITHERE_WINDOW_DEBUG=1` 日志可复看 `barPos` / `toolRow` / `rowCenterY` | 🆕 |
 
 平台依据：`titlebarAppearsTransparent` + `titleVisibility = NSWindowTitleHidden` + `NSWindowStyleMaskFullSizeContentView` 之后，AppKit 只让标题栏里的红绿灯接点击，这条带其余位置透传给客户区（`cocoa-window` 实测），所以编辑器可以把自己的工具栏画在这条带上。红绿灯位置由系统决定（窗口顶端 9–23 点，中线 16 点），不额外挪动：AppKit 在每次调整窗口大小后都会重置按钮位置，挪动只会在缩放时跳回原处——因此反过来把编辑器的行对齐到红绿灯，行内控件按「中线 16 点、高 32 点以内」计算。Qt 6.8.3 没有 `Qt::ExpandedClientAreaHint`（6.9 才有），也没有 `safeAreaMargins`，客户区盖住标题栏时它用不可清除的内容边距代替，这条边距就是 REG-215 的成因；`ensureNativeTitleBar` 判据是「样式位在，且客户区高度等于窗口高度」，不成立就整段重设，可见期间每秒再核对一次（判据相同，成立时只读两个属性）。工具自身高 36 点（文字按钮的 7 点内边距 + 20 点最小高度），比红绿灯中线以上的空间高，所以这一行只能贴着栏顶排，中线落在 19 点——与红绿灯相差 3 点，比原来的 32 点整行错位小一个数量级；要完全重合需要把栏内按钮压到 32 点以下，会切到中文字形，故不做。
@@ -32,7 +120,7 @@
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
-| REG-216 | 用户反馈（实机截图）：Dock 里的图标只是一个撑满整个图标的透明符号，既没有 macOS 图标应有的圆角方形底色，放大后还发虚；菜单栏图标仍是蓝色的应用位图，不跟随菜单栏明暗反色，也不清晰。原因有三个：`edithere.icns` 直接由只画符号的 `edithere.svg` 渲染，而 macOS 期望应用图标自带底板并把符号收在留白内；即使换了 bundle 图标，`main.cpp` 里的 `QApplication::setWindowIcon()` 仍会把它盖掉——Qt 的 Cocoa 后端把这个 `QIcon` 交给 AppKit 作为 `NSApplication.applicationIconImage`，Dock 画的是它而不是 bundle 声明的图标（实测：不设窗口图标时该属性回落到 Info.plist 里的 ICNS，设了就被替换成那张位图）；菜单栏侧，`Controller` 直接把 `QApplication::windowIcon()` 交给 `QSystemTrayIcon`，而模板位取的是 `QIcon::isMask()`，它从未被设置，于是菜单栏拿到彩色位图并按 18 点档位缩放。修复：新增 `assets/icons/edithere-macos.svg`（1024 画布、824×824 圆角 185.4 底板、符号居中收进底板），ICNS 改由它渲染，PNG/ICO 仍用原符号；macOS 不再设置窗口图标，Dock 交给 bundle 图标（其它平台保持原样）；菜单栏图标改由 `h2d::trayIcon()` 从品牌矢量按请求的缩放比现场栅格化，先量出符号的墨迹框再留 6% 内边距，并用 `QIcon::setIsMask(true)` 标成模板图，交给 AppKit 按系统前景色着色 | `cocoa-tray::statusIconIsATemplateMask`：菜单栏图标必须是 mask（否则彩色符号在一种菜单栏外观下会消失）；按 36 点位槽请求时按 `devicePixelRatio` 现场栅格化（Retina 下得到 72×72，说明是矢量渲染而不是放大位图）；墨迹占位槽的 80%–95%，保住系统状态符号的留白 | 🆕 |
+| REG-228 | 用户反馈（实机截图）：Dock 里的图标只是一个撑满整个图标的透明符号，既没有 macOS 图标应有的圆角方形底色，放大后还发虚；菜单栏图标仍是蓝色的应用位图，不跟随菜单栏明暗反色，也不清晰。原因有三个：`edithere.icns` 直接由只画符号的 `edithere.svg` 渲染，而 macOS 期望应用图标自带底板并把符号收在留白内；即使换了 bundle 图标，`main.cpp` 里的 `QApplication::setWindowIcon()` 仍会把它盖掉——Qt 的 Cocoa 后端把这个 `QIcon` 交给 AppKit 作为 `NSApplication.applicationIconImage`，Dock 画的是它而不是 bundle 声明的图标（实测：不设窗口图标时该属性回落到 Info.plist 里的 ICNS，设了就被替换成那张位图）；菜单栏侧，`Controller` 直接把 `QApplication::windowIcon()` 交给 `QSystemTrayIcon`，而模板位取的是 `QIcon::isMask()`，它从未被设置，于是菜单栏拿到彩色位图并按 18 点档位缩放。修复：新增 `assets/icons/edithere-macos.svg`（1024 画布、824×824 圆角 185.4 底板、符号居中收进底板），ICNS 改由它渲染，PNG/ICO 仍用原符号；macOS 不再设置窗口图标，Dock 交给 bundle 图标（其它平台保持原样）；菜单栏图标改由 `h2d::trayIcon()` 从品牌矢量按请求的缩放比现场栅格化，先量出符号的墨迹框再留 6% 内边距，并用 `QIcon::setIsMask(true)` 标成模板图，交给 AppKit 按系统前景色着色 | `cocoa-tray::statusIconIsATemplateMask`：菜单栏图标必须是 mask（否则彩色符号在一种菜单栏外观下会消失）；按 36 点位槽请求时按 `devicePixelRatio` 现场栅格化（Retina 下得到 72×72，说明是矢量渲染而不是放大位图）；墨迹占位槽的 80%–95%，保住系统状态符号的留白 | 🆕 |
 
 Dock 图标没有测试可固化：`assets/icons/edithere.icns` 的每个 chunk 都由 `edithere-macos.svg` 渲染（`scripts/generate-app-icons.ps1` 重建），形状对不对只能人工看 Dock 与 Finder。macOS 分支不要再加 `setWindowIcon()`——它会经 `NSApplication.applicationIconImage` 覆盖 bundle 图标，实机表现是"换了 ICNS 也没用"；核对办法是在 bundle 副本里跑一个不设窗口图标的 AppKit 小程序，看 `NSApplication.applicationIconImage` 是否是 Info.plist 声明的图标。换过 bundle 图标后系统图标缓存可能仍显示旧图，需让 bundle 的 mtime 变化或重启 Dock 才会刷新。
 
@@ -434,7 +522,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | REG-077 | 阴影是**黑色**的，看着像一团灰，看不出是这个程序的效果 | 开发中（用户反馈） | `CaptureStyle::shadowColor` 默认写死 `QColor(0, 0, 0)` | `tests/capture_test.cpp::aShadowIsCastInTheAccentRatherThanInBlack`（默认 tint 的 RGB 必须**等于 `accent()`**、蓝通道明显高于红通道；显式指定黑色时半径与衰减与默认完全一致，即"只换颜色、不换形状"；阴影关闭时 alpha 仍为 0） | 🆕 |
 | REG-078 | **进入截图模式后卡顿**：鼠标一动就掉帧，区域越大越明显 | 开发中（用户反馈） | 三个独立的每帧开销叠在一起：① `Overlay::paintEvent` 每次都重算阴影光晕（1024×768 选区实测 29 ms/帧，逐像素开方）；② 每帧把整屏抓图重缩放一次（4K 屏 10 ms/帧）；③ 放大镜又把整屏抓图缩放第二次。实测基准（临时用例）：`halo_first=29ms halo_cached=0ms scale_screen=10ms blit=1ms` | 光晕加**单槽静态缓存**（尺寸+样式相同直接返回，`composeShadowPreview()`）；`Overlay` 缓存缩放后的帧 `scaledFrame()`，换图时失效（`showHistoryPicture()` 里清空）；放大镜只把**放大区域那一条**交给绘制（`p.drawImage(area, frame_.image, source)`），不再整屏重采样 |
 | REG-079 | **贴图按钮出现了两次**：顶部工具条一个、右侧样式栏一个 | 开发中（用户反馈） | 侧栏是在顶部工具条之后加的，加入时把顶部已有的动作又做了一遍，没有回去删 | `tests/capture_test.cpp::pinningIsOfferedInOnePlaceOnly`（`CaptureToolbar` 里 `glyphName == "pin"` 的按钮恰好 1 个，`CaptureSidebar` 里必须是 0 个） |
-| REG-080 | **放大镜里看不到识别出来的蓝色框**，放大后反而不知道自己在选哪一块 | 开发中（用户反馈） | 放大镜里画的是**选区**（`localRect(selected_)`），而且用的是**未放大**的屏幕坐标——面板里是 10 倍放大的内容，这两套坐标根本不是一回事，画出来是错的；而放大镜真正对准的"当前识别块"（`picker_.current()`）压根没画 | `tests/ui_test.cpp::theMagnifierCarriesTheFrameItIsAimingAt`（真实渲染 Overlay：指针压在被识别块的边缘上，放大区域矩形内必须出现强调色像素。先把新绘制关掉跑一遍确认 **0** 像素、用例失败，再打开得到 113 像素） |
+| REG-080 | 历史行为（已由 REG-231 替代）：**放大镜里看不到识别出来的蓝色框**，放大后反而不知道自己在选哪一块 | 开发中（用户反馈） | 放大镜里画的是**选区**（`localRect(selected_)`），而且用的是**未放大**的屏幕坐标——面板里是 10 倍放大的内容，这两套坐标根本不是一回事，画出来是错的；而放大镜真正对准的"当前识别块"（`picker_.current()`）压根没画 | `ui::theMagnifierShowsRawPixelsAtTheScreenEdge` / `theMagnifierKeepsSelectionEdgePixelsVisible`，现按 #62 检查原像素可见性；蓝框仍显示在主选区上 |
 | REG-081 | **长截图基本不可用**：稍微正常一点的页面（有固定顶栏/播放条/底栏）跑完只回一帧原图 | 开发中（用户反馈） | 三层原因：① 匹配时用的是整幅帧，帧首的固定顶栏永远对不上上一帧结尾的行，第一次匹配就失败；② 失败即 `succeed()`，拿第一帧交差，没有重试也没有"退一步用粗糙匹配"的兜底；③ 滚动后死等 180 ms 就抓，而平滑滚动的页面要 300 ms 以上才停稳，抓到的是滚动中途的糊图 | `tests/capture_test.cpp::aFixedHeaderAndFooterDoNotStopTheStitch`（12 行固定顶栏 + 8 行固定底栏的页面，逐帧拼接后总高度必须等于 `顶栏 + 全部内容 + 底栏`，且顶/底栏各只出现一次；同一组帧交给旧的 `appendScrolledFrame()` 必须返回 -1，即旧路径确实会失败）、`theBandsOfAFrameSayWhatDidNotMove`、`aFrameWithSomethingMovingInItIsStillPlaced`（容差阶梯：精确匹配失败 → 放宽后放行，且 `partial()` 必须为真）、`aStitcherThatPlacedNothingStillHasItsFirstFrame`、`twoLooksAtTheSamePlaceSayWhetherThePageMoved` |
 
 | REG-105 | **置顶图外面多了一圈实线**：带阴影的置顶图，蓝色实线画在**窗口**最外圈而不是图片边缘上，于是浅蓝的阴影外头还套着一个硬边框 | 0.9.6（用户反馈） | `PinWindow` 的窗口是「图片 + 阴影外扩」（`decoration_`），而 `paintEvent` 画轮廓用的是 `rect()`——也就是光晕的外沿。阴影在那里已经衰减到几乎全透明，一条不透明的强调色线压上去，读起来就是"给阴影加了个框"。同一处的 `edgeAt()` 也在拿窗口边缘当可拖动的边，于是可抓的边和图片自己的边也不是一回事 | 新建 `PinWindow::pictureRect()`（按 `decoration_` 占图片的比例换算成窗口单位的内缩矩形，并夹住不让外扩吃掉图片），`edgeAt()` 改用它。**描边本身全部删掉**（用户 2026-09-29 明确：置顶图不要任何边框；关闭阴影就是要"和同色桌面难以区分"，那是需求不是缺陷）——`paintEvent` 现在只画 `display_`，`kOutline` 一并删除。⚠️ 中途做过"只在没有阴影时画细线"，那是把需求当缺陷修了，已撤销 | `tests/capture_test.cpp::aPinWithAShadowIsEdgedByTheShadowAndNotByALine`（真实渲染置顶窗：阴影强度 100（外扩 30 px）时，最左/最右那一列像素的 alpha 必须 < 200（光晕外沿几乎全透明），图片正中必须仍是 255；**关掉阴影后整窗必须逐像素等于 `composeCapture(图片, 无阴影)`**，一个多余的像素都不许有。反向验证：把描边加回去，报"60 个像素不同"、用例失败） | 🆕 |
@@ -445,7 +533,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | REG-083 | **悬停找块时整屏跟着指针泛蓝光**：阴影画在截图窗口上，`active` 在还没选定时取的是"指针下的那个候选框"，于是指针移到哪儿哪儿就长出一圈蓝色光晕 | 0.9.6（用户反馈） | 阴影预览（`composeShadowPreview()`）画在 `Overlay::paintEvent` 里，不区分"还在找块"与"选区已定下来"两种状态。用户要的是**阴影只属于置顶图**，所以截图窗口上一律不画（`composeCapture()` 成品与 `PinWindow` 仍然带） | `tests/ui_test.cpp::theCaptureWindowCastsNoShadowAroundTheRegion`（真实渲染：把阴影强度开到 60 与关掉相比，选区左侧那个只有光晕会够到的像素必须**完全不变**。反向验证：把绘制加回去，这条失败） |
 | REG-084 | **截图模式下整屏画质明显下降**，不只是置顶图糊（REG-072 的同一个坑，第二次踩） | 0.9.6（用户反馈） | `Overlay::scaledFrame()` 把设备像素的抓图 `scaled()` 到窗口的**逻辑**尺寸再画。缩放屏上抓图是 2880×1620、窗口只有 1920×1080，于是整屏先被砍掉一半像素再由系统插值补回来 | `frameScaled_` 不再重采样，改为保留原像素数并 `setDevicePixelRatio(抓图宽 / 窗口宽)`，让 Qt 一比一地贴。**这与 REG-072 是同一个教训**：`QImage` 是设备像素、`QWidget` 是逻辑像素，两者不能互相 `scaled()` |
 | REG-085 | **取色要按 `C` 才有**，选区刚定下来、鼠标就在自己截的那张图上时，放大镜和颜色读数反而不见了 | 0.9.6（用户反馈） | `Overlay::paintEvent` 里放大镜的条件是 `!ready_ \|\| picking_`，也就是**只在选区定下来之前**显示；`ready_` 一为真就撤掉，与用户的用法正好相反 | `tests/ui_test.cpp::theMagnifierStaysUpOverTheRegionThatWasJustTaken`（真实渲染：指针在选区外时记一次暗像素数，移进选区后再记一次，差值必须超过 5000。反向验证：把条件改回原样，差值为 **0**、这条失败） |
-| REG-086 | **放大镜里的蓝框比屏幕上细得多**：屏幕上的框是"粗细固定"的两像素线，放大十倍二十倍也不跟着变，于是放大镜里量出来的框和真正截下来会带的框不是一回事 | 0.9.6（用户反馈） | 放大镜是拿**原始抓图**做 `p.drawImage(area, frame_.image, source)`，再用 `toPanel()` 把框的坐标映射进面板、用 `QPen(accent(), 2)` **重画一条两像素的线**。放大的是像素，框是另画的，两者从倍率上就不同源 | `Overlay::drawScene(QPainter &, const QRectF &viewport)`：把"抓图 + 遮罩 + 蓝框/圆角/角点"抽成同一段绘制，窗口要整幅（`rect()`），放大镜要指针下那一小片（`window`），放大镜被 `scale(zoomX, zoomY)` 变换后**再画一遍同一段**，框于是和像素一起被放大。`tests/ui_test.cpp::theEnlargementMagnifiesTheFrameRatherThanRedrawingIt`（真实渲染：指针压在选区左边线上，放大区域里的强调色像素必须超过 2000——两像素的细线约 200。反向验证：改回"抓图 + 重画细线"，得到 **86**、这条失败） |
+| REG-086 | 历史行为（已由 REG-231 替代）：**放大镜里的蓝框比屏幕上细得多**：屏幕上的框是"粗细固定"的两像素线，放大十倍二十倍也不跟着变，于是放大镜里量出来的框和真正截下来会带的框不是一回事 | 0.9.6（用户反馈） | 放大镜是拿**原始抓图**做 `p.drawImage(area, frame_.image, source)`，再用 `toPanel()` 把框的坐标映射进面板、用 `QPen(accent(), 2)` **重画一条两像素的线**。放大的是像素，框是另画的，两者从倍率上就不同源 | `ui::theMagnifierShowsRawPixelsAtTheScreenEdge` / `theMagnifierKeepsSelectionEdgePixelsVisible`，现按 #62 检查原像素可见性；蓝框仍显示在主选区上 |
 | REG-087 | **选区定下来之后，方向键会挪动整个截图范围**，刚摆好的框一到手就被键盘推走；而这个阶段真正需要移动的是**鼠标指针** | 0.9.6（用户反馈） | `Overlay::keyPressEvent` 里 `ready_` 分支的普通方向键走的是 `nudgeSelection()`，也就是把 `selected_` 平移一像素；用户要的是"让鼠标移动" | 普通方向键改走 `Overlay::movePointer()`（按屏幕逻辑像素走一步、换算回抓图像素、`QCursor::setPos()` 真把指针挪过去，并按逻辑像素取整——缩放屏上按抓图像素挪半格会被系统round回原位，看起来像按键失灵）；Shift/Ctrl + 方向键仍然收放对应的那条边（`stretchSelection()`），`nudgeSelection()` 已无调用者、删除。同一轮把面板按用户要求缩小四分之一（216×268→162×236、放大区 126→94）并把放大倍率提高 0.5 倍（每像素 10→15 格），两处尺寸常量移到 `app/ui.h`（`magnifierPanelWidth/Height/Padding`、`magnifierZoomHeight`、`magnifierZoomCell`）供窗口与测试共用，避免测试里再写一份会漂移的字面量。`tests/ui_test.cpp::arrowsMoveThePointerRatherThanTheRegion`（真实渲染：按一次右键，`selection()` 必须一字不变；同时放大区那一块的像素必须变了。反向验证：改回 `nudgeSelection`，`selection()` 变了、这条失败） |
 | REG-088 | **放大镜面板会被工具条盖住**：面板正好落在工具栏那一带时，放大的内容被横穿一条，读数正好在那时最需要 | 0.9.6（用户反馈） | 面板是 `Overlay::paintEvent` 画的，而工具条与右侧样式列是**子控件**，子控件永远画在父控件之上。面板的放置只看了窗口四条边，没看这两个工具 | 放置规则抽成 `magnifierPlacement(at, window, tools)`（`app/ui.cpp`）：先在指针旁，放不下就翻到另一侧，再对被工具压住的每一块找"离当前位置最近、且确实空出来"的一侧让开（上/下/左/右四选一，压不住且不出窗口才算数）。`Overlay::drawMagnifier` 传可见的 `bar_`/`sidebar_` 几何，测试传同一份，**双方问的是同一个函数，不会再各写一套**。`tests/ui_test.cpp::theMagnifierPanelKeepsClearOfTheTools`（真实渲染：先确认"不看工具时面板确实会落在工具条上"，再断言让开后的面板与工具条不相交；并且放大区从上到下每一行都要看到那条被放大的框——能打断它的只有网格线，所以要求 ≥ 4/5 的行。反向验证：把让开逻辑去掉，几何断言先失败） |
 | REG-089 | **还没截图时方向键完全不接**：悬停找块阶段按上下左右没有任何反应，想精确指向某个像素只能靠挪鼠标——而挪鼠标恰恰落不准单个像素 | 0.9.6（用户反馈） | `Overlay::keyPressEvent` 里方向键只有两条分支：拖框中（`drawing_`）调整框的终点、选区定下来后（`ready_`）平移选区。**"还没选、也没在拖"**这个状态没有分支，按键一路落到 `QWidget::keyPressEvent` | `Overlay::keyPressEvent` 把方向键统一成"瞄准指针"：除拖框中仍是拉框以外，其余状态（找块、取色、选区已定）都走 `movePointer()`；找块状态额外 `picker_.update(candidates(), cursor_)` 与 `debounce_.start()`，让被高亮的识别块和放大镜一起跟着指针走。`movePointer()` 里 `magnifierVisible_` 改成 `selected_.isEmpty() \|\| selected_.contains(cursor_)`，没有选区时读数一直在线。`tests/ui_test.cpp::arrowsMoveThePointerBeforeAnythingHasBeenTaken`（真实渲染：按一次右键，选区必须仍为空、放大区那一块像素必须变。反向验证：把该分支关掉，这条失败） |
@@ -499,7 +587,6 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
 | `ui_tests::windowControlsFollowThePlatformConvention` | `tests/ui_test.cpp`，CTest 名 `ui` | REG-213 |
 | `cocoa-window` | `tests/cocoa_window_test.mm`，CTest 名 `cocoa-window`（仅 macOS，且需要真实 Cocoa 窗口） | REG-213 |
-| `cocoa-tray::statusIconIsATemplateMask` | `tests/cocoa_tray_test.mm`，CTest 名 `cocoa-tray`（仅 macOS） | REG-216 |
 | 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |

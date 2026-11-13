@@ -22,8 +22,12 @@ while ($queue.Count) {
         if (Test-Path -LiteralPath (Join-Path $repoPath ('app/' + $match.Groups[1].Value))) { $queue.Enqueue($match.Groups[1].Value) }
     }
 }
-New-Item -ItemType Directory -Path (Join-Path $outputPath 'assets'), (Join-Path $outputPath 'packaging/licenses') | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $outputPath 'assets'), (Join-Path $outputPath 'cmake'), (Join-Path $outputPath 'packaging/licenses') | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoPath 'assets/ui-icons') -Destination (Join-Path $outputPath 'assets/ui-icons') -Recurse
+New-Item -ItemType Directory -Path (Join-Path $outputPath 'assets/icons') | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoPath 'assets/icons/edithere.svg') -Destination (Join-Path $outputPath 'assets/icons')
+Copy-Item -LiteralPath (Join-Path $repoPath 'cmake/WindowsTestRuntime.cmake') -Destination (Join-Path $outputPath 'cmake')
+Copy-Item -LiteralPath (Join-Path $repoPath 'cmake/PatchQtKeychain.cmake') -Destination (Join-Path $outputPath 'cmake')
 foreach ($name in @('qtkeychain', 'cc-switch', 'lobehub-icons')) {
     Copy-Item -LiteralPath (Join-Path $repoPath "packaging/licenses/$name") -Destination (Join-Path $outputPath "packaging/licenses/$name") -Recurse
 }

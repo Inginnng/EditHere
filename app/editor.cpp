@@ -2254,7 +2254,9 @@ void Editor::showJsonHelp() {
         "<h3>2. 都不支持上传，只支持对话怎么办？</h3>"
         "<p>可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。</p>"
         "<h3>3. AI 没认出来原图信息怎么办？</h3>"
-        "<p>可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。</p>"));
+        "<p>可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。</p>"
+        "<h3>4. 粘贴文件时只有 JSON，没有图片？</h3>"
+        "<p>部分客户端只接收文件列表中的一个附件。先粘贴“复制 JSON 内容”，再用“复制带批注图片”（Ctrl+C）单独粘贴 PNG 图片。按钮若未显示，可从底部“更多”菜单进入。组图和视频按需逐页或逐帧复制，也可保存图片后拖入客户端。</p>"));
     help.setStandardButtons(QMessageBox::Ok);
     help.exec();
 }
@@ -2523,7 +2525,14 @@ void Editor::copyImage() {
     if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (hasDocument()) {
         try {
-            QApplication::clipboard()->setImage(previewImage(doc_));
+            const auto image = previewImage(doc_);
+            const auto png = encodePng(image);
+            auto mime = new QMimeData;
+            mime->setImageData(image);
+            // Image-only paste must also work in clients that request PNG bytes
+            // instead of Qt's native image format. Keep file-list copy separate.
+            mime->setData("image/png", png);
+            QApplication::clipboard()->setMimeData(mime);
             toast(tr("带批注图片已复制"));
         } catch (const std::exception &error) {
             showError(QString::fromUtf8(error.what()));
@@ -2881,8 +2890,9 @@ void Editor::generateInstructions() {
     try {
         FeedbackExportOptions options;
         options.mode = ImageExportMode::None;
-        // Use the normal export boundary to reveal any unresolved child parent.
-        agentFeedbackBundle(options);
+        // Single-image and video exports reveal an unresolved child in the editor.
+        // The set snapshot already runs the set export, so don't build it twice.
+        if (!imageSet_) agentFeedbackBundle(options);
         options.includeRecognizedText = preferences_.includeRecognizedText;
         options.includeWindowTitle = preferences_.includeWindowTitle;
         commitSetPage();
@@ -2897,6 +2907,11 @@ void Editor::generateInstructions() {
             AiInstructionsDialog dialog(preferences_, input, this, nullptr, draft);
             result = dialog.exec();
             draft = dialog.draft();
+            const auto provider = preferences_.aiProviderId;
+            const auto prompt = preferences_.aiSystemPrompt;
+            dialog.applyTo(preferences_);
+            if (provider != preferences_.aiProviderId || prompt != preferences_.aiSystemPrompt)
+                emit aiPreferencesChanged(preferences_.aiProviderId, preferences_.aiSystemPrompt);
         }
         if (result != AiInstructionsDialog::Configure) break;
         emit aiSettingsRequested();

@@ -46,13 +46,14 @@ AiFeedbackInput aiFeedbackSnapshot(const ImageSet &project, FeedbackExportOption
     options.mode = ImageExportMode::None; options.preview = false;
     AiFeedbackInput input;
     input.feedback = QJsonDocument::fromJson(buildImageSetFeedbackBundle(project, options).json).object();
+    input.feedback.remove("pageIndex"); // Only the changed pages are relevant to the interpreter.
     const auto pages = input.feedback["pages"].toArray();
-    if (pages.size() > 8) throw std::runtime_error("AI instruction parsing supports up to 8 annotated pages per request.");
     for (const auto &value : pages) {
         const auto page = value.toObject();
-        for (const auto &source : project.pages) if (source.id == page["id"].toString()) {
-            appendImages(input, source.document, source.name + " (" + source.id + "): "); break;
-        }
+        const auto &source = project.pages.at(page["index"].toInt() - 1);
+        const auto before = input.images.size();
+        appendImages(input, source.document, source.name + " (" + source.id + "): ");
+        input.pageImageCounts.append(input.images.size() - before);
     }
     return input;
 }

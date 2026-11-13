@@ -130,6 +130,15 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     connect(&editor_, &Editor::toolbarSettingsRequested,this,[this] { openSettings(false,true); });
     connect(&editor_, &Editor::settingsRequested, this, [this] { openSettings(); });
     connect(&editor_, &Editor::aiSettingsRequested, this, [this] { openSettingsDialog(false, false, nullptr, true); });
+    connect(&editor_, &Editor::aiPreferencesChanged, this, [this](const QString &providerId, const QString &systemPrompt) {
+        settings_.aiProviderId = providerId;
+        settings_.aiSystemPrompt = systemPrompt;
+        QString error;
+        if (!saveSettings(settings_, &error, settingsFile_)) {
+            diagnostics::write(diagnostics::Level::Error, "settings.persist", error);
+            tray_.showMessage("EditHere", tr("设置未能保存：") + error);
+        }
+    });
     connect(&editor_, &Editor::preferencesChanged, this, [this] {
         // The editor turned a preference off by itself — the "don't ask again" box on
         // the close question does — and an answer the user gave has to outlive the

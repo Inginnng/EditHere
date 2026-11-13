@@ -2,6 +2,7 @@
 #include "aicredentials.h"
 #include "aifeedbackformat.h"
 #include "aiprovidericons.h"
+#include "aipromptdialog.h"
 #include "aistyle.h"
 #include "ui.h"
 #include <QApplication>
@@ -59,7 +60,7 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
       credentials_(credentials ? credentials : new AiCredentials(this)),
       providerProbe_(providerProbe), client_(new AiFeedbackClient(this)) {
     setObjectName("aiInstructionsDialog");
-    setWindowTitle(tr("AI 解析（预览）"));
+    setWindowTitle(tr("AI 解析（预览功能）"));
     setMinimumSize(760, 580);
     const auto available = screen()->availableGeometry().size() - QSize(48, 64);
     resize(QSize(1120, 780).boundedTo(available).expandedTo(minimumSize()));
@@ -76,7 +77,7 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     mark->setAlignment(Qt::AlignCenter); mark->setPixmap(glyph("edit").pixmap(22, 22));
     heading->addWidget(mark);
     auto *titles = new QVBoxLayout; titles->setSpacing(4);
-    auto *title = new QLabel(tr("AI 解析（预览）"), header); title->setObjectName("aiAnalysisTitle");
+    auto *title = new QLabel(tr("AI 解析（预览功能）"), header); title->setObjectName("aiAnalysisTitle");
     titles->addWidget(title); titles->addWidget(mutedLabel(tr("预览功能：把图形化修改转成文字需求，结果请核对后再交给 Agent。"), header));
     heading->addLayout(titles, 1);
     configure_ = textButton(tr("API 设置"), false, header);
@@ -84,7 +85,12 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     configure_->setIcon(aiProviderIcon(connection_.providerId)); configure_->setIconSize({20, 20});
     // The label follows what is actually configured, not a built-in default.
     configure_->setToolTip(tr("正在读取已配置的服务商…")); configure_->setAccessibleName(tr("API 设置"));
-    heading->addWidget(configure_); layout->addWidget(header);
+    heading->addWidget(configure_);
+    providerSwitch_ = iconButton("chevron-down", tr("切换服务商"), header);
+    providerSwitch_->setObjectName("aiInstructionsProviderSwitch");
+    providerSwitch_->setFixedWidth(36);
+    providerSwitch_->hide();
+    heading->addWidget(providerSwitch_); layout->addWidget(header);
 
     splitter_ = new QSplitter(Qt::Horizontal, this); splitter_->setObjectName("aiAnalysisSplitter");
     splitter_->setChildrenCollapsible(false); splitter_->setHandleWidth(1);
@@ -112,10 +118,12 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     auto *frameLayout = new QVBoxLayout(imageFrame); frameLayout->setContentsMargins(0, 0, 0, 0);
     auto *preview = new SourceImageView(imageFrame); preview->setObjectName("aiInputPreview");
     preview->setAccessibleName(tr("本次解析的截图")); frameLayout->addWidget(preview);
+    imageFrame->setVisible(!input_.images.isEmpty());
     imageLayout->addWidget(imageFrame);
     auto *captionRow = new QHBoxLayout;
     auto *caption = mutedLabel({}, imagePage); caption->setObjectName("aiSourceCaption"); captionRow->addWidget(caption, 1);
     auto *expand = textButton(tr("放大"), false, imagePage); expand->setObjectName("aiExpandImage"); expand->setProperty("quiet", true);
+    expand->setVisible(!input_.images.isEmpty()); caption->setVisible(!input_.images.isEmpty());
     captionRow->addWidget(expand); imageLayout->addLayout(captionRow);
     auto updateImage = [this, preview, caption](int index) {
         if (index < 0 || index >= input_.images.size()) return;
@@ -143,7 +151,10 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
         const auto fact = facts[i].toObject();
         auto *card = new QFrame(notes); card->setObjectName("aiSourceNote");
         auto *body = new QVBoxLayout(card); body->setContentsMargins(14, 12, 14, 14); body->setSpacing(8);
-        auto *label = mutedLabel(tr("批注 %1").arg(i + 1), card); body->addWidget(label);
+        const auto scope = aiFactScope(fact);
+        auto labelText = tr("批注 %1").arg(i + 1);
+        if (!scope.isEmpty()) labelText += " · " + scope;
+        auto *label = mutedLabel(labelText, card); label->setTextFormat(Qt::PlainText); label->setWordWrap(true); body->addWidget(label);
         auto text = aiOriginalNotes(fact);
         if (text.isEmpty()) text = tr("位置与尺寸调整");
         auto *note = new QLabel(text, card); note->setTextFormat(Qt::PlainText); note->setWordWrap(true);
@@ -189,6 +200,10 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     status_->setObjectName("aiInstructionsStatus"); status_->setWordWrap(true); messages->addWidget(status_);
     usage_ = mutedLabel({}, footer); usage_->setObjectName("aiInstructionsUsage"); usage_->hide(); messages->addWidget(usage_);
     footerLayout->addLayout(messages, 1);
+    prompt_ = textButton(tr("系统提示词"), false, footer);
+    prompt_->setObjectName("aiInstructionsPrompt");
+    prompt_->setToolTip(tr("查看并手动修改发给模型的系统提示词。"));
+    footerLayout->addWidget(prompt_);
     save_ = textButton(tr("导出…"), false, footer); save_->setObjectName("aiInstructionsSave"); save_->setProperty("quiet", true);
     cancel_ = textButton(tr("停止解析"), false, footer); cancel_->setObjectName("aiInstructionsCancel");
     generate_ = textButton(tr("开始解析"), true, footer); generate_->setObjectName("aiInstructionsGenerate");
@@ -197,6 +212,12 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
     layout->addWidget(footer);
 
     connect(configure_, &QPushButton::clicked, this, [this] { done(Configure); });
+    connect(prompt_, &QPushButton::clicked, this, [this] {
+        if (const auto prompt = editAiSystemPrompt(systemPrompt_, this)) {
+            systemPrompt_ = *prompt;
+            setStatus(tr("系统提示词已更新，下次解析时生效。"));
+        }
+    });
     connect(generate_, &QPushButton::clicked, this, &AiInstructionsDialog::generate);
     connect(cancel_, &QPushButton::clicked, client_, &AiFeedbackClient::cancel);
     connect(output_, &QPlainTextEdit::textChanged, this, &AiInstructionsDialog::updateOutputActions);
@@ -246,6 +267,10 @@ AiInstructionsDialog::AiInstructionsDialog(const AppSettings &settings, AiFeedba
 }
 AiInstructionsDialog::~AiInstructionsDialog() { client_->cancel(); key_.fill(QChar()); key_.clear(); }
 AiInstructionsDraft AiInstructionsDialog::draft() const { return {output_->toPlainText(), extra_->text()}; }
+void AiInstructionsDialog::applyTo(AppSettings &settings) const {
+    settings.aiProviderId = connection_.providerId;
+    settings.aiSystemPrompt = systemPrompt_;
+}
 void AiInstructionsDialog::done(int result) { client_->cancel(); QDialog::done(result); }
 void AiInstructionsDialog::generate() {
     if (client_->isRunning() || !credentialsLoaded_ || key_.isEmpty()) return;
@@ -260,7 +285,8 @@ void AiInstructionsDialog::setStatus(const QString &text, bool error) {
 void AiInstructionsDialog::setBusy(bool busy) {
     busy_ = busy; progress_->setVisible(busy); cancel_->setVisible(busy);
     generate_->setEnabled(!busy && credentialsLoaded_ && !key_.isEmpty());
-    configure_->setEnabled(!busy); extra_->setEnabled(!busy); output_->setReadOnly(busy);
+    configure_->setEnabled(!busy); providerSwitch_->setEnabled(!busy && providerProbeDone_ && activeProbeDone_);
+    prompt_->setEnabled(!busy); extra_->setEnabled(!busy); output_->setReadOnly(busy);
     emptyTitle_->setText(busy ? tr("正在整理修改说明") : tr("修改说明，从这里开始"));
     emptyHint_->setText(busy ? tr("结合画面理解每条批注…") : tr("结合画面、批注和拖动调整，生成可直接交给 Agent 的文字需求。"));
     if (!busy && credentialsLoaded_ && key_.isEmpty()) {
@@ -327,21 +353,18 @@ void AiInstructionsDialog::updateProviderButton() {
         configure_->setIcon(QIcon());
         configure_->setToolTip(tr("还没有配置任何服务商，点击打开 API 设置。"));
         configure_->setAccessibleName(configure_->toolTip());
-        providerMenu_ = nullptr;
-        configure_->setMenu(nullptr);
+        providerSwitch_->hide();
         return;
     }
     // Use a provider that actually has a key, instead of a built-in default.
     if (!configuredProviders_.contains(connection_.providerId)) switchConnection(configuredProviders_.first());
     configure_->setIcon(aiProviderIcon(connection_.providerId));
     configure_->setText(providerDisplayName(connection_.providerId));
-    configure_->setToolTip(configuredProviders_.size() > 1
-        ? tr("已配置 %1 个服务商，点击切换，或进入 API 设置。").arg(configuredProviders_.size())
-        : tr("API 设置") + " · " + connection_.model);
+    configure_->setToolTip(tr("API 设置") + " · " + connection_.model);
     configure_->setAccessibleName(configure_->toolTip());
+    providerSwitch_->setVisible(configuredProviders_.size() > 1);
+    providerSwitch_->setEnabled(!busy_ && providerProbeDone_ && activeProbeDone_);
     if (configuredProviders_.size() < 2) {
-        providerMenu_ = nullptr;
-        configure_->setMenu(nullptr);
         return;
     }
     if (!providerMenu_) {
@@ -358,9 +381,7 @@ void AiInstructionsDialog::updateProviderButton() {
     providerMenu_->addSeparator();
     auto *settingsAction = providerMenu_->addAction(tr("API 设置…"));
     connect(settingsAction, &QAction::triggered, this, [this] { done(Configure); });
-    // A button with a menu draws the drop-down indicator itself, which keeps the
-    // affordance readable in every UI font.
-    configure_->setMenu(providerMenu_);
+    providerSwitch_->setMenu(providerMenu_);
 }
 void AiInstructionsDialog::switchConnection(const QString &providerId) {
     connection_ = settings_.aiProviders.value(providerId, defaultAiConnection(providerId));

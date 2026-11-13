@@ -90,7 +90,9 @@ class UpdateChecker final : public QObject {
     bool startVerifiedInstaller(const QString &filePath, const QString &expectedHash, bool isInstaller,
                                 QString *error);
     void failInstall(const QString &message);
+    void downloadPackage(const Asset &package, const Asset &hashAsset, const Asset &signatureAsset);
     void downloadMetadata(const Asset &asset, int limit, std::function<void(QByteArray)> completed);
+    bool scheduleDownloadRetry(const QNetworkReply &reply, std::function<void()> retry);
     QNetworkReply *getDownloadReply(const QNetworkRequest &request);
     bool prepareHandoff(const QString &filePath, const QString &expectedHash, QString *error);
     bool writeHandoffAction(const QString &action);
@@ -116,6 +118,7 @@ class UpdateChecker final : public QObject {
     int giteePage_ = 1;
     QString downloadPath_;
     QString downloadFileName_;
+    int downloadRetries_ = 0;
     QByteArray signatureMetadata_;
 #ifdef EDITHERE_UPDATE_TEST_TRUST
     // Only the separate test executable has a synthetic network transport.

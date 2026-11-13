@@ -213,11 +213,8 @@ const QImage &Overlay::scaledFrame() {
 }
 
 void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
-    // The screen, the film that dims it and the frame around the region are one
-    // picture, and the enlargement has to be taken of that picture rather than of the
-    // grab underneath it. So the picture is painted here, and whoever wants a piece of
-    // it names the piece: the window asks for all of it, the magnifier for the few
-    // pixels under the pointer.
+    // Selection decorations belong on the screen. The magnifier samples the original
+    // grab separately so the outline cannot cover the pixels being aimed at.
     const double sx = double(frame_.image.width()) / width();
     const double sy = double(frame_.image.height()) / height();
     const QRectF source(viewport.left() * sx, viewport.top() * sy, viewport.width() * sx,
@@ -368,39 +365,13 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     p.setRenderHint(QPainter::SmoothPixmapTransform,false);
     const double cell=magnifierZoomCell;
     const QPointF center=area.center();
-    const double sx = double(frame_.image.width()) / width();
-    const double sy = double(frame_.image.height()) / height();
-    const double factor=cell*sx;
     // Only the strip of the screen the panel shows is handed to the painter. Giving it
     // the whole grab under a scale made it resample the entire screen a second time on
     // every repaint, which on a scaled display is ten milliseconds a frame.
-    const QRectF source(sample.x() + 0.5 - (center.x() - area.left()) * sx / factor,
-                        sample.y() + 0.5 - (center.y() - area.top()) * sy / factor,
-                        area.width() * sx / factor, area.height() * sy / factor);
-    // The same strip, as a piece of the window. The enlargement is a glass held over
-    // the window, not a second look at the grab: the dimming and the blue frame are
-    // already on the glass, so they come out enlarged with the pixels they belong to
-    // instead of being redrawn afterwards at the size they have on the screen.
-    const QRectF window(source.left() / sx, source.top() / sy, source.width() / sx,
-                        source.height() / sy);
-    const double zoomX = area.width() / window.width();
-    const double zoomY = area.height() / window.height();
-    const double ratio = std::max(1.0, devicePixelRatioF());
-    QImage tile(QSize(int(std::ceil(area.width() * ratio)), int(std::ceil(area.height() * ratio))),
-                QImage::Format_ARGB32_Premultiplied);
-    tile.setDevicePixelRatio(ratio);
-    tile.fill(Qt::transparent);
-    QPainter enlarged(&tile);
-    enlarged.setRenderHint(QPainter::Antialiasing);
-    // A magnified pixel has to stay a square block of one colour; smoothing would
-    // invent colours that are not on the screen.
-    enlarged.setRenderHint(QPainter::SmoothPixmapTransform, false);
-    enlarged.scale(ratio, ratio);
-    enlarged.translate(-window.left() * zoomX, -window.top() * zoomY);
-    enlarged.scale(zoomX, zoomY);
-    drawScene(enlarged, window);
-    enlarged.end();
-    p.drawImage(area, tile);
+    const QRectF source(sample.x() + 0.5 - (center.x() - area.left()) / cell,
+                        sample.y() + 0.5 - (center.y() - area.top()) / cell,
+                        area.width() / cell, area.height() / cell);
+    p.drawImage(area, frame_.image, source);
     p.restore();
     p.save();
     p.setClipRect(area);
@@ -536,10 +507,11 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (handle_ == kMoving) {
         cursor_ = pixel;
         const QPoint shift = pixel - dragStart_;
-        if (shift != QPoint()) {
-            applySelection(dragOrigin_.translated(shift), true);
-            dragStart_ = pixel;
-        }
+        QRect moved = dragOrigin_.translated(shift);
+        // Confine the position, rather than clipping away selected pixels at an edge.
+        moved.moveLeft(std::clamp(moved.left(), 0, frame_.image.width() - moved.width()));
+        moved.moveTop(std::clamp(moved.top(), 0, frame_.image.height() - moved.height()));
+        applySelection(moved, true);
         return;
     }
     if (handle_ >= 0) {

@@ -185,6 +185,9 @@ A move becomes an annotation the moment it happens, listed alongside text annota
 
 ## Save and export
 
+Some clients (including the reported Antigravity Windows version) may accept only the JSON from a file list. Paste “Copy JSON text” first, then use “Copy annotated image” (`Ctrl + C`, also in the bottom “More” menu when hidden) to paste the image separately. Image copy provides both full-resolution PNG bytes and the native image format. For image sets or videos, copy the needed pages or frames individually, or save the images and drag them into the client. This requires separate pastes; receiving multiple files in a single paste depends on the client.
+
+
 Copying an annotated image preserves the original pixel width of wide screenshots so small text stays readable, with numbered comments alongside it. Images exceeding the export size or memory limit report an error and can be saved as a project.
 
 The JSON attachment copied by “Copy JSON and images” uses the first annotation as its filename, limited to 80 characters with invalid filename characters replaced. With no text annotations it uses `feedback.json`. Each copy has its own folder, image references remain relative, and explicit CLI output paths are unchanged.

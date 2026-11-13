@@ -81,7 +81,18 @@ function writeManifest(file, value, {create = false} = {}) {
   if (create) fs.writeFileSync(output, bytes, {flag:'wx'});
   else {
     const temp = output + '.' + crypto.randomUUID() + '.tmp';
-    try { fs.writeFileSync(temp, bytes, {flag:'wx'}); fs.renameSync(temp, output); }
+    try {
+      fs.writeFileSync(temp, bytes, {flag:'wx'});
+      // Windows scanners can briefly hold the destination without delete sharing.
+      // Retry the atomic replacement; never remove the last valid manifest first.
+      for (let attempt = 0; ; attempt++) {
+        try { fs.renameSync(temp, output); break; }
+        catch (error) {
+          if (attempt === 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * 2 ** attempt);
+        }
+      }
+    }
     finally { try { fs.unlinkSync(temp); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
   }
   return value;

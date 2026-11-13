@@ -14,7 +14,7 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，此功能分支为 **0.13.0（开发中）**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前版本为 **0.13.0**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
@@ -51,6 +51,10 @@ Windows PowerShell 7，CMake 在 PATH 中：
 ./scripts/build-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -Compiler C:/Qt/Tools/mingw1310_64/bin/g++.exe -Ninja C:/Tools/ninja.exe
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
 ```
+
+Windows 已构建后可直接运行 `ctest --test-dir build --interactive-debug-mode 0 --output-on-failure`，也可用 `-R` 只跑部分测试。CTest 会先在该构建目录准备与编译配置匹配的 Qt DLL、平台插件和测试临时目录。缺少所需文件时，准备步骤会指出路径并停止依赖它的测试。
+
+工程路径较深时，可在重新运行 CMake 前设置 `EDITHERE_TEST_TEMP` 为短的绝对目录；运行 CTest 时也将 `TEMP`、`TMP` 指向该目录，让原生、Node 和安装器检查使用同一条路径。Windows 的 NSIS 与 PowerShell 子进程对过深临时路径的处理可能不同；该选项只配置测试目录，不改系统环境变量。
 
 构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出；macOS 构建（`.github/workflows/native-macos.yml`）会为同一批产物自动运行它，schema 与真实导出不符时构建即失败。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`，详见 [多语言与翻译](i18n.md)。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 

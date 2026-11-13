@@ -15,12 +15,41 @@
 #include <QTemporaryFile>
 #include <QVersionNumber>
 #include <QUuid>
+#include <array>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
 namespace h2d {
 namespace {
 constexpr int maximumResponse = 1024 * 1024;
+constexpr std::array downloadRetryDelaysMs{750, 2000};
+
+int httpStatus(const QNetworkReply &reply) {
+    return reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+}
+bool downloadFailed(const QNetworkReply &reply) {
+    return reply.error() != QNetworkReply::NoError || httpStatus(reply) >= 400;
+}
+bool retryableDownloadFailure(const QNetworkReply &reply) {
+    const int status = httpStatus(reply);
+    if (status >= 400)
+        return status == 408 || status == 429 || (status >= 500 && status < 600);
+    switch (reply.error()) {
+    case QNetworkReply::ConnectionRefusedError:
+    case QNetworkReply::RemoteHostClosedError:
+    case QNetworkReply::HostNotFoundError:
+    case QNetworkReply::TimeoutError:
+    case QNetworkReply::TemporaryNetworkFailureError:
+    case QNetworkReply::NetworkSessionFailedError:
+    case QNetworkReply::ProxyTimeoutError:
+    case QNetworkReply::OperationCanceledError:
+        // Qt aborts on a transfer timeout. User cancellation disconnects the reply first.
+        return true;
+    default:
+        return false;
+    }
+}
+
 UpdateChecker::Result failure(const QString &message, UpdateChecker::Source source = UpdateChecker::GitHub) {
     return {UpdateChecker::Failed, message, UpdateChecker::releasesUrl(source), {}, {}, {}, {}, {}};
 }
@@ -458,6 +487,7 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
         return;
     }
     installing_ = true;
+    downloadRetries_ = 0;
     signatureMetadata_.clear();
     isInstallerUpdate_ = isInstaller;
     downloadFileName_ = package.name;
@@ -467,6 +497,9 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     downloadDirectory_ = std::make_shared<QTemporaryDir>(
         QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath("EditHere-update-XXXXXX"));
     downloadPath_ = downloadDirectory_->filePath(package.name);
+    downloadPackage(package, hashAsset, signatureAsset);
+}
+void UpdateChecker::downloadPackage(const Asset &package, const Asset &hashAsset, const Asset &signatureAsset) {
     downloadFile_ = std::make_unique<QSaveFile>(downloadPath_);
     if (!downloadDirectory_->isValid() || !downloadFile_->open(QIODevice::WriteOnly)) {
         failInstall(tr("无法写入更新文件：%1").arg(downloadFile_->errorString()));
@@ -476,24 +509,29 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
     QNetworkRequest request(package.url);
     request.setTransferTimeout(30000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    downloadReply_ = getDownloadReply(request);
-    connect(downloadReply_, &QNetworkReply::downloadProgress, this, &UpdateChecker::downloadProgress);
-    connect(downloadReply_, &QNetworkReply::readyRead, this, [this] {
-        if (!downloadReply_)
+    auto *reply = getDownloadReply(request);
+    downloadReply_ = reply;
+    connect(reply, &QNetworkReply::downloadProgress, this, &UpdateChecker::downloadProgress);
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
+        if (downloadReply_ != reply)
             return;
-        const auto bytes = downloadReply_->readAll();
-        if (downloadFile_->write(bytes) != bytes.size())
+        const auto bytes = reply->readAll();
+        if (!downloadFailed(*reply) && downloadFile_->write(bytes) != bytes.size())
             failInstall(tr("无法写入更新文件：%1").arg(downloadFile_->errorString()));
     });
-    connect(downloadReply_, &QNetworkReply::finished, this, [this, hashAsset, signatureAsset] {
-        if (!downloadReply_)
+    connect(reply, &QNetworkReply::finished, this, [this, reply, package, hashAsset, signatureAsset] {
+        if (downloadReply_ != reply)
             return;
-        const auto reply = downloadReply_.data();
         downloadReply_ = nullptr;
         reply->disconnect(this);
-        if (reply->error() != QNetworkReply::NoError) {
+        if (downloadFailed(*reply)) {
+            downloadFile_.reset();
             reply->deleteLater();
-            failInstall(tr("下载失败，请检查网络后重试。"));
+            if (!scheduleDownloadRetry(*reply, [this, package, hashAsset, signatureAsset] {
+                    downloadPackage(package, hashAsset, signatureAsset);
+                })) {
+                failInstall(tr("下载失败，请检查网络后重试。"));
+            }
             return;
         }
         const auto remaining = reply->readAll();
@@ -526,6 +564,20 @@ void UpdateChecker::downloadAndInstall(const Asset &package, const Asset &hashAs
         });
     });
 }
+bool UpdateChecker::scheduleDownloadRetry(const QNetworkReply &reply, std::function<void()> retry) {
+    if (downloadRetries_ >= static_cast<int>(downloadRetryDelaysMs.size()) || !retryableDownloadFailure(reply))
+        return false;
+    const int delay = downloadRetryDelaysMs[downloadRetries_++];
+    // The user may cancel and start another update before this timer fires.
+    const std::weak_ptr<QTemporaryDir> directory = downloadDirectory_;
+    QTimer::singleShot(delay, this, [this, directory, retry = std::move(retry)] {
+        const auto original = directory.lock();
+        if (installing_ && original && original == downloadDirectory_)
+            retry();
+    });
+    emit downloadProgress(0, -1);
+    return true;
+}
 QNetworkReply *UpdateChecker::getDownloadReply(const QNetworkRequest &request) {
 #ifdef EDITHERE_UPDATE_TEST_TRUST
     if (testGet_) return testGet_(request);
@@ -542,6 +594,10 @@ void UpdateChecker::downloadMetadata(const Asset &asset, int limit, std::functio
     auto buffer = std::make_shared<QByteArray>();
     const auto read = [this, reply, buffer, limit] {
         if (hashReply_ != reply) return false;
+        if (downloadFailed(*reply)) {
+            reply->readAll(); // A CDN error page is not part of the metadata.
+            return true;
+        }
         buffer->append(reply->read(limit + 1 - buffer->size()));
         if (buffer->size() > limit || reply->bytesAvailable() > 0) {
             failInstall(tr("更新签名或校验文件过大，已停止更新。"));
@@ -550,14 +606,19 @@ void UpdateChecker::downloadMetadata(const Asset &asset, int limit, std::functio
         return true;
     };
     connect(reply, &QNetworkReply::readyRead, this, [read] { read(); });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, buffer, read, completed] {
-        if (hashReply_ != reply || !read()) return;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, asset, limit, buffer, read, completed = std::move(completed)] {
+        if (hashReply_ != reply) return;
+        const bool failed = downloadFailed(*reply);
+        if (!failed && !read()) return;
         hashReply_ = nullptr;
         reply->disconnect(this);
-        const bool ok = reply->error() == QNetworkReply::NoError;
         reply->deleteLater();
-        if (!ok) {
-            failInstall(tr("无法下载更新签名或校验文件，请检查网络后重试。"));
+        if (failed) {
+            if (!scheduleDownloadRetry(*reply, [this, asset, limit, completed] {
+                    downloadMetadata(asset, limit, completed);
+                })) {
+                failInstall(tr("无法下载更新签名或校验文件，请检查网络后重试。"));
+            }
             return;
         }
         completed(*buffer);

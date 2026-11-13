@@ -104,7 +104,7 @@ EditHere provides structured feedback, with an optional API feature that turns a
 
 - **Manually:** copy JSON text, JSON and its companion image, or an annotated image and paste it into any AI.
 - **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
-- **Plain text (0.13.0):** choose a provider and save your own key under **Settings → AI API**, then use **More → Generate instructions**. A separate API request interprets the screenshots and annotations; review the result and copy only text to the target agent, reducing image context in that conversation. See [Generate instructions](docs/AI-INSTRUCTIONS.en.md).
+- **Plain text (0.13.0):** choose a provider and save your own key under **Settings → AI API**, then use **AI interpretation** in the editor toolbar. A separate API request interprets the screenshots and annotations; review the result and copy only text to the target agent, reducing image context in that conversation. See [Generate instructions](docs/AI-INSTRUCTIONS.en.md).
 
 File handoff defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and the vertical **⋯** menu inside the button remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
 

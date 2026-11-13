@@ -236,6 +236,10 @@ add_test(NAME video-project COMMAND video_project_tests)
 qt_add_executable(video_ui_tests tests/video_ui_test.cpp)
 target_link_libraries(video_ui_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(video_ui_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+qt_add_resources(video_ui_tests video_ui_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES app/translations/built/edithere_en.qm)
 add_test(NAME video-ui COMMAND video_ui_tests -platform offscreen)
 set_tests_properties(video-ui PROPERTIES TIMEOUT 120)
 find_program(Node_EXECUTABLE NAMES node)
@@ -277,13 +281,24 @@ set_target_properties(edithere-cli-test PROPERTIES WIN32_EXECUTABLE FALSE MACOSX
 target_link_libraries(edithere-cli-test PRIVATE h2d_core h2d_agent h2d_diagnostics)
 target_compile_definitions(edithere-cli-test PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 add_dependencies(agent_cli_tests edithere-cli edithere-cli-test)
-add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+if(WIN32)
+  # Windows GUI tests may not have an attached console on hosted runners.
+  # Keep a readable log even if a modal interaction stalls the process.
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen
+    -o "${CMAKE_CURRENT_BINARY_DIR}/agent-cli-test.log,txt")
+else()
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+endif()
 if(WIN32)
   qt_add_executable(agent_launch_tests tests/agent_launch_test.cpp)
   target_link_libraries(agent_launch_tests PRIVATE h2d_agent Qt6::Test)
   set_target_properties(agent_launch_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
   add_test(NAME agent-launch COMMAND agent_launch_tests)
   set_tests_properties(agent-launch PROPERTIES TIMEOUT 45)
+  qt_add_executable(windows_ipc_tests tests/windows_ipc_test.cpp)
+  target_link_libraries(windows_ipc_tests PRIVATE h2d_agent Qt6::Test)
+  set_target_properties(windows_ipc_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+  add_test(NAME windows-ipc-validation COMMAND windows_ipc_tests)
 endif()
 qt_add_executable(detector_tests tests/detector_test.cpp)
 target_link_libraries(detector_tests PRIVATE h2d_core Qt6::Test)
@@ -420,6 +435,12 @@ if(WIN32)
   set_target_properties(scroll_platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
   add_test(NAME scroll-platform COMMAND scroll_platform_tests -platform windows)
   set_tests_properties(scroll-platform PROPERTIES TIMEOUT 45)
+
+  include(cmake/WindowsTestRuntime.cmake)
+  # All tests registered so far use Qt except these Node suites.
+  get_property(native_tests DIRECTORY PROPERTY TESTS)
+  list(REMOVE_ITEM native_tests connector web web-mcp update-signer)
+  edithere_prepare_windows_qt_tests(EditHere ${native_tests})
 endif()
 # Guards for the incidents recorded in docs/REGRESSIONS.md: installer encoding, NSIS
 # macros, the shape of the portable archive, release asset names and hashes, the

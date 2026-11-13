@@ -2007,8 +2007,15 @@ class UiTests : public QObject {
         document.notes.append(note);
         Editor editor; editor.setDocument(document);
         auto copy = editor.findChild<QPushButton *>("copyImage"); QVERIFY(copy);
+        QApplication::clipboard()->setText("previous JSON text");
         copy->click();
         const auto copied = QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        const auto mime = QApplication::clipboard()->mimeData();
+        QVERIFY(mime && mime->hasImage());
+        QVERIFY(!mime->hasUrls());
+        QVERIFY(!mime->hasText());
+        QVERIFY(mime->hasFormat("image/png"));
+        QCOMPARE(QImage::fromData(mime->data("image/png"), "PNG").convertToFormat(QImage::Format_ARGB32), copied);
         QCOMPARE(copied.size(), QSize(5472, 2352));
         QCOMPARE(copied.copy(96 + 1200, 96 + 100, 600, 200),
                  source.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
@@ -3902,6 +3909,47 @@ class UiTests : public QObject {
         QCOMPARE(accepted.count(), 1);
         overlay.hide();
     }
+    void aSettledSelectionFollowsTheWholeDrag_data() {
+        QTest::addColumn<double>("scale");
+        QTest::newRow("100-percent") << 1.0;
+        QTest::newRow("125-percent") << 1.25;
+        QTest::newRow("200-percent") << 2.0;
+    }
+    void aSettledSelectionFollowsTheWholeDrag() {
+        QFETCH(double, scale);
+        QImage image(qRound(800 * scale), qRound(600 * scale), QImage::Format_ARGB32);
+        image.fill(QColor(32, 36, 42));
+        ScreenFrame frame{"moving", {-800, -100, 800, 600}, image.rect(), image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        const QRect original(qRound(100 * scale), qRound(150 * scale), qRound(220 * scale),
+                             qRound(160 * scale));
+        overlay.setSelections({original});
+        QTest::keyClick(&overlay, Qt::Key_R);
+        QCOMPARE(overlay.selection(), original);
+        const QPoint press(180, 220);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, press);
+        const auto pixel = [scale](QPoint point) {
+            return QPoint(qRound(point.x() * scale), qRound(point.y() * scale));
+        };
+        // Each event stays relative to the original press. Repeated events at the
+        // same point must not pull the selection back, including at screen edges.
+        for (const QPoint at : {QPoint(190, 225), QPoint(240, 255), QPoint(470, 360),
+                                QPoint(700, 500), QPoint(798, 598), QPoint(798, 598),
+                                QPoint(5, 5), QPoint(5, 5), press}) {
+            QMouseEvent move(QEvent::MouseMove, at, overlay.mapToGlobal(at), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(&overlay, &move);
+            const QPoint desired = original.topLeft() + pixel(at) - pixel(press);
+            const QPoint confined(std::clamp(desired.x(), 0, image.width() - original.width()),
+                                   std::clamp(desired.y(), 0, image.height() - original.height()));
+            QCOMPARE(overlay.selection(), QRect(confined, original.size()));
+        }
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, press);
+        QCOMPARE(overlay.selection(), original);
+        overlay.hide();
+    }
     void selectionResizeCursorMatchesHitArea_data() {
         QTest::addColumn<double>("scale");
         QTest::newRow("100-percent") << 1.0;
@@ -4128,80 +4176,73 @@ class UiTests : public QObject {
                                 .arg(after)));
         overlay.hide();
     }
-    // The enlargement is where the aim is judged, so the blue frame of the recognised
-    // block has to be inside it, magnified with the pixels it belongs to rather than
-    // left at the size it has on the screen.
-    void theMagnifierCarriesTheFrameItIsAimingAt() {
-        QImage image = exampleImage();
-        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+    // #62: the selection outline stays on the screen; the magnifier must show
+    // the original pixels, including where a recognised block meets the screen edge.
+    void theMagnifierShowsRawPixelsAtTheScreenEdge() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        const QColor original(240, 240, 240);
+        image.fill(original);
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, image.rect(), image, true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(560, 360);
-        // The block finder runs off the main thread, so the frames have to be waited
-        // for before the pointer is put on one of them.
-        QTest::qWait(400);
-        // The panel is placed the way the window places it: beside the pointer, and
-        // flipped when it would fall off an edge.
-        // The pointer goes on the left edge of the screen. The enlargement only covers
-        // about twenty pixels around the pointer, so an edge is the one place a frame
-        // can be seen to be magnified rather than merely present.
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
         const QPoint at(0, 225);
         movePointerTo(overlay, at);
-        QTest::qWait(80);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        artifact(overlay, "magnifier-frame.png");
+        artifact(overlay, "magnifier-screen-edge.png");
         const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
                          QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
-        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
-        int marked = 0;
+        QVERIFY(shot.rect().contains(zoom));
         for (int row = zoom.top(); row < zoom.bottom(); ++row)
             for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row)))
-                    ++marked;
-        // The frame is on the screen at its own size as well, so the count has to come
-        // from inside the enlargement: that is the part of the picture the pointer is
-        // reading, and a frame missing from it is a frame the pointer cannot use.
-        QVERIFY2(marked > 0, "the enlargement shows the pixels without the frame that names them");
+                QVERIFY2(!isAccentColour(shot.pixelColor(column, row)),
+                         "the selection outline must not obscure source pixels in the magnifier");
+        QCOMPARE(shot.pixelColor(zoom.center() + QPoint(3, 3)), original);
         overlay.hide();
     }
-    // REG-086: the enlargement used to be a second look at the grab with a hairline
-    // drawn back on top of it, so the blue frame came out thin however far the pixels
-    // under it had been stretched. It is a glass held over the window instead: what is
-    // on the window, frame included, has to come out enlarged with those pixels.
-    void theEnlargementMagnifiesTheFrameRatherThanRedrawingIt() {
-        QImage image(1120, 720, QImage::Format_ARGB32);
-        image.fill(QColor(240, 240, 240));
-        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+    void theMagnifierKeepsSelectionEdgePixelsVisible_data() {
+        QTest::addColumn<double>("scale");
+        QTest::addColumn<bool>("settled");
+        for (const double scale : {1.0, 1.25, 2.0})
+            for (const bool settled : {false, true})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(scale).arg(settled ? "settled" : "drawing")))
+                    << scale << settled;
+    }
+    void theMagnifierKeepsSelectionEdgePixelsVisible() {
+        QFETCH(double, scale);
+        QFETCH(bool, settled);
+        QImage image(qRound(560 * scale), qRound(360 * scale), QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor(40 + (x % 3) * 50, 80 + (y % 3) * 35, 110));
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, image.rect(), image, true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(560, 360);
-        QTest::qWait(50);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
         QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
         QTest::mouseMove(&overlay, {300, 260});
-        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
-        QVERIFY(!overlay.selection().isEmpty());
-        // The pointer goes on the left edge of the region, which is where the frame is.
-        const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
+        if (settled)
+            QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        const QPoint at = settled ? QPoint(100, 180) : QPoint(300, 260);
         movePointerTo(overlay, at);
-        QTest::qWait(50);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        artifact(overlay, "magnifier-thick-frame.png");
+        artifact(overlay, QString("magnifier-raw-%1-%2.png").arg(scale).arg(settled));
         const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
-        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
-                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
-        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
-        int marked = 0;
-        for (int row = zoom.top(); row < zoom.bottom(); ++row)
-            for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row)))
-                    ++marked;
-        // The frame is two pixels wide on the screen and the enlargement is fifteen
-        // times, so it fills a band of the panel. A hairline redrawn at its own width
-        // is about two hundred pixels of it; the band is several thousand.
-        QVERIFY2(marked > 2000,
-                 qPrintable(QString("the frame has to be enlarged with the pixels it marks (%1)")
-                                .arg(marked)));
+        const QRectF zoom(QPointF(panel.left() + magnifierPanelPadding, panel.top() + magnifierPanelPadding),
+                          QSizeF(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        QVERIFY(shot.rect().contains(zoom.toRect()));
+        const QPoint sample(qRound(at.x() * scale), qRound(at.y() * scale));
+        // Check a neighbourhood across the blue border. Each grid cell must be one
+        // original device pixel, at full brightness, with no smoothing or overlay.
+        for (int dy = -2; dy <= 2; ++dy)
+            for (int dx = -2; dx <= 2; ++dx) {
+                const QPoint probe = (zoom.center() + QPointF(dx * magnifierZoomCell + 3,
+                                                              dy * magnifierZoomCell + 3)).toPoint();
+                QCOMPARE(shot.pixelColor(probe), image.pixelColor(sample + QPoint(dx, dy)));
+            }
         overlay.hide();
     }
     // REG-090: an arrow key took its step in pixels of the grab and then rounded the
@@ -4528,10 +4569,8 @@ class UiTests : public QObject {
         QVERIFY2(!panel.intersects(bar->geometry()),
                  "the panel is drawn by the window and the bar is drawn over it, so the "
                  "panel has to be placed somewhere the bar is not");
-        // And in the pixels: the pointer sits on the left edge of the region, so the
-        // enlarged frame is a band that runs the whole way down the enlargement. The
-        // only thing allowed to break it is the grid, which is one line every cell;
-        // anything painted across the panel takes out a whole stretch of rows.
+        // The original light pixels must remain visible throughout the panel;
+        // a toolbar painted over it would remove a whole stretch of rows.
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-clear-of-the-bar.png");
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
@@ -4540,14 +4579,14 @@ class UiTests : public QObject {
         int rows = 0;
         for (int row = zoom.top(); row < zoom.bottom(); ++row) {
             for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row))) {
+                if (shot.pixelColor(column, row) == QColor(240, 240, 240)) {
                     ++rows;
                     break;
                 }
         }
         QVERIFY2(rows >= zoom.height() * 4 / 5,
                  qPrintable(QString("the enlargement has to be readable from top to bottom "
-                                    "(%1 of %2 rows show the frame)")
+                                    "(%1 of %2 rows show source pixels)")
                                 .arg(rows)
                                 .arg(zoom.height())));
         overlay.hide();
