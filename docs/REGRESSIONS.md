@@ -28,6 +28,14 @@
 | --- | --- | --- | --- |
 | REG-214 | 反馈：「明明允许了屏幕录制，还老是弹权限申请」。macOS 的录屏授权按具体构建的代码哈希记录，且只对之后新启动的进程生效：重打包后列表里的开关仍然亮着，但管不到新程序；而「启动后立即截图」默认开启，于是每次启动都截图失败并弹出“截图未完成”，看起来像反复索要权限。启动截图前先做**不触发系统弹窗**的 preflight，缺权限时静默驻留托盘并写诊断，手动截图时才说明缺哪项权限 | 无自动化覆盖：`screenCaptureAllowed()` 在非 cocoa 平台恒为真，离屏 CI 走不到该分支；改动只影响启动分支，`startup-flow` 既有用例继续保证有图/空窗/托盘路径不变，实机需确认“无权限启动不弹窗、手动截图仍提示” | ⚠️ |
 
+## macOS 应用图标与菜单栏图标（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-216 | 用户反馈（实机截图）：Dock 里的图标只是一个撑满整个图标的透明符号，既没有 macOS 图标应有的圆角方形底色，放大后还发虚；菜单栏图标仍是蓝色的应用位图，不跟随菜单栏明暗反色，也不清晰。原因有三个：`edithere.icns` 直接由只画符号的 `edithere.svg` 渲染，而 macOS 期望应用图标自带底板并把符号收在留白内；即使换了 bundle 图标，`main.cpp` 里的 `QApplication::setWindowIcon()` 仍会把它盖掉——Qt 的 Cocoa 后端把这个 `QIcon` 交给 AppKit 作为 `NSApplication.applicationIconImage`，Dock 画的是它而不是 bundle 声明的图标（实测：不设窗口图标时该属性回落到 Info.plist 里的 ICNS，设了就被替换成那张位图）；菜单栏侧，`Controller` 直接把 `QApplication::windowIcon()` 交给 `QSystemTrayIcon`，而模板位取的是 `QIcon::isMask()`，它从未被设置，于是菜单栏拿到彩色位图并按 18 点档位缩放。修复：新增 `assets/icons/edithere-macos.svg`（1024 画布、824×824 圆角 185.4 底板、符号居中收进底板），ICNS 改由它渲染，PNG/ICO 仍用原符号；macOS 不再设置窗口图标，Dock 交给 bundle 图标（其它平台保持原样）；菜单栏图标改由 `h2d::trayIcon()` 从品牌矢量按请求的缩放比现场栅格化，先量出符号的墨迹框再留 6% 内边距，并用 `QIcon::setIsMask(true)` 标成模板图，交给 AppKit 按系统前景色着色 | `cocoa-tray::statusIconIsATemplateMask`：菜单栏图标必须是 mask（否则彩色符号在一种菜单栏外观下会消失）；按 36 点位槽请求时按 `devicePixelRatio` 现场栅格化（Retina 下得到 72×72，说明是矢量渲染而不是放大位图）；墨迹占位槽的 80%–95%，保住系统状态符号的留白 | 🆕 |
+
+Dock 图标没有测试可固化：`assets/icons/edithere.icns` 的每个 chunk 都由 `edithere-macos.svg` 渲染（`scripts/generate-app-icons.ps1` 重建），形状对不对只能人工看 Dock 与 Finder。macOS 分支不要再加 `setWindowIcon()`——它会经 `NSApplication.applicationIconImage` 覆盖 bundle 图标，实机表现是"换了 ICNS 也没用"；核对办法是在 bundle 副本里跑一个不设窗口图标的 AppKit 小程序，看 `NSApplication.applicationIconImage` 是否是 Info.plist 声明的图标。换过 bundle 图标后系统图标缓存可能仍显示旧图，需让 bundle 的 mtime 变化或重启 Dock 才会刷新。
+
 ## Windows 免费更新签名（0.12.8）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -491,6 +499,7 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | `ui_tests`（75 例） | `tests/ui_test.cpp`，CTest 名 `ui` | REG-065/068/076/080/083/085/086/087/088/089/090/091/092/107/108/110 |
 | `ui_tests::windowControlsFollowThePlatformConvention` | `tests/ui_test.cpp`，CTest 名 `ui` | REG-213 |
 | `cocoa-window` | `tests/cocoa_window_test.mm`，CTest 名 `cocoa-window`（仅 macOS，且需要真实 Cocoa 窗口） | REG-213 |
+| `cocoa-tray::statusIconIsATemplateMask` | `tests/cocoa_tray_test.mm`，CTest 名 `cocoa-tray`（仅 macOS） | REG-216 |
 | 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |

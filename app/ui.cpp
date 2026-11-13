@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QIconEngine>
+#include <QImage>
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QMap>
@@ -24,6 +25,7 @@
 // Reference the resource from the static library, including in test executables.
 static void initializeUiIcons() {
     Q_INIT_RESOURCE(ui_icons);
+    Q_INIT_RESOURCE(brand_symbol);
 }
 
 namespace h2d {
@@ -387,6 +389,80 @@ class SvgGlyphEngine final : public QIconEngine {
     QByteArray svg_;
     QColor normal_, checked_, disabled_;
 };
+
+// A menu bar image is not a picture but a mask: AppKit keeps the alpha channel
+// and paints it in the colour the bar asks for, which Qt selects through
+// QIcon::setIsMask(). Rasterising the brand vector here, at the scale the icon is
+// requested for, keeps that silhouette sharp on Retina instead of upscaling the
+// dock icon's PNG. The inset leaves the clearance the system's own status symbols
+// keep: somewhere around 16 points of artwork in the 22 point menu bar slot.
+constexpr qreal statusGlyphInset = 0.06;
+
+// The brand file draws its symbol inside a square viewBox with room around it, and
+// a status item is laid out by the artwork rather than by the file, so the engine
+// crops to what is actually painted. Measuring the drawn box once keeps the two
+// from drifting apart when the brand file is redrawn.
+QRectF symbolInkBox(const QByteArray &svg) {
+    constexpr int probe = 128;
+    QImage image(probe, probe, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QSvgRenderer renderer(svg);
+    if (!renderer.isValid())
+        return {};
+    renderer.setAspectRatioMode(Qt::IgnoreAspectRatio);
+    {
+        QPainter painter(&image);
+        renderer.render(&painter, QRectF(0, 0, probe, probe));
+    }
+    int left = probe, top = probe, right = -1, bottom = -1;
+    for (int y = 0; y < probe; ++y) {
+        for (int x = 0; x < probe; ++x) {
+            if (qAlpha(image.pixel(x, y)) == 0)
+                continue;
+            left = qMin(left, x);
+            top = qMin(top, y);
+            right = qMax(right, x);
+            bottom = qMax(bottom, y);
+        }
+    }
+    const QRectF box = renderer.viewBoxF();
+    if (right < left || bottom < top)
+        return box;
+    return QRectF(box.x() + box.width() * left / probe, box.y() + box.height() * top / probe,
+                  box.width() * (right - left + 1) / probe, box.height() * (bottom - top + 1) / probe);
+}
+
+class StatusGlyphEngine final : public QIconEngine {
+  public:
+    StatusGlyphEngine(QByteArray svg, QRectF ink) : svg_(std::move(svg)), ink_(ink) {}
+    QIconEngine *clone() const override { return new StatusGlyphEngine(svg_, ink_); }
+    QString key() const override { return QStringLiteral("EditHereStatusGlyph"); }
+    bool isNull() override { return svg_.isEmpty(); }
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode, QIcon::State) override {
+        QSvgRenderer renderer(svg_);
+        if (ink_.isValid())
+            renderer.setViewBox(ink_);
+        const qreal inset = qRound(rect.width() * statusGlyphInset);
+        renderer.render(painter, QRectF(rect).adjusted(inset, inset, -inset, -inset));
+    }
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override {
+        return scaledPixmap(size, mode, state, 1);
+    }
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override {
+        if (size.isEmpty() || scale <= 0)
+            return {};
+        QPixmap result(size * scale);
+        result.fill(Qt::transparent);
+        result.setDevicePixelRatio(scale);
+        QPainter painter(&result);
+        paint(&painter, QRect(QPoint(), size), mode, state);
+        return result;
+    }
+
+  private:
+    QByteArray svg_;
+    QRectF ink_;
+};
 } // namespace
 
 QStringList glyphNames() {
@@ -405,6 +481,26 @@ QIcon glyph(const QString &name, QColor color) {
         color = QColor(darkTheme ? "#d4d5dd" : "#606069");
     return QIcon(new SvgGlyphEngine(name, *source, color, themed ? accent() : color,
                                    qApp->palette().color(QPalette::Disabled, QPalette::ButtonText)));
+}
+QIcon trayIcon() {
+#ifdef Q_OS_MACOS
+    static const QByteArray brandSymbol = [] {
+        QFile file(QStringLiteral(":/brand/edithere.svg"));
+        if (!file.open(QIODevice::ReadOnly)) {
+            qWarning() << "Cannot read the brand symbol:" << file.fileName();
+            return QByteArray();
+        }
+        return file.readAll();
+    }();
+    if (!brandSymbol.isEmpty()) {
+        static const QRectF brandInk = symbolInkBox(brandSymbol);
+        QIcon icon(new StatusGlyphEngine(brandSymbol, brandInk));
+        icon.setIsMask(true);
+        return icon;
+    }
+#endif
+    const QIcon windowIcon = QApplication::windowIcon();
+    return windowIcon.isNull() ? glyph(QStringLiteral("capture"), accent()) : windowIcon;
 }
 QPushButton *iconButton(const QString &name, const QString &label, QWidget *parent) {
     auto b = new QPushButton(parent);
