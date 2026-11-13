@@ -28,6 +28,8 @@ QLabel#aiInstructionsStatus { color:@muted; font-size:12px; }
 QLabel#aiInstructionsStatus[error="true"] { color:@error; }
 QLabel#aiInstructionsUsage { color:@muted; font-size:11px; }
 QDialog#aiInstructionsDialog QPushButton { padding:9px 15px; border-radius:7px; }
+QDialog#aiInstructionsDialog QPushButton#aiInstructionsProviderSwitch { padding:9px 0; min-width:0; }
+QDialog#aiInstructionsDialog QPushButton#aiInstructionsProviderSwitch::menu-indicator { image:none; width:0; }
 QDialog#aiInstructionsDialog QPushButton[quiet="true"] { background:transparent; border:0; color:@muted; padding:5px 8px; }
 QDialog#aiInstructionsDialog QPushButton[quiet="true"]:hover { background:@hover; color:@text; }
 QDialog#aiInstructionsDialog QPushButton[primary="true"] { background:@accent; color:white; border:1px solid @accent; }

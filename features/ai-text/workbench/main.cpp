@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
             });
             QTimer::singleShot(15000, &dialog, &QDialog::reject);
         }
-        const int result = dialog.exec(); draft = dialog.draft();
+        const int result = dialog.exec(); draft = dialog.draft(); dialog.applyTo(settings);
         if (result != AiInstructionsDialog::Configure) return parser.isSet("render") && result != QDialog::Accepted ? 7 : 0;
         settingsDialog(settings, credentials, replay.get());
     }

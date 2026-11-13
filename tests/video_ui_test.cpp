@@ -277,7 +277,7 @@ class VideoUiTests : public QObject {
         QCOMPARE(editor.totalAnnotationCount(), 1);
         QVERIFY(editor.findChild<QComboBox *>("videoAnnotatedFrames")->count() == 2);
         QTranslator english;
-        QVERIFY(english.load(QFINDTESTDATA("../app/translations/built/edithere_en.qm")));
+        QVERIFY(english.load(":/i18n/edithere_en.qm"));
         QVERIFY(QApplication::installTranslator(&english));
         QCoreApplication::sendPostedEvents(nullptr, QEvent::LanguageChange);
         QCOMPARE(editor.findChild<QPushButton *>("videoPlayPause")->text(), QString("Play"));

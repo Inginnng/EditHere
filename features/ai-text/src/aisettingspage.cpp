@@ -2,6 +2,7 @@
 #include "aicredentials.h"
 #include "aifeedback.h"
 #include "aiprovidericons.h"
+#include "aipromptdialog.h"
 #include "ui.h"
 #include "aistyle.h"
 #include <QAction>
@@ -202,7 +203,7 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
     advancedHeader->addStretch();
     prompt_ = textButton({}, false, this);
     prompt_->setObjectName("aiViewPrompt");
-    prompt_->setProperty("aiQuiet", true);
+    prompt_->setProperty("aiOutline", true);
     advancedHeader->addWidget(prompt_);
     layout->addLayout(advancedHeader);
     advanced_ = new QWidget(this);
@@ -333,35 +334,11 @@ AiSettingsPage::AiSettingsPage(QWidget *parent, AiCredentials *credentials) : QW
         if (isVisible() && !failedLoad.isEmpty() && failedLoad != currentProvider_) loadKey();
     });
     connect(prompt_, &QPushButton::clicked, this, [this] {
-        QDialog dialog(this);
-        dialog.setObjectName("aiPromptDialog");
-        dialog.setWindowTitle(tr("EditHere 系统提示词"));
-        dialog.resize(680, 560);
-        auto *body = new QVBoxLayout(&dialog);
-        body->setContentsMargins(24, 24, 24, 24);
-        auto *hint = mutedLabel(tr("这段提示词会随每次解析一起发送给所选服务商。修改只影响本机，可随时恢复默认。"), &dialog);
-        hint->setWordWrap(true);
-        body->addWidget(hint);
-        auto *text = new QPlainTextEdit(&dialog);
-        text->setObjectName("aiBuiltinPrompt");
-        text->setPlainText(systemPrompt_.isEmpty() ? aiSystemPrompt() : systemPrompt_);
-        body->addWidget(text, 1);
-        auto *actions = new QHBoxLayout;
-        auto *reset = textButton(tr("恢复默认"), false, &dialog);
-        auto *close = textButton(tr("取消"), false, &dialog);
-        auto *save = textButton(tr("保存"), true, &dialog);
-        actions->addWidget(reset); actions->addStretch(); actions->addWidget(close); actions->addWidget(save);
-        body->addLayout(actions);
-        connect(reset, &QPushButton::clicked, text, [text] { text->setPlainText(aiSystemPrompt()); });
-        connect(close, &QPushButton::clicked, &dialog, &QDialog::reject);
-        connect(save, &QPushButton::clicked, &dialog, [this, text, &dialog] {
-            const auto value = text->toPlainText();
-            systemPrompt_ = value.trimmed().isEmpty() || value == aiSystemPrompt() ? QString() : value;
+        if (const auto prompt = editAiSystemPrompt(systemPrompt_, this)) {
+            systemPrompt_ = *prompt;
             updatePromptButton();
             setStatus(systemPrompt_.isEmpty() ? tr("已恢复内置系统提示词。") : tr("系统提示词已修改，保存设置后生效。"));
-            dialog.accept();
-        });
-        dialog.exec();
+        }
     });
     connect(docs_, &QPushButton::clicked, this, [this] {
         for (const auto &preset : aiProviderPresets())
@@ -558,7 +535,7 @@ void AiSettingsPage::retranslate() {
     for (int i = 0; i < family_->count(); ++i) family_->setItemText(i, labels.value(family_->itemData(i).toString()));
     syncProviderChoices();
     updateNote();
-    title_->setText(tr("AI 解析（预览）"));
+    title_->setText(tr("AI 解析（预览功能）"));
     description_->setText(tr("选择服务商，连接用于解析批注的模型。预览功能，结果请核对后再用。"));
     providerLabel_->setText(tr("服务商"));
     provider_->setAccessibleName(providerLabel_->text());

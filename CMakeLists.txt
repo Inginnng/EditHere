@@ -229,6 +229,10 @@ add_test(NAME video-project COMMAND video_project_tests)
 qt_add_executable(video_ui_tests tests/video_ui_test.cpp)
 target_link_libraries(video_ui_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(video_ui_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+qt_add_resources(video_ui_tests video_ui_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES app/translations/built/edithere_en.qm)
 add_test(NAME video-ui COMMAND video_ui_tests -platform offscreen)
 set_tests_properties(video-ui PROPERTIES TIMEOUT 120)
 find_program(Node_EXECUTABLE NAMES node)
@@ -413,6 +417,12 @@ if(WIN32)
   set_target_properties(scroll_platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
   add_test(NAME scroll-platform COMMAND scroll_platform_tests -platform windows)
   set_tests_properties(scroll-platform PROPERTIES TIMEOUT 45)
+
+  include(cmake/WindowsTestRuntime.cmake)
+  # All tests registered so far use Qt except these Node suites.
+  get_property(native_tests DIRECTORY PROPERTY TESTS)
+  list(REMOVE_ITEM native_tests connector web web-mcp update-signer)
+  edithere_prepare_windows_qt_tests(EditHere ${native_tests})
 endif()
 # Guards for the incidents recorded in docs/REGRESSIONS.md: installer encoding, NSIS
 # macros, the shape of the portable archive, release asset names and hashes, the

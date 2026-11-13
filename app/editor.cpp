@@ -2881,8 +2881,9 @@ void Editor::generateInstructions() {
     try {
         FeedbackExportOptions options;
         options.mode = ImageExportMode::None;
-        // Use the normal export boundary to reveal any unresolved child parent.
-        agentFeedbackBundle(options);
+        // Single-image and video exports reveal an unresolved child in the editor.
+        // The set snapshot already runs the set export, so don't build it twice.
+        if (!imageSet_) agentFeedbackBundle(options);
         options.includeRecognizedText = preferences_.includeRecognizedText;
         options.includeWindowTitle = preferences_.includeWindowTitle;
         commitSetPage();
@@ -2897,6 +2898,11 @@ void Editor::generateInstructions() {
             AiInstructionsDialog dialog(preferences_, input, this, nullptr, draft);
             result = dialog.exec();
             draft = dialog.draft();
+            const auto provider = preferences_.aiProviderId;
+            const auto prompt = preferences_.aiSystemPrompt;
+            dialog.applyTo(preferences_);
+            if (provider != preferences_.aiProviderId || prompt != preferences_.aiSystemPrompt)
+                emit aiPreferencesChanged(preferences_.aiProviderId, preferences_.aiSystemPrompt);
         }
         if (result != AiInstructionsDialog::Configure) break;
         emit aiSettingsRequested();

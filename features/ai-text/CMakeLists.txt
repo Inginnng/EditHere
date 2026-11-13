@@ -32,9 +32,9 @@ FetchContent_MakeAvailable(qtkeychain)
 add_library(h2d_ai_text OBJECT
   src/aiconfig.cpp src/aifeedback.cpp src/aifeedbackformat.cpp src/aistyle.cpp
   src/aicredentials.cpp src/aiprovidericons.cpp
-  src/aiinstructionsdialog.cpp src/aisettingspage.cpp
+  src/aiinstructionsdialog.cpp src/aisettingspage.cpp src/aipromptdialog.cpp
   include/aifeedback.h include/aicredentials.h
-  include/aiinstructionsdialog.h include/aisettingspage.h)
+  include/aiinstructionsdialog.h include/aisettingspage.h include/aipromptdialog.h)
 target_include_directories(h2d_ai_text PUBLIC include PRIVATE "${EDITHERE_ROOT}/app")
 target_compile_definitions(h2d_ai_text PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(h2d_ai_text PUBLIC Qt6::Widgets Qt6::Svg Qt6::Network PRIVATE qt6keychain)
@@ -69,4 +69,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(ai_feedback_tests PRIVATE h2d_ai_text ai_text_workbench_host Qt6::Test)
   set_target_properties(ai_feedback_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
   add_test(NAME ai-feedback COMMAND ai_feedback_tests)
+  if(WIN32)
+    include("${EDITHERE_ROOT}/cmake/WindowsTestRuntime.cmake")
+    edithere_prepare_windows_qt_tests(ai_feedback_tests ai-feedback)
+  endif()
 endif()
