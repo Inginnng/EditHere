@@ -78,6 +78,13 @@ qt_add_resources(h2d_ui ui_icons
   PREFIX "/ui-icons"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons"
   FILES assets/ui-icons/manifest.json ${UI_ICON_SVGS})
+# The menu bar icon is drawn from the brand vector rather than from the raster app
+# icon set: AppKit tints status images and keeps only the alpha channel, so the
+# symbol has to be rendered at the device scale instead of scaled up from a PNG.
+qt_add_resources(h2d_ui brand_symbol
+  PREFIX "/brand"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
+  FILES assets/icons/edithere.svg)
 if(WIN32)
   target_link_libraries(h2d_ui PRIVATE user32 gdi32 dwmapi ole32 oleaut32 uuid advapi32 wintrust crypt32 bcrypt)
 elseif(APPLE)

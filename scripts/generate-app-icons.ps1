@@ -6,6 +6,8 @@ param(
 # Requires Windows PowerShell 5.1 (built-in System.Drawing); no downloaded tools.
 # Run: powershell.exe -NoProfile -File scripts/generate-app-icons.ps1
 # The small SVG renderer supports the absolute M/L/H/V/Q/A/Z (circular arcs) commands used here.
+# The ICNS is rendered from edithere-macos.svg: macOS shows app icons inside its own
+# rounded-square plate, which the flat symbol the other platforms take does not have.
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot "assets/icons" }
@@ -13,6 +15,7 @@ if (-not $ContactSheetPath) { $ContactSheetPath = Join-Path $projectRoot "artifa
 $ContactSheetPath = [IO.Path]::GetFullPath($ContactSheetPath)
 [IO.Directory]::CreateDirectory((Split-Path $ContactSheetPath -Parent)) | Out-Null
 $source = Join-Path $projectRoot "assets/icons/edithere.svg"
+$macSource = Join-Path $projectRoot "assets/icons/edithere-macos.svg"
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing,System.Xml -TypeDefinition @'
@@ -140,8 +143,9 @@ public static class EditHereIconGenerator {
     static void BigEndian(BinaryWriter writer, int value) {
         writer.Write(new byte[] {(byte)(value>>24),(byte)(value>>16),(byte)(value>>8),(byte)value});
     }
-    public static void Generate(string source, string output, string contactSheetPath) {
+    public static void Generate(string source, string macSource, string output, string contactSheetPath) {
         var svg=new XmlDocument(); svg.Load(source);
+        var macSvg=new XmlDocument(); macSvg.Load(macSource);
         var pngs=new Dictionary<int,byte[]>();
         int[] sizes={16,20,24,32,48,64,128,256,512,1024};
         foreach(int size in sizes) {
@@ -163,14 +167,24 @@ public static class EditHereIconGenerator {
             foreach(int size in icoSizes) writer.Write(pngs[size]);
         }
         // Modern ICNS PNG chunks, including Retina representations (32 -> 16@2x).
+        // macOS composites these into its rounded-square icon shape, so every chunk
+        // comes from the plated artwork instead of the flat symbol above.
         string[] types={"icp4","icp5","icp6","ic07","ic08","ic09","ic10","ic11","ic12","ic13","ic14"};
         int[] icnsSizes={16,32,64,128,256,512,1024,32,64,256,512};
-        int length=8; foreach(int size in icnsSizes) length+=8+pngs[size].Length;
+        var macPngs=new Dictionary<int,byte[]>();
+        foreach(int size in new[]{16,32,64,128,256,512,1024}) {
+            using(var bitmap=Render(macSvg,size))
+            using(var stream=new MemoryStream()) {
+                bitmap.Save(stream,ImageFormat.Png);
+                macPngs[size]=stream.ToArray();
+            }
+        }
+        int length=8; foreach(int size in icnsSizes) length+=8+macPngs[size].Length;
         using(var writer=new BinaryWriter(File.Create(Path.Combine(output,"edithere.icns")))) {
             writer.Write(Encoding.ASCII.GetBytes("icns")); BigEndian(writer,length);
             for(int i=0;i<types.Length;i++) {
-                writer.Write(Encoding.ASCII.GetBytes(types[i])); BigEndian(writer,8+pngs[icnsSizes[i]].Length);
-                writer.Write(pngs[icnsSizes[i]]);
+                writer.Write(Encoding.ASCII.GetBytes(types[i])); BigEndian(writer,8+macPngs[icnsSizes[i]].Length);
+                writer.Write(macPngs[icnsSizes[i]]);
             }
         }
         // Review native-size 16/32 icons on light/dark surfaces, alongside the artwork.
@@ -202,5 +216,5 @@ public static class EditHereIconGenerator {
     }
 }
 '@
-[EditHereIconGenerator]::Generate($source, [IO.Path]::GetFullPath($OutputDirectory), $ContactSheetPath)
+[EditHereIconGenerator]::Generate($source, $macSource, [IO.Path]::GetFullPath($OutputDirectory), $ContactSheetPath)
 Write-Host "Generated EditHere icons in $OutputDirectory"

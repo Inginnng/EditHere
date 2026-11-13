@@ -66,7 +66,8 @@
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
-| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
+| REG-213 | 用户反馈：macOS 上编辑器在右上角自绘最小化 / 全屏 / 关闭，而该平台的习惯是左上角的红绿灯。macOS 改为保留系统标题栏、隐藏标题并把客户区铺满整个窗口，关闭、最小化和缩放交还 AppKit；编辑器自己的三个按钮不再进入标题栏布局，品牌文字让出红绿灯占用的左边距。窗口同时改为不透明、圆角与边框交给系统，避免在系统边框内再画一圈圆角边框。其余平台保持原状。实机反馈随后出现「红绿灯另起一行」：窗口样式位在系统排布窗口的过程中被丢掉后没人补回，标题已隐藏而客户区退回标题栏下方，因此编辑器在显示、移动和窗口状态变化后重新核对并补回 | `cocoa-tray::statusIconIsATemplateMask` | `tests/cocoa_tray_test.mm`，CTest 名 `cocoa-tray`（仅 macOS） | REG-228 |
+| `cocoa-window`（真实 Cocoa 窗口，非离屏）：标题隐藏、标题栏透明、客户区等于整个窗口，三个红绿灯都在左上角留白内且只截获自身点击，紧邻的标题栏区域点击落到客户端；`cocoa-window::droppedClientAreaIsPutBackInPlace`：清掉样式位后由 `ensureNativeTitleBar` 立即补回；`ui::windowControlsFollowThePlatformConvention`：macOS 隐藏自绘窗口按钮并把标题文字挪到留白之后，其余平台仍按原顺序显示；既有最小化、全屏、关闭回归在新分支下继续执行 | 🆕 |
 | REG-215 | 注意状态谱系：0.12.6 及更早的 macOS 界面**没有红绿灯**，最小化 / 全屏 / 关闭自绘在右上角，标题栏只有一行（REG-213 之前的样式）；REG-213 把窗口控制交给系统红绿灯之后，才出现下面这个未发布的两行状态。用户反馈（实机截图）：「红绿灯和控件不在同一行」——红绿灯在窗口顶端那一行，而品牌、尺寸和工具整行落在下面 32 点处。真实原因不是样式位没补回：客户区确实铺满了整个窗口，但**只要客户区盖住标题栏，Qt 就给「窗口控件」以及「填满它的那个子控件」塞上一条等于标题栏高度的顶部内容边距**，而且这条边距清不掉（`setContentsMargins(0,…)` 读回来仍是 32），顶层布局因此从标题栏下方开始，整个外壳被整体压下 32 点。规则按控件到窗口顶部的距离逐层退让（顶部 y=0 为 32、y=4 为 28……y≥32 为 0），所以连标签的文字矩形也被压到这条带下方。修复：外壳、标题栏、正文三者改为手工定位（`fitShell`），布局只留在再下一层；标题栏那一行用自己忽略父控件内容边距的 `TitleRowLayout`，两个标签用按自身矩形绘制的 `RowLabel`；行高与左边距取自 AppKit 实测的红绿灯行列（`nativeTitleBarRow`：中线 16 点、右缘 69 点），工具放不下时贴着栏顶排而不是伸出窗口 | `cocoa-window::theReportedRowIsTheOneTheSystemDraws`：上报的行与 AppKit 实际按钮几何一致，并钉住「带内控件有内容边距、带外没有、清不掉」这条平台行为；`ui::theTitleBarSharesTheSystemControlsRow`：栏顶与窗口顶端对齐（外壳 y=0、标题栏 y≤2），工具行中线与红绿灯中线相差 ≤4 点，品牌在红绿灯右缘之后；其余平台走「栏内居中」分支。实机 `EDITHERE_WINDOW_DEBUG=1` 日志可复看 `barPos` / `toolRow` / `rowCenterY` | 🆕 |
 
 平台依据：`titlebarAppearsTransparent` + `titleVisibility = NSWindowTitleHidden` + `NSWindowStyleMaskFullSizeContentView` 之后，AppKit 只让标题栏里的红绿灯接点击，这条带其余位置透传给客户区（`cocoa-window` 实测），所以编辑器可以把自己的工具栏画在这条带上。红绿灯位置由系统决定（窗口顶端 9–23 点，中线 16 点），不额外挪动：AppKit 在每次调整窗口大小后都会重置按钮位置，挪动只会在缩放时跳回原处——因此反过来把编辑器的行对齐到红绿灯，行内控件按「中线 16 点、高 32 点以内」计算。Qt 6.8.3 没有 `Qt::ExpandedClientAreaHint`（6.9 才有），也没有 `safeAreaMargins`，客户区盖住标题栏时它用不可清除的内容边距代替，这条边距就是 REG-215 的成因；`ensureNativeTitleBar` 判据是「样式位在，且客户区高度等于窗口高度」，不成立就整段重设，可见期间每秒再核对一次（判据相同，成立时只读两个属性）。工具自身高 36 点（文字按钮的 7 点内边距 + 20 点最小高度），比红绿灯中线以上的空间高，所以这一行只能贴着栏顶排，中线落在 19 点——与红绿灯相差 3 点，比原来的 32 点整行错位小一个数量级；要完全重合需要把栏内按钮压到 32 点以下，会切到中文字形，故不做。
@@ -74,6 +75,14 @@
 | 编号 | 问题与修复 | 回归检查 | 状态 |
 | --- | --- | --- | --- |
 | REG-214 | 反馈：「明明允许了屏幕录制，还老是弹权限申请」。macOS 的录屏授权按具体构建的代码哈希记录，且只对之后新启动的进程生效：重打包后列表里的开关仍然亮着，但管不到新程序；而「启动后立即截图」默认开启，于是每次启动都截图失败并弹出“截图未完成”，看起来像反复索要权限。启动截图前先做**不触发系统弹窗**的 preflight，缺权限时静默驻留托盘并写诊断，手动截图时才说明缺哪项权限 | 无自动化覆盖：`screenCaptureAllowed()` 在非 cocoa 平台恒为真，离屏 CI 走不到该分支；改动只影响启动分支，`startup-flow` 既有用例继续保证有图/空窗/托盘路径不变，实机需确认“无权限启动不弹窗、手动截图仍提示” | ⚠️ |
+
+## macOS 应用图标与菜单栏图标（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-228 | 用户反馈（实机截图）：Dock 里的图标只是一个撑满整个图标的透明符号，既没有 macOS 图标应有的圆角方形底色，放大后还发虚；菜单栏图标仍是蓝色的应用位图，不跟随菜单栏明暗反色，也不清晰。原因有三个：`edithere.icns` 直接由只画符号的 `edithere.svg` 渲染，而 macOS 期望应用图标自带底板并把符号收在留白内；即使换了 bundle 图标，`main.cpp` 里的 `QApplication::setWindowIcon()` 仍会把它盖掉——Qt 的 Cocoa 后端把这个 `QIcon` 交给 AppKit 作为 `NSApplication.applicationIconImage`，Dock 画的是它而不是 bundle 声明的图标（实测：不设窗口图标时该属性回落到 Info.plist 里的 ICNS，设了就被替换成那张位图）；菜单栏侧，`Controller` 直接把 `QApplication::windowIcon()` 交给 `QSystemTrayIcon`，而模板位取的是 `QIcon::isMask()`，它从未被设置，于是菜单栏拿到彩色位图并按 18 点档位缩放。修复：新增 `assets/icons/edithere-macos.svg`（1024 画布、824×824 圆角 185.4 底板、符号居中收进底板），ICNS 改由它渲染，PNG/ICO 仍用原符号；macOS 不再设置窗口图标，Dock 交给 bundle 图标（其它平台保持原样）；菜单栏图标改由 `h2d::trayIcon()` 从品牌矢量按请求的缩放比现场栅格化，先量出符号的墨迹框再留 6% 内边距，并用 `QIcon::setIsMask(true)` 标成模板图，交给 AppKit 按系统前景色着色 | `cocoa-tray::statusIconIsATemplateMask`：菜单栏图标必须是 mask（否则彩色符号在一种菜单栏外观下会消失）；按 36 点位槽请求时按 `devicePixelRatio` 现场栅格化（Retina 下得到 72×72，说明是矢量渲染而不是放大位图）；墨迹占位槽的 80%–95%，保住系统状态符号的留白 | 🆕 |
+
+Dock 图标没有测试可固化：`assets/icons/edithere.icns` 的每个 chunk 都由 `edithere-macos.svg` 渲染（`scripts/generate-app-icons.ps1` 重建），形状对不对只能人工看 Dock 与 Finder。macOS 分支不要再加 `setWindowIcon()`——它会经 `NSApplication.applicationIconImage` 覆盖 bundle 图标，实机表现是"换了 ICNS 也没用"；核对办法是在 bundle 副本里跑一个不设窗口图标的 AppKit 小程序，看 `NSApplication.applicationIconImage` 是否是 Info.plist 声明的图标。换过 bundle 图标后系统图标缓存可能仍显示旧图，需让 bundle 的 mtime 变化或重启 Dock 才会刷新。
 
 ## Windows 免费更新签名（0.12.8）
 

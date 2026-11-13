@@ -46,7 +46,7 @@ constexpr int kScrollManualSampleMs = 60;
 } // namespace
 Controller::Controller(QObject *parent, const AppSettings &settings, const QString &settingsFile)
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
-      tray_(QApplication::windowIcon().isNull() ? glyph("capture", accent()) : QApplication::windowIcon(), this),
+      tray_(trayIcon(), this),
       shortcut_(this), annotateShortcut_(this) {
     shortcut_.setObjectName("captureShortcut");
     annotateShortcut_.setObjectName("annotateShortcut");
