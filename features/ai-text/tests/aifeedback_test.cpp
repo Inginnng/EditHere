@@ -1,10 +1,13 @@
 #include "aifeedback.h"
 #include <QBuffer>
+#include <QFile>
 #include <QJsonDocument>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <functional>
 #include <memory>
@@ -128,6 +131,23 @@ class AiFeedbackTests : public QObject {
         QVERIFY(prompt.contains("itemsToInterpret"));
         QVERIFY(prompt.contains("parentItemId"));
         QVERIFY(prompt.contains("movement.rect"));
+    }
+    void windowsPromptLineEndingsMatchTheTextEditor() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QFile file(directory.filePath("instructions-prompt.txt"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        const QByteArray contents("First line\r\nSecond line\r\n");
+        QCOMPARE(file.write(contents), contents.size());
+        file.close();
+        const bool hadOverride = qEnvironmentVariableIsSet("EDITHERE_AI_TEXT_ASSETS");
+        const auto previous = qgetenv("EDITHERE_AI_TEXT_ASSETS");
+        const auto restore = qScopeGuard([&] {
+            if (hadOverride) qputenv("EDITHERE_AI_TEXT_ASSETS", previous);
+            else qunsetenv("EDITHERE_AI_TEXT_ASSETS");
+        });
+        qputenv("EDITHERE_AI_TEXT_ASSETS", directory.path().toUtf8());
+        QCOMPARE(aiSystemPrompt(), QString("First line\nSecond line\n"));
     }
     void rejectsUnsafeUrlsAndMismatchedProtocol() {
         AiConnectionSettings settings = defaultAiConnection();

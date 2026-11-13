@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## AI 提示词换行一致性（0.13.0）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-234 | Windows 检出将默认提示词写成 CRLF，但编辑框返回 LF，直接比较会把未修改的默认内容误记为自定义，也使弹窗测试在断言失败后等待。文本资源按文本模式读取，默认提示词固定 LF；弹窗测试在断言失败时也关闭对话框，发布检查覆盖 AI 模块 | `ai-feedback::windowsPromptLineEndingsMatchTheTextEditor` 使用真实 CRLF 文件验证；`ai-instructions::systemPromptButtonEditsTheActualRequestAndKeepsCancelledChangesOut` 检查编辑、取消、保存与真实请求 | 🆕 |
+
 ## Windows 正式工具链与独立工作台（0.13.0）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |

@@ -68,10 +68,10 @@ QString aiTextResource(const QString &name) {
     const auto folder = qEnvironmentVariable("EDITHERE_AI_TEXT_ASSETS");
     if (!folder.isEmpty()) {
         QFile file(QDir(folder).filePath(name));
-        if (file.open(QIODevice::ReadOnly)) return QString::fromUtf8(file.readAll());
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString::fromUtf8(file.readAll());
     }
     QFile file(":/ai/" + name);
-    if (!file.open(QIODevice::ReadOnly)) return {};
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     return QString::fromUtf8(file.readAll());
 }
 } // namespace h2d

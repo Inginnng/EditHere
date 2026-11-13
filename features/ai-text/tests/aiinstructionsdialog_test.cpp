@@ -15,6 +15,7 @@
 #include <QPlainTextEdit>
 #include <QMenu>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -569,6 +570,7 @@ class AiInstructionsTests final : public QObject {
         bool edited = false;
         QTimer::singleShot(0, &dialog, [&] {
             auto *prompt = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            const auto close = qScopeGuard([prompt] { if (prompt && prompt->isVisible()) prompt->reject(); });
             QVERIFY(prompt && prompt->objectName() == "aiPromptDialog");
             auto *text = prompt->findChild<QPlainTextEdit *>("aiBuiltinPrompt");
             QCOMPARE(text->toPlainText(), aiSystemPrompt());
@@ -583,6 +585,7 @@ class AiInstructionsTests final : public QObject {
         QCOMPARE(preferences.aiSystemPrompt, custom);
         QTimer::singleShot(0, &dialog, [&] {
             auto *prompt = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            const auto close = qScopeGuard([prompt] { if (prompt && prompt->isVisible()) prompt->reject(); });
             QVERIFY(prompt && prompt->objectName() == "aiPromptDialog");
             prompt->findChild<QPlainTextEdit *>("aiBuiltinPrompt")->setPlainText("未保存的修改");
             prompt->reject();
