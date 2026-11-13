@@ -42,6 +42,7 @@
 using namespace h2d;
 class AgentCliTests : public QObject {
     Q_OBJECT
+    bool nativeProcessElevated_ = false;
     // Keep test names shorter than the production endpoints. Qt prefixes these
     // with the per-user temporary directory on Unix.
     static QString isolatedSocketName() { return "eh-" + uniqueId(); }
@@ -102,6 +103,19 @@ class AgentCliTests : public QObject {
   private slots:
     void initTestCase() {
 #ifdef Q_OS_WIN
+        HANDLE raw = nullptr;
+        QVERIFY(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw));
+        struct CloseToken { HANDLE value; ~CloseToken() { CloseHandle(value); } } token{raw};
+        TOKEN_ELEVATION elevation{};
+        DWORD written = 0;
+        QVERIFY(GetTokenInformation(raw, TokenElevation, &elevation, sizeof(elevation), &written));
+        alignas(TOKEN_MANDATORY_LABEL) BYTE label[sizeof(TOKEN_MANDATORY_LABEL) + SECURITY_MAX_SID_SIZE]{};
+        QVERIFY(GetTokenInformation(raw, TokenIntegrityLevel, label, sizeof(label), &written));
+        const auto sid = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(label)->Label.Sid;
+        QVERIFY(IsValidSid(sid));
+        QVERIFY(*GetSidSubAuthorityCount(sid) > 0);
+        nativeProcessElevated_ = elevation.TokenIsElevated ||
+            *GetSidSubAuthority(sid, *GetSidSubAuthorityCount(sid) - 1) >= SECURITY_MANDATORY_HIGH_RID;
         if (QGuiApplication::platformName() == "offscreen") {
             const auto fonts = qEnvironmentVariable("WINDIR") + "/Fonts/";
             QFontDatabase::addApplicationFont(fonts + "segoeui.ttf");
@@ -109,6 +123,29 @@ class AgentCliTests : public QObject {
         }
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void init() {
+        if (!nativeProcessElevated_) return;
+        // These are successful normal-user IPC transactions. Elevated peers are
+        // intentionally rejected, so a hosted admin runner cannot exercise them.
+        // Determine the prerequisite from the native token, not the validator we
+        // are testing; windowsIpcPolicyMatchesTheNativeProcessToken still runs.
+        static const QStringList normalUserIpc{
+            "windowsIpcChecksBothEndsOfTheRealNamedPipe",
+            "agentRequiresCredentialsBeforeDispatchAndRotatesOnRestart",
+            "desktopRequiresCredentialsAndNeverAcceptsLegacyCommands",
+            "privateCredentialsRotateAndRejectUnsafeFiles",
+            "cliReportsMissingCredentialsWithoutDispatch",
+            "cliReconnectsUsingNewCredentialsAfterDesktopRestart",
+            "desktopRequestsConsumeFragmentsAndAuthenticateCompleteFrame",
+            "desktopRequestBufferedBeforeHandlerIsNotLost",
+            "invalidDesktopRequestsAreDiscardedAndNextClientWorks",
+            "invalidIpcRequestsDoNotBreakFollowingConnections",
+            "cliCompletionKeepsFocusedEditsAndDesktopAlive",
+            "socketDisconnectCancelsItsSession",
+            "consoleVideoOpenAnnotateSaveAndReopenThroughAgentTransport"};
+        if (normalUserIpc.contains(QString::fromLatin1(QTest::currentTestFunction())))
+            QSKIP("Native Windows token is elevated; normal-user IPC acceptance requires a non-elevated process. Elevation rejection is checked separately.");
     }
     void uncertainConnectionsNeverReportStoppedOrLaunch_data() {
         QTest::addColumn<int>("socketError");
