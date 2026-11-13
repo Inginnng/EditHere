@@ -22,6 +22,28 @@ function fixture(context) {
 function feedback(snapshot) {
   return F.exportSet({name:snapshot.name,pageIndex:snapshot.pages.map(page=>({id:page.id,name:page.name,width:1,height:1})),pages:[{id:'settings',name:'Settings',width:1,height:1,feedback:F.exportImage({image:PNG,imageFile:'page-2-Settings.png',notes:[{source:null,text:'Improve the settings title'}],movements:[]},'embedded')}],groupNotes:[{text:'Use consistent spacing'}]});
 }
+
+test('a transient manifest lock preserves the previous review until atomic replacement succeeds',context=>{
+  const {manifest,dir}=fixture(context),before=fs.readFileSync(manifest,'utf8');
+  const next=readManifest(manifest);next.name='Next review';
+  const rename=fs.renameSync;let locks=2;
+  context.after(()=>{fs.renameSync=rename;});
+  fs.renameSync=(from,to)=>{
+    if(to===manifest && locks-->0){
+      assert.equal(fs.readFileSync(manifest,'utf8'),before);
+      throw Object.assign(new Error('temporary sharing lock'),{code:'EPERM'});
+    }
+    return rename(from,to);
+  };
+  writeManifest(manifest,next);
+  assert.equal(readManifest(manifest).name,'Next review');
+  assert.deepEqual(fs.readdirSync(dir).filter(name=>name.endsWith('.tmp')),[]);
+  const committed=fs.readFileSync(manifest,'utf8');
+  fs.renameSync=()=>{throw Object.assign(new Error('persistent sharing lock'),{code:'EBUSY'});};
+  assert.throws(()=>writeManifest(manifest,{...next,name:'Must not commit'}),/persistent sharing lock/);
+  assert.equal(fs.readFileSync(manifest,'utf8'),committed);
+  assert.deepEqual(fs.readdirSync(dir).filter(name=>name.endsWith('.tmp')),[]);
+});
 test('AI upsert preserves page IDs, order and untouched screenshots; bundle retains all pages',context=>{
   const {manifest,image}=fixture(context),before=readManifest(manifest);
   const replacement=path.join(path.dirname(image),'settings-v2.png');fs.copyFileSync(image,replacement);

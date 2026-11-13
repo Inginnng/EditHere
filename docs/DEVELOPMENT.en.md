@@ -109,3 +109,5 @@ The script produces a universal `.app` and a local-test `.dmg`, using an ad-hoc 
 For the CLI's arguments, JSON responses and user-completion protocol, see [AI integration and CLI](AGENT-CLI.en.md). The companion skill lives in `skills/edithere` and can be validated with `skill-creator`'s `quick_validate.py`; that validation does not replace CLI behaviour tests or user-interaction acceptance.
 
 The licences and copyright notices for Qt and MinGW live in `packaging/licenses/` and ship with the runtime package; the corresponding Qt source is stored in `dist/native-sources/`. Public distribution must also provide the corresponding source archives; see the [third-party notices (Chinese)](../packaging/THIRD-PARTY-NOTICES.md).
+
+For deeply nested workspaces, set `EDITHERE_TEST_TEMP` to a short absolute directory before reconfiguring CMake, and set `TEMP` and `TMP` to the same directory when running CTest. Native, Node and installer checks then share that location. NSIS and PowerShell can handle deep temporary paths differently; this configures test processes only and does not change system environment variables.

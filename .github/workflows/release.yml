@@ -35,7 +35,17 @@ jobs:
           scripts\build-windows.ps1 -QtRoot ".tools/qt/6.8.3/mingw_64" -Compiler "$mingwBin\g++.exe" -Ninja "ninja.exe" -SkipTests
 
       - name: Install NSIS
-        run: choco install nsis -y --no-progress
+        run: |
+          choco install nsis -y --no-progress
+          choco install ffmpeg -y --no-progress
+
+      - name: Prepare real video decoding regression fixture
+        run: |
+          New-Item -ItemType Directory -Path build/test-fixtures -Force | Out-Null
+          ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=1920x1080:rate=30' -t 120 -an -c:v libx264 -preset ultrafast -crf 35 -pix_fmt yuv420p -g 30 build/test-fixtures/seek.mp4
+          if ($LASTEXITCODE) { throw 'Could not generate the video decoding fixture.' }
+          $videoPath = (Resolve-Path 'build/test-fixtures/seek.mp4').Path
+          "EDITHERE_VIDEO_TEST_SOURCE=$videoPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Ensure English system OCR is available
         shell: powershell
@@ -53,10 +63,14 @@ jobs:
       - name: Verify capture regressions, startup updates and installer transactions
         env:
           EDITHERE_REQUIRE_VIDEO_OCR_TESTS: "1"
+          QTEST_FUNCTION_TIMEOUT: "60000"
         run: |
           # Run without Qt or MinGW on PATH so this also verifies CTest's runtime setup.
           ctest --test-dir build --interactive-debug-mode 0 --output-on-failure --timeout 180 --output-junit build/test-results.xml -R '^(core|ui|image-set|ai-feedback|ai-instructions|agent-cli|windows-ipc-validation|video-ui|video-project|ocr|canvas-feedback|capture|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
-          if ($LASTEXITCODE) { throw 'Capture, annotation, startup or update tests failed.' }
+          if ($LASTEXITCODE) {
+            if (Test-Path 'build/agent-cli-test.log') { Get-Content 'build/agent-cli-test.log' }
+            throw 'Capture, annotation, startup or update tests failed.'
+          }
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
           $qtBin = (Resolve-Path ".tools/qt/6.8.3/mingw_64/bin").Path
           $env:PATH = "$qtBin;$mingwBin;$env:PATH"

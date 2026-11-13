@@ -222,6 +222,27 @@ class VideoUiTests : public QObject {
         sink->setVideoFrame(frame);
         QTRY_COMPARE(view->grab().toImage().pixelColor(64, 36), QColor(Qt::blue));
     }
+    void settledPauseRejectsLateDecoderFrames() {
+        if (source().isEmpty()) QSKIP("Set EDITHERE_VIDEO_TEST_SOURCE to exercise real decoding.");
+        VideoPlayback playback;
+        QSignalSpy paused(&playback, &VideoPlayback::framePaused);
+        playback.open(source());
+        QTRY_VERIFY_WITH_TIMEOUT(!paused.isEmpty() && !playback.positioning(), 15000);
+        const auto timestamp = playback.positionMs();
+        const auto size = playback.frameSize();
+        const auto count = paused.size();
+        auto *sink = playback.findChild<QVideoSink *>();
+        QVERIFY(sink);
+        QImage image(128, 72, QImage::Format_RGB32);
+        image.fill(Qt::red);
+        QVideoFrame late(image);
+        late.setStartTime((timestamp + 2000) * 1000);
+        sink->setVideoFrame(late);
+        QCoreApplication::processEvents();
+        QCOMPARE(playback.positionMs(), timestamp);
+        QCOMPARE(playback.frameSize(), size);
+        QCOMPARE(paused.size(), count);
+    }
     void sourceMissingStillRestoresScreenshots_data() {
         QTest::addColumn<bool>("windowsPath");
         QTest::newRow("native-missing-file") << false;

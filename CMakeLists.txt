@@ -281,7 +281,14 @@ set_target_properties(edithere-cli-test PROPERTIES WIN32_EXECUTABLE FALSE MACOSX
 target_link_libraries(edithere-cli-test PRIVATE h2d_core h2d_agent h2d_diagnostics)
 target_compile_definitions(edithere-cli-test PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 add_dependencies(agent_cli_tests edithere-cli edithere-cli-test)
-add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+if(WIN32)
+  # Windows GUI tests may not have an attached console on hosted runners.
+  # Keep a readable log even if a modal interaction stalls the process.
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen
+    -o "${CMAKE_CURRENT_BINARY_DIR}/agent-cli-test.log,txt")
+else()
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+endif()
 if(WIN32)
   qt_add_executable(agent_launch_tests tests/agent_launch_test.cpp)
   target_link_libraries(agent_launch_tests PRIVATE h2d_agent Qt6::Test)

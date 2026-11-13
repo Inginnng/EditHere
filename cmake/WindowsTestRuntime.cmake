@@ -21,7 +21,7 @@ if(CMAKE_SCRIPT_MODE_FILE)
       "${qt_bin}/avcodec-*.dll" "${qt_bin}/avformat-*.dll" "${qt_bin}/avutil-*.dll"
       "${qt_bin}/swresample-*.dll" "${qt_bin}/swscale-*.dll")
   endif()
-  file(MAKE_DIRECTORY "${runtime_dir}/platforms" "${runtime_dir}/test-tmp")
+  file(MAKE_DIRECTORY "${runtime_dir}/platforms" "${test_temp}")
   foreach(dll IN LISTS runtime_dlls ffmpeg_dlls)
     stage_runtime("${dll}" "${runtime_dir}")
   endforeach()
@@ -61,10 +61,18 @@ function(edithere_prepare_windows_qt_tests output_target)
   endif()
 
   set(runtime_dir "$<TARGET_FILE_DIR:${output_target}>")
+  set(test_temp "${runtime_dir}/test-tmp")
+  if(NOT "$ENV{EDITHERE_TEST_TEMP}" STREQUAL "")
+    if(NOT IS_ABSOLUTE "$ENV{EDITHERE_TEST_TEMP}")
+      message(FATAL_ERROR "EDITHERE_TEST_TEMP must be an absolute directory.")
+    endif()
+    set(test_temp "$ENV{EDITHERE_TEST_TEMP}")
+  endif()
   set(platform_plugins "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>;$<TARGET_FILE:Qt6::QWindowsIntegrationPlugin>")
   add_test(NAME windows-qt-runtime
     COMMAND "${CMAKE_COMMAND}"
       "-Druntime_dir=${runtime_dir}"
+      "-Dtest_temp=${test_temp}"
       "-Druntime_dlls=${runtime_dlls}"
       "-Dqt_bin=$<TARGET_FILE_DIR:Qt6::Core>"
       "-Dwith_multimedia=$<TARGET_EXISTS:Qt6::Multimedia>"
@@ -75,6 +83,6 @@ function(edithere_prepare_windows_qt_tests output_target)
   set_property(TEST ${ARGN} APPEND PROPERTY ENVIRONMENT
     "QT_QPA_PLATFORM_PLUGIN_PATH=${runtime_dir}/platforms"
     "QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>/.."
-    "TEMP=${runtime_dir}/test-tmp"
-    "TMP=${runtime_dir}/test-tmp")
+    "TEMP=${test_temp}"
+    "TMP=${test_temp}")
 endfunction()

@@ -361,6 +361,10 @@ void VideoPlayback::reviewAt(qint64 timestampUs) {
 }
 void VideoPlayback::receiveFrame(const QVideoFrame &frame) {
     if (!frame.isValid()) return;
+    // Decoder work queued before pause/seek can arrive after the requested frame
+    // has settled. Freeze its picture and timestamp together until another user
+    // playback or positioning action, rather than accepting an old queued frame.
+    if (!player_->source().isEmpty() && !playing_ && !seeking_ && !freezeNext_ && !initialSeek_) return;
     const qint64 pts = frame.startTime();
     if (seeking_ && pts >= 0) {
         // Ignore queued frames from the old position. A seek resolves on an actual
@@ -374,9 +378,8 @@ void VideoPlayback::receiveFrame(const QVideoFrame &frame) {
     if (freezeNext_ && !initialSeek_) {
         seeking_ = false; freezeNext_ = false;
         player_->pause(); settlePausedFrame();
-    } else if (!playing_ && !initialSeek_ && !seeking_ && !captured_ && pts >= 0 && pts != pausedTimeUs_) {
-        // A queued frame can finish presentation after pause(). Keep metadata
-        // paired with that final presented frame without reading pixels back.
+    } else if (player_->source().isEmpty() && !captured_ && pts >= 0 && pts != pausedTimeUs_) {
+        // A manually supplied sink frame has no player transport to settle it.
         settlePausedFrame();
     }
 }
