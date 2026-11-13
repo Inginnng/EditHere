@@ -3884,8 +3884,8 @@
     </message>
     <message>
         <location filename="../editor.cpp" line="2251"/>
-        <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;1. 傳送 JSON 文字被截斷，又無法傳送 JSON 檔案？&lt;/h3&gt;&lt;p&gt;在「複製 JSON 內容」按鈕內的選項中選擇「不附帶原圖資訊」，再複製 JSON 內容，並向 Agent 一起上傳原圖。&lt;/p&gt;&lt;h3&gt;2. 都不支援上傳，只支援對話怎麼辦？&lt;/h3&gt;&lt;p&gt;可以嘗試傳送不包含原圖資訊的 JSON 文字。但由於沒有附帶原圖，暫時無法確認效果。&lt;/p&gt;&lt;h3&gt;3. AI 沒認出來原圖資訊怎麼辦？&lt;/h3&gt;&lt;p&gt;可以在提示詞中加一句：「參考 JSON 檔案中的圖片資訊……」；如果仍失敗，建議使用第一種方式。&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;&lt;h3&gt;4. 粘贴文件时只有 JSON，没有图片？&lt;/h3&gt;&lt;p&gt;部分客户端只接收文件列表中的一个附件。先粘贴“复制 JSON 内容”，再用“复制带批注图片”（Ctrl+C）单独粘贴 PNG 图片。按钮若未显示，可从底部“更多”菜单进入。组图和视频按需逐页或逐帧复制，也可保存图片后拖入客户端。&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;1. 傳送 JSON 文字被截斷，又無法傳送 JSON 檔案？&lt;/h3&gt;&lt;p&gt;在「複製 JSON 內容」按鈕內的選項中選擇「不附帶原圖資訊」，再複製 JSON 內容，並向 Agent 一起上傳原圖。&lt;/p&gt;&lt;h3&gt;2. 都不支援上傳，只支援對話怎麼辦？&lt;/h3&gt;&lt;p&gt;可以嘗試傳送不包含原圖資訊的 JSON 文字。但由於沒有附帶原圖，暫時無法確認效果。&lt;/p&gt;&lt;h3&gt;3. AI 沒認出來原圖資訊怎麼辦？&lt;/h3&gt;&lt;p&gt;可以在提示詞中加一句：「參考 JSON 檔案中的圖片資訊……」；如果仍失敗，建議使用第一種方式。&lt;/p&gt;&lt;h3&gt;4. 貼上檔案時只有 JSON，沒有圖片？&lt;/h3&gt;&lt;p&gt;部分用戶端只接收檔案清單中的一個附件。先貼上「複製 JSON 內容」，再用「複製帶批註圖片」（Ctrl+C）單獨貼上 PNG 圖片。按鈕若未顯示，可從底部「更多」選單進入。組圖和影片按需逐頁或逐影格複製，也可儲存圖片後拖入用戶端。&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="2718"/>

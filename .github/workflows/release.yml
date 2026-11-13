@@ -8,6 +8,10 @@ on:
       tag:
         description: "Tag to release (e.g. v0.8.22)"
         required: true
+      validate_only:
+        description: "Build and verify all packages without publishing"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -158,6 +162,7 @@ jobs:
 
   release:
     needs: [build-windows, build-macos, build-linux, build-web]
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.validate_only }}
     runs-on: ubuntu-latest
     concurrency:
       group: github-release-${{ github.ref }}

@@ -2007,8 +2007,15 @@ class UiTests : public QObject {
         document.notes.append(note);
         Editor editor; editor.setDocument(document);
         auto copy = editor.findChild<QPushButton *>("copyImage"); QVERIFY(copy);
+        QApplication::clipboard()->setText("previous JSON text");
         copy->click();
         const auto copied = QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        const auto mime = QApplication::clipboard()->mimeData();
+        QVERIFY(mime && mime->hasImage());
+        QVERIFY(!mime->hasUrls());
+        QVERIFY(!mime->hasText());
+        QVERIFY(mime->hasFormat("image/png"));
+        QCOMPARE(QImage::fromData(mime->data("image/png"), "PNG").convertToFormat(QImage::Format_ARGB32), copied);
         QCOMPARE(copied.size(), QSize(5472, 2352));
         QCOMPARE(copied.copy(96 + 1200, 96 + 100, 600, 200),
                  source.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
