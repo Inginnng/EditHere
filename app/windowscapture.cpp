@@ -132,10 +132,32 @@ struct DesktopCapture::State {
     ComPtr<IDXGIOutputDuplication> duplication;
     ComPtr<ID3D11Texture2D> staging;
     QRect geometry;
+    QString adapter;
     int rotation = 0;
     bool hdr = false;
+    // Remembers that this duplication answers with blank frames so a long
+    // capture does not pay the retry timeout for every single read.
+    bool blank = false;
     QImage lastImage;
 };
+
+bool isBlankFrame(const QImage &image) {
+    if (image.isNull())
+        return true;
+    // A frame that never received the desktop is exactly zero, which is far
+    // below any real picture: the darkest UI text still reaches a few levels.
+    // The threshold stays low so a genuinely dark screen is not misread.
+    constexpr int darkest = 3;
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = line[x];
+            if (qRed(pixel) > darkest || qGreen(pixel) > darkest || qBlue(pixel) > darkest)
+                return false;
+        }
+    }
+    return true;
+}
 DesktopCapture::DesktopCapture(std::unique_ptr<State> state) : state_(std::move(state)) {}
 DesktopCapture::~DesktopCapture() = default;
 QRect DesktopCapture::geometry() const { return state_->geometry; }
@@ -182,6 +204,12 @@ std::unique_ptr<DesktopCapture> DesktopCapture::open(HMONITOR monitor, QString *
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION,
                 state->device.GetAddressOf(), nullptr, state->context.GetAddressOf());
             if (FAILED(hr)) return fail("D3D11CreateDevice", hr);
+            // A virtual display adapter can own an output that reports the same
+            // monitor and still never paints, so the adapter that served the
+            // duplication has to be identifiable in the diagnostics.
+            DXGI_ADAPTER_DESC adapterDesc{};
+            if (SUCCEEDED(adapter->GetDesc(&adapterDesc)))
+                state->adapter = QString::fromWCharArray(adapterDesc.Description);
             ComPtr<IDXGIOutput5> output5;
             hr = output.As(&output5);
             if (FAILED(hr)) return fail("IDXGIOutput5", hr);
@@ -197,13 +225,33 @@ std::unique_ptr<DesktopCapture> DesktopCapture::open(HMONITOR monitor, QString *
 
 QImage DesktopCapture::read(float sdrWhiteLevel, QString *error) {
     if (error) error->clear();
+    // A first frame can arrive before the compositor has drawn anything into the
+    // duplicated surface. Retrying is cheap because a still desktop answers with
+    // the cached image, and the user sees a correct picture instead of a black
+    // one. The last attempt still returns the blank frame: the caller decides
+    // whether to fall back to another capture path.
+    const int attempts = state_->blank ? 1 : 2;
+    QImage image;
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        image = readFrame(sdrWhiteLevel, attempt ? 150 : 250, error);
+        if (image.isNull() || !isBlankFrame(image)) {
+            state_->blank = false;
+            return image;
+        }
+    }
+    state_->blank = true;
+    return image;
+}
+
+QImage DesktopCapture::readFrame(float sdrWhiteLevel, int timeoutMs, QString *error) {
+    if (error) error->clear();
     auto fail = [&](const char *operation, HRESULT hr) -> QImage {
         if (error) *error = failure(operation, hr);
         return {};
     };
     DXGI_OUTDUPL_FRAME_INFO frameInfo{};
     ComPtr<IDXGIResource> resource;
-    HRESULT hr = state_->duplication->AcquireNextFrame(250, &frameInfo, resource.GetAddressOf());
+    HRESULT hr = state_->duplication->AcquireNextFrame(UINT(timeoutMs), &frameInfo, resource.GetAddressOf());
     if (hr == DXGI_ERROR_WAIT_TIMEOUT && !state_->lastImage.isNull())
         return state_->lastImage;
     if (FAILED(hr)) return fail("AcquireNextFrame", hr);
@@ -253,7 +301,8 @@ QImage DesktopCapture::read(float sdrWhiteLevel, QString *error) {
         diagnostics::write(diagnostics::Level::Info, "capture", "Converted advanced-color desktop",
             {{"format", format == PixelFormat::ScRgb16 ? "linear-scRGB-fp16" : "sRGB-bgra8"},
              {"sdrWhiteLevel", sdrWhiteLevel}, {"hdrOutput", state_->hdr},
-             {"rotation", state_->rotation}});
+             {"rotation", state_->rotation}, {"adapter", state_->adapter},
+             {"blank", isBlankFrame(image)}});
     state_->lastImage = image;
     return image;
 }
