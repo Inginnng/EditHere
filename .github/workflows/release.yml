@@ -68,7 +68,9 @@ jobs:
           # Run without Qt or MinGW on PATH so this also verifies CTest's runtime setup.
           ctest --test-dir build --interactive-debug-mode 0 --output-on-failure --timeout 180 --output-junit build/test-results.xml -R '^(core|ui|image-set|ai-feedback|ai-instructions|agent-cli|windows-ipc-validation|video-ui|video-project|ocr|canvas-feedback|capture|windows-capture-colors|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
           if ($LASTEXITCODE) {
-            if (Test-Path 'build/agent-cli-test.log') { Get-Content 'build/agent-cli-test.log' }
+            foreach ($testLog in @('build/agent-cli-test.log', 'build/windows-capture-colors-test.log')) {
+              if (Test-Path $testLog) { Get-Content $testLog }
+            }
             throw 'Capture, annotation, startup or update tests failed.'
           }
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path

@@ -428,17 +428,20 @@ if(WIN32)
   target_link_libraries(platform_tests PRIVATE h2d_ui Qt6::Test)
   set_target_properties(core_tests ui_tests layout_tests platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
   add_dependencies(platform_tests EditHere)
-  add_test(NAME windows-platform COMMAND platform_tests -platform windows)
+  add_test(NAME windows-platform COMMAND platform_tests -platform windows
+    -o "${CMAKE_CURRENT_BINARY_DIR}/windows-platform-test.log,txt")
   qt_add_executable(scroll_platform_tests tests/scroll_platform_test.cpp)
   target_link_libraries(scroll_platform_tests PRIVATE h2d_ui Qt6::Test)
   add_dependencies(scroll_controller_tests scroll_platform_tests)
   set_target_properties(scroll_platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
-  add_test(NAME scroll-platform COMMAND scroll_platform_tests -platform windows)
+  add_test(NAME scroll-platform COMMAND scroll_platform_tests -platform windows
+    -o "${CMAKE_CURRENT_BINARY_DIR}/scroll-platform-test.log,txt")
   set_tests_properties(scroll-platform PROPERTIES TIMEOUT 45)
   qt_add_executable(windows_capture_tests tests/windows_capture_test.cpp)
   target_link_libraries(windows_capture_tests PRIVATE h2d_ui Qt6::Test)
   set_target_properties(windows_capture_tests PROPERTIES WIN32_EXECUTABLE FALSE)
-  add_test(NAME windows-capture-colors COMMAND windows_capture_tests -platform windows)
+  add_test(NAME windows-capture-colors COMMAND windows_capture_tests -platform windows
+    -o "${CMAKE_CURRENT_BINARY_DIR}/windows-capture-colors-test.log,txt")
   set_tests_properties(windows-capture-colors PROPERTIES TIMEOUT 30)
 
   include(cmake/WindowsTestRuntime.cmake)
