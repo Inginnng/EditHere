@@ -15,6 +15,13 @@ struct DisplayColor {
 };
 DisplayColor displayColor(HMONITOR monitor);
 
+// A duplicated desktop can arrive as an all-black frame that no window ever
+// painted: some drivers hand back an empty first frame for an advanced-color
+// output, and a duplicated output that is attached but not composited (a
+// virtual display, a mirror source) never paints at all. Such a frame is not
+// the desktop and must not be shown to the user.
+bool isBlankFrame(const QImage &image);
+
 enum class PixelFormat { Bgra8, ScRgb16 };
 // The surface is unrotated GPU storage, with padding after each scanline.
 // Rotation is the clockwise DXGI output rotation, independent of Qt's DPR.
@@ -33,6 +40,9 @@ class DesktopCapture {
   private:
     struct State;
     explicit DesktopCapture(std::unique_ptr<State> state);
+    // One AcquireNextFrame attempt. A blank frame means "ask again", a null
+    // image means the duplication itself is unusable.
+    QImage readFrame(float sdrWhiteLevel, int timeoutMs, QString *error);
     std::unique_ptr<State> state_;
 };
 } // namespace h2d::windowscapture
