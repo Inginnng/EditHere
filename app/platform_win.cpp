@@ -1,4 +1,6 @@
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <unknwn.h>
 #include <dwmapi.h>
@@ -105,6 +107,11 @@ QImage readHdrScreen(HMONITOR monitor, float whiteLevel, QRect *geometry = nullp
             if (geometry) *geometry = region;
             return fallback;
         }
+        diagnostics::write(diagnostics::Level::Warning, "capture",
+            "GDI fallback failed after blank advanced-color desktop",
+            {{"detail", "No desktop image was available after blank-frame retry"}});
+        capture.reset();
+        return {};
     }
     return image;
 }
