@@ -111,7 +111,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 
 保存的项目仍保留全部页面与草稿。页面清单与多轮评审说明见[项目组图与结果审批](docs/PROJECT-REVIEW.md)。
 
-<a id="组图演示"></a>
+#### 组图演示
 
 <p align="center"><img src="assets/readme/image-set-zh.gif" width="960" alt="真实组图编辑器演示：切换三个页面、分别框选批注、添加整组意见，提交后用更新的示例页面继续复审"></p>
 <p align="center"><sub>示例页面：逐页批注 → 整组意见 → 提交反馈 → 更新截图后复审。实际项目的截图与源码修改由配套 Agent 完成。</sub></p>
@@ -162,7 +162,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 
 直接让当前 Agent 读取图片与 JSON 时，无需为 EditHere 另配模型 API。解析结果仍需核对，详见[AI 解析说明](docs/AI-INSTRUCTIONS.md)。
 
-<a id="ai-解析演示"></a>
+#### AI 解析演示
 
 <p align="center"><img src="assets/readme/ai-interpretation-zh.gif" width="960" alt="真实 AI 解析窗口演示：从截图与布局批注生成文字，核对、编辑并复制修改说明；API 响应为本地示例回放"></p>
 <p align="center"><sub>真实界面录制，API 响应用本地示例回放，不调用付费服务；展示解析、核对、编辑与复制流程。</sub></p>
@@ -322,7 +322,7 @@ edithere-cli annotate "<素材或项目清单的绝对路径>" --output "<新的
 ```json
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": { "name": "EditHere", "version": "0.13.0" },
+  "tool": { "name": "EditHere", "version": "0.13.2" },
   "annotationSpace": "result",
   "objects": [
     {
