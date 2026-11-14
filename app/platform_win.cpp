@@ -5,10 +5,13 @@
 #include <uiautomation.h>
 #include "platform.h"
 #include "diagnostics.h"
+#include "windowscapture.h"
 #include <QApplication>
 #include <QCoreApplication>
+#include <QColorSpace>
 #include <QFileInfo>
 #include <QScreen>
+#include <QPainter>
 #include <QTimer>
 #include <QVariant>
 #include <QWidget>
@@ -16,8 +19,29 @@
 #include <atomic>
 #include <limits>
 #include <memory>
+#include <map>
 namespace h2d {
 namespace {
+bool scrollingCaptureActive = false;
+std::map<HMONITOR, std::unique_ptr<windowscapture::DesktopCapture>> scrollingHdrScreens;
+QImage readHdrScreen(HMONITOR monitor, float whiteLevel, QRect *geometry = nullptr) {
+    std::unique_ptr<windowscapture::DesktopCapture> temporary;
+    auto &capture = scrollingCaptureActive ? scrollingHdrScreens[monitor] : temporary;
+    QString error;
+    if (!capture)
+        capture = windowscapture::DesktopCapture::open(monitor, &error);
+    QImage image;
+    if (capture) {
+        if (geometry) *geometry = capture->geometry();
+        image = capture->read(whiteLevel, &error);
+    }
+    if (image.isNull()) {
+        diagnostics::write(diagnostics::Level::Warning, "capture",
+            "Advanced-color screen capture failed", {{"detail", error}});
+        capture.reset();
+    }
+    return image;
+}
 // Free functions have no tr(); the enclosing "h2d" context groups them so the
 // translation file stays easy to review.
 inline QString tr(const char *text) {
@@ -132,10 +156,15 @@ bool supportsScrollingCapture(QString *reason) {
     return true;
 }
 bool beginScrollingCapture(const ScreenFrame &, const QRect &, QString *error) {
+    scrollingHdrScreens.clear();
+    scrollingCaptureActive = true;
     if (error) error->clear();
     return true;
 }
-void endScrollingCapture(bool) {}
+void endScrollingCapture(bool) {
+    scrollingCaptureActive = false;
+    scrollingHdrScreens.clear();
+}
 bool supportsAutomaticScrollInput(QString *reason) {
     if (reason) reason->clear();
     return true;
@@ -205,6 +234,37 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
         callback({}, tr("长截图区域无效或过大。"));
         return;
     }
+    struct HdrPart { QRect geometry; QImage image; };
+    struct ScreenReads {
+        QRect region;
+        QVector<HdrPart> parts;
+        bool failed = false;
+    } reads{nativeRegion, {}, false};
+    const RECT region{nativeRegion.left(), nativeRegion.top(),
+                      nativeRegion.right() + 1, nativeRegion.bottom() + 1};
+    DwmFlush();
+    EnumDisplayMonitors(nullptr, &region, [](HMONITOR monitor, HDC, LPRECT, LPARAM param) -> BOOL {
+        auto &reads = *reinterpret_cast<ScreenReads *>(param);
+        const auto color = windowscapture::displayColor(monitor);
+        if (!color.advancedColor) return TRUE;
+        QRect geometry;
+        QImage image = readHdrScreen(monitor, color.sdrWhiteLevel, &geometry);
+        if (image.isNull()) {
+            reads.failed = true;
+            return FALSE;
+        }
+        reads.parts.append({geometry, std::move(image)});
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&reads));
+    if (reads.failed) {
+        callback({}, tr("无法读取屏幕画面"));
+        return;
+    }
+    if (reads.parts.size() == 1 && reads.parts.front().geometry.contains(nativeRegion)) {
+        const auto &part = reads.parts.front();
+        callback(part.image.copy(nativeRegion.translated(-part.geometry.topLeft())), {});
+        return;
+    }
     // ShareX also captures a fixed physical region after each wheel event. This
     // implementation uses our own GDI readout; no GPL source is incorporated.
     // https://github.com/ShareX/ShareX/blob/73967140f4fd64ca4b93203ae8ad5ac05ade9aaf/ShareX.ScreenCaptureLib/ScrollingCaptureManager.cs
@@ -237,6 +297,16 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
         DeleteDC(memory);
     if (screen)
         ReleaseDC(nullptr, screen);
+    if (!image.isNull() && !reads.parts.isEmpty()) {
+        QPainter painter(&image);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        for (const auto &part : reads.parts) {
+            const QRect intersection = nativeRegion.intersected(part.geometry);
+            painter.drawImage(intersection.topLeft() - nativeRegion.topLeft(), part.image,
+                              intersection.translated(-part.geometry.topLeft()));
+        }
+    }
+    image.setColorSpace(QColorSpace::SRgb);
     const QString error = image.isNull() ? tr("无法读取长截图区域，请检查屏幕采集权限。") : QString();
     callback(std::move(image), error);
 }
@@ -304,12 +374,10 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fr
 void captureScreens(CaptureCallback callback) {
     QVector<ScreenFrame> frames;
     for (QScreen *screen : QGuiApplication::screens()) {
-        QImage image = screen->grabWindow(0).toImage();
-        if (image.isNull())
-            continue;
-        image.setDevicePixelRatio(1);
         QRect native;
+        HMONITOR monitor = nullptr;
         if (auto handle = screen->nativeInterface<QNativeInterface::QWindowsScreen>()) {
+            monitor = handle->handle();
             MONITORINFO info{};
             info.cbSize = sizeof(info);
             if (GetMonitorInfoW(handle->handle(), &info))
@@ -317,6 +385,18 @@ void captureScreens(CaptureCallback callback) {
                     QRect(info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
                           info.rcMonitor.bottom - info.rcMonitor.top);
         }
+        const auto color = windowscapture::displayColor(monitor);
+        QImage image = color.advancedColor ? readHdrScreen(monitor, color.sdrWhiteLevel) :
+                                            screen->grabWindow(0).toImage();
+        if (image.isNull()) {
+            if (color.advancedColor) {
+                callback({}, tr("无法读取屏幕画面"));
+                return;
+            }
+            continue;
+        }
+        image.setDevicePixelRatio(1);
+        image.setColorSpace(QColorSpace::SRgb);
         ScreenFrame frame{screen->name(), screen->geometry(), native, image, !native.isEmpty()};
         frame.capturedAt = timestamp();
         frame.windowScopeAvailable = true;
