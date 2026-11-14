@@ -9,15 +9,19 @@ class QTabWidget;
 class QKeySequenceEdit;
 class QLabel;
 class QLineEdit;
+class QPushButton;
+class QResizeEvent;
 namespace h2d {
+class AiCredentials;
 class SettingsDialog final : public QDialog {
     Q_OBJECT
   public:
-    explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr);
+    explicit SettingsDialog(const AppSettings &settings, QWidget *parent = nullptr, AiCredentials *credentials = nullptr);
     AppSettings settings() const;
     void showUpdates(bool checkNow = false);
     void offerUpdate(const UpdateChecker::Result &result, bool installNow = false);
     void showToolbar();
+    void showAi();
     void setLaunchAtLoginNotice(const QString &notice);
     void setGlobalShortcutNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
@@ -25,6 +29,7 @@ class SettingsDialog final : public QDialog {
     // Cancelling also rolls the live language preview back. QDialog::reject() is a
     // public slot, so the override keeps the same access.
     void reject() override;
+    void done(int result) override;
 
   signals:
     void guideRequested();
@@ -35,6 +40,7 @@ class SettingsDialog final : public QDialog {
 
   protected:
     void changeEvent(QEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
 
   private:
     void setDraft(const AppSettings &settings);
@@ -43,7 +49,12 @@ class SettingsDialog final : public QDialog {
     void retranslate();
     void applyLanguage(LanguageMode mode);
     void save();
+    void updateNavigation();
+    void updateAppearance();
+    void setSaving(bool saving);
     QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
+    QComboBox *traySingleClick_, *trayDoubleClick_;
+    QLabel *trayTitle_ = nullptr;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;
     // Language currently installed by this dialog, so repeated selections are no-ops.
@@ -54,7 +65,11 @@ class SettingsDialog final : public QDialog {
     bool legacyIncludeFeedbackPreview_ = false;
     bool regionOcrEnabled_ = true;
     QLineEdit *feedbackDir_;
-    QTabWidget *tabs_;
+    QTabWidget *tabs_ = nullptr;
+    QWidget *sidebar_ = nullptr, *navigation_ = nullptr, *footer_ = nullptr, *pageHeader_ = nullptr;
+    QLabel *sidebarBrand_ = nullptr, *sidebarTitle_ = nullptr, *sidebarVersion_ = nullptr, *pageTitle_ = nullptr;
+    QVector<QPushButton *> navigationButtons_;
+    bool compactNavigation_ = false, saving_ = false, updatingAppearance_ = false;
     class UpdateChecker *updater_;
     UpdateChecker::Result updateResult_{UpdateChecker::Failed, {}, {}, {}, {}, {}, {}, {}};
     QLabel *error_, *launchAtLoginNotice_;
@@ -70,5 +85,6 @@ class SettingsDialog final : public QDialog {
     QMap<QString, QCheckBox *> toolbarActions_;
     std::function<QString(const AppSettings &)> apply_;
     CaptureStyle captureStyle_;
+    class AiSettingsPage *aiPage_ = nullptr;
 };
 } // namespace h2d

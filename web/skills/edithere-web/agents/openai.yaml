@@ -1,4 +1,4 @@
 interface:
   display_name: "EditHere 网页批注"
-  short_description: "截取当前页面，在支持 MCP Apps 的宿主内批注，并读取已保存的修改反馈"
-  default_prompt: "用 $edithere-web 截取当前游戏页面并打开批注，读取我提交的反馈后继续修改。"
+  short_description: "由 AI 维护项目页面组图，接收评审意见后修改源码并按需更新截图"
+  default_prompt: "用 $edithere-web 收集当前项目所有可访问页面，维护组图供我评审；收到反馈后修改源码，验证并按需更新截图，再展示下一轮结果。"

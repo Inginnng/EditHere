@@ -41,7 +41,7 @@ try {
     if ($LASTEXITCODE) { throw "Build failed." }
     if (-not $SkipTests) {
         $env:H2D_TEST_ARTIFACTS = Join-Path $projectRoot "artifacts/native-ui"
-        & (Join-Path (Split-Path $cmake -Parent) "ctest.exe") --test-dir $buildPath --output-on-failure
+        & (Join-Path (Split-Path $cmake -Parent) "ctest.exe") --test-dir $buildPath --interactive-debug-mode 0 --output-on-failure
         if ($LASTEXITCODE) { throw "Tests failed." }
     }
 } finally {

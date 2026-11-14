@@ -20,6 +20,8 @@
   const isTypedVersion = version => version === IMAGE_VERSION || version === 'feedback-minimal-3';
   // Every versioned image feedback carries an image descriptor instead of a bare data URL.
   const isImageVersion = version => version === IMAGE_VERSION || Object.hasOwn(PREVIOUS_VERSIONS, version);
+  const SET_VERSION = 'image-set-feedback-1';
+  const SET_SCHEMA = 'urn:edithere:image-set-feedback:1';
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const exactKeys = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.slice().sort().join(',');
   const closeNumber = (actual, expected) => Number.isFinite(actual) && Math.abs(actual - expected) <= Math.max(1e-7, Math.abs(expected) * 1e-9);
@@ -431,6 +433,99 @@
       image};
   }
 
+  // An image set is several screens of one product (home, settings, ...).
+  // Only pages with an annotation or a real movement are packed, so the Agent
+  // receives the annotated screens and never a pile of untouched screenshots.
+  function setPageFile(name, index) {
+    const slug = String(name || 'page').trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+      .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'page';
+    return 'page-' + (index + 1) + '-' + slug + '.png';
+  }
+  function exportSet(project, exportedAt = new Date().toISOString()) {
+    if (!record(project) || !Array.isArray(project.pages) || !Array.isArray(project.pageIndex) ||
+        project.pages.length > 64 || project.pageIndex.length > 64) throw new Error('Invalid image set.');
+    const annotated = new Set(project.pages.map(page => page.id));
+    const pageIndex = project.pageIndex.map((page, index) => {
+      if (!record(page) || typeof page.id !== 'string' || !page.id || typeof page.name !== 'string' ||
+          !Number.isInteger(page.width) || !Number.isInteger(page.height)) throw new Error('Invalid image set page.');
+      return {id:page.id, name:page.name, index:index + 1, width:page.width, height:page.height,
+        annotated:annotated.has(page.id), ...(annotated.has(page.id) ? {imageFile:project.pages.find(item=>item.id===page.id)?.feedback.image?.file||setPageFile(page.name, index)} : {})};
+    });
+    const pages = project.pages.map(page => {
+      const entry = pageIndex.find(item => item.id === page.id);
+      if (!entry) throw new Error('Image set page is missing from its index.');
+      return {id:entry.id, name:entry.name, index:entry.index, width:entry.width, height:entry.height,
+        imageFile:entry.imageFile, feedback:page.feedback};
+    });
+    return {$schema:SET_SCHEMA, schemaVersion:SET_VERSION,
+      tool:{name:'EditHere', version:productVersion(project)}, exportedAt,
+      annotationSpace:'result',
+      set:{name:String(project.name || '组图'), pageCount:pageIndex.length, annotatedPageCount:pages.length},
+      pageIndex, pages,
+      groupNotes:(project.groupNotes || []).filter(note => typeof note?.text === 'string' && note.text.trim()).map((note, index) => ({number:index + 1, text:note.text}))};
+  }
+
+  function setMetadata(value) {
+    if (!record(value) || value.schemaVersion !== SET_VERSION) throw new Error('Unsupported image set feedback version.');
+    if (value.$schema !== SET_SCHEMA || !exactKeys(value.tool, ['name', 'version']) ||
+        value.tool.name !== 'EditHere' || typeof value.tool.version !== 'string' || !value.tool.version.trim() ||
+        value.tool.version.length > 100 || !timestampWithZone(value.exportedAt)) throw new Error('Invalid image set feedback metadata.');
+    return {$schema:value.$schema, schemaVersion:value.schemaVersion, tool:{...value.tool}, exportedAt:value.exportedAt};
+  }
+  // Used when reopening a saved set and by the DSH server before packaging.
+  // Page feedbacks keep their native image so a set remains independently readable.
+  function normalizeSet(value) {
+    const metadata = setMetadata(value);
+    if (!exactKeys(value, [...Object.keys(metadata), 'annotationSpace', 'set', 'pageIndex', 'pages', 'groupNotes']) ||
+        value.annotationSpace !== 'result' || !record(value.set) ||
+        !exactKeys(value.set, ['name', 'pageCount', 'annotatedPageCount']) ||
+        typeof value.set.name !== 'string' || !value.set.name.trim() || value.set.name.length > 200 ||
+        !Number.isInteger(value.set.pageCount) || !Number.isInteger(value.set.annotatedPageCount) ||
+        !Array.isArray(value.pageIndex) || value.pageIndex.length < 1 || value.pageIndex.length > 64 ||
+        !Array.isArray(value.pages) || value.pages.length > 64 || !Array.isArray(value.groupNotes) || value.groupNotes.length > 1000) {
+      throw new Error('Invalid image set feedback fields.');
+    }
+    if (value.set.pageCount !== value.pageIndex.length || value.set.annotatedPageCount !== value.pages.length) throw new Error('Image set counts do not match its pages.');
+    const ids = new Set(), annotated = new Map();
+    const pageIndex = value.pageIndex.map((page, index) => {
+      const fields = ['id', 'name', 'index', 'width', 'height', 'annotated', ...(Object.hasOwn(page || {}, 'imageFile') ? ['imageFile'] : [])];
+      if (!exactKeys(page, fields) || typeof page.id !== 'string' || !page.id || page.id.length > 256 || ids.has(page.id) ||
+          typeof page.name !== 'string' || !page.name.trim() || page.name.length > 200 || page.index !== index + 1 ||
+          !Number.isInteger(page.width) || !Number.isInteger(page.height) || page.width < 1 || page.height < 1 ||
+          page.width > 32767 || page.height > 32767 || page.width * page.height > 32000000 || typeof page.annotated !== 'boolean') {
+        throw new Error('Invalid image set page index.');
+      }
+      ids.add(page.id);
+      if (page.annotated) {
+        if (typeof page.imageFile !== 'string' || !/^page-\d+-[^\\/:*?"<>|\u0000-\u001f]+\.(?:png|jpg|jpeg|webp|gif|bmp)$/.test(page.imageFile)) throw new Error('Invalid image set page file.');
+        annotated.set(page.id, index);
+      } else if (Object.hasOwn(page, 'imageFile')) throw new Error('An unannotated set page cannot contain an image.');
+      return {...page};
+    });
+    let previousIndex = 0;
+    const pages = value.pages.map(page => {
+      if (!exactKeys(page, ['id', 'name', 'index', 'width', 'height', 'imageFile', 'feedback']) ||
+          !annotated.has(page.id) || !Number.isInteger(page.index) || page.index < 1 || page.index > pageIndex.length ||
+          page.index <= previousIndex) throw new Error('Invalid image set page.');
+      const entry = pageIndex[page.index - 1];
+      if (!entry || !entry.annotated || entry.id !== page.id || entry.name !== page.name || entry.width !== page.width || entry.height !== page.height ||
+          entry.imageFile !== page.imageFile) throw new Error('Image set page does not match its index.');
+      let feedback;
+      try { feedback = normalizeImage(page.feedback); } catch (error) { throw new Error('Invalid page feedback: ' + error.message); }
+      if (!Object.hasOwn(feedback, 'image')) throw new Error('An imported image set page needs its original image.');
+      previousIndex = page.index;
+      return {...page, feedback};
+    });
+    if (pages.length !== annotated.size) throw new Error('Image set pages do not match its annotated index.');
+    const groupNotes = value.groupNotes.map((note, index) => {
+      if (!exactKeys(note, ['number', 'text']) || note.number !== index + 1 ||
+          typeof note.text !== 'string' || !note.text.trim() || note.text.length > 10000) throw new Error('Invalid image set group note.');
+      return {...note};
+    });
+    return {...metadata, annotationSpace:'result', set:{...value.set}, pageIndex, pages, groupNotes};
+  }
+
+
   // Matches app/videoproject.cpp serializeVideoFeedback: chronological frames,
   // independently readable image feedback, and a lightweight root object index.
   function exportVideo(project, mode = 'file', exportedAt = new Date().toISOString()) {
@@ -490,11 +585,13 @@
   // Display-only metadata: the native feedback itself retains its exact keys,
   // array order and fractional coordinates. Both delivery modes use serialize.
   function summary(feedback,serialized=serialize(feedback)) {
-    const objects=flattenObjects(feedback.objects);
-    const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):[feedback.image];
+    const set=feedback.schemaVersion==='image-set-feedback-1';
+    const objects=flattenObjects(set?feedback.pages.flatMap(page=>page.feedback.objects):feedback.objects);
+    const images=feedback.schemaVersion==='video-feedback-1'?feedback.frames.map(frame=>frame.feedback.image):set?feedback.pages.map(page=>page.feedback.image):[feedback.image];
     const byteLength=value=>new TextEncoder().encode(value).byteLength;
     return {schemaVersion:feedback.schemaVersion || 'feedback-minimal-1', objects:objects.length,annotations:objects.reduce((sum,object)=>sum+object.annotations.length,0),
       movements:objects.reduce((sum,object)=>sum+(object.movement?1:(object.movements||[]).length),0), recognizedTexts:objects.filter(object=>object.ocrtext||object.recognizedText).length,
+      ...(set?{pages:feedback.pages.length,pageCount:feedback.set.pageCount,annotatedPageCount:feedback.set.annotatedPageCount,groupNotes:feedback.groupNotes.length}:{}),
       bytes:byteLength(serialized),imageBytes:images.map(image=>imageFormat.dataUrlOf(image)).filter(Boolean).reduce((sum,image)=>sum+byteLength(image),0)};
   }
   const foldedImage = image => typeof image==='string'?image.slice(0, image.indexOf(',')) + ',[图片编码已折叠]':image?.mode==='embedded'?{...image,dataUrl:foldedImage(image.dataUrl)}:image;
@@ -502,6 +599,13 @@
   // The desktop export dialog folds image bytes only in its readable preview.
   // Clipboard and file downloads must always use serialize(), never this text.
   function preview(feedback) {
+    if (feedback.schemaVersion === 'image-set-feedback-1') {
+      const readable = ordered(feedback);
+      for (const page of readable.pages) {
+        if (Object.prototype.hasOwnProperty.call(page.feedback, 'image')) page.feedback.image = foldedImage(page.feedback.image);
+      }
+      return JSON.stringify(readable, null, 4) + '\n';
+    }
     if (feedback.schemaVersion === 'video-feedback-1') {
       const readable = ordered(feedback);
       for (const frame of readable.frames) {
@@ -526,5 +630,5 @@
     return lines.join('\n');
   }
 
-  return {exportImage, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, normalizeNoteParent, parentMovementResolver, upgradeImage, legacyImage, legacyObject, typedObject, flattenObjects, isTypedVersion, isImageVersion, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
+  return {exportImage, exportSet, normalizeSet, exportVideo, serialize, preview, summary, imageMetadata, normalizeImage, normalizeNoteParent, parentMovementResolver, upgradeImage, legacyImage, legacyObject, typedObject, flattenObjects, isTypedVersion, isImageVersion, annotationEntries, validateRecognizedText, validateVideoRecognitionIndex, validateCapture, validatePageContext, timestampWithZone, imageFormat};
 });

@@ -26,6 +26,7 @@
   <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
+<p align="center">AtomGit mirror in China: <a href="https://atomgit.com/qq_30293075/EditHere">EditHere</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-en.gif" width="960" alt="EditHere with an AI agent: the agent opens a review, you mark up the dashboard, click Finish and return to AI, and the agent applies the changes">
@@ -99,10 +100,11 @@ See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md) for the format.
 
 ### 🤖 Hand it to your AI
 
-EditHere **never calls a model**; its job is to make the feedback unambiguous:
+EditHere provides structured feedback, with an optional API feature that turns annotations into plain text:
 
 - **Manually:** copy JSON text, JSON and its companion image, or an annotated image and paste it into any AI.
 - **Automatically:** with the [`edithere` skill](skills/edithere/SKILL.md) and `edithere-cli` from this repository, the AI runs `edithere-cli annotate`, EditHere opens the picture, and the moment you click **“Finish and return to AI”** the AI receives your feedback and carries on. Cancelling or timing out never turns unsubmitted edits into change requests.
+- **Plain text (0.13.0):** choose a provider and save your own key under **Settings → AI API**, then use **AI interpretation** in the editor toolbar. A separate API request interprets the screenshots and annotations; review the result and copy only text to the target agent, reducing image context in that conversation. See [Generate instructions](docs/AI-INSTRUCTIONS.en.md).
 
 File handoff defaults to JSON with a companion original; **Embed original image in JSON** enables one-file handoff. **Copy JSON content** omits image bytes by default and the vertical **⋯** menu inside the button remembers a separate choice. New readers accept older feedback and projects; older apps are not guaranteed to read v4.
 
@@ -145,8 +147,7 @@ Select a scrolling area and choose **Scrolling capture**. EditHere stitches whil
 | 💾 **Projects** | `.edithere` projects embed the image, notes and editing state so you can pick up where you left off; video projects reference the source file and keep annotated frames. |
 | 📥 **Any input** | Capture, open, drop or paste PNG / JPEG / WebP / BMP, and MP4 / MOV / WebM videos. |
 | 🎨 **Your way** | Light and dark themes, English, Simplified Chinese and Traditional Chinese interface, 22 configurable shortcuts and a customisable toolbar. |
-| 🔒 **Local first** | Capture, element detection, OCR and editing all run on your machine; EditHere never uploads your screen. |
-| 🖥️ **Cross-platform** | Windows 10 1809+ is fully supported; macOS 14+ and Linux (Ubuntu 24.04) are previews. |
+| 🔒 **Local first** | Capture, element detection, OCR and editing run on your machine. The optional API generation feature sends this task's images and annotations to your chosen provider. |
 
 ## Desktop and web editions
 
@@ -196,23 +197,26 @@ Then, inside your project, just say:
 
 The desktop app needs an AI tool with access to your local terminal and files; the web edition also needs a host that supports MCP Apps, and falls back to the browser-compatible entry point when it does not. A web chat alone cannot install software on your computer. See the [AI setup guide](docs/AI-SETUP.en.md) and the [web setup guide](web/AI-SETUP.en.md).
 
+### VS Code Remote SSH: remote projects and local Windows annotation
+
+When developing a remote project through VS Code Remote SSH, download its screenshot to local Windows, annotate it in EditHere, then upload the feedback JSON and companion images together for the remote AI to read. Run the commands in **local Windows PowerShell**. This workflow transfers files between the two machines; it does not provide direct remote control of your local EditHere instance.
+
+See [AI and CLI · VS Code Remote SSH](docs/AGENT-CLI.en.md#vs-code-remote-ssh-remote-projects-and-local-windows-annotation) for commands and path details.
+
 ## Download and install
 
 | Platform | Download | Notes |
-| --- | --- | --- |
-| **Windows x64 · Recommended** | [EXE installer](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64-setup.exe) | Per-user install, no administrator rights; Start menu entry, uninstaller and project file association. |
 | **Windows x64 · Portable** | [ZIP archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the whole archive and run `EditHere.exe`; keep the DLLs and plugin folders beside it. |
 | **macOS · Apple Silicon / Intel** | [Universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Drag `EditHere.app` into Applications; grant Screen Recording before the first capture. |
 | **Linux x86_64 · Preview** | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it; targets Ubuntu 24.04. See the [Linux guide](docs/LINUX.en.md). |
 | **Web · No install** | [Web archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | Unzip and open `EditHere.html`, or host it on a static site; see the [web edition guide](web/README.en.md). |
 
 These links always point to the latest public release; check the [Releases](https://github.com/Inginnng/EditHere/releases) page and the package's `version.txt` for its version.
-
 <details>
 <summary>Installation details, platform notes and upgrading</summary>
 
 - The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. Its components page offers launch at login, adding the CLI to PATH and a desktop shortcut; launch at login and PATH are selected on a new install, and upgrades keep the existing startup registration. Reopen your terminal and AI tools afterwards so they pick up the new PATH. Uninstalling keeps your settings and projects.
-- The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
+- Windows uses free project signatures to authenticate in-app updates. This is not a publicly trusted Windows certificate; Unknown Publisher and SmartScreen warnings may remain. **Versions 0.12.7 and earlier need one manual upgrade**. Download from this repository’s Releases and check the [SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
 - The minimum Windows target is Windows 10 1809+, developed and tested on Windows 11. The portable ZIP needs no separate Qt, Python, Node or .NET.
 - macOS requires 14+ and **is still a preview, without acceptance testing on a physical Mac or Apple notarization**; the scrolling capture backend compiles in the macOS build.
 - Linux preview: under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture; without PipeWire or ScreenCast support it falls back to the system region picker for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md).
@@ -223,11 +227,7 @@ These links always point to the latest public release; check the [Releases](http
 ## Quick start
 
 1. **Install** — let your AI do it with the [prompt above](#set-up-with-ai), or download manually (the web edition is unzip-and-run).
-2. **Capture** — press the global shortcut `Alt + Shift + 2`, or ask your AI to “let me mark up the main page in EditHere”.
-3. **Annotate** — points, boxes, global notes, Explode; whatever makes your intent clear.
-4. **Hand off** — click “Finish and return to AI”, or copy the JSON into any AI tool.
 
-More actions, shortcuts and examples are in the [user guide](docs/USER-GUIDE.en.md).
 
 ## Structured feedback JSON
 
@@ -236,7 +236,7 @@ The exported `feedback-minimal-4` keeps image verification, note positions, boxe
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": {"name": "EditHere", "version": "0.12.5"},
+  "tool": {"name": "EditHere", "version": "0.13.0"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // illustrative hash; send the original with this JSON
@@ -251,11 +251,7 @@ The exported `feedback-minimal-4` keeps image verification, note positions, boxe
   ]
 }
 ```
-
 Every entry in `objects` is one change: `source` is where it was, `movement` records where Explode put it and by how many pixels, and `annotations` holds your own words. The original ships as a separate file by default, or can be embedded in the JSON instead.
-
-Field reference: [User guide · Feedback JSON](docs/USER-GUIDE.en.md#feedback-json). Commands and examples: [AI integration and CLI](docs/AGENT-CLI.en.md).
-
 ## FAQ
 
 <details>
@@ -273,13 +269,13 @@ No. It combines element boundaries exposed by the system with local image analys
 <details>
 <summary><b>Are screenshots uploaded?</b></summary>
 
-No. Capture, detection and editing happen locally. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. When you check for updates manually or use the default startup check, EditHere queries stable releases on GitHub and [Gitee](https://gitee.com/InnGing/EditHere) and chooses the newer version.
+Not automatically. Capture, detection and editing happen locally. If you use **Generate instructions** or **Test connection**, EditHere calls your configured API: generation sends the current annotation snapshot and screenshots, while the connection test sends only a built-in small image. If you send feedback yourself or let an AI tool read it, any upload depends on that tool. When you check for updates manually or use the default startup check, EditHere queries stable releases on GitHub and [Gitee](https://gitee.com/InnGing/EditHere) and chooses the newer version.
 </details>
 
 <details>
 <summary><b>Does it only work with Codex or Claude Code?</b></summary>
 
-No. Feedback is plain JSON plus images, tied to no model provider. Codex and Claude Code can use the companion skill; other tools can use the CLI or a manual import. EditHere includes no model calls and no model credits.
+No. Feedback is plain JSON plus images, tied to no model provider. Codex and Claude Code can use the companion skill; other tools can use the CLI or a manual import. The desktop app also offers optional API generation for OpenAI, Claude, DeepSeek, GLM, Kimi and compatible custom services, using your own API key and credits.
 </details>
 
 <details>
@@ -300,6 +296,7 @@ Yes. A `.edithere` project keeps the original image, notes and editing state; th
 | --- | --- |
 | [User guide](docs/USER-GUIDE.en.md) | Capture, annotation, Explode, export, settings and shortcuts |
 | [AI integration and CLI](docs/AGENT-CLI.en.md) | `edithere-cli` commands, skill setup and agent integration |
+| [Generate instructions](docs/AI-INSTRUCTIONS.en.md) | Configure a model API to turn screenshots and annotations into plain text |
 | [AI setup guide](docs/AI-SETUP.en.md) | Let an AI install and configure EditHere for you |
 | [Web edition guide](web/README.en.md) | The standalone HTML, MCP Apps and the browser-compatible mode |
 | [Video annotation](docs/VIDEO-ANNOTATION.en.md) | The video feedback format and workflow |

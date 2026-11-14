@@ -1,5 +1,7 @@
 #include "trayeventguard_mac.h"
+#include "ui.h"
 #include <QApplication>
+#include <QImage>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QSystemTrayIcon>
@@ -72,6 +74,44 @@ class CocoaTrayTests : public QObject {
         QVERIFY(error.isEmpty());
         // Repeated Controller construction must not wrap a wrapper recursively.
         QVERIFY2(h2d::installCocoaTrayEventGuard(&error), qPrintable(error));
+    }
+
+    void statusIconIsATemplateMask() {
+        const QIcon icon = h2d::trayIcon();
+        QVERIFY(!icon.isNull());
+        // AppKit paints a menu bar image in the system colour and keeps only its
+        // alpha channel. Qt marks the NSImage as a template exactly when the icon
+        // says it is a mask; without that the status symbol stays brand blue and
+        // disappears against one of the two menu bar appearances.
+        QVERIFY(icon.isMask());
+        // The symbol is drawn at the scale it is asked for, so a Retina menu bar
+        // gets a vector render and not the upscaled dock PNG.
+        const QSize slot(36, 36);
+        const QPixmap pixmap = icon.pixmap(slot);
+        QVERIFY(!pixmap.isNull());
+        QCOMPARE(pixmap.size(), slot * pixmap.devicePixelRatio());
+        const QImage image = pixmap.toImage();
+        int left = image.width(), top = image.height(), right = -1, bottom = -1;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                if (qAlpha(image.pixel(x, y)) == 0)
+                    continue;
+                left = qMin(left, x);
+                top = qMin(top, y);
+                right = qMax(right, x);
+                bottom = qMax(bottom, y);
+            }
+        }
+        QVERIFY(right >= left);
+        QVERIFY(bottom >= top);
+        // Qt centres this image in the menu bar slot, so the artwork has to leave a
+        // margin of its own or it fills the whole bar height the way the dock icon does.
+        const qreal inkWidth = (right - left + 1) / pixmap.devicePixelRatio();
+        const qreal inkHeight = (bottom - top + 1) / pixmap.devicePixelRatio();
+        QVERIFY2(inkWidth > slot.width() * 0.8 && inkWidth < slot.width() * 0.95,
+                 qPrintable(QStringLiteral("menu bar symbol is %1 wide in a %2 slot").arg(inkWidth).arg(slot.width())));
+        QVERIFY2(inkHeight > slot.height() * 0.8 && inkHeight < slot.height() * 0.95,
+                 qPrintable(QStringLiteral("menu bar symbol is %1 tall in a %2 slot").arg(inkHeight).arg(slot.height())));
     }
 
     void unguardedQtRejectsKitDefinedEvent() {

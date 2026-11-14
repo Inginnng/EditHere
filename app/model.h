@@ -83,6 +83,7 @@ QByteArray encodePng(const QImage &image);
 QByteArray encodeOpaquePng(const QImage &image);
 Document fromImage(const QImage &image, const QString &source, const QString &title, bool opaque = false);
 Document loadDocument(const QString &path);
+Document loadDocumentObject(QJsonObject root, const QString &path);
 QJsonObject exportFeedback(const Document &doc, const FeedbackExportOptions &options = {});
 // The legacy compress argument is ignored; originals always remain lossless.
 QJsonObject exportFeedback(const Document &doc, bool embed, bool compress = false, bool includeRecognizedText = true);

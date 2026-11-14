@@ -145,6 +145,8 @@ input[type="checkbox"],input[type="range"] { accent-color:var(--blue); }
 .note-parent-q { flex:1;min-width:0;line-height:1.5; }
 .note-parent button { width:22px;height:20px;display:grid;place-items:center;border:1px solid var(--line);border-radius:5px;background:var(--input);font-size:11px;padding:0;flex:none; }
 .note-parent button:hover { background:var(--hover); }
+.movement-reset-link { grid-column:2 / -1; justify-self:start; margin-top:3px; padding:2px 0; color:var(--blue); font-size:10px; line-height:1.5; }
+.movement-reset-link:hover { text-decoration:underline; }
 .recognized-text { grid-column:2 / -1;margin-top:5px;padding-top:5px;border-top:1px solid var(--border);font-size:11px;color:var(--muted); }
 .recognized-text small { display:block;font-size:10px; }
 .recognized-text span { display:block;white-space:pre-wrap;overflow-wrap:anywhere;max-height:7em;overflow:auto; }
@@ -212,6 +214,42 @@ dialog footer>small { margin-right:auto;font-size:9px;color:var(--muted); }
 kbd { font:10px var(--mono);color:var(--muted); }
 .help-dialog .help-footnote { font-size:10px;border-top:1px solid var(--line);padding-top:12px; }
 .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+.set-bar { position:absolute;z-index:6;bottom:calc(var(--tools-height,50px) + 18px);left:24px;right:24px;display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:12px; }
+body[data-inspector-open="true"] .set-bar { right:300px; }
+.set-head { flex:none;display:flex;flex-direction:column;gap:2px;min-width:84px;max-width:150px;padding:0 4px; }
+.set-head strong { font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.set-head span { font:9px var(--mono);color:var(--muted);white-space:nowrap; }
+.page-list { display:flex;gap:5px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:1px; }
+.page-chip { position:relative;flex:none;width:92px;height:56px;border:1px solid var(--line);border-radius:7px;overflow:hidden;padding:0;background:var(--input); }
+.page-chip img { display:block;width:100%;height:100%;object-fit:cover;object-position:top center; }
+.page-chip:hover { border-color:var(--blue); }
+.page-chip.active { border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 35%,transparent); }
+.page-order { position:absolute;left:4px;top:3px;min-width:15px;height:15px;padding:0 3px;border-radius:5px;background:#0009;color:#fff;font:9px var(--mono);display:grid;place-items:center; }
+.page-title { position:absolute;left:0;right:0;bottom:0;padding:9px 5px 3px;background:linear-gradient(transparent,#000b);color:#fff;font-size:9px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.page-count { position:absolute;right:3px;top:3px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--blue);color:#fff;font:9px var(--mono);display:grid;place-items:center; }
+.set-actions { display:flex;align-items:center;gap:2px;flex:none; }
+.set-action { display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 7px;border-radius:7px;font-size:9px;color:var(--muted); }
+.set-action .icon { width:16px;height:16px; }
+.set-actions .icon-button { width:28px;height:28px;font-size:15px;color:var(--muted); }
+.group-notes { flex:none;max-height:32%;overflow:auto;padding:0 8px 6px;border-bottom:1px solid var(--line);scrollbar-width:thin; }
+.group-note { background:var(--pale);border:1px solid color-mix(in srgb,var(--blue) 18%,transparent);border-radius:8px;padding:6px 8px;margin-bottom:4px;cursor:pointer; }
+.group-note-head { display:flex;align-items:center;gap:6px; }
+.group-note-number { font:9px var(--mono);color:var(--blue); }
+.group-note-label { font-size:9px;color:var(--muted); }
+.group-note-actions { display:flex;margin-left:auto; }
+.group-note-actions button { width:22px;height:20px;display:grid;place-items:center;color:var(--muted);border-radius:5px; }
+.group-note-actions .icon { width:14px;height:14px; }
+.group-note p { margin:4px 0 1px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere; }
+.pages-dialog { width:min(560px,calc(100vw - 28px)); }
+.pages-editor { display:flex;flex-direction:column;gap:6px;max-height:min(50dvh,420px);overflow:auto;padding-right:2px; }
+.page-row { display:flex;align-items:center;gap:8px;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--input); }
+.page-row.active { border-color:var(--blue);background:var(--pale); }
+.page-row img { width:72px;height:44px;object-fit:cover;object-position:top;border-radius:5px;border:1px solid var(--line);flex:none; }
+.page-row .page-order { position:static;background:transparent;color:var(--muted);font:10px var(--mono);min-width:14px; }
+.page-row input { flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);padding:6px 8px;font-size:12px; }
+.page-row-actions { display:flex;gap:2px;flex:none; }
+.page-row-actions button { padding:5px 6px;border-radius:5px;font-size:11px;color:var(--muted); }
+.dsh-badge { align-self:flex-start;margin-top:1px;padding:0 4px;border-radius:4px;background:var(--pale);color:var(--blue);font:8px/1.5 var(--mono);letter-spacing:.4px; }
 body[data-busy="true"] { cursor:progress; }
 body[data-busy="true"] .app,body[data-busy="true"] .header-actions { pointer-events:none; }
 body[data-busy="true"] .local-badge>span:first-child { animation:working .7s alternate infinite; }
@@ -379,6 +417,17 @@ body:has(#workspace[hidden]) .view-controls { display:none; }
   .utility-actions .local-badge { display:none; }
 }
 
+@media (max-width:899px), (max-aspect-ratio:6/5) {
+  .set-bar { top:60px;bottom:auto;left:12px;right:12px; }
+  body[data-inspector-open="true"] .set-bar { right:12px; }
+  .set-head { display:none; }
+  .page-chip { width:72px;height:44px; }
+  .set-actions .set-action span { display:none; }
+}
+@media (max-height:430px) {
+  .set-bar { top:52px;padding:4px 6px; }
+  .page-chip { height:38px; }
+}
 body[data-header-density="compact"] .header,
 body[data-header-density="icons"] .header { gap:4px; }
 body[data-header-density="compact"] .brand { padding:0 8px; }

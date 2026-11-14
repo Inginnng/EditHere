@@ -2,14 +2,19 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.12.5 LANGUAGES C CXX)
+project(EditHere VERSION 0.13.0 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# The AI module pulls in QtKeychain, whose Apple backend is Objective-C++. Enable
+# the language before add_subdirectory(), or CMake cannot generate its rules.
+if(APPLE)
+  enable_language(OBJCXX)
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 "$ENV{EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}" CACHE STRING
-  "SHA-256 of the trusted Windows update publisher certificate (DER); empty disables in-app installation")
+  "SHA-256 of the trusted Windows update publisher certificate (DER); nonempty selects strict Authenticode mode")
 if(NOT EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 STREQUAL "")
   string(LENGTH "${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}" publisher_pin_length)
   if(NOT publisher_pin_length EQUAL 64 OR NOT EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 MATCHES "^[0-9A-Fa-f]+$")
@@ -19,7 +24,8 @@ if(NOT EDITHERE_UPDATE_PUBLISHER_CERT_SHA256 STREQUAL "")
 endif()
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network Test Multimedia MultimediaWidgets)
 qt_standard_project_setup()
-set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
+add_subdirectory(features/ai-text)
+set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/imageset.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
 set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
   set(PLATFORM app/platform_win.cpp)
@@ -38,7 +44,7 @@ else()
   message(FATAL_ERROR "This release targets Windows, macOS and Linux.")
 endif()
 add_library(h2d_core STATIC ${CORE})
-target_include_directories(h2d_core PUBLIC app)
+target_include_directories(h2d_core PUBLIC app features/ai-text/include)
 target_compile_definitions(h2d_core PUBLIC EDITHERE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(h2d_core PUBLIC Qt6::Gui)
 add_library(h2d_agent STATIC app/agentprotocol.cpp app/agentconnection.cpp app/agentlaunch.cpp app/localauth.cpp)
@@ -57,6 +63,8 @@ target_include_directories(edithere_zlib PUBLIC third_party/zlib)
 target_compile_definitions(edithere_zlib PUBLIC Z_SOLO)
 add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/tesseract.cpp app/videoplayback.cpp)
 target_sources(h2d_ui PRIVATE app/diagnosticspage.cpp)
+target_sources(h2d_ui PRIVATE app/aifeedbacksnapshot.cpp)
+target_link_libraries(h2d_ui PUBLIC h2d_ai_text)
 target_include_directories(h2d_ui PUBLIC app)
 target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::MultimediaWidgets)
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
@@ -70,8 +78,15 @@ qt_add_resources(h2d_ui ui_icons
   PREFIX "/ui-icons"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons"
   FILES assets/ui-icons/manifest.json ${UI_ICON_SVGS})
+# The menu bar icon is drawn from the brand vector rather than from the raster app
+# icon set: AppKit tints status images and keeps only the alpha channel, so the
+# symbol has to be rendered at the device scale instead of scaled up from a PNG.
+qt_add_resources(h2d_ui brand_symbol
+  PREFIX "/brand"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
+  FILES assets/icons/edithere.svg)
 if(WIN32)
-  target_link_libraries(h2d_ui PRIVATE user32 gdi32 dwmapi ole32 oleaut32 uuid advapi32 wintrust crypt32)
+  target_link_libraries(h2d_ui PRIVATE user32 gdi32 dwmapi ole32 oleaut32 uuid advapi32 wintrust crypt32 bcrypt)
 elseif(APPLE)
   target_compile_options(h2d_ui PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
   target_link_libraries(h2d_ui PRIVATE "-framework Cocoa" "-framework ScreenCaptureKit" "-framework ApplicationServices" "-framework Carbon" "-framework ServiceManagement" "-framework Vision")
@@ -90,6 +105,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES packaging/linux/com.edithere.capture.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
   install(FILES packaging/linux/com.edithere.capture.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages)
   install(FILES assets/icons/edithere-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME edithere.png)
+  install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/skills)
+  install(FILES docs/PROJECT-REVIEW.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
   install(FILES LICENSE packaging/THIRD-PARTY-NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
 endif()
 qt_add_executable(EditHere WIN32 MACOSX_BUNDLE app/main.cpp)
@@ -170,6 +187,20 @@ add_custom_command(TARGET EditHere POST_BUILD
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   VERBATIM)
 enable_testing()
+qt_add_executable(imageset_tests tests/imageset_test.cpp)
+target_link_libraries(imageset_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(imageset_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME image-set COMMAND imageset_tests -platform offscreen)
+
+qt_add_executable(ai_feedback_tests features/ai-text/tests/aifeedback_test.cpp)
+target_link_libraries(ai_feedback_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(ai_feedback_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME ai-feedback COMMAND ai_feedback_tests)
+qt_add_executable(ai_instructions_tests features/ai-text/tests/aiinstructionsdialog_test.cpp)
+target_link_libraries(ai_instructions_tests PRIVATE h2d_ui Qt6::Test)
+set_target_properties(ai_instructions_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+add_test(NAME ai-instructions COMMAND ai_instructions_tests -platform offscreen)
+
 if(APPLE)
   qt_add_executable(cocoa_tray_tests tests/cocoa_tray_test.mm)
   target_link_libraries(cocoa_tray_tests PRIVATE h2d_ui Qt6::Test Qt6::WidgetsPrivate "-framework Cocoa")
@@ -187,6 +218,15 @@ if(APPLE)
   set_target_properties(cocoa_capture_tests PROPERTIES MACOSX_BUNDLE FALSE)
   add_test(NAME cocoa-capture COMMAND cocoa_capture_tests -platform offscreen)
   set_tests_properties(cocoa-capture PROPERTIES TIMEOUT 30)
+
+  # A real Cocoa window, because the traffic lights and the title bar's hit testing
+  # only exist in AppKit; the offscreen platform cannot stand in for either.
+  qt_add_executable(cocoa_window_tests tests/cocoa_window_test.mm app/platform.h)
+  target_link_libraries(cocoa_window_tests PRIVATE h2d_ui Qt6::Test Qt6::Widgets "-framework Cocoa")
+  target_compile_options(cocoa_window_tests PRIVATE -fobjc-arc)
+  set_target_properties(cocoa_window_tests PROPERTIES MACOSX_BUNDLE FALSE)
+  add_test(NAME cocoa-window COMMAND cocoa_window_tests)
+  set_tests_properties(cocoa-window PROPERTIES TIMEOUT 60)
 endif()
 qt_add_executable(video_project_tests tests/video_project_test.cpp)
 target_link_libraries(video_project_tests PRIVATE h2d_core Qt6::Test)
@@ -196,6 +236,10 @@ add_test(NAME video-project COMMAND video_project_tests)
 qt_add_executable(video_ui_tests tests/video_ui_test.cpp)
 target_link_libraries(video_ui_tests PRIVATE h2d_ui Qt6::Test)
 set_target_properties(video_ui_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+qt_add_resources(video_ui_tests video_ui_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES app/translations/built/edithere_en.qm)
 add_test(NAME video-ui COMMAND video_ui_tests -platform offscreen)
 set_tests_properties(video-ui PROPERTIES TIMEOUT 120)
 find_program(Node_EXECUTABLE NAMES node)
@@ -208,7 +252,8 @@ if(Node_EXECUTABLE)
   set(WEB_TEST_SOURCES
     agent-session.test.cjs agent-recovery.test.cjs capture.test.cjs
     feedback-children.test.mjs feedback-v3.test.cjs feedback.test.cjs
-    image-modes.test.cjs install-skill.test.cjs layout.test.cjs movement.test.cjs)
+    image-modes.test.cjs image-set-session.test.cjs install-skill.test.cjs
+    layout.test.cjs movement.test.cjs)
   list(TRANSFORM WEB_TEST_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/web/tests/")
   add_test(NAME web COMMAND "${Node_EXECUTABLE}" --test ${WEB_TEST_SOURCES})
   set_tests_properties(web PROPERTIES TIMEOUT 180)
@@ -236,13 +281,24 @@ set_target_properties(edithere-cli-test PROPERTIES WIN32_EXECUTABLE FALSE MACOSX
 target_link_libraries(edithere-cli-test PRIVATE h2d_core h2d_agent h2d_diagnostics)
 target_compile_definitions(edithere-cli-test PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 add_dependencies(agent_cli_tests edithere-cli edithere-cli-test)
-add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+if(WIN32)
+  # Windows GUI tests may not have an attached console on hosted runners.
+  # Keep a readable log even if a modal interaction stalls the process.
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen
+    -o "${CMAKE_CURRENT_BINARY_DIR}/agent-cli-test.log,txt")
+else()
+  add_test(NAME agent-cli COMMAND agent_cli_tests -platform offscreen)
+endif()
 if(WIN32)
   qt_add_executable(agent_launch_tests tests/agent_launch_test.cpp)
   target_link_libraries(agent_launch_tests PRIVATE h2d_agent Qt6::Test)
   set_target_properties(agent_launch_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
   add_test(NAME agent-launch COMMAND agent_launch_tests)
   set_tests_properties(agent-launch PROPERTIES TIMEOUT 45)
+  qt_add_executable(windows_ipc_tests tests/windows_ipc_test.cpp)
+  target_link_libraries(windows_ipc_tests PRIVATE h2d_agent Qt6::Test)
+  set_target_properties(windows_ipc_tests PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+  add_test(NAME windows-ipc-validation COMMAND windows_ipc_tests)
 endif()
 qt_add_executable(detector_tests tests/detector_test.cpp)
 target_link_libraries(detector_tests PRIVATE h2d_core Qt6::Test)
@@ -268,6 +324,12 @@ target_link_libraries(canvas_feedback_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME canvas-feedback COMMAND canvas_feedback_tests -platform offscreen)
 qt_add_executable(settings_tests tests/settings_test.cpp)
 target_link_libraries(settings_tests PRIVATE h2d_ui Qt6::Test)
+qt_add_resources(settings_tests settings_test_translations
+  PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/app/translations/built"
+  FILES
+    app/translations/built/edithere_en.qm
+    app/translations/built/edithere_zh_TW.qm)
 add_test(NAME settings COMMAND settings_tests -platform offscreen)
 qt_add_executable(diagnostics_tests tests/diagnostics_test.cpp)
 target_link_libraries(diagnostics_tests PRIVATE h2d_diagnostics Qt6::Test)
@@ -296,6 +358,31 @@ add_test(NAME startup-flow COMMAND startup_flow_tests -platform offscreen)
 qt_add_executable(update_tests tests/update_test.cpp)
 target_link_libraries(update_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME updates COMMAND update_tests)
+# Isolate the public test trust root and synthetic transport from h2d_ui and
+# every distributable target. The fixture has no corresponding committed key.
+qt_add_executable(update_signature_tests tests/update_signature_test.cpp app/updatechecker.cpp app/updateauth.cpp)
+target_include_directories(update_signature_tests PRIVATE app)
+target_compile_definitions(update_signature_tests PRIVATE EDITHERE_UPDATE_TEST_TRUST=1 EDITHERE_VERSION="${PROJECT_VERSION}")
+target_link_libraries(update_signature_tests PRIVATE Qt6::Test Qt6::Network h2d_diagnostics)
+if(WIN32)
+  target_link_libraries(update_signature_tests PRIVATE bcrypt wintrust crypt32)
+endif()
+add_test(NAME update-signatures COMMAND update_signature_tests)
+qt_add_executable(update_certificate_tests tests/update_signature_test.cpp app/updatechecker.cpp app/updateauth.cpp)
+target_include_directories(update_certificate_tests PRIVATE app)
+target_compile_definitions(update_certificate_tests PRIVATE EDITHERE_UPDATE_TEST_TRUST=1
+  EDITHERE_VERSION="${PROJECT_VERSION}"
+  EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="0000000000000000000000000000000000000000000000000000000000000000")
+target_link_libraries(update_certificate_tests PRIVATE Qt6::Test Qt6::Network h2d_diagnostics)
+if(WIN32)
+  target_link_libraries(update_certificate_tests PRIVATE bcrypt wintrust crypt32)
+endif()
+add_test(NAME update-certificate-policy COMMAND update_certificate_tests)
+find_program(EDITHERE_NODE_EXECUTABLE NAMES node node.exe)
+if(EDITHERE_NODE_EXECUTABLE)
+  add_test(NAME update-signer COMMAND "${EDITHERE_NODE_EXECUTABLE}" --test "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_signer_test.cjs")
+  set_tests_properties(update-signer PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 qt_add_executable(ocr_tests tests/ocr_test.cpp)
 target_link_libraries(ocr_tests PRIVATE h2d_ui Qt6::Test)
 qt_add_resources(ocr_tests small_ocr_fixture
@@ -348,6 +435,12 @@ if(WIN32)
   set_target_properties(scroll_platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
   add_test(NAME scroll-platform COMMAND scroll_platform_tests -platform windows)
   set_tests_properties(scroll-platform PROPERTIES TIMEOUT 45)
+
+  include(cmake/WindowsTestRuntime.cmake)
+  # All tests registered so far use Qt except these Node suites.
+  get_property(native_tests DIRECTORY PROPERTY TESTS)
+  list(REMOVE_ITEM native_tests connector web web-mcp update-signer)
+  edithere_prepare_windows_qt_tests(EditHere ${native_tests})
 endif()
 # Guards for the incidents recorded in docs/REGRESSIONS.md: installer encoding, NSIS
 # macros, the shape of the portable archive, release asset names and hashes, the

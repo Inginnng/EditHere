@@ -100,3 +100,28 @@ Interface action icons use a pinned subset of Lucide (ISC, with the retained
 Feather MIT notice), plus EditHere-specific derivatives recorded in
 assets/ui-icons/manifest.json in the source tree. The complete upstream notices
 ship in licenses/ui-icons/LICENSE. Application branding is separate and unchanged.
+
+Desktop API credentials use QtKeychain 0.15.0 (Modified BSD), copyright Frank
+Osterfeld and contributors, https://github.com/frankosterfeld/qtkeychain . The
+unmodified source archive is pinned and SHA-256 checked by CMake, statically
+linked against Qt. The original license and source reference ship under
+licenses/qtkeychain. Insecure plaintext fallback is disabled.
+Linux builds additionally link libsecret and its runtime dependencies; their
+distribution copyright notices are retained under licenses/linux in the AppImage.
+
+The desktop AI provider preset data and its provider/region/protocol organization
+are adapted from CC Switch, copyright (c) 2025 Jason Young, under the MIT License.
+The reviewed upstream commit is 983113a132ab1754e6bb1fab3994fb3b23d15f62 at
+https://github.com/farion1231/cc-switch . Only official provider defaults are used;
+vendor API documentation was checked separately for vision-capable models.
+The complete license ships in licenses/cc-switch/LICENSE. Source files and field
+mappings are recorded in docs/ai-providers.md in the EditHere source tree.
+
+AI provider brand artwork uses five SVGs from Lobe Icons, copyright (c) 2023
+LobeHub, under the MIT License, https://github.com/lobehub/lobe-icons . The fixed
+upstream commit, source paths and SHA-256 hashes are recorded in
+features/ai-text/resources/providers/README.md in the EditHere source tree. The unmodified artwork
+is embedded in the desktop application; its currentColor regions follow the
+interface theme at rendering time. The complete license ships in
+licenses/lobehub-icons/LICENSE. Provider names and marks identify the selected
+service; their respective owners retain their trademark rights.

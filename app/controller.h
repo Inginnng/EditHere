@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
+#include <QTimer>
 namespace h2d {
 class OcrDialog;
 class PinWindow;
@@ -39,6 +40,11 @@ class Controller final : public QObject {
     void beginCapture(bool fromTray);
     void openAnnotation();
     void openFromTray();
+    void trayActivated(QSystemTrayIcon::ActivationReason reason);
+    void runTrayAction(const QString &id);
+    void showCurrentWindow();
+    QTimer trayClickTimer_;
+    bool trayActionRunning_ = false;
     void restoreAfterCapture();
     quintptr captureForeground_ = 0;
     quint64 captureGeneration_ = 0;
@@ -60,7 +66,7 @@ class Controller final : public QObject {
     void presentStartupUpdate();
     void readInstallationReceipt();
     void presentInstallationReceipt();
-    void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr);
+    void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr, bool ai = false);
     // What the toolbar beside a finished region can do with it.
     void copyRegion(Overlay *source);
     void pinRegion(Overlay *source);

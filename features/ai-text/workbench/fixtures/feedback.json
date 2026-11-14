@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "feedback-minimal-4",
+  "annotationSpace": "result",
+  "image": {
+    "width": 1200,
+    "height": 800,
+    "devicePixelRatio": 1,
+    "mode": "none"
+  },
+  "capture": {
+    "page": "Morrow · 首页首屏"
+  },
+  "objects": [
+    {
+      "id": "heading",
+      "kind": "region",
+      "source": {
+        "x1": 62,
+        "y1": 266,
+        "x2": 590,
+        "y2": 418
+      },
+      "annotations": [
+        {
+          "number": 1,
+          "text": "主标题再大一些，保留现在的两行排版；副标题的颜色调浅一点。"
+        }
+      ]
+    },
+    {
+      "id": "cta",
+      "kind": "region",
+      "source": {
+        "x1": 66,
+        "y1": 554,
+        "x2": 305,
+        "y2": 611
+      },
+      "annotations": [
+        {
+          "number": 2,
+          "text": "按钮改成深绿色，圆角收小一点，文案改为“探索系列”。"
+        }
+      ]
+    },
+    {
+      "id": "photo",
+      "kind": "region",
+      "source": {
+        "x1": 610,
+        "y1": 168,
+        "x2": 1088,
+        "y2": 660
+      },
+      "annotations": [],
+      "movement": {
+        "rect": {
+          "x1": 658,
+          "y1": 168,
+          "x2": 1136,
+          "y2": 660
+        },
+        "dx": 48,
+        "dy": 0,
+        "scaleX": 1,
+        "scaleY": 1
+      }
+    }
+  ]
+}

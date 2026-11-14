@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "aisettingspage.h"
 #include "diagnosticspage.h"
 #include "diagnostics.h"
 #include "i18n.h"
@@ -7,6 +8,7 @@
 #include "updatechecker.h"
 #include <QCheckBox>
 #include <QComboBox>
+#include <QApplication>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QFormLayout>
@@ -20,11 +22,16 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QProgressBar>
+#include <QPointer>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QScreen>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QTabWidget>
+#include <QTabBar>
+#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -47,28 +54,85 @@ constexpr bool windowsUpdates = true;
 constexpr bool windowsUpdates = false;
 #endif
 }
-SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : QDialog(parent) {
+SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiCredentials *credentials) : QDialog(parent) {
     setObjectName("settingsDialog");
-    setMinimumSize(500, 440);
-    resize(620, 680);
+    const auto screen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+    const auto available = screen ? screen->availableGeometry().size() - QSize(24, 48) : QSize(980, 740);
+    setMinimumSize(qMin(640, available.width()), qMin(560, available.height()));
+    resize(QSize(980, 740).boundedTo(available));
     languageOnEntry_ = settings.language;
     appliedLanguage_ = settings.language;
-    auto root = new QVBoxLayout(this);
-    root->setContentsMargins(24, 22, 24, 20);
-    root->setSpacing(16);
-    auto title = new QLabel(this);
-    title->setObjectName("settingsTitle");
-    auto titleFont = title->font();
-    titleFont.setPointSize(titleFont.pointSize() + 5);
-    titleFont.setWeight(QFont::DemiBold);
-    title->setFont(titleFont);
-    root->addWidget(title);
+    auto root = new QHBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(0);
+    sidebar_ = new QWidget(this);
+    sidebar_->setObjectName("settingsSidebar");
+    sidebar_->setAttribute(Qt::WA_StyledBackground);
+    auto sidebarLayout = new QVBoxLayout(sidebar_);
+    sidebarLayout->setContentsMargins(12, 24, 12, 20);
+    sidebarLayout->setSpacing(12);
+    auto identity = new QVBoxLayout;
+    identity->setContentsMargins(12, 0, 12, 0);
+    identity->setSpacing(4);
+    sidebarBrand_ = new QLabel("EditHere", sidebar_);
+    sidebarBrand_->setObjectName("settingsBrand");
+    sidebarTitle_ = new QLabel(sidebar_);
+    sidebarTitle_->setObjectName("settingsTitle");
+    identity->addWidget(sidebarBrand_);
+    identity->addWidget(sidebarTitle_);
+    sidebarLayout->addLayout(identity);
+    navigation_ = new QWidget(sidebar_);
+    navigation_->setObjectName("settingsNavigation");
+    sidebarLayout->addWidget(navigation_);
+    sidebarLayout->addStretch();
+    sidebarVersion_ = new QLabel(EDITHERE_VERSION, sidebar_);
+    sidebarVersion_->setObjectName("settingsSidebarVersion");
+    sidebarVersion_->setContentsMargins(12, 0, 0, 0);
+    sidebarLayout->addWidget(sidebarVersion_);
+    root->addWidget(sidebar_);
+    auto content = new QWidget(this);
+    content->setObjectName("settingsContent");
+    content->setAttribute(Qt::WA_StyledBackground);
+    auto contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(0);
+    pageHeader_ = new QWidget(content);
+    pageHeader_->setObjectName("settingsPageHeader");
+    auto headerLayout = new QVBoxLayout(pageHeader_);
+    headerLayout->setContentsMargins(32, 28, 32, 16);
+    pageTitle_ = new QLabel(pageHeader_);
+    pageTitle_->setObjectName("settingsPageTitle");
+    headerLayout->addWidget(pageTitle_);
+    contentLayout->addWidget(pageHeader_);
     auto tabs = tabs_ = new QTabWidget(this);
     tabs->setObjectName("settingsTabs");
-    root->addWidget(tabs, 1);
+    tabs->tabBar()->hide();
+    tabs->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    contentLayout->addWidget(tabs, 1);
+    root->addWidget(content, 1);
+    // Every page scrolls independently; the navigation and the save action stay
+    // in place when a smaller display cannot fit a long form.
+    const auto scrollPage = [tabs](QWidget *page) {
+        page->setProperty("settingsBody", true);
+        page->setAttribute(Qt::WA_StyledBackground);
+        auto wrapper = new QScrollArea(tabs);
+        const auto name = page->objectName();
+        if (!name.isEmpty()) {
+            wrapper->setObjectName(name);
+            page->setObjectName(name + "Content");
+        }
+        wrapper->setWidgetResizable(true);
+        wrapper->setFrameShape(QFrame::NoFrame);
+        wrapper->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        if (auto pageLayout = page->layout()) pageLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+        wrapper->setWidget(page);
+        return wrapper;
+    };
     auto shortcuts = new QWidget;
+    shortcuts->setProperty("settingsBody", true);
+    shortcuts->setAttribute(Qt::WA_StyledBackground);
     auto shortcutLayout = new QVBoxLayout(shortcuts);
-    shortcutLayout->setContentsMargins(16, 16, 16, 8);
+    shortcutLayout->setContentsMargins(32, 0, 32, 24);
     shortcutLayout->setSpacing(12);
     globalShortcutNotice_ = mutedLabel({}, shortcuts);
     globalShortcutNotice_->setObjectName("globalShortcutNotice");
@@ -79,6 +143,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     scroll->setWidgetResizable(true);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto rows = new QWidget;
+    rows->setProperty("settingsBody", true);
+    rows->setAttribute(Qt::WA_StyledBackground);
     auto form = new QFormLayout(rows);
     form->setContentsMargins(0, 0, 8, 8);
     form->setHorizontalSpacing(24);
@@ -119,7 +185,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     tabs->addTab(shortcuts, {});
     auto appearance = new QWidget;
     auto appearanceLayout = new QVBoxLayout(appearance);
-    appearanceLayout->setContentsMargins(20, 22, 20, 20);
+    appearanceLayout->setContentsMargins(32, 0, 32, 28);
     appearanceLayout->setSpacing(14);
     appearanceTitle_ = new QLabel(appearance);
     appearanceTitle_->setObjectName("settingsSection");
@@ -167,10 +233,13 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     ocrLanguage_->setMinimumHeight(36);
     appearanceLayout->addWidget(ocrLanguage_);
     appearanceLayout->addStretch();
-    tabs->addTab(appearance, {});
+    tabs->addTab(scrollPage(appearance), {});
     auto defaults = new QWidget;
+    // scrollPage() moves this name to the surrounding QScrollArea, so the tab
+    // page keeps the object name the settings test and screenshots look for.
+    defaults->setObjectName("settingsDefaultsPage");
     auto defaultsLayout = new QVBoxLayout(defaults);
-    defaultsLayout->setContentsMargins(20, 22, 20, 20);
+    defaultsLayout->setContentsMargins(32, 0, 32, 28);
     defaultsLayout->setSpacing(18);
     captureOnStartup_ = new QCheckBox(defaults);
     captureOnStartup_->setObjectName("captureOnStartup");
@@ -207,7 +276,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     auto feedbackRow = new QHBoxLayout;
     feedbackDir_ = new QLineEdit(defaults);
     feedbackDir_->setObjectName("feedbackDir");
-    feedbackDir_->setMinimumWidth(280);
+    feedbackDir_->setMinimumWidth(120);
     auto browse = new QToolButton(defaults);
     browse->setText("…");
     browse->setObjectName("feedbackDirBrowse");
@@ -224,6 +293,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     feedbackLabel->setObjectName("feedbackDirLabel");
     feedbackLabel->setBuddy(feedbackDir_);
     auto feedbackForm = new QFormLayout;
+    feedbackForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
     feedbackForm->addRow(feedbackLabel, feedbackRow);
     defaultsLayout->addLayout(feedbackForm);
     auto exportHint = mutedLabel({}, defaults);
@@ -239,41 +309,75 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     toolLabel->setBuddy(defaultTool_);
     toolForm->addRow(toolLabel, defaultTool_);
     defaultsLayout->addLayout(toolForm);
+    trayTitle_ = new QLabel(defaults);
+    trayTitle_->setObjectName("settingsSection");
+    defaultsLayout->addWidget(trayTitle_);
+    auto trayForm = new QFormLayout;
+    trayForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    traySingleClick_ = new QComboBox(defaults);
+    traySingleClick_->setObjectName("traySingleClick");
+    trayDoubleClick_ = new QComboBox(defaults);
+    trayDoubleClick_->setObjectName("trayDoubleClick");
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->addItem(QString(), definition.id);
+        trayDoubleClick_->addItem(QString(), definition.id);
+    }
+    auto singleLabel = new QLabel(defaults);
+    singleLabel->setObjectName("traySingleClickLabel");
+    singleLabel->setBuddy(traySingleClick_);
+    auto doubleLabel = new QLabel(defaults);
+    doubleLabel->setObjectName("trayDoubleClickLabel");
+    doubleLabel->setBuddy(trayDoubleClick_);
+    trayForm->addRow(singleLabel, traySingleClick_);
+    trayForm->addRow(doubleLabel, trayDoubleClick_);
+    defaultsLayout->addLayout(trayForm);
+    auto trayHint = mutedLabel({}, defaults);
+    trayHint->setObjectName("trayClickHint");
+    trayHint->setWordWrap(true);
+    defaultsLayout->addWidget(trayHint);
+#ifdef Q_OS_MACOS
+    // Cocoa opens the assigned native menu on mouse-down and reports its
+    // tracking as Trigger. Keep REG-200/202 and do not advertise inert settings.
+    traySingleClick_->setEnabled(false);
+    trayDoubleClick_->setEnabled(false);
+#endif
+    for (auto combo : {traySingleClick_, trayDoubleClick_})
+        connect(combo, &QComboBox::currentIndexChanged, this, [this] { error_->hide(); });
     defaultsLayout->addStretch();
-    tabs->addTab(defaults, {});
+    tabs->addTab(scrollPage(defaults), {});
 
-    auto scrollPage = new QWidget;
-    scrollPage->setObjectName("settingsScrollPage");
-    auto scrollLayout = new QVBoxLayout(scrollPage);
-    scrollLayout->setContentsMargins(20, 22, 20, 20);
+    auto scrollCapturePage = new QWidget;
+    scrollCapturePage->setObjectName("settingsScrollPage");
+    auto scrollLayout = new QVBoxLayout(scrollCapturePage);
+    scrollLayout->setContentsMargins(32, 0, 32, 28);
     scrollLayout->setSpacing(14);
-    auto scrollHint = new QLabel(scrollPage);
+    auto scrollHint = new QLabel(scrollCapturePage);
     scrollHint->setObjectName("scrollSettingsHint");
     scrollHint->setWordWrap(true);
     scrollLayout->addWidget(scrollHint);
     auto scrollForm = new QFormLayout;
-    scrollAxis_ = new QComboBox(scrollPage);
+    scrollAxis_ = new QComboBox(scrollCapturePage);
     scrollAxis_->setObjectName("scrollDefaultAxis");
     scrollAxis_->addItem({}, static_cast<int>(Qt::Vertical));
     scrollAxis_->addItem({}, static_cast<int>(Qt::Horizontal));
-    auto axisLabel = new QLabel(scrollPage);
+    auto axisLabel = new QLabel(scrollCapturePage);
     axisLabel->setObjectName("scrollAxisLabel");
     axisLabel->setBuddy(scrollAxis_);
     scrollForm->addRow(axisLabel, scrollAxis_);
     scrollLayout->addLayout(scrollForm);
-    scrollAutoCrop_ = new QCheckBox(scrollPage);
+    scrollAutoCrop_ = new QCheckBox(scrollCapturePage);
     scrollAutoCrop_->setObjectName("scrollDefaultAutoCrop");
     scrollLayout->addWidget(scrollAutoCrop_);
-    scrollUltraLong_ = new QCheckBox(scrollPage);
+    scrollUltraLong_ = new QCheckBox(scrollCapturePage);
     scrollUltraLong_->setObjectName("scrollUltraLong");
     scrollLayout->addWidget(scrollUltraLong_);
     scrollLayout->addStretch();
-    tabs->addTab(scrollPage, {});
+    tabs->addTab(scrollPage(scrollCapturePage), {});
 
     auto toolbar = new QWidget;
     toolbar->setObjectName("settingsToolbarPage");
     auto toolbarLayout = new QVBoxLayout(toolbar);
-    toolbarLayout->setContentsMargins(20, 22, 20, 20);
+    toolbarLayout->setContentsMargins(32, 0, 32, 28);
     toolbarLayout->setSpacing(18);
     toolbarTitle_ = new QLabel(toolbar);
     toolbarTitle_->setObjectName("settingsSection");
@@ -286,12 +390,14 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
         connect(checkbox, &QCheckBox::toggled, this, [this] { error_->hide(); });
     }
     toolbarLayout->addStretch();
-    tabs->addTab(toolbar, {});
+    tabs->addTab(scrollPage(toolbar), {});
 
     auto aboutContent = new QWidget;
+    aboutContent->setProperty("settingsBody", true);
+    aboutContent->setAttribute(Qt::WA_StyledBackground);
     aboutContent->setObjectName("aboutContent");
     auto aboutLayout = new QVBoxLayout(aboutContent);
-    aboutLayout->setContentsMargins(20, 22, 20, 20);
+    aboutLayout->setContentsMargins(32, 0, 32, 28);
     aboutLayout->setSpacing(18);
     versionLabel_ = new QLabel(aboutContent);
     versionLabel_->setObjectName("settingsSection");
@@ -354,7 +460,40 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     aboutScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     aboutScroll->setWidget(aboutContent);
     tabs->addTab(aboutScroll, {});
-    tabs->addTab(new DiagnosticsPage(tabs), {});
+    auto diagnosticPage = new DiagnosticsPage(tabs);
+    if (auto pageLayout = diagnosticPage->layout()) pageLayout->setContentsMargins(32, 0, 32, 28);
+    if (auto duplicateTitle = diagnosticPage->findChild<QLabel *>("settingsSection")) duplicateTitle->hide();
+    tabs->addTab(scrollPage(diagnosticPage), {});
+    auto *aiScroll = new QScrollArea(tabs);
+    aiScroll->setObjectName("settingsAiPage");
+    aiScroll->setWidgetResizable(true);
+    aiScroll->setFrameShape(QFrame::NoFrame);
+    aiScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    aiPage_ = new AiSettingsPage(aiScroll, credentials);
+    aiScroll->setWidget(aiPage_);
+    tabs->addTab(aiScroll, {});
+    auto navigationLayout = new QVBoxLayout(navigation_);
+    navigationLayout->setContentsMargins(0, 0, 0, 0);
+    navigationLayout->setSpacing(4);
+    navigationButtons_.resize(tabs->count());
+    const QStringList navIcons{"select", "sun", "settings", "scroll", "layout-settings", "help", "json", "notes"};
+    for (int index : {1, 2, 0, 3, 4, 7, 6, 5}) {
+        auto button = textButton({}, false, navigation_);
+        button->setObjectName("settingsNav_" + QString::number(index));
+        button->setProperty("settingsNav", true);
+        button->setCheckable(true);
+        button->setIcon(glyph(navIcons[index]));
+        button->setIconSize({18, 18});
+        button->setMinimumHeight(20);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        navigationButtons_[index] = button;
+        navigationLayout->addWidget(button);
+        connect(button, &QPushButton::clicked, this, [this, tabs, index] {
+            tabs->setCurrentIndex(index);
+            updateNavigation();
+        });
+    }
+    connect(tabs, &QTabWidget::currentChanged, this, [this] { updateNavigation(); });
     connect(noteButton, &QPushButton::clicked, this, [this] {
         // Built on demand so it always reflects the language that is active when
         // it is opened, and so a reader who never asks pays nothing for it.
@@ -426,7 +565,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
             progressBar->setRange(0, 100);
             progressBar->setValue(0);
             cancelUpdate->show();
-            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName);
+            updater_->downloadAndInstall(result.installer, result.installerHash, isInstaller, result.tagName,
+                                         result.installerSignature);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
             const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
@@ -436,8 +576,12 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     });
     connect(updater_, &UpdateChecker::downloadProgress, this,
             [progressBar](qint64 received, qint64 total) {
-                if (total > 0)
+                if (total > 0) {
+                    progressBar->setRange(0, 100);
                     progressBar->setValue(static_cast<int>(received * 100 / total));
+                } else {
+                    progressBar->setRange(0, 0);
+                }
             });
     connect(updater_, &UpdateChecker::installerPreparing, this, [this, status, progressBar] {
         status->setText(tr("正在检查安装条件并准备更新，当前工作将保留到安装器就绪。"));
@@ -457,20 +601,28 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
                 progressBar->setVisible(false);
                 cancelUpdate->hide();
             });
-    error_ = new QLabel(this);
+    footer_ = new QWidget(content);
+    footer_->setObjectName("settingsFooter");
+    footer_->setAttribute(Qt::WA_StyledBackground);
+    auto footerLayout = new QVBoxLayout(footer_);
+    footerLayout->setContentsMargins(24, 16, 24, 18);
+    footerLayout->setSpacing(10);
+    error_ = new QLabel(footer_);
     error_->setObjectName("errorLabel");
     error_->setProperty("error", true);
     error_->setWordWrap(true);
     error_->hide();
-    root->addWidget(error_);
+    footerLayout->addWidget(error_);
     auto actions = new QHBoxLayout;
-    auto reset = textButton({}, false, this);
+    auto reset = textButton({}, false, footer_);
     reset->setObjectName("settingsReset");
-    auto guide = textButton({}, false, this);
+    reset->setProperty("settingsQuiet", true);
+    auto guide = textButton({}, false, footer_);
     guide->setObjectName("restartGuide");
-    auto cancel = textButton({}, false, this);
+    guide->setProperty("settingsQuiet", true);
+    auto cancel = textButton({}, false, footer_);
     cancel->setObjectName("settingsCancel");
-    auto saveButton = textButton({}, true, this);
+    auto saveButton = textButton({}, true, footer_);
     saveButton->setObjectName("settingsSave");
     saveButton->setDefault(true);
     actions->addWidget(reset);
@@ -478,7 +630,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     actions->addStretch();
     actions->addWidget(cancel);
     actions->addWidget(saveButton);
-    root->addLayout(actions);
+    footerLayout->addLayout(actions);
+    contentLayout->addWidget(footer_);
     connect(reset, &QPushButton::clicked, this, [this] {
         setDraft(defaultSettings());
         error_->hide();
@@ -498,11 +651,15 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent) : Q
     // Every label is set in retranslate(), so the constructor has to call it too.
     retranslate();
     setDraft(settings);
+    updateNavigation();
+    updateAppearance();
 }
 void SettingsDialog::changeEvent(QEvent *event) {
     QDialog::changeEvent(event);
     if (event->type() == QEvent::LanguageChange)
         retranslate();
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        updateAppearance();
 }
 void SettingsDialog::retranslate() {
     setWindowTitle(tr("EditHere 设置"));
@@ -525,9 +682,15 @@ void SettingsDialog::retranslate() {
             field->setPlaceholderText(tr("点击录制快捷键"));
     }
     const QStringList tabTitles{tr("快捷键"), tr("外观"), tr("默认行为"), tr("长截图"),
-                                tr("工具栏"), tr("关于与更新"), tr("诊断日志")};
-    for (int i = 0; i < tabs_->count() && i < tabTitles.size(); ++i)
+                                tr("工具栏"), tr("关于与更新"), tr("诊断日志"), tr("AI 接口")};
+    for (int i = 0; i < tabs_->count() && i < tabTitles.size(); ++i) {
         tabs_->setTabText(i, tabTitles[i]);
+        if (i < navigationButtons_.size()) {
+            navigationButtons_[i]->setAccessibleName(tabTitles[i]);
+            navigationButtons_[i]->setToolTip(tabTitles[i]);
+        }
+    }
+    if (aiPage_) aiPage_->retranslate();
     if (appearanceTitle_)
         appearanceTitle_->setText(tr("外观模式"));
     if (auto description = findChild<QLabel *>("themeDescription"))
@@ -554,7 +717,21 @@ void SettingsDialog::retranslate() {
     ocrLanguage_->setItemText(1, ocrLanguageLabel(OcrLanguageMode::SimplifiedChinese));
     ocrLanguage_->setItemText(2, ocrLanguageLabel(OcrLanguageMode::English));
     captureOnStartup_->setText(tr("启动后立即截图"));
-    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；点击托盘或按全局快捷键开始截图。"));
+    captureOnStartup_->setToolTip(tr("关闭后启动时只驻留托盘；可使用托盘菜单或全局快捷键开始截图。"));
+    trayTitle_->setText(tr("托盘图标"));
+    findChild<QLabel *>("traySingleClickLabel")->setText(tr("单击"));
+    findChild<QLabel *>("trayDoubleClickLabel")->setText(tr("双击"));
+    traySingleClick_->setAccessibleName(tr("托盘图标：单击"));
+    trayDoubleClick_->setAccessibleName(tr("托盘图标：双击"));
+    for (const auto &definition : trayActionDefinitions()) {
+        traySingleClick_->setItemText(traySingleClick_->findData(definition.id), definition.label);
+        trayDoubleClick_->setItemText(trayDoubleClick_->findData(definition.id), definition.label);
+    }
+#ifdef Q_OS_MACOS
+    findChild<QLabel *>("trayClickHint")->setText(tr("macOS 使用原生状态栏菜单，暂不支持自定义单击和双击。请从菜单选择动作或使用快捷键。"));
+#else
+    findChild<QLabel *>("trayClickHint")->setText(tr("单击会等待系统双击间隔；菜单动作和快捷键立即响应。Linux 的双击支持取决于桌面托盘。"));
+#endif
     launchAtLogin_->setText(tr("开机时启动 EditHere"));
     launchAtLogin_->setToolTip(tr("请保留程序所在文件夹；移动后需重新设置。"));
     fitImageOnOpen_->setText(tr("打开图片时自动适应窗口"));
@@ -639,7 +816,8 @@ void SettingsDialog::retranslate() {
     if (auto cancel = findChild<QPushButton *>("settingsCancel"))
         cancel->setText(tr("取消"));
     if (auto save = findChild<QPushButton *>("settingsSave"))
-        save->setText(tr("保存"));
+        save->setText(saving_ ? tr("正在保存…") : tr("保存设置"));
+    updateNavigation();
 }
 void SettingsDialog::applyLanguage(LanguageMode mode) {
     if (mode == appliedLanguage_)
@@ -660,10 +838,14 @@ void SettingsDialog::applyLanguage(LanguageMode mode) {
     retranslate();
 }
 void SettingsDialog::reject() {
+    if (saving_) return;
     updater_->cancelDownload();
     // Cancelling undoes the live language preview along with every other edit.
     applyLanguage(languageOnEntry_);
     QDialog::reject();
+}
+void SettingsDialog::done(int result) {
+    if (!saving_) QDialog::done(result);
 }
 void SettingsDialog::showUpdates(bool checkNow) {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsAboutPage"));
@@ -679,6 +861,9 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
     releases->setProperty("updateAvailable", result.status == UpdateChecker::Available);
     releases->setProperty("releaseUrl", result.url);
     const bool automatic = UpdateChecker::canAutoInstall(result, installedCopy(), windowsUpdates);
+    if (windowsUpdates && result.status == UpdateChecker::Available && !automatic)
+        findChild<QLabel *>("updateStatus")->setText(result.message +
+            tr(" 此版本不满足可信安装条件，请前往发布页手动下载。"));
     releases->setProperty("automaticUpdate", automatic);
     releases->setText(automatic ? tr("立即更新") : tr("打开发布页"));
     // Use the release already checked at startup, including its matched package
@@ -689,6 +874,9 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
 void SettingsDialog::showToolbar() {
     tabs_->setCurrentWidget(findChild<QWidget *>("settingsToolbarPage"));
 }
+void SettingsDialog::showAi() {
+    tabs_->setCurrentWidget(findChild<QWidget *>("settingsAiPage"));
+}
 void SettingsDialog::setLaunchAtLoginNotice(const QString &notice) {
     launchAtLoginNotice_->setText(notice);
     launchAtLoginNotice_->setVisible(!notice.isEmpty());
@@ -698,6 +886,7 @@ void SettingsDialog::setGlobalShortcutNotice(const QString &notice) {
     globalShortcutNotice_->setVisible(!notice.isEmpty());
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
+    aiPage_->setSettings(settings);
     captureStyle_ = settings.captureStyle;
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
         it.value()->setKeySequence(settings.shortcuts.value(it.key()));
@@ -707,6 +896,8 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
     language_->setCurrentIndex(language_->findData(static_cast<int>(settings.language)));
     ocrLanguage_->setCurrentIndex(ocrLanguage_->findData(static_cast<int>(settings.ocrLanguage)));
     captureOnStartup_->setChecked(settings.captureOnStartup);
+    traySingleClick_->setCurrentIndex(traySingleClick_->findData(settings.traySingleClick));
+    trayDoubleClick_->setCurrentIndex(trayDoubleClick_->findData(settings.trayDoubleClick));
     launchAtLogin_->setChecked(settings.launchAtLogin);
     fitImageOnOpen_->setChecked(settings.fitImageOnOpen);
     legacyEmbedOriginal_ = settings.embedOriginal;
@@ -726,8 +917,11 @@ void SettingsDialog::setDraft(const AppSettings &settings) {
 }
 AppSettings SettingsDialog::settings() const {
     AppSettings result;
+    aiPage_->applyTo(result);
     result.captureStyle = captureStyle_;
     result.captureOnStartup = captureOnStartup_->isChecked();
+    result.traySingleClick = traySingleClick_->currentData().toString();
+    result.trayDoubleClick = trayDoubleClick_->currentData().toString();
     result.launchAtLogin = launchAtLogin_->isChecked();
     result.fitImageOnOpen = fitImageOnOpen_->isChecked();
     result.imageExportMode = embedFeedbackImage_->isChecked() ? ImageExportMode::Embedded : ImageExportMode::File;
@@ -761,17 +955,109 @@ void SettingsDialog::setApplyHandler(std::function<QString(const AppSettings &)>
 void SettingsDialog::setUpdatePreparationHandler(std::function<bool()> handler) {
     updater_->setInstallConfirmation(std::move(handler));
 }
+void SettingsDialog::resizeEvent(QResizeEvent *event) {
+    QDialog::resizeEvent(event);
+    updateNavigation();
+}
+void SettingsDialog::updateNavigation() {
+    if (!sidebar_ || !tabs_ || navigationButtons_.isEmpty()) return;
+    const bool compact = width() < 820;
+    if (compactNavigation_ != compact || sidebar_->minimumWidth() == 0) {
+        compactNavigation_ = compact;
+        sidebar_->setFixedWidth(compact ? 60 : 176);
+        sidebarBrand_->setVisible(!compact);
+        sidebarTitle_->setVisible(!compact);
+        sidebarVersion_->setVisible(!compact);
+        sidebar_->layout()->setContentsMargins(compact ? 8 : 12, 24, compact ? 8 : 12, 20);
+        sidebar_->setProperty("compact", compact);
+        // A compact rail keeps the label available to keyboards and screen
+        // readers through the same accessible name and tooltip.
+        for (auto button : navigationButtons_) {
+            button->setProperty("compact", compact);
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+        }
+    }
+    const QStringList navIcons{"select", "sun", "settings", "scroll", "layout-settings", "help", "json", "notes"};
+    for (int i = 0; i < navigationButtons_.size(); ++i) {
+        auto button = navigationButtons_[i];
+        const bool selected = tabs_->currentIndex() == i;
+        button->setChecked(selected);
+        button->setText(compact ? QString() : tabs_->tabText(i));
+        button->setIcon(glyph(navIcons[i], selected ? accent() : QColor()));
+    }
+    pageTitle_->setText(tabs_->tabText(tabs_->currentIndex()));
+    // AI has a title and introductory line of its own inside its scroll area.
+    pageHeader_->setVisible(tabs_->currentIndex() != 7);
+}
+void SettingsDialog::updateAppearance() {
+    if (updatingAppearance_ || !sidebar_) return;
+    updatingAppearance_ = true;
+    const bool dark = isDarkTheme();
+    const auto css = QString(R"(
+QDialog#settingsDialog { background:%1; font-size:13px; }
+QWidget#settingsSidebar { background:%2; border-right:1px solid %3; }
+QWidget#settingsContent, QTabWidget#settingsTabs::pane { background:%1; border:0; }
+QTabWidget#settingsTabs QWidget[settingsBody="true"] { background:%1; }
+QLabel#settingsBrand { font-size:18px; font-weight:600; }
+QLabel#settingsTitle, QLabel#settingsSidebarVersion { color:%4; font-size:12px; }
+QLabel#settingsPageTitle { font-size:24px; font-weight:600; }
+QWidget#settingsNavigation QPushButton[settingsNav="true"] { background:transparent; border:1px solid transparent; border-radius:7px; color:%4; padding:7px 12px; text-align:left; }
+QWidget#settingsNavigation QPushButton[settingsNav="true"]:hover { background:%5; color:%6; }
+QWidget#settingsNavigation QPushButton[settingsNav="true"]:checked { background:%7; color:%8; font-weight:600; }
+QWidget#settingsNavigation QPushButton[settingsNav="true"]:focus { border-color:%8; }
+QWidget#settingsNavigation QPushButton[compact="true"] { padding:7px 11px; }
+QWidget#settingsFooter { background:%1; border-top:1px solid %3; }
+QWidget#settingsFooter QPushButton[settingsQuiet="true"] { background:transparent; color:%4; padding:7px 8px; }
+QWidget#settingsFooter QPushButton[settingsQuiet="true"]:hover { background:%5; color:%6; }
+QWidget#settingsFooter QPushButton#settingsSave { padding:8px 19px; }
+QWidget#settingsDialog QLabel#settingsSection { font-size:13px; font-weight:600; }
+)").arg(dark ? "#23252b" : "#ffffff", dark ? "#1c1e23" : "#f6f7f9",
+        dark ? "#34363e" : "#e9eaee", dark ? "#a1a5b2" : "#727886",
+        dark ? "#2a2d35" : "#edeff3", dark ? "#ebedf3" : "#222631",
+        dark ? "#263750" : "#e8f1ff", accent().name());
+    if (styleSheet() != css) setStyleSheet(css);
+    updateNavigation();
+    updatingAppearance_ = false;
+}
+void SettingsDialog::setSaving(bool saving) {
+    saving_ = saving;
+    tabs_->setEnabled(!saving);
+    navigation_->setEnabled(!saving);
+    footer_->setEnabled(!saving);
+    if (auto button = findChild<QPushButton *>("settingsSave"))
+        button->setText(saving ? tr("正在保存…") : tr("保存设置"));
+}
 void SettingsDialog::save() {
+    if (saving_) return;
     const auto draft = settings();
     auto error = validateSettings(draft);
-    if (error.isEmpty() && apply_)
-        error = apply_(draft);
     if (!error.isEmpty()) {
         diagnostics::write(diagnostics::Level::Error, "settings.apply", error);
         error_->setText(error);
         error_->show();
         return;
     }
-    accept();
+    error_->hide();
+    const bool hadCredentialChanges = aiPage_->hasPendingCredentials();
+    setSaving(true);
+    const QPointer<SettingsDialog> guard(this);
+    aiPage_->saveCredentials([guard, draft, hadCredentialChanges](bool ok) {
+        if (!guard) return;
+        guard->setSaving(false);
+        if (!ok) {
+            guard->showAi();
+            return; // The API page retains the credential backend's error.
+        }
+        const auto error = guard->apply_ ? guard->apply_(draft) : QString();
+        if (!error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "settings.apply", error);
+            guard->error_->setText(hadCredentialChanges
+                ? tr("密钥已保存；其他设置保存失败：%1").arg(error) : error);
+            guard->error_->show();
+            return;
+        }
+        guard->accept();
+    });
 }
 } // namespace h2d

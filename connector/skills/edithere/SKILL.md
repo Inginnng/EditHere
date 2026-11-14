@@ -2,9 +2,9 @@
 name: edithere
 display_name: EditHere 改这里
 display_name_en: EditHere
-description: 用 EditHere（改这里）让用户在截图或设计图上批注、移动和缩放组件，读取用户明确提交的结构化反馈后继续实现。适用于用户要求用 EditHere 标注修改、想在图上直接画出改法，或需要处理 EditHere 反馈 JSON 的场景。
-description_zh: 在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI，适用于难以用文字描述清楚的界面调整。
-description_en: Let the user annotate a screenshot or mockup, move and resize components, then read the structured feedback the user submits and continue implementing.
+description: 通过 EditHere 桌面 MCP 连接器收集截图批注与项目组图评审。由 AI 收集所有可访问页面、维护组图，读取用户明确提交的意见后修改源码、验证并按需更新截图，继续下一轮评审。
+description_zh: 让 AI 维护项目全部可访问页面的组图，读取用户评审意见后修改源码、验证并按需更新截图。
+description_en: Let the AI maintain a gallery of all accessible project pages, read user review feedback, update the source code, verify changes and refresh only affected screenshots.
 version: 0.2.1
 author: EditHere
 ---
@@ -14,6 +14,24 @@ author: EditHere
 EditHere 是一个**本机桌面程序**，让用户在截图或设计图上直接批注、移动和缩放组件。它把"改哪里、怎么改"变成结构化 JSON 交给 AI，适合网页、应用界面、游戏 HUD、数据图表等难以用文字说清的界面调整。
 
 它只处理本地图像，**不会自动修改源码**。本连接器负责调用本机 `edithere-cli`，反馈内容由用户明确点击"完成并返回 AI"后产生。
+
+## 开发、组图评审与源码修改闭环
+
+用户要求项目级组图评审，或要求开发完成后展示整组结果时，执行“收集页面 → 维护组图 → 用户评审提交 → AI 理解并修改源码 → 验证与按需换图 → AI 自查并展示下一轮结果”。用户明确只评某些页面或只读取已有反馈时沿用该范围。
+
+**首次收集由 AI 完成。** 查看路由、导航、页面/场景目录和实际运行入口，列出全部已实现且可访问的页面，逐项进入真实运行状态并截图；按功能补充重要弹窗和交互状态。用户无需手工逐页提供截图。无法访问的页面说明原因和缺口，不用少量代表图或旧图冒充全项目覆盖。截图优先保留真实设备像素的无损 PNG，避免高 DPI 下把缩小后的 JPEG 预览当成原图。
+
+**组图由 AI 持续维护。** 沿用项目的 `.edithere/results/project.json`，以稳定 `id` 对应每个页面；已有清单先读取，新页面才追加，替换截图和重命名不改变 ID 或页序。当前技能自己的 `scripts/image-set.mjs` 携带 `create`、`upsert`、`list`、`remove` 和 `bundle`，用该脚本的实际绝对路径调用，无需依赖原源码仓库。截图变化后用 `upsert --id <原页面ID> --image <新截图>` 同步路径和 SHA-256。
+
+优先用实际已连接的 `edithere_annotate_start`：`imagePath` 传清单绝对路径，`outputDir` 可指定本轮目录；保存 `sessionId`，通过 `edithere_annotate_poll` 跟进同一会话。直接 CLI 则用 `annotate`。`edithere_open` 只浏览，不代替可回传会话；不因等待而重复发起标注。
+
+**只在用户明确提交后实施。** `image-set-feedback-1` 的 `pages[]` 只包含有批注或布局移动的页面，按 `pages[].id` 对回本轮截图和源代码；`pageIndex` 是全组索引，不是要重新附送的所有图片；`groupNotes` 是整组要求。查看已批注页的原图和可用批注图，合并文字、移动、缩放及子批注意图。即使没有文字也要解释有意义的几何调整，保留明确文案和业务数值，修改实际组件、路由、样式或场景源码；只改图片或清单不能算落实。共享组件或整组意见可能影响未直接批注的页面，应按真实影响范围处理。
+
+**修改后按需换图并继续评审。** 完成相应验证，重新核对受影响页面；只替换实际发生可见变化的截图，未变页面、历史图片和历史反馈继续保留。每轮用新的反馈目录或输出路径，不能覆盖用户正在评审的快照。AI 先对照意见自查源码和结果，再展示更新后的同一组图，并说明已处理意见、换图页面和待核对项。已获授权持续组图评审时，发起下一轮属于原任务，不重复询问是否需要打开组图。
+
+用户提交新意见则继续闭环；明确认可、停止/暂停或本轮没有新意见时收束。取消、超时不自动再开一轮，不读取未提交草稿实施，也不无限生成空评审。截图或宿主回传能力缺失时保留已完成成果并说明实际缺口。当前 Agent 默认直接理解图片和 JSON；桌面「AI 解析（预览功能）」是可选的独立 API 入口，不是完成这条闭环的前置条件。
+
+页面覆盖、命令、各入口交付差异与分轮更新详见 [项目组图说明](references/project-review.md)。
 
 ## 前置条件：本机必须已安装 EditHere
 

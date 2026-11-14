@@ -35,6 +35,7 @@ class UpdateChecker final : public QObject {
         Asset portable;
         Asset portableHash;
         bool portableInstallerSupported = false;
+        Asset installerSignature;
     };
     explicit UpdateChecker(QObject *parent = nullptr);
     ~UpdateChecker() override;
@@ -63,6 +64,8 @@ class UpdateChecker final : public QObject {
         return lastResult_;
     }
     void downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller,
+                            const QString &expectedVersion, const Asset &signatureAsset);
+    void downloadAndInstall(const Asset &package, const Asset &hashAsset, bool isInstaller,
                             const QString &expectedVersion = {});
     void cancelDownload();
     static QString installationResultPath();
@@ -87,6 +90,10 @@ class UpdateChecker final : public QObject {
     bool startVerifiedInstaller(const QString &filePath, const QString &expectedHash, bool isInstaller,
                                 QString *error);
     void failInstall(const QString &message);
+    void downloadPackage(const Asset &package, const Asset &hashAsset, const Asset &signatureAsset);
+    void downloadMetadata(const Asset &asset, int limit, std::function<void(QByteArray)> completed);
+    bool scheduleDownloadRetry(const QNetworkReply &reply, std::function<void()> retry);
+    QNetworkReply *getDownloadReply(const QNetworkRequest &request);
     bool prepareHandoff(const QString &filePath, const QString &expectedHash, QString *error);
     bool writeHandoffAction(const QString &action);
     void pollHandoff();
@@ -111,11 +118,17 @@ class UpdateChecker final : public QObject {
     int giteePage_ = 1;
     QString downloadPath_;
     QString downloadFileName_;
+    int downloadRetries_ = 0;
+    QByteArray signatureMetadata_;
+#ifdef EDITHERE_UPDATE_TEST_TRUST
+    // Only the separate test executable has a synthetic network transport.
+    std::function<QNetworkReply *(const QNetworkRequest &)> testGet_;
+#endif
     bool busy_ = false;
     bool isInstallerUpdate_ = false;
     bool installing_ = false;
     bool publicRequested_ = false;
-    std::unique_ptr<QTemporaryDir> downloadDirectory_;
+    std::shared_ptr<QTemporaryDir> downloadDirectory_;
     std::unique_ptr<QSaveFile> downloadFile_;
     std::function<bool()> confirmInstall_;
     std::function<bool(QProcess &)> launchInstaller_;

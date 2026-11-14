@@ -1,6 +1,7 @@
 #pragma once
 #include "capturesession.h"
 #include "feedbackexport.h"
+#include "aiconfig.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QString>
@@ -22,8 +23,10 @@ struct AppSettings {
     LanguageMode language = LanguageMode::System;
     OcrLanguageMode ocrLanguage = OcrLanguageMode::System;
     QMap<QString, QKeySequence> shortcuts;
-    QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "copyJsonText", "copyJson", "copyImage"};
+    QStringList toolbarActions = {"saveProject", "saveImage", "exportJson", "generateInstructions", "copyJsonText", "copyJson", "copyImage"};
     bool captureOnStartup = true;
+    QString traySingleClick = "capture";
+    QString trayDoubleClick = "annotate";
     bool launchAtLogin = false;
     bool fitImageOnOpen = true;
     bool embedOriginal = true; // Legacy preference, retained for settings compatibility.
@@ -39,6 +42,10 @@ struct AppSettings {
     // than a one-off so that it can be turned back on in the settings.
     bool confirmBeforeDiscard = true;
     bool checkUpdatesOnStartup = true;
+    QString aiProviderId = "openai";
+    QMap<QString, AiConnectionSettings> aiProviders;
+    // Hand-edited system prompt for AI analysis. Empty means the built-in prompt.
+    QString aiSystemPrompt;
     QString feedbackDir; // Empty = default CacheLocation/feedback.
     int defaultTool = 0; // Canvas::Smart, Point, Rectangle, Adjust.
     // The corner radius, border and shadow every capture starts from. Set from the
@@ -59,6 +66,7 @@ struct ToolbarActionDefinition {
 };
 QVector<ShortcutDefinition> shortcutDefinitions();
 QVector<ToolbarActionDefinition> toolbarActionDefinitions();
+QVector<ToolbarActionDefinition> trayActionDefinitions();
 AppSettings defaultSettings();
 bool recognizedTextExportEnabled(const QString &filePath = {});
 bool windowTitleExportEnabled(const QString &filePath = {});

@@ -2,6 +2,7 @@
 #include "canvas.h"
 #include "settings.h"
 #include "videoproject.h"
+#include "imageset.h"
 #include <QKeySequence>
 #include <QMap>
 #include <QPointer>
@@ -14,6 +15,8 @@ class QPushButton;
 class QStackedWidget;
 class QShortcut;
 class QPlainTextEdit;
+class QTabBar;
+class QTimer;
 namespace h2d {
 class LayoutCanvas;
 class ImageArea;
@@ -53,6 +56,9 @@ class Editor final : public QWidget {
     // Throws on invalid input; used by CLI requests without swallowing errors in a dialog.
     void loadMedia(const QString &path);
     void setVideoProject(VideoProject project, const QString &projectPath = {});
+    void setImageSet(ImageSet project, const QString &projectPath = {});
+    bool hasImageSet() const { return imageSet_.has_value(); }
+    void markFeedbackSubmitted();
     bool hasVideo() const { return video_.has_value(); }
     int totalAnnotationCount();
     QByteArray projectBytes();
@@ -64,6 +70,7 @@ class Editor final : public QWidget {
     void openEmpty();
     void pasteImage();
     void exportJson();
+    void generateInstructions();
     void fit();
     void showGuide();
     void dismissGuide();
@@ -83,6 +90,8 @@ class Editor final : public QWidget {
     void hiddenToTray();
     void toolbarSettingsRequested();
     void settingsRequested();
+    void aiSettingsRequested();
+    void aiPreferencesChanged(const QString &providerId, const QString &systemPrompt);
     // The editor changed a preference itself — the "don't ask again" box does — and the
     // owner has to write it down, or the answer would only last until the next start.
     void preferencesChanged();
@@ -93,11 +102,19 @@ class Editor final : public QWidget {
     bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
+    void moveEvent(QMoveEvent *) override;
     void changeEvent(QEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 
   private:
+    // macOS: puts the editor bar's controls on the row the system draws its traffic
+    // lights in, so the window controls and the editor's own tools read as one line.
+    void alignNativeTitleBarRow();
+    // Keeps the shell against the client area; the window's own layout cannot do it.
+    void fitShell();
     void editNote(Note note, bool fresh, QPoint global);
     // A child annotation needs its component's card above it, so an unannotated
     // movement gets one before the child is inserted.
@@ -148,6 +165,12 @@ class Editor final : public QWidget {
     void setMode(Canvas::Mode mode);
     void updateControls();
     void clearVideo();
+    void clearImageSet();
+    void commitSetPage();
+    void selectSetPage(int index);
+    void updateSetPages();
+    void editGroupNotes();
+
     void commitVideoFrame();
     void displayVideoFrame(const QImage &image, qint64 timestampUs);
     void showVideoPreview(const QSize &size, qint64 timestampUs);
@@ -167,6 +190,13 @@ class Editor final : public QWidget {
     QWidget *agentBanner_ = nullptr;
     bool agentSession_ = false;
     Document doc_;
+    std::optional<ImageSet> imageSet_;
+    int setPageIndex_ = -1;
+    bool switchingSetPage_ = false;
+    QWidget *setBar_ = nullptr;
+    QTabBar *setTabs_ = nullptr;
+    QLabel *setTitle_ = nullptr;
+
     std::optional<VideoProject> video_;
     qint64 videoFrameUs_ = -1;
     bool switchingVideoFrame_ = false;
@@ -220,6 +250,17 @@ class Editor final : public QWidget {
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
     QPushButton *fullscreen_ = nullptr;
+    // macOS: keeps the window's client area covering its title bar. The system can
+    // drop that while nothing else is happening, so it is re-checked while visible.
+    QTimer *titleBarGuard_ = nullptr;
+    // macOS: the bar's own row, which is re-fitted to the system's traffic lights.
+    QHBoxLayout *titleRow_ = nullptr;
+    bool nativeControls_ = false;
+    // The client area's single child, placed by fitShell() rather than by a layout.
+    QWidget *shell_ = nullptr;
+    // The bar and the body below it, both placed by fitShell().
+    QWidget *bar_ = nullptr;
+    QWidget *body_ = nullptr;
     Qt::WindowStates beforeFullscreenState_;
     QRect beforeFullscreenGeometry_;
     QPointF beforeFullscreenOrigin_;

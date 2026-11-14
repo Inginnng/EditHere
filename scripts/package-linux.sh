@@ -19,6 +19,12 @@ appdir="$output/AppDir"
 DESTDIR="$appdir" cmake --install "$build_path"
 cp "$project_root/packaging/linux/AppRun" "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
+for ai_file in docs/AI-INSTRUCTIONS.md docs/AI-INSTRUCTIONS.en.md docs/ai-providers.md \
+    packaging/licenses/qtkeychain/COPYING packaging/licenses/cc-switch/LICENSE; do
+  [[ -f "$project_root/$ai_file" ]] || { echo "AI usage or license material is missing: $ai_file" >&2; exit 1; }
+done
+cp "$project_root/docs/AI-INSTRUCTIONS.md" "$project_root/docs/AI-INSTRUCTIONS.en.md" \
+  "$project_root/docs/ai-providers.md" "$appdir/usr/share/doc/edithere/"
 cp -R "$project_root/skills" "$project_root/schema" "$appdir/usr/share/doc/edithere/"
 cp -R "$project_root/packaging/licenses" "$appdir/usr/share/doc/edithere/"
 mkdir -p "$appdir/usr/share/doc/edithere/licenses/ui-icons"
@@ -73,7 +79,9 @@ for copyright in /usr/share/doc/libatspi2.0-0/copyright /usr/share/doc/libglib2.
   /usr/share/doc/libgcc-s1/copyright /usr/share/doc/libstdc++6/copyright \
   /usr/share/doc/libopengl0/copyright /usr/share/doc/libegl1/copyright /usr/share/doc/libglvnd0/copyright \
   /usr/share/doc/libxtst6/copyright /usr/share/doc/libpipewire-0.3-0t64/copyright \
-  /usr/share/doc/libpipewire-0.3-0/copyright /usr/share/doc/libspa-0.2-modules/copyright; do
+  /usr/share/doc/libpipewire-0.3-0/copyright /usr/share/doc/libspa-0.2-modules/copyright \
+  /usr/share/doc/libsecret-1-0/copyright /usr/share/doc/libsecret-common/copyright \
+  /usr/share/doc/libgcrypt20/copyright /usr/share/doc/libgpg-error0/copyright; do
   if [[ -f "$copyright" ]]; then
     package="$(basename "$(dirname "$copyright")")"
     cp "$copyright" "$appdir/usr/share/doc/edithere/licenses/linux/$package.txt"
@@ -114,7 +122,11 @@ echo "$runtime_sha256  $LDAI_RUNTIME_FILE" | sha256sum --check --status
 plugin_directory="$(dirname "$LINUXDEPLOY_PLUGIN_QT")"
 export PATH="$plugin_directory:$QT_ROOT/bin:$PATH"
 cd "$output"
-deployment_args=()
+# QtKeychain resolves libsecret functions through QLibrary. An as-needed linker
+# can drop its direct dependency, so linuxdeploy must be given the runtime.
+libsecret_runtime="$(pkg-config --variable=libdir libsecret-1)/libsecret-1.so.0"
+[[ -f "$libsecret_runtime" ]] || { echo 'libsecret runtime is missing; install libsecret-1-0.' >&2; exit 1; }
+deployment_args=(--library "$libsecret_runtime")
 if [[ "$architecture" == aarch64 ]]; then
   # Kylin V10 may have an older compiler runtime than the build container.
   # linuxdeploy excludes these by default; ship the runtimes used to link Qt
@@ -159,6 +171,7 @@ if [[ -n "${EDITHERE_GLIBC_MAX:-}" ]]; then
   abi_args+=(--glibc-max "$EDITHERE_GLIBC_MAX")
 fi
 python3 "$project_root/scripts/check-linux-abi.py" "$appdir" "${abi_args[@]}"
+[[ -s "$appdir/usr/lib/libsecret-1.so.0" ]] || { echo 'API credential runtime libsecret is missing from the AppImage.' >&2; exit 1; }
 cp "$project_root/packaging/linux/edithere-cli" "$output/edithere-cli"
 chmod +x "$output/edithere-cli"
 sha256sum "$OUTPUT" > "$OUTPUT.sha256"

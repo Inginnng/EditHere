@@ -1,4 +1,9 @@
 #include "updateauth.h"
+#ifdef EDITHERE_UPDATE_TEST_TRUST
+#include "../tests/fixtures/update-signature-public.h"
+#else
+#include "updatekey.h"
+#endif
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -8,6 +13,7 @@
 #include <wincrypt.h>
 #include <wintrust.h>
 #include <softpub.h>
+#include <bcrypt.h>
 #endif
 
 #ifdef Q_OS_WIN
@@ -79,6 +85,76 @@ bool publisherConfigured() {
     return validPin(publisherCertificateSha256());
 #else
     return false;
+#endif
+}
+bool certificateMode() {
+    // A configured but invalid pin also fails closed, never selects project mode.
+    return !publisherCertificateSha256().isEmpty();
+}
+bool installationConfigured() {
+#ifdef Q_OS_WIN
+    static const QRegularExpression keyPattern(QStringLiteral("\\A[0-9a-f]{128}\\z"));
+    return certificateMode() ? publisherConfigured()
+                             : keyPattern.match(QString::fromLatin1(ProjectPublicKeyHex)).hasMatch();
+#else
+    return false;
+#endif
+}
+bool canonicalVersion(const QString &version) {
+    static const QRegularExpression pattern(QStringLiteral("\\A(0|[1-9][0-9]{0,9})\\.(0|[1-9][0-9]{0,9})\\.(0|[1-9][0-9]{0,9})\\z"));
+    if (!pattern.match(version).hasMatch()) return false;
+    for (const auto &part : version.split('.')) {
+        bool ok = false;
+        part.toInt(&ok);
+        if (!ok) return false;
+    }
+    return true;
+}
+bool verifyProjectSignature(const QByteArray &metadata, const QString &version,
+                            const QString &assetName, const QString &sha256, QString *error) {
+    const auto fail = [error] {
+        if (error) *error = QCoreApplication::translate("h2d::UpdateChecker",
+            "更新签名无效或与本次安装包不一致，已停止更新。请前往发布页手动下载。");
+        return false;
+    };
+    static const QRegularExpression hashPattern(QStringLiteral("\\A[0-9a-f]{64}\\z"));
+    static const QRegularExpression keyPattern(QStringLiteral("\\A[0-9a-f]{128}\\z"));
+    if (metadata.size() > 1024 || !canonicalVersion(version) || !hashPattern.match(sha256).hasMatch() ||
+        (assetName != "EditHere-win-x64-setup.exe" &&
+         assetName != "EditHere-" + version + "-win-x64-setup.exe") ||
+        !keyPattern.match(QString::fromLatin1(ProjectPublicKeyHex)).hasMatch())
+        return fail();
+    const QByteArray payload = "EditHere Windows Update Signature v1\n" + version.toLatin1() + '\n' +
+                               assetName.toLatin1() + '\n' + sha256.toLatin1() + '\n';
+    if (!metadata.startsWith(payload)) return fail();
+    const auto tail = metadata.mid(payload.size());
+    // Exactly one canonical base64 P1363 r||s signature followed by LF. No JSON
+    // duplicate fields, Unicode aliases, CRLF, trailing fields or implicit trim.
+    if (tail.size() != 89 || !tail.endsWith('\n')) return fail();
+    const auto encoded = tail.first(88);
+    const auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
+    if (!decoded || decoded.decoded.size() != 64 || decoded.decoded.toBase64() != encoded) return fail();
+#ifdef Q_OS_WIN
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_ECDSA_P256_ALGORITHM, nullptr, 0) != 0) return fail();
+    BCRYPT_ECCKEY_BLOB header{BCRYPT_ECDSA_PUBLIC_P256_MAGIC, 32};
+    QByteArray blob(reinterpret_cast<const char *>(&header), sizeof(header));
+    blob += QByteArray::fromHex(ProjectPublicKeyHex);
+    BCRYPT_KEY_HANDLE key = nullptr;
+    const auto imported = BCryptImportKeyPair(algorithm, nullptr, BCRYPT_ECCPUBLIC_BLOB, &key,
+        reinterpret_cast<PUCHAR>(blob.data()), ULONG(blob.size()), 0);
+    auto digest = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    auto signature = decoded.decoded;
+    const bool valid = imported == 0 && BCryptVerifySignature(key, nullptr,
+        reinterpret_cast<PUCHAR>(digest.data()), ULONG(digest.size()),
+        reinterpret_cast<PUCHAR>(signature.data()), ULONG(signature.size()), 0) == 0;
+    if (key) BCryptDestroyKey(key);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    if (!valid) return fail();
+    if (error) error->clear();
+    return true;
+#else
+    return fail();
 #endif
 }
 bool verifyPublisherSignature(const QString &filePath, const QString &certificateSha256,

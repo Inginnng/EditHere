@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QFileInfo>
 #include <QFileDialog>
@@ -29,6 +30,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <shellapi.h>
 #endif
 using namespace h2d;
 namespace h2d {
@@ -42,6 +44,9 @@ class StartupFlowTestAccess {
     static void setCapture(Controller &controller, bool value) { controller.capturing_ = value; }
     static void holdCapture(Controller &controller) {
         controller.captureIo_.prepare = [](QObject *, std::function<void()>, bool) {};
+    }
+    static void countCaptures(Controller &controller, int &count) {
+        controller.captureIo_.prepare = [&count](QObject *, std::function<void()>, bool) { ++count; };
     }
     static void setAgentSession(Controller &controller, bool value) {
         controller.agentSessionId_ = value ? QStringLiteral("test-session") : QString();
@@ -66,6 +71,14 @@ class StartupFlowTests : public QObject {
         auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
         return tray && tray->contextMenu() ? qobject_cast<Editor *>(tray->contextMenu()->parentWidget()) : nullptr;
     }
+    static bool annotation(Controller &controller, GlobalShortcut *shortcut, bool viaTray) {
+        if (!viaTray) return QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        if (!tray) return false;
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        return true;
+    }
     static UpdateChecker::Result offeredRelease(UpdateChecker::Status status = UpdateChecker::Available) {
         const QString name = QStringLiteral("EditHere-win-x64-setup.exe");
         const QUrl url(QStringLiteral("https://gitee.com/InnGing/EditHere/releases/download/v0.11.0/") + name);
@@ -75,6 +88,7 @@ class StartupFlowTests : public QObject {
     }
   private slots:
     void initTestCase() {
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #ifdef Q_OS_WIN
         if (QGuiApplication::platformName() == "offscreen") {
             const QString fonts = qEnvironmentVariable("WINDIR") + "/Fonts/";
@@ -302,7 +316,7 @@ class StartupFlowTests : public QObject {
             QTimer::singleShot(0, [&] {
                 auto dialog = qobject_cast<SettingsDialog *>(QApplication::activeModalWidget());
                 QVERIFY(dialog);
-                QCOMPARE(dialog->findChild<QLabel *>("updateStatus")->text(), offeredRelease().message);
+                QVERIFY(dialog->findChild<QLabel *>("updateStatus")->text().startsWith(offeredRelease().message));
                 QVERIFY(dialog->findChild<QPushButton *>("openReleases")->property("updateAvailable").toBool());
                 auto updater = dialog->findChild<UpdateChecker *>();
                 QVERIFY(updater && !updater->busy() && !updater->downloading());
@@ -586,12 +600,222 @@ class StartupFlowTests : public QObject {
         QVERIFY(tray && editor);
         QVERIFY(QMetaObject::invokeMethod(tray, "activated", Qt::DirectConnection,
             Q_ARG(QSystemTrayIcon::ActivationReason, QSystemTrayIcon::Trigger)));
-        QTest::qWait(20);
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
         QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
         auto capture = editor->findChild<QAction *>("trayCapture");
         QVERIFY(capture);
         capture->trigger();
         QTRY_VERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+#endif
+    }
+    void traySingleWaitsAndDoubleOpensEmptyWithoutCapture() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa keeps its native menu; configurable clicks are unavailable.");
+#else
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        StartupFlowTestAccess::holdCapture(controller);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        QVERIFY(tray && editor);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QTRY_VERIFY(editor->isVisible());
+        QVERIFY(!editor->hasDocument());
+        QTest::qWait(QApplication::doubleClickInterval() + 50);
+        QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        editor->hide();
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        QTRY_VERIFY_WITH_TIMEOUT(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool(),
+                                 QApplication::doubleClickInterval() + 1000);
+#endif
+    }
+    void traySingleCoalescesAndExplicitActionsCancelWaiting() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa keeps the native menu.");
+#else
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        for (int i = 0; i < 3; ++i) emit tray->activated(QSystemTrayIcon::Trigger);
+        QCOMPARE(captures, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captures, 1, QApplication::doubleClickInterval() + 1000);
+        StartupFlowTestAccess::setCapture(controller, false);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QCOMPARE(captures, 1);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        emit tray->activated(QSystemTrayIcon::Context);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QCOMPARE(captures, 1);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        editor->findChild<QAction *>("trayAnnotate")->trigger();
+        QTRY_VERIFY(editor->isVisible());
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QCOMPARE(captures, 1);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        auto shortcut = controller.findChild<GlobalShortcut *>("captureShortcut");
+        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QCOMPARE(captures, 2); // Explicit shortcut does not wait.
+        StartupFlowTestAccess::setCapture(controller, false);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QCOMPARE(captures, 2);
+        editor->hide();
+#endif
+    }
+    void trayActionsCanBeSwappedAndDisabled() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa keeps the native menu.");
+#else
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.traySingleClick = "annotate";
+        settings.trayDoubleClick = "capture";
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible(), QApplication::doubleClickInterval() + 1000);
+        QCOMPARE(captures, 0);
+        editor->hide();
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QCOMPARE(captures, 1);
+        StartupFlowTestAccess::setCapture(controller, false);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QVERIFY(!editor->isVisible());
+        settings.traySingleClick = settings.trayDoubleClick = "none";
+        Controller disabled(nullptr, settings, directory.filePath("disabled.ini"));
+        auto disabledTray = disabled.findChild<QSystemTrayIcon *>("edithereTray");
+        emit disabledTray->activated(QSystemTrayIcon::Trigger);
+        emit disabledTray->activated(QSystemTrayIcon::DoubleClick);
+        emit disabledTray->activated(QSystemTrayIcon::Trigger);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QVERIFY(!editorOf(disabled)->isVisible());
+        QVERIFY(!disabled.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+#endif
+    }
+    void pendingTrayClickCannotOutliveAModalDialog() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa keeps the native menu.");
+#else
+        QTemporaryDir directory;
+        auto settings = quietSettings(); settings.traySingleClick = "annotate";
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        QDialog modal(editor); modal.setModal(true); modal.show();
+        QTRY_COMPARE(QApplication::activeModalWidget(), &modal);
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QVERIFY(!editor->isVisible());
+        modal.reject();
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QVERIFY(!editor->isVisible());
+#endif
+    }
+    void trayShowPreservesDocumentAndShowsEmptyWithoutCapture() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa keeps the native menu.");
+#else
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.trayDoubleClick = "show";
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        auto editor = editorOf(controller);
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QVERIFY(editor->isVisible());
+        QVERIFY(!editor->hasDocument());
+        QImage picture(120, 80, QImage::Format_RGB32); picture.fill(Qt::blue);
+        auto document = fromImage(picture, "file", "保留当前文档"); document.dirty = true;
+        editor->setDocument(document); editor->hide();
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QVERIFY(editor->isVisible());
+        QCOMPARE(editor->document().id, document.id);
+        QCOMPARE(editor->document().png, document.png);
+        QVERIFY(editor->document().dirty);
+        QCOMPARE(captures, 0);
+        editor->hide();
+#endif
+    }
+    void windowsNativeTrayDoubleReleaseAndThirdClick() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != "windows") QSKIP("Requires native Windows Qt tray backend.");
+        QTemporaryDir directory;
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        HWND window = nullptr;
+        EnumThreadWindows(GetCurrentThreadId(), [](HWND candidate, LPARAM out) -> BOOL {
+            wchar_t title[64]{}; GetWindowTextW(candidate, title, 64);
+            if (QString::fromWCharArray(title) == "QTrayIconMessageWindow") {
+                *reinterpret_cast<HWND *>(out) = candidate; return FALSE;
+            }
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&window));
+        QVERIFY(window);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        QSignalSpy activations(tray, &QSystemTrayIcon::activated);
+        // Deliver shell notifications through Qt's real HWND and native WndProc,
+        // not synthetic activated signals. ID 0 and WM_APP+101 are Qt 6.8.3's contract.
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(NIN_SELECT, 0));
+        QCOMPARE(captures, 0);
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(WM_LBUTTONDBLCLK, 0));
+        QVERIFY(editorOf(controller)->isVisible());
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(NIN_SELECT, 0));
+        QCOMPARE(activations.count(), 2); // Qt consumes second release.
+        QTest::qWait(QApplication::doubleClickInterval() + 30);
+        QCOMPARE(captures, 0);
+        editorOf(controller)->hide();
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(NIN_SELECT, 0));
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(WM_LBUTTONDBLCLK, 0));
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(NIN_SELECT, 0));
+        SendMessageW(window, WM_APP + 101, 0, MAKELPARAM(NIN_SELECT, 0));
+        QCOMPARE(activations.count(), 5); // Third click is independent, even immediately after double.
+        QTRY_COMPARE_WITH_TIMEOUT(captures, 1, QApplication::doubleClickInterval() + 1000);
+#else
+        QSKIP("Windows-only native shell message test.");
+#endif
+    }
+    void trayOpenUsesTheExistingFilePicker() {
+#ifdef Q_OS_MACOS
+        QSKIP("Cocoa uses explicit native menu actions.");
+#else
+        QTemporaryDir directory;
+        const auto input = directory.filePath("tray-input.png");
+        QImage picture(120, 80, QImage::Format_RGB32); picture.fill(Qt::blue);
+        QVERIFY(picture.save(input));
+        auto settings = quietSettings(); settings.trayDoubleClick = "open";
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        bool picked = false;
+        QTimer chooser;
+        connect(&chooser, &QTimer::timeout, &controller, [&] {
+            if (auto dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                picked = true;
+                dialog->selectFile(input);
+                QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+            }
+        });
+        chooser.start(10);
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        emit tray->activated(QSystemTrayIcon::Trigger);
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QTRY_VERIFY(editorOf(controller)->hasDocument());
+        QVERIFY(picked);
+        QCOMPARE(captures, 0);
+        QCOMPARE(editorOf(controller)->document().image.size(), picture.size());
+        editorOf(controller)->hide();
 #endif
     }
     void openingFromTrayDoesNotInterruptCapture() {
@@ -622,11 +846,17 @@ class StartupFlowTests : public QObject {
     }
     void annotationShortcutRespectsDiscardDecision_data() {
         QTest::addColumn<bool>("discard");
-        QTest::newRow("cancel-keeps-edits") << false;
-        QTest::newRow("discard-opens-empty") << true;
+        QTest::addColumn<bool>("viaTray");
+        QTest::newRow("cancel-keeps-edits") << false << false;
+        QTest::newRow("discard-opens-empty") << true << false;
+#ifndef Q_OS_MACOS
+        QTest::newRow("tray-cancel-keeps-edits") << false << true;
+        QTest::newRow("tray-discard-opens-empty") << true << true;
+#endif
     }
     void annotationShortcutRespectsDiscardDecision() {
         QFETCH(bool, discard);
+        QFETCH(bool, viaTray);
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         auto editor = editorOf(controller);
@@ -646,10 +876,21 @@ class StartupFlowTests : public QObject {
             auto question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
             QVERIFY(question);
             prompted = true;
+            if (viaTray) {
+                // Reentrant tray notifications during the discard question must
+                // neither replace work nor leave a delayed capture behind.
+                auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+                emit tray->activated(QSystemTrayIcon::DoubleClick);
+                emit tray->activated(QSystemTrayIcon::Trigger);
+            }
             question->button(discard ? QMessageBox::Discard : QMessageBox::Cancel)->click();
         });
-        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(annotation(controller, shortcut, viaTray));
         QVERIFY(prompted);
+        if (viaTray) {
+            QTest::qWait(QApplication::doubleClickInterval() + 30);
+            QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
+        }
         if (discard) {
             QVERIFY(editor->isVisible());
             QVERIFY(!editor->hasDocument());
@@ -663,7 +904,15 @@ class StartupFlowTests : public QObject {
         }
         editor->hide();
     }
+    void annotationShortcutPreservesActiveAgentSession_data() {
+        QTest::addColumn<bool>("viaTray");
+        QTest::newRow("shortcut") << false;
+#ifndef Q_OS_MACOS
+        QTest::newRow("tray") << true;
+#endif
+    }
     void annotationShortcutPreservesActiveAgentSession() {
+        QFETCH(bool, viaTray);
         QTemporaryDir directory;
         const auto input = directory.filePath("input.png");
         const auto output = directory.filePath("feedback.json");
@@ -679,7 +928,7 @@ class StartupFlowTests : public QObject {
         QVERIFY(response.value("pending").toBool());
         const auto id = editor->document().id;
         QSignalSpy finished(&controller, &Controller::agentSessionFinished);
-        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(annotation(controller, shortcut, viaTray));
         QVERIFY(editor->hasDocument());
         QCOMPARE(editor->document().id, id);
         QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("agentSession").toBool());
@@ -688,7 +937,11 @@ class StartupFlowTests : public QObject {
         controller.cancelAgentSession(response.value("session").toString(), "cancelled", "Test cleanup");
         editor->hide();
     }
+    void annotationShortcutDoesNotInterruptModalOrCapture_data() {
+        annotationShortcutPreservesActiveAgentSession_data();
+    }
     void annotationShortcutDoesNotInterruptModalOrCapture() {
+        QFETCH(bool, viaTray);
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         auto editor = editorOf(controller);
@@ -703,7 +956,7 @@ class StartupFlowTests : public QObject {
         modal.setModal(true);
         modal.show();
         QTRY_COMPARE(QApplication::activeModalWidget(), &modal);
-        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(annotation(controller, shortcut, viaTray));
         QCOMPARE(editor->document().id, document.id);
         QVERIFY(!editor->isVisible());
         modal.reject();
@@ -712,7 +965,7 @@ class StartupFlowTests : public QObject {
         // Trigger while the capture preparation is queued; no screen read is needed.
         controller.capture();
         QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
-        QVERIFY(QMetaObject::invokeMethod(shortcut, "triggered", Qt::DirectConnection));
+        QVERIFY(annotation(controller, shortcut, viaTray));
         QCOMPARE(editor->document().id, document.id);
         QVERIFY(!editor->isVisible());
     }
@@ -773,6 +1026,11 @@ class StartupFlowTests : public QObject {
                 QVERIFY(annotate->sequence().isEmpty());
                 dialog->findChild<QKeySequenceEdit *>("shortcut_capture")->setKeySequence(captureKey);
                 dialog->findChild<QKeySequenceEdit *>("shortcut_annotate")->setKeySequence(annotateKey);
+                auto single = dialog->findChild<QComboBox *>("traySingleClick");
+                auto twice = dialog->findChild<QComboBox *>("trayDoubleClick");
+                QVERIFY(single && twice);
+                single->setCurrentIndex(single->findData("none"));
+                twice->setCurrentIndex(twice->findData("show"));
                 if (save) {
                     dialog->findChild<QPushButton *>("settingsSave")->click();
                     if (expectConflict) {
@@ -792,6 +1050,7 @@ class StartupFlowTests : public QObject {
         QCOMPARE(capture->sequence(), originalCapture);
         QCOMPARE(annotate->sequence(), originalAnnotate);
         QCOMPARE(loadSettings(settingsFile).shortcuts, settings.shortcuts);
+        QCOMPARE(loadSettings(settingsFile).trayDoubleClick, QString("annotate"));
         if (!saveChanges) {
             editor->hide();
             return;
@@ -804,6 +1063,15 @@ class StartupFlowTests : public QObject {
         const auto saved = loadSettings(settingsFile);
         QCOMPARE(saved.shortcuts.value("capture"), originalAnnotate);
         QCOMPARE(saved.shortcuts.value("annotate"), originalCapture);
+        QCOMPARE(saved.traySingleClick, QString("none"));
+        QCOMPARE(saved.trayDoubleClick, QString("show"));
+        QImage current(80, 60, QImage::Format_RGB32); current.fill(Qt::blue);
+        const auto document = fromImage(current, "file", "设置保存后立即生效");
+        editor->setDocument(document); editor->hide();
+        auto tray = controller.findChild<QSystemTrayIcon *>("edithereTray");
+        emit tray->activated(QSystemTrayIcon::DoubleClick);
+        QVERIFY(editor->isVisible());
+        QCOMPARE(editor->document().id, document.id);
         QVERIFY(trayAction->text().contains(originalCapture.toString(QKeySequence::NativeText)));
 
         GlobalShortcut blocker;

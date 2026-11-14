@@ -1,0 +1,5 @@
+EditHere Windows Update Signature v1
+99.0.0
+EditHere-win-x64-setup.exe
+239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5
+TqfRlPLDaul7j5OLtybqqb78IEXH8vlwsKCyx/qsKY7KySqw5yhAi1H3jnO17HUo6KHmjpzXkeCSpx7y5fim3g==

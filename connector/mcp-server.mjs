@@ -258,6 +258,25 @@ function isVideoFeedback(feedback) {
   return feedback.schemaVersion === 'video-feedback-1';
 }
 
+function isImageSetFeedback(feedback) { return feedback.schemaVersion === 'image-set-feedback-1'; }
+function validateImageSetFeedback(feedback) {
+  if (feedback.$schema !== 'urn:edithere:image-set-feedback:1' || feedback.annotationSpace !== 'result' || !isRecord(feedback.tool) || feedback.tool.name !== 'EditHere' || typeof feedback.tool.version !== 'string' || !Number.isFinite(Date.parse(feedback.exportedAt)) || !isRecord(feedback.set) || !Array.isArray(feedback.pageIndex) || !Array.isArray(feedback.pages) || !Array.isArray(feedback.groupNotes) || !feedback.pageIndex.length || feedback.pageIndex.length > 64 || feedback.set.pageCount !== feedback.pageIndex.length || feedback.set.annotatedPageCount !== feedback.pages.length) throw new Error('组图反馈格式无效。');
+  const ids = new Set();
+  for (const [at, page] of feedback.pageIndex.entries()) {
+    if (!isRecord(page) || typeof page.id !== 'string' || !page.id || ids.has(page.id) || typeof page.name !== 'string' || !page.name.trim() || page.index !== at + 1 || typeof page.annotated !== 'boolean' || !Number.isInteger(page.width) || !Number.isInteger(page.height) || page.width < 1 || page.height < 1 || page.width * page.height > 32000000 || Object.hasOwn(page,'image') || !page.annotated && Object.hasOwn(page,'imageFile')) throw new Error('组图页面索引无效。');
+    ids.add(page.id);
+  }
+  let previous = 0;
+  for (const page of feedback.pages) {
+    const index = feedback.pageIndex[page.index - 1];
+    if (!index || !index.annotated || page.index <= previous || index.id !== page.id || index.name !== page.name || index.width !== page.width || index.height !== page.height || index.imageFile !== page.imageFile) throw new Error('组图批注页与索引不一致。');
+    previous = page.index; validateImageRecoveryFeedback(page.feedback);
+    if (!page.feedback.objects?.length) throw new Error('组图只能附带已批注图片。');
+  }
+  if (feedback.pages.length !== feedback.pageIndex.filter(page => page.annotated).length) throw new Error('组图批注页数量不一致。');
+  if (feedback.groupNotes.length > 1000 || feedback.groupNotes.some((note,index) => !isRecord(note) || note.number !== index + 1 || typeof note.text !== 'string' || !note.text.trim() || note.text.length > 10000)) throw new Error('整组意见格式无效。');
+}
+
 function validateImageFeedbackMetadata(feedback) {
   if (!Object.hasOwn(feedback, 'schemaVersion')) return false;
   if (!Object.hasOwn(IMAGE_FEEDBACK_SCHEMAS,feedback.schemaVersion)) {
@@ -931,6 +950,15 @@ function formatVideoSource(rectangle) {
 // 把反馈 JSON 摘要成紧凑文本，坐标与 schema 语义保持一致。
 // 支持两种格式：0.9.0 面向对象格式（objects）与旧版动作格式（annotations+changes）。
 function summarizeFeedback(feedback, feedbackPath) {
+  if (isImageSetFeedback(feedback)) {
+    validateImageSetFeedback(feedback);
+    const lines = [`组图反馈文件: ${feedbackPath}`, `共 ${feedback.set.pageCount} 页；${feedback.pages.length} 页有批注。只按 pages[] 处理，pageIndex 中其他页面只提供上下文。`];
+    for (const note of feedback.groupNotes) lines.push(`整组 ${note.number}: ${note.text}`);
+    for (const [offset,page] of feedback.pages.entries()) lines.push(`页面 ${page.index}: ${page.name} (id=${page.id})`, summarizeFeedback(page.feedback, `${feedbackPath} → pages[${offset}]`));
+    const result = lines.join('\n');
+    return result.length > 24000 ? result.slice(0,24000) + '\n摘要已截断；请读取反馈 JSON 中全部 pages[] 和 groupNotes。' : result;
+  }
+
   if (isVideoFeedback(feedback)) return summarizeVideoFeedback(feedback, feedbackPath);
   const versioned = validateImageFeedbackMetadata(feedback);
   const lines = [];
@@ -1448,7 +1476,12 @@ function annotateResultToContent(r, outputPath, p) {
     }
     feedback = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
     if (!isRecord(feedback)) throw new Error('反馈 JSON 顶层必须是对象。');
-    if (isVideoFeedback(feedback)) {
+    if (isImageSetFeedback(feedback)) {
+      validateImageSetFeedback(feedback);
+      let budget=MAX_VIDEO_RESULT_IMAGE_CHARS,attached=0;
+      verifiedImages=feedback.pages.map(page=>{const verified=readFeedbackImage(page.feedback.image,outputPath,Boolean(p.includeImage)&&attached<MAX_VIDEO_RESULT_IMAGES,budget);budget-=verified.content?.data.length||0;if(verified.content)attached++;return verified;});
+    }
+    else if (isVideoFeedback(feedback)) {
       validateVideoFeedback(feedback);
       if (recover) feedback.frames.forEach((frame) => validateImageRecoveryFeedback(frame.feedback));
       let imageBudget = MAX_VIDEO_RESULT_IMAGE_CHARS;
@@ -1467,7 +1500,7 @@ function annotateResultToContent(r, outputPath, p) {
       // must not bypass validation for either old metadata or compact strings.
       validateImageRecoveryFeedback(feedback);
     }
-    if (!isVideoFeedback(feedback)) verifiedImages = [readFeedbackImage(feedback.image, outputPath, Boolean(p.includeImage))];
+    if (!isVideoFeedback(feedback) && !isImageSetFeedback(feedback)) verifiedImages = [readFeedbackImage(feedback.image, outputPath, Boolean(p.includeImage))];
   } catch (error) {
     if (recover) {
       const failure = cliResultToContent(r);
@@ -1481,7 +1514,14 @@ function annotateResultToContent(r, outputPath, p) {
   }
   if (recover) content.push({ type: 'text', text: 'CLI 完成回执中断；已从本轮输出路径的完整有效反馈文件恢复结果。该结果仅确认反馈文件已保存，不代表桌面程序仍在运行。' });
   content.push({ type: 'text', text: summarizeFeedback(feedback, outputPath) });
-  if (p.includeImage) {
+  if (p.includeImage && isImageSetFeedback(feedback)) {
+    let attached=0;
+    for(const [offset,page] of feedback.pages.entries()){
+      const contentImage=verifiedImages[offset]?.content;
+      if(contentImage&&attached<8){content.push({type:'text',text:`页面 ${page.name} (id=${page.id})`},contentImage);attached++;}
+    }
+    if(attached<feedback.pages.length)content.push({type:'text',text:'请读取反馈 JSON 中其余 pages[].feedback.image，file 模式图片与 JSON 同目录。'});
+  } else if (p.includeImage) {
     if (isVideoFeedback(feedback)) content.push(...videoImageContents(feedback, outputPath, verifiedImages));
     else {
       const imageContent = verifiedImages[0]?.content;

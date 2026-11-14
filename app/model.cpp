@@ -1869,7 +1869,9 @@ Document loadDocument(const QString &path) {
     const auto parsed = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !parsed.isObject())
         fail(tr("JSON 格式不正确"));
-    auto root = parsed.object();
+    return loadDocumentObject(parsed.object(), path);
+}
+Document loadDocumentObject(QJsonObject root, const QString &path) {
     const QString version = root.value("schemaVersion").toString();
     if (!root.contains("schemaVersion") || version.startsWith("feedback-") ||
         root.contains("objects") || root.contains("changes")) {

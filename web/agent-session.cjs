@@ -77,7 +77,25 @@ function validateFeedback(value, image, resolveFile) {
   // Typed versions keep their nesting (a moved component owns its children).
   return {...feedbackFormat.imageMetadata(value), annotationSpace:'result', image:value.image, objects:typed?value.objects:objects};
 }
+function validateSessionFeedback(value, session) {
+  if (session.kind !== 'set') return validateFeedback(value, session.image);
+  boundedJSON(value, MAX_BODY, 'Feedback');
+  const result = feedbackFormat.normalizeSet(value);
+  if (result.set.name !== session.name || result.pageIndex.length !== session.pages.length) fail('Feedback must contain this session\'s page index.');
+  for (const entry of result.pageIndex) {
+    const original = session.pages.find(page => page.id === entry.id);
+    if (!original) fail('Feedback references an unknown page.');
+  }
+  for (const page of result.pages) {
+    const original = session.pages.find(item => item.id === page.id);
+    page.feedback = validateFeedback(page.feedback, original.image);
+    if(page.feedback.image?.mode!=='embedded'&&typeof page.feedback.image!=='string')fail('Set review submissions must embed annotated originals.');
+    if (!page.feedback.objects.length) fail('Only annotated pages may include images.');
+  }
+  return result;
+}
 function feedbackReceipt(feedback) {
+  if (feedback.schemaVersion === 'image-set-feedback-1') return {...feedback, pages:feedback.pages.map(page => ({...page, feedback:feedbackReceipt(page.feedback)}))};
   const {image, ...result} = feedback;
   if(image&&typeof image==='object')result.image=Object.fromEntries(Object.entries(image).filter(([key])=>key!=='dataUrl'));
   return result;
@@ -103,6 +121,7 @@ function bindFeedbackCapture(value,session){
   return bindCapture(value,session);
 }
 function validateSavedFeedback(session,feedback){
+  if(session.kind==='set')return validateSessionFeedback(feedback,session);
   const valid=validateFeedback(bindFeedbackCapture(feedback,session),session.image,(name,mime)=>outputImage(session,name,mime));
   if(valid.image?.preview){const data=outputImage(session,valid.image.preview,imageFormat.previewMimeType(valid.image.preview)),info=imageFormat.inspect(data);if(session.previewSha256&&digest(info.bytes)!==session.previewSha256)fail('Annotated preview SHA-256 does not match.');}
   return valid;
@@ -121,6 +140,26 @@ function allowedKeys(value, keys, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !keys.includes(key))) fail('Invalid ' + name + ' fields.');
 }
 function validateDraft(value, session) {
+  if (session.kind === 'set') {
+    boundedJSON(value, MAX_BODY, 'Draft');
+    allowedKeys(value, ['schemaVersion','tool','savedAt','kind','name','width','height','pages','groupNotes'], 'set draft');
+    if (value.kind !== 'set' || value.name !== session.name || !Array.isArray(value.pages) || value.pages.length !== session.pages.length || !Array.isArray(value.groupNotes) || value.groupNotes.length > 1000) fail('Invalid set draft.');
+    const ids = new Set();
+    const pages = value.pages.map(page => {
+      allowedKeys(page, ['id','name','width','height','image','timestampUs','notes','layout','capture'], 'set page draft');
+      const original = session.pages.find(item => item.id === page.id);
+      if (!original || ids.has(page.id) || typeof page.name !== 'string' || !page.name.trim() || page.name.length > 200) fail('Invalid set draft page.');
+      ids.add(page.id);
+      const {name,width,height,...document} = page;
+      const draft = validateDraft({schemaVersion:value.schemaVersion,tool:value.tool,savedAt:value.savedAt,kind:'image',name:original.name,width,height,document}, {...session,kind:'image',name:original.name,image:original.image});
+      return {...draft.document, name,width,height};
+    });
+    const groupNotes = value.groupNotes.map(note => {
+      if (!note || typeof note.id !== 'string' || !note.id || typeof note.text !== 'string' || !note.text.trim() || note.text.length > 10000) fail('Invalid group note.');
+      return {id:note.id,text:note.text};
+    });
+    return {...JSON.parse(JSON.stringify(value)), pages, groupNotes};
+  }
   if(value?.document)value={...value,document:bindCapture(value.document,session)};
   if(Array.isArray(value?.document?.notes)) {
     try { value={...value,document:{...value.document,notes:value.document.notes.map(feedbackFormat.normalizeNoteParent)}}; }
@@ -177,6 +216,7 @@ function validateDraft(value, session) {
   return draft;
 }
 function hydratedDraft(session) {
+  if (session.kind === 'set') return session.draft ? {...session.draft, pages:session.draft.pages.map(page => ({...page, image:session.pages.find(item => item.id === page.id).image}))} : undefined;
   return session.draft ? {...session.draft, document:{...bindCapture(session.draft.document,session), image:session.image}} : undefined;
 }
 function flushDirectory(directory) {
@@ -244,7 +284,10 @@ function persistedSession(directory, id) {
     session = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (error) { if (error.code === 'ENOENT') fail('Session not found.', 404); throw error; }
   if (session.id !== id || !/^[a-f0-9]{64}$/.test(session.token) || typeof session.output !== 'string' || !path.isAbsolute(session.output) || typeof session.inputPath !== 'string' || !path.isAbsolute(session.inputPath) || !['pending','submitting','completed','cancelled','expired'].includes(session.state) || !Number.isFinite(session.expiresAt)) fail('Invalid persisted session.');
-  imageData(session.image);
+  if (session.kind === 'set') {
+    if (!Array.isArray(session.pages) || !session.pages.length || session.pages.length > 64) fail('Invalid persisted image set.');
+    session.pages.forEach(page => imageData(page.image));
+  } else imageData(session.image);
   if(Object.hasOwn(session,'capture')){try{feedbackFormat.validateCapture(session.capture);}catch(error){fail(error.message);}}
   if (session.state === 'submitting') {
     let matchingOutput;
@@ -305,7 +348,18 @@ class AgentSessions {
   }
   create(input) {
     if (!input || typeof input !== 'object') fail('Session input is required.');
-    const image = imageData(input.image);
+    const kind = input.kind === 'set' ? 'set' : 'image';
+    const image = kind === 'image' ? imageData(input.image) : undefined;
+    let pages;
+    if (kind === 'set') {
+      if (!Array.isArray(input.pages) || !input.pages.length || input.pages.length > 64) fail('An image set needs 1–64 pages.');
+      const ids = new Set();
+      pages = input.pages.map(page => {
+        if (!page || typeof page.id !== 'string' || !page.id || page.id.length > 128 || ids.has(page.id) || typeof page.name !== 'string' || !page.name.trim() || page.name.length > 200) fail('Invalid set page.');
+        ids.add(page.id); return {id:page.id,name:page.name,image:imageData(page.image)};
+      });
+      boundedJSON(pages, MAX_BODY - 1048576, 'Set images');
+    }
     if (typeof input.inputPath !== 'string' || !path.isAbsolute(input.inputPath) || typeof input.output !== 'string' || !path.isAbsolute(input.output)) fail('Input and output paths must be absolute.');
     const output = path.resolve(input.output);
     if (fs.existsSync(output)) fail('Output already exists; choose a unique path.', 409);
@@ -318,7 +372,7 @@ class AgentSessions {
     let page;try{page=input.pageContext===undefined?undefined:feedbackFormat.validatePageContext(input.pageContext);}catch(error){fail(error.message);}
     const capture={source:'file',fileName:path.basename(input.inputPath),capturedAt:createdAt,...(page?{page,pageSource:'agent'}:{})};
     try{feedbackFormat.validateCapture(capture);}catch(error){fail(error.message);}
-    const session = {id:crypto.randomBytes(16).toString('hex'), token:randomToken(), state:'pending', image, name,imageMode,preview:input.preview??false,
+    const session = {id:crypto.randomBytes(16).toString('hex'), token:randomToken(), state:'pending', ...(kind==='set'?{kind,pages}:{image}), name,imageMode,preview:input.preview??false,
       inputPath:path.resolve(input.inputPath), output, createdAt,capture, expiresAt:this.now() + timeout * 1000};
     this.sessions.set(session.id, session); this.persist(session);
     return {sessionId:session.id, url:this.origin + '/EditHere.html?agent=' + session.token, output, expiresAt:session.expiresAt,capture:{...session.capture}};
@@ -344,7 +398,7 @@ class AgentSessions {
   browser(token) {
     const session = this.byToken(token);
     return {sessionId:session.id, name:session.name, state:session.state, expiresAt:session.expiresAt,imageMode:session.imageMode??'file',preview:session.preview??false,outputFileName:path.basename(session.output),...(session.capture?{capture:{...session.capture}}:{}),
-      ...(session.state === 'pending' ? {image:session.image} : {})};
+      ...(session.state === 'pending' ? (session.kind==='set'?{kind:'set',pages:session.pages,draft:hydratedDraft(session)}:{image:session.image}) : {})};
   }
   submit(token, input, previewDataUrl) {
     const id = this.byToken(token).id;
@@ -352,6 +406,7 @@ class AgentSessions {
   }
   submitLocked(token, input,previewDataUrl) {
     const session = this.byToken(token);
+    if(session.kind==='set')return this.submitSetLocked(token,input);
     const feedback = validateFeedback(bindFeedbackCapture(input,session), session.image);
     const serialized = feedbackFormat.serialize(feedback), sha256 = digest(serialized);
     if (session.state === 'completed') {
@@ -377,6 +432,35 @@ class AgentSessions {
       try {
         if (digest(fs.readFileSync(session.output)) === sha256) {
           validateSavedFeedback(session,JSON.parse(fs.readFileSync(session.output,'utf8')));
+          session.state = 'completed'; session.completedAt = new Date(this.now()).toISOString(); this.persist(session);
+          return this.status(session);
+        }
+      } catch { /* No matching committed output. Keep the existing file intact. */ }
+      session.state = 'pending'; delete session.sha256; delete session.result; this.persist(session);
+      fail(error.code === 'EEXIST' ? 'Output already exists; feedback was not overwritten.' : 'Could not save feedback: ' + error.message, error.code === 'EEXIST' ? 409 : 500);
+    }
+    session.state = 'completed'; session.completedAt = new Date(this.now()).toISOString(); this.persist(session);
+    return this.status(session);
+  }
+  submitSetLocked(token, input) {
+    const session = this.byToken(token);
+    const feedback = validateSessionFeedback(input, session);
+    const serialized = feedbackFormat.serialize(feedback), sha256 = digest(serialized);
+    if (session.state === 'completed') {
+      if (session.sha256 !== sha256) fail('This session already received different feedback.', 409);
+      return this.status(session);
+    }
+    if (session.state !== 'pending') fail('This session is ' + session.state + '.', 409);
+    session.state = 'submitting'; session.sha256 = sha256;
+    session.result = feedbackReceipt(feedback);
+    this.persist(session);
+    try {
+      atomicOutput(session.output, serialized, session.id);
+    } catch (error) {
+      // A failure after publishing (for example a lost directory flush ACK)
+      // must keep the journal recoverable instead of orphaning the saved file.
+      try {
+        if (digest(fs.readFileSync(session.output)) === sha256) {
           session.state = 'completed'; session.completedAt = new Date(this.now()).toISOString(); this.persist(session);
           return this.status(session);
         }
@@ -430,4 +514,4 @@ class AgentSessions {
     }
   }
 }
-module.exports = {AgentSessions, API_VERSION, MAX_BODY, imageData, validateFeedback, validateDraft, hydratedDraft, defaultSessionDirectory, readSessionStatus,imageFormat,feedbackFormat};
+module.exports = {AgentSessions, API_VERSION, MAX_BODY, imageData, validateFeedback, validateSessionFeedback, validateDraft, hydratedDraft, defaultSessionDirectory, readSessionStatus,imageFormat,feedbackFormat};

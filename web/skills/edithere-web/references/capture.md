@@ -20,6 +20,8 @@ New-Item -ItemType Directory -Force -Path $EditHereCaptureDirectory | Out-Null
 $EditHereImage = Join-Path $EditHereCaptureDirectory (([guid]::NewGuid().ToString()) + '.png')
 ```
 
+高 DPI 环境还需核对真实图像像素尺寸与窗口逻辑尺寸：两者可能不同。用于界面评审时优先取得无损 PNG 的设备像素原图；工具只给缩小的 JPEG 预览时，先检查是否另有正式的原尺寸保存入口，或使用用户指定且当前可用的截图工具。将 JPEG 另存为 PNG 不会补回已丢失的清晰度，不能称为无损截图；无法取得更清晰原图时说明本次实际质量。
+
 这是待生成文件路径，尚不表示截图已经保存。截图工具若自行创建唯一的本地 PNG，也可以直接使用它实际返回的绝对路径；若需归档到上面的路径，复制原文件，不重新编码。已提供的 JPEG 等图片保留原格式，不仅修改扩展名伪装成 PNG。
 
 ## 浏览器页面

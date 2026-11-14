@@ -49,4 +49,11 @@ for (const [name, file] of [['STYLE', 'style.css'], ['LAYOUT', 'layout.js'], ['I
 }
 if (/\/\*__[A-Z_]+__\*\//.test(html)) throw new Error('Unresolved asset or source placeholder');
 fs.writeFileSync(path.join(dir, 'EditHere.html'), html);
+// The DSH variant adds only the loopback session bridge. It is served by
+// dsh/server.mjs with connect-src 'self'; the offline bundle keeps connect none.
+const dshBridge = fs.readFileSync(path.join(dir, 'src/dsh-bridge.js'), 'utf8');
+new (require('node:vm').Script)(dshBridge, {filename: 'dsh-bridge.js'});
+const dshHtml = html.replace('</body>', () => '<script data-edithere-dsh-bridge>' + dshBridge.replace(/<\/script/gi, '<\\/script') + '</script>\n</body>');
+fs.writeFileSync(path.join(dir, 'EditHere.dsh.html'), dshHtml);
 console.log('Built web/EditHere.html (' + Buffer.byteLength(html) + ' bytes)');
+console.log('Built web/EditHere.dsh.html (' + Buffer.byteLength(dshHtml) + ' bytes)');

@@ -29,6 +29,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -59,6 +60,13 @@
 #include <QWheelEvent>
 using namespace h2d;
 
+// macOS keeps the system title bar, so close, minimize and zoom are the traffic
+// lights there and the editor draws no buttons of its own for them. The actions and
+// their regressions are the same on both, so a test asks which chrome this platform
+// has instead of assuming one.
+static bool hasOwnWindowButtons() {
+    return !usesNativeWindowControls();
+}
 // Where the crosshair is, which is where the window thinks the pointer is: a white
 // cross nine pixels each way on a screen that has nothing else as light. It is read off
 // the rendering rather than asked of the window, because what has to hold is what the
@@ -289,7 +297,8 @@ class UiTests : public QObject {
         auto hide = editor.findChild<QPushButton *>("hideAnnotations"); QVERIFY(hide);
         QVERIFY(!QRect(toggle->mapTo(&editor, QPoint()), toggle->size()).intersects(QRect(hide->mapTo(&editor, QPoint()), hide->size())));
         auto close = editor.findChild<QPushButton *>("closeWindow"); QVERIFY(close);
-        QVERIFY(editor.rect().contains(QRect(close->mapTo(&editor, QPoint()), close->size())));
+        if (hasOwnWindowButtons())
+            QVERIFY(editor.rect().contains(QRect(close->mapTo(&editor, QPoint()), close->size())));
         QStyleOptionButton style; style.initFrom(toggle);
         const auto contents = toggle->style()->subElementRect(QStyle::SE_PushButtonContents, &style, toggle);
         QVERIFY(contents.width() >= toggle->fontMetrics().horizontalAdvance(toggle->text()));
@@ -972,7 +981,8 @@ class UiTests : public QObject {
         QTest::qWait(80);
         auto minimize = editor.findChild<QPushButton *>("minimizeWindow");
         auto imageScroll = editor.findChild<QScrollArea *>("imageWell");
-        QVERIFY(minimize && minimize->isVisible() && minimize->isEnabled() && imageScroll);
+        QVERIFY(minimize && minimize->isEnabled() && imageScroll);
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
         QCOMPARE(minimize->toolTip(), QString("最小化"));
         editor.explode();
         QPointer<LayoutCanvas> canvas = editor.layoutCanvas();
@@ -1047,8 +1057,14 @@ class UiTests : public QObject {
         QVERIFY(settingsButton && minimize && fullscreen && close);
         QVERIFY(settingsButton->isVisible() && settingsButton->isEnabled());
         QCOMPARE(settingsButton->toolTip(), QString("设置"));
-        QVERIFY(minimize->geometry().right() < fullscreen->geometry().left());
-        QVERIFY(fullscreen->geometry().right() < close->geometry().left());
+        // macOS has the traffic lights instead, in the window's top-left corner.
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(close->isVisible(), hasOwnWindowButtons());
+        if (hasOwnWindowButtons()) {
+            QVERIFY(minimize->geometry().right() < fullscreen->geometry().left());
+            QVERIFY(fullscreen->geometry().right() < close->geometry().left());
+        }
         const auto before = exportFeedback(editor->document(), true);
         QSignalSpy requested(editor, &Editor::settingsRequested);
         int opened = 0;
@@ -1093,6 +1109,140 @@ class UiTests : public QObject {
         QVERIFY(!QFileInfo::exists(settingsFile));
         artifact(*editor, "main-header-controls.png");
         editor->hide();
+    }
+    void windowsEditorPaintsItsWholeSurfaceAfterMoveAndResize() {
+#ifdef Q_OS_WIN
+        Editor editor;
+        editor.openEmpty();
+        for (auto screen : QGuiApplication::screens()) {
+            editor.move(screen->availableGeometry().topLeft() + QPoint(12, 12));
+            for (const QSize size : {QSize(900, 580), QSize(1120, 700)}) {
+                editor.resize(size);
+                QTest::qWait(80);
+                const auto image = editor.grab().toImage();
+                QVERIFY(!image.isNull());
+                QCOMPARE(image.size(), (QSizeF(editor.size()) * image.devicePixelRatio()).toSize());
+                // The old layered surface left transparent pixels, including the
+                // rounded corners. Every output pixel now has a painted background.
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        if (image.pixelColor(x, y).alpha() != 255)
+                            QFAIL(qPrintable(QString("Unpainted editor pixel at %1,%2").arg(x).arg(y)));
+                QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
+                QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+            }
+        }
+        artifact(editor, "editor-window-surface.png");
+#else
+        QSKIP("Windows uses the opaque editor surface; other desktops keep translucent corners");
+#endif
+    }
+    void titleBarDoubleClickMaximizesAndRestoresWithoutChangingTheDocument() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        QVERIFY(bar);
+        QTest::qWait(60);
+        const auto geometry = editor.geometry();
+        const auto feedback = exportFeedback(editor.document(), true);
+        // Use the brand label too: unhandled label clicks must reach the bar.
+        auto brand = editor.findChild<QLabel *>("brand");
+        QVERIFY(brand);
+        // QWidget's mouseDClick sends the double-click press only. Release each
+        // button so this test cannot leave Qt Test's shared mouse state held.
+        QTest::mouseDClick(brand, Qt::LeftButton);
+        QTest::mouseRelease(brand, Qt::LeftButton);
+        QTRY_VERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::RightButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isMaximized());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), geometry);
+        QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
+        editor.showFullScreen();
+        QTRY_VERIFY(editor.isFullScreen());
+        QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        QVERIFY(editor.isFullScreen());
+        editor.hide();
+
+        // Capture toolbar bars are movable tools, not maximizable editor chrome.
+        QWidget tool;
+        DragBar toolBar(&tool);
+        toolBar.resize(200, 42);
+        tool.show();
+        QTest::mouseDClick(&toolBar, Qt::LeftButton);
+        QTest::mouseRelease(&toolBar, Qt::LeftButton);
+        QVERIFY(!tool.isMaximized());
+    }
+    void windowControlsFollowThePlatformConvention() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        QTest::qWait(60);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        auto brand = editor.findChild<QLabel *>("brand");
+        auto minimize = editor.findChild<QPushButton *>("minimizeWindow");
+        auto fullscreen = editor.findChild<QPushButton *>("fullscreenWindow");
+        auto close = editor.findChild<QPushButton *>("closeWindow");
+        auto settings = editor.findChild<QPushButton *>("openSettings");
+        QVERIFY(bar && brand && minimize && fullscreen && close && settings);
+        // macOS: the system title bar keeps close, minimize and zoom as the traffic
+        // lights, so no editor-drawn window buttons remain in the bar's top right.
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
+        QCOMPARE(close->isVisible(), hasOwnWindowButtons());
+        // The brand starts clear of whatever occupies the corner: the traffic lights
+        // on macOS, the compact inset of our own bar elsewhere. One pixel of the
+        // figure is the shell's own inset.
+        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
+        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), row.available ? row.controlsRight + 10 : 15);
+        // The tools stay in the top right, inside the bar and the window.
+        const QRect tools(settings->mapTo(&editor, QPoint()), settings->size());
+        QVERIFY(editor.rect().contains(tools));
+        QVERIFY(brand->mapTo(&editor, QPoint()).x() + brand->width() <= tools.left());
+        QVERIFY(bar->height() >= tools.height());
+        editor.hide();
+    }
+    // macOS draws close, minimize and zoom as traffic lights in the system title bar.
+    // What the editor draws has to share that bar's row: a bar pushed a titlebar down,
+    // or a row centered below the lights, is the "second row" users reported.
+    void theTitleBarSharesTheSystemControlsRow() {
+        Editor editor;
+        editor.setDocument(gridDocument());
+        editor.resize(1000, 650);
+        editor.show();
+        QTest::qWaitForWindowExposed(&editor);
+        QTest::qWait(220);
+        auto bar = editor.findChild<QWidget *>("editorTitleBar");
+        auto brand = editor.findChild<QLabel *>("brand");
+        auto tool = editor.findChild<QPushButton *>("openSettings");
+        QVERIFY(bar && brand && tool);
+        // Nothing is reserved above the bar: it starts at the window's own top edge.
+        QVERIFY(bar->parentWidget());
+        QCOMPARE(bar->parentWidget()->mapTo(&editor, QPoint()).y(), 0);
+        QVERIFY2(bar->mapTo(&editor, QPoint()).y() <= 2,
+                 qPrintable(QString("the bar starts %1 pixels down").arg(bar->mapTo(&editor, QPoint()).y())));
+        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
+        if (!row.available) {
+            // No system controls to share a row with: the bar just centers its own row.
+            QCOMPARE(brand->y() + brand->height() / 2, bar->height() / 2);
+            editor.hide();
+            return;
+        }
+        const int toolCenter = bar->y() + tool->y() + tool->height() / 2;
+        QVERIFY2(std::abs(toolCenter - row.centerY) <= 4,
+                 qPrintable(QString("the tools are centered on %1, the window controls on %2")
+                                .arg(toolCenter).arg(row.centerY)));
+        // The brand starts clear of the traffic lights' right edge.
+        QVERIFY2(brand->mapTo(&editor, QPoint()).x() > row.controlsRight,
+                 qPrintable(QString("the brand starts at %1, the window controls end at %2")
+                                .arg(brand->mapTo(&editor, QPoint()).x())
+                                .arg(row.controlsRight)));
+        editor.hide();
     }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
@@ -1147,10 +1297,13 @@ class UiTests : public QObject {
 
         fullscreen->click();
         QTRY_VERIFY(editor.isFullScreen());
-        QVERIFY(fullscreen->isChecked() && fullscreen->isVisible());
+        // The button drives the state on every platform; only macOS hides it behind
+        // the system's green traffic light.
+        QVERIFY(fullscreen->isChecked());
+        QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
         QCOMPARE(fullscreen->toolTip(), QString("退出全屏"));
         QVERIFY(editor.findChild<QPushButton *>("openSettings")->isVisible());
-        QVERIFY(editor.findChild<QPushButton *>("closeWindow")->isVisible());
+        QCOMPARE(editor.findChild<QPushButton *>("closeWindow")->isVisible(), hasOwnWindowButtons());
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QCOMPARE(editor.explosionActive(), explosion);
         QVERIFY(!editor.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
@@ -1460,7 +1613,8 @@ class UiTests : public QObject {
         editor->setDocument(document);
         QTest::qWait(30);
         auto minimize = editor->findChild<QPushButton *>("minimizeWindow");
-        QVERIFY(minimize && minimize->isVisible());
+        QVERIFY(minimize);
+        QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
         QSignalSpy hiddenToTray(editor, &Editor::hiddenToTray);
         minimize->click();
         QTRY_VERIFY(editor->isMinimized());
@@ -1853,8 +2007,15 @@ class UiTests : public QObject {
         document.notes.append(note);
         Editor editor; editor.setDocument(document);
         auto copy = editor.findChild<QPushButton *>("copyImage"); QVERIFY(copy);
+        QApplication::clipboard()->setText("previous JSON text");
         copy->click();
         const auto copied = QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        const auto mime = QApplication::clipboard()->mimeData();
+        QVERIFY(mime && mime->hasImage());
+        QVERIFY(!mime->hasUrls());
+        QVERIFY(!mime->hasText());
+        QVERIFY(mime->hasFormat("image/png"));
+        QCOMPARE(QImage::fromData(mime->data("image/png"), "PNG").convertToFormat(QImage::Format_ARGB32), copied);
         QCOMPARE(copied.size(), QSize(5472, 2352));
         QCOMPARE(copied.copy(96 + 1200, 96 + 100, 600, 200),
                  source.copy(1200, 100, 600, 200).convertToFormat(QImage::Format_ARGB32));
@@ -2497,11 +2658,13 @@ class UiTests : public QObject {
         QCOMPARE(embedded["mode"].toString(), QString("embedded"));
         QVERIFY(embedded["dataUrl"].toString().startsWith("data:image/png;base64,"));
         QCOMPARE(QByteArray::fromBase64(embedded["dataUrl"].toString().section(',', 1).toLatin1()), editor.document().png);
+        const auto clipboardBeforeOptions = QApplication::clipboard()->text();
         QSignalSpy copies(text, &QPushButton::clicked);
         QTest::mouseClick(options, Qt::LeftButton);
         QVERIFY(copies.isEmpty());
         auto textMenu = options->findChild<QMenu *>("copyJsonTextOptionsMenu");
         QVERIFY(textMenu && textMenu->isVisible());
+        QCOMPARE(QApplication::clipboard()->text(), clipboardBeforeOptions);
         artifact(*textMenu, "json-text-options.png");
         textMenu->close();
         file->click();
@@ -2658,6 +2821,12 @@ class UiTests : public QObject {
         Editor editor; editor.setDocument(gridDocument()); editor.resize(760, 650); QTest::qWait(60);
         auto options = editor.findChild<QPushButton *>("copyJsonTextOptions");
         auto text = editor.findChild<QPushButton *>("copyJsonText"); QVERIFY(options && text);
+        auto ai = editor.findChild<QPushButton *>("generateInstructions");
+        QVERIFY(ai && ai->isVisible() && ai->isEnabled());
+        QCOMPARE(ai->text(), QString("AI解析"));
+        QVERIFY(!ai->property("tool").toBool());
+        QVERIFY(!ai->property("primary").toBool());
+        QCOMPARE(ai->height(), editor.findChild<QPushButton *>("copyJson")->height());
         QVERIFY(!text->isVisible()); QVERIFY(!options->isVisible());
         artifact(editor, "json-actions-compact.png");
         bool selected = false;
@@ -2674,6 +2843,31 @@ class UiTests : public QObject {
         editor.resize(1280, 850); QTest::qWait(60);
         QVERIFY(text->isVisible() && options->isVisible());
         QVERIFY(text->rect().contains(options->geometry()));
+        editor.hide();
+    }
+    void aiParsingIsVisibleInDefaultAndMinimumToolbars() {
+        Editor editor;
+        editor.show();
+        auto ai = editor.findChild<QPushButton *>("generateInstructions");
+        QVERIFY(ai);
+        QCOMPARE(ai->text(), QString("AI解析"));
+        editor.resize(1280, 850);
+        QTRY_VERIFY(ai->isVisible());
+        QVERIFY(!ai->isEnabled()); // The empty home still exposes the feature.
+        editor.setDocument(gridDocument());
+        QTRY_VERIFY(ai->isEnabled());
+        artifact(editor, "ai-toolbar-desktop-light.png");
+        for (int width : {1280, 960, 760, 740}) {
+            editor.resize(width, 650);
+            QTRY_VERIFY(ai->isVisible());
+            QVERIFY(QRect(QPoint(), editor.size()).contains(QRect(ai->mapTo(&editor, QPoint()), ai->size())));
+        }
+        artifact(editor, "ai-toolbar-minimum-light.png");
+        applyTheme(ThemeMode::Dark);
+        editor.setPreferences(defaultSettings());
+        QTest::qWait(1);
+        artifact(editor, "ai-toolbar-minimum-dark.png");
+        applyTheme(ThemeMode::Light);
         editor.hide();
     }
     void feedbackFileClipboardIncludesOriginalWithoutLegacyPreview() {
@@ -3715,6 +3909,47 @@ class UiTests : public QObject {
         QCOMPARE(accepted.count(), 1);
         overlay.hide();
     }
+    void aSettledSelectionFollowsTheWholeDrag_data() {
+        QTest::addColumn<double>("scale");
+        QTest::newRow("100-percent") << 1.0;
+        QTest::newRow("125-percent") << 1.25;
+        QTest::newRow("200-percent") << 2.0;
+    }
+    void aSettledSelectionFollowsTheWholeDrag() {
+        QFETCH(double, scale);
+        QImage image(qRound(800 * scale), qRound(600 * scale), QImage::Format_ARGB32);
+        image.fill(QColor(32, 36, 42));
+        ScreenFrame frame{"moving", {-800, -100, 800, 600}, image.rect(), image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        const QRect original(qRound(100 * scale), qRound(150 * scale), qRound(220 * scale),
+                             qRound(160 * scale));
+        overlay.setSelections({original});
+        QTest::keyClick(&overlay, Qt::Key_R);
+        QCOMPARE(overlay.selection(), original);
+        const QPoint press(180, 220);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, press);
+        const auto pixel = [scale](QPoint point) {
+            return QPoint(qRound(point.x() * scale), qRound(point.y() * scale));
+        };
+        // Each event stays relative to the original press. Repeated events at the
+        // same point must not pull the selection back, including at screen edges.
+        for (const QPoint at : {QPoint(190, 225), QPoint(240, 255), QPoint(470, 360),
+                                QPoint(700, 500), QPoint(798, 598), QPoint(798, 598),
+                                QPoint(5, 5), QPoint(5, 5), press}) {
+            QMouseEvent move(QEvent::MouseMove, at, overlay.mapToGlobal(at), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(&overlay, &move);
+            const QPoint desired = original.topLeft() + pixel(at) - pixel(press);
+            const QPoint confined(std::clamp(desired.x(), 0, image.width() - original.width()),
+                                   std::clamp(desired.y(), 0, image.height() - original.height()));
+            QCOMPARE(overlay.selection(), QRect(confined, original.size()));
+        }
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, press);
+        QCOMPARE(overlay.selection(), original);
+        overlay.hide();
+    }
     void selectionResizeCursorMatchesHitArea_data() {
         QTest::addColumn<double>("scale");
         QTest::newRow("100-percent") << 1.0;
@@ -3941,80 +4176,73 @@ class UiTests : public QObject {
                                 .arg(after)));
         overlay.hide();
     }
-    // The enlargement is where the aim is judged, so the blue frame of the recognised
-    // block has to be inside it, magnified with the pixels it belongs to rather than
-    // left at the size it has on the screen.
-    void theMagnifierCarriesTheFrameItIsAimingAt() {
-        QImage image = exampleImage();
-        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+    // #62: the selection outline stays on the screen; the magnifier must show
+    // the original pixels, including where a recognised block meets the screen edge.
+    void theMagnifierShowsRawPixelsAtTheScreenEdge() {
+        QImage image(1120, 720, QImage::Format_ARGB32);
+        const QColor original(240, 240, 240);
+        image.fill(original);
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, image.rect(), image, true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(560, 360);
-        // The block finder runs off the main thread, so the frames have to be waited
-        // for before the pointer is put on one of them.
-        QTest::qWait(400);
-        // The panel is placed the way the window places it: beside the pointer, and
-        // flipped when it would fall off an edge.
-        // The pointer goes on the left edge of the screen. The enlargement only covers
-        // about twenty pixels around the pointer, so an edge is the one place a frame
-        // can be seen to be magnified rather than merely present.
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
         const QPoint at(0, 225);
         movePointerTo(overlay, at);
-        QTest::qWait(80);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        artifact(overlay, "magnifier-frame.png");
+        artifact(overlay, "magnifier-screen-edge.png");
         const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
                          QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
-        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
-        int marked = 0;
+        QVERIFY(shot.rect().contains(zoom));
         for (int row = zoom.top(); row < zoom.bottom(); ++row)
             for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row)))
-                    ++marked;
-        // The frame is on the screen at its own size as well, so the count has to come
-        // from inside the enlargement: that is the part of the picture the pointer is
-        // reading, and a frame missing from it is a frame the pointer cannot use.
-        QVERIFY2(marked > 0, "the enlargement shows the pixels without the frame that names them");
+                QVERIFY2(!isAccentColour(shot.pixelColor(column, row)),
+                         "the selection outline must not obscure source pixels in the magnifier");
+        QCOMPARE(shot.pixelColor(zoom.center() + QPoint(3, 3)), original);
         overlay.hide();
     }
-    // REG-086: the enlargement used to be a second look at the grab with a hairline
-    // drawn back on top of it, so the blue frame came out thin however far the pixels
-    // under it had been stretched. It is a glass held over the window instead: what is
-    // on the window, frame included, has to come out enlarged with those pixels.
-    void theEnlargementMagnifiesTheFrameRatherThanRedrawingIt() {
-        QImage image(1120, 720, QImage::Format_ARGB32);
-        image.fill(QColor(240, 240, 240));
-        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+    void theMagnifierKeepsSelectionEdgePixelsVisible_data() {
+        QTest::addColumn<double>("scale");
+        QTest::addColumn<bool>("settled");
+        for (const double scale : {1.0, 1.25, 2.0})
+            for (const bool settled : {false, true})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(scale).arg(settled ? "settled" : "drawing")))
+                    << scale << settled;
+    }
+    void theMagnifierKeepsSelectionEdgePixelsVisible() {
+        QFETCH(double, scale);
+        QFETCH(bool, settled);
+        QImage image(qRound(560 * scale), qRound(360 * scale), QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                image.setPixelColor(x, y, QColor(40 + (x % 3) * 50, 80 + (y % 3) * 35, 110));
+        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, image.rect(), image, true};
         Overlay overlay(frame);
         overlay.show();
         overlay.setFixedSize(560, 360);
-        QTest::qWait(50);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
         QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
         QTest::mouseMove(&overlay, {300, 260});
-        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
-        QVERIFY(!overlay.selection().isEmpty());
-        // The pointer goes on the left edge of the region, which is where the frame is.
-        const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
+        if (settled)
+            QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        const QPoint at = settled ? QPoint(100, 180) : QPoint(300, 260);
         movePointerTo(overlay, at);
-        QTest::qWait(50);
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        artifact(overlay, "magnifier-thick-frame.png");
+        artifact(overlay, QString("magnifier-raw-%1-%2.png").arg(scale).arg(settled));
         const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
-        const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
-                         QSize(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
-        QVERIFY2(shot.rect().contains(zoom), "the enlargement has to be inside what was rendered");
-        int marked = 0;
-        for (int row = zoom.top(); row < zoom.bottom(); ++row)
-            for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row)))
-                    ++marked;
-        // The frame is two pixels wide on the screen and the enlargement is fifteen
-        // times, so it fills a band of the panel. A hairline redrawn at its own width
-        // is about two hundred pixels of it; the band is several thousand.
-        QVERIFY2(marked > 2000,
-                 qPrintable(QString("the frame has to be enlarged with the pixels it marks (%1)")
-                                .arg(marked)));
+        const QRectF zoom(QPointF(panel.left() + magnifierPanelPadding, panel.top() + magnifierPanelPadding),
+                          QSizeF(magnifierPanelWidth - magnifierPanelPadding * 2, magnifierZoomHeight));
+        QVERIFY(shot.rect().contains(zoom.toRect()));
+        const QPoint sample(qRound(at.x() * scale), qRound(at.y() * scale));
+        // Check a neighbourhood across the blue border. Each grid cell must be one
+        // original device pixel, at full brightness, with no smoothing or overlay.
+        for (int dy = -2; dy <= 2; ++dy)
+            for (int dx = -2; dx <= 2; ++dx) {
+                const QPoint probe = (zoom.center() + QPointF(dx * magnifierZoomCell + 3,
+                                                              dy * magnifierZoomCell + 3)).toPoint();
+                QCOMPARE(shot.pixelColor(probe), image.pixelColor(sample + QPoint(dx, dy)));
+            }
         overlay.hide();
     }
     // REG-090: an arrow key took its step in pixels of the grab and then rounded the
@@ -4341,10 +4569,8 @@ class UiTests : public QObject {
         QVERIFY2(!panel.intersects(bar->geometry()),
                  "the panel is drawn by the window and the bar is drawn over it, so the "
                  "panel has to be placed somewhere the bar is not");
-        // And in the pixels: the pointer sits on the left edge of the region, so the
-        // enlarged frame is a band that runs the whole way down the enlargement. The
-        // only thing allowed to break it is the grid, which is one line every cell;
-        // anything painted across the panel takes out a whole stretch of rows.
+        // The original light pixels must remain visible throughout the panel;
+        // a toolbar painted over it would remove a whole stretch of rows.
         const QImage shot = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
         artifact(overlay, "magnifier-clear-of-the-bar.png");
         const QRect zoom(panel.topLeft() + QPoint(magnifierPanelPadding, magnifierPanelPadding),
@@ -4353,14 +4579,14 @@ class UiTests : public QObject {
         int rows = 0;
         for (int row = zoom.top(); row < zoom.bottom(); ++row) {
             for (int column = zoom.left(); column < zoom.right(); ++column)
-                if (isAccentColour(shot.pixelColor(column, row))) {
+                if (shot.pixelColor(column, row) == QColor(240, 240, 240)) {
                     ++rows;
                     break;
                 }
         }
         QVERIFY2(rows >= zoom.height() * 4 / 5,
                  qPrintable(QString("the enlargement has to be readable from top to bottom "
-                                    "(%1 of %2 rows show the frame)")
+                                    "(%1 of %2 rows show source pixels)")
                                 .arg(rows)
                                 .arg(zoom.height())));
         overlay.hide();

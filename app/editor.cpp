@@ -1,5 +1,7 @@
 #include "editor.h"
 #include "agentprotocol.h"
+#include "aifeedbacksnapshot.h"
+#include "aiinstructionsdialog.h"
 #include <QActionGroup>
 #include "ocr.h"
 #include "diagnostics.h"
@@ -43,10 +45,12 @@
 #include <QTransform>
 #include <QWheelEvent>
 #include <QUrl>
+#include <algorithm>
 #include <cmath>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTabBar>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QLabel>
@@ -54,6 +58,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -63,6 +68,7 @@
 #include <QShortcut>
 #include <QSizeGrip>
 #include <QStackedWidget>
+#include <QStyleOption>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -83,6 +89,7 @@ QString toolbarGlyph(const QString &id) {
     if (id == "copyJson") return "json-copy-file";
     if (id == "copyJsonText") return "json-copy-text";
     if (id == "exportJson") return "json";
+    if (id == "generateInstructions") return "notes";
     if (id == "capture") return "capture";
     if (id == "fit") return "fit";
     if (id == "copyImage") return "image-copy";
@@ -175,6 +182,39 @@ void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configu
         parent.rmdir(name);
     }
 }
+// The editor's own bar: its height, and the inset the shell keeps around the client
+// area inside the window frame.
+constexpr int kTitleBarHeight = 42;
+constexpr int kShellInset = 1;
+// Qt keeps widget content out of the strip the window's title bar occupies — on macOS
+// that strip is where the traffic lights are — by giving every widget in it a matching
+// content margin, and that margin cannot be cleared. The editor's bar belongs in that
+// strip on purpose, so its row lays itself out over the bar's whole rect and the two
+// labels it carries paint over their own rect instead of a shrunk content rect.
+class TitleRowLayout final : public QHBoxLayout {
+  public:
+    using QHBoxLayout::QHBoxLayout;
+    void setGeometry(const QRect &rect) override {
+        QWidget *parent = parentWidget();
+        QHBoxLayout::setGeometry(parent ? parent->rect() : rect);
+    }
+};
+class RowLabel final : public QLabel {
+  public:
+    using QLabel::QLabel;
+
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        QStyleOption opt;
+        opt.initFrom(this);
+        style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+        painter.setPen(palette().color(foregroundRole()));
+        painter.setFont(font());
+        painter.drawText(rect(), int(alignment()) | Qt::TextSingleLine, text());
+    }
+};
+
 class JsonPreview final : public QPlainTextEdit {
   public:
     using QPlainTextEdit::QPlainTextEdit;
@@ -204,26 +244,63 @@ class JsonPreview final : public QPlainTextEdit {
 };
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    // macOS keeps the system title bar so close, minimize and zoom stay the
+    // traffic lights the platform expects; the title itself is hidden and the
+    // window's own bar is drawn over it (platform_mac.mm). The other desktops
+    // have no such controls and take the frameless window with our own buttons.
+    const bool nativeControls = usesNativeWindowControls();
+    setWindowFlags(nativeControls ? Qt::Window : Qt::Window | Qt::FramelessWindowHint);
+    if (nativeControls) {
+        // AppKit can drop the full-height client area at a moment that delivers no event
+        // of its own, and the bar would then sit a titlebar lower than the traffic
+        // lights. Re-checking while the window is visible keeps them on one row.
+        titleBarGuard_ = new QTimer(this);
+        titleBarGuard_->setInterval(1000);
+        connect(titleBarGuard_, &QTimer::timeout, this, [this] {
+            ensureNativeTitleBar(this);
+            alignNativeTitleBarRow();
+        });
+    }
+#ifdef Q_OS_WIN
+    // This is an opaque editor, not a capture overlay. A translucent top-level
+    // uses a layered backing store on Windows, which can leave most of the
+    // surface transparent after moving between monitors with different DPI.
+    setAutoFillBackground(true);
+#elif !defined(Q_OS_MAC)
     setAttribute(Qt::WA_TranslucentBackground);
+#endif
     setAcceptDrops(true);
     setMinimumSize(740, 400);
-    auto outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    auto shell = new QWidget(this);
-    shell->setObjectName("editorShell");
-    outer->addWidget(shell);
+    // macOS: once the client area covers the title bar, Qt reserves that bar as a top
+    // content margin of this window and of the one widget filling it, and the margin
+    // cannot be cleared. A layout in either of them would then start a titlebar down,
+    // with the bar's tools on the row below the traffic lights. So the shell and the bar
+    // are placed against the window by hand, and only the body they leave below takes a
+    // layout — that deep, Qt no longer adds the margin.
+    shell_ = new QWidget(this);
+    shell_->setObjectName("editorShell");
+    auto bar = new DragBar(shell_, true);
+    bar_ = bar;
+    body_ = new QWidget(shell_);
+    QWidget *shell = body_;
+    fitShell();
     auto layout = new QVBoxLayout(shell);
-    layout->setContentsMargins(1, 1, 1, 1);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    auto bar = new DragBar(shell);
-    bar->setFixedHeight(42);
-    auto header = new QHBoxLayout(bar);
-    header->setContentsMargins(14, 0, 6, 0);
-    auto brand = new QLabel(bar);
+    bar->setObjectName("editorTitleBar");
+    bar->setFixedHeight(kTitleBarHeight);
+    auto header = new TitleRowLayout(bar);
+    // The traffic lights sit in the window's top-left corner, so the brand starts
+    // clear of them; everywhere else the bar keeps its compact inset. On macOS the row
+    // is re-fitted to the system's own row once the window exists.
+    header->setContentsMargins(nativeControls ? 78 : 14, 0, 6, 0);
+    titleRow_ = header;
+    nativeControls_ = nativeControls;
+    auto brand = new RowLabel(bar);
     brand->setObjectName("brand");
     header->addWidget(brand);
-    meta_ = mutedLabel({}, bar);
+    meta_ = new RowLabel({}, bar);
+    meta_->setProperty("muted", true);
     meta_->setObjectName("captureContextLabel"); meta_->setTextFormat(Qt::PlainText);
     meta_->setMaximumWidth(360); meta_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     header->addSpacing(10);
@@ -287,15 +364,23 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     header->addWidget(capture);
     header->addWidget(settings);
     header->addWidget(help);
-    header->addWidget(minimize);
-    header->addWidget(fullscreen_);
-    header->addWidget(close);
+    // With the system title bar the traffic lights are the window controls: the
+    // editor's own three buttons would be a second, wrong set in the top right.
+    // They keep their actions (and remain the fullscreen state holder) but leave
+    // the layout, so the bar ends at the tools above.
+    if (nativeControls) {
+        for (auto button : {minimize, fullscreen_, close})
+            button->hide();
+    } else {
+        header->addWidget(minimize);
+        header->addWidget(fullscreen_);
+        header->addWidget(close);
+    }
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
     connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
     connect(close, &QPushButton::clicked, this, &QWidget::close);
-    layout->addWidget(bar);
     agentBanner_ = new QWidget(shell);
     agentBanner_->setObjectName("agentSessionBanner");
     auto agentRow = new QHBoxLayout(agentBanner_);
@@ -406,6 +491,24 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     emptyWell_->setGeometry(imageScroll_->viewport()->rect());
     emptyWell_->hide();
     layout->addLayout(content, 1);
+    setBar_ = new QWidget(shell);
+    setBar_->setObjectName("imageSetBar");
+    auto setRow = new QHBoxLayout(setBar_);
+    setRow->setContentsMargins(14, 6, 14, 6);
+    setTitle_ = new QLabel(setBar_);
+    setTabs_ = new QTabBar(setBar_);
+    setTabs_->setObjectName("imageSetTabs");
+    setTabs_->setExpanding(false);
+    setTabs_->setUsesScrollButtons(true);
+    setRow->addWidget(setTitle_);
+    setRow->addWidget(setTabs_, 1);
+    auto groupNotes = textButton(tr("整组意见"), false, setBar_);
+    groupNotes->setObjectName("imageSetGroupNotes");
+    setRow->addWidget(groupNotes);
+    connect(groupNotes, &QPushButton::clicked, this, &Editor::editGroupNotes);
+    connect(setTabs_, &QTabBar::currentChanged, this, &Editor::selectSetPage);
+    setBar_->hide();
+    layout->addWidget(setBar_);
     layout->addWidget(videoPlayback_);
     videoPlayback_->hide();
     connect(videoPlayback_, &VideoPlayback::framePaused, this, &Editor::showVideoPreview);
@@ -511,6 +614,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         }
         else if (definition.id == "copyJson") connect(button, &QPushButton::clicked, this, &Editor::copyJson);
         else if (definition.id == "exportJson") connect(button, &QPushButton::clicked, this, &Editor::exportJson);
+        else if (definition.id == "generateInstructions") connect(button, &QPushButton::clicked, this, &Editor::generateInstructions);
         else if (definition.id == "capture") connect(button, &QPushButton::clicked, this, &Editor::captureRequested);
         else if (definition.id == "fit") connect(button, &QPushButton::clicked, this, &Editor::fit);
         else if (definition.id == "copyImage") connect(button, &QPushButton::clicked, this, &Editor::copyImage);
@@ -749,7 +853,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     const auto previousMode = canvas_->mode();
     const auto previousOrigin = imageScroll_->imageOrigin();
     const bool previousFitted = fitted_;
-    if (!switchingVideoFrame_) clearVideo();
+    if (!switchingVideoFrame_ && !switchingSetPage_) { clearVideo(); clearImageSet(); }
     if (!preserveView) {
         annotationsVisible_ = true;
         updateAnnotationVisibility();
@@ -760,7 +864,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     normalizeNoteParents(doc_);
     for (const auto &note : doc_.notes) recognizedRegions_.insert(note.id, recognitionKey(note));
     videoPreview_ = false;
-    if (!switchingVideoFrame_) projectPath_ = projectPath;
+    if (!switchingVideoFrame_ && !switchingSetPage_) projectPath_ = projectPath;
     detailsStack_->setEnabled(true);
     undoHistory_.clear();
     redoHistory_.clear();
@@ -784,7 +888,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     QRect available = QGuiApplication::screenAt(QCursor::pos())
                           ? QGuiApplication::screenAt(QCursor::pos())->availableGeometry()
                           : QGuiApplication::primaryScreen()->availableGeometry();
-    if (!switchingVideoFrame_ && !isFullScreen() && !isMaximized()) {
+    if (!switchingVideoFrame_ && !switchingSetPage_ && !isFullScreen() && !isMaximized()) {
         resize(std::min(1260, available.width() - 60), std::min(850, available.height() - 80));
         move(available.center() - rect().center());
     }
@@ -833,6 +937,76 @@ void Editor::detectCurrentFrame(int generation) {
     });
     watcher->setFuture(QtConcurrent::run([image = doc_.image] { return detectBlocks(image); }));
 }
+void Editor::clearImageSet() {
+    imageSet_.reset(); setPageIndex_ = -1;
+    if (setBar_) setBar_->hide();
+}
+void Editor::commitSetPage() {
+    if (!imageSet_ || switchingSetPage_ || setPageIndex_ < 0 || setPageIndex_ >= imageSet_->pages.size()) return;
+    imageSet_->pages[setPageIndex_].document = doc_;
+    if (doc_.dirty) imageSet_->dirty = true;
+}
+void Editor::updateSetPages() {
+    if (!imageSet_ || !setTabs_) return;
+    QSignalBlocker blocked(setTabs_);
+    while (setTabs_->count() > imageSet_->pages.size()) setTabs_->removeTab(setTabs_->count() - 1);
+    for (int i = 0; i < imageSet_->pages.size(); ++i) {
+        const auto &page = imageSet_->pages[i];
+        int count = page.document.notes.size();
+        if (page.document.layout) for (const auto &marker : movementMarkers(*page.document.layout, page.document.notes)) if (marker.noteIndex < 0) ++count;
+        const QString label = count ? QString("%1 · %2").arg(page.name).arg(count) : page.name;
+        if (i >= setTabs_->count()) setTabs_->addTab(label); else setTabs_->setTabText(i, label);
+        setTabs_->setTabToolTip(i, page.name);
+    }
+    setTabs_->setCurrentIndex(setPageIndex_);
+    setTitle_->setText(imageSet_->name);
+    setTitle_->setToolTip(tr("只返回有批注的页面；AI 按页面 ID 维护组图"));
+    setBar_->show();
+}
+void Editor::selectSetPage(int index) {
+    if (!imageSet_ || index < 0 || index >= imageSet_->pages.size() || index == setPageIndex_) return;
+    finishNoteEdit(); commitSetPage();
+    setPageIndex_ = index;
+    switchingSetPage_ = true;
+    setDocument(imageSet_->pages[index].document);
+    switchingSetPage_ = false;
+    updateSetPages();
+}
+void Editor::setImageSet(ImageSet project, const QString &path) {
+    validateImageSet(project);
+    finishNoteEdit(); clearVideo(); clearImageSet();
+    imageSet_ = std::move(project); setPageIndex_ = -1;
+    projectPath_ = path;
+    selectSetPage(0);
+}
+void Editor::editGroupNotes() {
+    if (!imageSet_) return;
+    finishNoteEdit();
+    QDialog dialog(this); dialog.setWindowTitle(tr("整组意见")); dialog.resize(520, 320);
+    auto layout = new QVBoxLayout(&dialog);
+    auto hint = new QLabel(tr("针对整个项目的要求会单独返回给 AI，无需给每一页重复批注。"), &dialog);
+    hint->setWordWrap(true); layout->addWidget(hint);
+    auto text = new QPlainTextEdit(&dialog);
+    QStringList previous;
+    for (const auto &note : imageSet_->groupNotes) previous.append(note.toObject()["text"].toString());
+    text->setPlainText(previous.join("\n\n")); layout->addWidget(text);
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted || !imageSet_) return;
+    const auto value = text->toPlainText().trimmed();
+    if (value == previous.join("\n\n")) return;
+    if (value.size() > 10000) { showError(tr("整组意见不能超过 10000 字符")); return; }
+    imageSet_->groupNotes = {};
+    if (!value.isEmpty()) imageSet_->groupNotes.append(QJsonObject{{"number", 1}, {"text", value}});
+    imageSet_->dirty = true; updateSetPages();
+}
+void Editor::markFeedbackSubmitted() {
+    doc_.dirty = false;
+    if (imageSet_) { imageSet_->dirty = false; for (auto &page : imageSet_->pages) page.document.dirty = false; }
+    if (video_) { video_->dirty = false; for (auto &frame : video_->frames) frame.document.dirty = false; }
+}
 void Editor::clearVideo() {
     video_.reset(); videoFrameUs_ = -1;
     videoPreview_ = false;
@@ -841,7 +1015,8 @@ void Editor::clearVideo() {
     if (detailsStack_) detailsStack_->setEnabled(true);
 }
 void Editor::loadMedia(const QString &path) {
-    if (isVideoFile(path)) {
+    if (isImageSetFile(path)) { setImageSet(loadImageSet(path), path.endsWith(".edithere", Qt::CaseInsensitive) ? path : QString()); }
+    else if (isVideoFile(path)) {
         if (!QFileInfo(path).isFile()) throw std::runtime_error(tr("视频文件不存在").toStdString());
         VideoProject project;
         project.source = QFileInfo(path).absoluteFilePath();
@@ -854,6 +1029,7 @@ void Editor::loadMedia(const QString &path) {
     }
 }
 void Editor::setVideoProject(VideoProject project, const QString &path) {
+    clearImageSet();
     dismissGuide(); finishNoteEdit(); clearVideo(); resetLayoutTools(); ++generation_;
     video_ = std::move(project); projectPath_ = path;
     doc_ = {}; canvas_->setDocument(nullptr); undoHistory_.clear(); redoHistory_.clear();
@@ -1030,16 +1206,19 @@ VideoProject Editor::videoProject() {
     return *video_;
 }
 int Editor::totalAnnotationCount() {
+    if (imageSet_) { finishNoteEdit(); commitSetPage(); return imageSetAnnotationCount(*imageSet_); }
     if (video_) { finishNoteEdit(); commitVideoFrame(); return videoAnnotationCount(*video_); }
     return annotationCount(doc_);
 }
 QByteArray Editor::projectBytes() {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); return serializeImageSet(*imageSet_); }
     if (video_ && videoPreview_) video_->positionMs = videoPlayback_->positionMs();
     return video_ ? serializeVideoProject(*video_) : serializeDocument(doc_, true);
 }
 QByteArray Editor::feedbackBytes(bool embed, bool /*compress*/) {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); FeedbackExportOptions setOptions; setOptions.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None; setOptions.includeRecognizedText = preferences_.includeRecognizedText; setOptions.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, setOptions).json; }
     FeedbackExportOptions options; options.mode = embed ? ImageExportMode::Embedded : ImageExportMode::None;
     options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
@@ -1088,8 +1267,14 @@ void Editor::updateFullscreenButton() {
 }
 void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange)
+    if (event->type() == QEvent::WindowStateChange) {
         updateFullscreenButton();
+        // Entering or leaving full screen has the system re-apply the window's style
+        // mask, which can drop the full-height client area the bar sits under, and it
+        // takes the traffic lights away with the title bar.
+        ensureNativeTitleBar(this);
+        alignNativeTitleBarRow();
+    }
     if (event->type() == QEvent::LanguageChange) {
         // Cards cache their own placeholder and fold labels, so commit the pending
         // edit and let renderNotes() build them again in the new language.
@@ -1142,8 +1327,21 @@ void Editor::zoomAt(double value, QPointF viewportAnchor) {
     imageScroll_->setImageOrigin(viewportAnchor - imagePoint * canvas_->zoom());
     zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
 }
+void Editor::fitShell() {
+    if (!shell_)
+        return;
+    const int width = this->width(), height = this->height();
+    const int inner = std::max(0, width - 2 * kShellInset);
+    shell_->setGeometry(0, 0, width, height);
+    if (bar_)
+        bar_->setGeometry(kShellInset, kShellInset, inner, kTitleBarHeight);
+    if (body_)
+        body_->setGeometry(kShellInset, kShellInset + kTitleBarHeight, inner,
+                           std::max(0, height - 2 * kShellInset - kTitleBarHeight));
+}
 void Editor::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
+    fitShell();
     if (wave_)
         wave_->setGeometry(imageScroll_->viewport()->rect());
     if (emptyWell_)
@@ -1153,6 +1351,50 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, [this] {
             if (fitted_) fit();
         });
+}
+void Editor::alignNativeTitleBarRow() {
+    if (!titleRow_ || !nativeControls_)
+        return;
+    const NativeTitleBarRow row = nativeTitleBarRow(this);
+    // Without a system row of its own (full screen, or a platform that draws no traffic
+    // lights) the bar keeps its own compact inset and centers normally.
+    const int left = row.available ? std::max(row.controlsRight + 9, 0) : 14;
+    // With one, the bar shares that row: its controls are centered on the traffic lights
+    // and the brand starts clear of their right edge. A control is taller than the room
+    // above that center, so the row stops at the bar's top edge and every control stays
+    // inside the window instead of hanging out of it.
+    int tallest = 0;
+    for (int i = 0; i < titleRow_->count(); ++i)
+        if (QWidget *item = titleRow_->itemAt(i)->widget(); item && !item->isHidden())
+            tallest = std::max(tallest, item->sizeHint().height());
+    int bottom = 0;
+    if (row.available)
+        bottom = std::clamp(kTitleBarHeight + 2 * kShellInset - 2 * row.centerY, 0,
+                            std::max(0, kTitleBarHeight - tallest));
+    const QMargins wanted(left, 0, 6, bottom);
+    if (titleRow_->contentsMargins() != wanted)
+        titleRow_->setContentsMargins(wanted);
+}
+void Editor::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    fitShell();
+    // macOS: the window is ordered on screen here, and a style mask set while that is
+    // happening can be dropped, which would push the whole window's content down.
+    ensureNativeTitleBar(this);
+    alignNativeTitleBarRow();
+    if (titleBarGuard_)
+        titleBarGuard_->start();
+}
+void Editor::hideEvent(QHideEvent *event) {
+    QWidget::hideEvent(event);
+    if (titleBarGuard_)
+        titleBarGuard_->stop();
+}
+void Editor::moveEvent(QMoveEvent *event) {
+    QWidget::moveEvent(event);
+    // macOS: moving the window, including a native drag of the title bar, has the
+    // system reconfigure it; the full-height client area has to survive that.
+    ensureNativeTitleBar(this);
 }
 void Editor::setPreferences(const AppSettings &settings) {
     const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;
@@ -1183,7 +1425,7 @@ void Editor::updateToolbar() {
                     : tr("复制 JSON 文本（默认不携带原图信息），适用于无法发送文件的 Agent。"))
                 : definition.label);
         button->setAccessibleName(definition.label);
-        const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" ||
+        const bool labelled = definition.id == "copyJson" || definition.id == "copyJsonText" || definition.id == "generateInstructions" ||
                               definition.id == "exportJson" || (!compact && definition.id == "copyImage");
         button->setProperty("tool", !labelled);
         button->setProperty("primary", definition.id == "copyJson");
@@ -1198,7 +1440,7 @@ void Editor::updateToolbar() {
     // Keep the permanent tools accessible when optional actions exceed the window width.
     if (dock_) {
         dock_->invalidate();
-        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson"};
+        const QStringList overflowOrder{"fit", "capture", "copyImage", "saveImage", "exportJson", "saveProject", "copyJsonText", "copyJson", "generateInstructions"};
         for (const auto &id : overflowOrder) {
             if (dock_->sizeHint().width() <= width()-2) break;
             if (auto button = outputButtons_.value(id); button && !button->isHidden()) {
@@ -2012,7 +2254,9 @@ void Editor::showJsonHelp() {
         "<h3>2. 都不支持上传，只支持对话怎么办？</h3>"
         "<p>可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。</p>"
         "<h3>3. AI 没认出来原图信息怎么办？</h3>"
-        "<p>可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。</p>"));
+        "<p>可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。</p>"
+        "<h3>4. 粘贴文件时只有 JSON，没有图片？</h3>"
+        "<p>部分客户端只接收文件列表中的一个附件。先粘贴“复制 JSON 内容”，再用“复制带批注图片”（Ctrl+C）单独粘贴 PNG 图片。按钮若未显示，可从底部“更多”菜单进入。组图和视频按需逐页或逐帧复制，也可保存图片后拖入客户端。</p>"));
     help.setStandardButtons(QMessageBox::Ok);
     help.exec();
 }
@@ -2037,6 +2281,7 @@ void Editor::changed(bool contentChanged) {
     if (contentChanged)
         doc_.dirty = true;
     if (video_) { if (contentChanged) video_->dirty = true; commitVideoFrame(); }
+    if (imageSet_) { if (contentChanged) imageSet_->dirty = true; commitSetPage(); updateSetPages(); }
     canvas_->refresh();
     if (layoutCanvas_)
         layoutCanvas_->setAnnotations(doc_.notes);
@@ -2280,7 +2525,14 @@ void Editor::copyImage() {
     if (videoPreview_ && !ensureVideoAnnotationFrame()) return;
     if (hasDocument()) {
         try {
-            QApplication::clipboard()->setImage(previewImage(doc_));
+            const auto image = previewImage(doc_);
+            const auto png = encodePng(image);
+            auto mime = new QMimeData;
+            mime->setImageData(image);
+            // Image-only paste must also work in clients that request PNG bytes
+            // instead of Qt's native image format. Keep file-list copy separate.
+            mime->setData("image/png", png);
+            QApplication::clipboard()->setMimeData(mime);
             toast(tr("带批注图片已复制"));
         } catch (const std::exception &error) {
             showError(QString::fromUtf8(error.what()));
@@ -2314,6 +2566,7 @@ bool Editor::saveProject() {
         saveBytes(path, bytes);
         projectPath_ = path;
         doc_.dirty = false;
+        if (imageSet_) { imageSet_->dirty = false; for (auto &page : imageSet_->pages) page.document.dirty = false; }
         if (video_) { video_->dirty = false; for (auto &frame : video_->frames) frame.document.dirty = false; }
         QString associationError;
         if (!QStandardPaths::isTestModeEnabled())
@@ -2336,7 +2589,7 @@ void Editor::setAgentSession(bool active) {
 bool Editor::hasUnsavedChanges() {
     finishNoteEdit();
     // Agent requests also protect images that exist only in this editor.
-    return doc_.dirty || (video_ && video_->dirty) || (hasDocument() && projectPath_.isEmpty() &&
+    return doc_.dirty || (imageSet_ && imageSet_->dirty) || (video_ && video_->dirty) || (hasDocument() && projectPath_.isEmpty() &&
                           (doc_.source == "screen" || doc_.source == "clipboard"));
 }
 QByteArray Editor::agentFeedback(bool embed) {
@@ -2345,6 +2598,7 @@ QByteArray Editor::agentFeedback(bool embed) {
 }
 FeedbackBundle Editor::agentFeedbackBundle(FeedbackExportOptions options) {
     finishNoteEdit(); commitVideoFrame();
+    if (imageSet_) { commitSetPage(); options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle; return buildImageSetFeedbackBundle(*imageSet_, options); }
     // The bundle contains every annotated frame. Reveal the unresolved frame
     // before reporting the same validation error used by all export boundaries.
     auto revealUnresolved = [this](const Document &document, qint64 frameUs) {
@@ -2374,7 +2628,7 @@ bool Editor::allowReplace() {
         return false;
     }
     finishNoteEdit();
-    if (!doc_.dirty && (!video_ || !video_->dirty))
+    if (!doc_.dirty && (!imageSet_ || !imageSet_->dirty) && (!video_ || !video_->dirty))
         return true;
     auto answer = QMessageBox::question(
         this, tr("保留当前修改？"), tr("当前批注或布局修改尚未保存。是否先保存项目？"),
@@ -2392,7 +2646,7 @@ void Editor::openEmpty() {
         return;
     ++generation_;
     cancelRegionRecognition();
-    clearVideo();
+    clearVideo(); clearImageSet();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};
@@ -2443,7 +2697,7 @@ void Editor::updateEmptyState() {
 }
 bool Editor::confirmDiscardOnClose() {
     finishNoteEdit();
-    if (!doc_.dirty && (!video_ || !video_->dirty))
+    if (!doc_.dirty && (!imageSet_ || !imageSet_->dirty) && (!video_ || !video_->dirty))
         return true;
     // What the box said the last time it was shown: from then on closing throws the
     // changes away. Saving is still one button away while the window is open, so
@@ -2469,9 +2723,20 @@ bool Editor::confirmDiscardOnClose() {
 }
 void Editor::openFile(const QString &provided) {
     QString path = provided;
-    if (path.isEmpty())
-        path = QFileDialog::getOpenFileName(this, tr("打开图片、视频或项目"), {},
+    if (path.isEmpty()) {
+        const auto paths = QFileDialog::getOpenFileNames(this, tr("打开图片、视频或项目"), {},
             tr("图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)"));
+        if (paths.size() > 1) {
+            if (!allowReplace()) return;
+            try {
+                ImageSet set; set.name = tr("项目组图");
+                for (const auto &file : paths) { auto document = loadDocument(file); set.pages.append({uniqueId(), QFileInfo(file).completeBaseName(), std::move(document)}); }
+                setImageSet(std::move(set));
+            } catch (const std::exception &error) { showError(QString::fromUtf8(error.what())); }
+            return;
+        }
+        if (!paths.isEmpty()) path = paths.first();
+    }
     if (path.isEmpty())
         return;
     try {
@@ -2542,6 +2807,13 @@ void Editor::exportJson() {
     auto json = new JsonPreview(&dialog); json->setAccessibleName(tr("标准化 JSON")); json->setReadOnly(true);
     json->setLineWrapMode(QPlainTextEdit::WidgetWidth); json->setFont(QFont(h2d::monoFontFamily(), 10)); layout->addWidget(json, 1);
     auto status = mutedLabel({}, &dialog); status->setObjectName("exportStatus"); status->setWordWrap(true); layout->addWidget(status);
+    auto ai = textButton(tr("AI解析"), false, &dialog);
+    ai->setObjectName("generateInstructions");
+    ai->setIcon(glyph("notes"));
+    ai->setToolTip(tr("AI 解析（预览）：把画面与批注转成文字需求，结果请核对。"));
+    connect(ai, &QPushButton::clicked, &dialog, [&] {
+        dialog.accept(); QTimer::singleShot(0, this, &Editor::generateInstructions);
+    });
     auto row = new QHBoxLayout;
     auto close = textButton(tr("关闭"), false, &dialog),
          copy = textButton(tr("复制 JSON 与图片"), true, &dialog), copyText = textButton(tr("复制 JSON 内容"), false, &dialog);
@@ -2550,7 +2822,7 @@ void Editor::exportJson() {
     copy->setProperty("glyphName", "json-copy-file"); copy->setIcon(glyph("json-copy-file", Qt::white));
     copyText->setProperty("glyphName", "json-copy-text"); copyText->setIcon(glyph("json-copy-text"));
     makeCopyJsonTextOptions(copyText, "copyJsonTextOptions");
-    row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(copy); layout->addLayout(row);
+    row->addWidget(ai); row->addStretch(); row->addWidget(close); row->addWidget(copyText); row->addWidget(copy); layout->addLayout(row);
     FeedbackBundle bundle;
     auto refresh = [&] {
         try {
@@ -2564,10 +2836,11 @@ void Editor::exportJson() {
                 if (image.contains("dataUrl")) image["dataUrl"] = image["dataUrl"].toString().section(',', 0, 0) + tr(",[图片编码已折叠]");
                 feedback["image"] = image; return feedback;
             };
-            if (video_) {
-                auto frames = readable["frames"].toArray();
+            if (video_ || imageSet_) {
+                const QString key = imageSet_ ? "pages" : "frames";
+                auto frames = readable[key].toArray();
                 for (qsizetype index = 0; index < frames.size(); ++index) { auto frame = frames[index].toObject(); frame["feedback"] = fold(frame["feedback"].toObject()); frames[index] = frame; }
-                readable["frames"] = frames;
+                readable[key] = frames;
             } else readable = fold(readable);
             json->setPlainText(QString::fromUtf8(formatFeedbackJson(readable, true)));
             copy->setEnabled(true); copyText->setEnabled(true);
@@ -2609,6 +2882,40 @@ void Editor::exportJson() {
         } catch (const std::exception &error) { status->setText(QString::fromUtf8(error.what())); }
     });
     refresh(); dialog.exec();
+}
+void Editor::generateInstructions() {
+    if (!hasDocument() && !video_) return;
+    finishNoteEdit(); commitVideoFrame();
+    AiFeedbackInput input;
+    try {
+        FeedbackExportOptions options;
+        options.mode = ImageExportMode::None;
+        // Single-image and video exports reveal an unresolved child in the editor.
+        // The set snapshot already runs the set export, so don't build it twice.
+        if (!imageSet_) agentFeedbackBundle(options);
+        options.includeRecognizedText = preferences_.includeRecognizedText;
+        options.includeWindowTitle = preferences_.includeWindowTitle;
+        commitSetPage();
+        input = imageSet_ ? aiFeedbackSnapshot(*imageSet_, options) : video_ ? aiFeedbackSnapshot(*video_, options) : aiFeedbackSnapshot(doc_, options);
+    } catch (const std::exception &error) {
+        showError(QString::fromUtf8(error.what())); return;
+    }
+    AiInstructionsDraft draft;
+    for (;;) {
+        int result;
+        {
+            AiInstructionsDialog dialog(preferences_, input, this, nullptr, draft);
+            result = dialog.exec();
+            draft = dialog.draft();
+            const auto provider = preferences_.aiProviderId;
+            const auto prompt = preferences_.aiSystemPrompt;
+            dialog.applyTo(preferences_);
+            if (provider != preferences_.aiProviderId || prompt != preferences_.aiSystemPrompt)
+                emit aiPreferencesChanged(preferences_.aiProviderId, preferences_.aiSystemPrompt);
+        }
+        if (result != AiInstructionsDialog::Configure) break;
+        emit aiSettingsRequested();
+    }
 }
 void Editor::showContext(QPoint p) {
     finishNoteEdit();
@@ -2659,7 +2966,7 @@ void Editor::closeEvent(QCloseEvent *e) {
         return;
     ++generation_;
     cancelRegionRecognition();
-    clearVideo();
+    clearVideo(); clearImageSet();
     stopViewportPan();
     resetLayoutTools();
     doc_ = {};
@@ -2696,6 +3003,20 @@ void Editor::dropEvent(QDropEvent *e) {
         return;
     }
     const auto urls = e->mimeData()->urls();
+    if (urls.size() > 1) {
+        if (!allowReplace()) return;
+        try {
+            ImageSet set; set.name = tr("项目组图");
+            for (const auto &url : urls) {
+                if (!url.isLocalFile()) throw std::runtime_error("Only local images can be added to a set.");
+                auto document = loadDocument(url.toLocalFile());
+                set.pages.append({uniqueId(), QFileInfo(url.toLocalFile()).completeBaseName(), std::move(document)});
+            }
+            setImageSet(std::move(set)); e->acceptProposedAction();
+        } catch (const std::exception &error) { e->ignore(); showError(QString::fromUtf8(error.what())); }
+        return;
+    }
+
     if (!urls.isEmpty() && urls.first().isLocalFile()) {
         openFile(urls.first().toLocalFile());
         e->acceptProposedAction();

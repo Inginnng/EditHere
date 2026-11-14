@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:edithere:image-set-project:1",
+  "title": "EditHere Agent image set manifest",
+  "type": "object",
+  "required": ["schemaVersion", "name", "pages"],
+  "properties": {
+    "schemaVersion": {"const": "edithere-image-set-1"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+    "pages": {"type": "array", "maxItems": 64, "items": {
+      "type": "object", "required": ["id", "name", "path"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }}
+  }
+}
