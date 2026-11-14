@@ -72,6 +72,10 @@ Acceptance on real hardware should cover screenshots, annotations and layout cha
 | OCR | Tesseract TSV, run asynchronously, with banding and coordinate restoration | Explicitly reports a missing language pack, a failed launch, a timeout and a format error |
 | Distribution | linuxdeploy + Qt plugin to produce the AppImage | Official tools are pinned by SHA-256; ships the CLI, a desktop icon, file-association metadata and licences; no deb/Flatpak yet |
 
+When the system Screenshot portal has already selected a region, open its image directly in the editor. Older desktops that return a different request path are followed using the actual returned handle. Cancellation or failure restores the original editor and allows another capture or annotation.
+
+If the desktop lacks the GlobalShortcuts portal, other settings can still be saved with a notice to use the tray or system shortcuts. Keys that were not registered are not shown as active. Denied authorisation and shortcut conflicts still reject the attempted save.
+
 ## Build and packaging
 
 Depends on GCC, CMake, Ninja, Qt 6.8.3 gcc_64, X11, XTest, AT-SPI and libsecret (`libsecret-1-dev`) development libraries. CMake fetches pinned QtKeychain; the desktop session supplies the runtime credential service for API keys. If it is unavailable, the app reports an error without falling back to plaintext. Wayland scrolling capture also needs the optional PipeWire 1.0.4 or later development libraries; without them the build keeps ordinary screenshots. An AppImage with PipeWire enabled carries matching versions of the client main library, modules, SPA plugins and configuration, and the packaging environment must provide `libpipewire-0.3-modules`, `libspa-0.2-modules` and `pipewire-bin`. For the full dependency list see `.github/workflows/native-linux.yml`; Qt Wayland comes with the base SDK and is not an optional aqt module.

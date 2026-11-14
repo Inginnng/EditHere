@@ -14,6 +14,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
+#include <dwmapi.h>
 #endif
 
 using namespace h2d;
@@ -190,6 +191,10 @@ int runFixture(QApplication &app) {
     ShowWindow(root, SW_SHOWNOACTIVATE);
     UpdateWindow(root);
     UpdateWindow(child);
+    // Report readiness after this process has submitted its own GDI batches.
+    // A DwmFlush in the capturing process cannot flush another thread's GDI.
+    GdiFlush();
+    DwmFlush();
     state.metadata = QJsonObject{{"window", QString::number(quintptr(root))},
         {"child", QString::number(quintptr(child))}, {"processId", int(GetCurrentProcessId())},
         {"nativeRect", rectJson(QRect(left, top, width, height))},

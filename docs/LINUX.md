@@ -72,6 +72,10 @@ echo "$XDG_SESSION_TYPE"
 | OCR | Tesseract TSV，异步运行、分条带坐标还原 | 明确提示语言包缺失、启动失败、超时和格式错误 |
 | 分发 | linuxdeploy + Qt 插件生成 AppImage | 官方工具固定 SHA-256；附 CLI、桌面图标、文件关联元数据与许可；暂不提供 deb/Flatpak |
 
+系统 Screenshot Portal 已经完成选区时，截图直接进入编辑器；旧桌面返回不同请求路径时，使用实际返回的路径接收结果。取消或失败后恢复原编辑窗口，允许继续批注或重新截图。
+
+桌面缺少 GlobalShortcuts Portal 时，设置仍可保存，并明确提示使用托盘或系统快捷键；未注册成功的按键不会显示为已生效。用户取消授权或快捷键冲突仍会阻止该次保存。
+
 ## 构建与打包
 
 依赖 GCC、CMake、Ninja、Qt 6.8.3 gcc_64、X11、XTest、AT-SPI 和 libsecret（`libsecret-1-dev`）开发库。QtKeychain 由 CMake 获取固定版本，API Key 的运行时凭据服务由桌面会话提供；不可用时明确报错，不退回明文。Wayland 长截图还需要可选的 PipeWire 1.0.4 及以上开发库；缺少时构建保留普通截图。启用 PipeWire 的 AppImage 会携带匹配版本的客户端主库、模块、SPA 插件与配置，打包环境须提供 `libpipewire-0.3-modules`、`libspa-0.2-modules` 和 `pipewire-bin`。完整依赖清单见 `.github/workflows/native-linux.yml`；Qt Wayland 随基础 SDK 提供，不是 aqt 的可选模块。
