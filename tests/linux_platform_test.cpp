@@ -381,8 +381,12 @@ class LinuxPlatformTests : public QObject {
         const auto anonymousTarget = scrollCaptureTargetAt(region.center());
         QCOMPARE(anonymousTarget.window, target.window);
         QCOMPARE(anonymousTarget.processId, quint32(0));
-        captureScrollRegion(region, [&](auto image, auto message) { second = image; error = message; });
-        QCOMPARE(second, first);
+        // XSync waits for the server to destroy the blocker, but the foreign
+        // Qt client still needs to handle Expose and repaint the uncovered area.
+        QTRY_VERIFY_WITH_TIMEOUT(([&] {
+            captureScrollRegion(region, [&](auto image, auto message) { second = image; error = message; });
+            return !second.isNull() && second == first;
+        })(), 5000);
         QVERIFY(!scrollCaptureStep(anonymousTarget, region.center(), 1, &error));
         fixture.process.terminate(); QVERIFY(fixture.process.waitForFinished(5000));
         QVERIFY(!scrollCaptureStep(target, region.center(), 1, &error));
