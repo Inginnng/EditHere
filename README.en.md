@@ -146,15 +146,14 @@ Select a scrolling area and choose **Scrolling capture**. EditHere stitches whil
 | --- | --- |
 | 💾 **Projects** | `.edithere` projects embed the image, notes and editing state so you can pick up where you left off; video projects reference the source file and keep annotated frames. |
 | 📥 **Any input** | Capture, open, drop or paste PNG / JPEG / WebP / BMP, and MP4 / MOV / WebM videos. |
-<<<<<<< HEAD
-| 🎨 **Your way** | Light and dark themes, English and Simplified Chinese interface, 22 configurable shortcuts and a customisable toolbar. |
-| 🔒 **Local first** | Capture, element detection, OCR and editing run on your machine. The optional API generation feature sends this task's images and annotations to your chosen provider. |
-=======
 | 🎨 **Your way** | Light and dark themes, English, Simplified Chinese and Traditional Chinese interface, 22 configurable shortcuts and a customisable toolbar. |
-| 🔒 **Local first** | Capture, element detection, OCR and editing all run on your machine; EditHere never uploads your screen. |
->>>>>>> github/codex/native
-Same annotation and Explode model, two ways to run it: **the desktop app is the workhorse** — capture, video, scrolling capture and an automatic loop with local agents. **The web edition is a single HTML file** — double-click it, host it on any static site, and the material never leaves your machine.
+| 🔒 **Local first** | Capture, element detection, OCR and editing run on your machine. The optional API generation feature sends this task's images and annotations to your chosen provider. |
+
 ## Desktop and web editions
+
+Same annotation and Explode model, two ways to run it: **the desktop app is the workhorse** — capture, video, scrolling capture and an automatic loop with local agents. **The web edition is a single HTML file** — double-click it, host it on any static site, and the material never leaves your machine.
+
+| Capability | 💻 Desktop | 🌐 Web |
 | :--- | :--- | :--- |
 | **Best for** | Daily use, one shortcut away on any screen, the full feature set, tight loops with local AI tools | Nothing to install, out of the way, works as the annotation pane on the right of WorkBuddy / Codex and other AI workbenches |
 | **Image annotation** (points / boxes / smart select / global) | ✅ | ✅ |
@@ -198,15 +197,12 @@ Then, inside your project, just say:
 
 The desktop app needs an AI tool with access to your local terminal and files; the web edition also needs a host that supports MCP Apps, and falls back to the browser-compatible entry point when it does not. A web chat alone cannot install software on your computer. See the [AI setup guide](docs/AI-SETUP.en.md) and the [web setup guide](web/AI-SETUP.en.md).
 
-<<<<<<< HEAD
-=======
 ### VS Code Remote SSH: remote projects and local Windows annotation
 
 When developing a remote project through VS Code Remote SSH, download its screenshot to local Windows, annotate it in EditHere, then upload the feedback JSON and companion images together for the remote AI to read. Run the commands in **local Windows PowerShell**. This workflow transfers files between the two machines; it does not provide direct remote control of your local EditHere instance.
 
 See [AI and CLI · VS Code Remote SSH](docs/AGENT-CLI.en.md#vs-code-remote-ssh-remote-projects-and-local-windows-annotation) for commands and path details.
 
->>>>>>> github/codex/native
 ## Download and install
 
 | Platform | Download | Notes |
@@ -220,11 +216,7 @@ These links always point to the latest public release; check the [Releases](http
 <summary>Installation details, platform notes and upgrading</summary>
 
 - The Windows installer defaults to `%LOCALAPPDATA%\Programs\EditHere`. Its components page offers launch at login, adding the CLI to PATH and a desktop shortcut; launch at login and PATH are selected on a new install, and upgrades keep the existing startup registration. Reopen your terminal and AI tools afterwards so they pick up the new PATH. Uninstalling keeps your settings and projects.
-<<<<<<< HEAD
-- The Windows installer is **not yet code-signed**. Download it from this repository's Releases and verify the [SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
-=======
 - Windows uses free project signatures to authenticate in-app updates. This is not a publicly trusted Windows certificate; Unknown Publisher and SmartScreen warnings may remain. **Versions 0.12.7 and earlier need one manual upgrade**. Download from this repository’s Releases and check the [SHA-256 checksums](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt).
->>>>>>> github/codex/native
 - The minimum Windows target is Windows 10 1809+, developed and tested on Windows 11. The portable ZIP needs no separate Qt, Python, Node or .NET.
 - macOS requires 14+ and **is still a preview, without acceptance testing on a physical Mac or Apple notarization**; the scrolling capture backend compiles in the macOS build.
 - Linux preview: under Wayland, authorise a monitor first, then select the region in EditHere for manual scrolling capture; without PipeWire or ScreenCast support it falls back to the system region picker for ordinary screenshots. X11 supports manual capture and automatic vertical scrolling. See the [Linux guide](docs/LINUX.en.md).
@@ -244,11 +236,7 @@ The exported `feedback-minimal-4` keeps image verification, note positions, boxe
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-<<<<<<< HEAD
-  "tool": {"name": "EditHere", "version": "0.13.0"},
-=======
-  "tool": {"name": "EditHere", "version": "0.12.5"},
->>>>>>> github/codex/native
+  "tool": {"name": "EditHere", "version": "0.13.1"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // illustrative hash; send the original with this JSON
