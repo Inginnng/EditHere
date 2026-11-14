@@ -25,6 +25,9 @@ struct ScreenFrame {
     bool elementProbingAllowed = true;
     QVector<CaptureWindow> captureWindows; // Captured before opening our overlay.
     QString capturedAt; // Snapshot time, before interactive region selection.
+    // An interactive desktop portal already selected this image. It has no
+    // reliable screen origin and should open in the editor, without an overlay.
+    bool selectionComplete = false;
 };
 using CaptureCallback = std::function<void(QVector<ScreenFrame>, QString)>;
 // A scrolling session keeps the original window and its owner, rather than
@@ -103,6 +106,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
     QString lastError() const {
         return lastError_;
     }
+    bool unavailable() const { return unavailable_; }
     bool nativeEventFilter(const QByteArray &, void *, qintptr *) override;
   signals:
     void triggered();
@@ -110,6 +114,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
   private:
     QKeySequence sequence_;
     QString lastError_;
+    bool unavailable_ = false;
     QString actionId_ = "capture";
     QString description_;
     quint32 shortcutId_ = 0;

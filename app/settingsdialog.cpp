@@ -134,6 +134,11 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     auto shortcutLayout = new QVBoxLayout(shortcuts);
     shortcutLayout->setContentsMargins(32, 0, 32, 24);
     shortcutLayout->setSpacing(12);
+    globalShortcutNotice_ = mutedLabel({}, shortcuts);
+    globalShortcutNotice_->setObjectName("globalShortcutNotice");
+    globalShortcutNotice_->setWordWrap(true);
+    globalShortcutNotice_->hide();
+    shortcutLayout->addWidget(globalShortcutNotice_);
     auto scroll = new QScrollArea(shortcuts);
     scroll->setWidgetResizable(true);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -875,6 +880,10 @@ void SettingsDialog::showAi() {
 void SettingsDialog::setLaunchAtLoginNotice(const QString &notice) {
     launchAtLoginNotice_->setText(notice);
     launchAtLoginNotice_->setVisible(!notice.isEmpty());
+}
+void SettingsDialog::setGlobalShortcutNotice(const QString &notice) {
+    globalShortcutNotice_->setText(notice);
+    globalShortcutNotice_->setVisible(!notice.isEmpty());
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
     aiPage_->setSettings(settings);
