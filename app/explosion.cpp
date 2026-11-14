@@ -435,9 +435,10 @@ void LayoutCanvas::mousePressEvent(QMouseEvent *event) {
         return;
     setFocus();
     const auto notes = displayedAnnotations();
-    for (auto it = notes.crbegin(); it != notes.crend(); ++it) {
-        if (annotationsVisible_ && !it->isGlobal && QLineF(event->position(), noteAnchor(*it)).length() < 17) {
-            emit noteEditRequested(it->id, event->globalPosition().toPoint());
+    for (qsizetype index = notes.size(); index > 0; --index) {
+        const auto &note = notes.at(index - 1);
+        if (annotationsVisible_ && !note.isGlobal && QLineF(event->position(), noteAnchor(note)).length() < 17) {
+            emit noteEditRequested(note.id, event->globalPosition().toPoint());
             return;
         }
     }
