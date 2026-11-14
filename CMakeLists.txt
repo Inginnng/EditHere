@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.13.1 LANGUAGES C CXX)
+project(EditHere VERSION 0.13.2 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 # The AI module pulls in QtKeychain, whose Apple backend is Objective-C++. Enable
@@ -443,6 +443,17 @@ if(WIN32)
   add_test(NAME windows-capture-colors COMMAND windows_capture_tests -platform windows
     -o "${CMAKE_CURRENT_BINARY_DIR}/windows-capture-colors-test.log,txt")
   set_tests_properties(windows-capture-colors PROPERTIES TIMEOUT 30)
+
+  # Compile the production backend with deterministic capture failures. The
+  # replacement calls live only in this target, outside the application.
+  qt_add_executable(windows_capture_fallback_tests
+    tests/windows_capture_fallback_test.cpp app/windowscapture.cpp app/platform.h)
+  target_link_libraries(windows_capture_fallback_tests PRIVATE h2d_core h2d_diagnostics
+    Qt6::Widgets Qt6::Test user32 gdi32 dwmapi d3d11 dxgi ole32 oleaut32 uuid advapi32)
+  set_target_properties(windows_capture_fallback_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+  add_test(NAME windows-capture-fallback COMMAND windows_capture_fallback_tests -platform windows
+    -o "${CMAKE_CURRENT_BINARY_DIR}/windows-capture-fallback-test.log,txt")
+  set_tests_properties(windows-capture-fallback PROPERTIES TIMEOUT 30)
 
   include(cmake/WindowsTestRuntime.cmake)
   # All tests registered so far use Qt except these Node suites.

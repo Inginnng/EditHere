@@ -239,7 +239,7 @@ VS Code 通过 Remote SSH 开发远程项目时，可以把远程截图下载到
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": {"name": "EditHere", "version": "0.13.1"},
+  "tool": {"name": "EditHere", "version": "0.13.2"},
   "image": {"mode": "file", "file": "feedback.png", "mimeType": "image/png",
             "width": 2000, "height": 1200, "devicePixelRatio": null,
             "sha256": "…"}, // 示意哈希；原图与 JSON 一起提供
