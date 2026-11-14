@@ -3056,6 +3056,10 @@
 <context>
     <name>h2d::Controller</name>
     <message>
+        <source>当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。</source>
+        <translation>目前桌面不支援全域快捷鍵。設定仍可儲存；請使用系統匣選單，或在系統快捷鍵設定中綁定 EditHere --capture。</translation>
+    </message>
+    <message>
         <location filename="../controller.cpp" line="81"/>
         <source>已启用系统元素识别</source>
         <translation>已啟用系統元素辨識</translation>
