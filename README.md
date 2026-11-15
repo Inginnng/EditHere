@@ -322,7 +322,7 @@ edithere-cli annotate "<素材或项目清单的绝对路径>" --output "<新的
 ```json
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": { "name": "EditHere", "version": "0.13.3" },
+  "tool": { "name": "EditHere", "version": "0.13.4" },
   "annotationSpace": "result",
   "objects": [
     {

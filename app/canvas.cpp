@@ -140,6 +140,8 @@ void Canvas::setAnnotationsVisible(bool visible) {
 }
 void Canvas::rebuildDisplay() {
     layoutImage_ = {};
+    displayImage_ = {};
+    displaySourceKey_ = 0;
     displayCandidates_.clear();
     movements_.clear();
     if (!doc_)
@@ -269,7 +271,7 @@ void Canvas::paintEvent(QPaintEvent *event) {
         const QPoint pixel=toImage(pointer_);
         const QPointF sample=(QPointF(pixel)+QPointF(.5,.5))*zoom_;
         p.translate(area.center()); p.scale(10/zoom_,10/zoom_); p.translate(-sample);
-        paintScene(p,rect());
+        paintScene(p,rect(),true);
         p.restore();
         p.save(); p.setClipRect(area); p.setRenderHint(QPainter::Antialiasing,false);
         p.setPen(QPen(QColor(255,255,255,70),0));
@@ -285,14 +287,41 @@ void Canvas::paintEvent(QPaintEvent *event) {
                    tr("像素 %1, %2 · 1格=1px").arg(pixel.x()).arg(pixel.y()));
     }
 }
-void Canvas::paintScene(QPainter &p, QRect exposed) {
+void Canvas::paintScene(QPainter &p, QRect exposed, bool magnified) {
     p.setRenderHint(QPainter::Antialiasing);
-    p.setRenderHint(QPainter::SmoothPixmapTransform,false);
-    if (layoutPreview_) {
+    const auto &image = layoutPreview_ ? layoutImage_ : doc_->image;
+    const double ratio = devicePixelRatioF();
+    const double pixelScale = zoom_ * ratio;
+    if (layoutPreview_)
         paintTransparency(p, exposed);
-        p.drawImage(rect(), layoutImage_);
-    } else
-        p.drawImage(rect(), doc_->image);
+    if (!magnified && pixelScale < 1.0 - 1e-6) {
+        const QSize pixels(std::max(1, qRound(image.width() * pixelScale)),
+                           std::max(1, qRound(image.height() * pixelScale)));
+        if (displaySourceKey_ != image.cacheKey() || displayImage_.size() != pixels) {
+            // Average all contributing source pixels when reducing thin text and
+            // rules. Bilinear painting alone can skip them at small zoom levels.
+            displayImage_ = image.scaled(pixels, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            displaySourceKey_ = image.cacheKey();
+        }
+        displayImage_.setDevicePixelRatio(ratio);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        p.drawImage(QPointF(), displayImage_);
+    } else if (!magnified && std::abs(pixelScale - 1.0) <= 1e-6) {
+        // Let Qt use its native-pixel blit. An explicit target rect can round a
+        // fractional logical width down even when its device width is integral.
+        if (displaySourceKey_ != image.cacheKey() || displayImage_.size() != image.size()) {
+            displayImage_ = image;
+            displaySourceKey_ = image.cacheKey();
+        }
+        displayImage_.setDevicePixelRatio(ratio);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        p.drawImage(QPointF(), displayImage_);
+    } else {
+        p.setRenderHint(QPainter::SmoothPixmapTransform, !magnified);
+        // Keep the image and annotations on the same fractional logical grid.
+        // Stretching to the rounded widget rect also resamples native 1:1 views.
+        p.drawImage(QRectF(QPointF(), QSizeF(image.size()) * zoom_), image);
+    }
     auto outline = [&](QRect r, QColor color, bool fill, bool dashed) {
         QRectF scaled(r.x() * zoom_, r.y() * zoom_, r.width() * zoom_, r.height() * zoom_);
         p.setPen(QPen(color, 2, dashed ? Qt::DashLine : Qt::SolidLine));

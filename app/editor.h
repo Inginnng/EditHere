@@ -99,6 +99,7 @@ class Editor final : public QWidget {
     void regionOcrPreferenceChanged(bool enabled);
 
   protected:
+    bool event(QEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -184,6 +185,7 @@ class Editor final : public QWidget {
     void redo();
     void zoom(double value);
     void zoomAt(double value, QPointF viewportAnchor);
+    void updateZoomLabel();
     void showError(const QString &text);
     QString coords(const Note &note) const;
     GuideOverlay *guide_ = nullptr;
@@ -217,7 +219,7 @@ class Editor final : public QWidget {
     void setComponentEditing(bool enabled);
     void resetLayoutTools();
     void switchCanvas(QWidget *target);
-    Canvas *canvas_;
+    Canvas *canvas_ = nullptr;
     LayoutCanvas *layoutCanvas_ = nullptr;
     LayoutInspector *layoutInspector_ = nullptr;
     ExplosionWave *wave_ = nullptr;
@@ -267,6 +269,7 @@ class Editor final : public QWidget {
     bool viewportPanning_ = false;
     QPoint viewportPanPosition_;
     bool fitted_ = true;
+    double zoomDeviceRatio_ = 1;
     int generation_ = 0;
     int recognitionGeneration_ = 0;
     OcrEngine *regionOcr_ = nullptr;

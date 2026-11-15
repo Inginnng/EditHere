@@ -710,6 +710,42 @@ class UiTests : public QObject {
         QVERIFY2(!latinFontFamily().isEmpty() || !installed.isEmpty(),
                  "the Latin face either resolves or is left to the platform default");
     }
+    void nativePixelZoomMatchesDisplayDensity_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::newRow("annotation") << false;
+        QTest::newRow("layout") << true;
+    }
+    void nativePixelZoomMatchesDisplayDensity() {
+        QFETCH(bool, exploded);
+        Editor editor;
+        auto preferences = defaultSettings();
+        preferences.fitImageOnOpen = false;
+        preferences.regionOcrEnabled = false;
+        editor.setPreferences(preferences);
+        editor.setDocument(gridDocument());
+        auto canvas = editor.canvas();
+        auto zoom = editor.findChild<QPushButton *>("imageZoom");
+        QVERIFY(zoom);
+        QTRY_COMPARE(zoom->text(), QString("100%"));
+        QTRY_VERIFY(std::abs(canvas->zoom() * canvas->devicePixelRatioF() - 1) < 1e-9);
+        const auto original = editor.document().image;
+        const auto png = editor.document().png;
+        if (exploded) editor.explode();
+        editor.findChild<QPushButton *>("zoomIn")->click();
+        QCOMPARE(zoom->text(), QString("120%"));
+        zoom->click();
+        QVERIFY(canvas->zoom() * canvas->devicePixelRatioF() <= 1.0 + 1e-9);
+        zoom->click();
+        QCOMPARE(zoom->text(), QString("100%"));
+        QVERIFY(std::abs(canvas->zoom() * canvas->devicePixelRatioF() - 1) < 1e-9);
+        if (exploded) QCOMPARE(editor.layoutCanvas()->zoom(), canvas->zoom());
+        QEvent densityChange(QEvent::DevicePixelRatioChange);
+        QApplication::sendEvent(&editor, &densityChange);
+        QCoreApplication::processEvents();
+        QCOMPARE(zoom->text(), QString("100%"));
+        QCOMPARE(editor.document().image, original);
+        QCOMPARE(editor.document().png, png);
+    }
     void defaultPreferencesApplyToNextImageAndExport() {
         Editor editor;
         auto preferences = defaultSettings();
@@ -720,7 +756,7 @@ class UiTests : public QObject {
         editor.setDocument(gridDocument());
         QTest::qWait(100);
         QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
-        QCOMPARE(editor.canvas()->zoom(), 1.0);
+        QCOMPARE(editor.canvas()->zoom(), editor.canvas()->nativeZoom());
         bool inspected = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
