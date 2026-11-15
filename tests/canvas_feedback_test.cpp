@@ -115,6 +115,23 @@ class CanvasFeedbackTests : public QObject {
         widget.render(&image);
         return image;
     }
+    static QImage deviceRendered(QWidget &widget) {
+        const double ratio = widget.devicePixelRatioF();
+        QImage image(QSize(qRound(widget.width() * ratio), qRound(widget.height() * ratio)),
+                     QImage::Format_ARGB32);
+        image.setDevicePixelRatio(ratio);
+        image.fill(Qt::transparent);
+        widget.render(&image);
+        image.setDevicePixelRatio(1);
+        return image;
+    }
+    static QImage fineDetail(QSize size) {
+        QImage image(size, QImage::Format_ARGB32);
+        for (int y = 0; y < size.height(); ++y)
+            for (int x = 0; x < size.width(); ++x)
+                image.setPixel(x, y, (x + y) % 2 ? qRgb(255, 255, 255) : qRgb(0, 0, 0));
+        return image;
+    }
   private slots:
     void initTestCase() {
 #ifdef Q_OS_WIN
@@ -123,6 +140,70 @@ class CanvasFeedbackTests : public QObject {
         QApplication::setFont(QFont("Microsoft YaHei UI", 9));
 #endif
         applyTheme(ThemeMode::Light);
+    }
+    void scaledViewsPreserveFineDetail_data() {
+        QTest::addColumn<double>("pixelScale");
+        QTest::addColumn<bool>("layoutPreview");
+        for (const double scale : {.25, .5, .75, 1.0, 1.25})
+            for (const bool layout : {false, true})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(scale).arg(layout))) << scale << layout;
+    }
+    void scaledViewsPreserveFineDetail() {
+        QFETCH(double, pixelScale);
+        QFETCH(bool, layoutPreview);
+        auto doc = fromImage(fineDetail({600, 300}), "test", "fine detail");
+        const auto original = doc.image;
+        const auto png = doc.png;
+        if (layoutPreview) doc.layout = createLayout(doc.image.size(), {});
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setMagnifierEnabled(false);
+        canvas.setAnnotationsVisible(false);
+        canvas.setLayoutPreview(layoutPreview);
+        canvas.setZoom(pixelScale * canvas.nativeZoom());
+        const auto shot = deviceRendered(canvas);
+        if (pixelScale == 1.0) {
+            QCOMPARE(shot.copy(original.rect()), original);
+        } else {
+            // Fine detail must retain its average when reduced, and interpolate when enlarged.
+            const auto area = shot.rect().adjusted(4, 4, -4, -4);
+            qint64 total = 0;
+            int mixed = 0;
+            for (int y = area.top(); y <= area.bottom(); ++y)
+                for (int x = area.left(); x <= area.right(); ++x) {
+                    const int value = shot.pixelColor(x, y).red();
+                    total += value;
+                    if (value > 0 && value < 255) ++mixed;
+                }
+            const int samples = area.width() * area.height();
+            QVERIFY(std::abs(double(total) / samples - 127.5) < 3);
+            QVERIFY(mixed > samples * .9);
+        }
+        canvas.setZoom(canvas.nativeZoom());
+        QCOMPARE(deviceRendered(canvas).copy(original.rect()), original);
+        QCOMPARE(doc.image, original);
+        QCOMPARE(doc.png, png);
+    }
+    void nativePixelViewDoesNotStretchRoundedEdges() {
+        auto doc = fromImage(fineDetail({1600, 900}), "test", "native pixels");
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setMagnifierEnabled(false);
+        canvas.setZoom(canvas.nativeZoom());
+        QCOMPARE(deviceRendered(canvas).copy(doc.image.rect()), doc.image);
+    }
+    void magnifierRetainsOriginalPixelsWhileViewIsReduced() {
+        auto doc = fromImage(fineDetail({2400, 1600}), "test", "magnified pixels");
+        Canvas canvas;
+        canvas.setDocument(&doc);
+        canvas.setZoom(.5 * canvas.nativeZoom());
+        canvas.show();
+        const QPoint pointer(70, 80);
+        move(canvas, pointer);
+        const QPointF centre = QPointF(pointer) + QPointF(30 + 99, 30 + 63);
+        const QPointF probe = (centre + QPointF(2, 2)) * canvas.devicePixelRatioF();
+        QCOMPARE(deviceRendered(canvas).pixelColor(probe.toPoint()),
+                 doc.image.pixelColor(canvas.toImage(pointer)));
     }
     void middleDragPansWithoutEditing_data() {
         QTest::addColumn<bool>("exploded");

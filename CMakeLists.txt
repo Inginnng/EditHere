@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.13.3 LANGUAGES C CXX)
+project(EditHere VERSION 0.13.4 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 # The AI module pulls in QtKeychain, whose Apple backend is Objective-C++. Enable
@@ -322,6 +322,17 @@ add_test(NAME inline-note COMMAND inline_note_tests -platform offscreen)
 qt_add_executable(canvas_feedback_tests tests/canvas_feedback_test.cpp)
 target_link_libraries(canvas_feedback_tests PRIVATE h2d_ui Qt6::Test)
 add_test(NAME canvas-feedback COMMAND canvas_feedback_tests -platform offscreen)
+foreach(density IN ITEMS 1 1.25 1.5 2)
+  add_test(NAME canvas-scaling-${density} COMMAND canvas_feedback_tests -platform offscreen
+    scaledViewsPreserveFineDetail nativePixelViewDoesNotStretchRoundedEdges
+    magnifierRetainsOriginalPixelsWhileViewIsReduced
+    -o "${CMAKE_CURRENT_BINARY_DIR}/canvas-scaling-${density}.log,txt" -o -,txt)
+  add_test(NAME editor-scaling-${density} COMMAND ui_tests -platform offscreen
+    nativePixelZoomMatchesDisplayDensity
+    -o "${CMAKE_CURRENT_BINARY_DIR}/editor-scaling-${density}.log,txt" -o -,txt)
+  set_tests_properties(canvas-scaling-${density} editor-scaling-${density}
+    PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=${density}" TIMEOUT 30)
+endforeach()
 qt_add_executable(settings_tests tests/settings_test.cpp)
 target_link_libraries(settings_tests PRIVATE h2d_ui Qt6::Test)
 qt_add_resources(settings_tests settings_test_translations
