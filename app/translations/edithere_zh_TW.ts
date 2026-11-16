@@ -1168,11 +1168,6 @@
         <translation>無法取得螢幕，請檢查螢幕錄製權限</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="540"/>
-        <source>无法从长截图中排除 EditHere 窗口，请重新截图。</source>
-        <translation>無法從長截圖中排除 EditHere 視窗，請重新截圖。</translation>
-    </message>
-    <message>
         <location filename="../platform_mac.mm" line="618"/>
         <source>部分屏幕无法采集</source>
         <translation>部分螢幕無法擷取</translation>
