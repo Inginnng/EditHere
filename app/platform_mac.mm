@@ -166,6 +166,14 @@ SCContentFilter *displayFilter(SCShareableContent *content, SCDisplay *display, 
     for (SCRunningApplication *application in content.applications)
         if (application.processID == pid)
             [excluded addObject:application];
+    // The application list can omit us while capture controls are hidden. A
+    // window's owner is also a valid application handle for the same filter.
+    if (!excluded.count)
+        for (SCWindow *window in content.windows)
+            if (window.owningApplication.processID == pid) {
+                [excluded addObject:window.owningApplication];
+                break;
+            }
     if (excludesOwn)
         *excludesOwn = excluded.count != 0;
     // Exclude the application, not just its current SCWindow snapshot. New
@@ -190,6 +198,32 @@ QRect logicalDisplayGeometry(CGRect bounds) {
         if (screen->geometry().topLeft() == logical.topLeft())
             return screen->geometry();
     return logical;
+}
+QString prepareScrollFilter(const std::shared_ptr<MacScrollSession> &session,
+                            SCShareableContent *content, NSError *error) {
+    SCDisplay *selected = nil;
+    for (SCDisplay *display in content.displays)
+        if (display.displayID == session->display) {
+            selected = display;
+            break;
+        }
+    if (error || !selected)
+        return tr("无法获取屏幕，请检查屏幕录制权限");
+    bool excluded = false;
+    SCContentFilter *filter = displayFilter(content, selected, &excluded);
+    if (!filter || nativeDisplaySize(filter, session->displayBounds) != session->nativeGeometry.size())
+        return tr("长截图屏幕已断开或显示设置已改变，请重新截图。");
+    session->filter = filter;
+    // Missing from the shareable application list is not a capture failure.
+    // Keep this false so Controller continues hiding capture surfaces before
+    // every read, including controls created after this content snapshot.
+    session->excludesOwnApplication = excluded;
+    diagnostics::write(excluded ? diagnostics::Level::Info : diagnostics::Level::Warning,
+        "scroll.capture.filter", excluded ? "Application exclusion installed"
+                                          : "Application unavailable; using hidden capture controls",
+        {{"excludesOwnApplication", excluded}, {"applications", int(content.applications.count)},
+         {"windows", int(content.windows.count)}});
+    return {};
 }
 struct RegionRequest {
     ScrollRegionCallback callback;
@@ -504,8 +538,8 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
         captureSessionRegion(session, requestedRegion, request);
         return;
     }
-    // Acquire the app-exclusion filter after the live UI exists, once per
-    // session. Keeping it avoids enumerating all windows every captured frame.
+    // Acquire the filter once per session. Controls may already be hidden for
+    // this first read; their presence in the shareable list is not required.
     auto onContent = ^(SCShareableContent *content, NSError *error) {
         @try {
             QMetaObject::invokeMethod(qApp, [session, requestedRegion, request, content, error] {
@@ -524,28 +558,11 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
                              {"error", error ? QString::fromUtf8(error.localizedDescription.UTF8String)
                                              : QString()}});
                     }
-                    SCDisplay *selected = nil;
-                    for (SCDisplay *display in content.displays)
-                        if (display.displayID == session->display) {
-                            selected = display;
-                            break;
-                        }
-                    if (error || !selected) {
-                        request->finish({}, tr("无法获取屏幕，请检查屏幕录制权限"));
+                    const QString filterError = prepareScrollFilter(session, content, error);
+                    if (!filterError.isEmpty()) {
+                        request->finish({}, filterError);
                         return;
                     }
-                    bool excluded = false;
-                    SCContentFilter *filter = displayFilter(content, selected, &excluded);
-                    if (!excluded) {
-                        request->finish({}, tr("无法从长截图中排除 EditHere 窗口，请重新截图。"));
-                        return;
-                    }
-                    if (nativeDisplaySize(filter, session->displayBounds) != session->nativeGeometry.size()) {
-                        request->finish({}, tr("长截图屏幕已断开或显示设置已改变，请重新截图。"));
-                        return;
-                    }
-                    session->filter = filter;
-                    session->excludesOwnApplication = true;
                     captureSessionRegion(session, requestedRegion, request);
                 } @catch (NSException *exception) {
                     const QString text = exceptionText(exception);
@@ -562,10 +579,10 @@ void captureScrollRegion(const QRect &nativeRegion, ScrollRegionCallback callbac
         }
     };
     @try {
-        // On-screen windows only, exactly as the one-shot capture asks: the
-        // filter needs the display list and this application, nothing else.
+        // Include offscreen windows so hiding the capture UI before this first
+        // frame does not unnecessarily remove our application from the list.
         [SCShareableContent getShareableContentExcludingDesktopWindows:YES
-                                                 onScreenWindowsOnly:YES
+                                                 onScreenWindowsOnly:NO
                                                    completionHandler:onContent];
     } @catch (NSException *exception) {
         const QString text = exceptionText(exception);

@@ -1168,11 +1168,6 @@
         <translation>Could not capture the screen. Check Screen Recording permission.</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="540"/>
-        <source>无法从长截图中排除 EditHere 窗口，请重新截图。</source>
-        <translation>Unable to exclude EditHere windows from scrolling capture. Take a new screenshot.</translation>
-    </message>
-    <message>
         <location filename="../platform_mac.mm" line="618"/>
         <source>部分屏幕无法采集</source>
         <translation>Some screens could not be captured.</translation>
