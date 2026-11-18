@@ -26,6 +26,9 @@ class SettingsDialog final : public QDialog {
     void setGlobalShortcutNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
     void setUpdatePreparationHandler(std::function<bool()> handler);
+    void setUpdateSourceHandler(std::function<QString(const QString &)> handler) {
+        updateSourceHandler_ = std::move(handler);
+    }
     // Cancelling also rolls the live language preview back. QDialog::reject() is a
     // public slot, so the override keeps the same access.
     void reject() override;
@@ -54,6 +57,9 @@ class SettingsDialog final : public QDialog {
     void setSaving(bool saving);
     QComboBox *theme_, *defaultTool_, *language_, *ocrLanguage_, *scrollAxis_;
     QComboBox *traySingleClick_, *trayDoubleClick_;
+    QComboBox *updateSource_ = nullptr;
+    QString activeUpdateSource_ = "auto";
+    std::function<QString(const QString &)> updateSourceHandler_;
     QLabel *trayTitle_ = nullptr;
     // Language the dialog opened with, restored when the user cancels.
     LanguageMode languageOnEntry_ = LanguageMode::System;

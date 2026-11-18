@@ -422,6 +422,23 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     checkUpdatesOnStartup_ = new QCheckBox(aboutContent);
     checkUpdatesOnStartup_->setObjectName("checkUpdatesOnStartup");
     aboutLayout->addWidget(checkUpdatesOnStartup_);
+    auto sourceRow = new QHBoxLayout;
+    auto sourceLabel = new QLabel(aboutContent);
+    sourceLabel->setObjectName("updateSourceLabel");
+    updateSource_ = new QComboBox(aboutContent);
+    updateSource_->setObjectName("updateSource");
+    updateSource_->addItem(QString(), "auto");
+    updateSource_->addItem("AtomGit", "atomgit");
+    updateSource_->addItem("GitHub", "github");
+    updateSource_->addItem("Gitee", "gitee");
+    sourceLabel->setBuddy(updateSource_);
+    sourceRow->addWidget(sourceLabel);
+    sourceRow->addWidget(updateSource_, 1);
+    aboutLayout->addLayout(sourceRow);
+    auto sourceHint = mutedLabel({}, aboutContent);
+    sourceHint->setObjectName("updateSourceHint");
+    sourceHint->setWordWrap(true);
+    aboutLayout->addWidget(sourceHint);
     auto status = new QLabel(aboutContent);
     status->setObjectName("updateStatus");
     status->setWordWrap(true);
@@ -541,6 +558,28 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
         note->show();
     });
     updater_ = new UpdateChecker(this);
+    connect(updateSource_, &QComboBox::currentIndexChanged, this, [this, status, releases] {
+        const auto source = updateSource_->currentData().toString();
+        if (source == activeUpdateSource_) return;
+        const auto problem = updateSourceHandler_ ? updateSourceHandler_(source) : QString();
+        if (!problem.isEmpty()) {
+            const QSignalBlocker blocker(updateSource_);
+            updateSource_->setCurrentIndex(updateSource_->findData(activeUpdateSource_));
+            status->setText(problem);
+            return;
+        }
+        const bool recheck = updater_->busy() || !updateResult_.tagName.isEmpty();
+        activeUpdateSource_ = source;
+        updater_->setSourcePreference(source);
+        updateResult_ = {UpdateChecker::Failed, {}, {}, {}, {}, {}, {}, {}};
+        releases->setProperty("updateAvailable", false);
+        releases->setProperty("automaticUpdate", false);
+        releases->setProperty("releaseUrl", UpdateChecker::releasesUrl(UpdateChecker::preferredSource(source)));
+        releases->setText(tr("打开发布页"));
+        findChild<QPushButton *>("checkUpdates")->setEnabled(true);
+        status->setText(tr("更新源已保存。"));
+        if (recheck) showUpdates(true);
+    });
     connect(cancelUpdate, &QPushButton::clicked, updater_, &UpdateChecker::cancelDownload);
     connect(check, &QPushButton::clicked, this, [this, status, check] {
         if (updater_->downloading()) return;
@@ -560,6 +599,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
             }
             status->setText(tr("正在下载安装器…"));
             releases->setEnabled(false);
+            updateSource_->setEnabled(false);
             findChild<QPushButton *>("checkUpdates")->setEnabled(false);
             progressBar->setVisible(true);
             progressBar->setRange(0, 100);
@@ -569,7 +609,8 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
                                          result.installerSignature);
         } else {
             const auto url = releases->property("releaseUrl").toUrl();
-            const auto releaseUrl = url.isEmpty() ? UpdateChecker::releasesUrl() : url;
+            const auto releaseUrl = url.isEmpty()
+                ? UpdateChecker::releasesUrl(UpdateChecker::preferredSource(activeUpdateSource_)) : url;
             if (!QDesktopServices::openUrl(releaseUrl))
                 status->setText(tr("无法打开浏览器，请访问：%1").arg(releaseUrl.toString()));
         }
@@ -597,6 +638,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
             [this, status, releases, progressBar, cancelUpdate](const QString &message) {
                 status->setText(message);
                 releases->setEnabled(true);
+                updateSource_->setEnabled(true);
                 findChild<QPushButton *>("checkUpdates")->setEnabled(true);
                 progressBar->setVisible(false);
                 cancelUpdate->hide();
@@ -797,6 +839,10 @@ void SettingsDialog::retranslate() {
     if (auto license = findChild<QLabel *>("aboutLicense"))
         license->setText(tr(R"(<a href="https://github.com/Inginnng/EditHere/blob/codex/native/LICENSING.md">查看许可说明</a>)"));
     checkUpdatesOnStartup_->setText(tr("启动时检查更新"));
+    findChild<QLabel *>("updateSourceLabel")->setText(tr("更新源"));
+    updateSource_->setItemText(0, tr("自动（按系统地区）"));
+    findChild<QLabel *>("updateSourceHint")->setText(
+        tr("中国大陆优先 AtomGit，其他地区优先 GitHub。手动选择后自动保存。"));
     if (auto status = findChild<QLabel *>("updateStatus"); status && status->text().isEmpty())
         status->setText(tr("尚未检查更新。"));
     if (auto check = findChild<QPushButton *>("checkUpdates"))
@@ -886,6 +932,12 @@ void SettingsDialog::setGlobalShortcutNotice(const QString &notice) {
     globalShortcutNotice_->setVisible(!notice.isEmpty());
 }
 void SettingsDialog::setDraft(const AppSettings &settings) {
+    {
+        const QSignalBlocker blocker(updateSource_);
+        updateSource_->setCurrentIndex(updateSource_->findData(settings.updateSource));
+        activeUpdateSource_ = settings.updateSource;
+        updater_->setSourcePreference(settings.updateSource);
+    }
     aiPage_->setSettings(settings);
     captureStyle_ = settings.captureStyle;
     for (auto it = keys_.cbegin(); it != keys_.cend(); ++it)
@@ -933,6 +985,7 @@ AppSettings SettingsDialog::settings() const {
     result.includeWindowTitle = includeWindowTitle_->isChecked();
     result.confirmBeforeDiscard = confirmBeforeDiscard_->isChecked();
     result.checkUpdatesOnStartup = checkUpdatesOnStartup_->isChecked();
+    result.updateSource = updateSource_->currentData().toString();
     result.feedbackDir = QDir::fromNativeSeparators(feedbackDir_->text().trimmed());
     result.scrollAxis = static_cast<Qt::Orientation>(scrollAxis_->currentData().toInt());
     result.scrollAutoCrop = scrollAutoCrop_->isChecked();

@@ -165,6 +165,8 @@ static bool validTrayAction(const QString &id) {
     return false;
 }
 QString validateSettings(const AppSettings &settings) {
+    if (!QStringList{"auto", "atomgit", "github", "gitee"}.contains(settings.updateSource))
+        return tr("请选择有效的更新源。");
     if (!validAiProviderId(settings.aiProviderId))
         return tr("请选择有效的 API 提供商。");
     if (settings.aiSystemPrompt.size() > 20000)
@@ -302,6 +304,9 @@ AppSettings loadSettings(const QString &filePath) {
     result.includeWindowTitle = boolean("defaults/includeWindowTitle", true);
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
+    const auto updateSource = source.value("updates/source", "auto").toString();
+    if (QStringList{"auto", "atomgit", "github", "gitee"}.contains(updateSource))
+        result.updateSource = updateSource;
     const auto selectedProvider = source.value("ai/provider", "openai").toString();
     if (validAiProviderId(selectedProvider)) result.aiProviderId = selectedProvider;
     const auto customPrompt = source.value("ai/systemPrompt").toString();
@@ -427,6 +432,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/confirmBeforeDiscard", settings.confirmBeforeDiscard);
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
+    target.setValue("updates/source", settings.updateSource);
     target.setValue("ai/provider", settings.aiProviderId);
     target.setValue("ai/systemPrompt", settings.aiSystemPrompt);
     target.remove("ai/providers");

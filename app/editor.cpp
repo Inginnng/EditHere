@@ -379,7 +379,22 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
+#ifdef Q_OS_WIN
+    connect(fullscreen_, &QPushButton::clicked, this, [this] {
+        if (isFullScreen())
+            toggleFullscreen();
+        else if (isMaximized())
+            showNormal();
+        else
+            showMaximized();
+    });
+    fullscreenShortcut_ = new QShortcut(QKeySequence(Qt::Key_F11), this);
+    fullscreenShortcut_->setContext(Qt::WidgetWithChildrenShortcut);
+    fullscreenShortcut_->setAutoRepeat(false);
+    connect(fullscreenShortcut_, &QShortcut::activated, this, &Editor::toggleFullscreen);
+#else
     connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
+#endif
     connect(close, &QPushButton::clicked, this, &QWidget::close);
     agentBanner_ = new QWidget(shell);
     agentBanner_->setObjectName("agentSessionBanner");
@@ -576,13 +591,19 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     minus->setObjectName("zoomOut");
     plus->setObjectName("zoomIn");
     zoom_ = textButton("100%", false, shell);
+    zoom_->setObjectName("imageZoom");
     zoom_->setFixedWidth(64);
     dock->addWidget(minus);
     dock->addWidget(zoom_);
     dock->addWidget(plus);
     connect(minus, &QPushButton::clicked, this, [this] { zoom(canvas_->zoom() / 1.2); });
     connect(plus, &QPushButton::clicked, this, [this] { zoom(canvas_->zoom() * 1.2); });
-    connect(zoom_, &QPushButton::clicked, this, &Editor::fit);
+    connect(zoom_, &QPushButton::clicked, this, [this] {
+        if (fitted_)
+            zoom(canvas_->nativeZoom());
+        else
+            fit();
+    });
     notesToggle_ = iconButton("notes", {}, shell);
     notesToggle_->setCheckable(true);
     notesToggle_->setObjectName("collapseNotes");
@@ -721,7 +742,6 @@ void Editor::retranslate() {
     tooltip("importDocument", tr("导入图片、视频或项目"));
     tooltip("openSettings", tr("设置"));
     tooltip("minimizeWindow", tr("最小化"));
-    tooltip("fullscreenWindow", tr("全屏"));
     tooltip("closeWindow", tr("关闭当前截图"));
     tooltip("addGlobalNote", tr("添加全局批注"));
     tooltip("zoomOut", tr("缩小"));
@@ -744,7 +764,8 @@ void Editor::retranslate() {
         emptyImport_->setText(tr("导入图片、视频或项目"));
     if (videoPlayback_) videoPlayback_->retranslate();
     if (video_) updateVideoFrames();
-    zoom_->setToolTip(tr("适应图片"));
+    zoom_->setToolTip(tr("切换适应窗口 / 原始像素 1:1"));
+    zoom_->setAccessibleName(zoom_->toolTip());
     auto primary = [](QPushButton *button, const QString &text) {
         button->setToolTip(text);
         button->setAccessibleName(text);
@@ -832,6 +853,8 @@ void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
         it.value()->setKey(sequence);
         it.value()->setEnabled(!sequence.isEmpty());
     }
+    if (fullscreenShortcut_)
+        fullscreenShortcut_->setEnabled(!bindings.values().contains(fullscreenShortcut_->key()));
     updateToolLabels();
 }
 void Editor::updateToolLabels() {
@@ -900,7 +923,7 @@ void Editor::setDocument(Document document, const QString &projectPath) {
         if (preferences_.fitImageOnOpen)
             fit();
         else {
-            zoom(1.0);
+            zoom(canvas_->nativeZoom());
             imageScroll_->centerImage();
         }
     });
@@ -1117,7 +1140,7 @@ void Editor::showVideoPreview(const QSize &size, qint64 timestampUs) {
     else {
         fitted_ = preferences_.fitImageOnOpen;
         if (fitted_) fit();
-        else { canvas_->setZoom(1); imageScroll_->centerImage(); }
+        else { zoom(canvas_->nativeZoom()); imageScroll_->centerImage(); }
         const int generation = generation_;
         QTimer::singleShot(0, this, [this, generation] {
             if (generation == generation_ && videoPreview_ && fitted_) fit();
@@ -1257,6 +1280,20 @@ void Editor::toggleFullscreen() {
 void Editor::updateFullscreenButton() {
     if (!fullscreen_) return;
     const bool full = isFullScreen();
+#ifdef Q_OS_WIN
+    if (!full) {
+        const bool maximized = isMaximized();
+        const auto icon = maximized ? QStyle::SP_TitleBarNormalButton : QStyle::SP_TitleBarMaxButton;
+        const auto label = maximized ? tr("还原窗口") : tr("最大化");
+        fullscreen_->setChecked(maximized);
+        // The title bar uses the platform's maximize/restore pixmaps in this state.
+        fullscreen_->setProperty("glyphName", QVariant());
+        fullscreen_->setIcon(style()->standardIcon(icon));
+        fullscreen_->setToolTip(label);
+        fullscreen_->setAccessibleName(label);
+        return;
+    }
+#endif
     const QString name = full ? "fullscreen-exit" : "fullscreen";
     const QString label = full ? tr("退出全屏") : tr("全屏");
     fullscreen_->setChecked(full);
@@ -1264,6 +1301,19 @@ void Editor::updateFullscreenButton() {
     fullscreen_->setIcon(glyph(name));
     fullscreen_->setToolTip(label);
     fullscreen_->setAccessibleName(label);
+}
+bool Editor::event(QEvent *event) {
+    const bool handled = QWidget::event(event);
+    if (event->type() == QEvent::DevicePixelRatioChange && canvas_) {
+        const double pixelZoom = canvas_->zoom() * zoomDeviceRatio_;
+        const int generation = generation_;
+        QTimer::singleShot(0, this, [this, pixelZoom, generation] {
+            if (generation != generation_ || canvas_->imageSize().isEmpty()) return;
+            if (fitted_) fit();
+            else zoom(pixelZoom * canvas_->nativeZoom());
+        });
+    }
+    return handled;
 }
 void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
@@ -1300,12 +1350,12 @@ void Editor::fit() {
     fitted_ = true;
     QSize area = imageScroll_->viewport()->size() - QSize(36, 36);
     const auto imageSize = canvas_->imageSize();
-    canvas_->setZoom(std::min({1.0, double(std::max(80, area.width())) / imageSize.width(),
+    canvas_->setZoom(std::min({canvas_->nativeZoom(), double(std::max(80, area.width())) / imageSize.width(),
                                double(std::max(80, area.height())) / imageSize.height()}));
     if (layoutCanvas_)
         layoutCanvas_->setZoom(canvas_->zoom());
     imageScroll_->centerImage();
-    zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
+    updateZoomLabel();
 }
 void Editor::zoom(double value) {
     zoomAt(value, QPointF(imageScroll_->viewport()->width() / 2.0,
@@ -1325,7 +1375,11 @@ void Editor::zoomAt(double value, QPointF viewportAnchor) {
     if (layoutCanvas_)
         layoutCanvas_->setZoom(canvas_->zoom());
     imageScroll_->setImageOrigin(viewportAnchor - imagePoint * canvas_->zoom());
-    zoom_->setText(QString::number(qRound(canvas_->zoom() * 100)) + "%");
+    updateZoomLabel();
+}
+void Editor::updateZoomLabel() {
+    zoomDeviceRatio_ = canvas_->devicePixelRatioF();
+    zoom_->setText(QString::number(qRound(canvas_->zoom() * zoomDeviceRatio_ * 100)) + "%");
 }
 void Editor::fitShell() {
     if (!shell_)
@@ -2638,6 +2692,13 @@ bool Editor::allowReplace() {
     return answer == QMessageBox::Discard || saveProject();
 }
 void Editor::openEmpty() {
+    // Restore the editor before it owns a modal save/discard question.
+    if (isMinimized())
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
+    configureNativeWindow(this, false);
+    raise();
+    activateWindow();
     if (agentSession_) {
         toast(tr("请先完成或取消当前 AI 批注任务"));
         return;
@@ -2658,12 +2719,6 @@ void Editor::openEmpty() {
     renderNotes();
     updateControls();
     updateEmptyState();
-    if (isMinimized())
-        setWindowState(windowState() & ~Qt::WindowMinimized);
-    show();
-    configureNativeWindow(this, false);
-    raise();
-    activateWindow();
 }
 void Editor::updateEmptyState() {
     // An empty window that says nothing looks broken, and one that says what it is

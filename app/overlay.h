@@ -4,6 +4,7 @@
 #include "settings.h"
 #include <QColor>
 #include <QImage>
+#include <QElapsedTimer>
 #include <optional>
 #include <QProcess>
 #include <QRect>
@@ -39,11 +40,8 @@ class Overlay final : public QWidget {
     QRect selection() const {
         return selected_;
     }
-    // Where the pointer is, in this window's own coordinates. An arrow key moves it by
-    // one of these, which is the smallest step a pointer can be put on, so a caller
-    // watching it sees exactly one step per press however fine the pixels of the grab
-    // underneath are.
-    QPoint pointer() const {
+    // Logical coordinates retain fractional positions on a scaled display.
+    QPointF pointer() const {
         return pointer_;
     }
     // The block the window is offering, which is the one a click would take. It is the
@@ -158,13 +156,8 @@ class Overlay final : public QWidget {
     CandidatePicker picker_;
     QRect selected_;
     QPoint start_, cursor_, keyboardOffset_;
-    // Where the pointer is, in the window's own units rather than in pixels of the
-    // grab. A keypress moves the pointer by one whole unit of these, which is the
-    // smallest step a pointer can actually be put on; a step taken in pixels of the
-    // grab and then rounded back into these sometimes landed on the pixel it started
-    // from, which is what made an arrow key look dead, and sometimes rounded a
-    // different way on each axis, which is what made one key move in two directions.
-    QPoint pointer_;
+    QPointF pointer_;
+    QElapsedTimer pointerWarpAge_;
     bool nudged_ = false;
     bool drawing_ = false, finished_ = false;
     QTimer debounce_, hoverTimer_, copyNote_;

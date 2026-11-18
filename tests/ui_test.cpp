@@ -710,6 +710,42 @@ class UiTests : public QObject {
         QVERIFY2(!latinFontFamily().isEmpty() || !installed.isEmpty(),
                  "the Latin face either resolves or is left to the platform default");
     }
+    void nativePixelZoomMatchesDisplayDensity_data() {
+        QTest::addColumn<bool>("exploded");
+        QTest::newRow("annotation") << false;
+        QTest::newRow("layout") << true;
+    }
+    void nativePixelZoomMatchesDisplayDensity() {
+        QFETCH(bool, exploded);
+        Editor editor;
+        auto preferences = defaultSettings();
+        preferences.fitImageOnOpen = false;
+        preferences.regionOcrEnabled = false;
+        editor.setPreferences(preferences);
+        editor.setDocument(gridDocument());
+        auto canvas = editor.canvas();
+        auto zoom = editor.findChild<QPushButton *>("imageZoom");
+        QVERIFY(zoom);
+        QTRY_COMPARE(zoom->text(), QString("100%"));
+        QTRY_VERIFY(std::abs(canvas->zoom() * canvas->devicePixelRatioF() - 1) < 1e-9);
+        const auto original = editor.document().image;
+        const auto png = editor.document().png;
+        if (exploded) editor.explode();
+        editor.findChild<QPushButton *>("zoomIn")->click();
+        QCOMPARE(zoom->text(), QString("120%"));
+        zoom->click();
+        QVERIFY(canvas->zoom() * canvas->devicePixelRatioF() <= 1.0 + 1e-9);
+        zoom->click();
+        QCOMPARE(zoom->text(), QString("100%"));
+        QVERIFY(std::abs(canvas->zoom() * canvas->devicePixelRatioF() - 1) < 1e-9);
+        if (exploded) QCOMPARE(editor.layoutCanvas()->zoom(), canvas->zoom());
+        QEvent densityChange(QEvent::DevicePixelRatioChange);
+        QApplication::sendEvent(&editor, &densityChange);
+        QCoreApplication::processEvents();
+        QCOMPARE(zoom->text(), QString("100%"));
+        QCOMPARE(editor.document().image, original);
+        QCOMPARE(editor.document().png, png);
+    }
     void defaultPreferencesApplyToNextImageAndExport() {
         Editor editor;
         auto preferences = defaultSettings();
@@ -720,7 +756,7 @@ class UiTests : public QObject {
         editor.setDocument(gridDocument());
         QTest::qWait(100);
         QCOMPARE(editor.canvas()->mode(), Canvas::Rectangle);
-        QCOMPARE(editor.canvas()->zoom(), 1.0);
+        QCOMPARE(editor.canvas()->zoom(), editor.canvas()->nativeZoom());
         bool inspected = false;
         QTimer::singleShot(60, &editor, [&] {
             auto dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
@@ -1244,6 +1280,27 @@ class UiTests : public QObject {
                                 .arg(row.controlsRight)));
         editor.hide();
     }
+    void windowsTitleBarButtonMaximizesWithinWorkArea() {
+#ifdef Q_OS_WIN
+        Editor editor;
+        editor.openEmpty();
+        auto button = editor.findChild<QPushButton *>("fullscreenWindow");
+        QVERIFY(button && button->isVisible());
+        const QRect originalGeometry = editor.geometry();
+        button->click();
+        QTRY_VERIFY(editor.isMaximized());
+        QVERIFY(!editor.isFullScreen());
+        if (QGuiApplication::platformName() == "windows")
+            QTRY_COMPARE(editor.geometry(), editor.screen()->availableGeometry());
+        QCOMPARE(button->toolTip(), QString("还原窗口"));
+        button->click();
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), originalGeometry);
+        QCOMPARE(button->toolTip(), QString("最大化"));
+#else
+        QSKIP("The Windows title bar has a dedicated maximize action.");
+#endif
+    }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("maximized");
@@ -1293,12 +1350,21 @@ class UiTests : public QObject {
         QPointer<LayoutCanvas> layoutCanvas = editor.layoutCanvas();
         const QStringList selection = layoutCanvas ? layoutCanvas->selected() : QStringList();
         QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
-        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+#ifdef Q_OS_WIN
+        const QString normalLabel = maximized ? QString("还原窗口") : QString("最大化");
+        const bool checkedInWindowedMode = maximized;
+        editor.activateWindow();
+        QTRY_VERIFY(editor.isActiveWindow());
+        const auto enterFullscreen = [&] { QTest::keyClick(&editor, Qt::Key_F11); };
+#else
+        const QString normalLabel = "全屏";
+        const bool checkedInWindowedMode = false;
+        const auto enterFullscreen = [&] { fullscreen->click(); };
+#endif
+        QCOMPARE(fullscreen->toolTip(), normalLabel);
 
-        fullscreen->click();
+        enterFullscreen();
         QTRY_VERIFY(editor.isFullScreen());
-        // The button drives the state on every platform; only macOS hides it behind
-        // the system's green traffic light.
         QVERIFY(fullscreen->isChecked());
         QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
         QCOMPARE(fullscreen->toolTip(), QString("退出全屏"));
@@ -1319,8 +1385,8 @@ class UiTests : public QObject {
         QTRY_COMPARE(editor.isMaximized(), maximized);
         if (!maximized) QTRY_COMPARE(editor.geometry(), geometry);
         QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), offsets);
-        QVERIFY(!fullscreen->isChecked());
-        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+        QCOMPARE(fullscreen->isChecked(), checkedInWindowedMode);
+        QCOMPARE(fullscreen->toolTip(), normalLabel);
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
@@ -1328,7 +1394,7 @@ class UiTests : public QObject {
         QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(hiddenToTray.count(), 0);
 
-        fullscreen->click();
+        enterFullscreen();
         QTRY_VERIFY(editor.isFullScreen());
         editor.activateWindow();
         QTRY_VERIFY(editor.isActiveWindow());
@@ -4252,6 +4318,49 @@ class UiTests : public QObject {
     // pointer two ways at once, the first press going askew and the ones after it
     // going straight because the askew part had been rounded out of them. A step is one
     // whole pixel of the pointer now, on the axis that was pressed and nowhere else.
+    void highDpiColourAimingVisitsEveryCapturedPixel_data() {
+        QTest::addColumn<double>("scale");
+        QTest::newRow("4k-125-percent") << 1.25;
+        QTest::newRow("4k-150-percent") << 1.5;
+        QTest::newRow("4k-175-percent") << 1.75;
+        QTest::newRow("4k-200-percent") << 2.0;
+    }
+    void highDpiColourAimingVisitsEveryCapturedPixel() {
+        QFETCH(double, scale);
+        QImage image(3840, 2160, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QPoint start(800, 700);
+        for (int y = -10; y <= 10; ++y)
+            for (int x = -10; x <= 10; ++x)
+                image.setPixelColor(start + QPoint(x, y), QColor(40 + x, 80 + y, 120));
+        const QSize logical(qRound(image.width() / scale), qRound(image.height() / scale));
+        ScreenFrame frame{"4k-secondary", QRect(QPoint(-3840, -200), logical),
+                          QRect(QPoint(-3840, -300), image.size()), image, true};
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(logical);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 10000);
+        overlay.setSelections({QRect(700, 600, 400, 300)});
+        QTest::keyClick(&overlay, Qt::Key_R);
+        putPointerOn(overlay, QPointF(double(start.x()) * logical.width() / image.width(),
+                                     double(start.y()) * logical.height() / image.height()));
+        QTest::keyClick(&overlay, Qt::Key_C);
+        const QVector<QPair<Qt::Key, QPoint>> steps{
+            {Qt::Key_Right, {1, 0}}, {Qt::Key_Right, {1, 0}}, {Qt::Key_Up, {0, -1}},
+            {Qt::Key_Left, {-1, 0}}, {Qt::Key_Down, {0, 1}}};
+        QPoint pixel = start;
+        for (const auto &step : steps) {
+            QTest::keyClick(&overlay, step.first);
+            pixel += step.second;
+            QTest::keyClick(&overlay, Qt::Key_C);
+            const auto expected = image.pixelColor(pixel).name();
+            const auto actual = QApplication::clipboard()->text();
+            QVERIFY2(actual.compare(expected, Qt::CaseInsensitive) == 0,
+                     qPrintable(QString("One key must visit one captured pixel: %1,%2 expected %3, got %4")
+                                    .arg(pixel.x()).arg(pixel.y()).arg(expected, actual)));
+        }
+        overlay.hide();
+    }
     void arrowKeysMoveThePointerOneStepAtATime() {
         // A display at one and a quarter: the grab is 700 pixels across and the window
         // is 560, which is the 125% setting where the rounding showed. Whole-number
@@ -4275,7 +4384,7 @@ class UiTests : public QObject {
         // report is not the user, and taking it as one is what pulled the aim back and
         // made a key do nothing.
         const auto echo = [&] {
-            const QPoint at = overlay.pointer();
+            const QPointF at = overlay.pointer();
             const QPointF rounded(std::floor(at.x() * 1.25) / 1.25,
                                   std::floor(at.y() * 1.25) / 1.25);
             QMouseEvent move(QEvent::MouseMove, rounded, rounded, Qt::NoButton, Qt::NoButton,
@@ -4289,7 +4398,7 @@ class UiTests : public QObject {
                                     .arg(overlay.pointer().x())
                                     .arg(overlay.pointer().y())));
         };
-        const QPoint start = overlay.pointer();
+        const QPointF start = overlay.pointer();
         const QPoint drawn = crosshair(
             overlay.grab().toImage().convertedTo(QImage::Format_ARGB32), 150, 240);
         QVERIFY2(std::abs(drawn.x() - start.x()) <= 2 && std::abs(drawn.y() - start.y()) <= 2,
@@ -4305,12 +4414,12 @@ class UiTests : public QObject {
             {Qt::Key_Up, {0, -1}},    {Qt::Key_Up, {0, -1}},   {Qt::Key_Left, {-1, 0}},
             {Qt::Key_Down, {0, 1}},   {Qt::Key_Down, {0, 1}},  {Qt::Key_Left, {-1, 0}},
             {Qt::Key_Right, {1, 0}}};
-        QPoint asked = start;
+        QPointF asked = start;
         for (const auto &press : presses) {
             QTest::keyClick(&overlay, press.first);
             QTest::qWait(20);
-            const QPoint at = overlay.pointer();
-            const QPoint moved(at.x() - asked.x(), at.y() - asked.y());
+            const QPointF at = overlay.pointer();
+            const QPoint moved(qRound((at.x() - asked.x()) * 1.25), qRound((at.y() - asked.y()) * 1.25));
             const bool sideways = press.second.x() != 0;
             const int along = sideways ? moved.x() : moved.y();
             const int across = sideways ? moved.y() : moved.x();
@@ -4331,7 +4440,7 @@ class UiTests : public QObject {
         }
         // Ten presses, ten steps: the pointer has to have arrived where they asked for,
         // not hovered about the place because every other press was taken back again.
-        QCOMPARE(overlay.pointer(), start + QPoint(1, -1));
+        QVERIFY(QLineF(overlay.pointer(), start + QPointF(1 / 1.25, -1 / 1.25)).length() < 0.001);
         const QPoint ended = crosshair(
             overlay.grab().toImage().convertedTo(QImage::Format_ARGB32), 150, 240);
         QVERIFY2(std::abs(ended.x() - overlay.pointer().x()) <= 2 &&
@@ -4487,7 +4596,7 @@ class UiTests : public QObject {
         // start the search again: the block the wheel picked is still the one on offer.
         QTest::keyClick(&overlay, Qt::Key_Right);
         QTest::qWait(50);
-        const QPoint at = overlay.pointer();
+        const QPointF at = overlay.pointer();
         QMouseEvent echo(QEvent::MouseMove, QPointF(at), QPointF(at), Qt::NoButton, Qt::NoButton,
                          Qt::NoModifier);
         QApplication::sendEvent(&overlay, &echo);

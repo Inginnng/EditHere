@@ -62,6 +62,11 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fr
 quintptr captureForegroundWindow();
 void restoreCaptureForegroundWindow(quintptr window);
 void captureScreens(CaptureCallback callback);
+#ifdef Q_OS_WIN
+// Windows' logical cursor API rounds away sub-DIP positions. Capture aiming uses
+// the exact per-monitor native pixel instead, including negative screen origins.
+void moveCapturePointer(const ScreenFrame &frame, QPoint pixel);
+#endif
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
 void configureNativeWindow(QWidget *window, bool overlay);

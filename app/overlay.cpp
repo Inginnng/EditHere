@@ -436,7 +436,7 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton || finished_)
         return;
     const QPoint pixel = pixelPoint(e->position());
-    pointer_ = e->position().toPoint();
+    pointer_ = e->position();
     cursor_ = pixel;
     if (picking_) {
         // The colour under the pointer is what the window is for at this moment, and
@@ -484,23 +484,16 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (busy_)
         return;
     const QPointF local = e->position();
-    // A request to put the pointer somewhere is answered with the same place rounded
-    // off to the pixels the system can address, and on a scaled display those are finer
-    // than a whole pixel of the pointer. Taking that answer as the truth dragged the aim
-    // back by the rounding on every press — which is what made an arrow key sometimes do
-    // nothing — and the two axes were rounded independently, which is what made one key
-    // move the pointer in two directions at once. Anything less than a whole pixel away
-    // is that answer rather than the user, and is left alone. A drag is always the user.
+    // Ignore the short-lived cursor-warp echo, which can be rounded by the
+    // platform. Ordinary mouse movement must retain sub-DIP precision as well.
     const bool dragging = drawing_ || handle_ != -1;
-    const bool adopted = dragging || std::abs(local.x() - pointer_.x()) >= 1.0 ||
-                         std::abs(local.y() - pointer_.y()) >= 1.0;
+    const bool echo = pointerWarpAge_.isValid() && pointerWarpAge_.elapsed() < 200 &&
+                      std::abs(local.x() - pointer_.x()) < 1.0 &&
+                      std::abs(local.y() - pointer_.y()) < 1.0;
+    const bool adopted = dragging || !echo;
     if (adopted)
-        pointer_ = local.toPoint();
-    // Everything below is work done on the assumption that the user moved the mouse,
-    // and this is not the user. Throwing the block away and looking for it again here
-    // dropped the layer the wheel had picked and handed back the smallest block under
-    // the pointer, which is why stepping the pointer with an arrow key put the little
-    // block straight back.
+        pointer_ = local;
+    // A warp echo must not reset the candidate chosen with the wheel.
     if (!adopted)
         return;
     const QPoint pixel = pixelPoint(local);
@@ -550,7 +543,7 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
         return;
     if (handle_ != -1) {
         handle_ = -1;
-        pointer_ = e->position().toPoint();
+        pointer_ = e->position();
         cursor_ = pixelPoint(e->position());
         updateCursor();
         update();
@@ -560,7 +553,7 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
         return;
     drawing_ = false;
     setCursor(Qt::CrossCursor);
-    pointer_ = e->position().toPoint();
+    pointer_ = e->position();
     QPoint end = pixelPoint(e->position()) + keyboardOffset_;
     end.setX(std::clamp(end.x(),0,frame_.image.width()));
     end.setY(std::clamp(end.y(),0,frame_.image.height()));
@@ -588,7 +581,7 @@ void Overlay::mouseDoubleClickEvent(QMouseEvent *e) {
 void Overlay::wheelEvent(QWheelEvent *e) {
     if (drawing_ || finished_ || ready_ || busy_ || !selected_.isEmpty())
         return;
-    pointer_ = e->position().toPoint();
+    pointer_ = e->position();
     cursor_ = pixelPoint(e->position());
     picker_.update(candidates(), cursor_);
     if (e->angleDelta().y() != 0)
@@ -992,18 +985,18 @@ void Overlay::hideTools() {
 void Overlay::movePointer(int dx, int dy) {
     if ((dx == 0 && dy == 0) || frame_.image.isNull() || width() <= 0 || height() <= 0)
         return;
-    // One whole step of the pointer, on one axis only. The step is taken here and not
-    // in pixels of the grab: on a scaled display a grab pixel is a fraction of a step,
-    // so a step taken there and rounded back into steps of the pointer sometimes
-    // rounded to where it had started — an arrow key that appeared to do nothing — and
-    // sometimes rounded the two axes different ways, which is what made pressing one
-    // key move the pointer in two directions at once.
-    const QPoint base(std::clamp(pointer_.x(), 0, width() - 1),
-                      std::clamp(pointer_.y(), 0, height() - 1));
-    pointer_ = QPoint(std::clamp(base.x() + dx, 0, width() - 1),
-                      std::clamp(base.y() + dy, 0, height() - 1));
-    QCursor::setPos(mapToGlobal(pointer_));
-    cursor_ = pixelPoint(pointer_);
+    cursor_ = QPoint(std::clamp(cursor_.x() + dx, 0, frame_.image.width() - 1),
+                     std::clamp(cursor_.y() + dy, 0, frame_.image.height() - 1));
+    if (dx) pointer_.setX(double(cursor_.x()) * width() / frame_.image.width());
+    if (dy) pointer_.setY(double(cursor_.y()) * height() / frame_.image.height());
+    pointerWarpAge_.restart();
+#ifdef Q_OS_WIN
+    if (QGuiApplication::platformName() == "windows" && frame_.nativePixels &&
+        frame_.nativeGeometry.size() == frame_.image.size())
+        moveCapturePointer(frame_, cursor_);
+    else
+#endif
+        QCursor::setPos(mapToGlobal(pointer_.toPoint()));
     updateCursor();
     // Before anything has been taken the readout is up wherever the pointer is; after
     // that it is up over the picture that was taken and nowhere else.

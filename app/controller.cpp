@@ -284,6 +284,19 @@ void Controller::openSettings(bool updates, bool toolbar) {
     if (startupReadError.isEmpty())
         draft.launchAtLogin = registered;
     SettingsDialog dialog(draft, &editor_);
+    dialog.setUpdateSourceHandler([this](const QString &source) {
+        auto next = settings_;
+        next.updateSource = source;
+        QString error;
+        if (!saveSettings(next, &error, settingsFile_)) return error;
+        settings_.updateSource = source;
+        pendingStartupUpdate_.reset();
+        if (auto checker = findChild<UpdateChecker *>("startupUpdateChecker")) {
+            checker->cancelCheck();
+            checker->deleteLater();
+        }
+        return QString();
+    });
     const auto unavailableNotice = tr("当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。");
     if (shortcut_.unavailable() || annotateShortcut_.unavailable())
         dialog.setGlobalShortcutNotice(unavailableNotice);
@@ -301,7 +314,7 @@ void Controller::openSettings(bool updates, bool toolbar) {
     bool guideRequested = false;
     connect(&dialog, &SettingsDialog::guideRequested, &dialog, [&] { guideRequested = true; });
     if (release)
-        dialog.offerUpdate(*release, true);
+        dialog.offerUpdate(*release);
     else if (updates)
         dialog.showUpdates(true);
     else if (toolbar)
@@ -454,6 +467,7 @@ void Controller::scheduleStartupUpdate() {
     startupUpdateChecked_ = true;
     auto checker = new UpdateChecker(this);
     checker->setObjectName("startupUpdateChecker");
+    checker->setSourcePreference(settings_.updateSource);
     connect(checker, &UpdateChecker::finished, this, [this, checker] {
         startupUpdateFinished(checker->lastResult());
         checker->deleteLater();
@@ -482,7 +496,7 @@ void Controller::presentStartupUpdate() {
     QMessageBox prompt(QMessageBox::Information, tr("EditHere 更新"),
                        tr("发现新版本 %1。").arg(release.tagName), QMessageBox::NoButton, &editor_);
     prompt.setObjectName("startupUpdatePrompt");
-    auto update = prompt.addButton(updateauth::publisherConfigured() ? tr("立即更新") : tr("打开发布页"), QMessageBox::AcceptRole);
+    auto update = prompt.addButton(tr("查看更新"), QMessageBox::AcceptRole);
     auto skip = prompt.addButton(tr("跳过"), QMessageBox::RejectRole);
     prompt.setDefaultButton(skip);
     prompt.setEscapeButton(skip);
@@ -612,6 +626,10 @@ void Controller::beginCapture(bool fromTray) {
                 owner->restoreAfterCapture();
                 QMessageBox::warning(&owner->editor_, tr("截图未完成"), error);
                 return;
+            }
+            if (!error.isEmpty()) {
+                diagnostics::write(diagnostics::Level::Warning, "capture.screens", error);
+                owner->tray_.showMessage(tr("部分屏幕无法截图"), error);
             }
             if (frames.size() == 1 && frames.first().selectionComplete) {
                 const auto &frame = frames.first();

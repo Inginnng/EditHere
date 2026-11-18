@@ -58,9 +58,16 @@ bool isSourceAssetUrl(const QUrl &url, UpdateChecker::Source source) {
         return false;
     if (source == UpdateChecker::Gitee)
         return url.host() == "gitee.com" && url.path().startsWith("/InnGing/EditHere/releases/download/");
+    if (source == UpdateChecker::AtomGit)
+        return url.host() == "api.atomgit.com" &&
+               url.path().startsWith("/api/v5/repos/Inginnng/EditHere/releases/");
     return url.host() == "github.com" && url.path().startsWith("/Inginnng/EditHere/releases/download/");
 }
 bool matchesReleaseAsset(const UpdateChecker::Asset &asset, const QString &tag) {
+    if (isSourceAssetUrl(asset.url, UpdateChecker::AtomGit) &&
+        asset.url.path() == "/api/v5/repos/Inginnng/EditHere/releases/" + tag +
+                                "/attach_files/" + asset.name + "/download")
+        return true;
     for (const auto source : {UpdateChecker::GitHub, UpdateChecker::Gitee}) {
         const QString repo = source == UpdateChecker::GitHub ? "/Inginnng/EditHere" : "/InnGing/EditHere";
         if (isSourceAssetUrl(asset.url, source) &&
@@ -89,6 +96,7 @@ QVersionNumber releaseVersion(const UpdateChecker::Result &result) {
 }
 } // namespace
 QUrl UpdateChecker::releasesUrl(Source source) {
+    if (source == AtomGit) return QUrl("https://atomgit.com/Inginnng/EditHere/releases");
     return source == Gitee ? QUrl("https://gitee.com/InnGing/EditHere/releases")
                            : QUrl("https://github.com/Inginnng/EditHere/releases");
 }
@@ -107,8 +115,8 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
     const auto localMatch = versionPattern.match(currentVersion);
     // Gitee's latest-release API omits draft and html_url. Build its public
     // release page from the fixed repository and the validated version tag.
-    const QUrl expectedUrl(releasesUrl(source).toString() + "/tag/" + tag);
-    const QUrl url(source == Gitee && !object.contains("html_url")
+    const QUrl expectedUrl(releasesUrl(source).toString() + (source == AtomGit ? "/" : "/tag/") + tag);
+    const QUrl url(source != GitHub && !object.contains("html_url")
                        ? expectedUrl : QUrl(object.value("html_url").toString()));
     const bool invalidDraft = source == GitHub ? !object.value("draft").isBool() || object.value("draft").toBool()
                                               : object.contains("draft") &&
@@ -116,6 +124,7 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
     if (!match.hasMatch() || !localMatch.hasMatch() ||
         !updateauth::canonicalVersion(match.captured(1)) || !updateauth::canonicalVersion(localMatch.captured(1)) || invalidDraft ||
         !object.value("prerelease").isBool() || object.value("prerelease").toBool() ||
+        (source == AtomGit && object.value("release_status").toString() == "pre") ||
         url.scheme() != "https" || url.host() != expectedUrl.host() ||
         !url.userInfo().isEmpty() || url.port(-1) != -1 || url.hasQuery() || url.hasFragment() ||
         url.path() != expectedUrl.path())
@@ -136,7 +145,12 @@ UpdateChecker::Result UpdateChecker::parseRelease(const QByteArray &bytes, const
                 const auto obj = item.toObject();
                 if (obj.value("name").toString() != candidate)
                     continue;
-                const QUrl assetUrl(obj.value("browser_download_url").toString());
+                // AtomGit exposes expiring storage URLs. Resolve the public,
+                // repository/tag/name-bound API route instead of trusting a CDN.
+                const QUrl assetUrl(source == AtomGit
+                    ? "https://api.atomgit.com/api/v5/repos/Inginnng/EditHere/releases/" + tag +
+                          "/attach_files/" + candidate + "/download"
+                    : obj.value("browser_download_url").toString());
                 const Asset value{candidate, assetUrl, obj.value("size").toVariant().toLongLong()};
                 if (!isSourceAssetUrl(assetUrl, source) || !matchesReleaseAsset(value, tag))
                     continue;
@@ -222,6 +236,48 @@ UpdateChecker::Result UpdateChecker::selectRelease(const Result &github, const R
     // the other mirror's binary. Prefer complete packages, then the Gitee mirror.
     return completeness(github) > completeness(gitee) ? github : gitee;
 }
+QString UpdateChecker::sourceName(Source source) {
+    return source == AtomGit ? QStringLiteral("AtomGit") :
+           source == Gitee ? QStringLiteral("Gitee") : QStringLiteral("GitHub");
+}
+UpdateChecker::Source UpdateChecker::preferredSource(const QString &preference, QLocale::Territory territory) {
+    if (preference == "atomgit") return AtomGit;
+    if (preference == "gitee") return Gitee;
+    if (preference == "github") return GitHub;
+    // Region is independent of the selected UI language. English in mainland
+    // China should receive the same domestic default as a Chinese interface.
+    return territory == QLocale::China ? AtomGit : GitHub;
+}
+void UpdateChecker::setSourcePreference(const QString &preference) {
+    const auto next = QStringList{"auto", "atomgit", "github", "gitee"}.contains(preference)
+                          ? preference : QStringLiteral("auto");
+    if (sourcePreference_ == next) return;
+    cancelCheck();
+    sourcePreference_ = next;
+}
+UpdateChecker::Result UpdateChecker::selectRelease(const QVector<Result> &releases, Source preferred) {
+    if (releases.size() != 3)
+        return failure(tr("无法读取更新信息，请稍后重试。"), preferred);
+    std::optional<Result> best;
+    QStringList unavailable, checked;
+    const QVector<Source> order{preferred,
+        preferred == GitHub ? AtomGit : GitHub,
+        preferred == Gitee ? AtomGit : Gitee};
+    for (const auto source : order) {
+        const auto &result = releases[int(source)];
+        if (result.status == Failed) { unavailable.append(sourceName(source)); continue; }
+        checked.append(sourceName(source));
+        if (!best || releaseVersion(result) > releaseVersion(*best) ||
+            (releaseVersion(result) == releaseVersion(*best) && completeness(result) > completeness(*best)))
+            best = result;
+    }
+    if (!best)
+        return failure(tr("%1 均无法检查更新，请检查网络后重试。").arg(unavailable.join("、")), preferred);
+    if (!unavailable.isEmpty())
+        best->message += '\n' + tr("%1 未能完成检查，以上结果来自 %2。")
+                                   .arg(unavailable.join("、"), checked.join("、"));
+    return *best;
+}
 UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
     handoffTimer_.setInterval(250);
     connect(&handoffTimer_, &QTimer::timeout, this, &UpdateChecker::pollHandoff);
@@ -272,7 +328,7 @@ UpdateChecker::~UpdateChecker() {
     cancelHandoff();
     busy_ = false;
     process_.disconnect(this);
-    for (auto *pointer : {&reply_, &giteeReply_, &downloadReply_, &hashReply_}) {
+    for (auto *pointer : {&reply_, &giteeReply_, &atomgitReply_, &downloadReply_, &hashReply_}) {
         if (*pointer) {
             auto *reply = pointer->data();
             *pointer = nullptr;
@@ -297,12 +353,22 @@ void UpdateChecker::check() {
     publicRequested_ = false;
     output_.clear();
     giteeOutput_.clear();
+    atomgitOutput_.clear();
     githubResult_.reset();
     giteeResult_.reset();
+    atomgitResult_.reset();
     giteeCandidate_.reset();
+    atomgitCandidate_.reset();
     giteePage_ = 1;
+    atomgitPage_ = 1;
+    preferredSource_ = preferredSource(sourcePreference_);
+    requestedSources_ = sourcePreference_ == "auto" ? QVector<Source>{preferredSource_,
+        preferredSource_ == GitHub ? AtomGit : GitHub,
+        preferredSource_ == Gitee ? AtomGit : Gitee} : QVector<Source>{preferredSource_};
     timeout_.start();
-    requestGitee();
+    for (const auto source : requestedSources_)
+        if (source != GitHub) requestSource(source);
+    if (!requestedSources_.contains(GitHub)) return;
     auto gh = QStandardPaths::findExecutable("gh");
 #ifdef Q_OS_WIN
     if (gh.isEmpty()) {
@@ -337,14 +403,15 @@ void UpdateChecker::requestGitee() {
     requestSource(Gitee);
 }
 void UpdateChecker::requestSource(Source source) {
-    auto &pointer = source == GitHub ? reply_ : giteeReply_;
-    const auto &result = source == GitHub ? githubResult_ : giteeResult_;
+    auto &pointer = source == GitHub ? reply_ : source == Gitee ? giteeReply_ : atomgitReply_;
+    const auto &result = source == GitHub ? githubResult_ : source == Gitee ? giteeResult_ : atomgitResult_;
     if (!busy_ || pointer || result)
         return;
     const QUrl url = source == GitHub
                          ? QUrl("https://api.github.com/repos/Inginnng/EditHere/releases/latest")
-                         : QUrl(QString("https://gitee.com/api/v5/repos/InnGing/EditHere/releases?direction=desc&per_page=100&page=%1")
-                                    .arg(giteePage_));
+                         : source == Gitee
+                             ? QUrl(QString("https://gitee.com/api/v5/repos/InnGing/EditHere/releases?direction=desc&per_page=100&page=%1").arg(giteePage_))
+                             : QUrl(QString("https://api.atomgit.com/api/v5/repos/Inginnng/EditHere/releases?direction=desc&per_page=100&page=%1").arg(atomgitPage_));
     QNetworkRequest request(url);
     request.setRawHeader("Accept", source == GitHub ? "application/vnd.github+json" : "application/json");
     request.setRawHeader("User-Agent", "EditHere/" EDITHERE_VERSION);
@@ -352,22 +419,22 @@ void UpdateChecker::requestSource(Source source) {
         request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     request.setTransferTimeout(12000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
-    auto &buffer = source == GitHub ? output_ : giteeOutput_;
+    auto &buffer = source == GitHub ? output_ : source == Gitee ? giteeOutput_ : atomgitOutput_;
     buffer.clear();
     auto *reply = network_.get(request);
     pointer = reply;
     reply->setReadBufferSize(maximumResponse + 1);
     connect(reply, &QNetworkReply::readyRead, this, [this, source, reply] {
-        const auto &pointer = source == GitHub ? reply_ : giteeReply_;
+        const auto &pointer = source == GitHub ? reply_ : source == Gitee ? giteeReply_ : atomgitReply_;
         if (!busy_ || pointer != reply)
             return;
-        auto &buffer = source == GitHub ? output_ : giteeOutput_;
+        auto &buffer = source == GitHub ? output_ : source == Gitee ? giteeOutput_ : atomgitOutput_;
         buffer += reply->readAll();
         if (buffer.size() > maximumResponse)
             collectSource(source, failure(tr("更新信息过大，请稍后重试。"), source));
     });
     connect(reply, &QNetworkReply::finished, this, [this, source, reply] {
-        auto &pointer = source == GitHub ? reply_ : giteeReply_;
+        auto &pointer = source == GitHub ? reply_ : source == Gitee ? giteeReply_ : atomgitReply_;
         if (!busy_ || pointer != reply)
             return;
         const auto status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -375,7 +442,7 @@ void UpdateChecker::requestSource(Source source) {
             collectSource(source, failure(tr("网络连接失败，暂时无法判断是否有更新。请稍后重试。"), source));
             return;
         }
-        auto &buffer = source == GitHub ? output_ : giteeOutput_;
+        auto &buffer = source == GitHub ? output_ : source == Gitee ? giteeOutput_ : atomgitOutput_;
         buffer += reply->readAll();
         if (source == GitHub) {
             collectSource(source, parseRelease(buffer, QStringLiteral(EDITHERE_VERSION), source));
@@ -387,30 +454,31 @@ void UpdateChecker::requestSource(Source source) {
             return;
         }
         const auto page = parseReleases(buffer, QStringLiteral(EDITHERE_VERSION), source);
+        auto &candidate = source == Gitee ? giteeCandidate_ : atomgitCandidate_;
         if (page.status != Failed &&
-            (!giteeCandidate_ || QVersionNumber::compare(releaseVersion(page), releaseVersion(*giteeCandidate_)) > 0 ||
-             (releaseVersion(page) == releaseVersion(*giteeCandidate_) &&
-              completeness(page) > completeness(*giteeCandidate_))))
-            giteeCandidate_ = page;
+            (!candidate || QVersionNumber::compare(releaseVersion(page), releaseVersion(*candidate)) > 0 ||
+             (releaseVersion(page) == releaseVersion(*candidate) && completeness(page) > completeness(*candidate))))
+            candidate = page;
         // Gitee's "latest" means last edited and can be a preview. Read every
         // page of releases instead of relying on its ordering or that endpoint.
         if (document.array().size() == 100) {
             pointer = nullptr;
             reply->disconnect(this);
             reply->deleteLater();
-            ++giteePage_;
-            requestGitee();
+            ++(source == Gitee ? giteePage_ : atomgitPage_);
+            requestSource(source);
             return;
         }
-        collectSource(source, giteeCandidate_.value_or(page));
+        collectSource(source, candidate.value_or(page));
     });
 }
 void UpdateChecker::collectSource(Source source, Result result) {
-    auto &stored = source == GitHub ? githubResult_ : giteeResult_;
+    if (!requestedSources_.contains(source)) return;
+    auto &stored = source == GitHub ? githubResult_ : source == Gitee ? giteeResult_ : atomgitResult_;
     if (!busy_ || stored)
         return;
     stored = std::move(result);
-    auto &pointer = source == GitHub ? reply_ : giteeReply_;
+    auto &pointer = source == GitHub ? reply_ : source == Gitee ? giteeReply_ : atomgitReply_;
     if (pointer) {
         auto *reply = pointer.data();
         pointer = nullptr;
@@ -424,24 +492,31 @@ void UpdateChecker::collectSource(Source source, Result result) {
         if (process_.state() != QProcess::NotRunning)
             process_.kill();
     }
-    if (githubResult_ && giteeResult_)
-        completeCheck();
+    for (const auto requested : requestedSources_)
+        if (!(requested == GitHub ? githubResult_ : requested == Gitee ? giteeResult_ : atomgitResult_))
+            return;
+    completeCheck();
 }
 void UpdateChecker::completeCheck() {
     if (!busy_)
         return;
-    const auto timeout = failure(tr("检查超时，请检查网络后重试。"));
-    finish(selectRelease(githubResult_.value_or(timeout), giteeResult_.value_or(timeout)));
+    const auto timeout = [&](Source source) { return failure(tr("检查超时，请检查网络后重试。"), source); };
+    if (requestedSources_.size() == 1) {
+        const auto source = requestedSources_.front();
+        finish((source == GitHub ? githubResult_ : source == Gitee ? giteeResult_ : atomgitResult_).value_or(timeout(source)));
+    } else if (requestedSources_.size() == 2) {
+        finish(selectRelease(githubResult_.value_or(timeout(GitHub)), giteeResult_.value_or(timeout(Gitee))));
+    } else {
+        finish(selectRelease({githubResult_.value_or(timeout(GitHub)), giteeResult_.value_or(timeout(Gitee)),
+                              atomgitResult_.value_or(timeout(AtomGit))}, preferredSource_));
+    }
 }
-void UpdateChecker::finish(Result result) {
-    if (!busy_)
-        return;
-    if (result.status == Failed)
-        diagnostics::write(diagnostics::Level::Warning, "updates.check", result.message);
+void UpdateChecker::cancelCheck() {
     busy_ = false;
     timeout_.stop();
     cliTimeout_.stop();
-    for (auto *pointer : {&reply_, &giteeReply_}) {
+    publicRequested_ = true;
+    for (auto *pointer : {&reply_, &giteeReply_, &atomgitReply_}) {
         if (*pointer) {
             auto *reply = pointer->data();
             *pointer = nullptr;
@@ -452,6 +527,12 @@ void UpdateChecker::finish(Result result) {
     }
     if (process_.state() != QProcess::NotRunning)
         process_.kill();
+}
+void UpdateChecker::finish(Result result) {
+    if (!busy_) return;
+    if (result.status == Failed)
+        diagnostics::write(diagnostics::Level::Warning, "updates.check", result.message);
+    cancelCheck();
     lastResult_ = result;
     emit finished(result.status, result.message, result.url);
 }

@@ -132,6 +132,30 @@ class WindowsCaptureTests final : public QObject {
         QVERIFY(convert(bytes.constData(), 32, {2, 2}, 16, 1, 45).isNull());
         QVERIFY(convert(bytes.constData(), 32, {2, 2}, std::numeric_limits<qsizetype>::max()).isNull());
     }
+    void blankDuplicatedFramesAreRecognized() {
+        QVERIFY(isBlankFrame({}));
+        QImage black(16, 9, QImage::Format_RGB32);
+        black.fill(Qt::black);
+        QVERIFY(isBlankFrame(black));
+        // A frame that never received the desktop is exactly zero; a few levels
+        // above that are still not a picture worth showing.
+        QImage nearlyBlack(16, 9, QImage::Format_RGB32);
+        nearlyBlack.fill(QColor(2, 2, 2));
+        QVERIFY(isBlankFrame(nearlyBlack));
+        // One real pixel is enough: dark UI over a black wallpaper is a genuine
+        // desktop, not a blank duplication.
+        QImage single(16, 9, QImage::Format_RGB32);
+        single.fill(Qt::black);
+        single.setPixel(15, 8, QColor(8, 8, 8).rgb());
+        QVERIFY(!isBlankFrame(single));
+        QImage darkUi(16, 9, QImage::Format_RGB32);
+        darkUi.fill(QColor("#1f2328"));
+        QVERIFY(!isBlankFrame(darkUi));
+        // Channel order must be honoured, not just the low byte.
+        QImage blueOnly(16, 9, QImage::Format_RGB32);
+        blueOnly.fill(QColor(0, 0, 9));
+        QVERIFY(!isBlankFrame(blueOnly));
+    }
     void realGpuCapturePreservesUiColorsAndExcludesOverlay() {
         ColorBars window;
         window.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);

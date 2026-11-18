@@ -10,6 +10,7 @@
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QJsonObject>
+#include <QLocale>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -19,7 +20,7 @@ class UpdateChecker final : public QObject {
     Q_OBJECT
   public:
     enum Status { Current, Available, NewerLocal, Failed };
-    enum Source { GitHub, Gitee };
+    enum Source { GitHub, Gitee, AtomGit };
     struct Asset {
         QString name;
         QUrl url;
@@ -45,6 +46,12 @@ class UpdateChecker final : public QObject {
     static Result parseReleases(const QByteArray &bytes, const QString &currentVersion,
                                 Source source = Gitee);
     static Result selectRelease(const Result &github, const Result &gitee);
+    static Result selectRelease(const QVector<Result> &releases, Source preferred);
+    static Source preferredSource(const QString &preference,
+                                  QLocale::Territory territory = QLocale::system().territory());
+    static QString sourceName(Source source);
+    void setSourcePreference(const QString &preference);
+    void cancelCheck();
     // Resolves the temporary path a package is downloaded to and drops whatever
     // is already there. The writer appends, so a leftover file from a previous
     // attempt would be concatenated with the new package and fail the SHA256
@@ -101,6 +108,7 @@ class UpdateChecker final : public QObject {
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QPointer<QNetworkReply> giteeReply_;
+    QPointer<QNetworkReply> atomgitReply_;
     QPointer<QNetworkReply> downloadReply_;
     QPointer<QNetworkReply> hashReply_;
     QProcess process_;
@@ -113,9 +121,16 @@ class UpdateChecker final : public QObject {
     QString expectedInstallVersion_, handoffToken_, handoffTarget_, handoffId_;
     QByteArray output_;
     QByteArray giteeOutput_;
+    QByteArray atomgitOutput_;
     std::optional<Result> githubResult_, giteeResult_;
+    std::optional<Result> atomgitResult_;
     std::optional<Result> giteeCandidate_;
+    std::optional<Result> atomgitCandidate_;
     int giteePage_ = 1;
+    int atomgitPage_ = 1;
+    QString sourcePreference_ = "auto";
+    Source preferredSource_ = GitHub;
+    QVector<Source> requestedSources_{GitHub, Gitee};
     QString downloadPath_;
     QString downloadFileName_;
     int downloadRetries_ = 0;

@@ -42,6 +42,7 @@ struct AppSettings {
     // than a one-off so that it can be turned back on in the settings.
     bool confirmBeforeDiscard = true;
     bool checkUpdatesOnStartup = true;
+    QString updateSource = "auto";
     QString aiProviderId = "openai";
     QMap<QString, AiConnectionSettings> aiProviders;
     // Hand-edited system prompt for AI analysis. Empty means the built-in prompt.

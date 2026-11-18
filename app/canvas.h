@@ -17,6 +17,7 @@ class Canvas final : public QWidget {
         return mode_;
     }
     void setZoom(double zoom);
+    double nativeZoom() const { return 1.0 / devicePixelRatioF(); }
     double zoom() const {
         return zoom_;
     }
@@ -61,7 +62,7 @@ class Canvas final : public QWidget {
     void focusOutEvent(QFocusEvent *) override;
 
   private:
-    void paintScene(QPainter &p, QRect exposed);
+    void paintScene(QPainter &p, QRect exposed, bool magnified = false);
     bool magnifierEnabled_=true, pointerInside_=false;
     QPointF pointer_;
     int hit(QPointF screen, bool rectangles) const;
@@ -85,6 +86,8 @@ class Canvas final : public QWidget {
     std::optional<Candidate> pending_;
     bool layoutPreview_ = false;
     QImage layoutImage_;
+    QImage displayImage_;
+    qint64 displaySourceKey_ = 0;
     QVector<Candidate> displayCandidates_;
     QVector<MovementMarker> movements_;
     bool annotationsVisible_ = true;

@@ -83,9 +83,14 @@ class UpdateCheckerTestAccess {
         checker.downloadFile_->write("partial package");
         return checker.downloadDirectory_->path();
     }
-    static void beginCheck(UpdateChecker &checker) {
+    static void beginCheck(UpdateChecker &checker,
+                           QVector<UpdateChecker::Source> sources = {UpdateChecker::GitHub, UpdateChecker::Gitee},
+                           UpdateChecker::Source preferred = UpdateChecker::GitHub) {
         checker.githubResult_.reset();
         checker.giteeResult_.reset();
+        checker.atomgitResult_.reset();
+        checker.requestedSources_ = std::move(sources);
+        checker.preferredSource_ = preferred;
         checker.busy_ = true;
         checker.timeout_.start();
     }
@@ -97,7 +102,8 @@ class UpdateCheckerTestAccess {
     }
     static const std::optional<UpdateChecker::Result> &sourceResult(const UpdateChecker &checker,
                                                                    UpdateChecker::Source source) {
-        return source == UpdateChecker::GitHub ? checker.githubResult_ : checker.giteeResult_;
+        return source == UpdateChecker::GitHub ? checker.githubResult_ :
+               source == UpdateChecker::Gitee ? checker.giteeResult_ : checker.atomgitResult_;
     }
 };
 }
@@ -185,6 +191,77 @@ class UpdateTests : public QObject {
         return QJsonDocument(object).toJson();
     }
   private slots:
+    void automaticSourceUsesTerritoryAndExplicitChoiceWins() {
+        QCOMPARE(UpdateChecker::preferredSource("auto", QLocale::China), UpdateChecker::AtomGit);
+        for (const auto territory : {QLocale::UnitedStates, QLocale::HongKong, QLocale::Taiwan})
+            QCOMPARE(UpdateChecker::preferredSource("auto", territory), UpdateChecker::GitHub);
+        for (const auto territory : {QLocale::UnitedStates, QLocale::China}) {
+            QCOMPARE(UpdateChecker::preferredSource("atomgit", territory), UpdateChecker::AtomGit);
+            QCOMPARE(UpdateChecker::preferredSource("github", territory), UpdateChecker::GitHub);
+            QCOMPARE(UpdateChecker::preferredSource("gitee", territory), UpdateChecker::Gitee);
+        }
+    }
+    void atomgitAssetsUseTheRepositoryAndTagBoundDownloadApi() {
+        auto object = QJsonDocument::fromJson(giteeRelease("v0.13.3", true)).object();
+        object["release_status"] = "latest";
+        const auto result = UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.13.2", UpdateChecker::AtomGit);
+        QCOMPARE(result.status, UpdateChecker::Available);
+        QCOMPARE(result.url, QUrl("https://atomgit.com/Inginnng/EditHere/releases/v0.13.3"));
+        const QString base = "https://api.atomgit.com/api/v5/repos/Inginnng/EditHere/releases/v0.13.3/attach_files/";
+        QCOMPARE(result.installer.url, QUrl(base + "EditHere-win-x64-setup.exe/download"));
+        QCOMPARE(result.installerHash.url, QUrl(base + "EditHere-win-x64-setup.exe.sha256/download"));
+        QCOMPARE(result.installerSignature.url, QUrl(base + "EditHere-win-x64-setup.exe.sig/download"));
+        QCOMPARE(UpdateChecker::canAutoInstall(result, true, true), updateauth::installationConfigured());
+        auto mixed = result;
+        mixed.installerSignature = UpdateChecker::parseRelease(releaseWithAssets("v0.13.3", false), "0.13.2").installerSignature;
+        QVERIFY(!UpdateChecker::canAutoInstall(mixed, true, true));
+        object["release_status"] = "pre";
+        QCOMPARE(UpdateChecker::parseRelease(QJsonDocument(object).toJson(), "0.13.2", UpdateChecker::AtomGit).status,
+                 UpdateChecker::Failed);
+    }
+    void automaticSourcePriorityKeepsTheNewestCompleteRelease() {
+        const auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.13.3", false), "0.13.2");
+        const auto gitee = UpdateChecker::parseRelease(giteeRelease("v0.13.3", true), "0.13.2", UpdateChecker::Gitee);
+        const auto atomgit = UpdateChecker::parseRelease(giteeRelease("v0.13.3", true), "0.13.2", UpdateChecker::AtomGit);
+        const QVector<UpdateChecker::Result> releases{github, gitee, atomgit};
+        QCOMPARE(UpdateChecker::selectRelease(releases, UpdateChecker::AtomGit).installer.url, atomgit.installer.url);
+        QCOMPARE(UpdateChecker::selectRelease(releases, UpdateChecker::GitHub).installer.url, github.installer.url);
+        QCOMPARE(UpdateChecker::selectRelease(releases, UpdateChecker::Gitee).installer.url, gitee.installer.url);
+        auto next = releases;
+        next[0] = UpdateChecker::parseRelease(releaseWithAssets("v0.13.4", false), "0.13.2");
+        QCOMPARE(UpdateChecker::selectRelease(next, UpdateChecker::AtomGit).tagName, QString("v0.13.4"));
+        next = releases;
+        next[2].installerSignature = {};
+        QCOMPARE(UpdateChecker::selectRelease(next, UpdateChecker::AtomGit).installer.url, github.installer.url);
+        next[0] = UpdateChecker::parseRelease("{}", "0.13.2");
+        QCOMPARE(UpdateChecker::selectRelease(next, UpdateChecker::AtomGit).installer.url, gitee.installer.url);
+    }
+    void threeSourceCollectionAndManualSelectionIgnoreUnrequestedResults() {
+        const auto github = UpdateChecker::parseRelease(releaseWithAssets("v0.13.4", false), "0.13.2");
+        const auto gitee = UpdateChecker::parseRelease(giteeRelease("v0.13.3", true), "0.13.2", UpdateChecker::Gitee);
+        const auto atomgit = UpdateChecker::parseRelease(giteeRelease("v0.13.3", true), "0.13.2", UpdateChecker::AtomGit);
+        UpdateChecker checker;
+        QSignalSpy finished(&checker, &UpdateChecker::finished);
+        UpdateCheckerTestAccess::beginCheck(checker, {UpdateChecker::AtomGit, UpdateChecker::GitHub, UpdateChecker::Gitee}, UpdateChecker::AtomGit);
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::AtomGit, atomgit);
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::GitHub, github);
+        QVERIFY(checker.busy());
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::Gitee, gitee);
+        QCOMPARE(finished.size(), 1);
+        QCOMPARE(checker.lastResult().tagName, QString("v0.13.4"));
+        UpdateCheckerTestAccess::beginCheck(checker, {UpdateChecker::AtomGit}, UpdateChecker::AtomGit);
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::GitHub, github);
+        QVERIFY(!UpdateCheckerTestAccess::sourceResult(checker, UpdateChecker::GitHub));
+        QVERIFY(checker.busy());
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::AtomGit, atomgit);
+        QCOMPARE(finished.size(), 2);
+        QCOMPARE(checker.lastResult().installer.url, atomgit.installer.url);
+        UpdateCheckerTestAccess::beginCheck(checker, {UpdateChecker::AtomGit}, UpdateChecker::AtomGit);
+        checker.cancelCheck();
+        UpdateCheckerTestAccess::collect(checker, UpdateChecker::AtomGit, atomgit);
+        UpdateCheckerTestAccess::expireCheck(checker);
+        QCOMPARE(finished.size(), 2);
+    }
     void publisherPinMustBePresentAndWellFormed() {
         QString error;
         for (const auto &pin : {QString(), QString(" "), QString(64, 'z'), QString(63, '0'), QString(64, '0') + "\n"}) {
@@ -929,7 +1006,7 @@ class UpdateTests : public QObject {
     }
     void liveReleaseCheck() {
         if (!qEnvironmentVariableIsSet("H2D_LIVE_UPDATES"))
-            QSKIP("Opt-in real GitHub+Gitee release integration check");
+            QSKIP("Opt-in real GitHub+Gitee+AtomGit release integration check");
         UpdateChecker checker;
         QSignalSpy result(&checker, &UpdateChecker::finished);
         checker.check();
@@ -939,13 +1016,12 @@ class UpdateTests : public QObject {
         QVERIFY(!checker.busy());
         qInfo().noquote() << result.first()[1].toString();
         QVERIFY(result.first()[0].value<UpdateChecker::Status>() != UpdateChecker::Failed);
-        for (const auto source : {UpdateChecker::GitHub, UpdateChecker::Gitee}) {
-            const QString sourceName = source == UpdateChecker::GitHub ? "GitHub" : "Gitee";
+        for (const auto source : {UpdateChecker::GitHub, UpdateChecker::Gitee, UpdateChecker::AtomGit}) {
+            const auto sourceName = UpdateChecker::sourceName(source);
             const auto &sourceResult = UpdateCheckerTestAccess::sourceResult(checker, source);
             QVERIFY2(sourceResult.has_value(), qPrintable(sourceName + " did not complete before the deadline"));
             QVERIFY2(sourceResult->status != UpdateChecker::Failed, qPrintable(sourceResult->message));
-            QCOMPARE(sourceResult->url.host(), source == UpdateChecker::GitHub
-                         ? QString("github.com") : QString("gitee.com"));
+            QCOMPARE(sourceResult->url.host(), UpdateChecker::releasesUrl(source).host());
             qInfo().noquote() << sourceName << sourceResult->tagName << sourceResult->url.host();
         }
     }

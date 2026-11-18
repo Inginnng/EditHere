@@ -84,6 +84,41 @@ class SettingsTests : public QObject {
         widget.grab().save(QDir(folder).filePath(name));
     }
   private slots:
+    void updateSourcePreferencePersistsAndRejectsInvalidValues() {
+        QTemporaryDir directory;
+        const auto path = directory.filePath("settings.ini");
+        QCOMPARE(defaultSettings().updateSource, QString("auto"));
+        for (const auto &source : {"auto", "atomgit", "github", "gitee"}) {
+            auto settings = defaultSettings();
+            settings.updateSource = source;
+            QVERIFY(saveSettings(settings, nullptr, path));
+            QCOMPARE(loadSettings(path).updateSource, QString(source));
+            SettingsDialog dialog(loadSettings(path));
+            QCOMPARE(dialog.findChild<QComboBox *>("updateSource")->currentData().toString(), QString(source));
+            if (QString(source) == "atomgit" && !qEnvironmentVariableIsEmpty("H2D_TEST_ARTIFACTS")) {
+                dialog.showUpdates();
+                dialog.show();
+                QTest::qWait(30);
+                artifact(dialog, "saved-update-source.png");
+            }
+        }
+        QSettings malformed(path, QSettings::IniFormat);
+        malformed.setValue("updates/source", "https://untrusted.example");
+        malformed.sync();
+        QCOMPARE(loadSettings(path).updateSource, QString("auto"));
+        auto settings = defaultSettings();
+        settings.updateSource = "unknown";
+        QVERIFY(!validateSettings(settings).isEmpty());
+    }
+    void failedImmediateSourceSaveRestoresTheSelection() {
+        SettingsDialog dialog(defaultSettings());
+        dialog.setUpdateSourceHandler([](const QString &) { return QString("Cannot write test settings"); });
+        auto source = dialog.findChild<QComboBox *>("updateSource");
+        source->setCurrentIndex(source->findData("atomgit"));
+        QCOMPARE(source->currentData().toString(), QString("auto"));
+        QCOMPARE(dialog.settings().updateSource, QString("auto"));
+        QCOMPARE(dialog.findChild<QLabel *>("updateStatus")->text(), QString("Cannot write test settings"));
+    }
     void aiSettingsPersistNonSecretsAndIgnoreBrokenProfile() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
