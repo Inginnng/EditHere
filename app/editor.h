@@ -251,6 +251,7 @@ class Editor final : public QWidget {
     QPushButton *undo_, *redo_, *zoom_, *notesToggle_, *explosion_, *hideAnnotations_;
     QVector<QPushButton *> modes_;
     QMap<QString, QShortcut *> shortcuts_;
+    QShortcut *fullscreenShortcut_ = nullptr;
     QPushButton *fullscreen_ = nullptr;
     // macOS: keeps the window's client area covering its title bar. The system can
     // drop that while nothing else is happening, so it is re-checked while visible.

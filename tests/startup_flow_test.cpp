@@ -881,16 +881,20 @@ class StartupFlowTests : public QObject {
     void annotationShortcutRespectsDiscardDecision_data() {
         QTest::addColumn<bool>("discard");
         QTest::addColumn<bool>("viaTray");
-        QTest::newRow("cancel-keeps-edits") << false << false;
-        QTest::newRow("discard-opens-empty") << true << false;
+        QTest::addColumn<bool>("minimized");
+        QTest::newRow("cancel-keeps-edits") << false << false << false;
+        QTest::newRow("discard-opens-empty") << true << false << false;
+        QTest::newRow("restore-before-cancel") << false << false << true;
+        QTest::newRow("restore-before-discard") << true << false << true;
 #ifndef Q_OS_MACOS
-        QTest::newRow("tray-cancel-keeps-edits") << false << true;
-        QTest::newRow("tray-discard-opens-empty") << true << true;
+        QTest::newRow("tray-cancel-keeps-edits") << false << true << false;
+        QTest::newRow("tray-restore-before-discard") << true << true << true;
 #endif
     }
     void annotationShortcutRespectsDiscardDecision() {
         QFETCH(bool, discard);
         QFETCH(bool, viaTray);
+        QFETCH(bool, minimized);
         QTemporaryDir directory;
         Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
         auto editor = editorOf(controller);
@@ -905,11 +909,17 @@ class StartupFlowTests : public QObject {
         document.notes.append(note);
         document.dirty = true;
         editor->setDocument(document);
+        if (minimized) {
+            editor->showMinimized();
+            QTRY_VERIFY(editor->isMinimized());
+        }
         bool prompted = false;
+        bool restoredBeforePrompt = false;
         QTimer::singleShot(0, [&] {
             auto question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
             QVERIFY(question);
             prompted = true;
+            restoredBeforePrompt = editor->isVisible() && !editor->isMinimized() && question->isVisible();
             if (viaTray) {
                 // Reentrant tray notifications during the discard question must
                 // neither replace work nor leave a delayed capture behind.
@@ -921,6 +931,7 @@ class StartupFlowTests : public QObject {
         });
         QVERIFY(annotation(controller, shortcut, viaTray));
         QVERIFY(prompted);
+        QVERIFY(restoredBeforePrompt);
         if (viaTray) {
             QTest::qWait(QApplication::doubleClickInterval() + 30);
             QVERIFY(!controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
