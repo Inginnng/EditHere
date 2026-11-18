@@ -1280,6 +1280,27 @@ class UiTests : public QObject {
                                 .arg(row.controlsRight)));
         editor.hide();
     }
+    void windowsTitleBarButtonMaximizesWithinWorkArea() {
+#ifdef Q_OS_WIN
+        Editor editor;
+        editor.openEmpty();
+        auto button = editor.findChild<QPushButton *>("fullscreenWindow");
+        QVERIFY(button && button->isVisible());
+        const QRect originalGeometry = editor.geometry();
+        button->click();
+        QTRY_VERIFY(editor.isMaximized());
+        QVERIFY(!editor.isFullScreen());
+        if (QGuiApplication::platformName() == "windows")
+            QTRY_COMPARE(editor.geometry(), editor.screen()->availableGeometry());
+        QCOMPARE(button->toolTip(), QString("还原窗口"));
+        button->click();
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), originalGeometry);
+        QCOMPARE(button->toolTip(), QString("最大化"));
+#else
+        QSKIP("The Windows title bar has a dedicated maximize action.");
+#endif
+    }
     void fullscreenPreservesTheEditingSession_data() {
         QTest::addColumn<bool>("explosion");
         QTest::addColumn<bool>("maximized");
@@ -1329,12 +1350,21 @@ class UiTests : public QObject {
         QPointer<LayoutCanvas> layoutCanvas = editor.layoutCanvas();
         const QStringList selection = layoutCanvas ? layoutCanvas->selected() : QStringList();
         QSignalSpy hiddenToTray(&editor, &Editor::hiddenToTray);
-        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+#ifdef Q_OS_WIN
+        const QString normalLabel = maximized ? QString("还原窗口") : QString("最大化");
+        const bool checkedInWindowedMode = maximized;
+        editor.activateWindow();
+        QTRY_VERIFY(editor.isActiveWindow());
+        const auto enterFullscreen = [&] { QTest::keyClick(&editor, Qt::Key_F11); };
+#else
+        const QString normalLabel = "全屏";
+        const bool checkedInWindowedMode = false;
+        const auto enterFullscreen = [&] { fullscreen->click(); };
+#endif
+        QCOMPARE(fullscreen->toolTip(), normalLabel);
 
-        fullscreen->click();
+        enterFullscreen();
         QTRY_VERIFY(editor.isFullScreen());
-        // The button drives the state on every platform; only macOS hides it behind
-        // the system's green traffic light.
         QVERIFY(fullscreen->isChecked());
         QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
         QCOMPARE(fullscreen->toolTip(), QString("退出全屏"));
@@ -1355,8 +1385,8 @@ class UiTests : public QObject {
         QTRY_COMPARE(editor.isMaximized(), maximized);
         if (!maximized) QTRY_COMPARE(editor.geometry(), geometry);
         QTRY_COMPARE(QPoint(horizontal->value(), vertical->value()), offsets);
-        QVERIFY(!fullscreen->isChecked());
-        QCOMPARE(fullscreen->toolTip(), QString("全屏"));
+        QCOMPARE(fullscreen->isChecked(), checkedInWindowedMode);
+        QCOMPARE(fullscreen->toolTip(), normalLabel);
         QCOMPARE(editor.canvas()->zoom(), zoom);
         QVERIFY(editor.document().layout == before.layout);
         QVERIFY(editor.document().notes == before.notes);
@@ -1364,7 +1394,7 @@ class UiTests : public QObject {
         QCOMPARE(stableFeedback(exportFeedback(editor.document(), true)), stableFeedback(feedback));
         QCOMPARE(hiddenToTray.count(), 0);
 
-        fullscreen->click();
+        enterFullscreen();
         QTRY_VERIFY(editor.isFullScreen());
         editor.activateWindow();
         QTRY_VERIFY(editor.isActiveWindow());

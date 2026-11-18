@@ -379,7 +379,22 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(capture, &QPushButton::clicked, this, &Editor::captureRequested);
     connect(open, &QPushButton::clicked, this, [this] { openFile(); });
     connect(minimize, &QPushButton::clicked, this, &QWidget::showMinimized);
+#ifdef Q_OS_WIN
+    connect(fullscreen_, &QPushButton::clicked, this, [this] {
+        if (isFullScreen())
+            toggleFullscreen();
+        else if (isMaximized())
+            showNormal();
+        else
+            showMaximized();
+    });
+    fullscreenShortcut_ = new QShortcut(QKeySequence(Qt::Key_F11), this);
+    fullscreenShortcut_->setContext(Qt::WidgetWithChildrenShortcut);
+    fullscreenShortcut_->setAutoRepeat(false);
+    connect(fullscreenShortcut_, &QShortcut::activated, this, &Editor::toggleFullscreen);
+#else
     connect(fullscreen_, &QPushButton::clicked, this, &Editor::toggleFullscreen);
+#endif
     connect(close, &QPushButton::clicked, this, &QWidget::close);
     agentBanner_ = new QWidget(shell);
     agentBanner_->setObjectName("agentSessionBanner");
@@ -727,7 +742,6 @@ void Editor::retranslate() {
     tooltip("importDocument", tr("导入图片、视频或项目"));
     tooltip("openSettings", tr("设置"));
     tooltip("minimizeWindow", tr("最小化"));
-    tooltip("fullscreenWindow", tr("全屏"));
     tooltip("closeWindow", tr("关闭当前截图"));
     tooltip("addGlobalNote", tr("添加全局批注"));
     tooltip("zoomOut", tr("缩小"));
@@ -839,6 +853,8 @@ void Editor::setShortcuts(const QMap<QString, QKeySequence> &bindings) {
         it.value()->setKey(sequence);
         it.value()->setEnabled(!sequence.isEmpty());
     }
+    if (fullscreenShortcut_)
+        fullscreenShortcut_->setEnabled(!bindings.values().contains(fullscreenShortcut_->key()));
     updateToolLabels();
 }
 void Editor::updateToolLabels() {
@@ -1264,6 +1280,20 @@ void Editor::toggleFullscreen() {
 void Editor::updateFullscreenButton() {
     if (!fullscreen_) return;
     const bool full = isFullScreen();
+#ifdef Q_OS_WIN
+    if (!full) {
+        const bool maximized = isMaximized();
+        const auto icon = maximized ? QStyle::SP_TitleBarNormalButton : QStyle::SP_TitleBarMaxButton;
+        const auto label = maximized ? tr("还原窗口") : tr("最大化");
+        fullscreen_->setChecked(maximized);
+        // The title bar uses the platform's maximize/restore pixmaps in this state.
+        fullscreen_->setProperty("glyphName", QVariant());
+        fullscreen_->setIcon(style()->standardIcon(icon));
+        fullscreen_->setToolTip(label);
+        fullscreen_->setAccessibleName(label);
+        return;
+    }
+#endif
     const QString name = full ? "fullscreen-exit" : "fullscreen";
     const QString label = full ? tr("退出全屏") : tr("全屏");
     fullscreen_->setChecked(full);
@@ -2662,6 +2692,13 @@ bool Editor::allowReplace() {
     return answer == QMessageBox::Discard || saveProject();
 }
 void Editor::openEmpty() {
+    // Restore the editor before it owns a modal save/discard question.
+    if (isMinimized())
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
+    configureNativeWindow(this, false);
+    raise();
+    activateWindow();
     if (agentSession_) {
         toast(tr("请先完成或取消当前 AI 批注任务"));
         return;
@@ -2682,12 +2719,6 @@ void Editor::openEmpty() {
     renderNotes();
     updateControls();
     updateEmptyState();
-    if (isMinimized())
-        setWindowState(windowState() & ~Qt::WindowMinimized);
-    show();
-    configureNativeWindow(this, false);
-    raise();
-    activateWindow();
 }
 void Editor::updateEmptyState() {
     // An empty window that says nothing looks broken, and one that says what it is

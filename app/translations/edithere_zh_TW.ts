@@ -3578,6 +3578,14 @@
         <translation>最小化</translation>
     </message>
     <message>
+        <source>最大化</source>
+        <translation>最大化</translation>
+    </message>
+    <message>
+        <source>还原窗口</source>
+        <translation>還原視窗</translation>
+    </message>
+    <message>
         <location filename="../editor.cpp" line="730"/>
         <location filename="../editor.cpp" line="1268"/>
         <source>全屏</source>
