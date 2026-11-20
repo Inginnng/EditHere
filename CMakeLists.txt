@@ -221,7 +221,7 @@ if(APPLE)
 
   # A real Cocoa window, because the traffic lights and the title bar's hit testing
   # only exist in AppKit; the offscreen platform cannot stand in for either.
-  qt_add_executable(cocoa_window_tests tests/cocoa_window_test.mm app/platform.h)
+  qt_add_executable(cocoa_window_tests tests/cocoa_window_test.mm)
   target_link_libraries(cocoa_window_tests PRIVATE h2d_ui Qt6::Test Qt6::Widgets "-framework Cocoa")
   target_compile_options(cocoa_window_tests PRIVATE -fobjc-arc)
   set_target_properties(cocoa_window_tests PROPERTIES MACOSX_BUNDLE FALSE)
