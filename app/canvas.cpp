@@ -622,6 +622,7 @@ void Canvas::wheelEvent(QWheelEvent *e) {
         e->ignore();
         return;
     }
+    const double zoomFactor = wheelZoomFactor(*e);
     if (doc_ && mode_ == Smart && !(e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::MetaModifier)) {
         picker_.update(displayCandidates_, toImage(e->position()));
         const QPoint point = toImage(e->position());
@@ -641,12 +642,12 @@ void Canvas::wheelEvent(QWheelEvent *e) {
             });
         if (specific)
             picker_.step(delta > 0 ? 1 : -1);
-        else
-            emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), e->position());
+        else if (zoomFactor != 1.0)
+            emit zoomRequested(zoom_ * zoomFactor, e->position());
         updateHint();
         update();
-    } else
-        emit zoomRequested(zoom_ * (delta > 0 ? 1.12 : 1 / 1.12), e->position());
+    } else if (zoomFactor != 1.0)
+        emit zoomRequested(zoom_ * zoomFactor, e->position());
     e->accept();
 }
 void Canvas::retranslate() {
