@@ -106,7 +106,7 @@ The default shortcuts are listed below; you can change the corresponding key act
 
 ### Opening an empty annotation window directly
 
-An image already on disk does not have to be captured again: press the global shortcut **Alt + Shift + 1**, or choose **“New annotation (empty window)”** in the tray menu, to open the annotation window directly, with “drop or paste an image here” in the middle and an **“Import image or project”** button below. The shortcut also works in other applications; change it or clear it to disable it in **Settings → Shortcuts**. **Drop an image into the window** to start annotating; pasting with `Ctrl + V` works too, and the button lets you choose an image or a project from a file dialog.
+An image already on disk does not have to be captured again: press the global shortcut **Alt + Shift + 1**, or choose **“New annotation (empty window)”** in the tray menu, to open the annotation window directly, with “drop or paste an image here” in the middle and an **“Import image or project”** button below. The shortcut also works in other applications; change it or clear it to disable it in **Settings → Shortcuts**. **Drop an image into the window** to start annotating; use `Ctrl + V` (`Command + V` on macOS) to paste image data or image files copied from your file browser, with multiple files opening as an image set, and the button lets you choose an image or a project from a file dialog.
 
 If there are unsaved changes when you close the annotation window, it asks “Save the project first?”. This dialog has **“Do not ask again; change this in Settings”**: once ticked, later closes discard unsaved changes directly with no prompt. To change it back, tick “Ask about saving when the annotation window closes” in **Settings → Default behavior**.
 
@@ -135,7 +135,7 @@ Click the scissors icon and choose the up/down crop button (left/right in horizo
 - The Adjust tool moves or resizes annotation boxes; click an index to edit its text. `Ctrl + Z` undoes, `Ctrl + Y` redoes, and `Delete` removes the selected annotation.
 - You can open, drop or paste PNG / JPEG / WebP / BMP, and reopen a `.edithere` project or feedback JSON.
 - Closing the current capture prompts you to save unsaved changes, then releases the capture and slice caches; the app stays in the tray.
-- On macOS, close, minimize and full screen are the traffic lights in the window's top-left corner, and the editor no longer draws its own set in the top right; other desktops keep the window buttons at the right end of the title bar.
+- On macOS, the traffic lights in the system title bar control close, minimize, and full screen. The editor toolbar sits below it. Wheel and trackpad zoom follow the amount you scroll.
 - On Windows, the **Maximize / Restore** button fits the editor to the desktop work area and keeps the taskbar visible. Press `F11` to toggle full screen or `Esc` to exit it. If you already assigned `F11` to another action, that binding takes precedence.
 - The **eye** button at the top hides the marks on the image and keeps the annotation text on the right, to view the original or export a clean comparison image.
 

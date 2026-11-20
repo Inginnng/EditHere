@@ -35,6 +35,7 @@
 #include <QFrame>
 #include <QFutureWatcher>
 #include <QFocusEvent>
+#include <QImageReader>
 #include <QFontMetrics>
 #include <QSignalBlocker>
 #include <QStyle>
@@ -68,7 +69,6 @@
 #include <QShortcut>
 #include <QSizeGrip>
 #include <QStackedWidget>
-#include <QStyleOption>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -186,35 +186,6 @@ void cleanupOldFeedbackTempFiles(const QString &keepPath, const QString &configu
 // area inside the window frame.
 constexpr int kTitleBarHeight = 42;
 constexpr int kShellInset = 1;
-// Qt keeps widget content out of the strip the window's title bar occupies — on macOS
-// that strip is where the traffic lights are — by giving every widget in it a matching
-// content margin, and that margin cannot be cleared. The editor's bar belongs in that
-// strip on purpose, so its row lays itself out over the bar's whole rect and the two
-// labels it carries paint over their own rect instead of a shrunk content rect.
-class TitleRowLayout final : public QHBoxLayout {
-  public:
-    using QHBoxLayout::QHBoxLayout;
-    void setGeometry(const QRect &rect) override {
-        QWidget *parent = parentWidget();
-        QHBoxLayout::setGeometry(parent ? parent->rect() : rect);
-    }
-};
-class RowLabel final : public QLabel {
-  public:
-    using QLabel::QLabel;
-
-  protected:
-    void paintEvent(QPaintEvent *) override {
-        QPainter painter(this);
-        QStyleOption opt;
-        opt.initFrom(this);
-        style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
-        painter.setPen(palette().color(foregroundRole()));
-        painter.setFont(font());
-        painter.drawText(rect(), int(alignment()) | Qt::TextSingleLine, text());
-    }
-};
-
 class JsonPreview final : public QPlainTextEdit {
   public:
     using QPlainTextEdit::QPlainTextEdit;
@@ -244,23 +215,8 @@ class JsonPreview final : public QPlainTextEdit {
 };
 } // namespace
 Editor::Editor(QWidget *parent) : QWidget(parent) {
-    // macOS keeps the system title bar so close, minimize and zoom stay the
-    // traffic lights the platform expects; the title itself is hidden and the
-    // window's own bar is drawn over it (platform_mac.mm). The other desktops
-    // have no such controls and take the frameless window with our own buttons.
     const bool nativeControls = usesNativeWindowControls();
     setWindowFlags(nativeControls ? Qt::Window : Qt::Window | Qt::FramelessWindowHint);
-    if (nativeControls) {
-        // AppKit can drop the full-height client area at a moment that delivers no event
-        // of its own, and the bar would then sit a titlebar lower than the traffic
-        // lights. Re-checking while the window is visible keeps them on one row.
-        titleBarGuard_ = new QTimer(this);
-        titleBarGuard_->setInterval(1000);
-        connect(titleBarGuard_, &QTimer::timeout, this, [this] {
-            ensureNativeTitleBar(this);
-            alignNativeTitleBarRow();
-        });
-    }
 #ifdef Q_OS_WIN
     // This is an opaque editor, not a capture overlay. A translucent top-level
     // uses a layered backing store on Windows, which can leave most of the
@@ -271,15 +227,10 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
 #endif
     setAcceptDrops(true);
     setMinimumSize(740, 400);
-    // macOS: once the client area covers the title bar, Qt reserves that bar as a top
-    // content margin of this window and of the one widget filling it, and the margin
-    // cannot be cleared. A layout in either of them would then start a titlebar down,
-    // with the bar's tools on the row below the traffic lights. So the shell and the bar
-    // are placed against the window by hand, and only the body they leave below takes a
-    // layout — that deep, Qt no longer adds the margin.
     shell_ = new QWidget(this);
     shell_->setObjectName("editorShell");
     auto bar = new DragBar(shell_, true);
+    connect(bar, &DragBar::maximizeRequested, this, &Editor::toggleMaximized);
     bar_ = bar;
     body_ = new QWidget(shell_);
     QWidget *shell = body_;
@@ -289,17 +240,12 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     layout->setSpacing(0);
     bar->setObjectName("editorTitleBar");
     bar->setFixedHeight(kTitleBarHeight);
-    auto header = new TitleRowLayout(bar);
-    // The traffic lights sit in the window's top-left corner, so the brand starts
-    // clear of them; everywhere else the bar keeps its compact inset. On macOS the row
-    // is re-fitted to the system's own row once the window exists.
-    header->setContentsMargins(nativeControls ? 78 : 14, 0, 6, 0);
-    titleRow_ = header;
-    nativeControls_ = nativeControls;
-    auto brand = new RowLabel(bar);
+    auto header = new QHBoxLayout(bar);
+    header->setContentsMargins(14, 0, 6, 0);
+    auto brand = new QLabel(bar);
     brand->setObjectName("brand");
     header->addWidget(brand);
-    meta_ = new RowLabel({}, bar);
+    meta_ = new QLabel(bar);
     meta_->setProperty("muted", true);
     meta_->setObjectName("captureContextLabel"); meta_->setTextFormat(Qt::PlainText);
     meta_->setMaximumWidth(360); meta_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -383,10 +329,8 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     connect(fullscreen_, &QPushButton::clicked, this, [this] {
         if (isFullScreen())
             toggleFullscreen();
-        else if (isMaximized())
-            showNormal();
         else
-            showMaximized();
+            toggleMaximized();
     });
     fullscreenShortcut_ = new QShortcut(QKeySequence(Qt::Key_F11), this);
     fullscreenShortcut_->setContext(Qt::WidgetWithChildrenShortcut);
@@ -1246,6 +1190,23 @@ QByteArray Editor::feedbackBytes(bool embed, bool /*compress*/) {
     options.includeRecognizedText = preferences_.includeRecognizedText; options.includeWindowTitle = preferences_.includeWindowTitle;
     return video_ ? serializeVideoFeedback(*video_, options) : serializeFeedback(doc_, options);
 }
+void Editor::toggleMaximized() {
+    if (!isMaximized()) {
+        showMaximized();
+        return;
+    }
+#ifdef Q_OS_WIN
+    const QSize maximizedSize = size();
+#endif
+    showNormal();
+#ifdef Q_OS_WIN
+    // Qt's frameless window can lose its restore bounds when it is hidden,
+    // minimized or switched to fullscreen while maximized.
+    if (size() == maximizedSize && beforeMaximizeGeometry_.isValid() &&
+        QGuiApplication::screenAt(beforeMaximizeGeometry_.center()))
+        setGeometry(beforeMaximizeGeometry_);
+#endif
+}
 void Editor::toggleFullscreen() {
     stopViewportPan();
     if (!isFullScreen()) {
@@ -1255,7 +1216,7 @@ void Editor::toggleFullscreen() {
         if (isMaximized()) {
             // Windows 上窗口处于最大化状态时直接 showFullScreen() 不生效，
             // 需要先退出最大化，再在下一次事件循环中进入全屏。
-            showNormal();
+            toggleMaximized();
             QTimer::singleShot(0, this, &QWidget::showFullScreen);
         } else
             showFullScreen();
@@ -1318,12 +1279,12 @@ bool Editor::event(QEvent *event) {
 void Editor::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
     if (event->type() == QEvent::WindowStateChange) {
+#ifdef Q_OS_WIN
+        const auto oldState = static_cast<QWindowStateChangeEvent *>(event)->oldState();
+        if (isMaximized() && !(oldState & (Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen)))
+            beforeMaximizeGeometry_ = normalGeometry();
+#endif
         updateFullscreenButton();
-        // Entering or leaving full screen has the system re-apply the window's style
-        // mask, which can drop the full-height client area the bar sits under, and it
-        // takes the traffic lights away with the title bar.
-        ensureNativeTitleBar(this);
-        alignNativeTitleBarRow();
     }
     if (event->type() == QEvent::LanguageChange) {
         // Cards cache their own placeholder and fold labels, so commit the pending
@@ -1405,50 +1366,6 @@ void Editor::resizeEvent(QResizeEvent *e) {
         QTimer::singleShot(0, this, [this] {
             if (fitted_) fit();
         });
-}
-void Editor::alignNativeTitleBarRow() {
-    if (!titleRow_ || !nativeControls_)
-        return;
-    const NativeTitleBarRow row = nativeTitleBarRow(this);
-    // Without a system row of its own (full screen, or a platform that draws no traffic
-    // lights) the bar keeps its own compact inset and centers normally.
-    const int left = row.available ? std::max(row.controlsRight + 9, 0) : 14;
-    // With one, the bar shares that row: its controls are centered on the traffic lights
-    // and the brand starts clear of their right edge. A control is taller than the room
-    // above that center, so the row stops at the bar's top edge and every control stays
-    // inside the window instead of hanging out of it.
-    int tallest = 0;
-    for (int i = 0; i < titleRow_->count(); ++i)
-        if (QWidget *item = titleRow_->itemAt(i)->widget(); item && !item->isHidden())
-            tallest = std::max(tallest, item->sizeHint().height());
-    int bottom = 0;
-    if (row.available)
-        bottom = std::clamp(kTitleBarHeight + 2 * kShellInset - 2 * row.centerY, 0,
-                            std::max(0, kTitleBarHeight - tallest));
-    const QMargins wanted(left, 0, 6, bottom);
-    if (titleRow_->contentsMargins() != wanted)
-        titleRow_->setContentsMargins(wanted);
-}
-void Editor::showEvent(QShowEvent *event) {
-    QWidget::showEvent(event);
-    fitShell();
-    // macOS: the window is ordered on screen here, and a style mask set while that is
-    // happening can be dropped, which would push the whole window's content down.
-    ensureNativeTitleBar(this);
-    alignNativeTitleBarRow();
-    if (titleBarGuard_)
-        titleBarGuard_->start();
-}
-void Editor::hideEvent(QHideEvent *event) {
-    QWidget::hideEvent(event);
-    if (titleBarGuard_)
-        titleBarGuard_->stop();
-}
-void Editor::moveEvent(QMoveEvent *event) {
-    QWidget::moveEvent(event);
-    // macOS: moving the window, including a native drag of the title bar, has the
-    // system reconfigure it; the full-height client area has to survive that.
-    ensureNativeTitleBar(this);
 }
 void Editor::setPreferences(const AppSettings &settings) {
     const bool recognitionChanged = preferences_.regionOcrEnabled != settings.regionOcrEnabled;
@@ -2223,8 +2140,8 @@ bool Editor::eventFilter(QObject *object, QEvent *event) {
         QWidget *active=imageScroll_->widget();
         const auto point=active->mapFrom(imageScroll_->viewport(),wheel->position().toPoint());
         if (!active->rect().contains(point)) {
-            const int delta=wheel->angleDelta().y()!=0 ? wheel->angleDelta().y() : wheel->pixelDelta().y();
-            if(delta!=0) zoomAt(canvas_->zoom() * (delta>0 ? 1.12 : 1/1.12), wheel->position());
+            const double factor = wheelZoomFactor(*wheel);
+            if (factor != 1.0) zoomAt(canvas_->zoom() * factor, wheel->position());
             wheel->accept(); return true;
         }
     }
@@ -2777,35 +2694,47 @@ bool Editor::confirmDiscardOnClose() {
     return answer == QMessageBox::Discard || saveProject();
 }
 void Editor::openFile(const QString &provided) {
-    QString path = provided;
-    if (path.isEmpty()) {
-        const auto paths = QFileDialog::getOpenFileNames(this, tr("打开图片、视频或项目"), {},
-            tr("图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)"));
-        if (paths.size() > 1) {
-            if (!allowReplace()) return;
-            try {
-                ImageSet set; set.name = tr("项目组图");
-                for (const auto &file : paths) { auto document = loadDocument(file); set.pages.append({uniqueId(), QFileInfo(file).completeBaseName(), std::move(document)}); }
-                setImageSet(std::move(set));
-            } catch (const std::exception &error) { showError(QString::fromUtf8(error.what())); }
-            return;
-        }
-        if (!paths.isEmpty()) path = paths.first();
-    }
-    if (path.isEmpty())
-        return;
+    const QStringList paths = provided.isEmpty()
+        ? QFileDialog::getOpenFileNames(this, tr("打开图片、视频或项目"), {},
+            tr("图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)"))
+        : QStringList{provided};
+    openFiles(paths);
+}
+bool Editor::openFiles(const QStringList &paths) {
+    if (paths.isEmpty() || !allowReplace())
+        return false;
     try {
-        if (!allowReplace())
-            return;
-        loadMedia(path);
+        if (paths.size() == 1) {
+            loadMedia(paths.first());
+        } else {
+            ImageSet set;
+            set.name = tr("项目组图");
+            for (const auto &file : paths)
+                set.pages.append({uniqueId(), QFileInfo(file).completeBaseName(), loadDocument(file)});
+            setImageSet(std::move(set));
+        }
+        return true;
     } catch (const std::exception &e) {
         showError(QString::fromUtf8(e.what()));
+        return false;
     }
 }
 void Editor::pasteImage() {
     QImage image = QApplication::clipboard()->image();
-    if (image.isNull())
+    if (image.isNull()) {
+        const auto *data = QApplication::clipboard()->mimeData();
+        if (!data || !data->hasUrls()) return;
+        const auto formats = QImageReader::supportedImageFormats();
+        QStringList paths;
+        for (const auto &url : data->urls()) {
+            if (!url.isLocalFile()) return;
+            const QFileInfo file(url.toLocalFile());
+            if (!file.isFile() || !formats.contains(file.suffix().toLower().toLatin1())) return;
+            paths.append(file.filePath());
+        }
+        openFiles(paths);
         return;
+    }
     try {
         auto doc = fromImage(image, "clipboard", tr("剪贴板图片"));
         if (allowReplace())
@@ -3057,24 +2986,12 @@ void Editor::dropEvent(QDropEvent *e) {
         }
         return;
     }
-    const auto urls = e->mimeData()->urls();
-    if (urls.size() > 1) {
-        if (!allowReplace()) return;
-        try {
-            ImageSet set; set.name = tr("项目组图");
-            for (const auto &url : urls) {
-                if (!url.isLocalFile()) throw std::runtime_error("Only local images can be added to a set.");
-                auto document = loadDocument(url.toLocalFile());
-                set.pages.append({uniqueId(), QFileInfo(url.toLocalFile()).completeBaseName(), std::move(document)});
-            }
-            setImageSet(std::move(set)); e->acceptProposedAction();
-        } catch (const std::exception &error) { e->ignore(); showError(QString::fromUtf8(error.what())); }
-        return;
+    QStringList paths;
+    for (const auto &url : e->mimeData()->urls()) {
+        if (!url.isLocalFile()) return;
+        paths.append(url.toLocalFile());
     }
-
-    if (!urls.isEmpty() && urls.first().isLocalFile()) {
-        openFile(urls.first().toLocalFile());
+    if (openFiles(paths))
         e->acceptProposedAction();
-    }
 }
 } // namespace h2d

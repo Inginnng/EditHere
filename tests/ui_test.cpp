@@ -1231,54 +1231,68 @@ class UiTests : public QObject {
         QCOMPARE(minimize->isVisible(), hasOwnWindowButtons());
         QCOMPARE(fullscreen->isVisible(), hasOwnWindowButtons());
         QCOMPARE(close->isVisible(), hasOwnWindowButtons());
-        // The brand starts clear of whatever occupies the corner: the traffic lights
-        // on macOS, the compact inset of our own bar elsewhere. One pixel of the
-        // figure is the shell's own inset.
-        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
-        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), row.available ? row.controlsRight + 10 : 15);
-        // The tools stay in the top right, inside the bar and the window.
-        const QRect tools(settings->mapTo(&editor, QPoint()), settings->size());
-        QVERIFY(editor.rect().contains(tools));
-        QVERIFY(brand->mapTo(&editor, QPoint()).x() + brand->width() <= tools.left());
-        QVERIFY(bar->height() >= tools.height());
+        QCOMPARE(brand->mapTo(&editor, QPoint()).x(), 15);
+        const QRect tools(settings->mapTo(bar, QPoint()), settings->size());
+        QVERIFY(bar->rect().contains(tools));
+        QVERIFY(brand->x() + brand->width() <= tools.left());
         editor.hide();
     }
-    // macOS draws close, minimize and zoom as traffic lights in the system title bar.
-    // What the editor draws has to share that bar's row: a bar pushed a titlebar down,
-    // or a row centered below the lights, is the "second row" users reported.
-    void theTitleBarSharesTheSystemControlsRow() {
+    void pasteIntoEmptyEditorAcceptsImagesAndLocalImageFiles() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QImage picture(64, 48, QImage::Format_ARGB32);
+        picture.fill(Qt::red);
+        const auto first = QUrl::fromLocalFile(directory.filePath("图片 1.png"));
+        const auto second = QUrl::fromLocalFile(directory.filePath("picture 2.png"));
+        QVERIFY(picture.save(first.toLocalFile()));
+        QVERIFY(picture.save(second.toLocalFile()));
+
         Editor editor;
-        editor.setDocument(gridDocument());
-        editor.resize(1000, 650);
-        editor.show();
-        QTest::qWaitForWindowExposed(&editor);
-        QTest::qWait(220);
-        auto bar = editor.findChild<QWidget *>("editorTitleBar");
-        auto brand = editor.findChild<QLabel *>("brand");
-        auto tool = editor.findChild<QPushButton *>("openSettings");
-        QVERIFY(bar && brand && tool);
-        // Nothing is reserved above the bar: it starts at the window's own top edge.
-        QVERIFY(bar->parentWidget());
-        QCOMPARE(bar->parentWidget()->mapTo(&editor, QPoint()).y(), 0);
-        QVERIFY2(bar->mapTo(&editor, QPoint()).y() <= 2,
-                 qPrintable(QString("the bar starts %1 pixels down").arg(bar->mapTo(&editor, QPoint()).y())));
-        const NativeTitleBarRow row = nativeTitleBarRow(&editor);
-        if (!row.available) {
-            // No system controls to share a row with: the bar just centers its own row.
-            QCOMPARE(brand->y() + brand->height() / 2, bar->height() / 2);
-            editor.hide();
-            return;
-        }
-        const int toolCenter = bar->y() + tool->y() + tool->height() / 2;
-        QVERIFY2(std::abs(toolCenter - row.centerY) <= 4,
-                 qPrintable(QString("the tools are centered on %1, the window controls on %2")
-                                .arg(toolCenter).arg(row.centerY)));
-        // The brand starts clear of the traffic lights' right edge.
-        QVERIFY2(brand->mapTo(&editor, QPoint()).x() > row.controlsRight,
-                 qPrintable(QString("the brand starts at %1, the window controls end at %2")
-                                .arg(brand->mapTo(&editor, QPoint()).x())
-                                .arg(row.controlsRight)));
-        editor.hide();
+        editor.openEmpty();
+        QTRY_VERIFY(editor.isActiveWindow());
+        auto paste = [&] { QTest::keySequence(&editor, QKeySequence(QKeySequence::Paste)); };
+        auto copyFiles = [](const QList<QUrl> &urls) {
+            auto *data = new QMimeData;
+            data->setUrls(urls);
+            QApplication::clipboard()->setMimeData(data);
+        };
+        copyFiles({QUrl("https://example.invalid/image.png")});
+        paste();
+        QVERIFY(!editor.hasDocument());
+        copyFiles({first});
+        paste();
+        QCOMPARE(editor.document().image, picture);
+        QVERIFY(!editor.hasImageSet());
+        editor.openEmpty();
+
+        copyFiles({first, second});
+        paste();
+        QVERIFY(editor.hasImageSet());
+        QCOMPARE(editor.document().image, picture);
+        editor.openEmpty();
+
+        QApplication::clipboard()->setImage(picture);
+        paste();
+        QVERIFY(!editor.hasImageSet());
+        QCOMPARE(editor.document().image, picture);
+    }
+    void wheelZoomUsesFinerStepsOnMacOS() {
+        auto factor = [](int pixels, int angle, Qt::ScrollPhase phase) {
+            const QWheelEvent event({}, {}, {0, pixels}, {0, angle}, Qt::NoButton, Qt::NoModifier, phase, false);
+            return wheelZoomFactor(event);
+        };
+        QCOMPARE(factor(0, 0, Qt::ScrollEnd), 1.0);
+#ifdef Q_OS_MACOS
+        const double small = factor(2, 120, Qt::ScrollUpdate);
+        QVERIFY(small > 1.0 && small < 1.01);
+        QVERIFY(qAbs(small * factor(-2, -120, Qt::ScrollUpdate) - 1.0) < 1e-8);
+        QCOMPARE(factor(0, 120, Qt::NoScrollPhase), 1.06);
+        QCOMPARE(factor(240, 720, Qt::ScrollUpdate), 1.06);
+        QCOMPARE(factor(40, 120, Qt::ScrollMomentum), 1.0);
+#else
+        QCOMPARE(factor(2, 120, Qt::ScrollUpdate), 1.12);
+        QCOMPARE(factor(0, -120, Qt::NoScrollPhase), 1 / 1.12);
+#endif
     }
     void windowsTitleBarButtonMaximizesWithinWorkArea() {
 #ifdef Q_OS_WIN
@@ -1299,6 +1313,65 @@ class UiTests : public QObject {
         QCOMPARE(button->toolTip(), QString("最大化"));
 #else
         QSKIP("The Windows title bar has a dedicated maximize action.");
+#endif
+    }
+    void windowsTitleBarRestoresAfterWindowIsReopened_data() {
+        QTest::addColumn<QString>("transition");
+        QTest::addColumn<bool>("doubleClick");
+        QTest::newRow("hidden") << QString("hidden") << false;
+        QTest::newRow("minimized") << QString("minimized") << false;
+        QTest::newRow("fullscreen") << QString("fullscreen") << false;
+        QTest::newRow("hidden-double-click") << QString("hidden") << true;
+    }
+    void windowsTitleBarRestoresAfterWindowIsReopened() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != "windows") QSKIP("Requires the native Windows window state.");
+        QFETCH(QString, transition);
+        QFETCH(bool, doubleClick);
+        Editor editor;
+        editor.openEmpty();
+        const QRect workArea = editor.screen()->availableGeometry();
+        if (workArea.width() < 900 || workArea.height() < 650) QSKIP("Requires room for a smaller normal window.");
+        editor.setGeometry(QRect(workArea.topLeft() + QPoint(40, 50), QSize(850, 550)));
+        QVERIFY(QTest::qWaitForWindowExposed(&editor));
+        auto button = editor.findChild<QPushButton *>("fullscreenWindow");
+        QVERIFY(button && button->isVisible());
+        const QRect originalGeometry = editor.geometry();
+        QTest::mouseClick(button, Qt::LeftButton);
+        QTRY_VERIFY(editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), workArea);
+
+        if (transition == "fullscreen") {
+            editor.activateWindow();
+            QTRY_VERIFY(editor.isActiveWindow());
+            QTest::keyClick(&editor, Qt::Key_F11);
+            QTRY_VERIFY(editor.isFullScreen());
+            QTest::mouseClick(button, Qt::LeftButton);
+            QTRY_VERIFY(!editor.isFullScreen());
+        } else {
+            if (transition == "hidden") {
+                editor.hide();
+                QVERIFY(!editor.isVisible());
+            } else {
+                editor.showMinimized();
+                QTRY_VERIFY(editor.isMinimized());
+            }
+            editor.openEmpty();
+        }
+        QTRY_VERIFY(editor.isVisible() && !editor.isMinimized() && editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), workArea);
+        if (doubleClick) {
+            auto *bar = editor.findChild<QWidget *>("editorTitleBar");
+            QVERIFY(bar);
+            QTest::mouseDClick(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+            QTest::mouseRelease(bar, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+        } else {
+            QTest::mouseClick(button, Qt::LeftButton);
+        }
+        QTRY_VERIFY(!editor.isMaximized());
+        QTRY_COMPARE(editor.geometry(), originalGeometry);
+#else
+        QSKIP("Requires Windows.");
 #endif
     }
     void fullscreenPreservesTheEditingSession_data() {

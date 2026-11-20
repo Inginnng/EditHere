@@ -483,8 +483,6 @@ bool requestAccessibility() { return false; }
 void configureNativeWindow(QWidget *, bool) {}
 bool usesNativeWindowControls() { return false; }
 bool screenCaptureAllowed(QString *) { return true; }
-void ensureNativeTitleBar(QWidget *) {}
-NativeTitleBarRow nativeTitleBarRow(QWidget *) { return {}; }
 bool excludedFromCapture(const QWidget *) { return false; }
 void captureScreens(CaptureCallback callback) {
     if (!wayland()) {

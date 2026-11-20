@@ -6,6 +6,7 @@
 class QPushButton;
 class QLabel;
 class QPainter;
+class QWheelEvent;
 namespace h2d {
 // The magnifier panel. It is laid out from these rather than from a layout class,
 // because it is painted rather than assembled and the two have to agree exactly, and
@@ -31,6 +32,7 @@ void applyTheme(ThemeMode mode = ThemeMode::Light);
 // from fonts.h, which resolves them against what the machine actually has.
 void applyInterfaceFont();
 bool isDarkTheme();
+double wheelZoomFactor(const QWheelEvent &event);
 void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());
 QStringList glyphNames();
@@ -46,8 +48,12 @@ QPushButton *textButton(const QString &text, bool primary = false, QWidget *pare
 void styleControl(QWidget *widget, const QString &declarations);
 QLabel *mutedLabel(const QString &text, QWidget *parent = nullptr);
 class DragBar : public QWidget {
+    Q_OBJECT
   public:
     explicit DragBar(QWidget *parent = nullptr, bool canMaximize = false);
+
+  signals:
+    void maximizeRequested();
 
   protected:
     void mousePressEvent(QMouseEvent *) override;

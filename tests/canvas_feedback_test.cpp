@@ -403,7 +403,11 @@ class CanvasFeedbackTests : public QObject {
         QSignalSpy hints(&canvas, &Canvas::hintChanged);
         wheel(canvas, {520, 390});
         QCOMPARE(zoom.size(), 1);
+#ifdef Q_OS_MACOS
+        QCOMPARE(zoom.first().first().toDouble(), 1.06);
+#else
         QCOMPARE(zoom.first().first().toDouble(), 1.12);
+#endif
         wheel(canvas, {90, 90});
         wheel(canvas, {90, 90});
         QCOMPARE(zoom.size(), 1);

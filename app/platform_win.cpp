@@ -630,8 +630,6 @@ bool usesNativeWindowControls() {
 bool screenCaptureAllowed(QString *) {
     return true;
 }
-void ensureNativeTitleBar(QWidget *) {}
-NativeTitleBarRow nativeTitleBarRow(QWidget *) { return {}; }
 void configureNativeWindow(QWidget *window, bool overlay) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,

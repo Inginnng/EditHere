@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.13.6 LANGUAGES C CXX)
+project(EditHere VERSION 0.13.7 LANGUAGES C CXX)
 set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 # The AI module pulls in QtKeychain, whose Apple backend is Objective-C++. Enable
@@ -221,7 +221,7 @@ if(APPLE)
 
   # A real Cocoa window, because the traffic lights and the title bar's hit testing
   # only exist in AppKit; the offscreen platform cannot stand in for either.
-  qt_add_executable(cocoa_window_tests tests/cocoa_window_test.mm app/platform.h)
+  qt_add_executable(cocoa_window_tests tests/cocoa_window_test.mm)
   target_link_libraries(cocoa_window_tests PRIVATE h2d_ui Qt6::Test Qt6::Widgets "-framework Cocoa")
   target_compile_options(cocoa_window_tests PRIVATE -fobjc-arc)
   set_target_properties(cocoa_window_tests PROPERTIES MACOSX_BUNDLE FALSE)

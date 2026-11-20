@@ -20,6 +20,7 @@
 #include <QStyleHints>
 #include <QSvgRenderer>
 #include <QToolButton>
+#include <QWheelEvent>
 #include <QWindow>
 
 // Reference the resource from the static library, including in test executables.
@@ -29,6 +30,19 @@ static void initializeUiIcons() {
 }
 
 namespace h2d {
+double wheelZoomFactor(const QWheelEvent &event) {
+    const int pixels = event.pixelDelta().y();
+    const int angle = event.angleDelta().y();
+#ifdef Q_OS_MACOS
+    // Cocoa can emit many tiny wheel events for a single trackpad gesture.
+    if (event.phase() == Qt::ScrollMomentum) return 1.0;
+    const double steps = pixels != 0 ? pixels / 40.0 : angle / 120.0;
+    return std::pow(1.06, std::clamp(steps, -1.0, 1.0));
+#else
+    const int delta = angle != 0 ? angle : pixels;
+    return delta > 0 ? 1.12 : delta < 0 ? 1 / 1.12 : 1.0;
+#endif
+}
 void paintTransparency(QPainter &painter, const QRect &area) {
     QRect visible = area;
     if (painter.hasClipping())
@@ -560,10 +574,7 @@ void DragBar::mouseDoubleClickEvent(QMouseEvent *e) {
     dragging_ = false;
     setCursor(Qt::OpenHandCursor);
     if (canMaximize_ && e->button() == Qt::LeftButton && !window()->isFullScreen()) {
-        if (window()->isMaximized())
-            window()->showNormal();
-        else
-            window()->showMaximized();
+        emit maximizeRequested();
         e->accept();
         return;
     }
