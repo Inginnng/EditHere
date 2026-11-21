@@ -110,16 +110,17 @@ updates immediately, with the preview holding a fixed scale and marking the curr
 a lower-confidence approximate match still waits for the image to settle before it is judged.
 Scrolling too fast to find an overlap does not end the capture: it asks you to scroll back a
 little, and once you return to already-captured content the stitching recovers by relocating.
-Sampling no longer repeatedly hides the progress window while it is excluded from screen capture.
+Sampling briefly hides the progress window only while it overlaps the sampled region.
 
 On Windows, the shade and running selection frame use native window shapes that leave the
-sampled region uncovered, with clearance for fractional scaling. They stay visible even when
-capture exclusion is unavailable, avoiding the flashing caused by repeatedly hiding a screen-sized
-shade. A full-screen selection uses a nonempty shape outside the window so an empty mask cannot
-accidentally remove clipping. Stopping restores the frame's resize hit area. Overlapping controls,
-previews, menus and handles still hide briefly when needed; other platforms retain their existing
-fallback. Diagnostics record Windows capture-exclusion results, error codes and the control fallback,
-without repeating the same configuration state every frame.
+sampled region uncovered, with clearance for fractional scaling. They are no longer excluded
+from screen capture, so remote desktops, cast receivers and recorders show the capture UI while
+the native holes keep its border out of the sampled pixels. A full-screen selection uses a
+nonempty shape outside the window so an empty mask cannot accidentally remove clipping. Stopping
+restores the frame's resize hit area. Overlapping controls, previews, menus and handles still hide
+briefly when needed; other platforms retain their existing fallback. Diagnostics record the
+Windows capture-visibility setting, error codes and the control fallback, without repeating the
+same configuration state every frame.
 
 The capture selection uses the screen's native pixels, so logical coordinates cannot misalign
 the result on a display with high scaling. After the page scrolls, consecutive samples confirm

@@ -15,6 +15,12 @@
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
 
+## Windows 覆盖层在远程桌面中不可见（0.13.8）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-248 | 创建覆盖层时设置了 `WDA_EXCLUDEFROMCAPTURE`，本意是让截图界面不进入屏幕采集；但该标志对所有采集消费者生效，网易UU远程、ToDesk、Parsec、投屏和录屏只看到冻结的桌面，没有选框和工具条，表现为“远程连接时无法截屏”，而本机物理屏幕正常。普通截图在覆盖层出现前已经冻结像素，长截图的遮罩和选框又有原生窗口洞，所以覆盖层不再排除在采集之外，改为显式清除 affinity，与 macOS/Linux 一致；重叠的进度窗、预览、菜单和手柄仍按需短暂隐藏 | `windows-capture-colors::realGpuCapturePreservesUiColorsAndShowsOverlay` 用真实 DXGI 桌面复制验证配置后的覆盖层仍出现在采集流中（洋红像素），隐藏后恢复底层色条，并在重建采集会话后再次验证；`scroll-platform` 验证无 affinity 时原生窗口洞仍把选框边框挡在采样像素之外；`scroll-controller` 的无 affinity 回退继续隐藏重叠控件 | 🆕 |
+
 ## macOS 长截图应用排除（0.13.5，#54）
 
 | 编号 | 问题与修复 | 回归检查 | 状态 |
@@ -629,6 +635,8 @@ Linux 专项 `linux_platform_tests` 在独立 DBus 会话中覆盖开机启动�
 | 截图缩放光标 | `tests/ui_test.cpp` 的 `selectionResizeCursorMatchesHitArea`、`selectionResizeCursorFollowsSelectionModes`，CTest 名 `ui` | REG-161 |
 | `core_tests`（22 例） | `tests/core_test.cpp`，CTest 名 `core` | REG-092 |
 | `platform_tests`（6 例） | `tests/platform_test.cpp`，CTest 名 `windows-platform`（仅 Windows，且需要真实桌面） | REG-031；其中 `captureAndAccessibleElement` 依赖另起子进程，本机沙箱拦建管道时跑不到底，只有真机与 CI 能定论 |
+| `windows-capture-colors::realGpuCapturePreservesUiColorsAndShowsOverlay` | `tests/windows_capture_test.cpp`，CTest 名 `windows-capture-colors`（需要真实桌面与桌面复制） | REG-248 |
+| 长截图原生窗口洞 | `tests/scroll_platform_test.cpp`，CTest 名 `scroll-platform`；`tests/scroll_controller_test.cpp` 的 `captureFallbackHidesIndependentPreviewAndCropMenu` | REG-248 |
 | 发布资产完整性 | `.github/workflows/release.yml` 的 `Require every package before publishing`；四个平台包与两种 Web 包任一缺失即失败（Web 包由 `build-web` 作业调用 `scripts/prepare-distribution.py --web-only --channel release` 打包） | REG-109/122/157/177 |
 | Web 包可复现 | `.gitattributes` 固定内嵌素材与随包法律文本的行尾（`web/**`、`assets/ui-icons/**`、六份法律文本为 LF，被 base64 内嵌的品牌 SVG 为 CRLF）；`write_zip` 固定条目顺序、时间戳与 `create_system`，避免宿主差异；`python scripts/prepare-distribution.py --web-only` 重建的 `web/EditHere.html` 与提交版逐字节一致，两种 ZIP 在各平台与 CI 同字节（0.11.1 的发布资产已用本机重建复现其 SHA-256） | REG-177 |
 | Web 包可直接安装 | `node scripts/web-package-check.cjs <解压目录\|ZIP> [测试图片]`：只读成品包，校验两种包的布局、release 渠道口径、MCP 清单哈希自洽、技能安装与重复安装拒绝，并以 stdio 复核 `unsupported`/`supported` 两种宿主场景与内嵌 HTML 可读回 | REG-177 |

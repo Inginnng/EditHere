@@ -156,7 +156,7 @@ class WindowsCaptureTests final : public QObject {
         blueOnly.fill(QColor(0, 0, 9));
         QVERIFY(!isBlankFrame(blueOnly));
     }
-    void realGpuCapturePreservesUiColorsAndExcludesOverlay() {
+    void realGpuCapturePreservesUiColorsAndShowsOverlay() {
         ColorBars window;
         window.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         const auto screen = QGuiApplication::primaryScreen();
@@ -192,8 +192,20 @@ class WindowsCaptureTests final : public QObject {
         overlay.show();
         configureNativeWindow(&overlay, true);
         QVERIFY(QTest::qWaitForWindowExposed(&overlay));
-        QVERIFY(excludedFromCapture(&overlay));
+        // Remote desktop tools and screen recorders consume the same captured
+        // pixels as this test. Hiding the overlay from capture would hide the
+        // entire capture UI on those connections, so the overlay must stay in
+        // the stream while the sampled desktop behind it is already frozen.
+        QVERIFY(!excludedFromCapture(&overlay));
         QTest::qWait(150);
+        const auto overlayVisible = [&] {
+            const auto image = capture->read(color.sdrWhiteLevel, &error);
+            if (image.isNull()) return false;
+            return image.pixelColor(dark) == QColor(Qt::magenta) &&
+                   image.pixelColor(light) == QColor(Qt::magenta);
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(overlayVisible(), 4000);
+        overlay.hide();
         QTRY_VERIFY_WITH_TIMEOUT(check(), 4000);
         window.reversed = true;
         window.update();
@@ -204,6 +216,9 @@ class WindowsCaptureTests final : public QObject {
         capture = DesktopCapture::open(monitor, &error);
         QVERIFY2(capture, qPrintable(error));
         QTRY_VERIFY_WITH_TIMEOUT(check(), 4000);
+        overlay.show();
+        configureNativeWindow(&overlay, true);
+        QTRY_VERIFY_WITH_TIMEOUT(overlayVisible(), 4000);
     }
 };
 QTEST_MAIN(WindowsCaptureTests)
