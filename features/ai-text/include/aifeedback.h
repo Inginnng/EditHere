@@ -31,7 +31,7 @@ class AiFeedbackClient final : public QObject {
                   const QString &systemPrompt = {});
     void testConnection(const AiConnectionSettings &, const QString &apiKey);
     void cancel();
-    bool isRunning() const { return !reply_.isNull(); }
+    bool isRunning() const { return !reply_.isNull() || retry_.isActive(); }
     // A local development host can replay responses through its own endpoint.
     void setEndpointOverride(const QUrl &url) { if (!isRunning()) endpointOverride_ = url; }
   signals:
@@ -49,6 +49,7 @@ class AiFeedbackClient final : public QObject {
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;
     QTimer timeout_;
+    QTimer retry_;
     QUrl endpointOverride_;
     QByteArray response_;
     AiConnectionSettings connection_;
@@ -58,6 +59,8 @@ class AiFeedbackClient final : public QObject {
     QString key_;
     QString terminalError_;
     QList<AiFeedbackInput> pending_;
+    AiFeedbackInput current_;
+    int attempt_ = 0;
     QStringList results_;
     qsizetype renderedCount_ = 0;
     qint64 inputTokens_ = 0, outputTokens_ = 0;

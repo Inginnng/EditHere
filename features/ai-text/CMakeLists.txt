@@ -31,6 +31,13 @@ FetchContent_Declare(qtkeychain
     -P "${EDITHERE_ROOT}/cmake/PatchQtKeychain.cmake"
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(qtkeychain)
+# Header-only; SOURCE_SUBDIR skips its example and test targets.
+FetchContent_Declare(llm_retry
+  URL https://codeload.github.com/Mattbusel/llm-retry/tar.gz/refs/tags/v0.4.0
+  URL_HASH SHA256=ab3ee7ab98dfc24c48315faa1e5b112108b84fbc020d4cd360394b10935d2203
+  SOURCE_SUBDIR include
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(llm_retry)
 
 # OBJECT keeps the application's existing static link graph intact. Both entry
 # points compile and run exactly these widgets, formatter and API client.
@@ -40,7 +47,7 @@ add_library(h2d_ai_text OBJECT
   src/aiinstructionsdialog.cpp src/aisettingspage.cpp src/aipromptdialog.cpp
   include/aifeedback.h include/aicredentials.h
   include/aiinstructionsdialog.h include/aisettingspage.h include/aipromptdialog.h)
-target_include_directories(h2d_ai_text PUBLIC include PRIVATE "${EDITHERE_ROOT}/app")
+target_include_directories(h2d_ai_text PUBLIC include PRIVATE "${EDITHERE_ROOT}/app" "${llm_retry_SOURCE_DIR}/include")
 target_compile_definitions(h2d_ai_text PRIVATE EDITHERE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(h2d_ai_text PUBLIC Qt6::Widgets Qt6::Svg Qt6::Network PRIVATE qt6keychain)
 qt_add_resources(h2d_ai_text ai_assets PREFIX "/ai" BASE resources
