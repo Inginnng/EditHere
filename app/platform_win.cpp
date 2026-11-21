@@ -636,10 +636,16 @@ void configureNativeWindow(QWidget *window, bool overlay) {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     DWORD preference = overlay ? 1 : 2;
     DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
-    // Keep our overlay out of capture sources where Windows supports it.
+    // Windows applies display affinity to every capture consumer, so hiding the
+    // overlay from capture also hides it from remote desktops (UU, ToDesk,
+    // Parsec, Sunshine) and screen recorders: the user then sees the frozen
+    // desktop with no selection UI and cannot finish the capture. The pixels
+    // are already protected without it -- a normal capture freezes the frame
+    // before the overlay appears, and the scrolling shade/frame use native
+    // window holes -- so keep overlay windows visible, as macOS and Linux do.
     if (overlay) {
         SetLastError(ERROR_SUCCESS);
-        const bool applied = SetWindowDisplayAffinity(hwnd, 0x00000011);
+        const bool applied = SetWindowDisplayAffinity(hwnd, WDA_NONE);
         const DWORD setError = applied ? ERROR_SUCCESS : GetLastError();
         DWORD affinity = 0;
         SetLastError(ERROR_SUCCESS);
@@ -653,8 +659,8 @@ void configureNativeWindow(QWidget *window, bool overlay) {
         if (window->property("_edithereDisplayAffinityState").toString() != state) {
             window->setProperty("_edithereDisplayAffinityState", state);
             const bool excluded = queried && affinity == 0x00000011;
-            diagnostics::write(applied && excluded ? diagnostics::Level::Info : diagnostics::Level::Warning,
-                "capture.display_affinity", "Window capture exclusion configured",
+            diagnostics::write(applied && !excluded ? diagnostics::Level::Info : diagnostics::Level::Warning,
+                "capture.display_affinity", "Window capture visibility configured",
                 {{"object", window->objectName().isEmpty()
                                 ? QString::fromLatin1(window->metaObject()->className()) : window->objectName()},
                  {"window", QString::number(quintptr(hwnd), 16)},
