@@ -1,12 +1,27 @@
 import type {
   DoctorSnapshot,
   EditHereBridge,
+  ExplodeBlock,
   GalleryPage,
   GroupNote,
+  PixelRect,
   ProviderConfig,
   ProviderPreset,
   VideoMarker,
 } from './types';
+
+function makeBlock(id: string, source: PixelRect): ExplodeBlock {
+  return { id, source, dest: { ...source } };
+}
+
+export function isBlockTransformed(block: ExplodeBlock): boolean {
+  return (
+    block.dest.x1 !== block.source.x1 ||
+    block.dest.y1 !== block.source.y1 ||
+    block.dest.x2 !== block.source.x2 ||
+    block.dest.y2 !== block.source.y2
+  );
+}
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   { id: 'openai', name: 'OpenAI', company: 'OpenAI', model: 'gpt-6.1-sol', endpoint: 'https://api.openai.com/v1', protocol: 'responses', docs: 'https://platform.openai.com' },
@@ -43,10 +58,10 @@ export function createInitialPages(): GalleryPage[] {
       height: 480,
       sceneId: 'home',
       blocks: [
-        { id: 'nav', label: '顶部导航栏', source: { x1: 24, y1: 12, x2: 776, y2: 54 }, dx: 0, dy: 0 },
-        { id: 'hero-title', label: '主标题区块', source: { x1: 36, y1: 126, x2: 360, y2: 298 }, dx: 0, dy: 0 },
-        { id: 'hero-cta', label: '主行动按钮', source: { x1: 42, y1: 314, x2: 180, y2: 356 }, dx: 0, dy: 0 },
-        { id: 'hero-chair', label: '右侧椅子展示图', source: { x1: 455, y1: 76, x2: 785, y2: 405 }, dx: 0, dy: 0 },
+        makeBlock('home-nav', { x1: 24, y1: 12, x2: 776, y2: 54 }),
+        makeBlock('home-hero-title', { x1: 36, y1: 126, x2: 360, y2: 298 }),
+        makeBlock('home-hero-cta', { x1: 43, y1: 316, x2: 177, y2: 353 }),
+        makeBlock('home-hero-chair', { x1: 498, y1: 63, x2: 795, y2: 415 }),
       ],
       annotations: [
         {
@@ -62,7 +77,7 @@ export function createInitialPages(): GalleryPage[] {
           number: 2,
           kind: 'region',
           text: '主按钮改为深绿色，圆角收小到 4px，文案替换为「探索系列」。',
-          rect: { x1: 42, y1: 314, x2: 180, y2: 356 },
+          rect: { x1: 43, y1: 316, x2: 177, y2: 353 },
           ocrtext: 'EXPLORE THE EDIT',
         },
       ],
@@ -75,9 +90,9 @@ export function createInitialPages(): GalleryPage[] {
       height: 480,
       sceneId: 'inventory',
       blocks: [
-        { id: 'inv-stats', label: '左侧角色属性卡', source: { x1: 28, y1: 76, x2: 262, y2: 404 }, dx: 0, dy: 0 },
-        { id: 'inv-grid', label: '背包物品格子区', source: { x1: 280, y1: 76, x2: 772, y2: 344 }, dx: 0, dy: 0 },
-        { id: 'inv-actions', label: '底部快捷操作条', source: { x1: 280, y1: 360, x2: 772, y2: 404 }, dx: 0, dy: 0 },
+        makeBlock('inv-stats', { x1: 28, y1: 76, x2: 262, y2: 404 }),
+        makeBlock('inv-grid', { x1: 280, y1: 76, x2: 772, y2: 344 }),
+        makeBlock('inv-actions', { x1: 280, y1: 360, x2: 772, y2: 404 }),
       ],
       annotations: [
         {
@@ -105,9 +120,9 @@ export function createInitialPages(): GalleryPage[] {
       height: 480,
       sceneId: 'settings',
       blocks: [
-        { id: 'set-nav', label: '左侧设置导航栏', source: { x1: 20, y1: 20, x2: 185, y2: 460 }, dx: 0, dy: 0 },
-        { id: 'set-cards', label: '设置卡片组', source: { x1: 210, y1: 68, x2: 764, y2: 388 }, dx: 0, dy: 0 },
-        { id: 'set-footer', label: '底部操作区', source: { x1: 210, y1: 406, x2: 764, y2: 452 }, dx: 0, dy: 0 },
+        makeBlock('set-nav', { x1: 20, y1: 20, x2: 185, y2: 460 }),
+        makeBlock('set-cards', { x1: 212, y1: 70, x2: 764, y2: 370 }),
+        makeBlock('set-footer', { x1: 212, y1: 408, x2: 764, y2: 452 }),
       ],
       annotations: [],
     },
@@ -146,7 +161,12 @@ export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
   ),
   checks: [
     { id: 'core', label: '原生截图 / OCR / 长截图内核', detail: 'C++20 + Qt6 · 保留零延迟遮罩与 Windows HDR 支持', status: 'ok' },
-    { id: 'bridge', label: 'B2 前端壳状态', detail: '当前为高保真交互原型壳（确认外观后接入 WebView Bridge）', status: 'warn' },
+    {
+      id: 'bridge',
+      label: 'B2 前端与大爆炸分割',
+      detail: 'M3 交互壳使用轻量端侧像素分割检测；M4 WebView2 Bridge 将接入 C++ detector.cpp 多层级选区与本地 OCR',
+      status: 'warn',
+    },
     { id: 'mcp', label: '统一 CLI & MCP 路由', detail: 'cli/edithere.mjs · cli/unified-mcp.mjs（桌面优先，Web 自动回退）', status: 'ok' },
     { id: 'skills', label: '英文单源 Skills 构建', detail: '5 端同步零漂移 · 含局部/设计系统分层与代码影响面换图规范', status: 'ok' },
   ],
@@ -158,7 +178,7 @@ export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
  */
 export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote[]) {
   const annotatedPages = pages.filter(
-    (p) => p.annotations.length > 0 || p.blocks.some((b) => b.dx !== 0 || b.dy !== 0)
+    (p) => p.annotations.length > 0 || p.blocks.some(isBlockTransformed)
   );
 
   return {
@@ -211,11 +231,18 @@ export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote
             base.point = ann.point;
           }
           if (ann.movement) {
-            base.movement = {
+            const mv: Record<string, unknown> = {
               rect: ann.movement.rect,
               dx: ann.movement.dx,
               dy: ann.movement.dy,
             };
+            if (typeof ann.movement.scaleX === 'number' && Math.abs(ann.movement.scaleX - 1) > 0.005) {
+              mv.scaleX = Number(ann.movement.scaleX.toFixed(3));
+            }
+            if (typeof ann.movement.scaleY === 'number' && Math.abs(ann.movement.scaleY - 1) > 0.005) {
+              mv.scaleY = Number(ann.movement.scaleY.toFixed(3));
+            }
+            base.movement = mv;
           }
           if (ann.ocrtext) {
             base.ocrtext = ann.ocrtext;
@@ -242,14 +269,24 @@ export function generateAnalysisText(pages: GalleryPage[], groupNotes: GroupNote
 
   const annotatedPages = pages.filter((p) => p.annotations.length > 0);
   if (annotatedPages.length === 0) {
-    sections.push('> 当前各页面暂无批注；在工作台框选、点选或启用「大爆炸」拖动组件后，此处会自动生成结构化修改说明。');
+    sections.push('> 当前各页面暂无批注；在工作台框选、点选或启用「大爆炸」调整组件布局后，此处会自动生成结构化修改说明。');
   } else {
     for (const page of annotatedPages) {
       sections.push(`## 页面：${page.name}（id: \`${page.id}\` · ${page.width}×${page.height}）`);
       for (const note of page.annotations) {
-        const moveHint = note.movement
-          ? ` [布局移动 Δx=${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}px, Δy=${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}px]`
-          : '';
+        let moveHint = '';
+        if (note.movement) {
+          const parts = [
+            `Δx=${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}px`,
+            `Δy=${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}px`,
+          ];
+          const sx = note.movement.scaleX ?? 1;
+          const sy = note.movement.scaleY ?? 1;
+          if (Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+            parts.push(`缩放 ${sx.toFixed(2)}× / ${sy.toFixed(2)}×`);
+          }
+          moveHint = ` [布局调整 ${parts.join(', ')}]`;
+        }
         const text = note.text.trim() || '按图中位置调整组件布局（无补充文字）';
         sections.push(`${note.number}. **${note.kind === 'point' ? '点定位' : note.kind === 'global' ? '全局' : '区域'}${moveHint}**：${text}`);
       }

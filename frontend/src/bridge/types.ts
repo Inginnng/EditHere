@@ -18,10 +18,9 @@ export interface PixelPoint {
 
 export interface ExplodeBlock {
   id: string;
-  label: string;
   source: PixelRect;
-  dx: number;
-  dy: number;
+  dest: PixelRect;
+  manual?: boolean;
 }
 
 export interface AnnotationItem {
@@ -37,6 +36,8 @@ export interface AnnotationItem {
     rect: PixelRect;
     dx: number;
     dy: number;
+    scaleX?: number;
+    scaleY?: number;
   };
   ocrtext?: string;
 }

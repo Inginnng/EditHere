@@ -22,7 +22,11 @@ import {
   X,
 } from 'lucide-react';
 import { SceneArtwork } from '../components/DemoScenes';
-import { buildFeedbackPayload, INITIAL_VIDEO_MARKERS } from '../bridge/mockBridge';
+import {
+  buildFeedbackPayload,
+  INITIAL_VIDEO_MARKERS,
+  isBlockTransformed,
+} from '../bridge/mockBridge';
 import type {
   AnnotationItem,
   ExplodeBlock,
@@ -31,6 +35,34 @@ import type {
   PixelRect,
   ToolMode,
 } from '../bridge/types';
+
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+const RESIZE_HANDLES: Array<{ id: ResizeHandle; cursor: string }> = [
+  { id: 'nw', cursor: 'nwse-resize' },
+  { id: 'n', cursor: 'ns-resize' },
+  { id: 'ne', cursor: 'nesw-resize' },
+  { id: 'e', cursor: 'ew-resize' },
+  { id: 'se', cursor: 'nwse-resize' },
+  { id: 's', cursor: 'ns-resize' },
+  { id: 'sw', cursor: 'nesw-resize' },
+  { id: 'w', cursor: 'ew-resize' },
+];
+
+interface ExplodeDragSession {
+  kind: 'move' | 'resize';
+  handle?: ResizeHandle;
+  blockId: string;
+  pageId: string;
+  startClientX: number;
+  startClientY: number;
+  origDest: PixelRect;
+  source: PixelRect;
+  pageW: number;
+  pageH: number;
+  scaleX: number;
+  scaleY: number;
+}
 
 interface WorkspaceViewProps {
   pages: GalleryPage[];
@@ -62,22 +94,20 @@ export default function WorkspaceView({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'page' | 'group'>('page');
   const [hoverBlockId, setHoverBlockId] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [explosionWaveKey, setExplosionWaveKey] = useState(0);
   const [jsonOpen, setJsonOpen] = useState(false);
 
-  // Box draw state (in image pixel coordinates)
+  // Box draw & manual Explode cut-draw state (image pixel coords)
   const [draftBox, setDraftBox] = useState<PixelRect | null>(null);
+  const [manualCutBox, setManualCutBox] = useState<PixelRect | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
+  const manualCutStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Explode drag state
-  const dragStateRef = useRef<{
-    blockId: string;
-    startClientX: number;
-    startClientY: number;
-    origDx: number;
-    origDy: number;
-    rectScaleX: number;
-    rectScaleY: number;
-  } | null>(null);
+  // Window-tracked Explode move / 8-handle resize session
+  const explodeDragRef = useRef<ExplodeDragSession | null>(null);
+  const updatePagesRef = useRef(onUpdatePages);
+  updatePagesRef.current = onUpdatePages;
 
   // Video timeline preview shell
   const [videoMode, setVideoMode] = useState(false);
@@ -91,6 +121,7 @@ export default function WorkspaceView({
     setSelectedNoteId(activePage?.annotations[0]?.id ?? '');
     setEditingNoteId(null);
     setHoverBlockId(null);
+    setSelectedBlockId(null);
   }, [activePage?.id]);
 
   useEffect(() => {
@@ -98,11 +129,15 @@ export default function WorkspaceView({
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
         event.preventDefault();
         fileInputRef.current?.click();
+      } else if (event.key === 'Escape' && tool === 'explode') {
+        setSelectedBlockId(null);
+        setManualCutBox(null);
+        manualCutStartRef.current = null;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [tool]);
 
   useEffect(() => {
     if (!videoMode || !videoPlaying) return;
@@ -112,17 +147,124 @@ export default function WorkspaceView({
     return () => clearInterval(id);
   }, [videoMode, videoPlaying]);
 
+  const nextNoteNumber = (annotations: AnnotationItem[]) =>
+    annotations.reduce((max, item) => Math.max(max, item.number), 0) + 1;
+
+  // Window-level pointermove / pointerup for reliable Explode move & 8-handle resize
+  useEffect(() => {
+    const computeNextDest = (session: ExplodeDragSession, clientX: number, clientY: number): PixelRect => {
+      const dxRaw = (clientX - session.startClientX) * session.scaleX;
+      const dyRaw = (clientY - session.startClientY) * session.scaleY;
+      const o = session.origDest;
+
+      if (session.kind === 'move') {
+        const w = o.x2 - o.x1;
+        const h = o.y2 - o.y1;
+        const x1 = Math.round(Math.max(0, Math.min(session.pageW - w, o.x1 + dxRaw)));
+        const y1 = Math.round(Math.max(0, Math.min(session.pageH - h, o.y1 + dyRaw)));
+        return { x1, y1, x2: x1 + w, y2: y1 + h };
+      }
+
+      const handle = session.handle ?? 'se';
+      const minSize = 18;
+      let { x1, y1, x2, y2 } = o;
+
+      if (handle.includes('w')) {
+        x1 = Math.round(Math.max(0, Math.min(x2 - minSize, o.x1 + dxRaw)));
+      }
+      if (handle.includes('e')) {
+        x2 = Math.round(Math.min(session.pageW, Math.max(x1 + minSize, o.x2 + dxRaw)));
+      }
+      if (handle.includes('n')) {
+        y1 = Math.round(Math.max(0, Math.min(y2 - minSize, o.y1 + dyRaw)));
+      }
+      if (handle.includes('s')) {
+        y2 = Math.round(Math.min(session.pageH, Math.max(y1 + minSize, o.y2 + dyRaw)));
+      }
+      return { x1, y1, x2, y2 };
+    };
+
+    const onWindowPointerMove = (event: PointerEvent) => {
+      const session = explodeDragRef.current;
+      if (!session) return;
+      const nextDest = computeNextDest(session, event.clientX, event.clientY);
+      const src = session.source;
+      const moveNoteId = `move-${session.blockId}`;
+      const dx = nextDest.x1 - src.x1;
+      const dy = nextDest.y1 - src.y1;
+      const sw = Math.max(1, src.x2 - src.x1);
+      const sh = Math.max(1, src.y2 - src.y1);
+      const dw = nextDest.x2 - nextDest.x1;
+      const dh = nextDest.y2 - nextDest.y1;
+      const scaleX = dw / sw;
+      const scaleY = dh / sh;
+      const significantChange =
+        Math.abs(dx) > 2 ||
+        Math.abs(dy) > 2 ||
+        Math.abs(scaleX - 1) > 0.02 ||
+        Math.abs(scaleY - 1) > 0.02;
+
+      updatePagesRef.current((prev) =>
+        prev.map((page) => {
+          if (page.id !== session.pageId) return page;
+          const blocks = page.blocks.map((b) =>
+            b.id === session.blockId ? { ...b, dest: nextDest } : b
+          );
+
+          const existingIdx = page.annotations.findIndex((a) => a.blockId === session.blockId);
+          const annotations = [...page.annotations];
+
+          if (existingIdx >= 0) {
+            annotations[existingIdx] = {
+              ...annotations[existingIdx],
+              rect: nextDest,
+              movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
+            };
+          } else if (significantChange) {
+            annotations.push({
+              id: moveNoteId,
+              number: nextNoteNumber(annotations),
+              kind: 'region',
+              text: '',
+              blockId: session.blockId,
+              rect: nextDest,
+              movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
+            });
+          }
+          return { ...page, blocks, annotations };
+        })
+      );
+
+      if (significantChange) {
+        setSelectedNoteId(moveNoteId);
+      }
+    };
+
+    const onWindowPointerUp = () => {
+      if (!explodeDragRef.current) return;
+      explodeDragRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+    };
+  }, []);
+
   const clientToPixel = (clientX: number, clientY: number) => {
     const el = artboardRef.current;
     if (!el || !activePage) return { x: 0, y: 0 };
     const rect = el.getBoundingClientRect();
-    const x = Math.round(Math.max(0, Math.min(activePage.width, ((clientX - rect.left) / rect.width) * activePage.width)));
-    const y = Math.round(Math.max(0, Math.min(activePage.height, ((clientY - rect.top) / rect.height) * activePage.height)));
+    const x = Math.round(
+      Math.max(0, Math.min(activePage.width, ((clientX - rect.left) / rect.width) * activePage.width))
+    );
+    const y = Math.round(
+      Math.max(0, Math.min(activePage.height, ((clientY - rect.top) / rect.height) * activePage.height))
+    );
     return { x, y };
   };
-
-  const nextNoteNumber = (annotations: AnnotationItem[]) =>
-    annotations.reduce((max, item) => Math.max(max, item.number), 0) + 1;
 
   const appendAnnotation = (partial: Omit<AnnotationItem, 'id' | 'number'>) => {
     const newId = `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -140,8 +282,17 @@ export default function WorkspaceView({
   };
 
   const handleArtboardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activePage || tool === 'explode') return;
+    if (!activePage) return;
     const pt = clientToPixel(event.clientX, event.clientY);
+
+    if (tool === 'explode') {
+      // Clicked empty background outside any block: clear selection & allow manual region cut drag
+      setSelectedBlockId(null);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      manualCutStartRef.current = pt;
+      setManualCutBox({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+      return;
+    }
 
     if (tool === 'point') {
       appendAnnotation({ kind: 'point', text: '', point: pt });
@@ -151,25 +302,19 @@ export default function WorkspaceView({
     if (tool === 'smart') {
       const hit = activePage.blocks.find(
         (b) =>
-          pt.x >= b.source.x1 + b.dx &&
-          pt.x <= b.source.x2 + b.dx &&
-          pt.y >= b.source.y1 + b.dy &&
-          pt.y <= b.source.y2 + b.dy
+          pt.x >= b.dest.x1 &&
+          pt.x <= b.dest.x2 &&
+          pt.y >= b.dest.y1 &&
+          pt.y <= b.dest.y2
       );
       if (hit) {
         appendAnnotation({
           kind: 'region',
           text: '',
-          rect: {
-            x1: hit.source.x1 + hit.dx,
-            y1: hit.source.y1 + hit.dy,
-            x2: hit.source.x2 + hit.dx,
-            y2: hit.source.y2 + hit.dy,
-          },
-          ocrtext: hit.label,
+          rect: { ...hit.dest },
         });
       } else {
-        onToast('未命中预设区块，请切换到「框批注」自由拉框');
+        onToast('未命中检测区域，可切换到「框批注」自由拉框');
       }
       return;
     }
@@ -188,12 +333,22 @@ export default function WorkspaceView({
     if (tool === 'smart') {
       const hit = activePage.blocks.find(
         (b) =>
-          pt.x >= b.source.x1 + b.dx &&
-          pt.x <= b.source.x2 + b.dx &&
-          pt.y >= b.source.y1 + b.dy &&
-          pt.y <= b.source.y2 + b.dy
+          pt.x >= b.dest.x1 &&
+          pt.x <= b.dest.x2 &&
+          pt.y >= b.dest.y1 &&
+          pt.y <= b.dest.y2
       );
       setHoverBlockId(hit ? hit.id : null);
+    }
+
+    if (tool === 'explode' && manualCutStartRef.current) {
+      const s = manualCutStartRef.current;
+      setManualCutBox({
+        x1: Math.min(s.x, pt.x),
+        y1: Math.min(s.y, pt.y),
+        x2: Math.max(s.x, pt.x),
+        y2: Math.max(s.y, pt.y),
+      });
     }
 
     if (tool === 'box' && drawStartRef.current) {
@@ -205,56 +360,14 @@ export default function WorkspaceView({
         y2: Math.max(s.y, pt.y),
       });
     }
-
-    if (tool === 'explode' && dragStateRef.current) {
-      const d = dragStateRef.current;
-      const dx = Math.round(d.origDx + (event.clientX - d.startClientX) * d.rectScaleX);
-      const dy = Math.round(d.origDy + (event.clientY - d.startClientY) * d.rectScaleY);
-      onUpdatePages((prev) =>
-        prev.map((page) => {
-          if (page.id !== activePage.id) return page;
-          const blocks = page.blocks.map((b) => (b.id === d.blockId ? { ...b, dx, dy } : b));
-          const block = blocks.find((b) => b.id === d.blockId);
-          if (!block) return { ...page, blocks };
-          const movedRect: PixelRect = {
-            x1: block.source.x1 + dx,
-            y1: block.source.y1 + dy,
-            x2: block.source.x2 + dx,
-            y2: block.source.y2 + dy,
-          };
-          const existingIdx = page.annotations.findIndex((a) => a.blockId === block.id);
-          let annotations = [...page.annotations];
-          if (existingIdx >= 0) {
-            annotations[existingIdx] = {
-              ...annotations[existingIdx],
-              rect: movedRect,
-              movement: { source: block.source, rect: movedRect, dx, dy },
-            };
-          } else if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-            const created: AnnotationItem = {
-              id: `move-${block.id}-${Date.now()}`,
-              number: nextNoteNumber(annotations),
-              kind: 'region',
-              text: '',
-              blockId: block.id,
-              rect: movedRect,
-              movement: { source: block.source, rect: movedRect, dx, dy },
-              ocrtext: block.label,
-            };
-            annotations.push(created);
-            setSelectedNoteId(created.id);
-          }
-          return { ...page, blocks, annotations };
-        })
-      );
-    }
   };
 
   const handleArtboardPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
     if (tool === 'box' && drawStartRef.current && draftBox) {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
       drawStartRef.current = null;
       const w = draftBox.x2 - draftBox.x1;
       const h = draftBox.y2 - draftBox.y1;
@@ -263,24 +376,60 @@ export default function WorkspaceView({
         appendAnnotation({ kind: 'region', text: '', rect: draftBox });
       }
     }
-    if (dragStateRef.current) {
-      dragStateRef.current = null;
+
+    if (tool === 'explode' && manualCutStartRef.current && manualCutBox) {
+      manualCutStartRef.current = null;
+      const w = manualCutBox.x2 - manualCutBox.x1;
+      const h = manualCutBox.y2 - manualCutBox.y1;
+      setManualCutBox(null);
+      if (w >= 18 && h >= 18) {
+        const manualId = `manual-${Date.now()}`;
+        const newBlock: ExplodeBlock = {
+          id: manualId,
+          source: { ...manualCutBox },
+          dest: { ...manualCutBox },
+          manual: true,
+        };
+        onUpdatePages((prev) =>
+          prev.map((page) =>
+            page.id !== activePage.id
+              ? page
+              : { ...page, blocks: [...page.blocks, newBlock] }
+          )
+        );
+        setSelectedBlockId(manualId);
+        onToast('已手动切分选区，可直接拖动或拖拽角点缩放');
+      }
     }
   };
 
-  const startDraggingBlock = (event: React.PointerEvent<HTMLDivElement>, block: ExplodeBlock) => {
+  const startExplodeSession = (
+    event: React.PointerEvent<HTMLElement>,
+    block: ExplodeBlock,
+    kind: 'move' | 'resize',
+    handle?: ResizeHandle
+  ) => {
     event.stopPropagation();
     const el = artboardRef.current;
     if (!el || !activePage) return;
     const rect = el.getBoundingClientRect();
-    dragStateRef.current = {
+    setSelectedBlockId(block.id);
+    const linked = activePage.annotations.find((a) => a.blockId === block.id);
+    if (linked) setSelectedNoteId(linked.id);
+
+    explodeDragRef.current = {
+      kind,
+      handle,
       blockId: block.id,
+      pageId: activePage.id,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      origDx: block.dx,
-      origDy: block.dy,
-      rectScaleX: activePage.width / rect.width,
-      rectScaleY: activePage.height / rect.height,
+      origDest: { ...block.dest },
+      source: { ...block.source },
+      pageW: activePage.width,
+      pageH: activePage.height,
+      scaleX: activePage.width / rect.width,
+      scaleY: activePage.height / rect.height,
     };
   };
 
@@ -291,7 +440,9 @@ export default function WorkspaceView({
           ? page
           : {
               ...page,
-              blocks: page.blocks.map((b) => (b.id === blockId ? { ...b, dx: 0, dy: 0 } : b)),
+              blocks: page.blocks.map((b) =>
+                b.id === blockId ? { ...b, dest: { ...b.source } } : b
+              ),
               annotations: page.annotations.filter((a) => a.blockId !== blockId),
             }
       )
@@ -307,7 +458,9 @@ export default function WorkspaceView({
           : {
               ...page,
               blocks: note.blockId
-                ? page.blocks.map((b) => (b.id === note.blockId ? { ...b, dx: 0, dy: 0 } : b))
+                ? page.blocks.map((b) =>
+                    b.id === note.blockId ? { ...b, dest: { ...b.source } } : b
+                  )
                 : page.blocks,
               annotations: page.annotations.filter((a) => a.id !== note.id),
             }
@@ -321,6 +474,18 @@ export default function WorkspaceView({
     onUpdateGroupNotes((prev) => [...prev, { id, number: nextNum, text: '' }]);
     setInspectorTab('group');
     setEditingNoteId(id);
+  };
+
+  const toggleExplodeMode = () => {
+    const next = tool === 'explode' ? 'box' : 'explode';
+    setTool(next);
+    setHoverBlockId(null);
+    if (next === 'explode') {
+      setExplosionWaveKey((k) => k + 1);
+      onToast('已进入大爆炸模式');
+    } else {
+      setSelectedBlockId(null);
+    }
   };
 
   const liveJson = JSON.stringify(buildFeedbackPayload(pages, groupNotes), null, 2);
@@ -344,7 +509,15 @@ export default function WorkspaceView({
     onToast('已下载实时反馈 JSON');
   };
 
-  const pct = (px: number, max: number) => `${(px / max) * 100}%`;
+  const pctX = (px: number) => `${(px / activePage.width) * 100}%`;
+  const pctY = (px: number) => `${(px / activePage.height) * 100}%`;
+  const rectStyle = (r: PixelRect) => ({
+    left: pctX(r.x1),
+    top: pctY(r.y1),
+    width: pctX(r.x2 - r.x1),
+    height: pctY(r.y2 - r.y1),
+  });
+
   const hoveredBlock = activePage?.blocks.find((b) => b.id === hoverBlockId) ?? null;
 
   return (
@@ -373,11 +546,19 @@ export default function WorkspaceView({
           </div>
 
           <div className="canvas-zoom-pill">
-            <button className="icon-button" aria-label="缩小画布" onClick={() => setZoom((z) => Math.max(60, z - 15))}>
+            <button
+              className="icon-button"
+              aria-label="缩小画布"
+              onClick={() => setZoom((z) => Math.max(60, z - 15))}
+            >
               <Minus size={14} />
             </button>
             <span>{zoom}%</span>
-            <button className="icon-button" aria-label="放大画布" onClick={() => setZoom((z) => Math.min(180, z + 15))}>
+            <button
+              className="icon-button"
+              aria-label="放大画布"
+              onClick={() => setZoom((z) => Math.min(180, z + 15))}
+            >
               <Plus size={14} />
             </button>
             <button className="button ghost sm" onClick={() => setZoom(100)}>1:1</button>
@@ -385,133 +566,266 @@ export default function WorkspaceView({
         </div>
 
         <div className="canvas-stage-wrap">
-          <div
-            ref={artboardRef}
-            className={`artboard ${tool === 'box' || tool === 'point' ? 'cursor-crosshair' : ''}`}
-            style={{ transform: `scale(${zoom / 100})` }}
-            onPointerDown={handleArtboardPointerDown}
-            onPointerMove={handleArtboardPointerMove}
-            onPointerUp={handleArtboardPointerUp}
-            onPointerLeave={() => setHoverBlockId(null)}
-          >
-            <div className="artboard-media">
-              <SceneArtwork sceneId={activePage.sceneId} imageUrl={activePage.imageUrl} />
-            </div>
-
-            {/* Smart hover highlight */}
-            {tool === 'smart' && hoveredBlock && (
-              <div
-                className="smart-block-hover"
-                style={{
-                  left: pct(hoveredBlock.source.x1 + hoveredBlock.dx, activePage.width),
-                  top: pct(hoveredBlock.source.y1 + hoveredBlock.dy, activePage.height),
-                  width: pct(hoveredBlock.source.x2 - hoveredBlock.source.x1, activePage.width),
-                  height: pct(hoveredBlock.source.y2 - hoveredBlock.source.y1, activePage.height),
-                }}
-              >
-                <span className="smart-block-tag">{hoveredBlock.label}</span>
+          <div className="canvas-stage-inner">
+            <div
+              ref={artboardRef}
+              className={`artboard ${tool === 'box' || tool === 'point' ? 'cursor-crosshair' : ''}`}
+              style={{
+                aspectRatio: `${activePage.width} / ${activePage.height}`,
+                width: `min(100cqw, 820px, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
+                transform: `scale(${zoom / 100})`,
+              }}
+              onPointerDown={handleArtboardPointerDown}
+              onPointerMove={handleArtboardPointerMove}
+              onPointerUp={handleArtboardPointerUp}
+              onPointerLeave={() => setHoverBlockId(null)}
+            >
+              <div className="artboard-media">
+                <SceneArtwork sceneId={activePage.sceneId} imageUrl={activePage.imageUrl} />
               </div>
-            )}
 
-            {/* Explode draggable blocks + original position ghost */}
-            {tool === 'explode' &&
-              activePage.blocks.map((block) => {
-                const moved = block.dx !== 0 || block.dy !== 0;
-                return (
-                  <div key={block.id}>
-                    {moved && (
+              {/* Subtle ExplosionWave entry shimmer */}
+              {tool === 'explode' && explosionWaveKey > 0 && (
+                <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
+              )}
+
+              {/* Smart hover highlight (pure geometric dashed outline + pixel size badge, zero fake semantic names) */}
+              {tool === 'smart' && hoveredBlock && (
+                <div className="smart-block-hover" style={rectStyle(hoveredBlock.dest)}>
+                  <span className="smart-block-size">
+                    {hoveredBlock.dest.x2 - hoveredBlock.dest.x1} × {hoveredBlock.dest.y2 - hoveredBlock.dest.y1}
+                  </span>
+                </div>
+              )}
+
+              {/* Authentic Visual-Cutout Explode Layer */}
+              {tool === 'explode' && (
+                <>
+                  {/* 1. Original cavities (transparency checkerboard where a slice was lifted) */}
+                  {activePage.blocks.map((block) =>
+                    isBlockTransformed(block) ? (
                       <div
-                        className="explode-ghost"
-                        style={{
-                          left: pct(block.source.x1, activePage.width),
-                          top: pct(block.source.y1, activePage.height),
-                          width: pct(block.source.x2 - block.source.x1, activePage.width),
-                          height: pct(block.source.y2 - block.source.y1, activePage.height),
-                        }}
+                        key={`cavity-${block.id}`}
+                        className="explode-cavity"
+                        style={rectStyle(block.source)}
                       />
-                    )}
-                    <div
-                      className={`explode-block ${moved ? 'moved' : ''}`}
+                    ) : null
+                  )}
+
+                  {/* 2. Physically lifted & resized visual slices */}
+                  {activePage.blocks.map((block) => {
+                    if (!isBlockTransformed(block)) return null;
+                    const sw = Math.max(1, block.source.x2 - block.source.x1);
+                    const sh = Math.max(1, block.source.y2 - block.source.y1);
+                    const isSelected = selectedBlockId === block.id;
+                    return (
+                      <div
+                        key={`slice-${block.id}`}
+                        className={`explode-piece ${isSelected ? 'is-selected' : ''}`}
+                        style={rectStyle(block.dest)}
+                      >
+                        <div
+                          className="explode-piece-inner"
+                          style={{
+                            width: `${(activePage.width / sw) * 100}%`,
+                            height: `${(activePage.height / sh) * 100}%`,
+                            transform: `translate(${-(block.source.x1 / activePage.width) * 100}%, ${-(block.source.y1 / activePage.height) * 100}%)`,
+                          }}
+                        >
+                          <SceneArtwork
+                            sceneId={activePage.sceneId}
+                            imageUrl={activePage.imageUrl}
+                            stretch
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* 3. Interactive Explode guides, 8 resize handles & pure-geometry delta pills */}
+                  {activePage.blocks.map((block) => {
+                    const transformed = isBlockTransformed(block);
+                    const isSelected = selectedBlockId === block.id;
+                    const isHovered = hoverBlockId === block.id;
+                    const linkedNote = activePage.annotations.find((a) => a.blockId === block.id);
+                    const dx = block.dest.x1 - block.source.x1;
+                    const dy = block.dest.y1 - block.source.y1;
+                    const sw = Math.max(1, block.source.x2 - block.source.x1);
+                    const sh = Math.max(1, block.source.y2 - block.source.y1);
+                    const sx = (block.dest.x2 - block.dest.x1) / sw;
+                    const sy = (block.dest.y2 - block.dest.y1) / sh;
+                    const scaled = Math.abs(sx - 1) > 0.02 || Math.abs(sy - 1) > 0.02;
+
+                    return (
+                      <div
+                        key={`guide-${block.id}`}
+                        className={`explode-block ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${transformed ? 'moved' : ''}`}
+                        style={rectStyle(block.dest)}
+                        onPointerEnter={() => setHoverBlockId(block.id)}
+                        onPointerLeave={() =>
+                          setHoverBlockId((cur) => (cur === block.id ? null : cur))
+                        }
+                        onPointerDown={(e) => startExplodeSession(e, block, 'move')}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          if (transformed) resetBlockMovement(block.id);
+                        }}
+                      >
+                        {linkedNote && <span className="corner-badge explode">{linkedNote.number}</span>}
+
+                        {(isSelected || isHovered) && transformed && (
+                          <span className="explode-delta-pill">
+                            Δ {dx >= 0 ? '+' : ''}{dx}, {dy >= 0 ? '+' : ''}{dy}
+                            {scaled ? ` · ${sx.toFixed(2)}×` : ''}
+                          </span>
+                        )}
+
+                        {isSelected &&
+                          RESIZE_HANDLES.map((h) => (
+                            <div
+                              key={h.id}
+                              className={`explode-handle handle-${h.id}`}
+                              style={{ cursor: h.cursor }}
+                              onPointerDown={(e) => startExplodeSession(e, block, 'resize', h.id)}
+                            />
+                          ))}
+                      </div>
+                    );
+                  })}
+
+                  {/* 4. Non-blocking Apple Trajectory Arrows (white halo + #007AFF) */}
+                  <svg
+                    className="explode-trajectories"
+                    viewBox={`0 0 ${activePage.width} ${activePage.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {activePage.blocks.map((block) => {
+                      if (!isBlockTransformed(block)) return null;
+                      const x1 = (block.source.x1 + block.source.x2) / 2;
+                      const y1 = (block.source.y1 + block.source.y2) / 2;
+                      const x2 = (block.dest.x1 + block.dest.x2) / 2;
+                      const y2 = (block.dest.y1 + block.dest.y2) / 2;
+                      const len = Math.hypot(x2 - x1, y2 - y1);
+                      if (len < 6) return null;
+                      const ux = (x2 - x1) / len;
+                      const uy = (y2 - y1) / len;
+                      const nx = -uy;
+                      const ny = ux;
+                      const head = Math.min(11, Math.max(6, len * 0.25));
+                      const p1x = x2 - ux * head + nx * head * 0.45;
+                      const p1y = y2 - uy * head + ny * head * 0.45;
+                      const p2x = x2 - ux * head - nx * head * 0.45;
+                      const p2y = y2 - uy * head - ny * head * 0.45;
+                      const active = selectedBlockId === block.id;
+
+                      return (
+                        <g key={`traj-${block.id}`} opacity={active ? 0.96 : 0.72}>
+                          <line
+                            x1={x1}
+                            y1={y1}
+                            x2={x2}
+                            y2={y2}
+                            stroke="rgba(255,255,255,0.85)"
+                            strokeWidth={active ? 4 : 3.2}
+                            strokeLinecap="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <line
+                            x1={x1}
+                            y1={y1}
+                            x2={x2}
+                            y2={y2}
+                            stroke="var(--accent)"
+                            strokeWidth={active ? 2 : 1.5}
+                            strokeLinecap="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <polyline
+                            points={`${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}`}
+                            fill="none"
+                            stroke="var(--accent)"
+                            strokeWidth={active ? 2 : 1.5}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <circle
+                            cx={x1}
+                            cy={y1}
+                            r={Math.max(2.5, activePage.width / 240)}
+                            fill="#ffffff"
+                            stroke="var(--accent)"
+                            strokeWidth={1.5}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* 5. Manual cut selection box */}
+                  {manualCutBox && (
+                    <div className="box-draft-rect" style={rectStyle(manualCutBox)} />
+                  )}
+                </>
+              )}
+
+              {/* Rendered Box & Point Annotations (hide duplicate box rect for blockId while actively in Explode mode) */}
+              {activePage.annotations.map((note) => {
+                if (note.kind === 'point' && note.point) {
+                  return (
+                    <button
+                      key={note.id}
+                      className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''}`}
                       style={{
-                        left: pct(block.source.x1 + block.dx, activePage.width),
-                        top: pct(block.source.y1 + block.dy, activePage.height),
-                        width: pct(block.source.x2 - block.source.x1, activePage.width),
-                        height: pct(block.source.y2 - block.source.y1, activePage.height),
+                        left: pctX(note.point.x),
+                        top: pctY(note.point.y),
                       }}
-                      onPointerDown={(e) => startDraggingBlock(e, block)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedNoteId(note.id);
+                        setInspectorTab('page');
+                      }}
                     >
-                      <span className="explode-block-label">{block.label}</span>
-                      {moved && (
-                        <span className="explode-delta-pill">
-                          {block.dx >= 0 ? '+' : ''}{block.dx}, {block.dy >= 0 ? '+' : ''}{block.dy}
-                        </span>
-                      )}
+                      {note.number}
+                    </button>
+                  );
+                }
+                if (note.kind === 'region' && note.rect) {
+                  if (tool === 'explode' && note.blockId) return null;
+                  return (
+                    <div
+                      key={note.id}
+                      className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''}`}
+                      style={rectStyle(note.rect)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedNoteId(note.id);
+                        setInspectorTab('page');
+                      }}
+                    >
+                      <span className="corner-badge">{note.number}</span>
                     </div>
-                  </div>
-                );
+                  );
+                }
+                return null;
               })}
 
-            {/* Rendered Box & Point Annotations */}
-            {activePage.annotations.map((note) => {
-              if (note.kind === 'point' && note.point) {
-                return (
-                  <button
-                    key={note.id}
-                    className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''}`}
-                    style={{
-                      left: pct(note.point.x, activePage.width),
-                      top: pct(note.point.y, activePage.height),
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedNoteId(note.id);
-                      setInspectorTab('page');
-                    }}
-                  >
-                    {note.number}
-                  </button>
-                );
-              }
-              if (note.kind === 'region' && note.rect) {
-                return (
-                  <div
-                    key={note.id}
-                    className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''}`}
-                    style={{
-                      left: pct(note.rect.x1, activePage.width),
-                      top: pct(note.rect.y1, activePage.height),
-                      width: pct(note.rect.x2 - note.rect.x1, activePage.width),
-                      height: pct(note.rect.y2 - note.rect.y1, activePage.height),
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedNoteId(note.id);
-                      setInspectorTab('page');
-                    }}
-                  >
-                    <span className="corner-badge">{note.number}</span>
-                  </div>
-                );
-              }
-              return null;
-            })}
-
-            {/* Live Rubber-Band Box */}
-            {draftBox && (
-              <div
-                className="box-draft-rect"
-                style={{
-                  left: pct(draftBox.x1, activePage.width),
-                  top: pct(draftBox.y1, activePage.height),
-                  width: pct(draftBox.x2 - draftBox.x1, activePage.width),
-                  height: pct(draftBox.y2 - draftBox.y1, activePage.height),
-                }}
-              />
-            )}
+              {/* Live Rubber-Band Box */}
+              {draftBox && <div className="box-draft-rect" style={rectStyle(draftBox)} />}
+            </div>
           </div>
         </div>
+
+        {/* Explode interaction hint pill (only when not colliding with video timeline) */}
+        {tool === 'explode' && !videoMode && (
+          <div className="explode-hint-pill">
+            单击选块 · 拖动移动 · 拖拽 8 角点缩放 · 空处拉框手动切分 · Esc 取消选中
+          </div>
+        )}
 
         {/* Optional Video Timeline Strip */}
         {videoMode && (
@@ -557,7 +871,7 @@ export default function WorkspaceView({
           </div>
         )}
 
-        {/* Centered Floating Tool Dock */}
+        {/* Frosted Apple Capsule Floating Tool Dock */}
         <div className="floating-dock" role="toolbar" aria-label="批注与布局工具">
           <button
             className={`dock-tool ${tool === 'smart' ? 'active' : ''}`}
@@ -586,13 +900,7 @@ export default function WorkspaceView({
           <span className="dock-sep" />
           <button
             className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
-            onClick={() => {
-              const next = tool === 'explode' ? 'box' : 'explode';
-              setTool(next);
-              if (next === 'explode') {
-                onToast('已进入「大爆炸」模式：直接拖动画面上的区块生成位移批注');
-              }
-            }}
+            onClick={toggleExplodeMode}
           >
             <Layers2 size={15} />
             <span>大爆炸</span>
@@ -606,7 +914,11 @@ export default function WorkspaceView({
             <span>视频时间轴</span>
           </button>
           <span className="dock-sep" />
-          <button className="dock-tool" onClick={() => fileInputRef.current?.click()} title="导入本地图片为新的一页 (Ctrl+I)">
+          <button
+            className="dock-tool"
+            onClick={() => fileInputRef.current?.click()}
+            title="导入本地图片为新的一页 (Ctrl+I)"
+          >
             <ImagePlus size={15} />
             <span>导入图片</span>
           </button>
@@ -640,18 +952,20 @@ export default function WorkspaceView({
         value={inspectorTab}
         onValueChange={(v) => setInspectorTab(v as 'page' | 'group')}
       >
-        <Tabs.List className="inspector-tabs-list" aria-label="批注面板视图">
-          <Tabs.Trigger className="inspector-tab-trigger" value="page">
-            本页批注 <span className="badge neutral">{activePage.annotations.length}</span>
-          </Tabs.Trigger>
-          <Tabs.Trigger className="inspector-tab-trigger" value="group">
-            整组意见 <span className="badge neutral">{groupNotes.length}</span>
-          </Tabs.Trigger>
-        </Tabs.List>
+        <div className="inspector-tabs-wrap">
+          <Tabs.List className="inspector-tabs-list" aria-label="批注面板视图">
+            <Tabs.Trigger className="inspector-tab-trigger" value="page">
+              本页批注 <span className="tab-count">{activePage.annotations.length}</span>
+            </Tabs.Trigger>
+            <Tabs.Trigger className="inspector-tab-trigger" value="group">
+              整组意见 <span className="tab-count">{groupNotes.length}</span>
+            </Tabs.Trigger>
+          </Tabs.List>
+        </div>
 
         <Tabs.Content value="page" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div className="inspector-subbar">
-            <span>在画面拉框、放点或拖动组件</span>
+            <span>在画面拉框、放点或拖动切片</span>
             <button
               className="button ghost sm"
               onClick={() => appendAnnotation({ kind: 'global', text: '' })}
@@ -661,15 +975,20 @@ export default function WorkspaceView({
           </div>
           <div className="inspector-list">
             {activePage.annotations.length === 0 ? (
-              <div style={{ padding: '28px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
-                当前页面暂无批注。<br />选择「框批注」在画布拖拽，或切换「大爆炸」直接拖动组件。
+              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
+                当前页面暂无批注。<br />选择「框批注」在画布拖拽，或切换「大爆炸」直接切分与调整切片位置。
               </div>
             ) : (
               activePage.annotations.map((note) => (
                 <article
                   key={note.id}
                   className={`note-card ${selectedNoteId === note.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedNoteId(note.id)}
+                  onClick={() => {
+                    setSelectedNoteId(note.id);
+                    if (tool === 'explode' && note.blockId) {
+                      setSelectedBlockId(note.blockId);
+                    }
+                  }}
                 >
                   <div className="note-card-head">
                     <span className={`note-num ${note.movement ? 'explode' : ''}`}>{note.number}</span>
@@ -720,7 +1039,12 @@ export default function WorkspaceView({
                           prev.map((p) =>
                             p.id !== activePage.id
                               ? p
-                              : { ...p, annotations: p.annotations.map((a) => (a.id === note.id ? { ...a, text: val } : a)) }
+                              : {
+                                  ...p,
+                                  annotations: p.annotations.map((a) =>
+                                    a.id === note.id ? { ...a, text: val } : a
+                                  ),
+                                }
                           )
                         );
                       }}
@@ -788,7 +1112,9 @@ export default function WorkspaceView({
                     value={g.text}
                     onChange={(e) => {
                       const val = e.target.value;
-                      onUpdateGroupNotes((prev) => prev.map((item) => (item.id === g.id ? { ...item, text: val } : item)));
+                      onUpdateGroupNotes((prev) =>
+                        prev.map((item) => (item.id === g.id ? { ...item, text: val } : item))
+                      );
                     }}
                     onBlur={() => setEditingNoteId(null)}
                   />

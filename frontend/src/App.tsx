@@ -29,6 +29,7 @@ import type {
   ThemeMode,
   ViewId,
 } from './bridge/types';
+import { detectImageRegions } from './utils/regionDetector';
 import WorkspaceView from './views/WorkspaceView';
 import AnalysisView from './views/AnalysisView';
 import ProvidersView from './views/ProvidersView';
@@ -39,6 +40,13 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof LayoutGrid }> =
   { id: 'analysis', label: 'AI 解析', icon: Sparkles },
   { id: 'providers', label: '模型服务', icon: SlidersHorizontal },
 ];
+
+const VIEW_TITLES: Record<ViewId, string> = {
+  workspace: '批注工作台',
+  analysis: 'AI 解析',
+  providers: '模型服务',
+  settings: '设置与诊断',
+};
 
 export default function App() {
   const [view, setView] = useState<ViewId>('workspace');
@@ -117,33 +125,23 @@ export default function App() {
     img.onload = () => {
       const id = `import-${Date.now()}`;
       const cleanName = file.name.replace(/\.[^.]+$/, '') || file.name;
+      const naturalW = img.naturalWidth || 800;
+      const naturalH = img.naturalHeight || 480;
+      const blocks = detectImageRegions(img, naturalW, naturalH);
       const newPage: GalleryPage = {
         id,
         name: cleanName,
         routeHint: file.name,
-        width: img.naturalWidth || 800,
-        height: img.naturalHeight || 480,
+        width: naturalW,
+        height: naturalH,
         imageUrl: objectUrl,
-        blocks: [
-          {
-            id: 'imported-main',
-            label: '主体画面区',
-            source: {
-              x1: Math.round((img.naturalWidth || 800) * 0.1),
-              y1: Math.round((img.naturalHeight || 480) * 0.12),
-              x2: Math.round((img.naturalWidth || 800) * 0.9),
-              y2: Math.round((img.naturalHeight || 480) * 0.85),
-            },
-            dx: 0,
-            dy: 0,
-          },
-        ],
+        blocks,
         annotations: [],
       };
       setPages((prev) => [...prev, newPage]);
       setActivePageId(id);
       setView('workspace');
-      notify(`已添加页面「${cleanName}」(${newPage.width}×${newPage.height})`);
+      notify(`已导入「${cleanName}」(${naturalW}×${naturalH}，识别到 ${blocks.length} 个候选区域)`);
     };
     img.src = objectUrl;
   };
@@ -164,21 +162,82 @@ export default function App() {
 
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''} ${preferences.compactDensity ? 'density-compact' : ''}`}>
-      {/* Clean Unified Top Bar */}
+      {/* Full-Height macOS Vibrancy Sidebar */}
+      <aside className="app-sidebar">
+        <div className="sidebar-brand-row">
+          <button
+            className="brand-lockup-btn"
+            aria-label="EditHere 首页"
+            onClick={() => setView('workspace')}
+          >
+            <img className="brand-squircle" src="./brand/edithere-macos.svg" alt="EditHere 图标" />
+            <img
+              className="brand-wordmark"
+              src={isDark ? './brand/edithere-wordmark-light.svg' : './brand/edithere-wordmark.svg'}
+              alt="EditHere"
+            />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={collapsed ? '展开导航栏' : '收起导航栏'}
+            title={collapsed ? '展开导航栏' : '收起导航栏'}
+            onClick={() => setCollapsed((c) => !c)}
+          >
+            {collapsed ? <Menu size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
+
+        <div className="sidebar-section-label">工作区</div>
+        <nav className="primary-navigation" aria-label="主导航">
+          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={`nav-item ${view === id ? 'active' : ''}`}
+              aria-current={view === id ? 'page' : undefined}
+              title={label}
+              onClick={() => setView(id)}
+            >
+              <Icon size={17} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="sidebar-separator" />
+          <button
+            className={`nav-item ${view === 'settings' ? 'active' : ''}`}
+            aria-current={view === 'settings' ? 'page' : undefined}
+            title="设置与诊断"
+            onClick={() => setView('settings')}
+          >
+            <Settings2 size={17} />
+            <span>设置与诊断</span>
+          </button>
+          <button className="nav-item" title="关于 EditHere" onClick={() => setAboutOpen(true)}>
+            <CircleHelp size={17} />
+            <span>关于</span>
+          </button>
+          <div className="sidebar-footer">
+            <span className="sidebar-footer-version">0.14 B2 Shell</span>
+            <button
+              className="icon-button"
+              aria-label={isDark ? '切换浅色' : '切换深色'}
+              title={isDark ? '切换浅色' : '切换深色'}
+              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            >
+              {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Seamless Translucent Content Toolbar */}
       <header className="topbar">
         <div className="topbar-left">
-          <div className="brand-mark">
-            <span className="brand-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 4H2v18h18v-3M7 13l4 4L22 6l-4-4L7 13Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </span>
-            <span>EditHere · 改这里</span>
-          </div>
+          <span className="topbar-view-title">{VIEW_TITLES[view]}</span>
           <span className="topbar-divider" />
           <span className="topbar-meta">
-            <span>B2 统一前端空壳</span>
-            <span>·</span>
             <span>{pages.length} 页组图</span>
             <span>·</span>
             <span>{totalNotesCount} 条意见</span>
@@ -211,63 +270,6 @@ export default function App() {
           )}
         </div>
       </header>
-
-      {/* Collapsible Navigation Rail */}
-      <aside className="app-sidebar">
-        <div className="sidebar-top-row">
-          <span className="sidebar-section-label">工作区</span>
-          <button
-            className="icon-button"
-            aria-label={collapsed ? '展开导航栏' : '收起导航栏'}
-            onClick={() => setCollapsed((c) => !c)}
-          >
-            {collapsed ? <Menu size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
-
-        <nav className="primary-navigation" aria-label="主导航">
-          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={`nav-item ${view === id ? 'active' : ''}`}
-              aria-current={view === id ? 'page' : undefined}
-              title={label}
-              onClick={() => setView(id)}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="sidebar-separator" />
-          <button
-            className={`nav-item ${view === 'settings' ? 'active' : ''}`}
-            aria-current={view === 'settings' ? 'page' : undefined}
-            title="设置与诊断"
-            onClick={() => setView('settings')}
-          >
-            <Settings2 size={18} />
-            <span>设置与诊断</span>
-          </button>
-          <button className="nav-item" title="关于 B2 架构" onClick={() => setAboutOpen(true)}>
-            <CircleHelp size={18} />
-            <span>关于</span>
-          </button>
-          <div className="sidebar-footer">
-            <span className="sidebar-footer-version">0.14 B2 Shell</span>
-            <button
-              className="icon-button"
-              aria-label={isDark ? '切换浅色' : '切换深色'}
-              title={isDark ? '切换浅色' : '切换深色'}
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            >
-              {isDark ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-          </div>
-        </div>
-      </aside>
 
       {/* Main Content Area */}
       <main className="app-main" style={{ overflow: view === 'workspace' ? 'hidden' : 'auto' }}>
@@ -316,7 +318,7 @@ export default function App() {
 
       {toast && (
         <div className="toast" role="status">
-          <Check size={15} className="toast-ok" />
+          <Check size={14} className="toast-ok" />
           <span>{toast}</span>
           <button className="icon-button" aria-label="关闭提示" onClick={() => setToast('')}>
             <X size={13} />
@@ -328,23 +330,28 @@ export default function App() {
         <Dialog.Portal>
           <Dialog.Overlay className="dialog-overlay" />
           <Dialog.Content className="dialog-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Dialog.Title className="dialog-title">EditHere · 0.14 B2 统一前端空壳</Dialog.Title>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <img
+                src={isDark ? './brand/edithere-lockup-light.svg' : './brand/edithere-lockup.svg'}
+                alt="EditHere"
+                style={{ height: 28, width: 'auto' }}
+              />
               <Dialog.Close className="icon-button" aria-label="关闭">
                 <X size={16} />
               </Dialog.Close>
             </div>
+            <Dialog.Title className="dialog-title">EditHere · 0.14 B2 统一前端交互原型</Dialog.Title>
             <Dialog.Description className="dialog-desc">
-              C++20/Qt6 原生截图·OCR·贴图底层 + 系统 WebView 统一 React/Radix 工作台
+              C++20 / Qt6 原生截图·OCR·贴图核心 + 系统 WebView 统一 Apple 风格工作台
             </Dialog.Description>
             <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.7, color: 'var(--secondary)' }}>
-              当前为 <strong>里程碑 3 交互空壳</strong>，用于确认整体界面质感、组图工作台交互、外置批注徽章、实时大爆炸拖拽、无 TabBar 分组设置和深浅主题配色。确认满意后，下一步将把这套前端直接接入 C++ WebView2/WKWebView/WebKitGTK Bridge 与统一 Web/MCP 入口。
+              当前已启用真实视觉切片级「大爆炸」交互（无虚假语义标签、棋盘格镂空原位、8 角点缩放、白色外描边路径箭头及空白处拉框切分）与本地像素连通域检测（导入本地图片时即时分割候选块）。确认视觉与交互细节后，将在 M4 正式接入 C++ WebView2/WKWebView/WebKitGTK Bridge。
             </p>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>
-              快捷键：<code>Ctrl + 1 / 2 / 3 / 4</code> 切换页面 · <code>Ctrl + I</code> 导入图片
+              快捷键：<code>Ctrl + 1 / 2 / 3 / 4</code> 切换页面 · <code>Ctrl + I</code> 导入图片 · <code>Esc</code> 取消大爆炸选中
             </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <Dialog.Close className="button primary">确认</Dialog.Close>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+              <Dialog.Close className="button primary">完成</Dialog.Close>
             </div>
           </Dialog.Content>
         </Dialog.Portal>

@@ -1,11 +1,23 @@
-export function HomeSceneSvg() {
+import { useId } from 'react';
+
+export function HomeSceneSvg({ stretch = false }: { stretch?: boolean }) {
+  const uid = useId().replace(/:/g, '');
+  const shadowId = `eh-chair-shadow-${uid}`;
+  const clipId = `eh-hero-clip-${uid}`;
+
   return (
-    <svg className="artboard-svg" viewBox="0 0 800 480" role="img" aria-label="Morrow 首页首屏">
+    <svg
+      className="artboard-svg"
+      viewBox="0 0 800 480"
+      preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
+      role="img"
+      aria-label="Morrow 首页首屏"
+    >
       <defs>
-        <filter id="eh-chair-shadow" x="-60%" y="-60%" width="220%" height="220%">
+        <filter id={shadowId} x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="9" />
         </filter>
-        <clipPath id="eh-hero-clip">
+        <clipPath id={clipId}>
           <rect x="405" y="62" width="395" height="355" />
         </clipPath>
       </defs>
@@ -41,12 +53,12 @@ export function HomeSceneSvg() {
         EXPLORE THE EDIT
       </text>
       <path d="m161 330 5 5-5 5m-8-5h13" stroke="#fffefa" fill="none" />
-      <g clipPath="url(#eh-hero-clip)">
+      <g clipPath={`url(#${clipId})`}>
         <path d="M498 63H800V417H498Z" fill="#e5e8dc" />
         <path d="M498 63H525V417H498Z" fill="#daddcf" />
         <circle cx="736" cy="139" r="73" fill="#d4ad81" />
         <path d="M579 348 800 286V417H405Z" fill="#dedecf" />
-        <ellipse cx="643" cy="357" rx="105" ry="13" fill="#5e6652" opacity=".14" filter="url(#eh-chair-shadow)" />
+        <ellipse cx="643" cy="357" rx="105" ry="13" fill="#5e6652" opacity=".14" filter={`url(#${shadowId})`} />
         <path d="M697 252 721 367M572 258 555 366" stroke="#845c3c" strokeWidth="9" strokeLinecap="round" />
         <path d="m573 259 125-8M562 322l146-2" stroke="#9d7955" strokeWidth="6" />
         <path d="M568 253 583 141Q586 124 607 127L680 141Q698 144 697 164L689 251Z" fill="#8d6546" />
@@ -66,7 +78,7 @@ export function HomeSceneSvg() {
   );
 }
 
-export function InventoryHudSvg() {
+export function InventoryHudSvg({ stretch = false }: { stretch?: boolean }) {
   const slots = Array.from({ length: 18 }, (_, i) => {
     const col = i % 6;
     const row = Math.floor(i / 6);
@@ -78,7 +90,13 @@ export function InventoryHudSvg() {
   });
 
   return (
-    <svg className="artboard-svg" viewBox="0 0 800 480" role="img" aria-label="游戏物品栏 HUD">
+    <svg
+      className="artboard-svg"
+      viewBox="0 0 800 480"
+      preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
+      role="img"
+      aria-label="游戏物品栏 HUD"
+    >
       <rect width="800" height="480" fill="#131722" />
       <rect x="0" y="0" width="800" height="58" fill="#1b2131" />
       <path d="M0 58H800" stroke="#2d364d" />
@@ -146,9 +164,15 @@ export function InventoryHudSvg() {
   );
 }
 
-export function SettingsMockSvg() {
+export function SettingsMockSvg({ stretch = false }: { stretch?: boolean }) {
   return (
-    <svg className="artboard-svg" viewBox="0 0 800 480" role="img" aria-label="应用设置页示例">
+    <svg
+      className="artboard-svg"
+      viewBox="0 0 800 480"
+      preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
+      role="img"
+      aria-label="应用设置页示例"
+    >
       <rect width="800" height="480" fill="#fafafa" />
       <rect x="20" y="20" width="165" height="440" rx="10" fill="#f3f4f6" stroke="#e5e7eb" />
       <text x="38" y="54" fill="#18181b" fontSize="15" fontWeight="700">偏好设置</text>
@@ -209,11 +233,26 @@ export function SettingsMockSvg() {
   );
 }
 
-export function SceneArtwork({ sceneId, imageUrl }: { sceneId?: 'home' | 'inventory' | 'settings'; imageUrl?: string }) {
+export function SceneArtwork({
+  sceneId,
+  imageUrl,
+  stretch = false,
+}: {
+  sceneId?: 'home' | 'inventory' | 'settings';
+  imageUrl?: string;
+  stretch?: boolean;
+}) {
   if (imageUrl) {
-    return <img className="artboard-img" src={imageUrl} alt="已导入的页面截图" />;
+    return (
+      <img
+        className="artboard-img"
+        style={{ objectFit: stretch ? 'fill' : 'contain' }}
+        src={imageUrl}
+        alt="已导入的页面截图"
+      />
+    );
   }
-  if (sceneId === 'inventory') return <InventoryHudSvg />;
-  if (sceneId === 'settings') return <SettingsMockSvg />;
-  return <HomeSceneSvg />;
+  if (sceneId === 'inventory') return <InventoryHudSvg stretch={stretch} />;
+  if (sceneId === 'settings') return <SettingsMockSvg stretch={stretch} />;
+  return <HomeSceneSvg stretch={stretch} />;
 }
