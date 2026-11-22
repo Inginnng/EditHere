@@ -9,7 +9,7 @@ Manual file handoff defaults to JSON and a companion original; **Embed original 
 
 [简体中文](AGENT-CLI.md) · **English**
 
-[Back to the product introduction](../README.en.md) · [Let AI install it for you](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md) · [User guide](USER-GUIDE.en.md) · [Companion AI skill](../skills/edithere/SKILL.md)
+[Back to the product introduction](../README.en.md) · [Let AI install it for you](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md) · [User guide](USER-GUIDE.en.md) · [Companion AI skill](../skills/edithere/SKILL.md)
 
 EditHere provides a local command-line entry point that lets AI open a screenshot for you to annotate. You can write change requests and move or resize components; the command line hands this round's feedback to the AI only after you click “Finish and return to AI” (完成并返回 AI). The image, annotations and export are all handled on your machine; whether the file is later sent to an AI service is decided by the tool that uses it.
 
@@ -22,12 +22,12 @@ The program and the skill solve two separate things: the program opens images, a
 Copy the text below to an AI that can run commands on your machine, and it can complete the setup by following the guide:
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
 Use portable mode: do not run the Windows installer and do not change PATH or startup settings. Reuse the program I have already extracted first; otherwise download and fully extract the official portable archive.
 Record the actual CLI path, verify that the CLI runs and that my current AI tool can find the skill, and tell me how to start annotating.
 ```
 
-The source and release packages are public and can be downloaded directly; an AI that only has a web chat or no local execution permission cannot complete the local setup from this text alone. For the standard installation, see the [AI setup guide](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md).
+The source and release packages are public and can be downloaded directly; an AI that only has a web chat or no local execution permission cannot complete the local setup from this text alone. For the standard installation, see the [AI setup guide](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md).
 
 ## Find the CLI
 

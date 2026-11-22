@@ -62,7 +62,7 @@ AI 已经生成了能运行的界面，细节却还差一点：按钮的位置�
 **先配置一次。** 将下面这段话复制给能操作本机终端与文件的 AI 工具：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
 优先复用本机已有程序；没有时再安装。完成后验证 CLI 能运行、skill 能被发现，并告诉我如何开始标注。
 ```
 
@@ -267,7 +267,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **希望免安装使用桌面版时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
 优先复用已有解压目录；需要时下载官方完整 ZIP。使用 CLI 的绝对路径，不运行安装器，不修改 PATH 或开机启动。
 完成后验证 CLI 与当前 AI 工具的技能配置。
 ```
@@ -275,7 +275,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **使用 Web Agent 时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
 先检查已有安装，需要时下载官方 Web Agent ZIP、核对 SHA-256，并完整解压到长期保留的目录。
 配置当前宿主的 Web MCP 和 edithere-web skill，验证实际工具发现与内嵌界面。
 宿主不支持 MCP Apps 时使用普通浏览器兼容入口，保留现有 MCP 与技能配置。

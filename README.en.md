@@ -175,7 +175,7 @@ Paste the matching prompt into an AI tool that can use your local terminal and f
 Desktop app:
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
 Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system.
 Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session.
 Tell me when a system permission prompt requires my action.
@@ -184,7 +184,7 @@ Tell me when a system permission prompt requires my action.
 Web edition (MCP Apps or the browser-compatible entry point):
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/web/AI-SETUP.en.md to install EditHere Web Agent for me.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/web/AI-SETUP.en.md to install EditHere Web Agent for me.
 I will provide the web-agent ZIP location, or a local file plus its SHA-256: check for an existing install first, then extract the whole archive into a long-lived user directory.
 Prefer configuring the EditHere Web MCP for my current host, verify tool discovery and the embedded UI, and install the edithere-web skill.
 If the host does not support MCP Apps, explain the actual limitation and use the browser-compatible entry point instead.
