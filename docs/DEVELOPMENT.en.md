@@ -26,6 +26,63 @@ Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`: the Windows, ma
 - Release notes are taken first from `docs/releases/<version>.md` (a hand-written, user-facing description); when that file is missing, it falls back to the matching section of `CHANGELOG.md`. When preparing the notes, write a draft for the user to confirm before tagging.
 - The notes are maintained in both languages, `docs/releases/<version>.md` and `docs/releases/<version>.en.md`, and release.yml assembles them into one body: a language switcher at the top, the Chinese notes, then the English notes under `## English`. A release page is a single field with no language switch, and the English half is a real heading rather than a collapsed block, because an anchor pointing into a closed block lands on nothing. `check-packaging.py` fails when only the Chinese page exists.
 
+## Mirror pushes
+
+GitHub is the only upstream. Gitee and AtomGit are mirrors, but they work in different ways:
+
+| Remote | URL | How it syncs |
+| --- | --- | --- |
+| `origin` | `github.com/Inginnng/EditHere` | HTTPS, credentials provided by `gh`, the only upstream |
+| `gitee` | `gitee.com/InnGing/EditHere` | SSH, host alias `gitee-edithere`, repository **deploy key** (push access must be enabled), pushed manually from here |
+| `atomgit` | `atomgit.com/Inginnng/EditHere` | **Read-only mirror repository**, pulled by AtomGit from GitHub; local pushes are rejected |
+
+The AtomGit repository is an "image repository": `git push` is refused with `This operation is not allowed because the repository is an image repository`. It follows GitHub, so it catches up on its own once `origin` moves. Local pushes are neither needed nor possible, and the script targets `gitee` only by default.
+
+Gitee pushes use a dedicated key, `~/.ssh/id_ed25519_edithere`, bound to Gitee by the `gitee-edithere` alias in `~/.ssh/config`, leaving existing GitHub/Gitee personal keys untouched. A deploy key and an account key can each be registered only once, so do not reuse this key for other repositories.
+
+```bash
+# Current branch plus tags
+scripts/push-mirrors.sh
+# All branches plus tags (use this to catch the mirror up after switching branches)
+ALL_BRANCHES=1 scripts/push-mirrors.sh
+# Dry run
+DRY_RUN=1 scripts/push-mirrors.sh
+# Overwrite tags that exist remotely but point elsewhere (v0.8.22 once did)
+FORCE_TAGS=1 scripts/push-mirrors.sh
+```
+
+On Windows use `powershell -File scripts/push-mirrors.ps1` with `-AllBranches`, `-DryRun`, `-ForceTags`, `-Branch <name>`, and `-Targets gitee`.
+
+Branches and tags are pushed separately: the script compares `git ls-remote --tags` with local tags, pushes only the missing ones, and skips tags that exist remotely but point to a different object, reporting them instead of overwriting (such a conflict usually means one side moved the tag, so decide which side is right first). Any failing remote makes the script exit non-zero with the failing remotes listed.
+
+Three failures are worth separating: `Permission denied (publickey)` means the key is not registered or the wrong key was used; Gitee answering `Auth error: Access denied` means the key authenticated but the account has no write access (push access not enabled on the deploy key, or the key belongs to another account); `image repository` means the target is a read-only mirror that only the platform can pull into.
+
+### Automatic release sync
+
+Repository mirrors only carry branches and tags. A Release page is not a git object, so it is never mirrored. After GitHub finishes publishing, `release.yml` runs a `mirror-release` job that calls `scripts/publish-mirror-release.py` to publish the same files (downloaded verbatim from the GitHub release with `gh release download`, never renamed or modified) and the same notes to Gitee and AtomGit.
+
+Two repository secrets are required (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose | Where to create it |
+| --- | --- | --- |
+| `ATOMGIT_TOKEN` | Create the AtomGit release and upload its assets | atomgit.com → avatar → security settings → access tokens, with repository write scope (repo / projects) |
+| `GITEE_TOKEN` | Create the Gitee release and upload its assets | gitee.com → settings → security settings → personal access tokens, scope `projects` |
+
+A missing secret skips that site with one line of output and leaves the other alone; a site that actually fails makes the job exit non-zero so the broken release is visible.
+
+Three platform differences are documented in the script and matter before editing it: the AtomGit release object has no numeric id (locate it by tag) and no `attach_files` endpoint (call `GET .../releases/<tag>/upload_url` for a signed URL, then `PUT` the file), and a newly created release needs one more `PATCH` with `release_status` set to `latest` or the page will not show it as the newest; Gitee works the other way around, with a numeric id and a multipart form upload.
+
+To backfill a version without re-running CI, run the same command by hand:
+
+```bash
+gh release download v0.13.6 --dir mirror-assets --clobber
+gh release view v0.13.6 --json tagName,name,body,isPrerelease > mirror-release.json
+ATOMGIT_TOKEN=... GITEE_TOKEN=... python3 scripts/publish-mirror-release.py \
+  --assets mirror-assets --meta mirror-release.json
+```
+
+The script is idempotent against existing releases: it does not recreate them and does not overwrite assets that are already uploaded, only the missing ones are pushed.
+
 ## Documentation languages
 
 Interface text goes through Qt translations (see [Internationalisation and translations](i18n.md)); **the repository documentation does not**. It keeps one file per language, with `.en` on the English copy:

@@ -426,3 +426,52 @@ jobs:
           gh api "$release_api" > "$draft_json"
           node scripts/verify-release-assets.cjs "$draft_json" "$RELEASE_TAG" "${assets[@]}"
           gh api --method PATCH "$release_api" -F draft=false -f make_latest=legacy --jq '.html_url'
+
+  mirror-release:
+    # 镜像站点的发行版不是 git 对象，AtomGit 的镜像仓库只同步分支与标签，所以国内
+    # 两个站的 Release 必须单独发布一次。GitHub 仍是唯一上游：这里只下载刚发布的
+    # 同一批文件，不改内容、不改名。
+    needs: release
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.validate_only }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: mirror-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download the published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p mirror-assets
+          gh release download "$RELEASE_TAG" --dir mirror-assets --clobber
+          gh release view "$RELEASE_TAG" \
+            --json tagName,name,body,isPrerelease > mirror-release.json
+          ls -l mirror-assets
+
+      - name: Publish to AtomGit and Gitee
+        env:
+          ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 没有配置令牌的站点会被脚本跳过并打印一行说明，不影响另一个站点；
+          # 任一站点真正失败时脚本以非零码退出，让这次发版可见地失败。
+          python3 scripts/publish-mirror-release.py \
+            --assets mirror-assets \
+            --meta mirror-release.json
