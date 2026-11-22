@@ -1,4 +1,4 @@
 interface:
   display_name: "EditHere 网页批注"
-  short_description: "由 AI 维护项目页面组图，接收评审意见后修改源码并按需更新截图"
-  default_prompt: "用 $edithere-web 收集当前项目所有可访问页面，维护组图供我评审；收到反馈后修改源码，验证并按需更新截图，再展示下一轮结果。"
+  short_description: "由 AI 维护项目页面组图，接收评审意见后修改源码并按代码影响面更新截图"
+  default_prompt: "用 $edithere-web 收集当前项目所有可访问页面，维护组图供我评审；收到反馈后修改源码，验证并按影响面更新截图，再展示下一轮结果。"

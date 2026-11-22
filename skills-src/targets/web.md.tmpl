@@ -1,0 +1,34 @@
+---
+name: edithere-web
+description: 用 EditHere Web 在 MCP Apps 或本机浏览器中评审截图与项目组图。适用于由 AI 收集开发结果的所有可访问页面、维护组图、接收用户批注后修改源码并按代码影响面更新截图；普通代码修改无需启动。
+---
+
+# EditHere 网页批注
+
+将本轮实际图片或组图交给 EditHere Web，用户提交后读取同一会话反馈并继续任务。优先使用已连接的 EditHere Web MCP；用户明确指定桌面程序时改用桌面入口。
+
+{{PARTIAL:workflow-core}}
+
+## 入口一：已连接的 EditHere Web MCP（MCP Apps）
+
+先检查宿主实际暴露的 `edithere_web_open` 与 `edithere_web_read`（工具名可能带宿主前缀）。
+
+1. **发起会话**：调用 `edithere_web_open`，单图传绝对 `imagePath`，组图传绝对 `projectPath`（已知页面时传 `pageContext`、可选唯一 `outputPath`）。
+2. **检查 `uiSupport/state`**：若返回 `unsupported` 与兼容入口说明，切到下方「入口二：普通浏览器兼容入口」，不要重复建空会话；支持时记录 `sessionId` / `outputPath` / `expiresAt`。
+3. **区分三种完成状态**：点击提交会先持久化，再尝试向宿主发送对话消息。**「已保存」「宿主接受消息」「AI 已实施修改」是三个独立状态**；只有宿主确实接受并唤醒处理时才算自动返回对话，否则引导用户回原对话说「继续」，不靠空转轮询补造唤醒。
+4. **读取与恢复**：收到回传或用户说「继续」时，用原 `sessionId` 调用 `edithere_web_read`（仅 `completed` 且核对 `sessionId/outputPath/sha256` 后实施）；会话中断可用 `edithere_web_open({sessionId})` 恢复草稿，但用户取消/超时后不自动重开。
+
+## 入口二：普通浏览器兼容入口（未连接 MCP 或不支持 MCP Apps）
+
+读取 [本机网页入口](references/local-installation.md) 取得本机 `agent.cjs` 与 Node.js（18+）路径；**安装技能不会自动配置宿主 MCP**。
+
+```powershell
+node "<agent.cjs绝对路径>" start --image "<图片绝对路径>" --output "<新反馈JSON绝对路径>" --timeout 86400
+node "<agent.cjs绝对路径>" start --project "<清单绝对路径>" --output "<新反馈JSON绝对路径>" --timeout 86400
+node "<agent.cjs绝对路径>" poll --session "<start返回的sessionId>"
+```
+
+- 打开 `start` 返回的唯一会话 URL（不要用普通预览 URL）。默认监听 `127.0.0.1:7330`；端口冲突时给 `preview.cjs` 与 `agent.cjs` 配同一个 `EDITHERE_WEB_PORT`（1–65535），不要结束其他工作区服务。
+- 将会话状态记入 `.edithere/sessions/<sessionId>.json`（仅在真正开始改码时记 `processing`）。手动继续、定时跟进与清理规则见 [兼容网页的交接与跟进](references/follow-up.md)，异常排查见 [退出码、版本基线与排障](references/troubleshooting.md)。
+
+{{PARTIAL:format-summary}}

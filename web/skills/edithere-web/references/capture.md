@@ -1,99 +1,68 @@
-# 取得本次批注图片
+# 跨技术栈画面采集 SOP
 
-用户要求批注当前网页、应用页面或游戏运行界面时，先按本文件取得图片，再返回 [SKILL.md](../SKILL.md) 启动网页会话。截图来源与批注载体是两件事：原生游戏窗口的截图也可以传入 EditHere 网页，不因此改用桌面批注。
+本指南定义如何为 EditHere 采集高保真、与当前代码一致的截图。无论后续交给桌面端、MCP Apps 还是普通网页批注，采集质量直接决定 AI 定位和修改的准确度。
 
-## 先确定图片来源
+## 1. 先判定图片来源
 
-- 用户明确指定本轮附件、图片文件或设计图：直接使用该图，保留原始像素尺寸；无需为了批注重新截图。
-- 用户指定“当前页面”“游戏弹珠机页面”“现在的界面”等实际页面：默认从实际运行的页面或窗口取得本轮截图。没有运行实例时，可正常启动并通过界面进入目标状态。目录中的旧图，以及刚重新生成的固定种子、固定帧测试渲染，都不能代替实际运行截图。
-- 先依据当前项目、已打开的目标页面、窗口清单及任务上下文定位对象。EditHere 自己的网页不是待批注的目标。仅在这些证据仍不能唯一确定目标时询问页面或窗口对象。
+- **用户已提供图片或设计稿**：直接使用原文件并保持原始像素尺寸，无需重复截图。
+- **用户要求评审当前运行页面/游戏界面**：必须从实际运行的程序或页面截取本轮画面。目录中的旧图、示例图、或固定种子/固定帧测试渲染不能替代当前真实运行画面。
+- **精准定位目标**：依据项目路由、打开的窗口或任务上下文锁定目标页面（注意排除 EditHere 自身窗口）；仅在无法唯一确定目标时向用户确认。
 
-取得图片后，用一句话说明来源，例如“已截取当前运行中的弹珠机窗口，准备用这张新图批注”或“使用你本轮提供的设计图”。只有实际截取了正在运行的窗口，才称为当前窗口截图。
+## 2. 文件命名与画质要求
 
-## 准备本轮文件
+- 新截图放入工作区 `.edithere/captures/`（或本轮组图目录 `.edithere/results/shots/round-NNN/`），使用唯一文件名与绝对路径，避免覆盖用户原有文件。
+- 优先使用**无损 PNG**，并核对图像真实像素宽高与屏幕 DPR（高 DPI 下逻辑尺寸与真实设备像素不同）。不要把缩小后的 JPEG 预览当作原图，也不要通过改扩展名伪装无损 PNG；若工具仅支持 JPEG，应保留真实扩展名并如实说明质量限制。
 
-新截图使用独立文件，优先 PNG；工具原生返回 JPEG 时保留 JPEG 与正确扩展名。保留原始像素尺寸，不拉伸、不重新绘制。优先将图片放在当前工作区的 `.edithere/captures` 或宿主允许写入的任务输出目录；使用绝对路径和唯一文件名，避免覆盖用户文件。例如支持 PNG 的工具可准备：
+## 3. Web 前端采集 SOP
+
+### 3.1 页面与状态枚举
+
+1. 扫描项目路由配置、导航菜单与页面目录，列出全部已实现且可访问的路由。
+2. 对每个页面补充与本轮任务直接相关的独立状态：关键弹窗/抽屉、空状态/错误态、以及有验收要求时的浅色/深色主题、桌面端（如 `1440x900`）与移动端（如 `390x844`）视口。
+3. 登录态或后端数据阻断某些页面时，保留已完成页面并在结果中说明缺口，不伪造覆盖率。
+
+### 3.2 优先使用技能自带的 `scripts/capture-web.mjs`
+
+当项目或环境已安装 `playwright` / `playwright-core` 时，优先调用本技能自带的 `scripts/capture-web.mjs`（自动等待网络空闲与 `document.fonts.ready`，输出 DPR=2 无损 PNG，可选直接更新组图清单）：
+
+- **单页采集（并可选同步到组图清单）**：
 
 ```powershell
-$EditHereCaptureDirectory = Join-Path (Get-Location).Path '.edithere\captures'
-New-Item -ItemType Directory -Force -Path $EditHereCaptureDirectory | Out-Null
-$EditHereImage = Join-Path $EditHereCaptureDirectory (([guid]::NewGuid().ToString()) + '.png')
+node "<skill-dir>/scripts/capture-web.mjs" `
+  --url "http://127.0.0.1:5173/inventory" `
+  --output ".edithere/results/shots/round-001/inventory.png" `
+  --viewport 1440x900 --dpr 2 --theme light `
+  --manifest ".edithere/results/project.json" --id inventory --name "物品栏"
 ```
 
-高 DPI 环境还需核对真实图像像素尺寸与窗口逻辑尺寸：两者可能不同。用于界面评审时优先取得无损 PNG 的设备像素原图；工具只给缩小的 JPEG 预览时，先检查是否另有正式的原尺寸保存入口，或使用用户指定且当前可用的截图工具。将 JPEG 另存为 PNG 不会补回已丢失的清晰度，不能称为无损截图；无法取得更清晰原图时说明本次实际质量。
+- **批量采集（一次启动浏览器顺序采集多页）**：准备 `batch.json`（含 `pages` 数组，每项 `{ id, name, url, output, viewport?, dpr?, theme?, fullPage?, selector?, waitMs? }`），执行：
 
-这是待生成文件路径，尚不表示截图已经保存。截图工具若自行创建唯一的本地 PNG，也可以直接使用它实际返回的绝对路径；若需归档到上面的路径，复制原文件，不重新编码。已提供的 JPEG 等图片保留原格式，不仅修改扩展名伪装成 PNG。
-
-## 浏览器页面
-
-优先使用当前环境已提供、允许操作目标浏览器的截图工具。先读取该工具文档，依据真实标签页清单选择目标，导航到用户要求的页面或游戏状态，再截图。一般批注当前可见页面使用视口截图；用户明确需要整页时再使用完整页面截图。不要为截图重新加载用户正在操作的一局游戏。
-
-若使用已安装的 Tabbit：先按 `tabbit` 技能连接并取得目标 `page`，然后在同一任务的 `nodejs` 程序中执行：
-
-```javascript
-return await page.screenshot({fullPage: false});
+```powershell
+node "<skill-dir>/scripts/capture-web.mjs" `
+  --batch ".edithere/captures/batch.json" `
+  --manifest ".edithere/results/project.json"
 ```
 
-Tabbit 的 `page.screenshot()` 返回 PNG 文件回执，使用实际响应中的 `result.nextAction.path`，并通过宿主图像查看工具打开该路径。它不是 Playwright Buffer，不要对回执调用 `toString('base64')`，也不要假定未返回的 `path` 字段。继续使用或结束浏览器任务时遵循 Tabbit 自身流程。
+若返回 `code: "playwright_not_found"`，不要擅自替用户全局安装包，改用宿主已连接的浏览器截图工具。
 
-其他浏览器工具按自身文档处理：返回本地文件路径时直接检查该文件；返回图片数据或图片块时，使用其正式提供的保存/导出能力落盘，或使用宿主明确可访问的实际图片数据保存。对话中显示了图片不等于已经有本地 PNG。不要猜测截图保存 API、虚构图片路径，或为了取图绕过浏览器访问限制。
+### 3.3 宿主浏览器工具（已登录会话 / 无 Playwright 时）
 
-## 原生应用或游戏窗口
+- 先读取宿主浏览器工具文档，根据真实标签页列表定位目标页面；仅截取当前可见视口（`fullPage: false`）或按需求截取整页。不要强行刷新用户正在手动操作的页面状态。
+- **Tabbit 特别注意**：`page.screenshot()` 返回的是 PNG 文件路径回执，读取 `result.nextAction.path` 即可（不是 Playwright Buffer，不要调用 `.toString('base64')`）。
+- 其他工具若只返回内存图像或截图块，使用其正式导出能力保存成真实 PNG 后再检查路径；对话里贴过预览图不等于磁盘上已有高分 PNG。
 
-使用宿主实际提供且获准的窗口截图能力，选择真实返回的目标窗口，截取用户要求的界面。窗口截图比全桌面截图更适合批注；若当前窗口处于错误页面、启动画面或被弹窗遮挡，先通过已授权的应用操作到达目标状态。避免无关桌面区域混入图像。
+## 4. 桌面应用与游戏 HUD 采集 SOP
 
-Windows 环境若提供 `computer-use` 插件，先读取其 `SKILL.md` 和该文件所指的 `../../docs/guidance.md`、`../../docs/api.md`。通过 `node_repl` 按其文档初始化 `@oai/sky` 并用轻量的 `list_windows()` 检查实际可用性，不根据另一个工具禁用原生能力就推断此插件不可用。遵守该插件自身的能力和权限边界，从真实回执中唯一确定目标；不要凭空构造窗口 ID。取得真实目标 `targetWindow` 后：
+- **窗口优先于全屏**：使用宿主获准的窗口截图能力精确截取目标窗口，避免无关桌面背景混入；截取前确认窗口未被遮挡、未处于加载启动页或错误弹窗。
+- **游戏 / 多状态界面**：按功能进入真实可玩状态（主界面、背包/物品栏、战斗 HUD、设置弹窗等）分别截帧；区分「用户当前运行窗口的实时截图」与「项目渲染脚本按当前代码重现的截图」，如实向用户标注来源。
+- **Windows `computer-use` / `@oai/sky` 注意事项**：先通过 `list_windows()` 获取真实窗口标识，再调 `get_window_state({ window, include_screenshot: true, include_text: false })`；确认 `screenshots` 中唯一对应目标画面后解码 `data:image/(png|jpeg);base64,...` 落盘，不要打印完整 data URL 到对话中。
+- **`edithere-cli capture` 的边界**：它只唤起交互式桌面截图并立即返回受理状态，**不接受 `--output` 或 `--window` 参数**，不能代替静默窗口截图脚本。
 
-```javascript
-globalThis.editHereState = await sky.get_window_state({
-  window: targetWindow,
-  include_screenshot: true,
-  include_text: false,
-});
-```
+## 5. 交付前视检清单（5 项必查）
 
-返回的截图会自动显示。检查它是否为目标页面；`screenshots` 也可能包含临时窗口区域，不能盲目将任意一项当作主画面。正式 API 的 `screenshots[].url` 是 data URL。下面示例仅适用于已确认只有一张目标截图的情况，将 `editHereImagePath` 替换为前面准备的实际绝对路径，在同一个 `node_repl` 会话执行：
-
-```javascript
-{
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const editHereImageStem = 'C:/absolute/workspace/.edithere/captures/unique';
-  if (!path.isAbsolute(editHereImageStem)) throw new Error('需要绝对图片路径');
-  if (editHereState.screenshots.length !== 1) {
-    throw new Error('存在多个截图区域，需先检查并选择目标图像');
-  }
-  const shot = editHereState.screenshots[0];
-  const encoded = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(shot.url);
-  if (!encoded) throw new Error('截图未返回支持的 data URL，按工具文档处理实际格式');
-  const editHereImagePath = editHereImageStem + (encoded[1] === 'png' ? '.png' : '.jpg');
-  await fs.mkdir(path.dirname(editHereImagePath), {recursive: true});
-  await fs.writeFile(editHereImagePath, Buffer.from(encoded[2], 'base64'), {flag: 'wx'});
-  nodeRepl.write(editHereImagePath);
-}
-```
-
-这次保存的用途是将原图交给 EditHere，不是为重复视检而打印或解码截图；不要输出完整 data URL。有多个截图区域时，先观察并选定正确项，再适配保存代码，不随意拼接不同区域。
-
-所选截图能力实际不可用或被禁用时，不绕过该能力的限制。可检查项目是否有从正常运行界面取图的入口；固定种子或固定帧测试渲染只用于用户要求的重现或对照。仍无法取得实际目标图时说明具体能力缺口，保留已完成的准备，再请求用户提供目标截图。
-
-`edithere-cli capture` 只能唤起桌面截图交互，成功回执仅表示请求受理。它不接受输出图片路径或目标窗口参数，也不保证已保存 PNG。不能执行杜撰的 `capture --output ...`，不能把该回执直接传入网页。用户明确选择其交互截图时，等实际取得保存后的图片路径，再走相同传图流程。
-
-## 项目提供的截图入口
-
-项目已有游戏内截图、预览导出、测试截图或渲染脚本时，先读项目规则及脚本说明，使用实际支持的命令与输出参数。实际运行界面的批注需求优先用正常窗口截图；测试渲染留给用户要求重现或对照的任务，不以重新生成文件作为实时截图的证据。截图实现留在项目约定中；本技能不指定某个引擎、固定场景、种子或项目私有命令。
-
-区分它生成的结果：
-
-- 游戏内截图确实取自正在运行的目标界面：可以说明为本轮运行截图。
-- 脚本启动另一个实例、固定种子或测试场景进行渲染：说明为“按当前代码重现的页面截图”，不能称为用户当前正在运行的一局。用户要求当前运行状态时，不将重现结果作为等价替代。
-
-确认命令完成，并检查本轮指定输出确实新生成；运行截图命令成功不保证图像就是正确页面。不要仅根据目录内文件修改时间选择旧图代替本次结果。
-
-## 视检后交给网页
-
-确认实际图片文件存在、非空且可解码。检查它对应目标页面、必要控件完整、画面没有黑屏或加载占位。若截图工具已展示且已视检同一原图，保存后检查文件即可；否则用宿主图像查看工具打开最终文件。遵守截图工具关于展示和解码的限制，不为重复视检重放截图。保留原始像素尺寸；若需裁剪，先保留原图并明确本次传入的是裁剪图。无需重复截图已经确认正确的本轮图像。
-
-将此文件的实际绝对路径赋给 `$EditHereImage`，返回主技能，由主技能唯一执行一次 `start --image`、打开回执 URL 并安排反馈跟进。本文件只负责取得图片，不额外创建批注会话。
-
-`start --image` 会读取本地图并传入网页，无需另行使用文件上传控件或把 base64 粘贴进网页。打开后检查 EditHere 载入的是刚确认的图片。
+把截图加入组图或提交批注前，必须快速核对：
+1. 图片文件存在、非空且可正常解码；
+2. 画面确属目标页面及目标主题/视口；
+3. 无黑屏、白屏、骨架屏、未加载完的字体或无关系统弹窗遮挡；
+4. 保留原始像素分辨率与无损格式（无非预期缩放裁剪）；
+5. 页面内容与当前最新代码版本一致。

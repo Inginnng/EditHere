@@ -1,0 +1,44 @@
+---
+name: edithere-dsh
+description: 用 EditHere 的 DSH 组图入口评审游戏、桌面程序或网页的开发结果。由 AI 收集所有可访问页面、维护组图，读取用户批注后修改源码、验证并按代码影响面更新截图，再展示下一轮结果；视频先截取相关画面。
+---
+
+# EditHere 组图批注（DSH）
+
+将界面截图放入本机 DSH 组图工作台，所有文件留在本地；用户圈画或调整组件并点击 **「完成并返回 AI」** 后，仅回传有批注页面的 JSON、原图（`sourcePath`）与编号批注图（`annotatedPath`）。
+
+{{PARTIAL:workflow-core}}
+
+## DSH CLI 位置与核心流程
+
+读取本技能目录 `LOCAL.md`（若存在）中的 `cli.mjs` 绝对路径，否则使用仓库 `dsh/cli.mjs`，记为 `$CLI`。
+
+1. **发起组图会话**（推荐传入由 `image-set.mjs` 维护的清单 `--project`）：
+
+```powershell
+node "$CLI" start --project "<清单绝对路径>" --output "C:\project\.edithere\feedback-1.json" --open
+```
+
+也可以直接传 `--name` 与多张 `--image`（或省略 `--image` 先开空组图），并记下返回的 `sessionId`、`url`、`inbox`、`output`；同时提示用户可拖图、点击「截屏 / 加页」或放入 `<inbox>` 自动加入。Windows 原生窗口也可用 `node "$CLI" capture --output "<绝对PNG>" [--all] [--window "窗口标题"]` 辅助取图。
+
+2. **等待提交**（单次有界等待最多 55 秒，不 sleep、不猜未提交内容）：
+
+```powershell
+node "$CLI" wait --session "<sessionId>" --wait 50
+```
+
+- `pending`：继续提示用户或再次 `wait`；`completed`：进入读取实施；`cancelled` / `expired`：停止等待，不修改代码。
+- **进行中加页**：放入 `inbox` 目录（约 1 秒内自动加入），或执行 `node "$CLI" add --session "<sessionId>" --image "<新图绝对路径>"`，不要新开第二个会话。
+
+3. **先看图再改码**：先读取 `output` JSON 的 `groupNotes`、`pageIndex` 与 `pages[]`，再用图像查看工具打开 `pages[].annotatedPath`（必要时辅以 `sourcePath`）核对图中编号与边界，结合 [布局工程翻译与局部/设计系统分层](references/layout-translation.md) 修改源码并只重截受影响页面。
+
+```text
+start  --name NAME [--project ABS | --image PATH ...] [--output ABS] [--timeout SEC] [--open]
+add    --session ID --image PATH [--image PATH ...]
+wait   --session ID [--wait 0..55]
+status / cancel --session ID
+capture --output ABS [--all] [--window TITLE]
+serve  [--port 4782]
+```
+
+{{PARTIAL:format-summary}}

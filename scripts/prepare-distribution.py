@@ -28,15 +28,27 @@ MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/pac
                         "assets/ui-icons/manifest.json", "assets/ui-icons/LICENSE"}
 MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", "web/MCP-THIRD-PARTY-NOTICES.md"}
 WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
+SKILL_SHARED_FILES = (
+    "SKILL.md",
+    "references/project-review.md",
+    "references/capture.md",
+    "references/layout-translation.md",
+    "references/feedback-format.md",
+    "references/troubleshooting.md",
+    "scripts/image-set.mjs",
+    "scripts/image-set.cjs",
+    "scripts/capture-web.mjs",
+)
 PACKAGE_FILES = {
     "web-skill": tuple("web/skills/edithere-web/" + name for name in (
-        "SKILL.md", "agents/openai.yaml", "references/capture.md", "references/follow-up.md", "references/project-review.md", "scripts/image-set.mjs", "scripts/image-set.cjs")),
+        *SKILL_SHARED_FILES, "agents/openai.yaml", "references/follow-up.md")),
     "desktop-mcp": tuple("connector/" + name for name in (
         "package.json", "mcp-server.mjs", "README.md", "LICENSE", "NOTICE", "icon.svg",
-        "connector-meta.json", "mcp.json", "skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs")),
+        "connector-meta.json", "mcp.json", *("skills/edithere/" + name for name in SKILL_SHARED_FILES))),
     "trae-plugin": tuple("trae-plugin/" + name for name in (
-        "package.json", "connector.json", ".trae-plugin/plugin.json", "assets/edithere-icon.svg", "skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs")),
-    "desktop-skill": ("skills/edithere/SKILL.md", "skills/edithere/references/project-review.md", "skills/edithere/scripts/image-set.mjs", "skills/edithere/scripts/image-set.cjs"),
+        "package.json", "connector.json", ".trae-plugin/plugin.json", "assets/edithere-icon.svg",
+        *("skills/edithere/" + name for name in SKILL_SHARED_FILES))),
+    "desktop-skill": tuple("skills/edithere/" + name for name in SKILL_SHARED_FILES),
 }
 GENERIC_WEB_INSTALLATION = """# 本机网页入口
 

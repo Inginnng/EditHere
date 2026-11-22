@@ -1187,6 +1187,24 @@ def check_update_signing() -> list[Problem]:
     return problems
 
 
+def check_skills_sync() -> list[Problem]:
+    """Ensure all 5 target skill packages stay synced with skills-src/."""
+    node = shutil.which("node")
+    if not node:
+        return ["node executable not found; cannot verify scripts/build-skills.mjs --check."]
+    result = subprocess.run(
+        [node, str(ROOT / "scripts" / "build-skills.mjs"), "--check"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        return [f"scripts/build-skills.mjs --check failed: {detail}"]
+    return []
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -1210,6 +1228,7 @@ CHECKS = [
     ("doc_links", check_doc_links),
     ("save_dialog_paths", check_save_dialog_paths),
     ("mcp_build", check_mcp_build_freshness),
+    ("skills_sync", check_skills_sync),
 ]
 
 
