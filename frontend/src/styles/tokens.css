@@ -1,0 +1,80 @@
+:root {
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+
+  --ink: #18181b;
+  --secondary: #3f3f46;
+  --muted: #65656e;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --surface: #ffffff;
+  --surface-elevated: #ffffffeb;
+  --canvas: #f7f7f9;
+  --sidebar: #f3f3f6;
+  --hover: #ececf0;
+  --input-bg: #f8f8fa;
+  --dot: #d6d8e0;
+
+  --accent: #0067c0;
+  --accent-hover: #0058a6;
+  --accent-soft: #e8f2fc;
+  --on-accent: #ffffff;
+
+  --explode: #7c3aed;
+  --explode-soft: #f2ecfe;
+
+  --success: #15803d;
+  --success-soft: #eaf7ef;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --danger: #b91c1c;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-artboard: 0 4px 20px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-float: 0 8px 28px rgba(15, 23, 42, 0.12), 0 1px 4px rgba(15, 23, 42, 0.06);
+  --shadow-dialog: 0 18px 48px rgba(15, 23, 42, 0.18);
+
+  --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ink: #f4f4f5;
+  --secondary: #d4d4d8;
+  --muted: #a1a1aa;
+  --line: #32333a;
+  --line-strong: #464752;
+  --surface: #232429;
+  --surface-elevated: #292a31eb;
+  --canvas: #191a1f;
+  --sidebar: #1d1e23;
+  --hover: #2d2e36;
+  --input-bg: #1b1c21;
+  --dot: #2d2f3a;
+
+  --accent: #60a5fa;
+  --accent-hover: #93c5fd;
+  --accent-soft: #1a3552;
+  --on-accent: #0f1f33;
+
+  --explode: #a78bfa;
+  --explode-soft: #2e224b;
+
+  --success: #4ade80;
+  --success-soft: #143322;
+  --warning: #fbbf24;
+  --warning-soft: #3b2d10;
+  --danger: #fca5a5;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-artboard: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --shadow-float: 0 10px 32px rgba(0, 0, 0, 0.48);
+  --shadow-dialog: 0 20px 56px rgba(0, 0, 0, 0.6);
+}
