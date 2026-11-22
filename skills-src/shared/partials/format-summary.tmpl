@@ -1,6 +1,6 @@
-## 反馈格式与版本速查
+## Feedback Format & Version Quick Reference
 
-- **图片反馈（`feedback-minimal-4`）**：`annotationSpace` 固定为 `"result"`，所有坐标为图像像素（非 CSS 像素）。批注统一放在 `objects[]`（`kind`: `region` / `point` / `global`），编号以 `annotations[].number` 与画面一一对照；被移动组件含单个 `movement` 与单层 `children`，`ocrtext` 仅作定位辅助。
-- **视频反馈（`video-feedback-1`）**：`frames[]` 记录每帧 `timestampMs`、`imageFile` 与页内 `feedback`；根 `objects[]` 通过 `frameId` 关联回对应帧，按帧读取一次即可，切勿与根索引重复执行。
-- **组图反馈（`image-set-feedback-1`）**：`pageIndex` 仅作全组索引，`pages[]` 只携带被批注或移动的页面（按 `pages[].id` 对回清单与源码），`groupNotes` 适用于全组或共享组件。
-- **版本基线与细节**：使用桌面 CLI 时先核对 `--version`（图片与项目需 `0.9.8+`，**涉及视频时必须 0.10.0 及以上**）。完整字段定义、坐标重建顺序与历史格式兼容见 [反馈 JSON 协议与历史兼容](references/feedback-format.md)。
+- **Image (`feedback-minimal-4`)**: `annotationSpace: "result"` (image pixels, origin top-left, not CSS pixels). Notes live in `objects[]` (`kind`: `region` | `point` | `global`), matched to visual pins by `annotations[].number`. Moved components carry one `movement` and single-level `children`; `ocrtext` is locator context only.
+- **Video (`video-feedback-1`)**: `frames[]` stores `timestampMs`, `imageFile`, and per-frame `feedback`; root `objects[]` references frames via `frameId` — read per frame once and never execute root index twice.
+- **Gallery (`image-set-feedback-1`)**: `pageIndex` summarizes all pages; `pages[]` holds only annotated/moved pages (map via `pages[].id`); `groupNotes` carries cross-page directives.
+- **Desktop CLI baseline**: Always check `--version` first (`0.9.8+` for images/projects; **Video annotation requires 0.10.0+**). Full schema rules and legacy compat live in [Feedback JSON Protocol & Compatibility Reference](references/feedback-format.md).

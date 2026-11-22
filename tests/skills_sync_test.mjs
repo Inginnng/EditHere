@@ -34,6 +34,10 @@ function readLf(relativePath) {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8').replace(/\r\n/g, '\n');
 }
 
+function stripFrontmatter(markdown) {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
+}
+
 test('single-source build-skills --check passes with zero drift', () => {
   const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build-skills.mjs'), '--check'], {
     cwd: ROOT,
@@ -46,27 +50,31 @@ test('single-source build-skills --check passes with zero drift', () => {
   assert.equal(receipt.targets, SKILL_TARGETS.length);
 });
 
-test('all 5 target SKILL.md files are concise, structured, and link all shared references', () => {
+test('all 5 target SKILL.md files are concise English docs linking all shared references', () => {
   for (const target of SKILL_TARGETS) {
     const content = readLf(`${target}/SKILL.md`);
     const lines = content.trimEnd().split('\n');
     assert.ok(lines.length <= 125, `${target}/SKILL.md should stay <= 125 lines (got ${lines.length})`);
     assert.match(content, /^---\nname:\s+\S+/);
     assert.equal(content.includes('<image-or-project>'), false, `${target}/SKILL.md must not include <image-or-project>`);
+    const body = stripFrontmatter(content);
+    assert.equal(/[\u4e00-\u9fff]/.test(body), false, `${target}/SKILL.md body must be written in English`);
     for (const ref of SHARED_REFERENCES) {
       assert.ok(content.includes(ref), `${target}/SKILL.md must link ${ref}`);
     }
   }
 });
 
-test('all 5 targets share identical references and scripts and sync root docs/scripts', () => {
+test('all 5 targets share identical English references and scripts and preserve Chinese docs/PROJECT-REVIEW.md', () => {
   for (const ref of SHARED_REFERENCES) {
     const expected = readLf(`skills-src/shared/${ref}`);
+    assert.equal(/[\u4e00-\u9fff]/.test(expected), false, `skills-src/shared/${ref} must be written in English`);
     for (const target of SKILL_TARGETS) {
       assert.equal(readLf(`${target}/${ref}`), expected, `${target}/${ref} drifted from skills-src`);
     }
   }
-  assert.equal(readLf('docs/PROJECT-REVIEW.md'), readLf('skills-src/shared/references/project-review.md'));
+  assert.equal(readLf('docs/PROJECT-REVIEW.en.md'), readLf('skills-src/shared/references/project-review.md'));
+  assert.match(readLf('docs/PROJECT-REVIEW.md'), /[\u4e00-\u9fff]/, 'docs/PROJECT-REVIEW.md remains in Chinese');
 
   for (const script of SHARED_SCRIPTS) {
     const expected = script.endsWith('image-set.cjs')
@@ -79,17 +87,18 @@ test('all 5 targets share identical references and scripts and sync root docs/sc
   assert.equal(readLf('scripts/capture-web.mjs'), readLf('skills-src/shared/scripts/capture-web.mjs'));
 });
 
-test('domain guides enforce local vs design-system separation and code-impact-driven refresh', () => {
+test('English domain guides enforce Local vs Design-System scope and Code-Impact-Driven refresh', () => {
   const layoutGuide = readLf('skills-src/shared/references/layout-translation.md');
-  assert.ok(layoutGuide.includes('局部微调'));
-  assert.ok(layoutGuide.includes('设计系统级调整'));
+  assert.ok(layoutGuide.includes('Local Tweak'));
+  assert.ok(layoutGuide.includes('Design-System'));
   assert.ok(layoutGuide.includes('position: absolute'));
 
   const reviewGuide = readLf('skills-src/shared/references/project-review.md');
-  assert.ok(reviewGuide.includes('受影响页面清单'));
-  assert.ok(reviewGuide.includes('必换页'));
-  assert.ok(reviewGuide.includes('波及页'));
-  assert.ok(reviewGuide.includes('不盲目对整组页面重截或做全量像素比对'));
+  assert.ok(reviewGuide.includes('Code-Impact-Driven Screenshot Refresh'));
+  assert.ok(reviewGuide.includes('Affected Pages List'));
+  assert.ok(reviewGuide.includes('Mandatory pages'));
+  assert.ok(reviewGuide.includes('Ripple pages'));
+  assert.ok(reviewGuide.includes('pixel-diff sweeps'));
 });
 
 test('capture-web.mjs validates arguments cleanly and runs standalone outside the repository', (t) => {
@@ -122,7 +131,6 @@ test('capture-web.mjs validates arguments cleanly and runs standalone outside th
     assert.equal(payload.code, 'invalid_argument');
   }
 
-  // Missing manifest without --manifest-name fails cleanly even before Playwright launch.
   const manifestPath = path.join(tempRoot, 'results', 'project.json');
   const missingManifestRes = spawnSync(
     process.execPath,
@@ -132,8 +140,6 @@ test('capture-web.mjs validates arguments cleanly and runs standalone outside th
   assert.equal(missingManifestRes.status, 1);
   assert.equal(JSON.parse(missingManifestRes.stderr).code, 'manifest_not_found');
 
-  // Missing Playwright inside an isolated temp dir must fail cleanly with playwright_not_found
-  // without leaving behind a half-created manifest file.
   const noPwRes = spawnSync(
     process.execPath,
     [

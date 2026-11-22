@@ -1,27 +1,27 @@
-## 定位桌面命令行与版本检查
+## Locating Desktop CLI & Version Check
 
-本技能依赖本机已安装的桌面版（或完整解压的免安装版）EditHere，不自动下载安装程序或改动全局环境变量。按以下顺序定位 `edithere-cli` 并检查 `--version` 与 `--help`（确认支持 `image-set`）：
+Requires a local EditHere installation or extracted portable package (never install packages silently or mutate global PATH). Resolve `edithere-cli` in order and verify `--version` + `--help` (confirm `image-set` support):
 
-1. 优先使用用户本轮提供的路径，或读取本技能 `references/local-installation.md`（若存在）中的记录路径；
-2. 否则依次检查 `$env:EDITHERE_CLI`、`PATH` 与默认安装目录（Windows：`%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`；macOS：`/Applications/EditHere.app/Contents/MacOS/edithere-cli` 或 `~/Applications/...`）。
+1. User-provided path in the current turn, or `references/local-installation.md` if present;
+2. `$env:EDITHERE_CLI`, `PATH`, or default install location (Windows: `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`; macOS: `/Applications/EditHere.app/Contents/MacOS/edithere-cli` or `~/Applications/...`).
 
 ```powershell
 & $EditHereCli --version
 & $EditHereCli --help
 ```
 
-版本低于需求（例如视频需 `0.10.0+`）或找不到程序时，请用户从 <https://github.com/Inginnng/EditHere/releases/latest> 获取最新版本，不擅自切换其他同名旧程序。
+If missing or below required version, direct the user to <https://github.com/Inginnng/EditHere/releases/latest> rather than switching to an older binary.
 
-## 核心命令与会话执行
+## Commands & Session Execution
 
 ```text
 edithere-cli status
 edithere-cli open <image-video-or-manifest>
 edithere-cli capture
 edithere-cli export <image-video-project-or-feedback> --output <new-feedback.json> [--embed-image | --no-image] [--preview]
-edithere-cli annotate <image-video-project-or-manifest> --output <new-feedback.json> [--page-context "页面说明"] [--embed-image | --no-image] [--preview] [--timeout 1800]
+edithere-cli annotate <image-video-project-or-manifest> --output <new-feedback.json> [--page-context "Page label"] [--embed-image | --no-image] [--preview] [--timeout 1800]
 ```
 
-- **唯一输出路径**：`--output` 必须指向尚不存在的绝对路径，且父目录已存在（建议放在 `.edithere/reviews/` 下）。
-- **保持单次进程等待**：`open` 与 `capture` 只受理请求，不能代替 `annotate`。发起 `annotate` 后等待用户点击 **「完成并返回 AI」**；仅当退出码为 `0`、stdout JSON `ok: true` 且输出文件可解析时才进入实施。
-- **受限沙箱与排障**：Windows / macOS 的 `status` / `open` / `capture` / `annotate` 需连接当前登录桌面会话；处于受限沙箱（退出码 `8`）时从首次调用即请求工具提供的受控桌面执行方式（如 `require_escalated`）。全部退出码、断连恢复与 `running:null` 判定规则见 [退出码、版本基线与排障](references/troubleshooting.md)。
+- **Unique `--output`**: Must be an absolute path that does NOT exist yet inside an existing parent directory (e.g., `.edithere/reviews/`).
+- **Single-process wait**: `open` and `capture` return immediately and do not replace `annotate`. Wait for `annotate` to exit `0` with stdout `ok: true` and a valid output JSON before editing code.
+- **Sandboxes & recovery**: `status` / `open` / `capture` / `annotate` need logged-in desktop access (exit code `8` on restricted sandboxes -> use approved escalation such as `require_escalated`). See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md).

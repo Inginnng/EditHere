@@ -1,39 +1,38 @@
-# 布局工程翻译与「局部 vs 设计系统」分层规范
+# Layout Translation & Local vs. Design-System Guide
 
-EditHere 输出的批注与布局位移是**视觉像素级别的修改意图**，而不是 CSS 像素值，更不是“用绝对定位强行移过去”的指令。改码前必须先做分级判断，再把几何反馈翻译成符合项目架构的地道代码。
+EditHere annotations and Explode movements encode **visual intent in image pixels** — NOT CSS pixel literals and NOT instructions to slap `position: absolute` onto elements. Classify scope first, then translate geometry into idiomatic source code.
 
-## 1. 先定级再改码：局部微调 vs 设计系统级调整
+## 1. Classify Scope Before Editing: Local Tweak vs. Design-System Adjustment
 
-收到批注后，先判断每条意见（及 `groupNotes`）属于哪一层级，再决定改动落点：
+Evaluate every annotation and `groupNotes` item against these two scopes before writing code:
 
-| 维度 | 局部微调（Local Tweak） | 设计系统级调整（Design System / Shared Change） |
+| Dimension | Local Tweak | Design-System / Shared Adjustment |
 | --- | --- | --- |
-| **典型信号** | 单页个别元素文案修改、局部间距微调、某一区块内部排序/对齐、单卡片尺寸增减 | `groupNotes` 要求全站统一风格；多页同类按钮/表单/卡片反复出现相同批注；明确指向主题色、圆角、字体层级、留白节奏 |
-| **正确改法** | 仅修改目标页面组件或局部容器样式；保持改动严格收敛在当前实例 | **优先修改 Design Token、CSS 变量、主题配置或共享基座组件**（如 `Button`、`Card`、`SettingsRow`），确保全站一次生效 |
-| **严禁做法** | 为调单个页面而顺手改动全局 Token 或公共组件，导致未批注页面意外走样 | 在各个业务页面逐个复制粘贴覆盖样式、硬编码色值或滥用 `!important` 打补丁 |
-| **换图影响面** | 通常仅重截本页（必换页） | 根据共享组件/Token 的引用关系列出全部波及页面，一并重截并 `upsert` |
+| **Signals** | Single-page copy edits, local element spacing/alignment, single-card resize, section-local reordering | `groupNotes` cross-page rules; repeated feedback across multiple pages on similar buttons/cards/inputs; changes to brand color, border radius, typography scale, or global spacing |
+| **Correct Implementation** | Edit only the target page component or local container styling; keep changes tightly scoped to that instance | **Update Design Tokens, CSS variables, Theme config, or shared base components** (`Button`, `Card`, `SettingsRow`) so every consumer updates consistently |
+| **Prohibited Practice** | Modifying global tokens or shared components to satisfy a one-off tweak (causes regressions on unannotated pages) | Copy-pasting per-page style overrides, hardcoding magic hex values, or scattering `!important` hacks |
+| **Refresh Impact** | Usually re-capture only the annotated page | Trace imports/usages of the modified shared component or token to list every affected page and `upsert` them all |
 
-## 2. 把「大爆炸」位移与缩放翻译成地道布局代码
+## 2. Translating Explode (`movement`) Geometry into Idiomatic Code
 
-`objects[].movement` 给出的 `source`、`movement.rect`、`dx`、`dy`、`scaleX`、`scaleY` 描述的是组件在图像上的**前后视觉位置关系**。处理步骤如下：
+`objects[].movement` provides `source` (pre-edit bounds), `movement.rect` (target bounds), `dx`/`dy`, and optional `scaleX`/`scaleY`:
 
-1. **先定位真实组件**：结合原图与批注图中的邻近元素、文案及可选 `ocrtext`，在源码中找到对应的 DOM / Qt Layout / 场景节点，不要按像素坐标硬猜组件。
-2. **按语义映射布局改法**：
+1. **Locate the real component first**: Cross-reference the original image, annotated preview, nearby labels, and optional `ocrtext` to find the actual JSX/HTML/Qt/scene node in source code. Never guess component paths from raw coordinates.
+2. **Map visual movement to structural layout code**:
 
-| 图像里的操作 | 常见误区（禁止） | 正确的工程实现 |
+| Visual Action in EditHere | Anti-Pattern (Forbidden) | Idiomatic Engineering Implementation |
 | --- | --- | --- |
-| 把按钮从右侧挪到标题旁 / 卡片交换位置 | 加 `position: absolute; left: ...px; top: ...px` | 调整 JSX/HTML 结构顺序、Flex `order`、容器嵌套或 Grid 区域定义 |
-| 轻微往左/往下挪一点、拉开或收紧间隔 | 给元素套反向负 `margin` 或固定像素偏移 | 调整父容器 `gap`、`padding`、`justify-content`、`align-items` 或分组间距 Token |
-| 把卡片或按钮拉大/缩小（`scaleX`/`scaleY`） | 写死孤立的像素宽高导致换行溢出或截断 | 切换组件尺寸变体（`size="lg"`）、调整排版字号阶梯、响应式宽度或约束比例 |
-| **父组件整体移动 + `children` 子批注** | 把父对象和每个子项拆成多次互不相关的位移 | **先落实父组件的整体位置与容器尺寸**，再对照调整后画面在父组件内部落实各子批注的局部修改 |
-| **只有 `movement` 移动、没有文字批注** | 以为没有文字就不处理 | 无文字的几何位移与缩放**本身就是明确的修改需求**，必须结合邻近对齐与留白意图落实 |
+| Move button next to heading / swap cards | `position: absolute; left: ...px; top: ...px` | Reorder JSX/DOM nodes, adjust Flex `order`, move into parent header slot, or update CSS Grid areas |
+| Nudge slightly left/down or adjust breathing room | Negative pixel `margin` hacks or magic offsets | Tune container `gap`, `padding`, `justify-content`, `align-items`, or layout spacing tokens |
+| Scale element larger or smaller (`scaleX`/`scaleY`) | Hardcoded isolated `width`/`height` breaking responsiveness | Switch size variant (`size="lg"`), adjust typography scale / responsive width constraints / aspect ratio |
+| **Parent component moved + `children` sub-notes** | Treating parent and child notes as independent unrelated moves | **Apply parent container layout/position changes first**, then implement each child annotation relative to the updated parent |
+| **Geometry `movement` with empty text** | Ignoring because `annotations` has no text | A movement/scale without text is an **explicit layout requirement** — infer alignment/spacing intent from adjacent elements |
 
-3. **保留业务确定性**：用户批注里明确写出的文案、颜色值、字号或业务数值必须原样保留；对于无法从上下文确定意图（例如移动到底是为了对齐标题还是隐藏留白）且影响实现的地方，先落实其他明确意见并向用户精准提问澄清。
+3. **Preserve deterministic details**: Keep user-specified copy, colors, font sizes, and numeric values exact. If an ambiguous layout relationship blocks implementation, implement all unambiguous items first and ask a targeted clarifying question.
 
-## 3. 改码后影响面自查（直接驱动精准换图）
+## 3. Post-Edit Code-Impact Checklist (Drives Targeted Refresh)
 
-完成源码编辑并跑通构建/基础检查后，做一次三步收尾：
-
-1. **列修改文件与引用面**：写明修改了哪些具体文件；若动到了共享组件、公共样式或 Theme Token，顺着代码引用链排查受影响页面。
-2. **对照编号逐条核验**：按反馈里每个 `objects[].annotations[].number` 与 `groupNotes` 逐项确认已在源码落实，禁止遗漏仅靠位移表达的条目。
-3. **生成本轮换图清单**：把「本轮被批注页 + 代码波及页」交给 `references/capture.md` 与 `references/project-review.md` 完成定向重截和 `upsert`，未受影响页面保留原图不动。
+Before refreshing screenshots:
+1. List every modified source file and trace shared component / token references to identify **all visually affected pages**.
+2. Verify every `annotations[].number` and `groupNotes` directive — including text-free movements — is reflected in code.
+3. Hand the exact **Affected Pages List** (edited annotated pages + shared-component ripple pages) to `references/capture.md` and `references/project-review.md` for targeted re-capture and `upsert`. Skip untouched pages.

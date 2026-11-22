@@ -1,34 +1,34 @@
 ---
 name: edithere-web
-description: 用 EditHere Web 在 MCP Apps 或本机浏览器中评审截图与项目组图。适用于由 AI 收集开发结果的所有可访问页面、维护组图、接收用户批注后修改源码并按代码影响面更新截图；普通代码修改无需启动。
+description: Review screenshots and multi-page project galleries in EditHere Web (MCP Apps or local browser). Use after UI work to capture accessible pages, maintain a gallery manifest, apply scoped code edits from submitted feedback, and refresh code-affected screenshots.
 ---
 
-# EditHere 网页批注
+# EditHere Web
 
-将本轮实际图片或组图交给 EditHere Web，用户提交后读取同一会话反馈并继续任务。优先使用已连接的 EditHere Web MCP；用户明确指定桌面程序时改用桌面入口。
+Deliver live screenshots or gallery manifests to EditHere Web, read submitted feedback from the same session, and apply code changes. Prefer connected EditHere Web MCP tools unless the user requests the Desktop app.
 
 {{PARTIAL:workflow-core}}
 
-## 入口一：已连接的 EditHere Web MCP（MCP Apps）
+## Option 1: Connected EditHere Web MCP (MCP Apps)
 
-先检查宿主实际暴露的 `edithere_web_open` 与 `edithere_web_read`（工具名可能带宿主前缀）。
+Check actually exposed tools (`edithere_web_open`, `edithere_web_read`, possibly host-prefixed):
 
-1. **发起会话**：调用 `edithere_web_open`，单图传绝对 `imagePath`，组图传绝对 `projectPath`（已知页面时传 `pageContext`、可选唯一 `outputPath`）。
-2. **检查 `uiSupport/state`**：若返回 `unsupported` 与兼容入口说明，切到下方「入口二：普通浏览器兼容入口」，不要重复建空会话；支持时记录 `sessionId` / `outputPath` / `expiresAt`。
-3. **区分三种完成状态**：点击提交会先持久化，再尝试向宿主发送对话消息。**「已保存」「宿主接受消息」「AI 已实施修改」是三个独立状态**；只有宿主确实接受并唤醒处理时才算自动返回对话，否则引导用户回原对话说「继续」，不靠空转轮询补造唤醒。
-4. **读取与恢复**：收到回传或用户说「继续」时，用原 `sessionId` 调用 `edithere_web_read`（仅 `completed` 且核对 `sessionId/outputPath/sha256` 后实施）；会话中断可用 `edithere_web_open({sessionId})` 恢复草稿，但用户取消/超时后不自动重开。
+1. **Start session**: Call `edithere_web_open` with absolute `imagePath` (single) or `projectPath` (gallery), plus `pageContext` when known and optional unique `outputPath`.
+2. **Check `uiSupport/state`**: If `unsupported`, switch to Option 2 below instead of spawning empty sessions. Otherwise record `sessionId`, `outputPath`, and `expiresAt`.
+3. **Track 3 distinct states**: Submitting persists feedback first, then asks the host to message the chat. **Saved**, **host accepted message**, and **AI implemented edits** are separate states — only claim auto-resume if the host wakes up; otherwise tell the user to reply "continue".
+4. **Read & resume**: When resumed or told "continue", call `edithere_web_read({ sessionId })` and act only when `state === "completed"` and `sessionId`/`outputPath`/`sha256` match. Reopen interrupted drafts via `edithere_web_open({ sessionId })` (never reopen after cancel/expiry).
 
-## 入口二：普通浏览器兼容入口（未连接 MCP 或不支持 MCP Apps）
+## Option 2: Browser Compatibility CLI (No MCP / No MCP Apps UI)
 
-读取 [本机网页入口](references/local-installation.md) 取得本机 `agent.cjs` 与 Node.js（18+）路径；**安装技能不会自动配置宿主 MCP**。
+Read [Local Web Entry](references/local-installation.md) for local `agent.cjs` and Node.js (`18+`) paths (installing this skill does not configure host MCP):
 
 ```powershell
-node "<agent.cjs绝对路径>" start --image "<图片绝对路径>" --output "<新反馈JSON绝对路径>" --timeout 86400
-node "<agent.cjs绝对路径>" start --project "<清单绝对路径>" --output "<新反馈JSON绝对路径>" --timeout 86400
-node "<agent.cjs绝对路径>" poll --session "<start返回的sessionId>"
+node "<abs-agent.cjs>" start --image "<abs-image>" --output "<new-feedback.json>" --timeout 86400
+node "<abs-agent.cjs>" start --project "<abs-manifest.json>" --output "<new-feedback.json>" --timeout 86400
+node "<abs-agent.cjs>" poll --session "<sessionId>"
 ```
 
-- 打开 `start` 返回的唯一会话 URL（不要用普通预览 URL）。默认监听 `127.0.0.1:7330`；端口冲突时给 `preview.cjs` 与 `agent.cjs` 配同一个 `EDITHERE_WEB_PORT`（1–65535），不要结束其他工作区服务。
-- 将会话状态记入 `.edithere/sessions/<sessionId>.json`（仅在真正开始改码时记 `processing`）。手动继续、定时跟进与清理规则见 [兼容网页的交接与跟进](references/follow-up.md)，异常排查见 [退出码、版本基线与排障](references/troubleshooting.md)。
+- Open the session URL returned by `start` (never the plain preview URL). Default port is `127.0.0.1:7330`; on conflict set matching `EDITHERE_WEB_PORT` (`1`–`65535`) on `preview.cjs` and `agent.cjs` without killing other workspace servers.
+- Record state under `.edithere/sessions/<sessionId>.json` (mark `processing` only when actually editing code). See [Browser Follow-Up & Handoff](references/follow-up.md) and [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md).
 
 {{PARTIAL:format-summary}}

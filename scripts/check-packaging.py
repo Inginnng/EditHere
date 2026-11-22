@@ -730,7 +730,10 @@ VIDEO_VERSION = "0.10.0"
 # What the app writes and what the skills promise, pinned as whole literals: a
 # substring test passes on the reader, the validator and the version table alone.
 VIDEO_WRITE = '{"schemaVersion", "video-feedback-1"}'
-VIDEO_MINIMUM = "涉及视频时必须 %s 及以上" % VIDEO_VERSION
+VIDEO_MINIMUM_MARKERS = (
+    "涉及视频时必须 %s 及以上" % VIDEO_VERSION,
+    "Video annotation requires %s+" % VIDEO_VERSION,
+)
 
 
 def check_feedback_docs() -> list[Problem]:
@@ -822,7 +825,7 @@ def check_video_docs() -> list[Problem]:
         text = read(path)
         if "--version" not in text:
             problems.append(f"{name}: no longer tells the agent to read the CLI version.")
-        elif VIDEO_MINIMUM not in text:
+        elif not any(marker in text for marker in VIDEO_MINIMUM_MARKERS):
             problems.append(
                 f"{name}: no longer states that video needs {VIDEO_VERSION}, so the agent "
                 f"cannot tell which capabilities the installed CLI has."

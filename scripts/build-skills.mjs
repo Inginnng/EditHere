@@ -125,7 +125,7 @@ function buildManifest() {
     targetOwnedDirs.push({ targetPrefix, expectedSubfiles });
   }
 
-  files.set('docs/PROJECT-REVIEW.md', readUtf8Lf(path.join(SRC, 'shared', 'references', 'project-review.md')));
+  files.set('docs/PROJECT-REVIEW.en.md', readUtf8Lf(path.join(SRC, 'shared', 'references', 'project-review.md')));
   files.set('scripts/capture-web.mjs', readUtf8Lf(path.join(SRC, 'shared', 'scripts', 'capture-web.mjs')));
 
   return { files, targetOwnedDirs };

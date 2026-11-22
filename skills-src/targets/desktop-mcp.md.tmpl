@@ -2,37 +2,37 @@
 name: edithere
 display_name: EditHere 改这里
 display_name_en: EditHere
-description: 通过 EditHere 桌面 MCP 连接器收集截图批注与项目组图评审。由 AI 收集所有可访问页面、维护组图，读取用户明确提交的意见后修改源码、验证并按代码影响面更新截图，继续下一轮评审。
-description_zh: 让 AI 维护项目全部可访问页面的组图，读取用户评审意见后修改源码、验证并按代码影响面更新截图。
+description: Collect screenshot annotations and multi-page project gallery reviews via the EditHere Desktop MCP Connector. Capture accessible pages, maintain the gallery, apply scoped code changes after user submission, and refresh code-affected screenshots.
+description_zh: 让 AI 维护项目全部可访问页面的组图，读取用户评审意见后修改源码并按代码影响面更新截图。
 description_en: Let the AI maintain a gallery of all accessible project pages, read user review feedback, update source code, verify changes and refresh affected screenshots.
 version: 0.2.1
 author: EditHere
 ---
 
-# EditHere · 改这里（桌面 MCP 连接器）
+# EditHere (Desktop MCP Connector)
 
-通过桌面 MCP 连接器调用本机 EditHere，让用户在图片、视频或项目组图上圈画和拖拽组件。连接器只处理本地图像，不直接修改源码。
+Drive the local EditHere desktop app through MCP tools for single images, videos, or multi-page project manifests. EditHere never edits source files itself.
 
 {{PARTIAL:workflow-core}}
 
-## 前置检查与 MCP 工具调用
+## Prerequisites & MCP Tools
 
-连接器安装不等于桌面程序可用。先运行 `edithere_status` 核对 `connector` 路径与程序 `version`（必要时单独执行 `--version` 核对：**涉及视频时必须 0.10.0 及以上**；`running:null` 表示未知，不可当作未运行）。若缺失或版本不足，请用户从 <https://github.com/Inginnng/EditHere/releases/latest> 安装，或配置 `EDITHERE_CLI` 指向 CLI 绝对路径，不要自行下载安装或更换同名旧程序。
+Having the connector installed does not guarantee EditHere is installed. Call `edithere_status` first to verify CLI resolution and `version` (also check `--version` if uncertain; `running:null` means unknown). If missing or outdated, direct the user to <https://github.com/Inginnng/EditHere/releases/latest> or ask them to set `EDITHERE_CLI`; never install binaries silently.
 
-| 工具 | 用途 |
+| Tool | Purpose |
 | --- | --- |
-| `edithere_status` | 查询程序与文档状态（不拉起界面），每次标注前先调用 |
-| `edithere_open` / `edithere_capture` | 浏览打开或唤起截图（**不能代替**可回传反馈的 `annotate`） |
-| `edithere_annotate_start` | **推荐**。发起会话并立即返回 `sessionId`（支持图片/视频/组图清单、`pageContext`、`outputDir`） |
-| `edithere_annotate_poll` | 查询同一 `sessionId` 状态，完成后返回摘要与反馈路径 |
-| `edithere_annotate` | 阻塞等待提交（最长 1800 秒），仅客户端支持长任务且无并发需求时使用 |
-| `edithere_export` | 离线导出已有 `.edithere` 项目、图片或反馈 JSON |
+| `edithere_status` | Query desktop & document state without launching GUI (**call first**) |
+| `edithere_open` / `edithere_capture` | View-only open or trigger interactive capture (**never replaces `annotate`**) |
+| `edithere_annotate_start` | **Recommended**: start session immediately and return `sessionId` (`imagePath`, `pageContext`, `outputDir`) |
+| `edithere_annotate_poll` | Poll `sessionId` status and read completion summary / JSON path |
+| `edithere_annotate` | Blocking wait (up to 1800s); use only when non-concurrent long tasks are supported |
+| `edithere_export` | Offline export of saved `.edithere` projects, images, or feedback JSON |
 
-### 标准异步调用步骤
+### Async Call Pattern
 
-1. `edithere_status` 确认可用；用绝对路径准备好本轮图片或 `.edithere/results/project.json`。
-2. 调用 `edithere_annotate_start`（传 `imagePath`、已知时传 `pageContext`、按需传 `outputDir` / `imageMode` / `includeImage`），保存 `sessionId`。同一时刻仅支持一个会话，遇 `busy` 先处理已有会话。
-3. 请用户在桌面端完成批注（视频先暂停到目标帧），点击 **「完成并返回 AI」**。
-4. 用同一 `sessionId` 调用 `edithere_annotate_poll` 跟进（等待期间不重复发起新标注）。遇到摘要上限或「请按 `frames[n]` 逐帧读取」时，直接读取完整反馈 JSON；受限沙箱（退出码 `8`）或断连恢复规则见 [退出码、版本基线与排障](references/troubleshooting.md)。
+1. Run `edithere_status` and prepare an absolute image, video, or `.edithere/results/project.json` path.
+2. Call `edithere_annotate_start` (pass `pageContext` when known; optionally `outputDir`, `imageMode`, `includeImage`) and keep `sessionId`. Only one active session is allowed at a time (`busy` = finish current session first).
+3. Ask the user to annotate (pause video on target frames first) and click **Finish and return to AI**.
+4. Poll with the same `sessionId` via `edithere_annotate_poll` (do not start duplicate sessions). If summary caps trigger ("read frame-by-frame"), inspect the feedback JSON directly. See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md) for sandbox exit code `8` and recovery.
 
 {{PARTIAL:format-summary}}

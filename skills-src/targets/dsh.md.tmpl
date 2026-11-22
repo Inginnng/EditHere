@@ -1,36 +1,36 @@
 ---
 name: edithere-dsh
-description: 用 EditHere 的 DSH 组图入口评审游戏、桌面程序或网页的开发结果。由 AI 收集所有可访问页面、维护组图，读取用户批注后修改源码、验证并按代码影响面更新截图，再展示下一轮结果；视频先截取相关画面。
+description: Review game, desktop, or web builds through the EditHere DSH gallery workbench. Capture accessible pages, maintain a manifest, apply scoped code edits from submitted annotations, and refresh only code-affected screenshots.
 ---
 
-# EditHere 组图批注（DSH）
+# EditHere Gallery Workbench (DSH)
 
-将界面截图放入本机 DSH 组图工作台，所有文件留在本地；用户圈画或调整组件并点击 **「完成并返回 AI」** 后，仅回传有批注页面的 JSON、原图（`sourcePath`）与编号批注图（`annotatedPath`）。
+Run a local-only gallery review workbench where all images stay on disk. Once the user clicks **Finish and return to AI**, only pages with annotations or moves return via JSON, original (`sourcePath`), and numbered preview (`annotatedPath`).
 
 {{PARTIAL:workflow-core}}
 
-## DSH CLI 位置与核心流程
+## DSH CLI & Core Loop
 
-读取本技能目录 `LOCAL.md`（若存在）中的 `cli.mjs` 绝对路径，否则使用仓库 `dsh/cli.mjs`，记为 `$CLI`。
+Check `LOCAL.md` inside this skill directory if present for the resolved `cli.mjs` path; otherwise use `dsh/cli.mjs` (`$CLI`):
 
-1. **发起组图会话**（推荐传入由 `image-set.mjs` 维护的清单 `--project`）：
+1. **Start gallery session** (prefer passing `--project` managed by `image-set.mjs`):
 
 ```powershell
-node "$CLI" start --project "<清单绝对路径>" --output "C:\project\.edithere\feedback-1.json" --open
+node "$CLI" start --project "<abs-manifest.json>" --output "C:\project\.edithere\feedback-1.json" --open
 ```
 
-也可以直接传 `--name` 与多张 `--image`（或省略 `--image` 先开空组图），并记下返回的 `sessionId`、`url`、`inbox`、`output`；同时提示用户可拖图、点击「截屏 / 加页」或放入 `<inbox>` 自动加入。Windows 原生窗口也可用 `node "$CLI" capture --output "<绝对PNG>" [--all] [--window "窗口标题"]` 辅助取图。
+You may also pass `--name` with multiple `--image` flags (or omit `--image` for drag-and-drop). Save `sessionId`, `url`, `inbox`, and `output`, and inform the user they can drop screenshots into `<inbox>` or click add-page. On Windows, `node "$CLI" capture --output "<abs.png>" [--all] [--window "Exact Title"]` can assist window capture.
 
-2. **等待提交**（单次有界等待最多 55 秒，不 sleep、不猜未提交内容）：
+2. **Wait for submission** (bounded `wait <= 55`s; never sleep-loop or read unsubmitted state):
 
 ```powershell
 node "$CLI" wait --session "<sessionId>" --wait 50
 ```
 
-- `pending`：继续提示用户或再次 `wait`；`completed`：进入读取实施；`cancelled` / `expired`：停止等待，不修改代码。
-- **进行中加页**：放入 `inbox` 目录（约 1 秒内自动加入），或执行 `node "$CLI" add --session "<sessionId>" --image "<新图绝对路径>"`，不要新开第二个会话。
+- `pending`: keep waiting cleanly; `completed`: proceed to edits; `cancelled` / `expired`: stop without editing code.
+- **Hot-add pages mid-session**: Drop images into `inbox` (~1s auto-ingest) or run `node "$CLI" add --session "<sessionId>" --image "<abs.png>"`; never start a second concurrent session.
 
-3. **先看图再改码**：先读取 `output` JSON 的 `groupNotes`、`pageIndex` 与 `pages[]`，再用图像查看工具打开 `pages[].annotatedPath`（必要时辅以 `sourcePath`）核对图中编号与边界，结合 [布局工程翻译与局部/设计系统分层](references/layout-translation.md) 修改源码并只重截受影响页面。
+3. **Inspect images before editing**: Read `groupNotes`, `pageIndex`, and `pages[]` from `output`, inspect each `pages[].annotatedPath` (and `sourcePath` for detail) with your image viewer, then follow [Layout Translation & Local vs. Design-System Guide](references/layout-translation.md) and refresh only code-affected pages.
 
 ```text
 start  --name NAME [--project ABS | --image PATH ...] [--output ABS] [--timeout SEC] [--open]
