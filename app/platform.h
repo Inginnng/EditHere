@@ -78,7 +78,9 @@ bool usesNativeWindowControls();
 // cannot. It never asks for permission itself, so a launch that cannot capture stays
 // quiet instead of raising a dialog the user has to dismiss.
 bool screenCaptureAllowed(QString *reason = nullptr);
-// Whether screen reads skip this window, so it can stay visible over a capture.
+// Whether the platform excludes this window from screen reads. Windows and
+// Linux keep every window visible; macOS excludes only during a scrolling
+// capture session.
 bool excludedFromCapture(const QWidget *window);
 QString globalShortcutLabel();
 class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {

@@ -364,59 +364,53 @@ class ScrollPlatformTests : public QObject {
         // unrelated windows and DWM's continuously changing background.
         liveRegion.setSelection(logicalRegion.adjusted(8, 8, -8, -8), screen->geometry());
         QTest::qWait(40);
-        // A hollow frame does not cover the selected pixels. When Windows
-        // supports display affinity, its painted border must also be absent
-        // from a larger readout crossing the frame itself.
-        DWORD frameAffinity = 0;
-        const bool hasFrameAffinity = GetWindowDisplayAffinity(
-            reinterpret_cast<HWND>(liveRegion.winId()), &frameAffinity);
-        QCOMPARE(excludedFromCapture(&liveRegion), hasFrameAffinity && frameAffinity == 0x00000011);
-        if (excludedFromCapture(&liveRegion)) {
-            const QRect logicalFrame = liveRegion.geometry();
-            const QRect nativeFrame(qRound(logicalFrame.x() * scale), qRound(logicalFrame.y() * scale),
-                                    qRound(logicalFrame.width() * scale), qRound(logicalFrame.height() * scale));
-            QImage visibleFrameRead, hiddenFrameRead;
-            captureScrollRegion(nativeFrame, [&](QImage image, QString failure) {
-                visibleFrameRead = image;
-                error = failure;
-            });
-            QVERIFY2(error.isEmpty(), qPrintable(error));
-            liveRegion.hide();
-            captureScrollRegion(nativeFrame, [&](QImage image, QString failure) {
-                hiddenFrameRead = image;
-                error = failure;
-            });
-            QVERIFY2(error.isEmpty(), qPrintable(error));
-            bool borderContaminated = visibleFrameRead.size() != hiddenFrameRead.size();
-            QPoint firstMismatch;
-            for (int row = 0; !borderContaminated && row < visibleFrameRead.height(); ++row) {
-                for (int column = 0; column < visibleFrameRead.width(); ++column) {
-                    const QColor visible = visibleFrameRead.pixelColor(column, row);
-                    const QColor hidden = hiddenFrameRead.pixelColor(column, row);
-                    if (std::abs(visible.red() - hidden.red()) > 2 ||
-                        std::abs(visible.green() - hidden.green()) > 2 ||
-                        std::abs(visible.blue() - hidden.blue()) > 2) {
-                        borderContaminated = true;
-                        firstMismatch = {column, row};
-                        break;
-                    }
+        // Display affinity is deliberately not used on Windows, so remote desktop
+        // viewers can see the capture UI. The native window hole must still keep
+        // the painted border out of the selected pixels.
+        QVERIFY(!excludedFromCapture(&liveRegion));
+        const QRect nativeSelected(qRound(liveRegion.selection().x() * scale),
+                                   qRound(liveRegion.selection().y() * scale),
+                                   qRound(liveRegion.selection().width() * scale),
+                                   qRound(liveRegion.selection().height() * scale));
+        QImage visibleFrameRead, hiddenFrameRead;
+        captureScrollRegion(nativeSelected, [&](QImage image, QString failure) {
+            visibleFrameRead = image;
+            error = failure;
+        });
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        liveRegion.hide();
+        captureScrollRegion(nativeSelected, [&](QImage image, QString failure) {
+            hiddenFrameRead = image;
+            error = failure;
+        });
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        bool borderContaminated = visibleFrameRead.size() != hiddenFrameRead.size();
+        QPoint firstMismatch;
+        for (int row = 0; !borderContaminated && row < visibleFrameRead.height(); ++row) {
+            for (int column = 0; column < visibleFrameRead.width(); ++column) {
+                const QColor visible = visibleFrameRead.pixelColor(column, row);
+                const QColor hidden = hiddenFrameRead.pixelColor(column, row);
+                if (std::abs(visible.red() - hidden.red()) > 2 ||
+                    std::abs(visible.green() - hidden.green()) > 2 ||
+                    std::abs(visible.blue() - hidden.blue()) > 2) {
+                    borderContaminated = true;
+                    firstMismatch = {column, row};
+                    break;
                 }
             }
-            if (borderContaminated) {
-                const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
-                if (!folder.isEmpty()) {
-                    QDir().mkpath(folder);
-                    visibleFrameRead.save(QDir(folder).filePath("scroll-visible-frame.png"));
-                    hiddenFrameRead.save(QDir(folder).filePath("scroll-hidden-frame.png"));
-                }
-                qWarning() << "First exclusion mismatch" << firstMismatch
-                           << visibleFrameRead.pixelColor(firstMismatch)
-                           << hiddenFrameRead.pixelColor(firstMismatch);
-            }
-            QVERIFY2(!borderContaminated, "The live selection border entered the captured pixels.");
-        } else {
-            liveRegion.hide();
         }
+        if (borderContaminated) {
+            const auto folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+            if (!folder.isEmpty()) {
+                QDir().mkpath(folder);
+                visibleFrameRead.save(QDir(folder).filePath("scroll-visible-frame.png"));
+                hiddenFrameRead.save(QDir(folder).filePath("scroll-hidden-frame.png"));
+            }
+            qWarning() << "First hole mismatch" << firstMismatch
+                       << visibleFrameRead.pixelColor(firstMismatch)
+                       << hiddenFrameRead.pixelColor(firstMismatch);
+        }
+        QVERIFY2(!borderContaminated, "The live selection border entered the captured pixels.");
 
         // Exercise the fallback explicitly: neither the shade nor the frame may
         // rely on WDA_EXCLUDEFROMCAPTURE to keep the selected pixels clean. A
