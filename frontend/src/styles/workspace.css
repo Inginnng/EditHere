@@ -8,6 +8,10 @@
   overflow: hidden;
 }
 
+.workspace-root.inspector-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .canvas-surface {
   grid-column: 1;
   grid-row: 1;
@@ -43,12 +47,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   pointer-events: none;
   z-index: 16;
 }
 
 .canvas-top-hud > * {
   pointer-events: auto;
+}
+
+.canvas-top-right-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .canvas-meta-chip {
@@ -64,6 +75,13 @@
   font-size: 11.5px;
   color: var(--secondary);
   box-shadow: var(--shadow-float-sm), var(--specular);
+  min-width: 0;
+}
+
+.canvas-meta-chip span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas-meta-dot {
@@ -71,12 +89,14 @@
   height: 6px;
   border-radius: var(--r-circle);
   background: var(--accent);
+  flex-shrink: 0;
 }
 
 .canvas-meta-chip code {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 /* Concentric Zoom Pill: outer 8px - 2px pad = inner 6px */
@@ -113,12 +133,12 @@
   color: var(--secondary);
 }
 
-/* Artboard Viewport (Container-Query Fit prevents vertical clipping on narrow panes) */
+/* Artboard Viewport */
 .canvas-stage-wrap {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 52px 24px 76px;
+  padding: 52px 24px 86px;
   overflow: auto;
 }
 
@@ -162,6 +182,117 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* Mosaic Live Render Layer */
+.mosaic-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-card);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.mosaic-region-outline {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  border-radius: var(--r-micro);
+  z-index: 7;
+  cursor: pointer;
+}
+
+.mosaic-region-outline.selected {
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+/* PixPin-Inspired Interactive Crop Overlay */
+.crop-overlay-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  z-index: 14;
+}
+
+.crop-window {
+  position: absolute;
+  border: 1.5px solid #ffffff;
+  box-shadow:
+    0 0 0 9999px rgba(8, 10, 14, 0.56),
+    inset 0 0 0 1px rgba(0, 122, 255, 0.9);
+  cursor: move;
+}
+
+.crop-thirds-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, transparent 33.1%, rgba(255, 255, 255, 0.24) 33.3%, transparent 33.6%,
+                              transparent 66.4%, rgba(255, 255, 255, 0.24) 66.6%, transparent 66.9%),
+    linear-gradient(to bottom, transparent 33.1%, rgba(255, 255, 255, 0.24) 33.3%, transparent 33.6%,
+                               transparent 66.4%, rgba(255, 255, 255, 0.24) 66.6%, transparent 66.9%);
+}
+
+.crop-size-tag {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 2px 6px;
+  border-radius: var(--r-micro);
+  background: rgba(15, 17, 22, 0.78);
+  color: #ffffff;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  pointer-events: none;
+}
+
+/* PixPin Pixel Magnifier Loupe */
+.pixel-loupe {
+  position: absolute;
+  width: 132px;
+  padding: 5px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border-float);
+  background: var(--glass-strong);
+  backdrop-filter: saturate(180%) blur(18px);
+  box-shadow: var(--shadow-float), var(--specular);
+  pointer-events: none;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pixel-loupe-img {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--r-micro);
+  border: 1px solid var(--line-strong);
+  image-rendering: pixelated;
+  display: block;
+}
+
+.pixel-loupe-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--secondary);
+}
+
+.pixel-loupe-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  flex-shrink: 0;
 }
 
 /* ExplosionWave subtle entry sweep */
@@ -226,6 +357,10 @@
   transition: background 0.12s, box-shadow 0.12s;
 }
 
+.box-annotation-rect.draggable {
+  cursor: move;
+}
+
 .box-annotation-rect.selected {
   border-width: 2px;
   background: color-mix(in srgb, var(--accent) 11%, transparent);
@@ -284,6 +419,10 @@
   place-items: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   z-index: 9;
+}
+
+.point-pin.draggable {
+  cursor: move;
 }
 
 .point-pin.selected {
@@ -398,25 +537,37 @@
   pointer-events: none;
 }
 
-.explode-hint-pill {
+/* PixPin Two-Tier Contextual Sub-bar floating 8px above .floating-dock */
+.dock-subbar {
   position: absolute;
-  bottom: 62px;
+  bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 4px 10px;
-  border-radius: var(--r-card);
-  background: var(--glass);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  max-width: calc(100% - 24px);
+  border-radius: 10px;
+  background: var(--glass-strong);
   border: 1px solid var(--border-float);
-  backdrop-filter: saturate(180%) blur(18px);
-  color: var(--secondary);
-  font-size: 11px;
-  white-space: nowrap;
-  max-width: calc(100% - 32px);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  backdrop-filter: saturate(180%) blur(20px);
   box-shadow: var(--shadow-float-sm), var(--specular);
-  pointer-events: none;
-  z-index: 14;
+  color: var(--secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+  z-index: 16;
+}
+
+.dock-subbar-slider {
+  width: 78px;
+  accent-color: var(--accent);
+}
+
+.dock-subbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--line-strong);
 }
 
 /* Video Timeline Strip */
@@ -424,7 +575,7 @@
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: 66px;
+  bottom: 60px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -434,7 +585,7 @@
   border: 1px solid var(--border-float);
   backdrop-filter: saturate(180%) blur(22px);
   box-shadow: var(--shadow-float), var(--specular);
-  z-index: 14;
+  z-index: 15;
 }
 
 .video-scrubber {
@@ -481,6 +632,9 @@
   align-items: center;
   gap: 2px;
   padding: 4px;
+  max-width: calc(100% - 20px);
+  overflow-x: auto;
+  scrollbar-width: none;
   border-radius: var(--r-panel);
   background: var(--glass-strong);
   border: 1px solid var(--border-float);
@@ -489,9 +643,13 @@
   z-index: 15;
 }
 
+.floating-dock::-webkit-scrollbar {
+  display: none;
+}
+
 .dock-tool {
   height: 32px;
-  padding: 0 11px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--r-card);
   background: transparent;
@@ -500,12 +658,20 @@
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: background 0.14s ease, color 0.14s ease;
 }
 
-.dock-tool:hover {
+.dock-tool.icon-only {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.dock-tool:hover:not(:disabled) {
   background: var(--fill);
   color: var(--ink);
 }
@@ -528,7 +694,8 @@
   width: 1px;
   height: 16px;
   background: var(--line-strong);
-  margin: 0 3px;
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 /* Gallery Strip anchored cleanly inside .canvas-surface */

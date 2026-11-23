@@ -811,7 +811,7 @@ void Controller::beginCapture(bool fromTray) {
                 overlay->setStyle(owner->settings_.captureStyle);
                 overlay->setOcrLanguage(owner->settings_.ocrLanguage);
                 overlay->show();
-                configureNativeWindow(overlay, true);
+                configureNativeWindow(overlay, true, false);
             }
             for (auto overlay : owner->overlays_)
                 if (overlay->frame().logicalGeometry.contains(QCursor::pos())) {
@@ -1587,7 +1587,7 @@ void Controller::abortScrollCapture(const QString &message) {
     for (auto *overlay : overlays_) {
         overlay->setBusy(false);
         overlay->show();
-        configureNativeWindow(overlay, true);
+        configureNativeWindow(overlay, true, false);
     }
     source->setCaptureNotice(message);
     source->raise();
@@ -1680,7 +1680,7 @@ void Controller::uncoverForDialog() {
 void Controller::recoverAfterDialog() {
     for (auto overlay : overlays_) {
         overlay->show();
-        configureNativeWindow(overlay, true);
+        configureNativeWindow(overlay, true, false);
     }
 }
 void Controller::copyRegion(Overlay *source) {

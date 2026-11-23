@@ -412,6 +412,10 @@ export default function App() {
             activePageId={activePageId}
             groupNotes={groupNotes}
             includeOcr={preferences.includeOcr}
+            onToggleOcr={() =>
+              handleChangePreferences({ ...preferences, includeOcr: !preferences.includeOcr })
+            }
+            onCapture={handleCaptureStart}
             onSelectPage={setActivePageId}
             onUpdatePages={setPages}
             onUpdateGroupNotes={setGroupNotes}

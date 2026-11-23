@@ -1,25 +1,45 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
+  Camera,
+  ClipboardCopy,
   Code2,
   Copy,
+  Crop,
   Download,
+  Eye,
+  EyeOff,
+  FileText,
   Film,
+  FolderOutput,
+  Grid2x2,
+  ImageDown,
   ImagePlus,
   Layers2,
+  Maximize2,
   MessageSquarePlus,
   Minus,
+  MoreHorizontal,
+  MousePointer2,
   MousePointerClick,
+  PanelRightClose,
+  PanelRightOpen,
   Pause,
   Pin,
   Play,
   Plus,
+  Redo2,
   RotateCcw,
+  Save,
   Scan,
+  ScanText,
+  Search,
   Sparkles,
   Square,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
@@ -34,11 +54,21 @@ import type {
   ExplodeBlock,
   GalleryPage,
   GroupNote,
+  MosaicRegion,
   PixelRect,
   ToolMode,
 } from '../bridge/types';
+import {
+  composePageToPng,
+  cropPageBitmap,
+  drawMosaicsOnContext,
+  loadBitmapForPage,
+  sampleLoupeGrid,
+} from '../utils/canvasCompose';
+import { detectImageRegions } from '../utils/regionDetector';
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+type CropRatio = 'free' | '16:9' | '4:3' | '1:1';
 
 const RESIZE_HANDLES: Array<{ id: ResizeHandle; cursor: string }> = [
   { id: 'nw', cursor: 'nwse-resize' },
@@ -64,6 +94,46 @@ interface ExplodeDragSession {
   pageH: number;
   scaleX: number;
   scaleY: number;
+  snapshot: GalleryPage[];
+  moved: boolean;
+}
+
+interface AnnotationDragSession {
+  kind: 'region' | 'point';
+  noteId: string;
+  pageId: string;
+  startClientX: number;
+  startClientY: number;
+  origRect?: PixelRect;
+  origPoint?: { x: number; y: number };
+  pageW: number;
+  pageH: number;
+  scaleX: number;
+  scaleY: number;
+  snapshot: GalleryPage[];
+  moved: boolean;
+}
+
+interface CropDragSession {
+  kind: 'move' | 'resize';
+  handle?: ResizeHandle;
+  startClientX: number;
+  startClientY: number;
+  origRect: PixelRect;
+  pageW: number;
+  pageH: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+interface LoupeState {
+  px: number;
+  py: number;
+  pctX: number;
+  pctY: number;
+  dataUrl: string;
+  hex: string;
+  rgb: string;
 }
 
 interface WorkspaceViewProps {
@@ -71,6 +141,8 @@ interface WorkspaceViewProps {
   activePageId: string;
   groupNotes: GroupNote[];
   includeOcr?: boolean;
+  onToggleOcr?: () => void;
+  onCapture?: () => void;
   onSelectPage: (pageId: string) => void;
   onUpdatePages: (updater: (prev: GalleryPage[]) => GalleryPage[]) => void;
   onUpdateGroupNotes: (updater: (prev: GroupNote[]) => GroupNote[]) => void;
@@ -80,11 +152,39 @@ interface WorkspaceViewProps {
   onToast: (message: string) => void;
 }
 
+function clampRect(r: PixelRect, maxW: number, maxH: number): PixelRect {
+  const x1 = Math.max(0, Math.min(maxW - 1, Math.round(r.x1)));
+  const y1 = Math.max(0, Math.min(maxH - 1, Math.round(r.y1)));
+  const x2 = Math.max(x1 + 1, Math.min(maxW, Math.round(r.x2)));
+  const y2 = Math.max(y1 + 1, Math.min(maxH, Math.round(r.y2)));
+  return { x1, y1, x2, y2 };
+}
+
+function shiftRectAfterCrop(r: PixelRect, crop: PixelRect): PixelRect | null {
+  const cw = crop.x2 - crop.x1;
+  const ch = crop.y2 - crop.y1;
+  const x1 = Math.max(0, Math.min(cw, r.x1 - crop.x1));
+  const y1 = Math.max(0, Math.min(ch, r.y1 - crop.y1));
+  const x2 = Math.max(0, Math.min(cw, r.x2 - crop.x1));
+  const y2 = Math.max(0, Math.min(ch, r.y2 - crop.y1));
+  if (x2 - x1 < 8 || y2 - y1 < 8) return null;
+  return { x1, y1, x2, y2 };
+}
+
+function ratioValue(ratio: CropRatio): number | null {
+  if (ratio === '16:9') return 16 / 9;
+  if (ratio === '4:3') return 4 / 3;
+  if (ratio === '1:1') return 1;
+  return null;
+}
+
 export default function WorkspaceView({
   pages,
   activePageId,
   groupNotes,
   includeOcr = true,
+  onToggleOcr,
+  onCapture,
   onSelectPage,
   onUpdatePages,
   onUpdateGroupNotes,
@@ -97,21 +197,48 @@ export default function WorkspaceView({
   const [tool, setTool] = useState<ToolMode>('box');
   const [zoom, setZoom] = useState(100);
   const [selectedNoteId, setSelectedNoteId] = useState<string>(activePage?.annotations[0]?.id ?? '');
+  const [selectedMosaicId, setSelectedMosaicId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'page' | 'group'>('page');
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [hoverBlockId, setHoverBlockId] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [explosionWaveKey, setExplosionWaveKey] = useState(0);
   const [jsonOpen, setJsonOpen] = useState(false);
 
-  // Box draw & manual Explode cut-draw state (image pixel coords)
+  // Toggles & PixPin-grade tool options
+  const [hideAnnotations, setHideAnnotations] = useState(false);
+  const [magnifierEnabled, setMagnifierEnabled] = useState(false);
+  const [mosaicStyle, setMosaicStyle] = useState<'pixelate' | 'blur'>('pixelate');
+  const [mosaicStrength, setMosaicStrength] = useState(12);
+
+  // Interactive crop state
+  const [cropRect, setCropRect] = useState<PixelRect | null>(null);
+  const [cropRatio, setCropRatio] = useState<CropRatio>('free');
+  const cropRatioRef = useRef<CropRatio>(cropRatio);
+  cropRatioRef.current = cropRatio;
+
+  // Loupe hover state
+  const [loupe, setLoupe] = useState<LoupeState | null>(null);
+  const loupeRafRef = useRef<number | null>(null);
+
+  // Draft box / mosaic draw / manual Explode cut-draw state (image pixel coords)
   const [draftBox, setDraftBox] = useState<PixelRect | null>(null);
   const [manualCutBox, setManualCutBox] = useState<PixelRect | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const manualCutStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Window-tracked Explode move / 8-handle resize session
+  // Undo / Redo stacks
+  const undoStackRef = useRef<GalleryPage[][]>([]);
+  const redoStackRef = useRef<GalleryPage[][]>([]);
+  const [, setHistoryTick] = useState(0);
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
+
+  // Window-tracked drag sessions
   const explodeDragRef = useRef<ExplodeDragSession | null>(null);
+  const annDragRef = useRef<AnnotationDragSession | null>(null);
+  const cropDragRef = useRef<CropDragSession | null>(null);
   const updatePagesRef = useRef(onUpdatePages);
   updatePagesRef.current = onUpdatePages;
 
@@ -121,13 +248,106 @@ export default function WorkspaceView({
   const [videoTimeMs, setVideoTimeMs] = useState(3240);
 
   const artboardRef = useRef<HTMLDivElement>(null);
+  const artboardMediaRef = useRef<HTMLDivElement>(null);
+  const mosaicCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sourceBitmapRef = useRef<HTMLImageElement | null>(null);
+  const [bitmapReadyTick, setBitmapReadyTick] = useState(0);
+
+  const pushUndoSnapshot = (snapshot: GalleryPage[]) => {
+    undoStackRef.current = [...undoStackRef.current.slice(-39), snapshot];
+    redoStackRef.current = [];
+    setHistoryTick((t) => t + 1);
+  };
+
+  const commitPages = (updater: (prev: GalleryPage[]) => GalleryPage[]) => {
+    const snap = pagesRef.current;
+    pushUndoSnapshot(snap);
+    onUpdatePages(updater);
+  };
+
+  const syncDesktopPageAfterUndoRedo = async (restoredPages: GalleryPage[]) => {
+    if (!isDesktopWebView() || !activePage) return;
+    const restored = restoredPages.find((p) => p.id === activePage.id);
+    if (!restored) return;
+    if (
+      restored.width !== activePage.width ||
+      restored.height !== activePage.height ||
+      restored.imageUrl !== activePage.imageUrl
+    ) {
+      if (!restored.imageUrl) return;
+      const img = await loadBitmapForPage(restored, artboardMediaRef.current);
+      if (!img) return;
+      const c = document.createElement('canvas');
+      c.width = restored.width;
+      c.height = restored.height;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, restored.width, restored.height);
+      const b64 = c.toDataURL('image/png').split(',')[1] ?? '';
+      if (!b64) return;
+      desktopRpc('image.updatePage', { pageId: restored.id, pngBase64: b64 }).catch(() => {});
+    }
+  };
+
+  const handleUndo = () => {
+    if (!undoStackRef.current.length) return;
+    const prevSnap = undoStackRef.current[undoStackRef.current.length - 1];
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current.slice(-39), pagesRef.current];
+    onUpdatePages(() => prevSnap);
+    setHistoryTick((t) => t + 1);
+    void syncDesktopPageAfterUndoRedo(prevSnap);
+    onToast('已撤销');
+  };
+
+  const handleRedo = () => {
+    if (!redoStackRef.current.length) return;
+    const nextSnap = redoStackRef.current[redoStackRef.current.length - 1];
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current.slice(-39), pagesRef.current];
+    onUpdatePages(() => nextSnap);
+    setHistoryTick((t) => t + 1);
+    void syncDesktopPageAfterUndoRedo(nextSnap);
+    onToast('已重做');
+  };
+
+  // Load offscreen bitmap cleanly for Mosaic / Crop / Loupe / Image Export
+  useEffect(() => {
+    let cancelled = false;
+    if (!activePage) return;
+    loadBitmapForPage(activePage, artboardMediaRef.current).then((img) => {
+      if (cancelled) return;
+      sourceBitmapRef.current = img;
+      setBitmapReadyTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePage?.id, activePage?.imageUrl, activePage?.sceneId, activePage?.width, activePage?.height]);
+
+  // Draw live Mosaic regions onto .mosaic-canvas
+  useEffect(() => {
+    const canvas = mosaicCanvasRef.current;
+    const img = sourceBitmapRef.current;
+    if (!canvas || !activePage) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const regions = activePage.mosaics ?? [];
+    if (!img || regions.length === 0) return;
+    drawMosaicsOnContext(ctx, img, regions, activePage.width, activePage.height, canvas.width, canvas.height);
+  }, [activePage?.id, activePage?.mosaics, activePage?.width, activePage?.height, bitmapReadyTick]);
 
   useEffect(() => {
     setSelectedNoteId(activePage?.annotations[0]?.id ?? '');
+    setSelectedMosaicId(null);
     setEditingNoteId(null);
     setHoverBlockId(null);
     setSelectedBlockId(null);
+    setLoupe(null);
+    setCropRect(null);
+    setTool((t) => (t === 'crop' ? 'box' : t));
   }, [activePage?.id]);
 
   const triggerImport = () => {
@@ -140,20 +360,194 @@ export default function WorkspaceView({
     }
   };
 
+  const enterCropMode = () => {
+    if (!activePage) return;
+    const padX = Math.max(0, Math.round(activePage.width * 0.08));
+    const padY = Math.max(0, Math.round(activePage.height * 0.08));
+    const w = activePage.width;
+    const h = activePage.height;
+    setCropRatio('free');
+    setCropRect(
+      w > 96 && h > 96
+        ? { x1: padX, y1: padY, x2: w - padX, y2: h - padY }
+        : { x1: 0, y1: 0, x2: w, y2: h }
+    );
+    setTool('crop');
+  };
+
+  const applyCropRatioPreset = (ratio: CropRatio) => {
+    setCropRatio(ratio);
+    if (!activePage || !cropRect) return;
+    const targetRatio = ratioValue(ratio);
+    if (!targetRatio) return;
+    const cx = (cropRect.x1 + cropRect.x2) / 2;
+    const cy = (cropRect.y1 + cropRect.y2) / 2;
+    let cw = Math.max(32, cropRect.x2 - cropRect.x1);
+    let ch = Math.round(cw / targetRatio);
+    if (ch > activePage.height) {
+      ch = activePage.height;
+      cw = Math.round(ch * targetRatio);
+    }
+    if (cw > activePage.width) {
+      cw = activePage.width;
+      ch = Math.round(cw / targetRatio);
+    }
+    const x1 = Math.round(Math.max(0, Math.min(activePage.width - cw, cx - cw / 2)));
+    const y1 = Math.round(Math.max(0, Math.min(activePage.height - ch, cy - ch / 2)));
+    setCropRect({ x1, y1, x2: x1 + cw, y2: y1 + ch });
+  };
+
+  const confirmCrop = async () => {
+    if (!activePage || !cropRect) return;
+    const bmp =
+      sourceBitmapRef.current ?? (await loadBitmapForPage(activePage, artboardMediaRef.current));
+    if (!bmp) {
+      onToast('当前页面位图尚未就绪，请稍后再试');
+      return;
+    }
+    const cropped = cropPageBitmap(bmp, activePage.width, activePage.height, cropRect);
+    let nextUrl = cropped.dataUrl;
+    let nextBlocks: ExplodeBlock[] = [];
+
+    if (isDesktopWebView() && !activePage.sceneId) {
+      try {
+        const res = await desktopRpc<{
+          mediaUrl?: string;
+          blocks?: ExplodeBlock[];
+        }>('image.updatePage', {
+          pageId: activePage.id,
+          pngBase64: cropped.pngBase64,
+        });
+        if (res?.mediaUrl) nextUrl = res.mediaUrl;
+        if (Array.isArray(res?.blocks)) nextBlocks = res.blocks;
+      } catch {
+        // Fallback cleanly to data URL + local canvas detector
+      }
+    }
+
+    if (nextBlocks.length === 0) {
+      const tmpImg = new Image();
+      tmpImg.src = cropped.dataUrl;
+      await new Promise<void>((resolve) => {
+        if (tmpImg.complete) resolve();
+        else tmpImg.onload = () => resolve();
+      });
+      nextBlocks = detectImageRegions(tmpImg, cropped.width, cropped.height);
+    }
+
+    const nextAnnotations: AnnotationItem[] = activePage.annotations
+      .map((note): AnnotationItem | null => {
+        if (note.kind === 'global') return note;
+        if (note.kind === 'point' && note.point) {
+          const px = note.point.x - cropRect.x1;
+          const py = note.point.y - cropRect.y1;
+          if (px < 0 || py < 0 || px > cropped.width || py > cropped.height) return null;
+          return { ...note, point: { x: Math.round(px), y: Math.round(py) } };
+        }
+        if (note.kind === 'region' && note.rect) {
+          const shifted = shiftRectAfterCrop(note.rect, cropRect);
+          if (!shifted) return null;
+          return { ...note, rect: shifted, blockId: undefined, movement: undefined };
+        }
+        return note;
+      })
+      .filter((x): x is AnnotationItem => x !== null)
+      .map((n, i) => ({ ...n, number: i + 1 }));
+
+    const nextMosaics: MosaicRegion[] = (activePage.mosaics ?? [])
+      .map((m) => {
+        const shifted = shiftRectAfterCrop(m.rect, cropRect);
+        return shifted ? { ...m, rect: shifted } : null;
+      })
+      .filter((x): x is MosaicRegion => x !== null);
+
+    commitPages((prev) =>
+      prev.map((p) =>
+        p.id !== activePage.id
+          ? p
+          : {
+              ...p,
+              width: cropped.width,
+              height: cropped.height,
+              imageUrl: nextUrl,
+              sceneId: undefined,
+              blocks: nextBlocks,
+              annotations: nextAnnotations,
+              mosaics: nextMosaics,
+            }
+      )
+    );
+    setCropRect(null);
+    setTool('box');
+    onToast(`已裁剪画布至 ${cropped.width} × ${cropped.height}`);
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const inInput = Boolean(target?.closest('input, textarea, [contenteditable="true"]'));
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
         event.preventDefault();
         triggerImport();
-      } else if (event.key === 'Escape' && tool === 'explode') {
-        setSelectedBlockId(null);
-        setManualCutBox(null);
-        manualCutStartRef.current = null;
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !inInput) {
+        event.preventDefault();
+        if (event.shiftKey) handleRedo();
+        else handleUndo();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y' && !inInput) {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
+      if (inInput) return;
+
+      const lower = event.key.toLowerCase();
+      if (event.key === 'Escape') {
+        if (tool === 'crop') {
+          setCropRect(null);
+          setTool('box');
+        } else if (tool === 'explode') {
+          setSelectedBlockId(null);
+          setManualCutBox(null);
+          manualCutStartRef.current = null;
+        }
+      } else if (event.key === 'Enter' && tool === 'crop' && cropRect) {
+        event.preventDefault();
+        void confirmCrop();
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && activePage) {
+        if (selectedMosaicId) {
+          commitPages((prev) =>
+            prev.map((p) =>
+              p.id !== activePage.id
+                ? p
+                : { ...p, mosaics: (p.mosaics ?? []).filter((m) => m.id !== selectedMosaicId) }
+            )
+          );
+          setSelectedMosaicId(null);
+        } else if (selectedNoteId) {
+          const targetNote = activePage.annotations.find((a) => a.id === selectedNoteId);
+          if (targetNote) {
+            deleteNote(targetNote);
+          }
+        }
+      } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (lower === 'v') setTool('select');
+        else if (lower === 's') setTool('smart');
+        else if (lower === 'p') setTool('point');
+        else if (lower === 'r') setTool('box');
+        else if (lower === 'e') toggleExplodeMode();
+        else if (lower === 'm') setTool('mosaic');
+        else if (lower === 'c') enterCropMode();
+        else if (lower === 'h') setHideAnnotations((h) => !h);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tool]);
+  }, [tool, cropRect, activePage?.id, selectedMosaicId, selectedNoteId]);
 
   useEffect(() => {
     if (!videoMode || !videoPlaying) return;
@@ -166,99 +560,200 @@ export default function WorkspaceView({
   const nextNoteNumber = (annotations: AnnotationItem[]) =>
     annotations.reduce((max, item) => Math.max(max, item.number), 0) + 1;
 
-  // Window-level pointermove / pointerup for reliable Explode move & 8-handle resize
+  // Window-level pointermove / pointerup for Explode, Select/Move, and Crop drags
   useEffect(() => {
-    const computeNextDest = (session: ExplodeDragSession, clientX: number, clientY: number): PixelRect => {
-      const dxRaw = (clientX - session.startClientX) * session.scaleX;
-      const dyRaw = (clientY - session.startClientY) * session.scaleY;
-      const o = session.origDest;
-
-      if (session.kind === 'move') {
-        const w = o.x2 - o.x1;
-        const h = o.y2 - o.y1;
-        const x1 = Math.round(Math.max(0, Math.min(session.pageW - w, o.x1 + dxRaw)));
-        const y1 = Math.round(Math.max(0, Math.min(session.pageH - h, o.y1 + dyRaw)));
-        return { x1, y1, x2: x1 + w, y2: y1 + h };
-      }
-
-      const handle = session.handle ?? 'se';
-      const minSize = 18;
+    const computeResizeRect = (
+      o: PixelRect,
+      handle: ResizeHandle,
+      dxRaw: number,
+      dyRaw: number,
+      pageW: number,
+      pageH: number,
+      minSize: number,
+      lockedRatio: number | null = null
+    ): PixelRect => {
       let { x1, y1, x2, y2 } = o;
+      if (handle.includes('w')) x1 = Math.round(Math.max(0, Math.min(x2 - minSize, o.x1 + dxRaw)));
+      if (handle.includes('e')) x2 = Math.round(Math.min(pageW, Math.max(x1 + minSize, o.x2 + dxRaw)));
+      if (handle.includes('n')) y1 = Math.round(Math.max(0, Math.min(y2 - minSize, o.y1 + dyRaw)));
+      if (handle.includes('s')) y2 = Math.round(Math.min(pageH, Math.max(y1 + minSize, o.y2 + dyRaw)));
 
-      if (handle.includes('w')) {
-        x1 = Math.round(Math.max(0, Math.min(x2 - minSize, o.x1 + dxRaw)));
-      }
-      if (handle.includes('e')) {
-        x2 = Math.round(Math.min(session.pageW, Math.max(x1 + minSize, o.x2 + dxRaw)));
-      }
-      if (handle.includes('n')) {
-        y1 = Math.round(Math.max(0, Math.min(y2 - minSize, o.y1 + dyRaw)));
-      }
-      if (handle.includes('s')) {
-        y2 = Math.round(Math.min(session.pageH, Math.max(y1 + minSize, o.y2 + dyRaw)));
+      if (lockedRatio) {
+        let w = Math.max(minSize, x2 - x1);
+        let h = Math.round(w / lockedRatio);
+        if (handle.includes('n') && !handle.includes('s')) {
+          y1 = Math.max(0, y2 - h);
+          h = y2 - y1;
+          w = Math.round(h * lockedRatio);
+          if (handle.includes('w')) x1 = Math.max(0, x2 - w);
+          else x2 = Math.min(pageW, x1 + w);
+        } else {
+          if (y1 + h > pageH) {
+            h = pageH - y1;
+            w = Math.round(h * lockedRatio);
+          }
+          if (handle.includes('w') && !handle.includes('e')) x1 = Math.max(0, x2 - w);
+          else x2 = Math.min(pageW, x1 + w);
+          y2 = Math.min(pageH, y1 + h);
+        }
       }
       return { x1, y1, x2, y2 };
     };
 
     const onWindowPointerMove = (event: PointerEvent) => {
-      const session = explodeDragRef.current;
-      if (!session) return;
-      const nextDest = computeNextDest(session, event.clientX, event.clientY);
-      const src = session.source;
-      const moveNoteId = `move-${session.blockId}`;
-      const dx = nextDest.x1 - src.x1;
-      const dy = nextDest.y1 - src.y1;
-      const sw = Math.max(1, src.x2 - src.x1);
-      const sh = Math.max(1, src.y2 - src.y1);
-      const dw = nextDest.x2 - nextDest.x1;
-      const dh = nextDest.y2 - nextDest.y1;
-      const scaleX = dw / sw;
-      const scaleY = dh / sh;
-      const significantChange =
-        Math.abs(dx) > 2 ||
-        Math.abs(dy) > 2 ||
-        Math.abs(scaleX - 1) > 0.02 ||
-        Math.abs(scaleY - 1) > 0.02;
-
-      updatePagesRef.current((prev) =>
-        prev.map((page) => {
-          if (page.id !== session.pageId) return page;
-          const blocks = page.blocks.map((b) =>
-            b.id === session.blockId ? { ...b, dest: nextDest } : b
+      // 1. Explode block move / resize
+      const ex = explodeDragRef.current;
+      if (ex) {
+        const dxRaw = (event.clientX - ex.startClientX) * ex.scaleX;
+        const dyRaw = (event.clientY - ex.startClientY) * ex.scaleY;
+        let nextDest: PixelRect;
+        if (ex.kind === 'move') {
+          const w = ex.origDest.x2 - ex.origDest.x1;
+          const h = ex.origDest.y2 - ex.origDest.y1;
+          const x1 = Math.round(Math.max(0, Math.min(ex.pageW - w, ex.origDest.x1 + dxRaw)));
+          const y1 = Math.round(Math.max(0, Math.min(ex.pageH - h, ex.origDest.y1 + dyRaw)));
+          nextDest = { x1, y1, x2: x1 + w, y2: y1 + h };
+        } else {
+          nextDest = computeResizeRect(
+            ex.origDest,
+            ex.handle ?? 'se',
+            dxRaw,
+            dyRaw,
+            ex.pageW,
+            ex.pageH,
+            18
           );
+        }
+        if (
+          Math.abs(nextDest.x1 - ex.origDest.x1) > 1 ||
+          Math.abs(nextDest.y1 - ex.origDest.y1) > 1 ||
+          Math.abs(nextDest.x2 - ex.origDest.x2) > 1 ||
+          Math.abs(nextDest.y2 - ex.origDest.y2) > 1
+        ) {
+          ex.moved = true;
+        }
+        const src = ex.source;
+        const moveNoteId = `move-${ex.blockId}`;
+        const dx = nextDest.x1 - src.x1;
+        const dy = nextDest.y1 - src.y1;
+        const sw = Math.max(1, src.x2 - src.x1);
+        const sh = Math.max(1, src.y2 - src.y1);
+        const scaleX = (nextDest.x2 - nextDest.x1) / sw;
+        const scaleY = (nextDest.y2 - nextDest.y1) / sh;
+        const significant =
+          Math.abs(dx) > 2 ||
+          Math.abs(dy) > 2 ||
+          Math.abs(scaleX - 1) > 0.02 ||
+          Math.abs(scaleY - 1) > 0.02;
 
-          const existingIdx = page.annotations.findIndex((a) => a.blockId === session.blockId);
-          const annotations = [...page.annotations];
+        updatePagesRef.current((prev) =>
+          prev.map((page) => {
+            if (page.id !== ex.pageId) return page;
+            const blocks = page.blocks.map((b) =>
+              b.id === ex.blockId ? { ...b, dest: nextDest } : b
+            );
+            const idx = page.annotations.findIndex((a) => a.blockId === ex.blockId);
+            const annotations = [...page.annotations];
+            if (idx >= 0) {
+              annotations[idx] = {
+                ...annotations[idx],
+                rect: nextDest,
+                movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
+              };
+            } else if (significant) {
+              annotations.push({
+                id: moveNoteId,
+                number: nextNoteNumber(annotations),
+                kind: 'region',
+                text: '',
+                blockId: ex.blockId,
+                rect: nextDest,
+                movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
+              });
+            }
+            return { ...page, blocks, annotations };
+          })
+        );
+        if (significant) setSelectedNoteId(moveNoteId);
+        return;
+      }
 
-          if (existingIdx >= 0) {
-            annotations[existingIdx] = {
-              ...annotations[existingIdx],
-              rect: nextDest,
-              movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
+      // 2. Select/Move annotation drag
+      const ad = annDragRef.current;
+      if (ad) {
+        const dx = Math.round((event.clientX - ad.startClientX) * ad.scaleX);
+        const dy = Math.round((event.clientY - ad.startClientY) * ad.scaleY);
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) ad.moved = true;
+
+        updatePagesRef.current((prev) =>
+          prev.map((page) => {
+            if (page.id !== ad.pageId) return page;
+            return {
+              ...page,
+              annotations: page.annotations.map((note) => {
+                if (note.id !== ad.noteId) return note;
+                if (ad.kind === 'region' && ad.origRect) {
+                  const w = ad.origRect.x2 - ad.origRect.x1;
+                  const h = ad.origRect.y2 - ad.origRect.y1;
+                  const nx1 = Math.max(0, Math.min(ad.pageW - w, ad.origRect.x1 + dx));
+                  const ny1 = Math.max(0, Math.min(ad.pageH - h, ad.origRect.y1 + dy));
+                  return { ...note, rect: { x1: nx1, y1: ny1, x2: nx1 + w, y2: ny1 + h } };
+                }
+                if (ad.kind === 'point' && ad.origPoint) {
+                  const nx = Math.max(0, Math.min(ad.pageW, ad.origPoint.x + dx));
+                  const ny = Math.max(0, Math.min(ad.pageH, ad.origPoint.y + dy));
+                  return { ...note, point: { x: nx, y: ny } };
+                }
+                return note;
+              }),
             };
-          } else if (significantChange) {
-            annotations.push({
-              id: moveNoteId,
-              number: nextNoteNumber(annotations),
-              kind: 'region',
-              text: '',
-              blockId: session.blockId,
-              rect: nextDest,
-              movement: { source: src, rect: nextDest, dx, dy, scaleX, scaleY },
-            });
-          }
-          return { ...page, blocks, annotations };
-        })
-      );
+          })
+        );
+        return;
+      }
 
-      if (significantChange) {
-        setSelectedNoteId(moveNoteId);
+      // 3. Crop window move / resize
+      const cd = cropDragRef.current;
+      if (cd) {
+        const dxRaw = (event.clientX - cd.startClientX) * cd.scaleX;
+        const dyRaw = (event.clientY - cd.startClientY) * cd.scaleY;
+        if (cd.kind === 'move') {
+          const w = cd.origRect.x2 - cd.origRect.x1;
+          const h = cd.origRect.y2 - cd.origRect.y1;
+          const x1 = Math.round(Math.max(0, Math.min(cd.pageW - w, cd.origRect.x1 + dxRaw)));
+          const y1 = Math.round(Math.max(0, Math.min(cd.pageH - h, cd.origRect.y1 + dyRaw)));
+          setCropRect({ x1, y1, x2: x1 + w, y2: y1 + h });
+        } else {
+          setCropRect(
+            computeResizeRect(
+              cd.origRect,
+              cd.handle ?? 'se',
+              dxRaw,
+              dyRaw,
+              cd.pageW,
+              cd.pageH,
+              32,
+              ratioValue(cropRatioRef.current)
+            )
+          );
+        }
       }
     };
 
     const onWindowPointerUp = () => {
-      if (!explodeDragRef.current) return;
-      explodeDragRef.current = null;
+      if (explodeDragRef.current) {
+        const ex = explodeDragRef.current;
+        explodeDragRef.current = null;
+        if (ex.moved) pushUndoSnapshot(ex.snapshot);
+      }
+      if (annDragRef.current) {
+        const ad = annDragRef.current;
+        annDragRef.current = null;
+        if (ad.moved) pushUndoSnapshot(ad.snapshot);
+      }
+      if (cropDragRef.current) {
+        cropDragRef.current = null;
+      }
     };
 
     window.addEventListener('pointermove', onWindowPointerMove);
@@ -285,7 +780,7 @@ export default function WorkspaceView({
   const appendAnnotation = (partial: Omit<AnnotationItem, 'id' | 'number'>) => {
     const targetPageId = activePage.id;
     const newId = `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    onUpdatePages((prev) =>
+    commitPages((prev) =>
       prev.map((page) => {
         if (page.id !== targetPageId) return page;
         const number = nextNoteNumber(page.annotations);
@@ -324,11 +819,16 @@ export default function WorkspaceView({
   };
 
   const handleArtboardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activePage) return;
+    if (!activePage || tool === 'crop') return;
     const pt = clientToPixel(event.clientX, event.clientY);
 
+    if (tool === 'select') {
+      setSelectedMosaicId(null);
+      setSelectedNoteId('');
+      return;
+    }
+
     if (tool === 'explode') {
-      // Clicked empty background outside any block: clear selection & allow manual region cut drag
       setSelectedBlockId(null);
       event.currentTarget.setPointerCapture(event.pointerId);
       manualCutStartRef.current = pt;
@@ -361,16 +861,43 @@ export default function WorkspaceView({
       return;
     }
 
-    if (tool === 'box') {
+    if (tool === 'box' || tool === 'mosaic') {
+      setSelectedMosaicId(null);
       event.currentTarget.setPointerCapture(event.pointerId);
       drawStartRef.current = pt;
       setDraftBox({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
     }
   };
 
+  const updateLoupeAtPoint = (pt: { x: number; y: number }) => {
+    if (!magnifierEnabled || !activePage || !sourceBitmapRef.current || tool === 'explode') {
+      if (loupe) setLoupe(null);
+      return;
+    }
+    if (loupeRafRef.current !== null) return;
+    loupeRafRef.current = requestAnimationFrame(() => {
+      loupeRafRef.current = null;
+      const bmp = sourceBitmapRef.current;
+      if (!bmp || !activePage) return;
+      const sampled = sampleLoupeGrid(bmp, activePage.width, activePage.height, pt.x, pt.y, 6);
+      if (!sampled) return;
+      setLoupe({
+        px: pt.x,
+        py: pt.y,
+        pctX: (pt.x / Math.max(1, activePage.width)) * 100,
+        pctY: (pt.y / Math.max(1, activePage.height)) * 100,
+        ...sampled,
+      });
+    });
+  };
+
   const handleArtboardPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activePage) return;
     const pt = clientToPixel(event.clientX, event.clientY);
+
+    if (magnifierEnabled) {
+      updateLoupeAtPoint(pt);
+    }
 
     if (tool === 'smart') {
       const hit = activePage.blocks.find(
@@ -393,7 +920,7 @@ export default function WorkspaceView({
       });
     }
 
-    if (tool === 'box' && drawStartRef.current) {
+    if ((tool === 'box' || tool === 'mosaic') && drawStartRef.current) {
       const s = drawStartRef.current;
       setDraftBox({
         x1: Math.min(s.x, pt.x),
@@ -415,7 +942,30 @@ export default function WorkspaceView({
       const h = draftBox.y2 - draftBox.y1;
       setDraftBox(null);
       if (w >= 14 && h >= 14) {
-        appendAnnotation({ kind: 'region', text: '', rect: draftBox });
+        appendAnnotation({ kind: 'region', text: '', rect: clampRect(draftBox, activePage.width, activePage.height) });
+      }
+    }
+
+    if (tool === 'mosaic' && drawStartRef.current && draftBox) {
+      drawStartRef.current = null;
+      const w = draftBox.x2 - draftBox.x1;
+      const h = draftBox.y2 - draftBox.y1;
+      const finalBox = clampRect(draftBox, activePage.width, activePage.height);
+      setDraftBox(null);
+      if (w >= 10 && h >= 10) {
+        const mId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const region: MosaicRegion = {
+          id: mId,
+          rect: finalBox,
+          style: mosaicStyle,
+          strength: mosaicStrength,
+        };
+        commitPages((prev) =>
+          prev.map((p) =>
+            p.id !== activePage.id ? p : { ...p, mosaics: [...(p.mosaics ?? []), region] }
+          )
+        );
+        setSelectedMosaicId(mId);
       }
     }
 
@@ -432,7 +982,7 @@ export default function WorkspaceView({
           dest: { ...manualCutBox },
           manual: true,
         };
-        onUpdatePages((prev) =>
+        commitPages((prev) =>
           prev.map((page) =>
             page.id !== activePage.id
               ? page
@@ -472,11 +1022,80 @@ export default function WorkspaceView({
       pageH: activePage.height,
       scaleX: activePage.width / rect.width,
       scaleY: activePage.height / rect.height,
+      snapshot: pagesRef.current,
+      moved: false,
+    };
+  };
+
+  const startAnnotationDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    note: AnnotationItem
+  ) => {
+    if (tool !== 'select') return;
+    event.stopPropagation();
+    const el = artboardRef.current;
+    if (!el || !activePage) return;
+    const rect = el.getBoundingClientRect();
+    setSelectedNoteId(note.id);
+    setSelectedMosaicId(null);
+    setInspectorTab('page');
+    if (note.kind === 'region' && note.rect) {
+      annDragRef.current = {
+        kind: 'region',
+        noteId: note.id,
+        pageId: activePage.id,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        origRect: { ...note.rect },
+        pageW: activePage.width,
+        pageH: activePage.height,
+        scaleX: activePage.width / rect.width,
+        scaleY: activePage.height / rect.height,
+        snapshot: pagesRef.current,
+        moved: false,
+      };
+    } else if (note.kind === 'point' && note.point) {
+      annDragRef.current = {
+        kind: 'point',
+        noteId: note.id,
+        pageId: activePage.id,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        origPoint: { ...note.point },
+        pageW: activePage.width,
+        pageH: activePage.height,
+        scaleX: activePage.width / rect.width,
+        scaleY: activePage.height / rect.height,
+        snapshot: pagesRef.current,
+        moved: false,
+      };
+    }
+  };
+
+  const startCropSession = (
+    event: React.PointerEvent<HTMLElement>,
+    kind: 'move' | 'resize',
+    handle?: ResizeHandle
+  ) => {
+    event.stopPropagation();
+    const el = artboardRef.current;
+    if (!el || !activePage || !cropRect) return;
+    const rect = el.getBoundingClientRect();
+    cropDragRef.current = {
+      kind,
+      handle,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      origRect: { ...cropRect },
+      pageW: activePage.width,
+      pageH: activePage.height,
+      scaleX: activePage.width / rect.width,
+      scaleY: activePage.height / rect.height,
     };
   };
 
   const resetBlockMovement = (blockId: string) => {
-    onUpdatePages((prev) =>
+    commitPages((prev) =>
       prev.map((page) =>
         page.id !== activePage.id
           ? page
@@ -492,8 +1111,23 @@ export default function WorkspaceView({
     onToast('已复位组件布局位置');
   };
 
+  const resetAllExplodeBlocks = () => {
+    commitPages((prev) =>
+      prev.map((page) =>
+        page.id !== activePage.id
+          ? page
+          : {
+              ...page,
+              blocks: page.blocks.map((b) => ({ ...b, dest: { ...b.source } })),
+              annotations: page.annotations.filter((a) => !a.blockId),
+            }
+      )
+    );
+    onToast('已复位本页所有切片位置');
+  };
+
   const deleteNote = (note: AnnotationItem) => {
-    onUpdatePages((prev) =>
+    commitPages((prev) =>
       prev.map((page) =>
         page.id !== activePage.id
           ? page
@@ -530,6 +1164,110 @@ export default function WorkspaceView({
     }
   };
 
+  const buildRenderedPngForActivePage = async (): Promise<{ dataUrl: string; pngBase64: string } | null> => {
+    if (!activePage) return null;
+    const bmp =
+      sourceBitmapRef.current ?? (await loadBitmapForPage(activePage, artboardMediaRef.current));
+    if (!bmp) return null;
+    return composePageToPng(activePage, bmp, !hideAnnotations);
+  };
+
+  const handleCopyAnnotatedImage = async () => {
+    const rendered = await buildRenderedPngForActivePage();
+    if (!rendered || !rendered.pngBase64) {
+      onToast('当前画布图像暂不可编码');
+      return;
+    }
+    if (isDesktopWebView()) {
+      try {
+        await desktopRpc('clipboard.copyImage', { pngBase64: rendered.pngBase64 });
+        onToast('已复制带批注与打码效果的高清图片');
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : '复制图片失败');
+      }
+      return;
+    }
+    try {
+      const res = await fetch(rendered.dataUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      onToast('已复制合成图片到剪贴板');
+    } catch {
+      const a = document.createElement('a');
+      a.href = rendered.dataUrl;
+      a.download = `${activePage.name || 'edithere'}-annotated.png`;
+      a.click();
+      onToast('已直接下载合成 PNG 图片');
+    }
+  };
+
+  const handleSaveAnnotatedImage = async () => {
+    const rendered = await buildRenderedPngForActivePage();
+    if (!rendered || !rendered.pngBase64) {
+      onToast('没有可保存的图像内容');
+      return;
+    }
+    const defaultName = `${activePage.name || 'edithere'}-annotated.png`;
+    if (isDesktopWebView()) {
+      try {
+        const res = await desktopRpc<{ saved?: boolean }>('file.saveImage', {
+          defaultName,
+          pngBase64: rendered.pngBase64,
+        }, 0);
+        if (res.saved) onToast('已保存带批注 PNG 图片');
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : '保存图片失败');
+      }
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = rendered.dataUrl;
+    a.download = defaultName;
+    a.click();
+    onToast('已导出合成 PNG 图片');
+  };
+
+  const handlePinCurrentPage = async () => {
+    if (!isDesktopWebView()) {
+      onToast('请在 Windows 桌面端中使用置顶贴图窗');
+      return;
+    }
+    const rendered = await buildRenderedPngForActivePage();
+    try {
+      await desktopRpc('pin.page', {
+        pageId: activePage.id,
+        pngBase64: rendered?.pngBase64 ?? '',
+      });
+      onToast('已生成桌面置顶贴图窗（含马赛克与裁剪）');
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '当前页面无法贴图');
+    }
+  };
+
+  const handleSaveProject = async () => {
+    const defaultName = `${activePage?.name || 'edithere-project'}.edithere`;
+    if (isDesktopWebView()) {
+      try {
+        const res = await desktopRpc<{ saved?: boolean }>('file.saveProject', {
+          defaultName,
+          payload: { pages, groupNotes },
+        }, 0);
+        if (res.saved) onToast('已保存 EditHere 项目文件');
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : '保存项目失败');
+      }
+      return;
+    }
+    const json = JSON.stringify(buildFeedbackPayload(pages, groupNotes), null, 2);
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activePage?.name || 'edithere-project'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onToast('已导出项目 JSON');
+  };
+
   const liveJson = JSON.stringify(buildFeedbackPayload(pages, groupNotes), null, 2);
 
   const copyJson = async () => {
@@ -542,6 +1280,21 @@ export default function WorkspaceView({
       onToast('已复制实时 image-set-feedback-1 JSON');
     } catch {
       onToast('浏览器拒绝访问剪贴板，请使用导出功能');
+    }
+  };
+
+  const handleCopyFeedbackBundle = async () => {
+    if (!isDesktopWebView()) {
+      await copyJson();
+      return;
+    }
+    try {
+      const res = await desktopRpc<{ files?: number }>('clipboard.copyFeedbackBundle', {
+        payload: { pages, groupNotes },
+      });
+      onToast(`已复制 JSON 与配套原图文件（共 ${res.files ?? 2} 项）`);
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '复制 JSON 文件包失败');
     }
   };
 
@@ -567,15 +1320,6 @@ export default function WorkspaceView({
     onToast('已下载实时反馈 JSON');
   };
 
-  const handlePinCurrentPage = async () => {
-    try {
-      await desktopRpc('pin.page', { pageId: activePage.id });
-      onToast('已生成原图置顶贴图窗');
-    } catch (err) {
-      onToast(err instanceof Error ? err.message : '当前页面无法贴图');
-    }
-  };
-
   const pctX = (px: number) => `${(px / activePage.width) * 100}%`;
   const pctY = (px: number) => `${(px / activePage.height) * 100}%`;
   const rectStyle = (r: PixelRect) => ({
@@ -586,9 +1330,13 @@ export default function WorkspaceView({
   });
 
   const hoveredBlock = activePage?.blocks.find((b) => b.id === hoverBlockId) ?? null;
+  const pageMosaics = activePage?.mosaics ?? [];
+  const hasTransformedBlocks = Boolean(activePage?.blocks.some((b) => isBlockTransformed(b)));
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
 
   return (
-    <div className="workspace-root">
+    <div className={`workspace-root ${!inspectorOpen ? 'inspector-collapsed' : ''}`}>
       <input
         ref={fileInputRef}
         type="file"
@@ -604,649 +1352,1010 @@ export default function WorkspaceView({
       {/* Unified Canvas Architectural Surface (Stage + Attached Gallery Strip) */}
       <section className="canvas-surface">
         <div className="canvas-column">
-        <div className="canvas-top-hud">
-          <div className="canvas-meta-chip">
-            <span className="canvas-meta-dot" />
-            <strong>{activePage.name}</strong>
-            <code>{activePage.width} × {activePage.height}</code>
-            <span>·</span>
-            <span>{activePage.routeHint}</span>
-          </div>
+          <div className="canvas-top-hud">
+            <div className="canvas-meta-chip">
+              <span className="canvas-meta-dot" />
+              <strong>{activePage.name}</strong>
+              <code>{activePage.width} × {activePage.height}</code>
+              <span>·</span>
+              <span>{activePage.routeHint}</span>
+            </div>
 
-          <div className="canvas-zoom-pill">
-            <button
-              className="icon-button"
-              aria-label="缩小画布"
-              onClick={() => setZoom((z) => Math.max(60, z - 15))}
-            >
-              <Minus size={14} />
-            </button>
-            <span>{zoom}%</span>
-            <button
-              className="icon-button"
-              aria-label="放大画布"
-              onClick={() => setZoom((z) => Math.min(180, z + 15))}
-            >
-              <Plus size={14} />
-            </button>
-            <button className="button ghost sm" onClick={() => setZoom(100)}>1:1</button>
-          </div>
-        </div>
-
-        <div className="canvas-stage-wrap">
-          <div className="canvas-stage-inner">
-            <div
-              ref={artboardRef}
-              className={`artboard ${tool === 'box' || tool === 'point' ? 'cursor-crosshair' : ''}`}
-              style={{
-                aspectRatio: `${activePage.width} / ${activePage.height}`,
-                width: `min(100cqw, 820px, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
-                transform: `scale(${zoom / 100})`,
-              }}
-              onPointerDown={handleArtboardPointerDown}
-              onPointerMove={handleArtboardPointerMove}
-              onPointerUp={handleArtboardPointerUp}
-              onPointerLeave={() => setHoverBlockId(null)}
-            >
-              <div className="artboard-media">
-                <SceneArtwork sceneId={activePage.sceneId} imageUrl={activePage.imageUrl} />
+            <div className="canvas-top-right-hud">
+              <div className="canvas-zoom-pill">
+                <button
+                  className="icon-button"
+                  aria-label="缩小画布"
+                  onClick={() => setZoom((z) => Math.max(60, z - 15))}
+                >
+                  <Minus size={14} />
+                </button>
+                <span>{zoom}%</span>
+                <button
+                  className="icon-button"
+                  aria-label="放大画布"
+                  onClick={() => setZoom((z) => Math.min(180, z + 15))}
+                >
+                  <Plus size={14} />
+                </button>
+                <button className="button ghost sm" onClick={() => setZoom(100)} title="适应窗口大小">
+                  适应
+                </button>
               </div>
 
-              {/* Subtle ExplosionWave entry shimmer */}
-              {tool === 'explode' && explosionWaveKey > 0 && (
-                <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
-              )}
+              <div className="canvas-zoom-pill">
+                <button
+                  className="icon-button"
+                  aria-label={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
+                  title={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
+                  onClick={() => setInspectorOpen((o) => !o)}
+                >
+                  {inspectorOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+                </button>
+              </div>
+            </div>
+          </div>
 
-              {/* Smart hover highlight (pure geometric dashed outline + pixel size badge, zero fake semantic names) */}
-              {tool === 'smart' && hoveredBlock && (
-                <div className="smart-block-hover" style={rectStyle(hoveredBlock.dest)}>
-                  <span className="smart-block-size">
-                    {hoveredBlock.dest.x2 - hoveredBlock.dest.x1} × {hoveredBlock.dest.y2 - hoveredBlock.dest.y1}
-                  </span>
+          <div className="canvas-stage-wrap">
+            <div className="canvas-stage-inner">
+              <div
+                ref={artboardRef}
+                className={`artboard ${tool === 'box' || tool === 'point' || tool === 'mosaic' ? 'cursor-crosshair' : ''}`}
+                style={{
+                  aspectRatio: `${activePage.width} / ${activePage.height}`,
+                  width: `min(100cqw, 820px, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
+                  transform: `scale(${zoom / 100})`,
+                }}
+                onPointerDown={handleArtboardPointerDown}
+                onPointerMove={handleArtboardPointerMove}
+                onPointerUp={handleArtboardPointerUp}
+                onPointerLeave={() => {
+                  setHoverBlockId(null);
+                  setLoupe(null);
+                }}
+              >
+                <div className="artboard-media" ref={artboardMediaRef}>
+                  <SceneArtwork sceneId={activePage.sceneId} imageUrl={activePage.imageUrl} />
                 </div>
-              )}
 
-              {/* Authentic Visual-Cutout Explode Layer */}
-              {tool === 'explode' && (
-                <>
-                  {/* 1. Original cavities (transparency checkerboard where a slice was lifted) */}
-                  {activePage.blocks.map((block) =>
-                    isBlockTransformed(block) ? (
-                      <div
-                        key={`cavity-${block.id}`}
-                        className="explode-cavity"
-                        style={rectStyle(block.source)}
-                      />
-                    ) : null
-                  )}
+                {/* Live Mosaic Redaction Layer */}
+                <canvas
+                  ref={mosaicCanvasRef}
+                  className="mosaic-canvas"
+                  width={activePage.width}
+                  height={activePage.height}
+                />
 
-                  {/* 2. Physically lifted & resized visual slices */}
-                  {activePage.blocks.map((block) => {
-                    if (!isBlockTransformed(block)) return null;
-                    const sw = Math.max(1, block.source.x2 - block.source.x1);
-                    const sh = Math.max(1, block.source.y2 - block.source.y1);
-                    const isSelected = selectedBlockId === block.id;
-                    return (
-                      <div
-                        key={`slice-${block.id}`}
-                        className={`explode-piece ${isSelected ? 'is-selected' : ''}`}
-                        style={rectStyle(block.dest)}
-                      >
+                {/* Selectable Mosaic Outlines in Mosaic or Select tool */}
+                {(tool === 'mosaic' || tool === 'select') &&
+                  pageMosaics.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`mosaic-region-outline ${selectedMosaicId === m.id ? 'selected' : ''}`}
+                      style={rectStyle(m.rect)}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        setSelectedMosaicId(m.id);
+                      }}
+                    />
+                  ))}
+
+                {/* Subtle ExplosionWave entry shimmer */}
+                {tool === 'explode' && explosionWaveKey > 0 && (
+                  <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
+                )}
+
+                {/* Smart hover highlight */}
+                {!hideAnnotations && tool === 'smart' && hoveredBlock && (
+                  <div className="smart-block-hover" style={rectStyle(hoveredBlock.dest)}>
+                    <span className="smart-block-size">
+                      {hoveredBlock.dest.x2 - hoveredBlock.dest.x1} × {hoveredBlock.dest.y2 - hoveredBlock.dest.y1}
+                    </span>
+                  </div>
+                )}
+
+                {/* Authentic Visual-Cutout Explode Layer */}
+                {tool === 'explode' && (
+                  <>
+                    {activePage.blocks.map((block) =>
+                      isBlockTransformed(block) ? (
                         <div
-                          className="explode-piece-inner"
-                          style={{
-                            width: `${(activePage.width / sw) * 100}%`,
-                            height: `${(activePage.height / sh) * 100}%`,
-                            transform: `translate(${-(block.source.x1 / activePage.width) * 100}%, ${-(block.source.y1 / activePage.height) * 100}%)`,
-                          }}
-                        >
-                          <SceneArtwork
-                            sceneId={activePage.sceneId}
-                            imageUrl={activePage.imageUrl}
-                            stretch
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                          key={`cavity-${block.id}`}
+                          className="explode-cavity"
+                          style={rectStyle(block.source)}
+                        />
+                      ) : null
+                    )}
 
-                  {/* 3. Interactive Explode guides, 8 resize handles & pure-geometry delta pills */}
-                  {activePage.blocks.map((block) => {
-                    const transformed = isBlockTransformed(block);
-                    const isSelected = selectedBlockId === block.id;
-                    const isHovered = hoverBlockId === block.id;
-                    const linkedNote = activePage.annotations.find((a) => a.blockId === block.id);
-                    const dx = block.dest.x1 - block.source.x1;
-                    const dy = block.dest.y1 - block.source.y1;
-                    const sw = Math.max(1, block.source.x2 - block.source.x1);
-                    const sh = Math.max(1, block.source.y2 - block.source.y1);
-                    const sx = (block.dest.x2 - block.dest.x1) / sw;
-                    const sy = (block.dest.y2 - block.dest.y1) / sh;
-                    const scaled = Math.abs(sx - 1) > 0.02 || Math.abs(sy - 1) > 0.02;
-
-                    return (
-                      <div
-                        key={`guide-${block.id}`}
-                        className={`explode-block ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${transformed ? 'moved' : ''}`}
-                        style={rectStyle(block.dest)}
-                        onPointerEnter={() => setHoverBlockId(block.id)}
-                        onPointerLeave={() =>
-                          setHoverBlockId((cur) => (cur === block.id ? null : cur))
-                        }
-                        onPointerDown={(e) => startExplodeSession(e, block, 'move')}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          if (transformed) resetBlockMovement(block.id);
-                        }}
-                      >
-                        {linkedNote && <span className="corner-badge explode">{linkedNote.number}</span>}
-
-                        {(isSelected || isHovered) && transformed && (
-                          <span className="explode-delta-pill">
-                            Δ {dx >= 0 ? '+' : ''}{dx}, {dy >= 0 ? '+' : ''}{dy}
-                            {scaled ? ` · ${sx.toFixed(2)}×` : ''}
-                          </span>
-                        )}
-
-                        {isSelected &&
-                          RESIZE_HANDLES.map((h) => (
-                            <div
-                              key={h.id}
-                              className={`explode-handle handle-${h.id}`}
-                              style={{ cursor: h.cursor }}
-                              onPointerDown={(e) => startExplodeSession(e, block, 'resize', h.id)}
-                            />
-                          ))}
-                      </div>
-                    );
-                  })}
-
-                  {/* 4. Non-blocking Apple Trajectory Arrows (white halo + #007AFF) */}
-                  <svg
-                    className="explode-trajectories"
-                    viewBox={`0 0 ${activePage.width} ${activePage.height}`}
-                    preserveAspectRatio="none"
-                    aria-hidden="true"
-                  >
                     {activePage.blocks.map((block) => {
                       if (!isBlockTransformed(block)) return null;
-                      const x1 = (block.source.x1 + block.source.x2) / 2;
-                      const y1 = (block.source.y1 + block.source.y2) / 2;
-                      const x2 = (block.dest.x1 + block.dest.x2) / 2;
-                      const y2 = (block.dest.y1 + block.dest.y2) / 2;
-                      const len = Math.hypot(x2 - x1, y2 - y1);
-                      if (len < 6) return null;
-                      const ux = (x2 - x1) / len;
-                      const uy = (y2 - y1) / len;
-                      const nx = -uy;
-                      const ny = ux;
-                      const head = Math.min(11, Math.max(6, len * 0.25));
-                      const p1x = x2 - ux * head + nx * head * 0.45;
-                      const p1y = y2 - uy * head + ny * head * 0.45;
-                      const p2x = x2 - ux * head - nx * head * 0.45;
-                      const p2y = y2 - uy * head - ny * head * 0.45;
-                      const active = selectedBlockId === block.id;
-
+                      const sw = Math.max(1, block.source.x2 - block.source.x1);
+                      const sh = Math.max(1, block.source.y2 - block.source.y1);
+                      const isSelected = selectedBlockId === block.id;
                       return (
-                        <g key={`traj-${block.id}`} opacity={active ? 0.96 : 0.72}>
-                          <line
-                            x1={x1}
-                            y1={y1}
-                            x2={x2}
-                            y2={y2}
-                            stroke="rgba(255,255,255,0.85)"
-                            strokeWidth={active ? 4 : 3.2}
-                            strokeLinecap="round"
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <line
-                            x1={x1}
-                            y1={y1}
-                            x2={x2}
-                            y2={y2}
-                            stroke="var(--accent)"
-                            strokeWidth={active ? 2 : 1.5}
-                            strokeLinecap="round"
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <polyline
-                            points={`${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}`}
-                            fill="none"
-                            stroke="var(--accent)"
-                            strokeWidth={active ? 2 : 1.5}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            vectorEffect="non-scaling-stroke"
-                          />
-                          <circle
-                            cx={x1}
-                            cy={y1}
-                            r={Math.max(2.5, activePage.width / 240)}
-                            fill="#ffffff"
-                            stroke="var(--accent)"
-                            strokeWidth={1.5}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                        </g>
+                        <div
+                          key={`slice-${block.id}`}
+                          className={`explode-piece ${isSelected ? 'is-selected' : ''}`}
+                          style={rectStyle(block.dest)}
+                        >
+                          <div
+                            className="explode-piece-inner"
+                            style={{
+                              width: `${(activePage.width / sw) * 100}%`,
+                              height: `${(activePage.height / sh) * 100}%`,
+                              transform: `translate(${-(block.source.x1 / activePage.width) * 100}%, ${-(block.source.y1 / activePage.height) * 100}%)`,
+                            }}
+                          >
+                            <SceneArtwork
+                              sceneId={activePage.sceneId}
+                              imageUrl={activePage.imageUrl}
+                              stretch
+                            />
+                          </div>
+                        </div>
                       );
                     })}
-                  </svg>
 
-                  {/* 5. Manual cut selection box */}
-                  {manualCutBox && (
-                    <div className="box-draft-rect" style={rectStyle(manualCutBox)} />
-                  )}
-                </>
-              )}
+                    {activePage.blocks.map((block) => {
+                      const transformed = isBlockTransformed(block);
+                      const isSelected = selectedBlockId === block.id;
+                      const isHovered = hoverBlockId === block.id;
+                      const linkedNote = activePage.annotations.find((a) => a.blockId === block.id);
+                      const dx = block.dest.x1 - block.source.x1;
+                      const dy = block.dest.y1 - block.source.y1;
+                      const sw = Math.max(1, block.source.x2 - block.source.x1);
+                      const sh = Math.max(1, block.source.y2 - block.source.y1);
+                      const sx = (block.dest.x2 - block.dest.x1) / sw;
+                      const sy = (block.dest.y2 - block.dest.y1) / sh;
+                      const scaled = Math.abs(sx - 1) > 0.02 || Math.abs(sy - 1) > 0.02;
 
-              {/* Rendered Box & Point Annotations (hide duplicate box rect for blockId while actively in Explode mode) */}
-              {activePage.annotations.map((note) => {
-                if (note.kind === 'point' && note.point) {
-                  return (
-                    <button
-                      key={note.id}
-                      className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''}`}
-                      style={{
-                        left: pctX(note.point.x),
-                        top: pctY(note.point.y),
-                      }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedNoteId(note.id);
-                        setInspectorTab('page');
-                      }}
-                    >
-                      {note.number}
-                    </button>
-                  );
-                }
-                if (note.kind === 'region' && note.rect) {
-                  if (tool === 'explode' && note.blockId) return null;
-                  return (
+                      return (
+                        <div
+                          key={`guide-${block.id}`}
+                          className={`explode-block ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${transformed ? 'moved' : ''}`}
+                          style={rectStyle(block.dest)}
+                          onPointerEnter={() => setHoverBlockId(block.id)}
+                          onPointerLeave={() =>
+                            setHoverBlockId((cur) => (cur === block.id ? null : cur))
+                          }
+                          onPointerDown={(e) => startExplodeSession(e, block, 'move')}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (transformed) resetBlockMovement(block.id);
+                          }}
+                        >
+                          {!hideAnnotations && linkedNote && (
+                            <span className="corner-badge explode">{linkedNote.number}</span>
+                          )}
+
+                          {(isSelected || isHovered) && transformed && (
+                            <span className="explode-delta-pill">
+                              Δ {dx >= 0 ? '+' : ''}{dx}, {dy >= 0 ? '+' : ''}{dy}
+                              {scaled ? ` · ${sx.toFixed(2)}×` : ''}
+                            </span>
+                          )}
+
+                          {isSelected &&
+                            RESIZE_HANDLES.map((h) => (
+                              <div
+                                key={h.id}
+                                className={`explode-handle handle-${h.id}`}
+                                style={{ cursor: h.cursor }}
+                                onPointerDown={(e) => startExplodeSession(e, block, 'resize', h.id)}
+                              />
+                            ))}
+                        </div>
+                      );
+                    })}
+
+                    {!hideAnnotations && (
+                      <svg
+                        className="explode-trajectories"
+                        viewBox={`0 0 ${activePage.width} ${activePage.height}`}
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                      >
+                        {activePage.blocks.map((block) => {
+                          if (!isBlockTransformed(block)) return null;
+                          const x1 = (block.source.x1 + block.source.x2) / 2;
+                          const y1 = (block.source.y1 + block.source.y2) / 2;
+                          const x2 = (block.dest.x1 + block.dest.x2) / 2;
+                          const y2 = (block.dest.y1 + block.dest.y2) / 2;
+                          const len = Math.hypot(x2 - x1, y2 - y1);
+                          if (len < 6) return null;
+                          const ux = (x2 - x1) / len;
+                          const uy = (y2 - y1) / len;
+                          const nx = -uy;
+                          const ny = ux;
+                          const head = Math.min(11, Math.max(6, len * 0.25));
+                          const p1x = x2 - ux * head + nx * head * 0.45;
+                          const p1y = y2 - uy * head + ny * head * 0.45;
+                          const p2x = x2 - ux * head - nx * head * 0.45;
+                          const p2y = y2 - uy * head - ny * head * 0.45;
+                          const active = selectedBlockId === block.id;
+
+                          return (
+                            <g key={`traj-${block.id}`} opacity={active ? 0.96 : 0.72}>
+                              <line
+                                x1={x1}
+                                y1={y1}
+                                x2={x2}
+                                y2={y2}
+                                stroke="rgba(255,255,255,0.85)"
+                                strokeWidth={active ? 4 : 3.2}
+                                strokeLinecap="round"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                              <line
+                                x1={x1}
+                                y1={y1}
+                                x2={x2}
+                                y2={y2}
+                                stroke="var(--accent)"
+                                strokeWidth={active ? 2 : 1.5}
+                                strokeLinecap="round"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                              <polyline
+                                points={`${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}`}
+                                fill="none"
+                                stroke="var(--accent)"
+                                strokeWidth={active ? 2 : 1.5}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                              <circle
+                                cx={x1}
+                                cy={y1}
+                                r={Math.max(2.5, activePage.width / 240)}
+                                fill="#ffffff"
+                                stroke="var(--accent)"
+                                strokeWidth={1.5}
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    )}
+
+                    {manualCutBox && (
+                      <div className="box-draft-rect" style={rectStyle(manualCutBox)} />
+                    )}
+                  </>
+                )}
+
+                {/* Rendered Box & Point Annotations */}
+                {!hideAnnotations &&
+                  activePage.annotations.map((note) => {
+                    if (note.kind === 'point' && note.point) {
+                      return (
+                        <button
+                          key={note.id}
+                          className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''}`}
+                          style={{
+                            left: pctX(note.point.x),
+                            top: pctY(note.point.y),
+                          }}
+                          onPointerDown={(e) => startAnnotationDrag(e, note)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNoteId(note.id);
+                            setInspectorTab('page');
+                          }}
+                        >
+                          {note.number}
+                        </button>
+                      );
+                    }
+                    if (note.kind === 'region' && note.rect) {
+                      if (tool === 'explode' && note.blockId) return null;
+                      return (
+                        <div
+                          key={note.id}
+                          className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''}`}
+                          style={rectStyle(note.rect)}
+                          onPointerDown={(e) => startAnnotationDrag(e, note)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNoteId(note.id);
+                            setInspectorTab('page');
+                          }}
+                        >
+                          <span className="corner-badge">{note.number}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+
+                {/* Interactive Crop Overlay */}
+                {tool === 'crop' && cropRect && (
+                  <div className="crop-overlay-layer" onPointerDown={(e) => e.stopPropagation()}>
                     <div
-                      key={note.id}
-                      className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''}`}
-                      style={rectStyle(note.rect)}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedNoteId(note.id);
-                        setInspectorTab('page');
-                      }}
+                      className="crop-window"
+                      style={rectStyle(cropRect)}
+                      onPointerDown={(e) => startCropSession(e, 'move')}
                     >
-                      <span className="corner-badge">{note.number}</span>
+                      <div className="crop-thirds-grid" />
+                      <span className="crop-size-tag">
+                        {cropRect.x2 - cropRect.x1} × {cropRect.y2 - cropRect.y1} px
+                      </span>
+                      {RESIZE_HANDLES.map((h) => (
+                        <div
+                          key={h.id}
+                          className={`explode-handle handle-${h.id}`}
+                          style={{ cursor: h.cursor }}
+                          onPointerDown={(e) => startCropSession(e, 'resize', h.id)}
+                        />
+                      ))}
                     </div>
-                  );
-                }
-                return null;
-              })}
+                  </div>
+                )}
 
-              {/* Live Rubber-Band Box */}
-              {draftBox && <div className="box-draft-rect" style={rectStyle(draftBox)} />}
-            </div>
-          </div>
-        </div>
+                {/* Live Rubber-Band Box / Mosaic Draft */}
+                {draftBox && <div className="box-draft-rect" style={rectStyle(draftBox)} />}
 
-        {/* Explode interaction hint pill (only when not colliding with video timeline) */}
-        {tool === 'explode' && !videoMode && (
-          <div className="explode-hint-pill">
-            单击选块 · 拖动移动 · 拖拽 8 角点缩放 · 空处拉框手动切分 · Esc 取消选中
-          </div>
-        )}
-
-        {/* Optional Video Timeline Strip */}
-        {videoMode && (
-          <div className="video-timeline-bar">
-            <button
-              className="icon-button"
-              aria-label={videoPlaying ? '暂停' : '播放'}
-              onClick={() => setVideoPlaying((p) => !p)}
-            >
-              {videoPlaying ? <Pause size={15} /> : <Play size={15} />}
-            </button>
-            <code style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
-              {(videoTimeMs / 1000).toFixed(2)}s / 12.00s
-            </code>
-            <div className="video-scrubber">
-              <input
-                type="range"
-                min={0}
-                max={12000}
-                step={40}
-                value={videoTimeMs}
-                onChange={(e) => {
-                  setVideoPlaying(false);
-                  setVideoTimeMs(Number(e.target.value));
-                }}
-              />
-            </div>
-            <div className="video-markers-row">
-              {INITIAL_VIDEO_MARKERS.map((m) => (
-                <button
-                  key={m.id}
-                  className={`video-marker-chip ${Math.abs(videoTimeMs - m.timestampMs) < 350 ? 'active' : ''}`}
-                  onClick={() => {
-                    setVideoPlaying(false);
-                    setVideoTimeMs(m.timestampMs);
-                    onToast(m.note);
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Frosted Apple Capsule Floating Tool Dock */}
-        <div className="floating-dock" role="toolbar" aria-label="批注与布局工具">
-          <button
-            className={`dock-tool ${tool === 'smart' ? 'active' : ''}`}
-            onClick={() => setTool('smart')}
-            title="悬停自动吸附界面区块"
-          >
-            <Scan size={15} />
-            <span>智能选块</span>
-          </button>
-          <button
-            className={`dock-tool ${tool === 'point' ? 'active' : ''}`}
-            onClick={() => setTool('point')}
-            title="点击画面精确放点批注"
-          >
-            <MousePointerClick size={15} />
-            <span>点批注</span>
-          </button>
-          <button
-            className={`dock-tool ${tool === 'box' ? 'active' : ''}`}
-            onClick={() => setTool('box')}
-            title="在画面上按住拖拽拉框"
-          >
-            <Square size={15} />
-            <span>框批注</span>
-          </button>
-          <span className="dock-sep" />
-          <button
-            className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
-            onClick={toggleExplodeMode}
-          >
-            <Layers2 size={15} />
-            <span>大爆炸</span>
-          </button>
-          <button
-            className={`dock-tool ${videoMode ? 'active' : ''}`}
-            onClick={() => setVideoMode((v) => !v)}
-            title="切换视频时间轴批注条预览"
-          >
-            <Film size={15} />
-            <span>视频时间轴</span>
-          </button>
-          <span className="dock-sep" />
-          <button
-            className="dock-tool"
-            onClick={triggerImport}
-            title="导入本地图片或组图项目 (Ctrl+I)"
-          >
-            <ImagePlus size={15} />
-            <span>导入图片</span>
-          </button>
-          {isDesktopWebView() && (
-            <button
-              className="dock-tool"
-              onClick={handlePinCurrentPage}
-              title="将当前页面原图置顶贴在屏幕最前"
-            >
-              <Pin size={15} />
-              <span>贴图</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Multi-Page Gallery Strip */}
-      <div className="gallery-strip" role="tablist" aria-label="项目组图页面">
-        <span className="badge neutral">组图 · {pages.length} 页</span>
-        {pages.map((page) => {
-          const count = page.annotations.length;
-          return (
-            <button
-              key={page.id}
-              className={`gallery-thumb-btn ${page.id === activePage.id ? 'active' : ''}`}
-              onClick={() => onSelectPage(page.id)}
-            >
-              <span>{page.name}</span>
-              <span className="gallery-count-pill">{count}</span>
-            </button>
-          );
-        })}
-        <button className="button ghost sm" onClick={triggerImport}>
-          <Plus size={14} /> 添加页面
-        </button>
-      </div>
-      </section>
-
-      {/* Right Inspector */}
-      <Tabs.Root
-        className="inspector-column"
-        value={inspectorTab}
-        onValueChange={(v) => setInspectorTab(v as 'page' | 'group')}
-      >
-        <div className="inspector-tabs-wrap">
-          <Tabs.List className="inspector-tabs-list" aria-label="批注面板视图">
-            <Tabs.Trigger className="inspector-tab-trigger" value="page">
-              本页批注 <span className="tab-count">{activePage.annotations.length}</span>
-            </Tabs.Trigger>
-            <Tabs.Trigger className="inspector-tab-trigger" value="group">
-              整组意见 <span className="tab-count">{groupNotes.length}</span>
-            </Tabs.Trigger>
-          </Tabs.List>
-        </div>
-
-        <Tabs.Content value="page" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div className="inspector-subbar">
-            <span>在画面拉框、放点或拖动切片</span>
-            <button
-              className="button ghost sm"
-              onClick={() => appendAnnotation({ kind: 'global', text: '' })}
-            >
-              <MessageSquarePlus size={14} /> 全局意见
-            </button>
-          </div>
-          <div className="inspector-list">
-            {activePage.annotations.length === 0 ? (
-              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
-                当前页面暂无批注。<br />选择「框批注」在画布拖拽，或切换「大爆炸」直接切分与调整切片位置。
+                {/* PixPin-Style Pixel Loupe Overlay */}
+                {magnifierEnabled && loupe && tool !== 'explode' && (
+                  <div
+                    className="pixel-loupe"
+                    style={{
+                      left: loupe.pctX > 66 ? `calc(${loupe.pctX}% - 144px)` : `calc(${loupe.pctX}% + 16px)`,
+                      top: loupe.pctY > 64 ? `calc(${loupe.pctY}% - 160px)` : `calc(${loupe.pctY}% + 16px)`,
+                    }}
+                  >
+                    <img className="pixel-loupe-img" src={loupe.dataUrl} alt="像素放大镜" />
+                    <div className="pixel-loupe-meta">
+                      <span>({loupe.px}, {loupe.py})</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span className="pixel-loupe-swatch" style={{ background: loupe.hex }} />
+                        {loupe.hex}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              activePage.annotations.map((note) => (
-                <article
-                  key={note.id}
-                  className={`note-card ${selectedNoteId === note.id ? 'selected' : ''}`}
+            </div>
+          </div>
+
+          {/* PixPin Two-Tier Contextual Sub-Bar */}
+          {!videoMode && tool === 'mosaic' && (
+            <div className="dock-subbar" role="region" aria-label="马赛克工具选项">
+              <div className="segmented-control">
+                <button
+                  className={mosaicStyle === 'pixelate' ? 'selected' : ''}
                   onClick={() => {
-                    setSelectedNoteId(note.id);
-                    if (tool === 'explode' && note.blockId) {
-                      setSelectedBlockId(note.blockId);
+                    setMosaicStyle('pixelate');
+                    if (selectedMosaicId) {
+                      commitPages((prev) =>
+                        prev.map((p) =>
+                          p.id !== activePage.id
+                            ? p
+                            : {
+                                ...p,
+                                mosaics: (p.mosaics ?? []).map((m) =>
+                                  m.id === selectedMosaicId ? { ...m, style: 'pixelate' } : m
+                                ),
+                              }
+                        )
+                      );
                     }
                   }}
                 >
-                  <div className="note-card-head">
-                    <span className={`note-num ${note.movement ? 'explode' : ''}`}>{note.number}</span>
-                    <span className="badge neutral">
-                      {note.movement
-                        ? `位移 ${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}, ${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}`
-                        : note.kind === 'point'
-                          ? '点定位'
-                          : note.kind === 'global'
-                            ? '整页意见'
-                            : '框选区域'}
-                    </span>
-                    <div className="note-card-actions">
-                      {note.blockId && (
-                        <button
-                          className="icon-button"
-                          title="复位组件位移"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            resetBlockMovement(note.blockId!);
-                          }}
-                        >
-                          <RotateCcw size={13} />
-                        </button>
-                      )}
-                      <button
-                        className="icon-button"
-                        title="删除批注"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNote(note);
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {editingNoteId === note.id ? (
-                    <textarea
-                      autoFocus
-                      className="note-textarea"
-                      placeholder="输入具体的修改意见…"
-                      value={note.text}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        onUpdatePages((prev) =>
+                  像素块
+                </button>
+                <button
+                  className={mosaicStyle === 'blur' ? 'selected' : ''}
+                  onClick={() => {
+                    setMosaicStyle('blur');
+                    if (selectedMosaicId) {
+                      commitPages((prev) =>
+                        prev.map((p) =>
+                          p.id !== activePage.id
+                            ? p
+                            : {
+                                ...p,
+                                mosaics: (p.mosaics ?? []).map((m) =>
+                                  m.id === selectedMosaicId ? { ...m, style: 'blur' } : m
+                                ),
+                              }
+                        )
+                      );
+                    }
+                  }}
+                >
+                  高斯模糊
+                </button>
+              </div>
+              <span className="dock-subbar-sep" />
+              <span>强度 {mosaicStrength}</span>
+              <input
+                className="dock-subbar-slider"
+                type="range"
+                min={6}
+                max={28}
+                step={2}
+                value={mosaicStrength}
+                onChange={(e) => setMosaicStrength(Number(e.target.value))}
+              />
+              {pageMosaics.length > 0 && (
+                <>
+                  <span className="dock-subbar-sep" />
+                  <span>{pageMosaics.length} 处</span>
+                  {selectedMosaicId && (
+                    <button
+                      className="button ghost sm"
+                      onClick={() => {
+                        commitPages((prev) =>
                           prev.map((p) =>
                             p.id !== activePage.id
                               ? p
                               : {
                                   ...p,
-                                  annotations: p.annotations.map((a) =>
-                                    a.id === note.id ? { ...a, text: val } : a
-                                  ),
+                                  mosaics: (p.mosaics ?? []).filter((m) => m.id !== selectedMosaicId),
                                 }
                           )
+                        );
+                        setSelectedMosaicId(null);
+                      }}
+                    >
+                      删除选中
+                    </button>
+                  )}
+                  <button
+                    className="button ghost sm"
+                    onClick={() => {
+                      commitPages((prev) =>
+                        prev.map((p) => (p.id !== activePage.id ? p : { ...p, mosaics: [] }))
+                      );
+                      setSelectedMosaicId(null);
+                      onToast('已清空本页马赛克');
+                    }}
+                  >
+                    清空
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {!videoMode && tool === 'crop' && cropRect && (
+            <div className="dock-subbar" role="region" aria-label="裁剪选项">
+              <code style={{ fontFamily: 'var(--mono)' }}>
+                {cropRect.x2 - cropRect.x1} × {cropRect.y2 - cropRect.y1} px
+              </code>
+              <span className="dock-subbar-sep" />
+              <div className="segmented-control">
+                {(['free', '16:9', '4:3', '1:1'] as CropRatio[]).map((r) => (
+                  <button
+                    key={r}
+                    className={cropRatio === r ? 'selected' : ''}
+                    onClick={() => applyCropRatioPreset(r)}
+                  >
+                    {r === 'free' ? '自由' : r}
+                  </button>
+                ))}
+              </div>
+              <span className="dock-subbar-sep" />
+              <button
+                className="button ghost sm"
+                onClick={() => {
+                  setCropRect(null);
+                  setTool('box');
+                }}
+              >
+                取消
+              </button>
+              <button className="button primary sm" onClick={() => void confirmCrop()}>
+                确认裁剪
+              </button>
+            </div>
+          )}
+
+          {!videoMode && tool === 'explode' && (
+            <div className="dock-subbar" role="region" aria-label="大爆炸操作提示">
+              <span>选块 · 拖动 · 8角缩放 · 空处拉框手动切分</span>
+              {hasTransformedBlocks && (
+                <>
+                  <span className="dock-subbar-sep" />
+                  <button className="button ghost sm" onClick={resetAllExplodeBlocks}>
+                    <RotateCcw size={12} /> 复位全部
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Optional Video Timeline Strip */}
+          {videoMode && (
+            <div className="video-timeline-bar">
+              <button
+                className="icon-button"
+                aria-label={videoPlaying ? '暂停' : '播放'}
+                onClick={() => setVideoPlaying((p) => !p)}
+              >
+                {videoPlaying ? <Pause size={15} /> : <Play size={15} />}
+              </button>
+              <code style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
+                {(videoTimeMs / 1000).toFixed(2)}s / 12.00s
+              </code>
+              <div className="video-scrubber">
+                <input
+                  type="range"
+                  min={0}
+                  max={12000}
+                  step={40}
+                  value={videoTimeMs}
+                  onChange={(e) => {
+                    setVideoPlaying(false);
+                    setVideoTimeMs(Number(e.target.value));
+                  }}
+                />
+              </div>
+              <div className="video-markers-row">
+                {INITIAL_VIDEO_MARKERS.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`video-marker-chip ${Math.abs(videoTimeMs - m.timestampMs) < 350 ? 'active' : ''}`}
+                    onClick={() => {
+                      setVideoPlaying(false);
+                      setVideoTimeMs(m.timestampMs);
+                      onToast(m.note);
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Full-Parity Concentric Bottom Dock */}
+          <div className="floating-dock" role="toolbar" aria-label="全套批注与图像工具栏">
+            {/* Cluster 1: Annotation & Explode */}
+            <button
+              className={`dock-tool icon-only ${tool === 'select' ? 'active' : ''}`}
+              onClick={() => setTool('select')}
+              title="选择与拖动位置 (V)"
+              aria-label="选择与移动"
+            >
+              <MousePointer2 size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${tool === 'smart' ? 'active' : ''}`}
+              onClick={() => setTool('smart')}
+              title="智能吸附选块 (S)"
+              aria-label="智能选块"
+            >
+              <Scan size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${tool === 'point' ? 'active' : ''}`}
+              onClick={() => setTool('point')}
+              title="点批注 (P)"
+              aria-label="点批注"
+            >
+              <MousePointerClick size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${tool === 'box' ? 'active' : ''}`}
+              onClick={() => setTool('box')}
+              title="框批注 (R)"
+              aria-label="框批注"
+            >
+              <Square size={15} />
+            </button>
+            <button
+              className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
+              onClick={toggleExplodeMode}
+              title="大爆炸视觉切片拆解 (E)"
+            >
+              <Layers2 size={15} />
+              <span>大爆炸</span>
+            </button>
+
+            <span className="dock-sep" />
+
+            {/* Cluster 2: Image Redaction & Crop */}
+            <button
+              className={`dock-tool icon-only ${tool === 'mosaic' ? 'active' : ''}`}
+              onClick={() => setTool((t) => (t === 'mosaic' ? 'box' : 'mosaic'))}
+              title="马赛克 / 高斯模糊打码 (M)"
+              aria-label="马赛克"
+            >
+              <Grid2x2 size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${tool === 'crop' ? 'active' : ''}`}
+              onClick={() => (tool === 'crop' ? (setCropRect(null), setTool('box')) : enterCropMode())}
+              title="交互式裁剪画布 (C)"
+              aria-label="裁剪"
+            >
+              <Crop size={15} />
+            </button>
+
+            <span className="dock-sep" />
+
+            {/* Cluster 3: History & View Assists */}
+            <button
+              className="dock-tool icon-only"
+              disabled={!canUndo}
+              onClick={handleUndo}
+              title="撤销 (Ctrl+Z)"
+              aria-label="撤销"
+            >
+              <Undo2 size={15} />
+            </button>
+            <button
+              className="dock-tool icon-only"
+              disabled={!canRedo}
+              onClick={handleRedo}
+              title="重做 (Ctrl+Y)"
+              aria-label="重做"
+            >
+              <Redo2 size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${hideAnnotations ? 'active' : ''}`}
+              onClick={() => setHideAnnotations((h) => !h)}
+              title={hideAnnotations ? '显示批注标记 (H)' : '隐藏批注标记 (H)'}
+              aria-label="切换批注显示"
+            >
+              {hideAnnotations ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+            <button
+              className={`dock-tool icon-only ${includeOcr ? 'active' : ''}`}
+              onClick={() => {
+                onToggleOcr?.();
+                onToast(includeOcr ? '已关闭框选自动 OCR' : '已开启框选自动 OCR');
+              }}
+              title={includeOcr ? '区域自动 OCR：已开启' : '区域自动 OCR：已关闭'}
+              aria-label="切换自动 OCR"
+            >
+              <ScanText size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${magnifierEnabled ? 'active' : ''}`}
+              onClick={() => {
+                setMagnifierEnabled((v) => !v);
+                setLoupe(null);
+              }}
+              title="像素放大镜与取色"
+              aria-label="像素放大镜"
+            >
+              <Search size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${videoMode ? 'active' : ''}`}
+              onClick={() => setVideoMode((v) => !v)}
+              title="视频时间轴批注条"
+              aria-label="视频时间轴"
+            >
+              <Film size={15} />
+            </button>
+
+            <span className="dock-sep" />
+
+            {/* Cluster 4: Output & More */}
+            <button
+              className="dock-tool icon-only"
+              onClick={() => void handleCopyAnnotatedImage()}
+              title="复制带批注与打码图片"
+              aria-label="复制图片"
+            >
+              <ClipboardCopy size={15} />
+            </button>
+            <button
+              className="dock-tool icon-only"
+              onClick={() => void handleSaveAnnotatedImage()}
+              title="保存带批注图片 (PNG)"
+              aria-label="保存图片"
+            >
+              <ImageDown size={15} />
+            </button>
+            <button
+              className="dock-tool icon-only"
+              onClick={() => void handlePinCurrentPage()}
+              title="桌面置顶贴图窗"
+              aria-label="贴图"
+            >
+              <Pin size={15} />
+            </button>
+            <button
+              className="dock-tool icon-only"
+              onClick={triggerImport}
+              title="导入本地图片或组图项目 (Ctrl+I)"
+              aria-label="导入图片"
+            >
+              <ImagePlus size={15} />
+            </button>
+
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="dock-tool icon-only" title="更多操作与项目输出" aria-label="更多操作">
+                  <MoreHorizontal size={15} />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="dropdown-menu" side="top" sideOffset={8} align="end">
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleSaveProject()}>
+                    <Save size={14} /> 保存项目 (.edithere)
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleCopyFeedbackBundle()}>
+                    <FolderOutput size={14} /> 复制 JSON 与原图文件
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => void copyJson()}>
+                    <Copy size={14} /> 复制实时 JSON 文本
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => setJsonOpen(true)}>
+                    <Code2 size={14} /> 查看 / 导出 JSON
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Separator className="dropdown-separator" />
+                  {onCapture && (
+                    <DropdownMenu.Item className="dropdown-item" onSelect={onCapture}>
+                      <Camera size={14} /> 重新截图
+                    </DropdownMenu.Item>
+                  )}
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => setZoom(100)}>
+                    <Maximize2 size={14} /> 适应画布大小
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className="dropdown-item" onSelect={() => setInspectorOpen((o) => !o)}>
+                    <FileText size={14} /> {inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+        </div>
+
+        {/* Multi-Page Gallery Strip */}
+        <div className="gallery-strip" role="tablist" aria-label="项目组图页面">
+          <span className="badge neutral">组图 · {pages.length} 页</span>
+          {pages.map((page) => {
+            const count = page.annotations.length;
+            return (
+              <button
+                key={page.id}
+                className={`gallery-thumb-btn ${page.id === activePage.id ? 'active' : ''}`}
+                onClick={() => onSelectPage(page.id)}
+              >
+                <span>{page.name}</span>
+                <span className="gallery-count-pill">{count}</span>
+              </button>
+            );
+          })}
+          <button className="button ghost sm" onClick={triggerImport}>
+            <Plus size={14} /> 添加页面
+          </button>
+        </div>
+      </section>
+
+      {/* Right Inspector */}
+      {inspectorOpen && (
+        <Tabs.Root
+          className="inspector-column"
+          value={inspectorTab}
+          onValueChange={(v) => setInspectorTab(v as 'page' | 'group')}
+        >
+          <div className="inspector-tabs-wrap">
+            <Tabs.List className="inspector-tabs-list" aria-label="批注面板视图">
+              <Tabs.Trigger className="inspector-tab-trigger" value="page">
+                本页批注 <span className="tab-count">{activePage.annotations.length}</span>
+              </Tabs.Trigger>
+              <Tabs.Trigger className="inspector-tab-trigger" value="group">
+                整组意见 <span className="tab-count">{groupNotes.length}</span>
+              </Tabs.Trigger>
+            </Tabs.List>
+          </div>
+
+          <Tabs.Content value="page" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div className="inspector-subbar">
+              <span>在画面拉框、放点或拖动切片</span>
+              <button
+                className="button ghost sm"
+                onClick={() => appendAnnotation({ kind: 'global', text: '' })}
+              >
+                <MessageSquarePlus size={14} /> 全局意见
+              </button>
+            </div>
+            <div className="inspector-list">
+              {activePage.annotations.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
+                  当前页面暂无批注。<br />选择「框批注」在画布拖拽，或切换「大爆炸 / 马赛克 / 裁剪」直接编辑画面。
+                </div>
+              ) : (
+                activePage.annotations.map((note) => (
+                  <article
+                    key={note.id}
+                    className={`note-card ${selectedNoteId === note.id ? 'selected' : ''}`}
+                    onClick={() => {
+                      setSelectedNoteId(note.id);
+                      if (tool === 'explode' && note.blockId) {
+                        setSelectedBlockId(note.blockId);
+                      }
+                    }}
+                  >
+                    <div className="note-card-head">
+                      <span className={`note-num ${note.movement ? 'explode' : ''}`}>{note.number}</span>
+                      <span className="badge neutral">
+                        {note.movement
+                          ? `位移 ${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}, ${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}`
+                          : note.kind === 'point'
+                            ? '点定位'
+                            : note.kind === 'global'
+                              ? '整页意见'
+                              : '框选区域'}
+                      </span>
+                      <div className="note-card-actions">
+                        {note.blockId && (
+                          <button
+                            className="icon-button"
+                            title="复位组件位移"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resetBlockMovement(note.blockId!);
+                            }}
+                          >
+                            <RotateCcw size={13} />
+                          </button>
+                        )}
+                        <button
+                          className="icon-button"
+                          title="删除批注"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteNote(note);
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {editingNoteId === note.id ? (
+                      <textarea
+                        autoFocus
+                        className="note-textarea"
+                        placeholder="输入具体的修改意见…"
+                        value={note.text}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          onUpdatePages((prev) =>
+                            prev.map((p) =>
+                              p.id !== activePage.id
+                                ? p
+                                : {
+                                    ...p,
+                                    annotations: p.annotations.map((a) =>
+                                      a.id === note.id ? { ...a, text: val } : a
+                                    ),
+                                  }
+                            )
+                          );
+                        }}
+                        onBlur={() => setEditingNoteId(null)}
+                      />
+                    ) : (
+                      <button
+                        className={`note-body-btn ${!note.text ? 'note-body-placeholder' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedNoteId(note.id);
+                          setEditingNoteId(note.id);
+                        }}
+                      >
+                        {note.text || '点击补充文字说明（仅拖动位置也是有效布局意见）'}
+                      </button>
+                    )}
+
+                    {(note.rect || note.point || note.ocrtext) && (
+                      <div className="note-meta-foot">
+                        <span>
+                          {note.rect
+                            ? `(${note.rect.x1},${note.rect.y1})→(${note.rect.x2},${note.rect.y2})`
+                            : note.point
+                              ? `(${note.point.x},${note.point.y})`
+                              : ''}
+                        </span>
+                        {note.ocrtext && <span>OCR: {note.ocrtext.slice(0, 18)}</span>}
+                      </div>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          </Tabs.Content>
+
+          <Tabs.Content value="group" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div className="inspector-subbar">
+              <span>作用于多页、共享组件或主题 Token</span>
+              <button className="button ghost sm" onClick={addGlobalGroupNote}>
+                <Plus size={14} /> 添加整组意见
+              </button>
+            </div>
+            <div className="inspector-list">
+              {groupNotes.map((g) => (
+                <article key={g.id} className="note-card">
+                  <div className="note-card-head">
+                    <span className="note-num">{g.number}</span>
+                    <span className="badge accent">整组规范</span>
+                    <div className="note-card-actions">
+                      <button
+                        className="icon-button"
+                        title="删除整组意见"
+                        onClick={() => onUpdateGroupNotes((prev) => prev.filter((item) => item.id !== g.id))}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                  {editingNoteId === g.id ? (
+                    <textarea
+                      autoFocus
+                      className="note-textarea"
+                      placeholder="输入跨页面统一修改意见…"
+                      value={g.text}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        onUpdateGroupNotes((prev) =>
+                          prev.map((item) => (item.id === g.id ? { ...item, text: val } : item))
                         );
                       }}
                       onBlur={() => setEditingNoteId(null)}
                     />
                   ) : (
                     <button
-                      className={`note-body-btn ${!note.text ? 'note-body-placeholder' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedNoteId(note.id);
-                        setEditingNoteId(note.id);
-                      }}
+                      className={`note-body-btn ${!g.text ? 'note-body-placeholder' : ''}`}
+                      onClick={() => setEditingNoteId(g.id)}
                     >
-                      {note.text || '点击补充文字说明（仅拖动位置也是有效布局意见）'}
+                      {g.text || '点击填写整组设计或布局意见…'}
                     </button>
-                  )}
-
-                  {(note.rect || note.point || note.ocrtext) && (
-                    <div className="note-meta-foot">
-                      <span>
-                        {note.rect
-                          ? `(${note.rect.x1},${note.rect.y1})→(${note.rect.x2},${note.rect.y2})`
-                          : note.point
-                            ? `(${note.point.x},${note.point.y})`
-                            : ''}
-                      </span>
-                      {note.ocrtext && <span>OCR: {note.ocrtext.slice(0, 18)}</span>}
-                    </div>
                   )}
                 </article>
-              ))
-            )}
-          </div>
-        </Tabs.Content>
+              ))}
+            </div>
+          </Tabs.Content>
 
-        <Tabs.Content value="group" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div className="inspector-subbar">
-            <span>作用于多页、共享组件或主题 Token</span>
-            <button className="button ghost sm" onClick={addGlobalGroupNote}>
-              <Plus size={14} /> 添加整组意见
-            </button>
-          </div>
-          <div className="inspector-list">
-            {groupNotes.map((g) => (
-              <article key={g.id} className="note-card">
-                <div className="note-card-head">
-                  <span className="note-num">{g.number}</span>
-                  <span className="badge accent">整组规范</span>
-                  <div className="note-card-actions">
-                    <button
-                      className="icon-button"
-                      title="删除整组意见"
-                      onClick={() => onUpdateGroupNotes((prev) => prev.filter((item) => item.id !== g.id))}
-                    >
-                      <Trash2 size={13} />
+          <div className="inspector-footer">
+            <Dialog.Root open={jsonOpen} onOpenChange={setJsonOpen}>
+              <Dialog.Trigger asChild>
+                <button className="button secondary">
+                  <Code2 size={15} /> 查看 JSON
+                </button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="dialog-overlay" />
+                <Dialog.Content className="dialog-content">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Dialog.Title className="dialog-title">实时反馈 JSON（image-set-feedback-1）</Dialog.Title>
+                    <Dialog.Close className="icon-button" aria-label="关闭">
+                      <X size={16} />
+                    </Dialog.Close>
+                  </div>
+                  <Dialog.Description className="dialog-desc">
+                    仅附带存在批注或布局位移的页面；未批注页面只留在 pageIndex 中作为索引。
+                  </Dialog.Description>
+                  <pre className="json-preview-pre">{liveJson}</pre>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+                    <button className="button secondary" onClick={downloadJson}>
+                      <Download size={14} /> 导出 JSON
+                    </button>
+                    <button className="button primary" onClick={copyJson}>
+                      <Copy size={14} /> 复制 JSON
                     </button>
                   </div>
-                </div>
-                {editingNoteId === g.id ? (
-                  <textarea
-                    autoFocus
-                    className="note-textarea"
-                    placeholder="输入跨页面统一修改意见…"
-                    value={g.text}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      onUpdateGroupNotes((prev) =>
-                        prev.map((item) => (item.id === g.id ? { ...item, text: val } : item))
-                      );
-                    }}
-                    onBlur={() => setEditingNoteId(null)}
-                  />
-                ) : (
-                  <button
-                    className={`note-body-btn ${!g.text ? 'note-body-placeholder' : ''}`}
-                    onClick={() => setEditingNoteId(g.id)}
-                  >
-                    {g.text || '点击填写整组设计或布局意见…'}
-                  </button>
-                )}
-              </article>
-            ))}
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+
+            <button className="button primary" onClick={onAnalyze}>
+              <Sparkles size={15} /> AI 解析
+            </button>
           </div>
-        </Tabs.Content>
-
-        <div className="inspector-footer">
-          <Dialog.Root open={jsonOpen} onOpenChange={setJsonOpen}>
-            <Dialog.Trigger asChild>
-              <button className="button secondary">
-                <Code2 size={15} /> 查看 JSON
-              </button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className="dialog-overlay" />
-              <Dialog.Content className="dialog-content">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Dialog.Title className="dialog-title">实时反馈 JSON（image-set-feedback-1）</Dialog.Title>
-                  <Dialog.Close className="icon-button" aria-label="关闭">
-                    <X size={16} />
-                  </Dialog.Close>
-                </div>
-                <Dialog.Description className="dialog-desc">
-                  仅附带存在批注或布局位移的页面；未批注页面只留在 pageIndex 中作为索引。
-                </Dialog.Description>
-                <pre className="json-preview-pre">{liveJson}</pre>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-                  <button className="button secondary" onClick={downloadJson}>
-                    <Download size={14} /> 导出 JSON
-                  </button>
-                  <button className="button primary" onClick={copyJson}>
-                    <Copy size={14} /> 复制 JSON
-                  </button>
-                </div>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
-
-          <button className="button primary" onClick={onAnalyze}>
-            <Sparkles size={15} /> AI 解析
-          </button>
-        </div>
-      </Tabs.Root>
+        </Tabs.Root>
+      )}
     </div>
   );
 }

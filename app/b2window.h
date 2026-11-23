@@ -76,8 +76,16 @@ class B2Window final : public QMainWindow {
     bool isEffectiveDark() const;
 
     Document buildDocumentFromJsPage(const B2Page &basePage, const QJsonObject &jsPage) const;
+    ImageSet buildImageSetFromPayload(const QJsonObject &payload) const;
+    void buildBundleFromPayload(const QJsonObject &payload, const FeedbackExportOptions &options,
+                                FeedbackBundle *outBundle, int *outCount, QString *outSchema) const;
     void handleOpenFilesDialog(const QJsonValue &rpcId);
     void handleSaveTextDialog(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleUpdatePageImage(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleCopyImage(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleSaveImageDialog(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObject &params);
     void handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &params);
 

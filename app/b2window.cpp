@@ -10,6 +10,7 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -17,10 +18,13 @@
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QSet>
 #include <QShowEvent>
+#include <QStandardPaths>
 #include <QStyleHints>
 #include <QTimer>
+#include <QUrl>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -478,6 +482,16 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
     }
 
     if (method == "pin.page") {
+        const QString b64 = params.value("pngBase64").toString();
+        if (!b64.isEmpty()) {
+            const QByteArray bytes = QByteArray::fromBase64(b64.toLatin1());
+            QImage rendered;
+            if (rendered.loadFromData(bytes, "PNG") && !rendered.isNull()) {
+                emit pinImageRequested(rendered);
+                sendRpcResult(id, true, QJsonObject{{"pinned", true}});
+                return;
+            }
+        }
         const QString pageId = params.value("pageId").toString();
         for (const auto &page : pages_) {
             if (page.id == pageId && !page.document.image.isNull()) {
@@ -487,6 +501,31 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
             }
         }
         sendRpcResult(id, false, {}, tr("请先截图或导入图片后再贴图。"));
+        return;
+    }
+
+    if (method == "image.updatePage") {
+        handleUpdatePageImage(id, params);
+        return;
+    }
+
+    if (method == "clipboard.copyImage") {
+        handleCopyImage(id, params);
+        return;
+    }
+
+    if (method == "file.saveImage") {
+        handleSaveImageDialog(id, params);
+        return;
+    }
+
+    if (method == "file.saveProject") {
+        handleSaveProjectDialog(id, params);
+        return;
+    }
+
+    if (method == "clipboard.copyFeedbackBundle") {
+        handleCopyFeedbackBundle(id, params);
         return;
     }
 
@@ -729,6 +768,189 @@ Document B2Window::buildDocumentFromJsPage(const B2Page &basePage, const QJsonOb
     return doc;
 }
 
+ImageSet B2Window::buildImageSetFromPayload(const QJsonObject &payload) const {
+    const QJsonArray jsPages = payload.value("pages").toArray();
+    const QJsonArray jsGroupNotes = payload.value("groupNotes").toArray();
+    ImageSet set;
+    set.name = setTitle_.isEmpty() ? tr("EditHere 组图") : setTitle_;
+    for (const auto &gnVal : jsGroupNotes) {
+        const auto obj = gnVal.toObject();
+        const QString text = obj.value("text").toString().trimmed();
+        if (!text.isEmpty()) set.groupNotes.append(QJsonObject{{"text", text}});
+    }
+    for (const auto &basePage : pages_) {
+        QJsonObject matchedJs;
+        for (const auto &val : jsPages) {
+            const auto obj = val.toObject();
+            if (obj.value("id").toString() == basePage.id) {
+                matchedJs = obj;
+                break;
+            }
+        }
+        ImageSetPage sp;
+        sp.id = basePage.id;
+        sp.name = basePage.name;
+        sp.document = buildDocumentFromJsPage(basePage, matchedJs);
+        set.pages.append(std::move(sp));
+    }
+    return set;
+}
+
+void B2Window::buildBundleFromPayload(const QJsonObject &payload, const FeedbackExportOptions &options,
+                                      FeedbackBundle *outBundle, int *outCount, QString *outSchema) const {
+    if (pages_.isEmpty()) {
+        throw std::runtime_error(tr("当前没有可导出的桌面截图页面。").toStdString());
+    }
+    if (isImageSetProject_ || pages_.size() > 1) {
+        const ImageSet set = buildImageSetFromPayload(payload);
+        if (outCount) *outCount = imageSetAnnotationCount(set);
+        if (outSchema) *outSchema = ImageSetFeedbackVersion;
+        if (outBundle) *outBundle = buildImageSetFeedbackBundle(set, options);
+        return;
+    }
+    const QJsonArray jsPages = payload.value("pages").toArray();
+    const QJsonObject firstJs = jsPages.isEmpty() ? QJsonObject() : jsPages.first().toObject();
+    const Document doc = buildDocumentFromJsPage(pages_.first(), firstJs);
+    if (outCount) *outCount = doc.notes.size();
+    if (outSchema) *outSchema = FeedbackSchemaVersion;
+    if (outBundle) *outBundle = buildFeedbackBundle(doc, options);
+}
+
+void B2Window::handleUpdatePageImage(const QJsonValue &rpcId, const QJsonObject &params) {
+    const QString pageId = params.value("pageId").toString();
+    const QString b64 = params.value("pngBase64").toString();
+    const QByteArray bytes = QByteArray::fromBase64(b64.toLatin1());
+    QImage img;
+    if (bytes.isEmpty() || !img.loadFromData(bytes, "PNG") || img.isNull() ||
+        qint64(img.width()) * img.height() > MaxPixels) {
+        sendRpcResult(rpcId, false, {}, tr("无效的图像数据。"));
+        return;
+    }
+    for (auto &page : pages_) {
+        if (page.id == pageId) {
+            page.document.image = img;
+            page.document.png = bytes;
+            page.document.candidates = detectBlocks(page.document.image);
+            page.document.notes.clear();
+            page.document.layout.reset();
+            page.mediaUrl = server_.registerImage(page.id, page.document.image);
+            dirty_ = true;
+            sendRpcResult(rpcId, true, QJsonObject{
+                {"ok", true},
+                {"mediaUrl", page.mediaUrl},
+                {"width", img.width()},
+                {"height", img.height()},
+                {"blocks", blocksForPage(page)},
+            });
+            return;
+        }
+    }
+    sendRpcResult(rpcId, false, {}, tr("未找到对应页面。"));
+}
+
+void B2Window::handleCopyImage(const QJsonValue &rpcId, const QJsonObject &params) {
+    const QByteArray bytes = QByteArray::fromBase64(params.value("pngBase64").toString().toLatin1());
+    QImage img;
+    if (bytes.isEmpty() || !img.loadFromData(bytes, "PNG") || img.isNull()) {
+        sendRpcResult(rpcId, false, {}, tr("图像编码失败。"));
+        return;
+    }
+    QGuiApplication::clipboard()->setImage(img);
+    sendRpcResult(rpcId, true, QJsonObject{{"copied", true}});
+}
+
+void B2Window::handleSaveImageDialog(const QJsonValue &rpcId, const QJsonObject &params) {
+    const QString suggested = params.value("defaultName").toString("edithere-annotated.png");
+    const QByteArray bytes = QByteArray::fromBase64(params.value("pngBase64").toString().toLatin1());
+    if (bytes.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("没有可保存的图片内容。"));
+        return;
+    }
+    const QString dest = QFileDialog::getSaveFileName(
+        this, tr("保存批注图片"), suggested, tr("PNG 图片 (*.png);;所有文件 (*.*)"));
+    if (dest.isEmpty()) {
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
+        return;
+    }
+    try {
+        saveBytes(dest, bytes);
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", dest}});
+    } catch (const std::exception &e) {
+        sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
+    }
+}
+
+void B2Window::handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params) {
+    if (pages_.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("请先截图或打开图片后再保存项目。"));
+        return;
+    }
+    const QString suggested = params.value("defaultName").toString("edithere-project.edithere");
+    const QString dest = QFileDialog::getSaveFileName(
+        this, tr("保存 EditHere 项目"), suggested,
+        tr("EditHere 项目 (*.edithere);;JSON 文件 (*.json);;所有文件 (*.*)"));
+    if (dest.isEmpty()) {
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
+        return;
+    }
+    try {
+        const QJsonObject payload = params.value("payload").toObject();
+        QByteArray bytes;
+        if (isImageSetProject_ || pages_.size() > 1) {
+            bytes = serializeImageSet(buildImageSetFromPayload(payload));
+        } else {
+            const QJsonArray jsPages = payload.value("pages").toArray();
+            const QJsonObject firstJs = jsPages.isEmpty() ? QJsonObject() : jsPages.first().toObject();
+            const Document doc = buildDocumentFromJsPage(pages_.first(), firstJs);
+            bytes = serializeDocument(doc, true);
+        }
+        saveBytes(dest, bytes);
+        dirty_ = false;
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", dest}});
+    } catch (const std::exception &e) {
+        sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
+    }
+}
+
+void B2Window::handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObject &params) {
+    try {
+        const QJsonObject payload = params.value("payload").toObject();
+        FeedbackExportOptions options;
+        options.mode = settings_.imageExportMode == ImageExportMode::None ? ImageExportMode::File
+                                                                           : settings_.imageExportMode;
+        options.includeRecognizedText = settings_.regionOcrEnabled;
+        options.includeWindowTitle = settings_.includeWindowTitle;
+        FeedbackBundle bundle;
+        int total = 0;
+        QString schema;
+        buildBundleFromPayload(payload, options, &bundle, &total, &schema);
+
+        const QString cacheRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+                                      .filePath("feedback");
+        QDir().mkpath(cacheRoot);
+        const QString folderName = "edithere-b2-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
+                                   "-" + uniqueId();
+        const QDir parent(cacheRoot);
+        if (!parent.mkdir(folderName)) {
+            throw std::runtime_error("Unable to create temporary feedback bundle directory.");
+        }
+        const QDir bundleDir(parent.filePath(folderName));
+        const QString jsonPath = bundleDir.filePath("feedback.json");
+        writeNewFeedbackBundle(jsonPath, bundle);
+
+        QList<QUrl> urls{QUrl::fromLocalFile(jsonPath)};
+        for (auto it = bundle.files.cbegin(); it != bundle.files.cend(); ++it) {
+            urls.append(QUrl::fromLocalFile(bundleDir.filePath(it.key())));
+        }
+        auto *mime = new QMimeData();
+        mime->setUrls(urls);
+        QGuiApplication::clipboard()->setMimeData(mime);
+        sendRpcResult(rpcId, true, QJsonObject{{"copied", true}, {"files", int(urls.size())}, {"annotations", total}});
+    } catch (const std::exception &e) {
+        sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
+    }
+}
+
 void B2Window::handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &params) {
     if (!agentSession_ || agentOutput_.isEmpty()) {
         sendRpcResult(rpcId, false, {}, tr("当前没有等待返回的 AI 会话。"));
@@ -736,51 +958,12 @@ void B2Window::handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &p
     }
 
     const QJsonObject payload = params.value("payload").toObject();
-    const QJsonArray jsPages = payload.value("pages").toArray();
-    const QJsonArray jsGroupNotes = payload.value("groupNotes").toArray();
 
     try {
         FeedbackBundle bundle;
         int totalAnnotations = 0;
         QString schemaVersion = FeedbackSchemaVersion;
-
-        if (pages_.isEmpty()) {
-            throw std::runtime_error(tr("当前没有可回传的桌面截图页面。").toStdString());
-        }
-
-        if (isImageSetProject_ || pages_.size() > 1) {
-            schemaVersion = ImageSetFeedbackVersion;
-            ImageSet set;
-            set.name = setTitle_.isEmpty() ? tr("EditHere 组图") : setTitle_;
-            for (const auto &gnVal : jsGroupNotes) {
-                const auto obj = gnVal.toObject();
-                const QString text = obj.value("text").toString().trimmed();
-                if (!text.isEmpty()) set.groupNotes.append(QJsonObject{{"text", text}});
-            }
-
-            for (const auto &basePage : pages_) {
-                QJsonObject matchedJs;
-                for (const auto &val : jsPages) {
-                    const auto obj = val.toObject();
-                    if (obj.value("id").toString() == basePage.id) {
-                        matchedJs = obj;
-                        break;
-                    }
-                }
-                ImageSetPage sp;
-                sp.id = basePage.id;
-                sp.name = basePage.name;
-                sp.document = buildDocumentFromJsPage(basePage, matchedJs);
-                set.pages.append(std::move(sp));
-            }
-            totalAnnotations = imageSetAnnotationCount(set);
-            bundle = buildImageSetFeedbackBundle(set, agentExportOptions_);
-        } else {
-            const QJsonObject firstJs = jsPages.isEmpty() ? QJsonObject() : jsPages.first().toObject();
-            const Document doc = buildDocumentFromJsPage(pages_.first(), firstJs);
-            totalAnnotations = doc.notes.size();
-            bundle = buildFeedbackBundle(doc, agentExportOptions_);
-        }
+        buildBundleFromPayload(payload, agentExportOptions_, &bundle, &totalAnnotations, &schemaVersion);
 
         const QString completedOutput = agentOutput_;
         writeNewFeedbackBundle(completedOutput, bundle);

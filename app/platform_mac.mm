@@ -802,7 +802,7 @@ bool screenCaptureAllowed(QString *reason) {
     // has not been asked to capture yet.
     return screenRecordingAllowed(reason, false);
 }
-void configureNativeWindow(QWidget *widget, bool overlay) {
+void configureNativeWindow(QWidget *widget, bool overlay, bool) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
         return;

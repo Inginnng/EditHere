@@ -874,6 +874,11 @@ textarea:focus-visible {
   background: var(--accent);
   color: var(--on-accent);
 }
+.dropdown-separator {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 6px;
+}
 
 .dialog-overlay {
   position: fixed;

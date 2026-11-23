@@ -630,14 +630,15 @@ bool usesNativeWindowControls() {
 bool screenCaptureAllowed(QString *) {
     return true;
 }
-void configureNativeWindow(QWidget *window, bool overlay) {
+void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCapture) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     DWORD preference = overlay ? 1 : 2;
     DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
-    // Keep our overlay out of capture sources where Windows supports it.
-    if (overlay) {
+    // Exclude only live scroll-capture overlays from desktop capture; static snapshot
+    // overlays remain capturable so remote-desktop / screen-share sessions can use them.
+    if (overlay && excludeFromCapture) {
         SetLastError(ERROR_SUCCESS);
         const bool applied = SetWindowDisplayAffinity(hwnd, 0x00000011);
         const DWORD setError = applied ? ERROR_SUCCESS : GetLastError();
@@ -663,6 +664,9 @@ void configureNativeWindow(QWidget *window, bool overlay) {
                  {"affinity", QStringLiteral("0x%1").arg(affinity, 8, 16, QLatin1Char('0'))},
                  {"excluded", excluded}});
         }
+    } else if (overlay) {
+        SetWindowDisplayAffinity(hwnd, 0);
+        window->setProperty("_edithereDisplayAffinityState", QString());
     }
 }
 bool excludedFromCapture(const QWidget *window) {

@@ -1,8 +1,15 @@
 export type BridgeMode = 'desktop-webview' | 'web-agent' | 'mcp-app' | 'preview-shell';
 export type ViewId = 'workspace' | 'analysis' | 'providers' | 'settings';
 export type ThemeMode = 'light' | 'dark' | 'system';
-export type ToolMode = 'smart' | 'point' | 'box' | 'explode';
+export type ToolMode = 'select' | 'smart' | 'point' | 'box' | 'explode' | 'mosaic' | 'crop';
 export type AnnotationKind = 'region' | 'point' | 'global';
+
+export interface MosaicRegion {
+  id: string;
+  rect: PixelRect;
+  style: 'pixelate' | 'blur';
+  strength: number;
+}
 
 export interface PixelRect {
   x1: number;
@@ -65,6 +72,7 @@ export interface GalleryPage {
   imageUrl?: string;
   blocks: ExplodeBlock[];
   annotations: AnnotationItem[];
+  mosaics?: MosaicRegion[];
 }
 
 export interface ProviderPreset {
