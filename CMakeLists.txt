@@ -188,11 +188,12 @@ add_custom_command(TARGET EditHere POST_BUILD
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   VERBATIM)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist")
-  add_custom_command(TARGET EditHere POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E remove_directory "$<TARGET_FILE_DIR:EditHere>/b2-ui"
+  add_custom_target(edithere_sync_b2_ui
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:EditHere>/b2-ui"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory
       "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "$<TARGET_FILE_DIR:EditHere>/b2-ui"
     VERBATIM)
+  add_dependencies(EditHere edithere_sync_b2_ui)
 endif()
 enable_testing()
 qt_add_executable(imageset_tests tests/imageset_test.cpp)

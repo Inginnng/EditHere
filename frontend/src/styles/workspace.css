@@ -37,9 +37,9 @@
 
 .canvas-top-hud {
   position: absolute;
-  top: 12px;
-  left: 14px;
-  right: 14px;
+  top: 10px;
+  left: 10px;
+  right: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -52,7 +52,7 @@
 }
 
 .canvas-meta-chip {
-  height: 30px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -81,7 +81,7 @@
 
 /* Concentric Zoom Pill: outer 8px - 2px pad = inner 6px */
 .canvas-zoom-pill {
-  height: 30px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -94,13 +94,13 @@
 }
 
 .canvas-zoom-pill .icon-button {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--r-control);
 }
 
 .canvas-zoom-pill .button.sm {
-  height: 24px;
+  height: 26px;
   padding: 0 8px;
   border-radius: var(--r-control);
 }
@@ -534,10 +534,11 @@
 /* Gallery Strip anchored cleanly inside .canvas-surface */
 .gallery-strip {
   flex-shrink: 0;
+  height: 52px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 0 12px;
   background: var(--stage-bar);
   border-top: 1px solid var(--line);
   overflow-x: auto;
@@ -756,11 +757,13 @@
 }
 
 .inspector-footer {
-  padding: 10px;
+  height: 52px;
+  padding: 0 10px;
   border-top: 1px solid var(--line);
   background: var(--surface-subtle);
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: center;
   gap: 8px;
 }
 

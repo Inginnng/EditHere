@@ -28,18 +28,18 @@
   --hover: rgba(120, 120, 128, 0.09);
 
   /* 4-Level Architectural Luminance Hierarchy */
-  --bg-shell: #eceef2;
+  --bg-shell: #e6e9ef;
   --stage: #f4f5f8;
-  --stage-bar: #eef0f4;
+  --stage-bar: #eceef3;
   --stage-dot: rgba(15, 23, 42, 0.065);
   --surface: #ffffff;
-  --surface-subtle: #f7f8fa;
+  --surface-subtle: #f7f8fb;
   --surface-elevated: rgba(255, 255, 255, 0.86);
   --glass: rgba(255, 255, 255, 0.84);
   --glass-strong: rgba(255, 255, 255, 0.92);
   --input-bg: #f5f6f8;
-  --border-panel: rgba(15, 23, 42, 0.085);
-  --border-float: rgba(15, 23, 42, 0.10);
+  --border-panel: rgba(15, 23, 42, 0.095);
+  --border-float: rgba(15, 23, 42, 0.12);
   --checker-a: #dcdfe6;
   --checker-b: #f3f4f7;
 
@@ -88,18 +88,18 @@
   --fill-hover: rgba(120, 120, 128, 0.30);
   --hover: rgba(120, 120, 128, 0.18);
 
-  --bg-shell: #0e0f12;
-  --stage: #141519;
-  --stage-bar: #111216;
+  --bg-shell: #0b0c0f;
+  --stage: #13151a;
+  --stage-bar: #101217;
   --stage-dot: rgba(255, 255, 255, 0.06);
-  --surface: #1b1c21;
-  --surface-subtle: #16171c;
+  --surface: #1a1c23;
+  --surface-subtle: #14161c;
   --surface-elevated: rgba(28, 30, 36, 0.86);
   --glass: rgba(28, 30, 36, 0.84);
   --glass-strong: rgba(32, 34, 40, 0.92);
   --input-bg: #121317;
-  --border-panel: rgba(255, 255, 255, 0.075);
-  --border-float: rgba(255, 255, 255, 0.11);
+  --border-panel: rgba(255, 255, 255, 0.095);
+  --border-float: rgba(255, 255, 255, 0.13);
   --checker-a: #1a1c22;
   --checker-b: #23262f;
 
