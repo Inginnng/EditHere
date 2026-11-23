@@ -147,7 +147,7 @@ export default function AnalysisView({
           </div>
 
           {sourceTab === 'image' ? (
-            <div style={{ margin: 14, border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', aspectRatio: '5/3' }}>
+            <div style={{ margin: 14, border: '1px solid var(--line)', borderRadius: 'var(--r-control)', overflow: 'hidden', aspectRatio: '5/3' }}>
               <SceneArtwork sceneId={selectedPage.sceneId} imageUrl={selectedPage.imageUrl} />
             </div>
           ) : (

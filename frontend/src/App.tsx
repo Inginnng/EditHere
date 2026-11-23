@@ -405,7 +405,7 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="app-main" style={{ overflow: view === 'workspace' ? 'hidden' : 'auto' }}>
+      <main className={`app-main ${view === 'workspace' ? 'is-workspace' : 'is-page-view'}`}>
         {view === 'workspace' && (
           <WorkspaceView
             pages={pages}
@@ -421,35 +421,39 @@ export default function App() {
             onToast={notify}
           />
         )}
-        {view === 'analysis' && (
-          <AnalysisView
-            pages={pages}
-            groupNotes={groupNotes}
-            providerName={defaultProvider?.name ?? 'OpenAI'}
-            onOpenProviders={() => setView('providers')}
-            onBack={() => setView('workspace')}
-            onToast={notify}
-          />
-        )}
-        {view === 'providers' && (
-          <ProvidersView
-            providers={providers}
-            defaultProviderId={defaultProviderId}
-            onUpdateProviders={setProviders}
-            onChangeDefault={setDefaultProviderId}
-            onToast={notify}
-          />
-        )}
-        {view === 'settings' && (
-          <SettingsView
-            theme={theme}
-            onChangeTheme={handleChangeTheme}
-            preferences={preferences}
-            onChangePreferences={handleChangePreferences}
-            doctor={doctor}
-            desktopConnected={desktopConnected}
-            onToast={notify}
-          />
+        {view !== 'workspace' && (
+          <div className="page-sheet">
+            {view === 'analysis' && (
+              <AnalysisView
+                pages={pages}
+                groupNotes={groupNotes}
+                providerName={defaultProvider?.name ?? 'OpenAI'}
+                onOpenProviders={() => setView('providers')}
+                onBack={() => setView('workspace')}
+                onToast={notify}
+              />
+            )}
+            {view === 'providers' && (
+              <ProvidersView
+                providers={providers}
+                defaultProviderId={defaultProviderId}
+                onUpdateProviders={setProviders}
+                onChangeDefault={setDefaultProviderId}
+                onToast={notify}
+              />
+            )}
+            {view === 'settings' && (
+              <SettingsView
+                theme={theme}
+                onChangeTheme={handleChangeTheme}
+                preferences={preferences}
+                onChangePreferences={handleChangePreferences}
+                doctor={doctor}
+                desktopConnected={desktopConnected}
+                onToast={notify}
+              />
+            )}
+          </div>
         )}
       </main>
 
@@ -477,12 +481,12 @@ export default function App() {
                 <X size={16} />
               </Dialog.Close>
             </div>
-            <Dialog.Title className="dialog-title">EditHere · 0.14 B2 统一前端交互原型</Dialog.Title>
+            <Dialog.Title className="dialog-title">EditHere · 改这里</Dialog.Title>
             <Dialog.Description className="dialog-desc">
-              C++20 / Qt6 原生截图·OCR·贴图核心 + 系统 WebView 统一 Apple 风格工作台
+              C++20 / Qt6 原生截图 · OCR · 贴图核心 + WebView2 统一桌面工作台
             </Dialog.Description>
             <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.7, color: 'var(--secondary)' }}>
-              当前已启用真实视觉切片级「大爆炸」交互（无虚假语义标签、棋盘格镂空原位、8 角点缩放、白色外描边路径箭头及空白处拉框切分）与本地像素连通域检测（导入本地图片时即时分割候选块）。确认视觉与交互细节后，将在 M4 正式接入 C++ WebView2/WKWebView/WebKitGTK Bridge。
+              采用统一同心圆角几何系统（12 / 8 / 6 / 4px），支持全屏 HDR 截图、真实视觉切片级「大爆炸」拆解（棋盘格原位镂空、8 角点缩放、路径箭头及手动拉框切分）、原生区域 OCR、屏幕置顶贴图与 Agent 组图批注会话。
             </p>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>
               快捷键：<code>Ctrl + 1 / 2 / 3 / 4</code> 切换页面 · <code>Ctrl + I</code> 导入图片 · <code>Esc</code> 取消大爆炸选中

@@ -601,8 +601,9 @@ export default function WorkspaceView({
         }}
       />
 
-      {/* Canvas Column */}
-      <div className="canvas-column">
+      {/* Unified Canvas Architectural Surface (Stage + Attached Gallery Strip) */}
+      <section className="canvas-surface">
+        <div className="canvas-column">
         <div className="canvas-top-hud">
           <div className="canvas-meta-chip">
             <span className="canvas-meta-dot" />
@@ -1022,6 +1023,7 @@ export default function WorkspaceView({
           <Plus size={14} /> 添加页面
         </button>
       </div>
+      </section>
 
       {/* Right Inspector */}
       <Tabs.Root

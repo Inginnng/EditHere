@@ -53,29 +53,28 @@ textarea:focus-visible {
   background: transparent;
 }
 
-/* Apple Sequoia Full-Height Sidebar App Shell */
+/* Unified Ambient Window Chassis + Inset Rounded Surfaces */
 .app-shell {
   height: 100dvh;
   overflow: hidden;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 224px) minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, 1fr);
-  background: var(--canvas);
+  grid-template-columns: var(--sidebar-width, 216px) minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  background: var(--bg-shell);
 }
 
 .app-shell.sidebar-collapsed {
-  --sidebar-width: 68px;
+  --sidebar-width: 64px;
 }
 
-/* Full-Height Vibrancy Sidebar */
+/* Borderless Ambient Sidebar sitting directly on Window Chassis */
 .app-sidebar {
   grid-column: 1;
   grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
-  background: var(--sidebar);
-  border-right: 1px solid var(--line);
+  padding: 10px 8px 10px 10px;
+  background: transparent;
   min-height: 0;
   user-select: none;
   z-index: 30;
@@ -86,8 +85,8 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 36px;
-  padding: 2px 4px 14px;
+  min-height: 28px;
+  padding: 0 4px 12px;
 }
 
 .brand-lockup-btn {
@@ -97,18 +96,18 @@ textarea:focus-visible {
   padding: 2px;
   border: 0;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--r-control);
 }
 
 .brand-squircle {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: block;
   flex-shrink: 0;
 }
 
 .brand-wordmark {
-  height: 17px;
+  height: 16px;
   width: auto;
   display: block;
 }
@@ -125,7 +124,7 @@ textarea:focus-visible {
   flex-direction: column;
   justify-content: center;
   gap: 8px;
-  padding: 4px 0 12px;
+  padding: 2px 0 12px;
 }
 .sidebar-collapsed .brand-wordmark,
 .sidebar-collapsed .sidebar-section-label,
@@ -134,8 +133,8 @@ textarea:focus-visible {
   display: none;
 }
 .sidebar-collapsed .brand-squircle {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
 }
 .sidebar-collapsed .nav-item {
   justify-content: center;
@@ -149,35 +148,36 @@ textarea:focus-visible {
 .primary-navigation {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 34px;
+  gap: 9px;
+  height: 32px;
   width: 100%;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--secondary);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 450;
   text-align: left;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .nav-item:hover {
-  background: var(--fill);
+  background: var(--hover);
   color: var(--ink);
 }
 
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--ink);
   font-weight: 500;
+  box-shadow: var(--shadow-nav-active);
 }
 
 .nav-item.active svg {
@@ -188,36 +188,34 @@ textarea:focus-visible {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .sidebar-separator {
   height: 1px;
   background: var(--line);
-  margin: 10px 6px;
+  margin: 8px 6px;
 }
 
 .sidebar-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 8px 0;
+  padding: 8px 6px 0;
   font-size: 11px;
   color: var(--muted);
 }
 
-/* Unified Translucent Content Topbar (Column 2) */
+/* Seamless Unified Topbar over Window Chassis */
 .topbar {
   grid-column: 2;
   grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 18px;
-  background: var(--glass);
-  backdrop-filter: saturate(180%) blur(24px);
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  padding: 0 12px 0 6px;
+  background: transparent;
   user-select: none;
   z-index: 40;
 }
@@ -239,7 +237,7 @@ textarea:focus-visible {
 
 .topbar-divider {
   width: 1px;
-  height: 14px;
+  height: 13px;
   background: var(--line-strong);
 }
 
@@ -262,11 +260,12 @@ textarea:focus-visible {
 }
 
 .session-pill {
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
   font-size: 12px;
   background: var(--accent-soft);
   color: var(--accent);
@@ -277,28 +276,46 @@ textarea:focus-visible {
 .session-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--r-circle);
   background: var(--accent);
 }
 
-/* Main Content Area */
+/* Inset Main Viewport */
 .app-main {
   grid-column: 2;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
+  padding: 0 10px 10px 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main.is-workspace > .workspace-root {
+  flex: 1;
+  min-height: 0;
+}
+
+.page-sheet {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
+  border-radius: var(--r-panel);
+  background: var(--stage);
+  border: 1px solid var(--border-panel);
+  box-shadow: var(--shadow-panel);
 }
 
 .page-container {
-  max-width: 1040px;
+  max-width: 1020px;
   margin: 0 auto;
-  padding: 28px 34px 44px;
+  padding: 26px 32px 44px;
 }
 
 .density-compact .page-container {
-  padding: 20px 26px 32px;
+  padding: 18px 24px 30px;
 }
 
 .page-heading {
@@ -306,12 +323,12 @@ textarea:focus-visible {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
 }
 
 .page-heading h1 {
   margin: 0 0 5px;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
   letter-spacing: -0.025em;
 }
@@ -323,15 +340,15 @@ textarea:focus-visible {
   line-height: 1.55;
 }
 
-/* Shared Apple Buttons, Badges & Controls */
+/* Shared Concentric Controls & Badges */
 .button {
   height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 8px;
-  padding: 0 13px;
+  border-radius: var(--r-control);
+  padding: 0 12px;
   font-size: 13px;
   font-weight: 500;
   border: 1px solid transparent;
@@ -346,8 +363,8 @@ textarea:focus-visible {
 
 .button.sm {
   height: 28px;
-  padding: 0 11px;
-  border-radius: 7px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
   font-size: 12px;
 }
 
@@ -383,7 +400,7 @@ textarea:focus-visible {
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--r-control);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -397,14 +414,15 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
+/* Precision micro tags instead of pill bubbles */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
   font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 2px 7px;
+  border-radius: var(--r-micro);
   white-space: nowrap;
 }
 .badge.neutral {
@@ -424,11 +442,14 @@ textarea:focus-visible {
   color: var(--warning);
 }
 
+/* Concentric Segmented Control: outer 8px - 2px pad = inner 6px */
 .segmented-control {
+  height: 28px;
   display: inline-flex;
-  padding: 3px;
+  align-items: center;
+  padding: 2px;
   gap: 2px;
-  border-radius: 8px;
+  border-radius: var(--r-card);
   background: var(--fill);
   flex-shrink: 0;
 }
@@ -437,8 +458,8 @@ textarea:focus-visible {
   background: transparent;
   color: var(--secondary);
   height: 24px;
-  padding: 0 11px;
-  border-radius: 6px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
@@ -448,7 +469,7 @@ textarea:focus-visible {
 .segmented-control button.selected {
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.10), 0 0 0 0.5px var(--line);
 }
 
 /* Authentic Apple iOS / macOS Green Switch */
@@ -470,7 +491,7 @@ textarea:focus-visible {
   display: block;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: var(--r-circle);
   background: #ffffff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
   transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
@@ -481,29 +502,29 @@ textarea:focus-visible {
 
 /* macOS System Settings Inset Grouped Lists */
 .settings-group {
-  margin-top: 24px;
+  margin-top: 22px;
 }
 .settings-group h2 {
   margin: 0 0 8px 4px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--secondary);
 }
 .settings-card-stack {
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: var(--r-panel);
   background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-panel);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 .settings-row {
-  min-height: 60px;
+  min-height: 58px;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   background: transparent;
   border: 0;
   border-top: 1px solid var(--line);
@@ -516,13 +537,13 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--fill) 45%, transparent);
 }
 .density-compact .settings-row {
-  min-height: 50px;
+  min-height: 48px;
   padding: 10px 14px;
 }
 .settings-row-icon {
   width: 30px;
   height: 30px;
-  border-radius: 7px;
+  border-radius: var(--r-control);
   background: var(--fill);
   color: var(--secondary);
   display: grid;
@@ -548,12 +569,12 @@ textarea:focus-visible {
   font-family: var(--mono);
   font-size: 11px;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--r-micro);
   background: var(--fill);
   color: var(--secondary);
 }
 
-/* Providers View (macOS Inset Grouped Cards) */
+/* Providers View */
 .toolbar-row {
   display: flex;
   align-items: center;
@@ -578,8 +599,8 @@ textarea:focus-visible {
   width: 100%;
   height: 32px;
   padding: 0 10px 0 32px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink);
   font-size: 13px;
@@ -594,10 +615,10 @@ textarea:focus-visible {
 .provider-list {
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: var(--r-panel);
   background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-panel);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 .provider-card {
@@ -621,7 +642,7 @@ textarea:focus-visible {
 .provider-brand {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--r-card);
   display: grid;
   place-items: center;
   background: var(--fill);
@@ -637,7 +658,7 @@ textarea:focus-visible {
 }
 :root[data-theme='dark'] .provider-brand img[src*='kimi'] {
   background: #f5f5f7;
-  border-radius: 3px;
+  border-radius: var(--r-micro);
 }
 .provider-info {
   flex: 1;
@@ -672,10 +693,10 @@ textarea:focus-visible {
 }
 
 .editor-panel {
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  border: 1px solid var(--border-panel);
   background: var(--surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 .editor-panel-header {
@@ -700,9 +721,9 @@ textarea:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-control);
   border: 1px solid var(--line);
-  background: var(--input-bg);
+  background: var(--surface-subtle);
   font-size: 12px;
   font-weight: 500;
   transition: background 0.12s, border-color 0.12s;
@@ -736,7 +757,7 @@ textarea:focus-visible {
 .field-block input,
 .field-block textarea {
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-control);
   border: 1px solid var(--line-strong);
   background: var(--input-bg);
   color: var(--ink);
@@ -766,21 +787,21 @@ textarea:focus-visible {
   justify-content: space-between;
   padding: 12px 20px;
   border-top: 1px solid var(--line);
-  background: var(--sidebar);
+  background: var(--surface-subtle);
 }
 
 /* Analysis View */
 .analysis-layout {
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
   min-height: 520px;
 }
 .analysis-card {
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  border: 1px solid var(--border-panel);
   background: var(--surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -822,12 +843,12 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
-/* Dropdown & Dialog */
+/* Concentric Dropdown (12px outer - 4px pad = 8px item) & Dialog */
 .dropdown-menu {
   min-width: 170px;
   padding: 4px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  border: 1px solid var(--border-float);
   background: var(--glass-strong);
   backdrop-filter: saturate(180%) blur(24px);
   box-shadow: var(--shadow-float), var(--specular);
@@ -838,7 +859,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border-radius: 6px;
+  border-radius: var(--r-card);
   font-size: 12px;
   color: var(--ink);
   cursor: pointer;
@@ -865,16 +886,16 @@ textarea:focus-visible {
   width: min(620px, calc(100vw - 36px));
   max-height: calc(100dvh - 64px);
   overflow: auto;
-  border-radius: 14px;
-  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  border: 1px solid var(--border-float);
   background: var(--surface);
-  padding: 22px 24px;
+  padding: 20px 22px;
   box-shadow: var(--shadow-dialog);
   z-index: 101;
 }
 .dialog-title {
   margin: 0 0 6px;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
 }
 .dialog-desc {
@@ -885,7 +906,7 @@ textarea:focus-visible {
 .json-preview-pre {
   margin: 0;
   padding: 14px;
-  border-radius: 9px;
+  border-radius: var(--r-card);
   border: 1px solid var(--line);
   background: var(--input-bg);
   font-family: var(--mono);
@@ -896,18 +917,18 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
-/* Floating Glass Toast */
+/* Concentric Floating Toast (zero pill) */
 .toast {
   position: fixed;
-  top: 62px;
-  left: calc(50% + var(--sidebar-width, 224px) / 2 - 44px);
+  top: 56px;
+  left: calc(50% + var(--sidebar-width, 216px) / 2 - 44px);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
-  border-radius: 9999px;
-  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border-float);
   background: var(--glass-strong);
   backdrop-filter: saturate(180%) blur(20px);
   box-shadow: var(--shadow-float), var(--specular);
@@ -941,13 +962,13 @@ textarea:focus-visible {
 
 @media (max-width: 900px) {
   .app-shell {
-    --sidebar-width: 68px;
+    --sidebar-width: 64px;
   }
   .sidebar-brand-row {
     flex-direction: column;
     justify-content: center;
     gap: 8px;
-    padding: 4px 0 12px;
+    padding: 2px 0 12px;
   }
   .brand-wordmark,
   .sidebar-section-label,
@@ -956,8 +977,8 @@ textarea:focus-visible {
     display: none;
   }
   .brand-squircle {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
   }
   .nav-item {
     justify-content: center;

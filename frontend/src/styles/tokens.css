@@ -3,32 +3,51 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: var(--canvas);
+  background: var(--bg-shell);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
 
+  /* 4-Tier Concentric Radius Scale (R_inner = R_outer - padding) */
+  --r-panel: 12px;
+  --r-card: 8px;
+  --r-control: 6px;
+  --r-micro: 4px;
+  --r-circle: 50%;
+
+  /* Typography & Ink */
   --ink: #1d1d1f;
   --secondary: #48484a;
   --muted: #86868b;
-  --line: rgba(0, 0, 0, 0.075);
-  --line-strong: rgba(0, 0, 0, 0.14);
+  --line: rgba(15, 23, 42, 0.075);
+  --line-strong: rgba(15, 23, 42, 0.14);
   --fill: rgba(120, 120, 128, 0.10);
   --fill-hover: rgba(120, 120, 128, 0.16);
   --hover: rgba(120, 120, 128, 0.09);
 
+  /* 4-Level Architectural Luminance Hierarchy */
+  --bg-shell: #eceef2;
+  --stage: #f4f5f8;
+  --stage-bar: #eef0f4;
+  --stage-dot: rgba(15, 23, 42, 0.065);
   --surface: #ffffff;
-  --surface-elevated: rgba(255, 255, 255, 0.84);
-  --glass: rgba(255, 255, 255, 0.78);
-  --glass-strong: rgba(255, 255, 255, 0.90);
-  --canvas: #ececf1;
-  --sidebar: #f2f2f7;
-  --input-bg: #f5f5f7;
+  --surface-subtle: #f7f8fa;
+  --surface-elevated: rgba(255, 255, 255, 0.86);
+  --glass: rgba(255, 255, 255, 0.84);
+  --glass-strong: rgba(255, 255, 255, 0.92);
+  --input-bg: #f5f6f8;
+  --border-panel: rgba(15, 23, 42, 0.085);
+  --border-float: rgba(15, 23, 42, 0.10);
   --checker-a: #dcdfe6;
   --checker-b: #f3f4f7;
 
+  /* Legacy aliases */
+  --canvas: var(--stage);
+  --sidebar: var(--bg-shell);
+
+  /* Accents & Status */
   --accent: #007aff;
   --accent-hover: #0066d6;
   --accent-soft: rgba(0, 122, 255, 0.11);
@@ -43,12 +62,16 @@
   --warning-soft: rgba(255, 149, 0, 0.14);
   --danger: #ff3b30;
 
+  /* Specular & Elevation Shadows */
   --specular: inset 0 0.5px 0 rgba(255, 255, 255, 0.85);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  --shadow-artboard: 0 14px 40px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.11), 0 2px 6px rgba(0, 0, 0, 0.06);
-  --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-nav-active: 0 1px 2px rgba(15, 23, 42, 0.07), 0 0 0 0.5px rgba(15, 23, 42, 0.06);
+  --shadow-panel: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 0 0 0.5px rgba(15, 23, 42, 0.06);
+  --shadow-artboard: 0 14px 36px rgba(15, 23, 42, 0.10), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --shadow-float-sm: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-float: 0 10px 28px rgba(15, 23, 42, 0.11), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --shadow-dialog: 0 24px 64px rgba(15, 23, 42, 0.22);
 
   --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
 }
@@ -59,21 +82,29 @@
   --ink: #f5f5f7;
   --secondary: #d1d1d6;
   --muted: #8e8e93;
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
   --fill: rgba(120, 120, 128, 0.22);
   --fill-hover: rgba(120, 120, 128, 0.30);
   --hover: rgba(120, 120, 128, 0.18);
 
-  --surface: #222225;
-  --surface-elevated: rgba(34, 34, 38, 0.84);
-  --glass: rgba(34, 34, 38, 0.78);
-  --glass-strong: rgba(38, 38, 42, 0.88);
-  --canvas: #111113;
-  --sidebar: #1b1b1e;
-  --input-bg: #171719;
+  --bg-shell: #0e0f12;
+  --stage: #141519;
+  --stage-bar: #111216;
+  --stage-dot: rgba(255, 255, 255, 0.06);
+  --surface: #1b1c21;
+  --surface-subtle: #16171c;
+  --surface-elevated: rgba(28, 30, 36, 0.86);
+  --glass: rgba(28, 30, 36, 0.84);
+  --glass-strong: rgba(32, 34, 40, 0.92);
+  --input-bg: #121317;
+  --border-panel: rgba(255, 255, 255, 0.075);
+  --border-float: rgba(255, 255, 255, 0.11);
   --checker-a: #1a1c22;
   --checker-b: #23262f;
+
+  --canvas: var(--stage);
+  --sidebar: var(--bg-shell);
 
   --accent: #0a84ff;
   --accent-hover: #409cff;
@@ -90,9 +121,12 @@
   --danger: #ff453a;
 
   --specular: inset 0 0.5px 0 rgba(255, 255, 255, 0.09);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-nav-active: 0 1px 2px rgba(0, 0, 0, 0.38), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.22);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
   --shadow-artboard: 0 18px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-float: 0 14px 36px rgba(0, 0, 0, 0.52), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --shadow-float-sm: 0 4px 12px rgba(0, 0, 0, 0.38);
+  --shadow-float: 0 14px 34px rgba(0, 0, 0, 0.52), 0 0 0 0.5px rgba(255, 255, 255, 0.09);
   --shadow-dialog: 0 28px 72px rgba(0, 0, 0, 0.68);
 }
