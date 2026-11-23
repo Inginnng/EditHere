@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowLeft, Check, Copy, FileText, LoaderCircle, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import { generateAnalysisText } from '../bridge/mockBridge';
 import type { GalleryPage, GroupNote } from '../bridge/types';
@@ -52,14 +53,30 @@ export default function AnalysisView({
 
   const copyText = async () => {
     try {
-      await navigator.clipboard.writeText(output);
+      if (isDesktopWebView()) {
+        await desktopRpc('clipboard.copyText', { text: output });
+      } else {
+        await navigator.clipboard.writeText(output);
+      }
       onToast('已复制修改说明纯文本');
     } catch {
       onToast('剪贴板受限，请直接手动复制文本框内容');
     }
   };
 
-  const exportMarkdown = () => {
+  const exportMarkdown = async () => {
+    if (isDesktopWebView()) {
+      try {
+        const res = await desktopRpc<{ saved?: boolean }>('file.saveText', {
+          defaultName: 'EditHere-修改清单.md',
+          text: output,
+        }, 0);
+        if (res.saved) onToast('已导出 EditHere-修改清单.md');
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : '导出失败');
+      }
+      return;
+    }
     const url = URL.createObjectURL(new Blob([output], { type: 'text/markdown;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;

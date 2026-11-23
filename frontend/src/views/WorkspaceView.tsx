@@ -12,6 +12,7 @@ import {
   Minus,
   MousePointerClick,
   Pause,
+  Pin,
   Play,
   Plus,
   RotateCcw,
@@ -21,6 +22,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import {
   buildFeedbackPayload,
@@ -68,10 +70,12 @@ interface WorkspaceViewProps {
   pages: GalleryPage[];
   activePageId: string;
   groupNotes: GroupNote[];
+  includeOcr?: boolean;
   onSelectPage: (pageId: string) => void;
   onUpdatePages: (updater: (prev: GalleryPage[]) => GalleryPage[]) => void;
   onUpdateGroupNotes: (updater: (prev: GroupNote[]) => GroupNote[]) => void;
   onImportImage: (file: File) => void;
+  onRequestImport?: () => Promise<boolean>;
   onAnalyze: () => void;
   onToast: (message: string) => void;
 }
@@ -80,10 +84,12 @@ export default function WorkspaceView({
   pages,
   activePageId,
   groupNotes,
+  includeOcr = true,
   onSelectPage,
   onUpdatePages,
   onUpdateGroupNotes,
   onImportImage,
+  onRequestImport,
   onAnalyze,
   onToast,
 }: WorkspaceViewProps) {
@@ -124,11 +130,21 @@ export default function WorkspaceView({
     setSelectedBlockId(null);
   }, [activePage?.id]);
 
+  const triggerImport = () => {
+    if (onRequestImport) {
+      onRequestImport().then((handled) => {
+        if (!handled) fileInputRef.current?.click();
+      });
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
         event.preventDefault();
-        fileInputRef.current?.click();
+        triggerImport();
       } else if (event.key === 'Escape' && tool === 'explode') {
         setSelectedBlockId(null);
         setManualCutBox(null);
@@ -267,10 +283,11 @@ export default function WorkspaceView({
   };
 
   const appendAnnotation = (partial: Omit<AnnotationItem, 'id' | 'number'>) => {
+    const targetPageId = activePage.id;
     const newId = `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     onUpdatePages((prev) =>
       prev.map((page) => {
-        if (page.id !== activePage.id) return page;
+        if (page.id !== targetPageId) return page;
         const number = nextNoteNumber(page.annotations);
         const created: AnnotationItem = { id: newId, number, ...partial };
         return { ...page, annotations: [...page.annotations, created] };
@@ -279,6 +296,31 @@ export default function WorkspaceView({
     setInspectorTab('page');
     setSelectedNoteId(newId);
     setEditingNoteId(newId);
+
+    if (partial.kind === 'region' && partial.rect && includeOcr && isDesktopWebView()) {
+      desktopRpc<{ ok?: boolean; text?: string }>(
+        'ocr.recognizeRect',
+        { pageId: targetPageId, rect: partial.rect },
+        30000
+      )
+        .then((res) => {
+          const recognized = (res?.text || '').trim();
+          if (!recognized) return;
+          onUpdatePages((prev) =>
+            prev.map((page) =>
+              page.id !== targetPageId
+                ? page
+                : {
+                    ...page,
+                    annotations: page.annotations.map((a) =>
+                      a.id === newId ? { ...a, ocrtext: recognized } : a
+                    ),
+                  }
+            )
+          );
+        })
+        .catch(() => {});
+    }
   };
 
   const handleArtboardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -492,14 +534,30 @@ export default function WorkspaceView({
 
   const copyJson = async () => {
     try {
-      await navigator.clipboard.writeText(liveJson);
+      if (isDesktopWebView()) {
+        await desktopRpc('clipboard.copyText', { text: liveJson });
+      } else {
+        await navigator.clipboard.writeText(liveJson);
+      }
       onToast('已复制实时 image-set-feedback-1 JSON');
     } catch {
       onToast('浏览器拒绝访问剪贴板，请使用导出功能');
     }
   };
 
-  const downloadJson = () => {
+  const downloadJson = async () => {
+    if (isDesktopWebView()) {
+      try {
+        const res = await desktopRpc<{ saved?: boolean }>('file.saveText', {
+          defaultName: 'edithere-gallery-feedback.json',
+          text: liveJson,
+        }, 0);
+        if (res.saved) onToast('已导出实时反馈 JSON');
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : '导出失败');
+      }
+      return;
+    }
     const url = URL.createObjectURL(new Blob([liveJson], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
@@ -507,6 +565,15 @@ export default function WorkspaceView({
     a.click();
     URL.revokeObjectURL(url);
     onToast('已下载实时反馈 JSON');
+  };
+
+  const handlePinCurrentPage = async () => {
+    try {
+      await desktopRpc('pin.page', { pageId: activePage.id });
+      onToast('已生成原图置顶贴图窗');
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '当前页面无法贴图');
+    }
   };
 
   const pctX = (px: number) => `${(px / activePage.width) * 100}%`;
@@ -916,12 +983,22 @@ export default function WorkspaceView({
           <span className="dock-sep" />
           <button
             className="dock-tool"
-            onClick={() => fileInputRef.current?.click()}
-            title="导入本地图片为新的一页 (Ctrl+I)"
+            onClick={triggerImport}
+            title="导入本地图片或组图项目 (Ctrl+I)"
           >
             <ImagePlus size={15} />
             <span>导入图片</span>
           </button>
+          {isDesktopWebView() && (
+            <button
+              className="dock-tool"
+              onClick={handlePinCurrentPage}
+              title="将当前页面原图置顶贴在屏幕最前"
+            >
+              <Pin size={15} />
+              <span>贴图</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -941,7 +1018,7 @@ export default function WorkspaceView({
             </button>
           );
         })}
-        <button className="button ghost sm" onClick={() => fileInputRef.current?.click()}>
+        <button className="button ghost sm" onClick={triggerImport}>
           <Plus size={14} /> 添加页面
         </button>
       </div>

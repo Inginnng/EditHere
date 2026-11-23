@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
+  Camera,
   Check,
   ChevronLeft,
   CircleHelp,
@@ -15,13 +16,20 @@ import {
   X,
 } from 'lucide-react';
 import {
+  desktopRpc,
+  isDesktopWebView,
+  subscribeDesktopEvents,
+} from './bridge/desktopBridge';
+import {
   buildFeedbackPayload,
   createInitialPages,
   createInitialProviders,
+  INITIAL_DOCTOR_SNAPSHOT,
   INITIAL_GROUP_NOTES,
   previewShellBridge,
 } from './bridge/mockBridge';
 import type {
+  DoctorSnapshot,
   GalleryPage,
   GeneralPreferences,
   GroupNote,
@@ -70,6 +78,8 @@ export default function App() {
   const [pages, setPages] = useState<GalleryPage[]>(() => createInitialPages());
   const [activePageId, setActivePageId] = useState<string>('home');
   const [groupNotes, setGroupNotes] = useState<GroupNote[]>(() => INITIAL_GROUP_NOTES);
+  const [doctor, setDoctor] = useState<DoctorSnapshot>(INITIAL_DOCTOR_SNAPSHOT);
+  const [desktopConnected, setDesktopConnected] = useState(false);
 
   const [providers, setProviders] = useState<ProviderConfig[]>(() => createInitialProviders());
   const [defaultProviderId, setDefaultProviderId] = useState('openai');
@@ -105,7 +115,70 @@ export default function App() {
     } catch {
       // ignore storage errors
     }
+    if (isDesktopWebView()) {
+      desktopRpc('theme.sync', { isDark, theme }).catch(() => {});
+    }
   }, [theme, isDark]);
+
+  useEffect(() => {
+    if (!isDesktopWebView()) return;
+
+    const applyDesktopState = (state: Record<string, unknown>) => {
+      if (typeof state.agentMode === 'boolean') {
+        setAgentMode(state.agentMode);
+      }
+      if (state.doctor && typeof state.doctor === 'object') {
+        setDoctor(state.doctor as DoctorSnapshot);
+      }
+      if (state.preferences && typeof state.preferences === 'object') {
+        const p = state.preferences as Record<string, unknown>;
+        if (p.theme === 'light' || p.theme === 'dark' || p.theme === 'system') {
+          setTheme(p.theme);
+        }
+        setPreferences((prev) => ({
+          ...prev,
+          includeOcr: typeof p.includeOcr === 'boolean' ? p.includeOcr : prev.includeOcr,
+          captureShadow: typeof p.captureShadow === 'boolean' ? p.captureShadow : prev.captureShadow,
+          exportMode: p.exportMode === 'embedded' ? 'embedded' : 'file',
+          language:
+            p.language === 'English' || p.language === '繁體中文' || p.language === '简体中文'
+              ? p.language
+              : prev.language,
+        }));
+      }
+      if (Array.isArray(state.pages) && state.pages.length > 0) {
+        const nextPages = state.pages as GalleryPage[];
+        setPages(nextPages);
+        const requestedActive = typeof state.activePageId === 'string' ? state.activePageId : '';
+        setActivePageId(requestedActive || nextPages[0].id);
+      }
+      if (Array.isArray(state.groupNotes)) {
+        setGroupNotes(state.groupNotes as GroupNote[]);
+      }
+    };
+
+    const unsub = subscribeDesktopEvents((eventName, data) => {
+      if (eventName === 'session.state') {
+        applyDesktopState(data);
+      } else if (eventName === 'view.navigate') {
+        const v = data.view;
+        if (v === 'workspace' || v === 'analysis' || v === 'providers' || v === 'settings') {
+          setView(v);
+        }
+      }
+    });
+
+    desktopRpc<Record<string, unknown>>('bridge.handshake')
+      .then((res) => {
+        setDesktopConnected(true);
+        applyDesktopState(res);
+      })
+      .catch((err) => {
+        console.warn('[EditHere Bridge] handshake failed:', err);
+      });
+
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -146,13 +219,67 @@ export default function App() {
     img.src = objectUrl;
   };
 
+  const handleChangeTheme = (nextTheme: ThemeMode) => {
+    setTheme(nextTheme);
+    if (isDesktopWebView()) {
+      desktopRpc('settings.save', { theme: nextTheme }).catch(() => {});
+    }
+  };
+
+  const handleChangePreferences = (nextPrefs: GeneralPreferences) => {
+    setPreferences(nextPrefs);
+    if (isDesktopWebView()) {
+      desktopRpc('settings.save', { ...nextPrefs }).catch(() => {});
+    }
+  };
+
+  const handleCaptureStart = async () => {
+    if (!isDesktopWebView()) {
+      notify('桌面客户端里将隐藏主窗并唤起 C++ HDR / 零延迟全屏截图');
+      return;
+    }
+    try {
+      await desktopRpc('capture.start');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '启动截图失败');
+    }
+  };
+
+  const handleRequestOpenFiles = async (): Promise<boolean> => {
+    if (!isDesktopWebView()) return false;
+    try {
+      await desktopRpc('file.openDialog', {}, 0);
+      setView('workspace');
+      return true;
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '打开文件失败');
+      return true;
+    }
+  };
+
   const handleCompleteAgent = async () => {
+    if (isDesktopWebView()) {
+      try {
+        const res = await desktopRpc<{ annotations?: number }>('agent.complete', {
+          payload: { pages, groupNotes },
+        }, 0);
+        notify(`已写入批注并提交返回 AI（共 ${res.annotations ?? totalNotesCount} 条）`);
+      } catch (err) {
+        notify(err instanceof Error ? err.message : '提交返回失败');
+      }
+      return;
+    }
     const payload = buildFeedbackPayload(pages, groupNotes);
     const receipt = await previewShellBridge.submitAgentSession(payload);
     notify(`${receipt.message}（已带 ${payload.pages.length} 个有批注页 + ${payload.groupNotes.length} 条整组意见）`);
   };
 
   const handleCancelAgent = async () => {
+    if (isDesktopWebView()) {
+      await desktopRpc('agent.cancel').catch(() => {});
+      notify('已取消本次 AI 会话');
+      return;
+    }
     const receipt = await previewShellBridge.cancelAgentSession();
     notify(receipt.message);
   };
@@ -219,12 +346,14 @@ export default function App() {
             <span>关于</span>
           </button>
           <div className="sidebar-footer">
-            <span className="sidebar-footer-version">0.14 B2 Shell</span>
+            <span className="sidebar-footer-version">
+              {desktopConnected ? '0.14 Desktop' : '0.14 B2 Shell'}
+            </span>
             <button
               className="icon-button"
               aria-label={isDark ? '切换浅色' : '切换深色'}
               title={isDark ? '切换浅色' : '切换深色'}
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              onClick={() => handleChangeTheme(isDark ? 'light' : 'dark')}
             >
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
@@ -245,6 +374,10 @@ export default function App() {
         </div>
 
         <div className="topbar-right">
+          <button className="button secondary sm" onClick={handleCaptureStart} title="截取屏幕画面">
+            <Camera size={13} /> 屏幕截图
+          </button>
+
           <div className="segmented-control" aria-label="工作模式切换">
             <button className={agentMode ? 'selected' : ''} onClick={() => setAgentMode(true)}>
               Agent 会话
@@ -278,10 +411,12 @@ export default function App() {
             pages={pages}
             activePageId={activePageId}
             groupNotes={groupNotes}
+            includeOcr={preferences.includeOcr}
             onSelectPage={setActivePageId}
             onUpdatePages={setPages}
             onUpdateGroupNotes={setGroupNotes}
             onImportImage={handleImportImage}
+            onRequestImport={handleRequestOpenFiles}
             onAnalyze={() => setView('analysis')}
             onToast={notify}
           />
@@ -308,9 +443,11 @@ export default function App() {
         {view === 'settings' && (
           <SettingsView
             theme={theme}
-            onChangeTheme={setTheme}
+            onChangeTheme={handleChangeTheme}
             preferences={preferences}
-            onChangePreferences={setPreferences}
+            onChangePreferences={handleChangePreferences}
+            doctor={doctor}
+            desktopConnected={desktopConnected}
             onToast={notify}
           />
         )}

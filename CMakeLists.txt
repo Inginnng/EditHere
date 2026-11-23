@@ -26,20 +26,20 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network
 qt_standard_project_setup()
 add_subdirectory(features/ai-text)
 set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/imageset.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
-set(UI app/agentserver.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
+set(UI app/agentserver.cpp app/b2assetserver.cpp app/b2window.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
-  set(PLATFORM app/platform_win.cpp app/windowscapture.cpp)
+  set(PLATFORM app/platform_win.cpp app/windowscapture.cpp app/webview2host_win.cpp)
 elseif(APPLE)
   enable_language(OBJCXX)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "" FORCE)
-  set(PLATFORM app/platform_mac.mm app/autostart_mac.mm app/ocr_mac.mm app/trayeventguard_mac.mm)
+  set(PLATFORM app/platform_mac.mm app/autostart_mac.mm app/ocr_mac.mm app/trayeventguard_mac.mm app/webview2host_stub.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(Qt6 REQUIRED COMPONENTS DBus)
   find_package(X11 REQUIRED)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(ATSPI REQUIRED IMPORTED_TARGET atspi-2 gobject-2.0)
   pkg_check_modules(PIPEWIRE QUIET IMPORTED_TARGET libpipewire-0.3>=1.0.4)
-  set(PLATFORM app/platform_linux.cpp app/autostart_linux.cpp app/linuxportal.cpp app/accessibility_linux.cpp app/scroll_wayland.cpp)
+  set(PLATFORM app/platform_linux.cpp app/autostart_linux.cpp app/linuxportal.cpp app/accessibility_linux.cpp app/scroll_wayland.cpp app/webview2host_stub.cpp)
 else()
   message(FATAL_ERROR "This release targets Windows, macOS and Linux.")
 endif()
@@ -61,7 +61,7 @@ add_library(edithere_zlib STATIC third_party/zlib/adler32.c third_party/zlib/crc
 set_target_properties(edithere_zlib PROPERTIES AUTOMOC OFF POSITION_INDEPENDENT_CODE ON)
 target_include_directories(edithere_zlib PUBLIC third_party/zlib)
 target_compile_definitions(edithere_zlib PUBLIC Z_SOLO)
-add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/tesseract.cpp app/videoplayback.cpp)
+add_library(h2d_ui STATIC ${UI} ${PLATFORM} app/platform.h app/webview2host.h app/tesseract.cpp app/videoplayback.cpp)
 target_sources(h2d_ui PRIVATE app/diagnosticspage.cpp)
 target_sources(h2d_ui PRIVATE app/aifeedbacksnapshot.cpp)
 target_link_libraries(h2d_ui PUBLIC h2d_ai_text)
@@ -70,7 +70,8 @@ target_link_libraries(h2d_ui PUBLIC h2d_agent h2d_core Qt6::Widgets Qt6::Svg Qt6
 target_link_libraries(h2d_ui PRIVATE edithere_zlib)
 target_link_libraries(h2d_ui PUBLIC h2d_diagnostics)
 target_compile_definitions(h2d_ui PRIVATE
-  EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}")
+  EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}"
+  EDITHERE_FRONTEND_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist")
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
@@ -186,6 +187,13 @@ add_custom_command(TARGET EditHere POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${CMAKE_CURRENT_BINARY_DIR}/version-configured.txt" "${CMAKE_CURRENT_BINARY_DIR}/version.txt"
   VERBATIM)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist")
+  add_custom_command(TARGET EditHere POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E remove_directory "$<TARGET_FILE_DIR:EditHere>/b2-ui"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+      "${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist" "$<TARGET_FILE_DIR:EditHere>/b2-ui"
+    VERBATIM)
+endif()
 enable_testing()
 qt_add_executable(imageset_tests tests/imageset_test.cpp)
 target_link_libraries(imageset_tests PRIVATE h2d_ui Qt6::Test)

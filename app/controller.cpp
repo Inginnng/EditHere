@@ -1,12 +1,15 @@
 #include "controller.h"
-#include "diagnostics.h"
 #include "agentprotocol.h"
+#include "b2window.h"
 #include "capturetoolbar.h"
+#include "diagnostics.h"
 #include "i18n.h"
 #include "ocrdialog.h"
 #include "pinwindow.h"
 #include "scrollcapture.h"
 #include "scrollstitch.h"
+#include "videoproject.h"
+#include "webview2host.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
@@ -48,6 +51,12 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     : QObject(parent), settings_(settings), settingsFile_(settingsFile), editor_(),
       tray_(trayIcon(), this),
       shortcut_(this), annotateShortcut_(this) {
+    useB2Ui_ = QGuiApplication::platformName() == "windows" &&
+               !QCoreApplication::arguments().contains("--legacy-ui") &&
+               WebView2Host::runtimeAvailable();
+    diagnostics::write(diagnostics::Level::Info, "startup.ui_mode",
+                       useB2Ui_ ? "Using B2 WebView2 UI" : "Using legacy Qt Widgets UI",
+                       {{"platform", QGuiApplication::platformName()}, {"b2", useB2Ui_}});
     shortcut_.setObjectName("captureShortcut");
     annotateShortcut_.setObjectName("annotateShortcut");
     connect(&editor_, &Editor::agentFinishRequested, this, &Controller::finishAgentSession);
@@ -176,6 +185,69 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
         tray_.showMessage("EditHere", tr("新建批注快捷键未能注册，请右键托盘打开设置修改。"));
     }
 }
+Controller::~Controller() = default;
+B2Window *Controller::ensureB2Window() {
+    if (!b2Window_) {
+        b2Window_ = std::make_unique<B2Window>(settings_, settingsFile_);
+        connect(b2Window_.get(), &B2Window::captureRequested, this, &Controller::capture);
+        connect(b2Window_.get(), &B2Window::pinImageRequested, this, [this](const QImage &img) {
+            pinImage(img);
+        });
+        connect(b2Window_.get(), &B2Window::preferencesUpdated, this, [this](const AppSettings &next) {
+            const bool langChanged = settings_.language != next.language;
+            settings_ = next;
+            editor_.setPreferences(settings_);
+            applyTheme(settings_.theme);
+            if (langChanged) {
+                installLanguage(settings_.language);
+                retranslate();
+            } else {
+                updateTrayShortcut();
+            }
+        });
+        connect(b2Window_.get(), &B2Window::agentSessionCompleted, this,
+                [this](const QString &output, int annotationCount, const QString &schemaVersion,
+                       const QString &imageFile, const QString &previewFile) {
+                    if (agentSessionId_.isEmpty()) return;
+                    const auto id = agentSessionId_;
+                    auto receiptPath = [&](const QString &name) -> QJsonValue {
+                        return name.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                              : QJsonValue(QFileInfo(output).dir().filePath(name));
+                    };
+                    const QJsonObject result{
+                        {"ok", true},
+                        {"command", "annotate"},
+                        {"output", output},
+                        {"imageFile", receiptPath(imageFile)},
+                        {"previewFile", receiptPath(previewFile)},
+                        {"annotations", annotationCount},
+                        {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None},
+                        {"schemaVersion", schemaVersion},
+                    };
+                    agentSessionId_.clear();
+                    agentOutput_.clear();
+                    diagnostics::write(diagnostics::Level::Info, "agent.session_end",
+                                       "B2 annotation completed; returning feedback",
+                                       {{"session", id}, {"code", "success"}, {"annotationCount", annotationCount}});
+                    emit agentSessionFinished(id, result);
+                });
+        connect(b2Window_.get(), &B2Window::agentSessionCancelled, this, [this]() {
+            if (!agentSessionId_.isEmpty()) {
+                cancelAgentSession(agentSessionId_, "cancelled", "User cancelled. Edits remain in EditHere.");
+            }
+        });
+        connect(b2Window_.get(), &B2Window::webviewFailed, this, [this](const QString &reason) {
+            diagnostics::write(diagnostics::Level::Warning, "b2.fallback_legacy",
+                               "WebView2 host failed; falling back to Qt Widgets Editor", {{"reason", reason}});
+            useB2Ui_ = false;
+            if (b2Window_) b2Window_->hide();
+            editor_.show();
+            editor_.raise();
+            editor_.activateWindow();
+        });
+    }
+    return b2Window_.get();
+}
 void Controller::trayActivated(QSystemTrayIcon::ActivationReason reason) {
     if (reason == QSystemTrayIcon::Context) {
         trayClickTimer_.stop();
@@ -213,6 +285,14 @@ void Controller::showCurrentWindow() {
     if (capturing_ || QApplication::activeModalWidget()) return;
     scheduleStartupUpdate();
     if (auto menu = tray_.contextMenu()) menu->close();
+    if (useB2Ui_) {
+        auto *w = ensureB2Window();
+        w->setWindowState(w->windowState() & ~Qt::WindowMinimized);
+        w->show();
+        w->raise();
+        w->activateWindow();
+        return;
+    }
     // Showing an empty editor must not enter activate()'s capture fallback or
     // openEmpty()'s document replacement path.
     editor_.setWindowState(editor_.windowState() & ~Qt::WindowMinimized);
@@ -246,6 +326,10 @@ void Controller::openAnnotation() {
     scheduleStartupUpdate();
     if (auto menu = tray_.contextMenu())
         menu->close();
+    if (useB2Ui_) {
+        showCurrentWindow();
+        return;
+    }
     editor_.openEmpty();
 }
 void Controller::openFromTray() {
@@ -260,11 +344,21 @@ void Controller::openFromTray() {
         if (capturing_ || QApplication::activeModalWidget())
             return;
         scheduleStartupUpdate();
+        if (useB2Ui_) {
+            showCurrentWindow();
+            ensureB2Window()->triggerOpenDialog();
+            return;
+        }
         editor_.openFile();
         if (guidePending_ && editor_.hasDocument()) showGuide();
     });
 }
 void Controller::openSettings(bool updates, bool toolbar) {
+    if (useB2Ui_ && !updates && !toolbar) {
+        showCurrentWindow();
+        ensureB2Window()->navigateToView("settings");
+        return;
+    }
     openSettingsDialog(updates, toolbar);
 }
     void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
@@ -414,6 +508,12 @@ void Controller::showGuide() {
     if (auto menu = tray_.contextMenu())
         menu->close();
     guidePending_ = false;
+    if (useB2Ui_) {
+        QString err;
+        if (!hasSeenGuide(settingsFile_)) markGuideSeen(&err, settingsFile_);
+        showCurrentWindow();
+        return;
+    }
     editor_.showGuide();
 }
 void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
@@ -428,9 +528,34 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
     if (QGuiApplication::platformName() != "offscreen" && !QSystemTrayIcon::isSystemTrayAvailable() && !background)
         editor_.show();
 #endif
-    guidePending_ = guidePending_ || firstUse;
+    guidePending_ = !useB2Ui_ && (guidePending_ || firstUse);
+    if (useB2Ui_ && firstUse && !hasSeenGuide(settingsFile_)) {
+        QString err;
+        markGuideSeen(&err, settingsFile_);
+    }
     if (!agentSessionId_.isEmpty()) {
         activate();
+        return;
+    }
+    if (useB2Ui_) {
+        if (!path.isEmpty()) {
+            if (isVideoFile(path) || isVideoProjectFile(path)) {
+                useB2Ui_ = false;
+                editor_.openFile(path);
+            } else {
+                try {
+                    ensureB2Window()->openMediaPath(path);
+                } catch (const std::exception &e) {
+                    QMessageBox::warning(ensureB2Window(), tr("无法打开文件"), QString::fromUtf8(e.what()));
+                }
+            }
+        } else if (!background) {
+            if (demo) {
+                ensureB2Window()->openCapturedDocument(fromImage(exampleImage(), "demo", tr("示例产品页面")));
+            } else {
+                showCurrentWindow();
+            }
+        }
         return;
     }
     if (!path.isEmpty())
@@ -563,6 +688,10 @@ void Controller::presentInstallationReceipt() {
         diagnostics::write(diagnostics::Level::Warning, "updates.receipt", "Could not persist installer result acknowledgement.");
 }
 void Controller::raiseEditor() {
+    if (useB2Ui_) {
+        showCurrentWindow();
+        return;
+    }
     if (!editor_.hasDocument())
         return;
     if (editor_.isMinimized())
@@ -574,6 +703,13 @@ void Controller::raiseEditor() {
 void Controller::activate() {
     trayClickTimer_.stop();
     scheduleStartupUpdate();
+    if (useB2Ui_) {
+        if (!agentSessionId_.isEmpty() || (b2Window_ && b2Window_->hasDocument()))
+            showCurrentWindow();
+        else
+            capture();
+        return;
+    }
     if (guidePending_) {
         showGuide();
         return;
@@ -609,7 +745,8 @@ void Controller::beginCapture(bool fromTray) {
     // A new capture always starts on the screen, not on whatever was being browsed
     // before it.
     historyIndex_ = -1;
-    wasVisible_ = editor_.isVisible();
+    wasVisible_ = (useB2Ui_ && b2Window_ && b2Window_->isVisible()) || editor_.isVisible();
+    if (b2Window_) b2Window_->hide();
     editor_.hide();
     const quint64 generation = ++captureGeneration_;
     QPointer<Controller> self(this);
@@ -688,7 +825,9 @@ void Controller::beginCapture(bool fromTray) {
 }
 void Controller::restoreAfterCapture() {
     if (wasVisible_) {
-        if (captureForeground_) {
+        if (useB2Ui_ && b2Window_) {
+            showCurrentWindow();
+        } else if (captureForeground_) {
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
             editor_.show();
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
@@ -1743,7 +1882,11 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
             doc.candidates.append(c);
         }
         clearOverlays();
-        editor_.setDocument(std::move(doc));
+        if (useB2Ui_) {
+            ensureB2Window()->openCapturedDocument(std::move(doc));
+        } else {
+            editor_.setDocument(std::move(doc));
+        }
     } catch (const std::exception &e) {
         clearOverlays();
         restoreAfterCapture();
@@ -1764,6 +1907,7 @@ void Controller::quit() {
         raiseEditor();
     if (!editor_.allowReplace())
         return;
+    if (b2Window_) b2Window_->hide();
     tray_.hide();
     qApp->quit();
 }
@@ -1778,10 +1922,13 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     if (command == "status") {
         QString startupError;
         const bool startupRegistered = launchAtLoginEnabled(&startupError);
+        const bool hasDoc = (useB2Ui_ && b2Window_) ? b2Window_->hasDocument() : editor_.hasDocument();
+        const bool dirty = (useB2Ui_ && b2Window_) ? b2Window_->hasUnsavedChanges() : editor_.hasUnsavedChanges();
         return {{"ok", true}, {"running", true}, {"version", EDITHERE_VERSION},
+                {"ui", useB2Ui_ ? "b2-webview2" : "legacy-widgets"},
                 {"executable", QCoreApplication::applicationFilePath()},
                 {"startupRegistered", startupRegistered}, {"startupNotice", startupError.isEmpty() ? launchAtLoginNotice() : startupError},
-                {"hasDocument", editor_.hasDocument()}, {"dirty", editor_.hasUnsavedChanges()},
+                {"hasDocument", hasDoc}, {"dirty", dirty},
                 {"capturing", capturing_}, {"agentSession", !agentSessionId_.isEmpty()}};
     }
     if (command != "open" && command != "capture" && command != "annotate")
@@ -1820,10 +1967,18 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     exportOptions.preview = request["preview"].toBool();
     exportOptions.imageFile = QFileInfo(output).completeBaseName() + ".png";
     exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
+
+    const bool routeToB2 = useB2Ui_ && !isVideoFile(input) && !isVideoProjectFile(input);
     try {
         guidePending_ = false;
-        editor_.loadMedia(input);
-        if (request.contains("pageContext")) editor_.setPageContext(request["pageContext"].toString());
+        if (routeToB2) {
+            auto *w = ensureB2Window();
+            w->openMediaPath(input);
+            if (request.contains("pageContext")) w->setPageContext(request["pageContext"].toString());
+        } else {
+            editor_.loadMedia(input);
+            if (request.contains("pageContext")) editor_.setPageContext(request["pageContext"].toString());
+        }
     } catch (const std::exception &error) {
         diagnostics::write(diagnostics::Level::Error, "agent.load_media", QString::fromUtf8(error.what()));
         return agentError("io_error", QString::fromUtf8(error.what()));
@@ -1832,10 +1987,11 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     agentSessionId_ = uniqueId();
     agentOutput_ = output;
     agentExportOptions_ = exportOptions;
-    editor_.setAgentSession(true);
+    if (routeToB2) ensureB2Window()->setAgentSession(true, output, exportOptions);
+    else editor_.setAgentSession(true);
     const auto id = agentSessionId_;
     diagnostics::write(diagnostics::Level::Info, "agent.session_start", "Annotation session started",
-                       {{"session", id}, {"timeoutSeconds", timeout}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None}});
+                       {{"session", id}, {"timeoutSeconds", timeout}, {"imageIncluded", agentExportOptions_.mode != ImageExportMode::None}, {"b2", routeToB2}});
     QTimer::singleShot(timeout * 1000, this, [this, id] {
         cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
     });
@@ -1848,6 +2004,7 @@ void Controller::cancelAgentSession(const QString &id, const QString &code, cons
     const auto finishedId = agentSessionId_;
     agentSessionId_.clear();
     agentOutput_.clear();
+    if (b2Window_) b2Window_->setAgentSession(false);
     editor_.setAgentSession(false);
     emit agentSessionFinished(finishedId, agentError(code, message));
 }

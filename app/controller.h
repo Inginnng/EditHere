@@ -9,7 +9,9 @@
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
 #include <QTimer>
+#include <memory>
 namespace h2d {
+class B2Window;
 class OcrDialog;
 class PinWindow;
 class ScrollCapture;
@@ -21,6 +23,7 @@ class Controller final : public QObject {
   public:
     explicit Controller(QObject *parent = nullptr, const AppSettings &settings = loadSettings(),
                         const QString &settingsFile = {});
+    ~Controller() override;
     void start(bool demo, const QString &path = {}, bool background = false, bool firstUse = false);
     void showGuide();
     void capture();
@@ -43,6 +46,9 @@ class Controller final : public QObject {
     void trayActivated(QSystemTrayIcon::ActivationReason reason);
     void runTrayAction(const QString &id);
     void showCurrentWindow();
+    B2Window *ensureB2Window();
+    bool useB2Ui_ = false;
+    std::unique_ptr<B2Window> b2Window_;
     QTimer trayClickTimer_;
     bool trayActionRunning_ = false;
     void restoreAfterCapture();

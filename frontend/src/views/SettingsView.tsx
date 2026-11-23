@@ -13,14 +13,16 @@ import {
   SlidersHorizontal,
   Terminal,
 } from 'lucide-react';
-import { INITIAL_DOCTOR_SNAPSHOT } from '../bridge/mockBridge';
-import type { GeneralPreferences, ThemeMode } from '../bridge/types';
+import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
+import type { DoctorSnapshot, GeneralPreferences, ThemeMode } from '../bridge/types';
 
 interface SettingsViewProps {
   theme: ThemeMode;
   onChangeTheme: (theme: ThemeMode) => void;
   preferences: GeneralPreferences;
   onChangePreferences: (next: GeneralPreferences) => void;
+  doctor: DoctorSnapshot;
+  desktopConnected?: boolean;
   onToast: (message: string) => void;
 }
 
@@ -29,13 +31,17 @@ export default function SettingsView({
   onChangeTheme,
   preferences,
   onChangePreferences,
+  doctor,
+  desktopConnected = false,
   onToast,
 }: SettingsViewProps) {
-  const doctor = INITIAL_DOCTOR_SNAPSHOT;
-
   const copyMcpSnippet = async () => {
     try {
-      await navigator.clipboard.writeText(doctor.unifiedMcpSnippet);
+      if (isDesktopWebView()) {
+        await desktopRpc('clipboard.copyText', { text: doctor.unifiedMcpSnippet });
+      } else {
+        await navigator.clipboard.writeText(doctor.unifiedMcpSnippet);
+      }
       onToast('已复制统一 MCP 配置 JSON（cli/unified-mcp.mjs）');
     } catch {
       onToast('剪贴板访问受限');
@@ -200,7 +206,7 @@ export default function SettingsView({
                 <p>{item.detail}</p>
               </div>
               <span className={`badge ${item.status === 'ok' ? 'success' : 'warning'}`}>
-                {item.status === 'ok' ? '已就绪' : '空壳预览'}
+                {item.status === 'ok' ? '已就绪' : desktopConnected ? '待检查' : '空壳预览'}
               </span>
             </div>
           ))}
