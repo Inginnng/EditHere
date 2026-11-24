@@ -38,10 +38,33 @@ if ($ValidationDirectory) { $ValidationDirectory = (Resolve-Path -LiteralPath (J
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $notice))) { throw "Application license material is missing: $notice" }
 }
+$b2UiSource = Join-Path $buildPath "b2-ui"
+if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
+    $b2UiSource = Join-Path $projectRoot "frontend/dist"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
+    throw "B2 frontend dist (b2-ui/index.html) is missing. Build frontend/dist or rebuild EditHere first."
+}
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "EditHere.exe") -Destination $outputPath
 Copy-Item -LiteralPath $versionPath -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $outputPath
+$webViewLoader = Join-Path $buildPath "WebView2Loader.dll"
+if (Test-Path -LiteralPath $webViewLoader) { Copy-Item -LiteralPath $webViewLoader -Destination $outputPath }
+Copy-Item -LiteralPath $b2UiSource -Destination (Join-Path $outputPath "b2-ui") -Recurse
+$packagedCliDir = Join-Path $outputPath "cli"
+$packagedScriptsDir = Join-Path $outputPath "scripts"
+$packagedWebDir = Join-Path $outputPath "web"
+[IO.Directory]::CreateDirectory($packagedCliDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedScriptsDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedWebDir) | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $projectRoot "cli") -Filter "*.mjs" -File | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $packagedCliDir
+}
+foreach ($scriptFile in @("capture-web.mjs", "image-set.mjs")) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot "scripts/$scriptFile") -Destination $packagedScriptsDir
+}
+Copy-Item -LiteralPath (Join-Path $projectRoot "web/image-set.cjs") -Destination $packagedWebDir
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/integrate.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
@@ -93,8 +116,8 @@ try {
 }
 # A developer SDK on PATH can hide an incomplete video deployment. Require the
 # backend and each FFmpeg library beside the packaged executable before zipping.
-foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll")) {
-    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt runtime deployment is incomplete: $runtimeFile" }
+foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll", "b2-ui/index.html", "cli/unified-mcp.mjs", "cli/edithere.mjs", "scripts/capture-web.mjs", "web/image-set.cjs")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt or B2 runtime deployment is incomplete: $runtimeFile" }
 }
 $ffmpegLibraries = @()
 foreach ($component in @("avcodec", "avformat", "avutil", "swresample", "swscale")) {
