@@ -1,5 +1,6 @@
 #include "b2window.h"
 #include "agentprotocol.h"
+#include "aifeedbacksnapshot.h"
 #include "detector.h"
 #include "diagnostics.h"
 #include "i18n.h"
@@ -19,6 +20,8 @@
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPainter>
+#include <QRegularExpression>
 #include <QSet>
 #include <QShowEvent>
 #include <QStandardPaths>
@@ -77,6 +80,54 @@ QJsonObject rectToJson(const QRect &r) {
     return QJsonObject{{"x1", r.left()}, {"y1", r.top()}, {"x2", r.left() + r.width()}, {"y2", r.top() + r.height()}};
 }
 
+QString normalizeAiProtocol(const QString &value) {
+    if (value == "responses") return "responses";
+    if (value == "anthropic" || value == "anthropic-messages") return "anthropic-messages";
+    return "chat-completions";
+}
+
+QString maskSecretKey(const QString &key) {
+    const QString trimmed = key.trimmed();
+    if (trimmed.isEmpty()) return {};
+    if (trimmed.size() <= 8) return QStringLiteral("••••••••");
+    return trimmed.left(3) + QStringLiteral("••••••••") + trimmed.right(4);
+}
+
+QString sanitizeProviderId(const QString &raw) {
+    QString id = raw.trimmed().toLower();
+    static const QRegularExpression valid(QStringLiteral("^[a-z0-9][a-z0-9-]{0,63}$"));
+    if (valid.match(id).hasMatch()) return id;
+    id.replace(QRegularExpression(QStringLiteral("[^a-z0-9-]+")), QStringLiteral("-"));
+    id.remove(QRegularExpression(QStringLiteral("^-+|-+$")));
+    if (id.isEmpty()) id = QStringLiteral("custom");
+    return id.left(64);
+}
+
+AiConnectionSettings connectionFromJson(const QJsonObject &obj, const QString &providerId) {
+    AiConnectionSettings conn = defaultAiConnection(providerId);
+    conn.providerId = providerId;
+    if (obj.contains("endpoint") || obj.contains("baseUrl")) {
+        const QString ep = obj.contains("endpoint") ? obj.value("endpoint").toString()
+                                                    : obj.value("baseUrl").toString();
+        conn.baseUrl = ep.trimmed();
+    }
+    if (obj.contains("model")) {
+        conn.model = obj.value("model").toString().trimmed();
+    }
+    if (obj.contains("protocol")) {
+        conn.protocol = normalizeAiProtocol(obj.value("protocol").toString());
+    }
+    if (obj.contains("note") || obj.contains("extraInstructions")) {
+        conn.extraInstructions = obj.contains("note") ? obj.value("note").toString()
+                                                      : obj.value("extraInstructions").toString();
+    }
+    const int to = obj.value("timeout").toVariant().toInt();
+    if (to >= 10 && to <= 600) {
+        conn.timeoutSeconds = to;
+    }
+    return conn;
+}
+
 } // namespace
 
 B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWidget *parent)
@@ -84,12 +135,14 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
       server_(this),
       webview_(new WebView2Host(this)),
       ocr_(new OcrEngine(this)),
+      aiCredentials_(new AiCredentials(this)),
+      aiClient_(new AiFeedbackClient(this)),
       settings_(settings),
       settingsFile_(settingsFile) {
     setWindowTitle(tr("EditHere · 改这里"));
     setWindowIcon(QGuiApplication::windowIcon());
     resize(1360, 860);
-    setMinimumSize(920, 640);
+    setMinimumSize(820, 580);
 
     setCentralWidget(webview_);
 
@@ -98,6 +151,73 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
         diagnostics::write(diagnostics::Level::Warning, "b2.window_webview_failed", reason);
         emit webviewFailed(reason);
     });
+
+    connect(aiCredentials_, &AiCredentials::loaded, this, [this](const QString &providerId, const QString &key) {
+        if (!key.isEmpty()) {
+            apiKeys_[providerId] = key;
+        } else {
+            apiKeys_.remove(providerId);
+        }
+        if (jsReady_) {
+            pushEvent("ai.state", buildAiStateJson());
+        }
+    });
+    connect(aiCredentials_, &AiCredentials::saved, this, [this](const QString &) {
+        if (jsReady_) pushEvent("ai.state", buildAiStateJson());
+    });
+    connect(aiCredentials_, &AiCredentials::removed, this, [this](const QString &providerId) {
+        apiKeys_.remove(providerId);
+        if (jsReady_) pushEvent("ai.state", buildAiStateJson());
+    });
+
+    connect(aiClient_, &AiFeedbackClient::usageAvailable, this, [this](qint64 inTok, qint64 outTok) {
+        lastInputTokens_ = inTok;
+        lastOutputTokens_ = outTok;
+    });
+    connect(aiClient_, &AiFeedbackClient::completed, this, [this](const QString &text) {
+        if (!pendingAiTestId_.isNull() && !pendingAiTestId_.isUndefined()) {
+            const QJsonValue id = pendingAiTestId_;
+            pendingAiTestId_ = QJsonValue();
+            sendRpcResult(id, true, QJsonObject{{"ok", true}, {"reply", text}});
+            return;
+        }
+        if (!pendingAiAnalyzeId_.isNull() && !pendingAiAnalyzeId_.isUndefined()) {
+            const QJsonValue id = pendingAiAnalyzeId_;
+            pendingAiAnalyzeId_ = QJsonValue();
+            sendRpcResult(id, true, QJsonObject{
+                {"ok", true},
+                {"text", text},
+                {"inputTokens", double(lastInputTokens_)},
+                {"outputTokens", double(lastOutputTokens_)},
+            });
+        }
+    });
+    connect(aiClient_, &AiFeedbackClient::failed, this, [this](const QString &message) {
+        if (!pendingAiTestId_.isNull() && !pendingAiTestId_.isUndefined()) {
+            const QJsonValue id = pendingAiTestId_;
+            pendingAiTestId_ = QJsonValue();
+            sendRpcResult(id, false, {}, message);
+        }
+        if (!pendingAiAnalyzeId_.isNull() && !pendingAiAnalyzeId_.isUndefined()) {
+            const QJsonValue id = pendingAiAnalyzeId_;
+            pendingAiAnalyzeId_ = QJsonValue();
+            sendRpcResult(id, false, {}, message);
+        }
+    });
+    connect(aiClient_, &AiFeedbackClient::cancelled, this, [this]() {
+        if (!pendingAiTestId_.isNull() && !pendingAiTestId_.isUndefined()) {
+            const QJsonValue id = pendingAiTestId_;
+            pendingAiTestId_ = QJsonValue();
+            sendRpcResult(id, false, {}, tr("已取消测试连接。"));
+        }
+        if (!pendingAiAnalyzeId_.isNull() && !pendingAiAnalyzeId_.isUndefined()) {
+            const QJsonValue id = pendingAiAnalyzeId_;
+            pendingAiAnalyzeId_ = QJsonValue();
+            sendRpcResult(id, false, {}, tr("已取消 AI 解析。"));
+        }
+    });
+
+    preloadAiCredentials();
 
     QString serverError;
     if (!server_.start(&serverError)) {
@@ -431,6 +551,66 @@ QJsonObject B2Window::buildSessionStateJson() const {
         {"groupNotes", groupNotes_},
         {"preferences", buildPreferencesJson()},
         {"doctor", buildDoctorSnapshotJson()},
+        {"ai", buildAiStateJson()},
+    };
+}
+
+void B2Window::preloadAiCredentials() {
+    if (!aiCredentials_) return;
+    QSet<QString> ids;
+    for (const auto &preset : aiProviderPresets()) {
+        ids.insert(preset.id);
+    }
+    for (auto it = settings_.aiProviders.cbegin(); it != settings_.aiProviders.cend(); ++it) {
+        ids.insert(it.key());
+    }
+    for (const QString &id : ids) {
+        aiCredentials_->load(id);
+    }
+}
+
+QJsonObject B2Window::buildAiStateJson() const {
+    QJsonArray providersArr;
+    QSet<QString> seen;
+
+    const auto toJsonEntry = [&](const QString &id, const QString &presetId, const QString &name,
+                                 const AiConnectionSettings &conn) {
+        const QString key = apiKeys_.value(id);
+        return QJsonObject{
+            {"id", id},
+            {"presetId", presetId},
+            {"name", name},
+            {"model", conn.model},
+            {"endpoint", conn.baseUrl},
+            {"protocol", conn.protocol},
+            {"key", ""},
+            {"keyPreview", maskSecretKey(key)},
+            {"region", "cn"},
+            {"timeout", QString::number(conn.timeoutSeconds)},
+            {"note", conn.extraInstructions},
+            {"saved", !key.isEmpty()},
+        };
+    };
+
+    for (const auto &preset : aiProviderPresets()) {
+        if (preset.id == "custom") continue;
+        seen.insert(preset.id);
+        AiConnectionSettings conn = settings_.aiProviders.value(preset.id, defaultAiConnection(preset.id));
+        if (conn.baseUrl.isEmpty()) conn.baseUrl = preset.baseUrl;
+        if (conn.model.isEmpty()) conn.model = preset.model;
+        if (conn.protocol.isEmpty()) conn.protocol = preset.protocol;
+        providersArr.append(toJsonEntry(preset.id, preset.id, preset.name, conn));
+    }
+
+    for (auto it = settings_.aiProviders.cbegin(); it != settings_.aiProviders.cend(); ++it) {
+        if (seen.contains(it.key())) continue;
+        providersArr.append(toJsonEntry(it.key(), "custom", it.key(), it.value()));
+    }
+
+    return QJsonObject{
+        {"defaultProviderId", settings_.aiProviderId},
+        {"systemPrompt", settings_.aiSystemPrompt},
+        {"providers", providersArr},
     };
 }
 
@@ -590,6 +770,32 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
         return;
     }
 
+    if (method == "ai.getState") {
+        sendRpcResult(id, true, buildAiStateJson());
+        return;
+    }
+
+    if (method == "ai.saveProviders") {
+        handleAiSaveProviders(id, params);
+        return;
+    }
+
+    if (method == "ai.testConnection") {
+        handleAiTestConnection(id, params);
+        return;
+    }
+
+    if (method == "ai.analyze") {
+        handleAiAnalyze(id, params);
+        return;
+    }
+
+    if (method == "ai.cancel") {
+        if (aiClient_) aiClient_->cancel();
+        sendRpcResult(id, true, QJsonObject{{"cancelled", true}});
+        return;
+    }
+
     sendRpcResult(id, false, {}, QString("Unsupported RPC method: %1").arg(method));
 }
 
@@ -682,7 +888,23 @@ void B2Window::handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params)
         return;
     }
 
-    const QImage crop = targetPage->document.image.copy(rect);
+    QImage crop = targetPage->document.image.copy(rect);
+    const QJsonArray mosaics = params.value("mosaics").toArray();
+    if (!mosaics.isEmpty()) {
+        QPainter maskPainter(&crop);
+        maskPainter.setPen(Qt::NoPen);
+        maskPainter.setBrush(QColor(18, 20, 26));
+        for (const auto &mv : mosaics) {
+            const QJsonObject mo = mv.toObject();
+            const QRect mr = QRect(
+                QPoint(mo.value("x1").toInt(), mo.value("y1").toInt()),
+                QPoint(mo.value("x2").toInt() - 1, mo.value("y2").toInt() - 1)).normalized();
+            const QRect overlap = mr.intersected(rect);
+            if (!overlap.isEmpty()) {
+                maskPainter.drawRect(overlap.translated(-rect.topLeft()));
+            }
+        }
+    }
     if (ocr_->busy()) ocr_->cancel();
     ocr_->recognize(crop, settings_.ocrLanguage, [this, rpcId](OcrResult result) {
         sendRpcResult(rpcId, true, QJsonObject{
@@ -695,6 +917,15 @@ void B2Window::handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params)
 
 Document B2Window::buildDocumentFromJsPage(const B2Page &basePage, const QJsonObject &jsPage) const {
     Document doc = basePage.document;
+    const QString redactedB64 = jsPage.value("redactedPngBase64").toString();
+    if (!redactedB64.isEmpty()) {
+        const QByteArray bytes = QByteArray::fromBase64(redactedB64.toLatin1());
+        QImage redacted;
+        if (!bytes.isEmpty() && redacted.loadFromData(bytes, "PNG") && !redacted.isNull()) {
+            doc.image = redacted;
+            doc.png = bytes;
+        }
+    }
     doc.notes.clear();
     doc.layout.reset();
 
@@ -986,6 +1217,127 @@ void B2Window::handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &p
         const QString err = QString::fromUtf8(e.what());
         diagnostics::write(diagnostics::Level::Error, "b2.agent_complete_failed", err);
         sendRpcResult(rpcId, false, {}, err);
+    }
+}
+
+void B2Window::handleAiSaveProviders(const QJsonValue &rpcId, const QJsonObject &params) {
+    if (params.contains("defaultProviderId")) {
+        const QString defId = sanitizeProviderId(params.value("defaultProviderId").toString());
+        if (!defId.isEmpty()) settings_.aiProviderId = defId;
+    }
+    if (params.contains("systemPrompt")) {
+        settings_.aiSystemPrompt = params.value("systemPrompt").toString();
+    }
+
+    if (params.contains("providers") && params.value("providers").isArray()) {
+        QMap<QString, AiConnectionSettings> nextMap;
+        const QJsonArray arr = params.value("providers").toArray();
+        for (const auto &val : arr) {
+            const QJsonObject obj = val.toObject();
+            const QString id = sanitizeProviderId(obj.value("id").toString());
+            if (id.isEmpty()) continue;
+
+            AiConnectionSettings conn = connectionFromJson(obj, id);
+            nextMap.insert(id, conn);
+
+            if (obj.value("keyEdited").toBool() && aiCredentials_) {
+                const QString nextKey = obj.value("key").toString().trimmed();
+                if (nextKey.isEmpty()) {
+                    apiKeys_.remove(id);
+                    aiCredentials_->remove(id);
+                } else {
+                    apiKeys_[id] = nextKey;
+                    aiCredentials_->save(id, nextKey);
+                }
+            }
+        }
+        settings_.aiProviders = std::move(nextMap);
+    }
+
+    QString saveErr;
+    if (!saveSettings(settings_, &saveErr, settingsFile_)) {
+        sendRpcResult(rpcId, false, {}, saveErr);
+        return;
+    }
+    emit preferencesUpdated(settings_);
+    sendRpcResult(rpcId, true, buildAiStateJson());
+}
+
+void B2Window::handleAiTestConnection(const QJsonValue &rpcId, const QJsonObject &params) {
+    const QString providerId = sanitizeProviderId(params.value("id").toString(settings_.aiProviderId));
+    AiConnectionSettings conn = connectionFromJson(params, providerId);
+    const QString validation = validateAiConnection(conn, false);
+    if (!validation.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, validation);
+        return;
+    }
+    QString key = params.value("key").toString().trimmed();
+    if (key.isEmpty() || key.contains(QStringLiteral("••••"))) {
+        key = apiKeys_.value(providerId);
+    }
+    if (key.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("请先填写或保存有效的 API Key。"));
+        return;
+    }
+    if (aiClient_->isRunning()) {
+        sendRpcResult(rpcId, false, {}, tr("当前已有 AI 请求正在运行，请等待完成或先取消。"));
+        return;
+    }
+    pendingAiAnalyzeId_ = QJsonValue();
+    pendingAiTestId_ = rpcId;
+    aiClient_->testConnection(conn, key);
+}
+
+void B2Window::handleAiAnalyze(const QJsonValue &rpcId, const QJsonObject &params) {
+    if (pages_.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("当前为示例模式，请先「屏幕截图」或导入本地图片后再执行真实 AI 解析。"));
+        return;
+    }
+    const QString providerId = sanitizeProviderId(params.value("providerId").toString(settings_.aiProviderId));
+    AiConnectionSettings conn = settings_.aiProviders.value(providerId, defaultAiConnection(providerId));
+    if (params.contains("provider") && params.value("provider").isObject()) {
+        conn = connectionFromJson(params.value("provider").toObject(), providerId);
+    }
+    const QString validation = validateAiConnection(conn, true);
+    if (!validation.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, validation);
+        return;
+    }
+    const QString key = apiKeys_.value(providerId);
+    if (key.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("尚未配置「%1」的 API Key，请前往 设置 → 模型服务 填写并保存。").arg(providerId));
+        return;
+    }
+    if (aiClient_->isRunning()) {
+        sendRpcResult(rpcId, false, {}, tr("已有 AI 解析请求正在运行，请先等待或取消。"));
+        return;
+    }
+
+    try {
+        const QJsonObject payload = params.value("payload").toObject();
+        FeedbackExportOptions options;
+        options.mode = ImageExportMode::None;
+        options.includeRecognizedText = settings_.regionOcrEnabled;
+        options.includeWindowTitle = settings_.includeWindowTitle;
+
+        AiFeedbackInput input;
+        if (isImageSetProject_ || pages_.size() > 1) {
+            const ImageSet set = buildImageSetFromPayload(payload);
+            input = aiFeedbackSnapshot(set, options);
+        } else {
+            const QJsonArray jsPages = payload.value("pages").toArray();
+            const QJsonObject firstJs = jsPages.isEmpty() ? QJsonObject() : jsPages.first().toObject();
+            const Document doc = buildDocumentFromJsPage(pages_.first(), firstJs);
+            input = aiFeedbackSnapshot(doc, options);
+        }
+
+        lastInputTokens_ = 0;
+        lastOutputTokens_ = 0;
+        pendingAiTestId_ = QJsonValue();
+        pendingAiAnalyzeId_ = rpcId;
+        aiClient_->generate(conn, key, input, settings_.aiSystemPrompt);
+    } catch (const std::exception &e) {
+        sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
     }
 }
 

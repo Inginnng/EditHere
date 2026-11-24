@@ -231,7 +231,7 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
         if (!active.isEmpty())
             mask.addRect(localRect(active));
         mask.setFillRule(Qt::OddEvenFill);
-        p.fillPath(mask, QColor(16, 18, 24, 105));
+        p.fillPath(mask, QColor(11, 12, 15, 122));
     }
     if (active.isEmpty() || picking_)
         return;
@@ -246,22 +246,46 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
         p.drawRoundedRect(outline.adjusted(1, 1, -1, -1), std::max(0.0, radius - 1),
                           std::max(0.0, radius - 1));
     }
-    p.setPen(QPen(accent(), 2));
+    p.setPen(QPen(accent(), 1.5));
     p.drawRoundedRect(outline, radius, radius);
-    // The corners are where the region is resized, so they are shown, and
-    // they are round because a round handle reads as a handle rather than as a
-    // speck of dirt on the picture.
+    // Compact PixPin-grade dimension readout while dragging or when clear of toolbar.
+    {
+        const QString dimText = QStringLiteral("%1 × %2").arg(active.width()).arg(active.height());
+        QFont dimFont(QStringLiteral("Consolas"));
+        dimFont.setStyleHint(QFont::Monospace);
+        dimFont.setPointSizeF(9.0);
+        dimFont.setWeight(QFont::DemiBold);
+        p.setFont(dimFont);
+        const int badgeW = p.fontMetrics().horizontalAdvance(dimText) + 14;
+        const int badgeH = 22;
+        const qreal bx = std::clamp(outline.left(), 8.0, std::max(8.0, double(width()) - badgeW - 8.0));
+        const qreal by = outline.top() >= badgeH + 12.0 ? outline.top() - badgeH - 6.0
+                                                        : std::min(outline.top() + 8.0, double(height()) - badgeH - 8.0);
+        const QRectF dimRect(bx, by, badgeW, badgeH);
+        const bool overlapsBar = bar_ != nullptr && bar_->isVisible() &&
+                                 dimRect.intersects(QRectF(bar_->geometry()).adjusted(-6, -6, 6, 6));
+        if (!overlapsBar) {
+            p.setPen(QPen(QColor(255, 255, 255, 34), 1));
+            p.setBrush(QColor(18, 20, 26, 234));
+            p.drawRoundedRect(dimRect, 6, 6);
+            p.setPen(QColor(0xf5, 0xf5, 0xf7));
+            p.drawText(dimRect, Qt::AlignCenter, dimText);
+        }
+    }
+    // 8 architectural handles (4 corners + 4 edge midpoints) when region is settled.
     if (ready_) {
-        // The corners are where the region can be resized, so they are shown, and
-        // they are round because a round handle reads as a handle rather than as a
-        // speck of dirt on the picture.
-        p.setPen(QPen(Qt::white, 1));
-        p.setBrush(accent());
-        for (const auto &corner : {active.topLeft(), active.topRight(), active.bottomLeft(),
-                                   active.bottomRight()}) {
-            const QPointF centre = QPointF(double(corner.x()) * width() / frame_.image.width(),
-                                           double(corner.y()) * height() / frame_.image.height());
-            p.drawEllipse(centre, 4.0, 4.0);
+        p.setPen(QPen(accent(), 1.5));
+        p.setBrush(Qt::white);
+        const QVector<QPoint> anchors{
+            active.topLeft(), active.topRight(), active.bottomLeft(), active.bottomRight(),
+            QPoint(active.center().x(), active.top()),
+            QPoint(active.center().x(), active.bottom()),
+            QPoint(active.left(), active.center().y()),
+            QPoint(active.right(), active.center().y())};
+        for (const auto &pt : anchors) {
+            const QPointF centre(double(pt.x()) * width() / frame_.image.width(),
+                                 double(pt.y()) * height() / frame_.image.height());
+            p.drawRoundedRect(QRectF(centre.x() - 3.5, centre.y() - 3.5, 7.0, 7.0), 2.0, 2.0);
         }
     }
 }
@@ -281,59 +305,49 @@ void Overlay::paintEvent(QPaintEvent *) {
                    double(cursor_.y()) * height() / frame_.image.height());
         const Qt::CursorShape shape = cursor().shape();
         const bool adjusting = shape == Qt::SizeFDiagCursor || shape == Qt::SizeBDiagCursor ||
+                               shape == Qt::SizeVerCursor || shape == Qt::SizeHorCursor ||
                                shape == Qt::SizeAllCursor;
         // The native resize/move cursor is the aim during a selection adjustment.
         // Painting our crosshair beneath it would still make a handle look like a
         // place to draw a new selection.
         if (!adjusting) {
-            const QPen pen(Qt::white, 0);
+            const QPen pen(QColor(255, 255, 255, 210), 1);
             p.setPen(pen);
-            p.drawLine(at + QPointF(-9,0), at + QPointF(9,0));
-            p.drawLine(at + QPointF(0,-9), at + QPointF(0,9));
+            p.drawLine(at + QPointF(-9, 0), at + QPointF(9, 0));
+            p.drawLine(at + QPointF(0, -9), at + QPointF(0, 9));
         }
         drawMagnifier(p, at);
     }
+    const auto drawHintPill = [&](const QString &text, qreal topY) {
+        QFont hintFont(h2d::cjkFontFamily());
+        hintFont.setPointSizeF(9.5);
+        p.setFont(hintFont);
+        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 28);
+        const QRectF hint((width() - w) / 2.0, topY, w, 32);
+        p.setPen(QPen(QColor(255, 255, 255, 34), 1));
+        p.setBrush(QColor(20, 22, 27, 236));
+        p.drawRoundedRect(hint, 8, 8);
+        p.setPen(QColor(0xf5, 0xf5, 0xf7));
+        p.drawText(hint, Qt::AlignCenter, text);
+    };
     if (picking_) {
         // The panel carries the instructions, so the only thing left to say up here is
         // how to get out.
         const QString text = colourCopied_ ? tr("已复制颜色值 %1")
                                                  .arg(captureColourText(colourAt(cursor_), colourFormat_))
-                                           : tr("移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        const QRectF hint((width() - w) / 2, 24, w, 36);
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 235));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
+                                           : tr("移动到要取色的位置 · C 复制颜色值 · Shift 切换格式 · Esc 结束取色");
+        drawHintPill(text, 20);
     } else if (ready_ && !selected_.isEmpty()) {
-        const QString text = tr("拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        // The bar sits above the region, so the hint takes the other side when there
-        // is room for it.
-        const QRectF hint(bar_ != nullptr && bar_->y() < height() / 2 ? QRectF((width() - w) / 2, height() - 60, w, 36)
-                                                                     : QRectF((width() - w) / 2, 24, w, 36));
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 225));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
+        const QString text = tr("拖动移动选区 · 8 锚点缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消");
+        const qreal topY = bar_ != nullptr && bar_->y() < height() / 2 ? height() - 52 : 20;
+        drawHintPill(text, topY);
     } else if (selected_.isEmpty() && !drawing_) {
         QString text = picker_.current() ? tr("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
                                                .arg(localizedLabel(picker_.current()->target["label"].toString()).left(30))
                                                .arg(picker_.level())
                                                .arg(picker_.count())
-                                         : tr("拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        QRectF hint((width() - w) / 2, 24, w, 36);
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 225));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
+                                         : tr("拖动截图 · 单击智能吸附窗口 · 松手后可批注、贴图或取色 · Esc 取消");
+        drawHintPill(text, 20);
     }
 }
 
@@ -351,20 +365,22 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
     const double inner = panelSize.width() - magnifierPanelPadding * 2;
     const QRectF area(QPointF(x + magnifierPanelPadding, y + magnifierPanelPadding),
                       QSizeF(inner, magnifierZoomHeight));
-    p.setPen(QPen(QColor(255,255,255,90),1));
-    p.setBrush(QColor(25,28,34,245));
-    p.drawRoundedRect(panel,10,10);
-    const QPoint sample(std::clamp(cursor_.x(),0,frame_.image.width()-1),
-                        std::clamp(cursor_.y(),0,frame_.image.height()-1));
+    p.setPen(QPen(QColor(255, 255, 255, 34), 1));
+    p.setBrush(QColor(18, 20, 26, 242));
+    p.drawRoundedRect(panel, 12, 12);
+    const QPoint sample(std::clamp(cursor_.x(), 0, frame_.image.width() - 1),
+                        std::clamp(cursor_.y(), 0, frame_.image.height() - 1));
     // The panel follows the pointer: the pixel shown is always the one under the
     // cursor, so aiming and reading are the same gesture.
     const QColor colour = colourAt(sample);
+    QPainterPath areaClip;
+    areaClip.addRoundedRect(area, 6, 6);
     p.save();
-    p.setClipRect(area);
-    p.fillRect(area,QColor(45,48,55));
-    p.setRenderHint(QPainter::SmoothPixmapTransform,false);
-    const double cell=magnifierZoomCell;
-    const QPointF center=area.center();
+    p.setClipPath(areaClip);
+    p.fillRect(area, QColor(30, 33, 40));
+    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    const double cell = magnifierZoomCell;
+    const QPointF center = area.center();
     // Only the strip of the screen the panel shows is handed to the painter. Giving it
     // the whole grab under a scale made it resample the entire screen a second time on
     // every repaint, which on a scaled display is ten milliseconds a frame.
@@ -372,31 +388,38 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
                         sample.y() + 0.5 - (center.y() - area.top()) / cell,
                         area.width() / cell, area.height() / cell);
     p.drawImage(area, frame_.image, source);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(QPen(QColor(255, 255, 255, 28), 0));
+    for (double gx = center.x() - cell / 2; gx >= area.left(); gx -= cell)
+        p.drawLine(QPointF(gx, area.top()), QPointF(gx, area.bottom()));
+    for (double gx = center.x() + cell / 2; gx <= area.right(); gx += cell)
+        p.drawLine(QPointF(gx, area.top()), QPointF(gx, area.bottom()));
+    for (double gy = center.y() - cell / 2; gy >= area.top(); gy -= cell)
+        p.drawLine(QPointF(area.left(), gy), QPointF(area.right(), gy));
+    for (double gy = center.y() + cell / 2; gy <= area.bottom(); gy += cell)
+        p.drawLine(QPointF(area.left(), gy), QPointF(area.right(), gy));
+    // Neutral dark outer contrast frame + white inner reticle so zoom pixels stay pure
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(0, 0, 0, 145), 1));
+    p.drawRect(QRectF(center - QPointF(cell / 2 + 1, cell / 2 + 1), QSizeF(cell + 2, cell + 2)));
+    p.setPen(QPen(Qt::white, 1));
+    p.drawRect(QRectF(center - QPointF(cell / 2, cell / 2), QSizeF(cell, cell)));
     p.restore();
-    p.save();
-    p.setClipRect(area);
-    p.setRenderHint(QPainter::Antialiasing,false);
-    p.setPen(QPen(QColor(255,255,255,70),0));
-    for(double gx=center.x()-cell/2; gx>=area.left(); gx-=cell) p.drawLine(QPointF(gx,area.top()),QPointF(gx,area.bottom()));
-    for(double gx=center.x()+cell/2; gx<=area.right(); gx+=cell) p.drawLine(QPointF(gx,area.top()),QPointF(gx,area.bottom()));
-    for(double gy=center.y()-cell/2; gy>=area.top(); gy-=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
-    for(double gy=center.y()+cell/2; gy<=area.bottom(); gy+=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
-    // The one pixel the readout is about is boxed, not left to the grid to imply. The
-    // box is one enlarged pixel wide, which is what the grid counts in.
-    p.setBrush(Qt::NoBrush); p.setPen(QPen(Qt::white,0));
-    p.drawRect(QRectF(center-QPointF(cell/2,cell/2),QSizeF(cell,cell)));
-    p.restore();
-    const double firstRow = y + magnifierPanelPadding + magnifierZoomHeight + 4;
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(255, 255, 255, 34), 1));
+    p.drawRoundedRect(area, 6, 6);
+
+    const double firstRow = y + magnifierPanelPadding + magnifierZoomHeight + 5;
     const auto slotRect = [&](int slot) {
         return QRectF(x + magnifierPanelPadding, firstRow + slot * kRowHeight, inner, kRowHeight);
     };
-    p.setFont(QFont(h2d::cjkFontFamily(), 9));
-    // The pixel the colour came from, written the way a colour tool writes it.
+    QFont monoFont(QStringLiteral("Consolas"));
+    monoFont.setStyleHint(QFont::Monospace);
+    monoFont.setPointSizeF(8.0);
+    p.setFont(monoFont);
     p.setPen(QColor(0xc9, 0xcb, 0xd4));
     p.drawText(slotRect(kPixelSlot), Qt::AlignVCenter,
-               tr("像素 ( %1 , %2 )").arg(sample.x()).arg(sample.y()));
-    // All four ways of writing the colour are on show and the one that a copy would
-    // put on the clipboard is the bright one, which is what makes Shift discoverable.
+               tr("像素 %1, %2").arg(sample.x()).arg(sample.y()));
     const QVector<ColourFormat> formats{ColourFormat::Rgb, ColourFormat::Hex, ColourFormat::Hsv,
                                         ColourFormat::Hsl};
     for (int index = 0; index < formats.size(); ++index) {
@@ -404,19 +427,24 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
         const bool current = format == colourFormat_;
         const QRectF row = slotRect(kRgbSlot + index);
         if (current) {
-            // A swatch of the colour itself sits in the row that is being copied.
-            const QRectF swatch(row.left(), row.top() + 3, 12, 12);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(10, 132, 255, 44));
+            p.drawRoundedRect(row.adjusted(0, 1, 0, -1), 4, 4);
+            const QRectF swatch(row.left() + 3, row.top() + 3.5, 11, 11);
             p.setBrush(colour);
             p.setPen(QPen(QColor(255, 255, 255, 140), 1));
-            p.drawRect(swatch);
+            p.drawRoundedRect(swatch, 3, 3);
         }
-        p.setPen(current ? QColor(0xf2, 0xf2, 0xf5) : QColor(0x8d, 0x90, 0x9c));
-        p.drawText(row.adjusted(18, 0, 0, 0), Qt::AlignVCenter,
+        p.setPen(current ? QColor(0xf5, 0xf5, 0xf7) : QColor(0x8e, 0x8e, 0x93));
+        p.drawText(row.adjusted(18, 0, -2, 0), Qt::AlignVCenter,
                    captureColourText(colour, format));
     }
-    p.setPen(QColor(0x8d, 0x90, 0x9c));
-    const QRectF note(x + magnifierPanelPadding, firstRow + kSlotCount * kRowHeight + 2, inner, 16);
-    p.drawText(note, Qt::AlignVCenter, tr("C 复制颜色值 · Shift 切换格式"));
+    QFont hintFont(h2d::cjkFontFamily());
+    hintFont.setPointSizeF(8.0);
+    p.setFont(hintFont);
+    p.setPen(QColor(0x8e, 0x8e, 0x93));
+    const QRectF note(x + magnifierPanelPadding, firstRow + kSlotCount * kRowHeight + 3, inner, 16);
+    p.drawText(note, Qt::AlignVCenter, tr("C 复制 · Shift 切换"));
 }
 
 void Overlay::mousePressEvent(QMouseEvent *e) {
@@ -509,16 +537,26 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     }
     if (handle_ >= 0) {
         cursor_ = pixel;
-        // The opposite corner is what stays put while a corner is dragged.
+        // The opposite corner/edge stays put while a handle is dragged.
         QRect resized = dragOrigin_;
-        if (handle_ == 0 || handle_ == 2)
-            resized.setLeft(pixel.x());
-        else
-            resized.setRight(pixel.x());
-        if (handle_ == 0 || handle_ == 1)
+        if (handle_ <= 3) {
+            if (handle_ == 0 || handle_ == 2)
+                resized.setLeft(pixel.x());
+            else
+                resized.setRight(pixel.x());
+            if (handle_ == 0 || handle_ == 1)
+                resized.setTop(pixel.y());
+            else
+                resized.setBottom(pixel.y());
+        } else if (handle_ == 4) {
             resized.setTop(pixel.y());
-        else
+        } else if (handle_ == 5) {
             resized.setBottom(pixel.y());
+        } else if (handle_ == 6) {
+            resized.setLeft(pixel.x());
+        } else if (handle_ == 7) {
+            resized.setRight(pixel.x());
+        }
         applySelection(resized.normalized(), false);
         return;
     }
@@ -1084,8 +1122,12 @@ void Overlay::updateCursor() {
             shape = Qt::SizeAllCursor;
         else {
             const int handle = handle_ >= 0 ? handle_ : handleAt(cursor_);
-            if (handle >= 0)
-                shape = handle == 0 || handle == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+            if (handle >= 0) {
+                if (handle <= 3)
+                    shape = handle == 0 || handle == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+                else
+                    shape = (handle == 4 || handle == 5) ? Qt::SizeVerCursor : Qt::SizeHorCursor;
+            }
         }
     }
     setCursor(shape);
@@ -1095,12 +1137,16 @@ int Overlay::handleAt(QPoint pixel) const {
     if (!ready_ || selected_.isEmpty())
         return -1;
     // A handle only a couple of pixels across is a handle nobody can hit, so the
-    // corners are given a reach in screen pixels and converted to picture pixels.
+    // corners and edge midpoints are given a reach in screen pixels converted to image pixels.
     const int reach = std::max(3, int(std::lround(7.0 * frame_.image.width() / std::max(1, width()))));
-    const QVector<QPoint> corners{selected_.topLeft(), selected_.topRight(), selected_.bottomLeft(),
-                                  selected_.bottomRight()};
-    for (int index = 0; index < corners.size(); ++index) {
-        const QPoint gap = corners.at(index) - pixel;
+    const QVector<QPoint> anchors{
+        selected_.topLeft(), selected_.topRight(), selected_.bottomLeft(), selected_.bottomRight(),
+        QPoint(selected_.center().x(), selected_.top()),
+        QPoint(selected_.center().x(), selected_.bottom()),
+        QPoint(selected_.left(), selected_.center().y()),
+        QPoint(selected_.right(), selected_.center().y())};
+    for (int index = 0; index < anchors.size(); ++index) {
+        const QPoint gap = anchors.at(index) - pixel;
         if (std::abs(gap.x()) <= reach && std::abs(gap.y()) <= reach)
             return index;
     }

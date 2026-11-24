@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
+  Brush,
   Camera,
   ClipboardCopy,
   Code2,
@@ -11,10 +12,10 @@ import {
   Download,
   Eye,
   EyeOff,
-  FileText,
   Film,
   FolderOutput,
   Grid2x2,
+  Hand,
   ImageDown,
   ImagePlus,
   Layers2,
@@ -27,6 +28,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pause,
+  Pencil,
   Pin,
   Play,
   Plus,
@@ -36,6 +38,7 @@ import {
   Scan,
   ScanText,
   Search,
+  ShieldCheck,
   Sparkles,
   Square,
   Trash2,
@@ -51,19 +54,23 @@ import {
 } from '../bridge/mockBridge';
 import type {
   AnnotationItem,
+  BrushStroke,
   ExplodeBlock,
   GalleryPage,
   GroupNote,
   MosaicRegion,
+  PixelPoint,
   PixelRect,
   ToolMode,
 } from '../bridge/types';
 import {
+  attachRedactedPagesToPayload,
   composePageToPng,
   cropPageBitmap,
   drawMosaicsOnContext,
   loadBitmapForPage,
   sampleLoupeGrid,
+  strokeToSvgPath,
 } from '../utils/canvasCompose';
 import { detectImageRegions } from '../utils/regionDetector';
 
@@ -80,6 +87,8 @@ const RESIZE_HANDLES: Array<{ id: ResizeHandle; cursor: string }> = [
   { id: 'sw', cursor: 'nesw-resize' },
   { id: 'w', cursor: 'ew-resize' },
 ];
+
+const BRUSH_COLORS = ['#FF453A', '#FF9F0A', '#30D158', '#0A84FF', '#BF5AF2', '#FFFFFF'];
 
 interface ExplodeDragSession {
   kind: 'move' | 'resize';
@@ -105,7 +114,7 @@ interface AnnotationDragSession {
   startClientX: number;
   startClientY: number;
   origRect?: PixelRect;
-  origPoint?: { x: number; y: number };
+  origPoint?: PixelPoint;
   pageW: number;
   pageH: number;
   scaleX: number;
@@ -196,21 +205,35 @@ export default function WorkspaceView({
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0];
   const [tool, setTool] = useState<ToolMode>('box');
   const [zoom, setZoom] = useState(100);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [spacePressed, setSpacePressed] = useState(false);
+
   const [selectedNoteId, setSelectedNoteId] = useState<string>(activePage?.annotations[0]?.id ?? '');
+  const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
+  const [inlineEditNoteId, setInlineEditNoteId] = useState<string | null>(null);
   const [selectedMosaicId, setSelectedMosaicId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'page' | 'group'>('page');
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 960 : true
+  );
   const [hoverBlockId, setHoverBlockId] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [explosionWaveKey, setExplosionWaveKey] = useState(0);
   const [jsonOpen, setJsonOpen] = useState(false);
 
-  // Toggles & PixPin-grade tool options
+  // PixPin-grade tool options & Brush state
   const [hideAnnotations, setHideAnnotations] = useState(false);
   const [magnifierEnabled, setMagnifierEnabled] = useState(false);
   const [mosaicStyle, setMosaicStyle] = useState<'pixelate' | 'blur'>('pixelate');
   const [mosaicStrength, setMosaicStrength] = useState(12);
+  const [brushMode, setBrushMode] = useState<'pen' | 'highlighter'>('pen');
+  const [brushColor, setBrushColor] = useState('#FF453A');
+  const [brushWidth, setBrushWidth] = useState(4);
+  const [activeStroke, setActiveStroke] = useState<BrushStroke | null>(null);
+  const activeStrokeRef = useRef<BrushStroke | null>(null);
+  activeStrokeRef.current = activeStroke;
 
   // Interactive crop state
   const [cropRect, setCropRect] = useState<PixelRect | null>(null);
@@ -221,8 +244,9 @@ export default function WorkspaceView({
   // Loupe hover state
   const [loupe, setLoupe] = useState<LoupeState | null>(null);
   const loupeRafRef = useRef<number | null>(null);
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Draft box / mosaic draw / manual Explode cut-draw state (image pixel coords)
+  // Draft box / mosaic draw / manual Explode cut-draw state
   const [draftBox, setDraftBox] = useState<PixelRect | null>(null);
   const [manualCutBox, setManualCutBox] = useState<PixelRect | null>(null);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -239,6 +263,7 @@ export default function WorkspaceView({
   const explodeDragRef = useRef<ExplodeDragSession | null>(null);
   const annDragRef = useRef<AnnotationDragSession | null>(null);
   const cropDragRef = useRef<CropDragSession | null>(null);
+  const panDragRef = useRef<{ startClientX: number; startClientY: number; origX: number; origY: number } | null>(null);
   const updatePagesRef = useRef(onUpdatePages);
   updatePagesRef.current = onUpdatePages;
 
@@ -253,6 +278,30 @@ export default function WorkspaceView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sourceBitmapRef = useRef<HTMLImageElement | null>(null);
   const [bitmapReadyTick, setBitmapReadyTick] = useState(0);
+
+  // Auto collapse inspector on narrow viewports (<960px) so the canvas never gets squished vertically
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 960px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setInspectorOpen(false);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => () => clearTimeout(hoverCloseTimerRef.current), []);
+
+  const scheduleHoverOpen = (noteId: string) => {
+    clearTimeout(hoverCloseTimerRef.current);
+    setHoveredNoteId(noteId);
+  };
+
+  const scheduleHoverClose = (noteId: string) => {
+    clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = setTimeout(() => {
+      setHoveredNoteId((cur) => (cur === noteId && inlineEditNoteId !== noteId ? null : cur));
+    }, 150);
+  };
 
   const pushUndoSnapshot = (snapshot: GalleryPage[]) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), snapshot];
@@ -312,7 +361,6 @@ export default function WorkspaceView({
     onToast('已重做');
   };
 
-  // Load offscreen bitmap cleanly for Mosaic / Crop / Loupe / Image Export
   useEffect(() => {
     let cancelled = false;
     if (!activePage) return;
@@ -326,7 +374,6 @@ export default function WorkspaceView({
     };
   }, [activePage?.id, activePage?.imageUrl, activePage?.sceneId, activePage?.width, activePage?.height]);
 
-  // Draw live Mosaic regions onto .mosaic-canvas
   useEffect(() => {
     const canvas = mosaicCanvasRef.current;
     const img = sourceBitmapRef.current;
@@ -341,12 +388,15 @@ export default function WorkspaceView({
 
   useEffect(() => {
     setSelectedNoteId(activePage?.annotations[0]?.id ?? '');
+    setHoveredNoteId(null);
+    setInlineEditNoteId(null);
     setSelectedMosaicId(null);
     setEditingNoteId(null);
     setHoverBlockId(null);
     setSelectedBlockId(null);
     setLoupe(null);
     setCropRect(null);
+    setPanOffset({ x: 0, y: 0 });
     setTool((t) => (t === 'crop' ? 'box' : t));
   }, [activePage?.id]);
 
@@ -421,7 +471,7 @@ export default function WorkspaceView({
         if (res?.mediaUrl) nextUrl = res.mediaUrl;
         if (Array.isArray(res?.blocks)) nextBlocks = res.blocks;
       } catch {
-        // Fallback cleanly to data URL + local canvas detector
+        // fallback cleanly
       }
     }
 
@@ -461,6 +511,15 @@ export default function WorkspaceView({
       })
       .filter((x): x is MosaicRegion => x !== null);
 
+    const nextStrokes: BrushStroke[] = (activePage.brushStrokes ?? [])
+      .map((s) => ({
+        ...s,
+        points: s.points
+          .map((pt) => ({ x: pt.x - cropRect.x1, y: pt.y - cropRect.y1 }))
+          .filter((pt) => pt.x >= 0 && pt.y >= 0 && pt.x <= cropped.width && pt.y <= cropped.height),
+      }))
+      .filter((s) => s.points.length >= 2);
+
     commitPages((prev) =>
       prev.map((p) =>
         p.id !== activePage.id
@@ -474,18 +533,26 @@ export default function WorkspaceView({
               blocks: nextBlocks,
               annotations: nextAnnotations,
               mosaics: nextMosaics,
+              brushStrokes: nextStrokes,
             }
       )
     );
     setCropRect(null);
+    setPanOffset({ x: 0, y: 0 });
     setTool('box');
     onToast(`已裁剪画布至 ${cropped.width} × ${cropped.height}`);
   };
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const inInput = Boolean(target?.closest('input, textarea, [contenteditable="true"]'));
+
+      if (event.code === 'Space' && !inInput) {
+        event.preventDefault();
+        setSpacePressed(true);
+        return;
+      }
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
         event.preventDefault();
@@ -507,6 +574,8 @@ export default function WorkspaceView({
 
       const lower = event.key.toLowerCase();
       if (event.key === 'Escape') {
+        setInlineEditNoteId(null);
+        setHoveredNoteId(null);
         if (tool === 'crop') {
           setCropRect(null);
           setTool('box');
@@ -536,17 +605,26 @@ export default function WorkspaceView({
         }
       } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
         if (lower === 'v') setTool('select');
+        else if (lower === 'g') setTool('pan');
         else if (lower === 's') setTool('smart');
         else if (lower === 'p') setTool('point');
         else if (lower === 'r') setTool('box');
+        else if (lower === 'b') setTool('brush');
         else if (lower === 'e') toggleExplodeMode();
         else if (lower === 'm') setTool('mosaic');
         else if (lower === 'c') enterCropMode();
         else if (lower === 'h') setHideAnnotations((h) => !h);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpacePressed(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [tool, cropRect, activePage?.id, selectedMosaicId, selectedNoteId]);
 
   useEffect(() => {
@@ -560,7 +638,7 @@ export default function WorkspaceView({
   const nextNoteNumber = (annotations: AnnotationItem[]) =>
     annotations.reduce((max, item) => Math.max(max, item.number), 0) + 1;
 
-  // Window-level pointermove / pointerup for Explode, Select/Move, and Crop drags
+  // Window-level pointermove / pointerup for Explode, Select/Move, Crop, and Canvas Pan drags
   useEffect(() => {
     const computeResizeRect = (
       o: PixelRect,
@@ -601,7 +679,15 @@ export default function WorkspaceView({
     };
 
     const onWindowPointerMove = (event: PointerEvent) => {
-      // 1. Explode block move / resize
+      if (panDragRef.current) {
+        const pd = panDragRef.current;
+        setPanOffset({
+          x: Math.round(pd.origX + (event.clientX - pd.startClientX)),
+          y: Math.round(pd.origY + (event.clientY - pd.startClientY)),
+        });
+        return;
+      }
+
       const ex = explodeDragRef.current;
       if (ex) {
         const dxRaw = (event.clientX - ex.startClientX) * ex.scaleX;
@@ -614,15 +700,7 @@ export default function WorkspaceView({
           const y1 = Math.round(Math.max(0, Math.min(ex.pageH - h, ex.origDest.y1 + dyRaw)));
           nextDest = { x1, y1, x2: x1 + w, y2: y1 + h };
         } else {
-          nextDest = computeResizeRect(
-            ex.origDest,
-            ex.handle ?? 'se',
-            dxRaw,
-            dyRaw,
-            ex.pageW,
-            ex.pageH,
-            18
-          );
+          nextDest = computeResizeRect(ex.origDest, ex.handle ?? 'se', dxRaw, dyRaw, ex.pageW, ex.pageH, 18);
         }
         if (
           Math.abs(nextDest.x1 - ex.origDest.x1) > 1 ||
@@ -641,17 +719,12 @@ export default function WorkspaceView({
         const scaleX = (nextDest.x2 - nextDest.x1) / sw;
         const scaleY = (nextDest.y2 - nextDest.y1) / sh;
         const significant =
-          Math.abs(dx) > 2 ||
-          Math.abs(dy) > 2 ||
-          Math.abs(scaleX - 1) > 0.02 ||
-          Math.abs(scaleY - 1) > 0.02;
+          Math.abs(dx) > 2 || Math.abs(dy) > 2 || Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02;
 
         updatePagesRef.current((prev) =>
           prev.map((page) => {
             if (page.id !== ex.pageId) return page;
-            const blocks = page.blocks.map((b) =>
-              b.id === ex.blockId ? { ...b, dest: nextDest } : b
-            );
+            const blocks = page.blocks.map((b) => (b.id === ex.blockId ? { ...b, dest: nextDest } : b));
             const idx = page.annotations.findIndex((a) => a.blockId === ex.blockId);
             const annotations = [...page.annotations];
             if (idx >= 0) {
@@ -678,7 +751,6 @@ export default function WorkspaceView({
         return;
       }
 
-      // 2. Select/Move annotation drag
       const ad = annDragRef.current;
       if (ad) {
         const dx = Math.round((event.clientX - ad.startClientX) * ad.scaleX);
@@ -712,7 +784,6 @@ export default function WorkspaceView({
         return;
       }
 
-      // 3. Crop window move / resize
       const cd = cropDragRef.current;
       if (cd) {
         const dxRaw = (event.clientX - cd.startClientX) * cd.scaleX;
@@ -741,6 +812,10 @@ export default function WorkspaceView({
     };
 
     const onWindowPointerUp = () => {
+      if (panDragRef.current) {
+        panDragRef.current = null;
+        setIsPanning(false);
+      }
       if (explodeDragRef.current) {
         const ex = explodeDragRef.current;
         explodeDragRef.current = null;
@@ -790,12 +865,21 @@ export default function WorkspaceView({
     );
     setInspectorTab('page');
     setSelectedNoteId(newId);
-    setEditingNoteId(newId);
+    if (inspectorOpen) {
+      setEditingNoteId(newId);
+    } else if (partial.kind !== 'global') {
+      setHoveredNoteId(newId);
+      setInlineEditNoteId(newId);
+    }
 
     if (partial.kind === 'region' && partial.rect && includeOcr && isDesktopWebView()) {
       desktopRpc<{ ok?: boolean; text?: string }>(
         'ocr.recognizeRect',
-        { pageId: targetPageId, rect: partial.rect },
+        {
+          pageId: targetPageId,
+          rect: partial.rect,
+          mosaics: (activePage.mosaics ?? []).map((m) => m.rect),
+        },
         30000
       )
         .then((res) => {
@@ -818,13 +902,36 @@ export default function WorkspaceView({
     }
   };
 
+  const handleStagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (tool === 'pan' || spacePressed || event.button === 1) {
+      event.preventDefault();
+      panDragRef.current = {
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        origX: panOffset.x,
+        origY: panOffset.y,
+      };
+      setIsPanning(true);
+      return;
+    }
+    if (event.target === event.currentTarget || (event.target as HTMLElement).classList.contains('canvas-stage-inner')) {
+      setInlineEditNoteId(null);
+      setHoveredNoteId(null);
+    }
+  };
+
   const handleArtboardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activePage || tool === 'crop') return;
+    if (tool === 'pan' || spacePressed || event.button === 1) {
+      return; // handled by parent stage-wrap pan handler
+    }
     const pt = clientToPixel(event.clientX, event.clientY);
 
     if (tool === 'select') {
       setSelectedMosaicId(null);
       setSelectedNoteId('');
+      setInlineEditNoteId(null);
+      setHoveredNoteId(null);
       return;
     }
 
@@ -836,6 +943,19 @@ export default function WorkspaceView({
       return;
     }
 
+    if (tool === 'brush') {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const stroke: BrushStroke = {
+        id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        points: [pt],
+        color: brushColor,
+        width: brushMode === 'highlighter' ? brushWidth * 2.6 : brushWidth,
+        opacity: brushMode === 'highlighter' ? 0.38 : 1,
+      };
+      setActiveStroke(stroke);
+      return;
+    }
+
     if (tool === 'point') {
       appendAnnotation({ kind: 'point', text: '', point: pt });
       return;
@@ -843,18 +963,10 @@ export default function WorkspaceView({
 
     if (tool === 'smart') {
       const hit = activePage.blocks.find(
-        (b) =>
-          pt.x >= b.dest.x1 &&
-          pt.x <= b.dest.x2 &&
-          pt.y >= b.dest.y1 &&
-          pt.y <= b.dest.y2
+        (b) => pt.x >= b.dest.x1 && pt.x <= b.dest.x2 && pt.y >= b.dest.y1 && pt.y <= b.dest.y2
       );
       if (hit) {
-        appendAnnotation({
-          kind: 'region',
-          text: '',
-          rect: { ...hit.dest },
-        });
+        appendAnnotation({ kind: 'region', text: '', rect: { ...hit.dest } });
       } else {
         onToast('未命中检测区域，可切换到「框批注」自由拉框');
       }
@@ -869,7 +981,7 @@ export default function WorkspaceView({
     }
   };
 
-  const updateLoupeAtPoint = (pt: { x: number; y: number }) => {
+  const updateLoupeAtPoint = (pt: PixelPoint) => {
     if (!magnifierEnabled || !activePage || !sourceBitmapRef.current || tool === 'explode') {
       if (loupe) setLoupe(null);
       return;
@@ -892,7 +1004,7 @@ export default function WorkspaceView({
   };
 
   const handleArtboardPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activePage) return;
+    if (!activePage || panDragRef.current) return;
     const pt = clientToPixel(event.clientX, event.clientY);
 
     if (magnifierEnabled) {
@@ -901,13 +1013,19 @@ export default function WorkspaceView({
 
     if (tool === 'smart') {
       const hit = activePage.blocks.find(
-        (b) =>
-          pt.x >= b.dest.x1 &&
-          pt.x <= b.dest.x2 &&
-          pt.y >= b.dest.y1 &&
-          pt.y <= b.dest.y2
+        (b) => pt.x >= b.dest.x1 && pt.x <= b.dest.x2 && pt.y >= b.dest.y1 && pt.y <= b.dest.y2
       );
       setHoverBlockId(hit ? hit.id : null);
+    }
+
+    if (tool === 'brush' && activeStrokeRef.current) {
+      setActiveStroke((prev) => {
+        if (!prev) return null;
+        const last = prev.points[prev.points.length - 1];
+        if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 2) return prev;
+        return { ...prev, points: [...prev.points, pt] };
+      });
+      return;
     }
 
     if (tool === 'explode' && manualCutStartRef.current) {
@@ -934,6 +1052,19 @@ export default function WorkspaceView({
   const handleArtboardPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (tool === 'brush' && activeStrokeRef.current) {
+      const stroke = activeStrokeRef.current;
+      setActiveStroke(null);
+      if (stroke.points.length >= 1) {
+        commitPages((prev) =>
+          prev.map((p) =>
+            p.id !== activePage.id ? p : { ...p, brushStrokes: [...(p.brushStrokes ?? []), stroke] }
+          )
+        );
+      }
+      return;
     }
 
     if (tool === 'box' && drawStartRef.current && draftBox) {
@@ -984,9 +1115,7 @@ export default function WorkspaceView({
         };
         commitPages((prev) =>
           prev.map((page) =>
-            page.id !== activePage.id
-              ? page
-              : { ...page, blocks: [...page.blocks, newBlock] }
+            page.id !== activePage.id ? page : { ...page, blocks: [...page.blocks, newBlock] }
           )
         );
         setSelectedBlockId(manualId);
@@ -1001,6 +1130,7 @@ export default function WorkspaceView({
     kind: 'move' | 'resize',
     handle?: ResizeHandle
   ) => {
+    if (tool === 'pan' || spacePressed) return;
     event.stopPropagation();
     const el = artboardRef.current;
     if (!el || !activePage) return;
@@ -1027,11 +1157,8 @@ export default function WorkspaceView({
     };
   };
 
-  const startAnnotationDrag = (
-    event: React.PointerEvent<HTMLElement>,
-    note: AnnotationItem
-  ) => {
-    if (tool !== 'select') return;
+  const startAnnotationDrag = (event: React.PointerEvent<HTMLElement>, note: AnnotationItem) => {
+    if (tool !== 'select' || spacePressed) return;
     event.stopPropagation();
     const el = artboardRef.current;
     if (!el || !activePage) return;
@@ -1072,11 +1199,8 @@ export default function WorkspaceView({
     }
   };
 
-  const startCropSession = (
-    event: React.PointerEvent<HTMLElement>,
-    kind: 'move' | 'resize',
-    handle?: ResizeHandle
-  ) => {
+  const startCropSession = (event: React.PointerEvent<HTMLElement>, kind: 'move' | 'resize', handle?: ResizeHandle) => {
+    if (spacePressed) return;
     event.stopPropagation();
     const el = artboardRef.current;
     if (!el || !activePage || !cropRect) return;
@@ -1101,9 +1225,7 @@ export default function WorkspaceView({
           ? page
           : {
               ...page,
-              blocks: page.blocks.map((b) =>
-                b.id === blockId ? { ...b, dest: { ...b.source } } : b
-              ),
+              blocks: page.blocks.map((b) => (b.id === blockId ? { ...b, dest: { ...b.source } } : b)),
               annotations: page.annotations.filter((a) => a.blockId !== blockId),
             }
       )
@@ -1127,6 +1249,8 @@ export default function WorkspaceView({
   };
 
   const deleteNote = (note: AnnotationItem) => {
+    if (inlineEditNoteId === note.id) setInlineEditNoteId(null);
+    if (hoveredNoteId === note.id) setHoveredNoteId(null);
     commitPages((prev) =>
       prev.map((page) =>
         page.id !== activePage.id
@@ -1134,11 +1258,22 @@ export default function WorkspaceView({
           : {
               ...page,
               blocks: note.blockId
-                ? page.blocks.map((b) =>
-                    b.id === note.blockId ? { ...b, dest: { ...b.source } } : b
-                  )
+                ? page.blocks.map((b) => (b.id === note.blockId ? { ...b, dest: { ...b.source } } : b))
                 : page.blocks,
               annotations: page.annotations.filter((a) => a.id !== note.id),
+            }
+      )
+    );
+  };
+
+  const updateNoteText = (noteId: string, val: string) => {
+    onUpdatePages((prev) =>
+      prev.map((p) =>
+        p.id !== activePage.id
+          ? p
+          : {
+              ...p,
+              annotations: p.annotations.map((a) => (a.id === noteId ? { ...a, text: val } : a)),
             }
       )
     );
@@ -1158,7 +1293,7 @@ export default function WorkspaceView({
     setHoverBlockId(null);
     if (next === 'explode') {
       setExplosionWaveKey((k) => k + 1);
-      onToast('已进入大爆炸模式');
+      onToast('已进入视觉大爆炸模式');
     } else {
       setSelectedBlockId(null);
     }
@@ -1166,8 +1301,7 @@ export default function WorkspaceView({
 
   const buildRenderedPngForActivePage = async (): Promise<{ dataUrl: string; pngBase64: string } | null> => {
     if (!activePage) return null;
-    const bmp =
-      sourceBitmapRef.current ?? (await loadBitmapForPage(activePage, artboardMediaRef.current));
+    const bmp = sourceBitmapRef.current ?? (await loadBitmapForPage(activePage, artboardMediaRef.current));
     if (!bmp) return null;
     return composePageToPng(activePage, bmp, !hideAnnotations);
   };
@@ -1181,7 +1315,7 @@ export default function WorkspaceView({
     if (isDesktopWebView()) {
       try {
         await desktopRpc('clipboard.copyImage', { pngBase64: rendered.pngBase64 });
-        onToast('已复制带批注与打码效果的高清图片');
+        onToast('已复制带批注与遮罩的高清图片');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '复制图片失败');
       }
@@ -1210,10 +1344,11 @@ export default function WorkspaceView({
     const defaultName = `${activePage.name || 'edithere'}-annotated.png`;
     if (isDesktopWebView()) {
       try {
-        const res = await desktopRpc<{ saved?: boolean }>('file.saveImage', {
-          defaultName,
-          pngBase64: rendered.pngBase64,
-        }, 0);
+        const res = await desktopRpc<{ saved?: boolean }>(
+          'file.saveImage',
+          { defaultName, pngBase64: rendered.pngBase64 },
+          0
+        );
         if (res.saved) onToast('已保存带批注 PNG 图片');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '保存图片失败');
@@ -1238,7 +1373,7 @@ export default function WorkspaceView({
         pageId: activePage.id,
         pngBase64: rendered?.pngBase64 ?? '',
       });
-      onToast('已生成桌面置顶贴图窗（含马赛克与裁剪）');
+      onToast('已生成桌面置顶贴图窗（含马赛克、画笔与裁剪）');
     } catch (err) {
       onToast(err instanceof Error ? err.message : '当前页面无法贴图');
     }
@@ -1248,11 +1383,13 @@ export default function WorkspaceView({
     const defaultName = `${activePage?.name || 'edithere-project'}.edithere`;
     if (isDesktopWebView()) {
       try {
-        const res = await desktopRpc<{ saved?: boolean }>('file.saveProject', {
-          defaultName,
-          payload: { pages, groupNotes },
-        }, 0);
-        if (res.saved) onToast('已保存 EditHere 项目文件');
+        const redactedPayload = await attachRedactedPagesToPayload(pages, groupNotes, artboardMediaRef.current);
+        const res = await desktopRpc<{ saved?: boolean }>(
+          'file.saveProject',
+          { defaultName, payload: redactedPayload },
+          0
+        );
+        if (res.saved) onToast('已保存 EditHere 项目文件（含脱敏像素）');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '保存项目失败');
       }
@@ -1289,10 +1426,12 @@ export default function WorkspaceView({
       return;
     }
     try {
-      const res = await desktopRpc<{ files?: number }>('clipboard.copyFeedbackBundle', {
-        payload: { pages, groupNotes },
-      });
-      onToast(`已复制 JSON 与配套原图文件（共 ${res.files ?? 2} 项）`);
+      const redactedPayload = await attachRedactedPagesToPayload(pages, groupNotes, artboardMediaRef.current);
+      const res = await desktopRpc<{ files?: number }>(
+        'clipboard.copyFeedbackBundle',
+        { payload: redactedPayload }
+      );
+      onToast(`已复制 JSON 与脱敏原图文件（共 ${res.files ?? 2} 项）`);
     } catch (err) {
       onToast(err instanceof Error ? err.message : '复制 JSON 文件包失败');
     }
@@ -1301,10 +1440,11 @@ export default function WorkspaceView({
   const downloadJson = async () => {
     if (isDesktopWebView()) {
       try {
-        const res = await desktopRpc<{ saved?: boolean }>('file.saveText', {
-          defaultName: 'edithere-gallery-feedback.json',
-          text: liveJson,
-        }, 0);
+        const res = await desktopRpc<{ saved?: boolean }>(
+          'file.saveText',
+          { defaultName: 'edithere-gallery-feedback.json', text: liveJson },
+          0
+        );
         if (res.saved) onToast('已导出实时反馈 JSON');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '导出失败');
@@ -1329,11 +1469,99 @@ export default function WorkspaceView({
     height: pctY(r.y2 - r.y1),
   });
 
+  const renderInlinePopover = (note: AnnotationItem, anchorX: number, anchorY: number) => {
+    const placeBelow = anchorY < activePage.height * 0.34;
+    const placeLeft = anchorX > activePage.width * 0.58;
+    const isEditing = inlineEditNoteId === note.id;
+
+    return (
+      <div
+        className={`inline-note-popover ${placeBelow ? 'place-below' : ''} ${placeLeft ? 'place-left' : ''}`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onPointerEnter={() => scheduleHoverOpen(note.id)}
+        onPointerLeave={() => {
+          if (!isEditing) scheduleHoverClose(note.id);
+        }}
+      >
+        <div className="inline-note-head">
+          <span className={`note-num ${note.movement ? 'explode' : ''}`} style={{ width: 18, height: 18, fontSize: 10 }}>
+            {note.number}
+          </span>
+          <span className="badge neutral">
+            {note.movement
+              ? `位移 ${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}, ${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}`
+              : note.kind === 'point'
+                ? '点定位'
+                : '框选批注'}
+          </span>
+          <div className="inline-note-actions">
+            <button
+              className="icon-button"
+              title="编辑批注"
+              onClick={() => setInlineEditNoteId(isEditing ? null : note.id)}
+            >
+              <Pencil size={12} />
+            </button>
+            {note.blockId && (
+              <button
+                className="icon-button"
+                title="复位组件位移"
+                onClick={() => resetBlockMovement(note.blockId!)}
+              >
+                <RotateCcw size={12} />
+              </button>
+            )}
+            <button
+              className="icon-button"
+              title="删除批注"
+              onClick={() => deleteNote(note)}
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <textarea
+            autoFocus
+            className="note-textarea"
+            style={{ minHeight: 58 }}
+            placeholder="输入修改说明，回车或点击空白保存…"
+            value={note.text}
+            onChange={(e) => updateNoteText(note.id, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                setInlineEditNoteId(null);
+              } else if (e.key === 'Escape') {
+                e.stopPropagation();
+                setInlineEditNoteId(null);
+              }
+            }}
+            onBlur={() => setInlineEditNoteId(null)}
+          />
+        ) : (
+          <button
+            className={`inline-note-body ${!note.text ? 'placeholder' : ''}`}
+            onClick={() => setInlineEditNoteId(note.id)}
+          >
+            {note.text || '点击直接输入修改意见…'}
+          </button>
+        )}
+
+        {note.ocrtext && <div className="inline-note-ocr">OCR: {note.ocrtext}</div>}
+      </div>
+    );
+  };
+
   const hoveredBlock = activePage?.blocks.find((b) => b.id === hoverBlockId) ?? null;
   const pageMosaics = activePage?.mosaics ?? [];
+  const pageStrokes = activePage?.brushStrokes ?? [];
   const hasTransformedBlocks = Boolean(activePage?.blocks.some((b) => isBlockTransformed(b)));
   const canUndo = undoStackRef.current.length > 0;
   const canRedo = redoStackRef.current.length > 0;
+  const canPanActive = tool === 'pan' || spacePressed;
 
   return (
     <div className={`workspace-root ${!inspectorOpen ? 'inspector-collapsed' : ''}`}>
@@ -1349,7 +1577,7 @@ export default function WorkspaceView({
         }}
       />
 
-      {/* Unified Canvas Architectural Surface (Stage + Attached Gallery Strip) */}
+      {/* Main Canvas Architecture */}
       <section className="canvas-surface">
         <div className="canvas-column">
           <div className="canvas-top-hud">
@@ -1378,33 +1606,52 @@ export default function WorkspaceView({
                 >
                   <Plus size={14} />
                 </button>
-                <button className="button ghost sm" onClick={() => setZoom(100)} title="适应窗口大小">
+                <button
+                  className="button ghost sm"
+                  onClick={() => {
+                    setZoom(100);
+                    setPanOffset({ x: 0, y: 0 });
+                  }}
+                  title="适应窗口并复位画布位置"
+                >
                   适应
                 </button>
               </div>
 
               <div className="canvas-zoom-pill">
                 <button
-                  className="icon-button"
+                  className={`inspector-toggle-btn ${inspectorOpen ? 'is-open' : ''}`}
                   aria-label={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
-                  title={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
-                  onClick={() => setInspectorOpen((o) => !o)}
+                  title={inspectorOpen ? '收起批注栏（切为框边悬浮气泡模式）' : '展开右侧批注栏'}
+                  onClick={() => {
+                    setInspectorOpen((o) => !o);
+                    setInlineEditNoteId(null);
+                  }}
                 >
                   {inspectorOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+                  <span>批注栏</span>
+                  <span className="inspector-toggle-count">{activePage.annotations.length}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="canvas-stage-wrap">
+          <div
+            className={`canvas-stage-wrap ${canPanActive ? 'can-pan' : ''} ${isPanning ? 'is-panning' : ''}`}
+            onPointerDown={handleStagePointerDown}
+          >
             <div className="canvas-stage-inner">
               <div
                 ref={artboardRef}
-                className={`artboard ${tool === 'box' || tool === 'point' || tool === 'mosaic' ? 'cursor-crosshair' : ''}`}
+                className={`artboard ${isPanning ? 'is-panning' : ''} ${
+                  !canPanActive && (tool === 'box' || tool === 'point' || tool === 'mosaic' || tool === 'brush')
+                    ? 'cursor-crosshair'
+                    : ''
+                }`}
                 style={{
                   aspectRatio: `${activePage.width} / ${activePage.height}`,
                   width: `min(100cqw, 820px, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
-                  transform: `scale(${zoom / 100})`,
+                  transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`,
                 }}
                 onPointerDown={handleArtboardPointerDown}
                 onPointerMove={handleArtboardPointerMove}
@@ -1426,6 +1673,42 @@ export default function WorkspaceView({
                   height={activePage.height}
                 />
 
+                {/* Freehand Vector Brush Layer */}
+                {(pageStrokes.length > 0 || activeStroke) && (
+                  <svg
+                    className="brush-svg-layer"
+                    viewBox={`0 0 ${activePage.width} ${activePage.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {pageStrokes.map((s) => (
+                      <path
+                        key={s.id}
+                        d={strokeToSvgPath(s.points)}
+                        fill="none"
+                        stroke={s.color}
+                        strokeWidth={s.width}
+                        strokeOpacity={s.opacity ?? 1}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                    {activeStroke && (
+                      <path
+                        d={strokeToSvgPath(activeStroke.points)}
+                        fill="none"
+                        stroke={activeStroke.color}
+                        strokeWidth={activeStroke.width}
+                        strokeOpacity={activeStroke.opacity ?? 1}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                  </svg>
+                )}
+
                 {/* Selectable Mosaic Outlines in Mosaic or Select tool */}
                 {(tool === 'mosaic' || tool === 'select') &&
                   pageMosaics.map((m) => (
@@ -1434,15 +1717,21 @@ export default function WorkspaceView({
                       className={`mosaic-region-outline ${selectedMosaicId === m.id ? 'selected' : ''}`}
                       style={rectStyle(m.rect)}
                       onPointerDown={(e) => {
+                        if (spacePressed) return;
                         e.stopPropagation();
                         setSelectedMosaicId(m.id);
                       }}
                     />
                   ))}
 
-                {/* Subtle ExplosionWave entry shimmer */}
-                {tool === 'explode' && explosionWaveKey > 0 && (
-                  <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
+                {/* Apple Intelligence Flowing Rainbow Perimeter Ripple (Explode) */}
+                {tool === 'explode' && (
+                  <>
+                    <div className="explode-apple-frame" aria-hidden="true" />
+                    {explosionWaveKey > 0 && (
+                      <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
+                    )}
+                  </>
                 )}
 
                 {/* Smart hover highlight */}
@@ -1501,6 +1790,12 @@ export default function WorkspaceView({
                       const isSelected = selectedBlockId === block.id;
                       const isHovered = hoverBlockId === block.id;
                       const linkedNote = activePage.annotations.find((a) => a.blockId === block.id);
+                      const showPopover = Boolean(
+                        !hideAnnotations &&
+                          !inspectorOpen &&
+                          linkedNote &&
+                          (hoveredNoteId === linkedNote.id || inlineEditNoteId === linkedNote.id)
+                      );
                       const dx = block.dest.x1 - block.source.x1;
                       const dy = block.dest.y1 - block.source.y1;
                       const sw = Math.max(1, block.source.x2 - block.source.x1);
@@ -1512,7 +1807,7 @@ export default function WorkspaceView({
                       return (
                         <div
                           key={`guide-${block.id}`}
-                          className={`explode-block ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${transformed ? 'moved' : ''}`}
+                          className={`explode-block ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${transformed ? 'moved' : ''} ${showPopover ? 'has-popover' : ''}`}
                           style={rectStyle(block.dest)}
                           onPointerEnter={() => setHoverBlockId(block.id)}
                           onPointerLeave={() =>
@@ -1525,8 +1820,34 @@ export default function WorkspaceView({
                           }}
                         >
                           {!hideAnnotations && linkedNote && (
-                            <span className="corner-badge explode">{linkedNote.number}</span>
+                            <span
+                              className={`corner-badge explode ${!inspectorOpen ? 'interactive' : ''}`}
+                              onPointerEnter={() => {
+                                if (!inspectorOpen) scheduleHoverOpen(linkedNote.id);
+                              }}
+                              onPointerLeave={() => {
+                                if (!inspectorOpen && inlineEditNoteId !== linkedNote.id) {
+                                  scheduleHoverClose(linkedNote.id);
+                                }
+                              }}
+                              onClick={(e) => {
+                                if (!inspectorOpen) {
+                                  e.stopPropagation();
+                                  setSelectedNoteId(linkedNote.id);
+                                  scheduleHoverOpen(linkedNote.id);
+                                  setInlineEditNoteId((cur) => (cur === linkedNote.id ? null : linkedNote.id));
+                                }
+                              }}
+                            >
+                              {linkedNote.number}
+                            </span>
                           )}
+
+                          {!hideAnnotations &&
+                            !inspectorOpen &&
+                            linkedNote &&
+                            (hoveredNoteId === linkedNote.id || inlineEditNoteId === linkedNote.id) &&
+                            renderInlinePopover(linkedNote, block.dest.x1, block.dest.y1)}
 
                           {(isSelected || isHovered) && transformed && (
                             <span className="explode-delta-pill">
@@ -1620,33 +1941,49 @@ export default function WorkspaceView({
                       </svg>
                     )}
 
-                    {manualCutBox && (
-                      <div className="box-draft-rect" style={rectStyle(manualCutBox)} />
-                    )}
+                    {manualCutBox && <div className="box-draft-rect" style={rectStyle(manualCutBox)} />}
                   </>
                 )}
 
-                {/* Rendered Box & Point Annotations */}
+                {/* Rendered Box & Point Annotations + Inline On-Frame Hover/Edit Bubbles */}
                 {!hideAnnotations &&
                   activePage.annotations.map((note) => {
+                    const showPopover =
+                      !inspectorOpen && (hoveredNoteId === note.id || inlineEditNoteId === note.id);
+
                     if (note.kind === 'point' && note.point) {
                       return (
-                        <button
+                        <div
                           key={note.id}
-                          className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''}`}
-                          style={{
-                            left: pctX(note.point.x),
-                            top: pctY(note.point.y),
-                          }}
-                          onPointerDown={(e) => startAnnotationDrag(e, note)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedNoteId(note.id);
-                            setInspectorTab('page');
-                          }}
+                          className={`inline-note-anchor ${showPopover ? 'has-popover' : ''}`}
+                          style={{ left: pctX(note.point.x), top: pctY(note.point.y) }}
                         >
-                          {note.number}
-                        </button>
+                          <button
+                            className={`point-pin ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''}`}
+                            style={{ left: 0, top: 0 }}
+                            onPointerEnter={() => {
+                              if (!inspectorOpen) scheduleHoverOpen(note.id);
+                            }}
+                            onPointerLeave={() => {
+                              if (!inspectorOpen && inlineEditNoteId !== note.id) {
+                                scheduleHoverClose(note.id);
+                              }
+                            }}
+                            onPointerDown={(e) => startAnnotationDrag(e, note)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedNoteId(note.id);
+                              setInspectorTab('page');
+                              if (!inspectorOpen) {
+                                scheduleHoverOpen(note.id);
+                                setInlineEditNoteId((cur) => (cur === note.id ? null : note.id));
+                              }
+                            }}
+                          >
+                            {note.number}
+                          </button>
+                          {showPopover && renderInlinePopover(note, note.point.x, note.point.y)}
+                        </div>
                       );
                     }
                     if (note.kind === 'region' && note.rect) {
@@ -1654,7 +1991,7 @@ export default function WorkspaceView({
                       return (
                         <div
                           key={note.id}
-                          className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''}`}
+                          className={`box-annotation-rect ${selectedNoteId === note.id ? 'selected' : ''} ${tool === 'select' ? 'draggable' : ''} ${showPopover ? 'has-popover' : ''}`}
                           style={rectStyle(note.rect)}
                           onPointerDown={(e) => startAnnotationDrag(e, note)}
                           onClick={(e) => {
@@ -1663,7 +2000,28 @@ export default function WorkspaceView({
                             setInspectorTab('page');
                           }}
                         >
-                          <span className="corner-badge">{note.number}</span>
+                          <span
+                            className={`corner-badge ${!inspectorOpen ? 'interactive' : ''}`}
+                            onPointerEnter={() => {
+                              if (!inspectorOpen) scheduleHoverOpen(note.id);
+                            }}
+                            onPointerLeave={() => {
+                              if (!inspectorOpen && inlineEditNoteId !== note.id) {
+                                scheduleHoverClose(note.id);
+                              }
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedNoteId(note.id);
+                              if (!inspectorOpen) {
+                                scheduleHoverOpen(note.id);
+                                setInlineEditNoteId((cur) => (cur === note.id ? null : note.id));
+                              }
+                            }}
+                          >
+                            {note.number}
+                          </span>
+                          {showPopover && renderInlinePopover(note, note.rect.x1, note.rect.y1)}
                         </div>
                       );
                     }
@@ -1720,7 +2078,86 @@ export default function WorkspaceView({
             </div>
           </div>
 
-          {/* PixPin Two-Tier Contextual Sub-Bar */}
+          {/* Two-Tier Contextual Sub-Bars */}
+          {!videoMode && tool === 'brush' && (
+            <div className="dock-subbar" role="region" aria-label="画笔工具选项">
+              <div className="segmented-control">
+                <button
+                  className={brushMode === 'pen' ? 'selected' : ''}
+                  onClick={() => setBrushMode('pen')}
+                >
+                  画笔
+                </button>
+                <button
+                  className={brushMode === 'highlighter' ? 'selected' : ''}
+                  onClick={() => setBrushMode('highlighter')}
+                >
+                  荧光笔
+                </button>
+              </div>
+              <span className="dock-subbar-sep" />
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {BRUSH_COLORS.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className={`brush-swatch-btn ${brushColor === hex ? 'active' : ''}`}
+                    style={{ background: hex }}
+                    aria-label={`画笔颜色 ${hex}`}
+                    onClick={() => setBrushColor(hex)}
+                  />
+                ))}
+              </div>
+              <span className="dock-subbar-sep" />
+              <div className="segmented-control">
+                {([
+                  { w: 2, label: '细' },
+                  { w: 4, label: '中' },
+                  { w: 8, label: '粗' },
+                ] as const).map((sz) => (
+                  <button
+                    key={sz.w}
+                    className={brushWidth === sz.w ? 'selected' : ''}
+                    onClick={() => setBrushWidth(sz.w)}
+                  >
+                    {sz.label}
+                  </button>
+                ))}
+              </div>
+              {pageStrokes.length > 0 && (
+                <>
+                  <span className="dock-subbar-sep" />
+                  <span>{pageStrokes.length} 笔</span>
+                  <button
+                    className="button ghost sm"
+                    onClick={() =>
+                      commitPages((prev) =>
+                        prev.map((p) =>
+                          p.id !== activePage.id
+                            ? p
+                            : { ...p, brushStrokes: (p.brushStrokes ?? []).slice(0, -1) }
+                        )
+                      )
+                    }
+                  >
+                    撤销一笔
+                  </button>
+                  <button
+                    className="button ghost sm"
+                    onClick={() => {
+                      commitPages((prev) =>
+                        prev.map((p) => (p.id !== activePage.id ? p : { ...p, brushStrokes: [] }))
+                      );
+                      onToast('已清空本页画笔笔迹');
+                    }}
+                  >
+                    清空
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {!videoMode && tool === 'mosaic' && (
             <div className="dock-subbar" role="region" aria-label="马赛克工具选项">
               <div className="segmented-control">
@@ -1780,6 +2217,9 @@ export default function WorkspaceView({
                 value={mosaicStrength}
                 onChange={(e) => setMosaicStrength(Number(e.target.value))}
               />
+              <span className="badge success" title="导出与发送 AI 解析前会自动涂抹遮挡像素，AI 无法读取隐私">
+                <ShieldCheck size={11} /> AI 不可见
+              </span>
               {pageMosaics.length > 0 && (
                 <>
                   <span className="dock-subbar-sep" />
@@ -1914,14 +2354,22 @@ export default function WorkspaceView({
 
           {/* Full-Parity Concentric Bottom Dock */}
           <div className="floating-dock" role="toolbar" aria-label="全套批注与图像工具栏">
-            {/* Cluster 1: Annotation & Explode */}
+            {/* Cluster 1: Pointer / Pan / Annotation / Brush / Explode */}
             <button
               className={`dock-tool icon-only ${tool === 'select' ? 'active' : ''}`}
               onClick={() => setTool('select')}
-              title="选择与拖动位置 (V)"
+              title="选择与拖动标注位置 (V)"
               aria-label="选择与移动"
             >
               <MousePointer2 size={15} />
+            </button>
+            <button
+              className={`dock-tool icon-only ${tool === 'pan' ? 'active' : ''}`}
+              onClick={() => setTool('pan')}
+              title="拖动画布视图 (G 或按住 Space)"
+              aria-label="拖动画布"
+            >
+              <Hand size={15} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'smart' ? 'active' : ''}`}
@@ -1948,6 +2396,14 @@ export default function WorkspaceView({
               <Square size={15} />
             </button>
             <button
+              className={`dock-tool icon-only ${tool === 'brush' ? 'active' : ''}`}
+              onClick={() => setTool((t) => (t === 'brush' ? 'box' : 'brush'))}
+              title="自由画笔与荧光笔 (B)"
+              aria-label="画笔"
+            >
+              <Brush size={15} />
+            </button>
+            <button
               className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
               onClick={toggleExplodeMode}
               title="大爆炸视觉切片拆解 (E)"
@@ -1962,7 +2418,7 @@ export default function WorkspaceView({
             <button
               className={`dock-tool icon-only ${tool === 'mosaic' ? 'active' : ''}`}
               onClick={() => setTool((t) => (t === 'mosaic' ? 'box' : 'mosaic'))}
-              title="马赛克 / 高斯模糊打码 (M)"
+              title="马赛克脱敏遮罩 · 避免 AI 看到敏感信息 (M)"
               aria-label="马赛克"
             >
               <Grid2x2 size={15} />
@@ -2038,11 +2494,11 @@ export default function WorkspaceView({
 
             <span className="dock-sep" />
 
-            {/* Cluster 4: Output & More */}
+            {/* Cluster 4: Output, More & Direct AI Analysis Entry */}
             <button
               className="dock-tool icon-only"
               onClick={() => void handleCopyAnnotatedImage()}
-              title="复制带批注与打码图片"
+              title="复制带批注与脱敏遮罩图片"
               aria-label="复制图片"
             >
               <ClipboardCopy size={15} />
@@ -2084,7 +2540,7 @@ export default function WorkspaceView({
                     <Save size={14} /> 保存项目 (.edithere)
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleCopyFeedbackBundle()}>
-                    <FolderOutput size={14} /> 复制 JSON 与原图文件
+                    <FolderOutput size={14} /> 复制 JSON 与脱敏原图
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void copyJson()}>
                     <Copy size={14} /> 复制实时 JSON 文本
@@ -2098,15 +2554,27 @@ export default function WorkspaceView({
                       <Camera size={14} /> 重新截图
                     </DropdownMenu.Item>
                   )}
-                  <DropdownMenu.Item className="dropdown-item" onSelect={() => setZoom(100)}>
-                    <Maximize2 size={14} /> 适应画布大小
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item className="dropdown-item" onSelect={() => setInspectorOpen((o) => !o)}>
-                    <FileText size={14} /> {inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
+                  <DropdownMenu.Item
+                    className="dropdown-item"
+                    onSelect={() => {
+                      setZoom(100);
+                      setPanOffset({ x: 0, y: 0 });
+                    }}
+                  >
+                    <Maximize2 size={14} /> 适应并归位画布
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
+
+            <button
+              className="dock-tool analyze-cta"
+              onClick={onAnalyze}
+              title="打开 AI 解析视图（基于脱敏后截图与批注）"
+            >
+              <Sparkles size={14} />
+              <span>AI 解析</span>
+            </button>
           </div>
         </div>
 
@@ -2163,7 +2631,7 @@ export default function WorkspaceView({
             <div className="inspector-list">
               {activePage.annotations.length === 0 ? (
                 <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
-                  当前页面暂无批注。<br />选择「框批注」在画布拖拽，或切换「大爆炸 / 马赛克 / 裁剪」直接编辑画面。
+                  当前页面暂无批注。<br />选择「框批注」或「画笔 / 马赛克 / 裁剪」直接编辑画面。
                 </div>
               ) : (
                 activePage.annotations.map((note) => (
@@ -2220,21 +2688,7 @@ export default function WorkspaceView({
                         className="note-textarea"
                         placeholder="输入具体的修改意见…"
                         value={note.text}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          onUpdatePages((prev) =>
-                            prev.map((p) =>
-                              p.id !== activePage.id
-                                ? p
-                                : {
-                                    ...p,
-                                    annotations: p.annotations.map((a) =>
-                                      a.id === note.id ? { ...a, text: val } : a
-                                    ),
-                                  }
-                            )
-                          );
-                        }}
+                        onChange={(e) => updateNoteText(note.id, e.target.value)}
                         onBlur={() => setEditingNoteId(null)}
                       />
                     ) : (
@@ -2319,36 +2773,9 @@ export default function WorkspaceView({
           </Tabs.Content>
 
           <div className="inspector-footer">
-            <Dialog.Root open={jsonOpen} onOpenChange={setJsonOpen}>
-              <Dialog.Trigger asChild>
-                <button className="button secondary">
-                  <Code2 size={15} /> 查看 JSON
-                </button>
-              </Dialog.Trigger>
-              <Dialog.Portal>
-                <Dialog.Overlay className="dialog-overlay" />
-                <Dialog.Content className="dialog-content">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Dialog.Title className="dialog-title">实时反馈 JSON（image-set-feedback-1）</Dialog.Title>
-                    <Dialog.Close className="icon-button" aria-label="关闭">
-                      <X size={16} />
-                    </Dialog.Close>
-                  </div>
-                  <Dialog.Description className="dialog-desc">
-                    仅附带存在批注或布局位移的页面；未批注页面只留在 pageIndex 中作为索引。
-                  </Dialog.Description>
-                  <pre className="json-preview-pre">{liveJson}</pre>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-                    <button className="button secondary" onClick={downloadJson}>
-                      <Download size={14} /> 导出 JSON
-                    </button>
-                    <button className="button primary" onClick={copyJson}>
-                      <Copy size={14} /> 复制 JSON
-                    </button>
-                  </div>
-                </Dialog.Content>
-              </Dialog.Portal>
-            </Dialog.Root>
+            <button className="button secondary" onClick={() => setJsonOpen(true)}>
+              <Code2 size={15} /> 查看 JSON
+            </button>
 
             <button className="button primary" onClick={onAnalyze}>
               <Sparkles size={15} /> AI 解析
@@ -2356,6 +2783,32 @@ export default function WorkspaceView({
           </div>
         </Tabs.Root>
       )}
+
+      <Dialog.Root open={jsonOpen} onOpenChange={setJsonOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="dialog-overlay" />
+          <Dialog.Content className="dialog-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Dialog.Title className="dialog-title">实时反馈 JSON（image-set-feedback-1）</Dialog.Title>
+              <Dialog.Close className="icon-button" aria-label="关闭">
+                <X size={16} />
+              </Dialog.Close>
+            </div>
+            <Dialog.Description className="dialog-desc">
+              仅附带存在批注或布局位移的页面；未批注页面只留在 pageIndex 中作为索引。
+            </Dialog.Description>
+            <pre className="json-preview-pre">{liveJson}</pre>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button className="button secondary" onClick={downloadJson}>
+                <Download size={14} /> 导出 JSON
+              </button>
+              <button className="button primary" onClick={copyJson}>
+                <Copy size={14} /> 复制 JSON
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

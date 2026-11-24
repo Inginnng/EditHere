@@ -1,4 +1,4 @@
-import type { GalleryPage, MosaicRegion, PixelRect } from '../bridge/types';
+import type { BrushStroke, GalleryPage, GroupNote, MosaicRegion, PixelPoint, PixelRect } from '../bridge/types';
 
 function loadImageElement(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -192,6 +192,9 @@ export function composePageToPng(
   if (page.mosaics && page.mosaics.length > 0) {
     drawMosaicsOnContext(ctx, sourceImg, page.mosaics, w, h, w, h);
   }
+  if (page.brushStrokes && page.brushStrokes.length > 0) {
+    drawBrushStrokesOnContext(ctx, page.brushStrokes, w, h, w, h);
+  }
 
   // Render Explode lifted slices if any block moved/resized
   const transformedBlocks = page.blocks.filter((b) => {
@@ -337,6 +340,107 @@ export function composePageToPng(
   const dataUrl = canvas.toDataURL('image/png');
   const pngBase64 = dataUrl.split(',')[1] ?? '';
   return { dataUrl, pngBase64 };
+}
+
+export function strokeToSvgPath(points: PixelPoint[]): string {
+  if (points.length === 0) return '';
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y} L ${points[0].x + 0.1} ${points[0].y + 0.1}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const midX = (points[i].x + points[i + 1].x) / 2;
+    const midY = (points[i].y + points[i + 1].y) / 2;
+    d += ` Q ${points[i].x} ${points[i].y} ${midX} ${midY}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
+
+export function drawBrushStrokesOnContext(
+  ctx: CanvasRenderingContext2D,
+  strokes: BrushStroke[],
+  pageWidth: number,
+  pageHeight: number,
+  destWidth = pageWidth,
+  destHeight = pageHeight
+): void {
+  if (!strokes.length) return;
+  const sx = destWidth / Math.max(1, pageWidth);
+  const sy = destHeight / Math.max(1, pageHeight);
+  const swScale = (sx + sy) / 2;
+
+  for (const stroke of strokes) {
+    if (!stroke.points.length) continue;
+    ctx.save();
+    ctx.globalAlpha = stroke.opacity ?? 1;
+    ctx.strokeStyle = stroke.color || '#FF453A';
+    ctx.lineWidth = Math.max(1, stroke.width * swScale);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    const pts = stroke.points;
+    ctx.moveTo(pts[0].x * sx, pts[0].y * sy);
+    if (pts.length === 1) {
+      ctx.lineTo(pts[0].x * sx + 0.1, pts[0].y * sy + 0.1);
+    } else {
+      for (let i = 1; i < pts.length - 1; i++) {
+        const midX = ((pts[i].x + pts[i + 1].x) / 2) * sx;
+        const midY = ((pts[i].y + pts[i + 1].y) / 2) * sy;
+        ctx.quadraticCurveTo(pts[i].x * sx, pts[i].y * sy, midX, midY);
+      }
+      const last = pts[pts.length - 1];
+      ctx.lineTo(last.x * sx, last.y * sy);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+export function composeBaseWithEditsToPng(
+  page: GalleryPage,
+  sourceImg: HTMLImageElement
+): { dataUrl: string; pngBase64: string } {
+  const w = Math.max(1, page.width);
+  const h = Math.max(1, page.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { dataUrl: '', pngBase64: '' };
+
+  ctx.drawImage(sourceImg, 0, 0, w, h);
+  if (page.mosaics && page.mosaics.length > 0) {
+    drawMosaicsOnContext(ctx, sourceImg, page.mosaics, w, h, w, h);
+  }
+  if (page.brushStrokes && page.brushStrokes.length > 0) {
+    drawBrushStrokesOnContext(ctx, page.brushStrokes, w, h, w, h);
+  }
+  const dataUrl = canvas.toDataURL('image/png');
+  return { dataUrl, pngBase64: dataUrl.split(',')[1] ?? '' };
+}
+
+export async function attachRedactedPagesToPayload(
+  pages: GalleryPage[],
+  groupNotes: GroupNote[],
+  mediaContainer?: HTMLElement | null
+): Promise<{
+  pages: Array<GalleryPage & { redactedPngBase64?: string }>;
+  groupNotes: GroupNote[];
+}> {
+  const serializedPages = await Promise.all(
+    pages.map(async (page) => {
+      const hasEdits =
+        (page.mosaics?.length ?? 0) > 0 || (page.brushStrokes?.length ?? 0) > 0;
+      if (!hasEdits) return page;
+      const bmp = await loadBitmapForPage(page, mediaContainer);
+      if (!bmp) return page;
+      const { pngBase64 } = composeBaseWithEditsToPng(page, bmp);
+      return pngBase64 ? { ...page, redactedPngBase64: pngBase64 } : page;
+    })
+  );
+  return { pages: serializedPages, groupNotes };
 }
 
 let loupeCanvas: HTMLCanvasElement | null = null;

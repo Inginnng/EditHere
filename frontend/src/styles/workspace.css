@@ -1,5 +1,27 @@
-/* Apple Concentric Twin-Panel Workspace */
+@property --apple-glow-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes appleGlowRotate {
+  to {
+    --apple-glow-angle: 360deg;
+  }
+}
+
+@keyframes appleGradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+/* Apple Concentric Twin-Panel Workspace (with Drawer Overlay on Narrow Screens) */
 .workspace-root {
+  position: relative;
   height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 316px;
@@ -99,7 +121,7 @@
   white-space: nowrap;
 }
 
-/* Concentric Zoom Pill: outer 8px - 2px pad = inner 6px */
+/* Concentric Zoom & Inspector HUD Pills */
 .canvas-zoom-pill {
   height: 32px;
   display: inline-flex;
@@ -133,6 +155,40 @@
   color: var(--secondary);
 }
 
+.inspector-toggle-btn {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.inspector-toggle-btn:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.inspector-toggle-btn.is-open {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.inspector-toggle-count {
+  min-width: 0 !important;
+  padding: 0 4px;
+  border-radius: var(--r-micro);
+  background: var(--fill);
+  font-family: var(--mono);
+  font-size: 10.5px !important;
+}
+
 /* Artboard Viewport */
 .canvas-stage-wrap {
   flex: 1;
@@ -140,6 +196,15 @@
   display: flex;
   padding: 52px 24px 86px;
   overflow: auto;
+}
+
+.canvas-stage-wrap.can-pan {
+  cursor: grab;
+}
+
+.canvas-stage-wrap.is-panning,
+.canvas-stage-wrap.is-panning * {
+  cursor: grabbing !important;
 }
 
 .canvas-stage-inner {
@@ -162,6 +227,10 @@
   transition: transform 0.14s ease;
   user-select: none;
   flex-shrink: 0;
+}
+
+.artboard.is-panning {
+  transition: none;
 }
 
 .artboard.cursor-crosshair {
@@ -207,6 +276,18 @@
 .mosaic-region-outline.selected {
   border: 1.5px solid var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+/* Freehand Brush SVG Layer */
+.brush-svg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-card);
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
 }
 
 /* PixPin-Inspired Interactive Crop Overlay */
@@ -262,7 +343,7 @@
   backdrop-filter: saturate(180%) blur(18px);
   box-shadow: var(--shadow-float), var(--specular);
   pointer-events: none;
-  z-index: 19;
+  z-index: 24;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -295,33 +376,86 @@
   flex-shrink: 0;
 }
 
-/* ExplosionWave subtle entry sweep */
-.explosion-wave {
+/* Apple Intelligence Flowing Rainbow Perimeter Ripple (Explode Mode) */
+.explode-apple-frame {
   position: absolute;
-  inset: 0;
-  border-radius: var(--r-card);
+  inset: -3px;
+  border-radius: calc(var(--r-card) + 3px);
   pointer-events: none;
-  z-index: 4;
-  background: radial-gradient(
-    circle at 50% 50%,
-    color-mix(in srgb, var(--accent) 22%, transparent) 0%,
-    transparent 65%
-  );
-  animation: explosionSweep 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  z-index: 18;
 }
 
-@keyframes explosionSweep {
+.explode-apple-frame::before,
+.explode-apple-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--apple-glow-angle),
+    #0a84ff,
+    #5e5ce6,
+    #bf5af2,
+    #ff375f,
+    #ff9f0a,
+    #30d158,
+    #64d2ff,
+    #0a84ff
+  );
+  animation: appleGlowRotate 4.2s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.explode-apple-frame::before {
+  padding: 3.5px;
+  filter: blur(11px);
+  opacity: 0.72;
+}
+
+.explode-apple-frame::after {
+  padding: 2px;
+  opacity: 0.94;
+}
+
+.explosion-wave {
+  position: absolute;
+  inset: -4px;
+  border-radius: calc(var(--r-card) + 4px);
+  pointer-events: none;
+  z-index: 17;
+  background: conic-gradient(
+    from var(--apple-glow-angle),
+    rgba(10, 132, 255, 0.45),
+    rgba(191, 90, 242, 0.45),
+    rgba(255, 55, 95, 0.45),
+    rgba(255, 159, 10, 0.45),
+    rgba(48, 209, 88, 0.45),
+    rgba(10, 132, 255, 0.45)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 4px;
+  filter: blur(6px);
+  animation: explosionRippleOut 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes explosionRippleOut {
   0% {
-    opacity: 0.9;
-    transform: scale(0.75);
+    opacity: 0.95;
+    transform: scale(0.97);
   }
   100% {
     opacity: 0;
-    transform: scale(1.08);
+    transform: scale(1.035);
   }
 }
 
-/* Smart Detect (pure geometric dashed outline + precision micro size tag) */
+/* Smart Detect Outline */
 .smart-block-hover {
   position: absolute;
   border: 1.5px dashed var(--accent);
@@ -367,6 +501,12 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
+.box-annotation-rect.has-popover,
+.explode-block.has-popover,
+.inline-note-anchor.has-popover {
+  z-index: 42;
+}
+
 .box-draft-rect {
   position: absolute;
   border: 1.5px dashed var(--accent);
@@ -395,6 +535,17 @@
   place-items: center;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.corner-badge.interactive {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.corner-badge.interactive:hover {
+  transform: scale(1.12);
+  box-shadow: 0 3px 10px rgba(0, 122, 255, 0.42);
 }
 
 .corner-badge.explode {
@@ -430,6 +581,87 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
+/* On-Frame Inline Hover/Edit Note Popover (when right inspector is collapsed) */
+.inline-note-anchor {
+  position: absolute;
+  z-index: 25;
+}
+
+.inline-note-popover {
+  position: absolute;
+  left: -10px;
+  bottom: calc(100% + 14px);
+  width: 272px;
+  padding: 10px 11px;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--border-float);
+  background: var(--glass-strong);
+  backdrop-filter: saturate(180%) blur(22px);
+  box-shadow: var(--shadow-float), var(--specular);
+  color: var(--ink);
+  z-index: 30;
+  cursor: default;
+  text-align: left;
+}
+
+.inline-note-popover.place-below {
+  bottom: auto;
+  top: calc(100% + 14px);
+}
+
+.inline-note-popover.place-left {
+  left: auto;
+  right: -10px;
+}
+
+.inline-note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.inline-note-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.inline-note-actions .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+.inline-note-body {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  cursor: text;
+}
+
+.inline-note-body.placeholder {
+  color: var(--muted);
+}
+
+.inline-note-ocr {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--line);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Authentic Visual-Cutout Explode Layer */
 .explode-cavity {
   position: absolute;
@@ -460,7 +692,7 @@
 
 .explode-piece.is-selected {
   box-shadow:
-    0 16px 38px rgba(0, 122, 255, 0.24),
+    0 16px 38px rgba(191, 90, 242, 0.28),
     0 0 0 1.5px var(--accent);
 }
 
@@ -546,7 +778,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 4px 9px;
   max-width: calc(100% - 24px);
   border-radius: 10px;
   background: var(--glass-strong);
@@ -568,6 +800,22 @@
   width: 1px;
   height: 14px;
   background: var(--line-strong);
+}
+
+.brush-swatch-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-circle);
+  border: 1.5px solid var(--line-strong);
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.brush-swatch-btn.active {
+  transform: scale(1.16);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 1.5px var(--accent);
 }
 
 /* Video Timeline Strip */
@@ -649,7 +897,7 @@
 
 .dock-tool {
   height: 32px;
-  padding: 0 10px;
+  padding: 0 9px;
   border: 0;
   border-radius: var(--r-card);
   background: transparent;
@@ -665,7 +913,7 @@
 }
 
 .dock-tool.icon-only {
-  width: 32px;
+  width: 31px;
   height: 32px;
   padding: 0;
   justify-content: center;
@@ -686,8 +934,23 @@
 }
 
 .dock-tool.explode-btn.active {
-  background: var(--explode);
+  background: linear-gradient(120deg, #0a84ff, #5e5ce6, #bf5af2, #ff375f, #0a84ff);
+  background-size: 200% 100%;
+  animation: appleGradientFlow 3.4s linear infinite;
   color: #ffffff;
+}
+
+.dock-tool.analyze-cta {
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 0 11px;
+  margin-left: 2px;
+  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.26);
+}
+
+.dock-tool.analyze-cta:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--on-accent);
 }
 
 .dock-sep {
@@ -721,10 +984,11 @@
   border: 1px solid var(--line);
   background: var(--surface);
   font-size: 12px;
+  font-weight: 500;
   color: var(--secondary);
   white-space: nowrap;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
 }
 
 .gallery-thumb-btn:hover {
@@ -736,7 +1000,6 @@
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 500;
 }
 
 .gallery-count-pill {
@@ -934,23 +1197,23 @@
   gap: 8px;
 }
 
-@media (max-width: 980px) {
-  .app-main.is-workspace {
-    overflow: auto;
-  }
+/* On narrow/short viewports: canvas NEVER shrinks vertically; inspector slides over as right drawer */
+@media (max-width: 960px) {
   .workspace-root {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: clamp(420px, 56dvh, 600px) auto;
-    height: auto;
-    min-height: 100%;
-    overflow: visible;
-  }
-  .canvas-surface {
-    grid-column: 1;
-    grid-row: 1;
+    grid-template-rows: minmax(0, 1fr);
   }
   .inspector-column {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: auto;
+    grid-row: auto;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    height: 100%;
+    width: min(316px, calc(100% - 16px));
+    z-index: 28;
+    box-shadow: var(--shadow-dialog);
   }
 }

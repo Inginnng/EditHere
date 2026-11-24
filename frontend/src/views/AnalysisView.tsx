@@ -1,14 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, Check, Copy, FileText, LoaderCircle, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  ArrowDownToLine,
+  ArrowLeft,
+  Check,
+  Copy,
+  FileText,
+  LoaderCircle,
+  RefreshCw,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  Square,
+} from 'lucide-react';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import { generateAnalysisText } from '../bridge/mockBridge';
 import type { GalleryPage, GroupNote } from '../bridge/types';
+import {
+  attachRedactedPagesToPayload,
+  composeBaseWithEditsToPng,
+  loadBitmapForPage,
+} from '../utils/canvasCompose';
 
 interface AnalysisViewProps {
   pages: GalleryPage[];
   groupNotes: GroupNote[];
+  providerId: string;
   providerName: string;
+  hasDesktopPages: boolean;
   onOpenProviders: () => void;
   onBack: () => void;
   onToast: (message: string) => void;
@@ -17,7 +36,9 @@ interface AnalysisViewProps {
 export default function AnalysisView({
   pages,
   groupNotes,
+  providerId,
   providerName,
+  hasDesktopPages,
   onOpenProviders,
   onBack,
   onToast,
@@ -26,29 +47,87 @@ export default function AnalysisView({
   const [output, setOutput] = useState(() => generateAnalysisText(pages, groupNotes));
   const [busy, setBusy] = useState(false);
   const [sourceTab, setSourceTab] = useState<'image' | 'notes'>('image');
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [redactedPreviewUrl, setRedactedPreviewUrl] = useState<string | null>(null);
 
   const selectedPage = pages.find((p) => p.id === selectedPageId) ?? pages[0];
   const totalNotes = pages.reduce((sum, p) => sum + p.annotations.length, 0) + groupNotes.length;
-
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  const mosaicCount = selectedPage?.mosaics?.length ?? 0;
+  const brushCount = selectedPage?.brushStrokes?.length ?? 0;
 
   useEffect(() => {
     setOutput(generateAnalysisText(pages, groupNotes));
   }, [pages, groupNotes]);
 
-  const runDemoParse = () => {
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPage || (mosaicCount === 0 && brushCount === 0)) {
+      setRedactedPreviewUrl(null);
+      return;
+    }
+    loadBitmapForPage(selectedPage).then((img) => {
+      if (cancelled || !img) return;
+      const rendered = composeBaseWithEditsToPng(selectedPage, img);
+      if (rendered.dataUrl) {
+        setRedactedPreviewUrl(rendered.dataUrl);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPage?.id, selectedPage?.imageUrl, selectedPage?.mosaics, selectedPage?.brushStrokes, mosaicCount, brushCount]);
+
+  const handleAnalyze = async () => {
     if (busy) {
-      clearTimeout(timerRef.current);
+      if (isDesktopWebView()) {
+        await desktopRpc('ai.cancel').catch(() => {});
+      }
       setBusy(false);
       return;
     }
+
+    if (isDesktopWebView() && hasDesktopPages) {
+      setBusy(true);
+      try {
+        const redactedPayload = await attachRedactedPagesToPayload(pages, groupNotes);
+        const res = await desktopRpc<{
+          ok?: boolean;
+          text?: string;
+          inputTokens?: number;
+          outputTokens?: number;
+        }>(
+          'ai.analyze',
+          {
+            providerId,
+            payload: redactedPayload,
+          },
+          180000
+        );
+        if (res?.text) {
+          setOutput(res.text);
+        }
+        const tokHint =
+          res?.inputTokens || res?.outputTokens
+            ? `（输入 ${res.inputTokens ?? 0} / 输出 ${res.outputTokens ?? 0} tokens）`
+            : '';
+        onToast(`已完成「${providerName}」视觉解析${tokHint}`);
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : 'AI 解析失败，请检查模型配置与 Key');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     setBusy(true);
-    timerRef.current = setTimeout(() => {
+    setTimeout(() => {
       setOutput(generateAnalysisText(pages, groupNotes));
       setBusy(false);
-      onToast('已结合工作台全部批注与位移生成修改清单');
-    }, 900);
+      onToast(
+        isDesktopWebView()
+          ? '当前为示例画面，已从工作台本地批注生成结构化清单（截图或导入图片后可调用真实模型）'
+          : '已结合工作台批注生成结构化修改清单'
+      );
+    }, 550);
   };
 
   const copyText = async () => {
@@ -91,9 +170,9 @@ export default function AnalysisView({
       <div className="page-heading">
         <div>
           <h1>AI 解析</h1>
-          <p>把当前工作台的多页截图、位移变化与批注整理成纯文本修改需求，核对后直接交付给任意 Agent。</p>
+          <p>自动对马赛克遮挡区域做防泄漏重绘后再交付模型，结合批注、画笔与布局位移输出结构化需求。</p>
         </div>
-        <button className="button secondary" onClick={onBack}>
+        <button className="button secondary sm" onClick={onBack}>
           <ArrowLeft size={14} /> 返回工作台
         </button>
       </div>
@@ -117,29 +196,15 @@ export default function AnalysisView({
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 16, padding: '10px 16px 0', borderBottom: '1px solid var(--line)' }}>
+          <div className="analysis-source-tabs">
             <button
-              style={{
-                border: 0,
-                background: 'none',
-                padding: '0 0 8px',
-                borderBottom: sourceTab === 'image' ? '2px solid var(--accent)' : '2px solid transparent',
-                color: sourceTab === 'image' ? 'var(--ink)' : 'var(--muted)',
-                fontWeight: sourceTab === 'image' ? 600 : 400,
-              }}
+              className={`analysis-source-tab ${sourceTab === 'image' ? 'active' : ''}`}
               onClick={() => setSourceTab('image')}
             >
               画面预览
             </button>
             <button
-              style={{
-                border: 0,
-                background: 'none',
-                padding: '0 0 8px',
-                borderBottom: sourceTab === 'notes' ? '2px solid var(--accent)' : '2px solid transparent',
-                color: sourceTab === 'notes' ? 'var(--ink)' : 'var(--muted)',
-                fontWeight: sourceTab === 'notes' ? 600 : 400,
-              }}
+              className={`analysis-source-tab ${sourceTab === 'notes' ? 'active' : ''}`}
               onClick={() => setSourceTab('notes')}
             >
               本页批注 ({selectedPage.annotations.length})
@@ -147,8 +212,17 @@ export default function AnalysisView({
           </div>
 
           {sourceTab === 'image' ? (
-            <div style={{ margin: 14, border: '1px solid var(--line)', borderRadius: 'var(--r-control)', overflow: 'hidden', aspectRatio: '5/3' }}>
-              <SceneArtwork sceneId={selectedPage.sceneId} imageUrl={selectedPage.imageUrl} />
+            <div className="analysis-preview-box">
+              {redactedPreviewUrl ? (
+                <img src={redactedPreviewUrl} alt={selectedPage.name} />
+              ) : (
+                <SceneArtwork sceneId={selectedPage.sceneId} imageUrl={selectedPage.imageUrl} />
+              )}
+              {mosaicCount > 0 && (
+                <span className="badge success analysis-redacted-tag">
+                  <ShieldCheck size={12} /> 已遮罩 {mosaicCount} 处敏感区域 · AI 不可见
+                </span>
+              )}
             </div>
           ) : (
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 185 }}>
@@ -205,11 +279,12 @@ export default function AnalysisView({
                 justifyContent: 'center',
                 gap: 8,
                 background: 'var(--surface-elevated)',
+                backdropFilter: 'blur(8px)',
                 color: 'var(--accent)',
               }}
             >
               <LoaderCircle size={17} className="spin" />
-              <span>正在结合图像与位移重新生成说明…</span>
+              <span>正在调用「{providerName}」分析画面与批注…</span>
             </div>
           )}
 
@@ -219,7 +294,7 @@ export default function AnalysisView({
               <button className="button ghost sm" onClick={() => setOutput(generateAnalysisText(pages, groupNotes))}>
                 <RefreshCw size={13} /> 从工作台同步
               </button>
-              <button className="button ghost sm" onClick={exportMarkdown}>
+              <button className="button ghost sm" onClick={() => void exportMarkdown()}>
                 <ArrowDownToLine size={13} /> 导出 .md
               </button>
             </div>
@@ -227,16 +302,17 @@ export default function AnalysisView({
         </section>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, gap: 12, flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
-          <Check size={14} /> 仅在点击「重新解析」时调用配置的模型接口；直接让 Agent 读图时无需使用此页
+          <Check size={14} />
+          发送给模型前已烘焙马赛克遮罩像素，敏感信息不会泄露给 AI
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="button secondary" onClick={runDemoParse}>
-            {busy ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />}
-            {busy ? '停止' : '演示重新解析'}
+          <button className="button secondary" onClick={() => void handleAnalyze()}>
+            {busy ? <Square size={13} /> : <Sparkles size={14} />}
+            {busy ? '停止解析' : isDesktopWebView() && hasDesktopPages ? 'AI 重新解析' : '本地生成清单'}
           </button>
-          <button className="button primary" onClick={copyText}>
+          <button className="button primary" onClick={() => void copyText()}>
             <Copy size={14} /> 复制修改说明
           </button>
         </div>

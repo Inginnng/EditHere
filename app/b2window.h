@@ -1,5 +1,8 @@
 #pragma once
 
+#include "aiconfig.h"
+#include "aicredentials.h"
+#include "aifeedback.h"
 #include "b2assetserver.h"
 #include "imageset.h"
 #include "ocr.h"
@@ -8,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMainWindow>
+#include <QMap>
 #include <QVector>
 
 namespace h2d {
@@ -70,10 +74,12 @@ class B2Window final : public QMainWindow {
     QJsonObject buildSessionStateJson() const;
     QJsonObject buildDoctorSnapshotJson() const;
     QJsonObject buildPreferencesJson() const;
+    QJsonObject buildAiStateJson() const;
     QJsonArray buildPagesJson() const;
     QJsonArray blocksForPage(const B2Page &page) const;
     void syncDwmTitleBar(bool dark);
     bool isEffectiveDark() const;
+    void preloadAiCredentials();
 
     Document buildDocumentFromJsPage(const B2Page &basePage, const QJsonObject &jsPage) const;
     ImageSet buildImageSetFromPayload(const QJsonObject &payload) const;
@@ -88,12 +94,22 @@ class B2Window final : public QMainWindow {
     void handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObject &params);
     void handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleAiSaveProviders(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleAiTestConnection(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleAiAnalyze(const QJsonValue &rpcId, const QJsonObject &params);
 
     B2AssetServer server_;
     WebView2Host *webview_ = nullptr;
     OcrEngine *ocr_ = nullptr;
+    AiCredentials *aiCredentials_ = nullptr;
+    AiFeedbackClient *aiClient_ = nullptr;
     AppSettings settings_;
     QString settingsFile_;
+    QMap<QString, QString> apiKeys_;
+    QJsonValue pendingAiTestId_;
+    QJsonValue pendingAiAnalyzeId_;
+    qint64 lastInputTokens_ = 0;
+    qint64 lastOutputTokens_ = 0;
 
     QVector<B2Page> pages_;
     QString activePageId_;

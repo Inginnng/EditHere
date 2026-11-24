@@ -21,20 +21,32 @@ import type { ProviderConfig, ProviderPreset } from '../bridge/types';
 interface ProvidersViewProps {
   providers: ProviderConfig[];
   defaultProviderId: string;
-  onUpdateProviders: (next: ProviderConfig[]) => void;
-  onChangeDefault: (id: string) => void;
+  onSaveProviders: (next: ProviderConfig[], nextDefaultId: string) => Promise<void> | void;
+  onTestProvider: (cfg: ProviderConfig) => Promise<{ ok: boolean; message: string }>;
   onToast: (message: string) => void;
+  embedded?: boolean;
 }
 
 const presetFor = (id: string): ProviderPreset =>
   PROVIDER_PRESETS.find((p) => p.id === id) ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
 
+function providerIconSrc(presetId: string): string | null {
+  if (presetId === 'custom') return null;
+  if (presetId.startsWith('glm')) return './providers/glm.svg';
+  if (presetId.startsWith('kimi')) return './providers/kimi.svg';
+  if (presetId === 'openai' || presetId === 'claude' || presetId === 'deepseek') {
+    return `./providers/${presetId}.svg`;
+  }
+  return null;
+}
+
 export default function ProvidersView({
   providers,
   defaultProviderId,
-  onUpdateProviders,
-  onChangeDefault,
+  onSaveProviders,
+  onTestProvider,
   onToast,
+  embedded = false,
 }: ProvidersViewProps) {
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<ProviderConfig | null>(null);
@@ -48,15 +60,16 @@ export default function ProvidersView({
     setCreating(!config);
     setDraft(
       config
-        ? { ...config }
+        ? { ...config, key: '', keyEdited: false }
         : {
-            id: `custom-${Date.now()}`,
-            presetId: 'openai',
+            id: `custom-${Date.now().toString(36)}`,
+            presetId: 'custom',
             name: '新模型配置',
             model: 'gpt-6.1-sol',
             endpoint: 'https://api.openai.com/v1',
             protocol: 'responses',
             key: '',
+            keyEdited: false,
             region: 'cn',
             timeout: '120',
             note: '',
@@ -64,12 +77,12 @@ export default function ProvidersView({
           }
     );
     setShowKey(false);
-    setAdvancedOpen(false);
+    setAdvancedOpen(!config || config.presetId === 'custom');
     setError('');
     setTesting(false);
   };
 
-  const saveDraft = (e: FormEvent) => {
+  const saveDraft = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft) return;
     if (!draft.name.trim()) {
@@ -81,51 +94,70 @@ export default function ProvidersView({
       return;
     }
     try {
-      const url = new URL(draft.endpoint);
+      const url = new URL(draft.endpoint.trim());
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol');
     } catch {
       setError('请输入有效的 HTTP / HTTPS 接口地址。');
       return;
     }
+
+    const nextSavedFlag = draft.keyEdited ? Boolean(draft.key.trim()) : draft.saved;
     const saved: ProviderConfig = {
       ...draft,
       name: draft.name.trim(),
       model: draft.model.trim(),
       endpoint: draft.endpoint.trim(),
-      saved: Boolean(draft.key.trim()),
+      saved: nextSavedFlag,
     };
-    onUpdateProviders(
-      creating
-        ? [...providers, saved]
-        : providers.map((item) => (item.id === saved.id ? saved : item))
-    );
+    const nextList = creating
+      ? [...providers, saved]
+      : providers.map((item) => (item.id === saved.id ? saved : item));
+
+    await onSaveProviders(nextList, defaultProviderId);
     setDraft(null);
-    onToast(`已更新「${saved.name}」配置`);
+    onToast(`已保存「${saved.name}」配置`);
   };
 
-  const runDemoTest = () => {
+  const runTestConnection = async () => {
+    if (!draft) return;
     setTesting(true);
-    setTimeout(() => {
+    setError('');
+    try {
+      const res = await onTestProvider(draft);
+      if (res.ok) {
+        onToast(res.message);
+      } else {
+        setError(res.message);
+      }
+    } finally {
       setTesting(false);
-      onToast('连通性演示校验通过（未消耗真实额度）');
-    }, 650);
+    }
   };
 
   if (draft) {
     const preset = presetFor(draft.presetId);
+    const keyPlaceholder =
+      draft.saved && !draft.keyEdited
+        ? draft.keyPreview
+          ? `已存入系统凭据（${draft.keyPreview}），留空保持不变`
+          : '已存入系统凭据，留空保持不变'
+        : 'sk-...';
+
     return (
-      <div className="page-container">
-        <div className="page-heading">
+      <div>
+        <div className="page-heading" style={embedded ? { marginBottom: 16 } : undefined}>
           <div>
-            <h1>{creating ? '添加模型服务' : `编辑 · ${draft.name}`}</h1>
-            <p>配置可选「AI 解析」使用的视觉模型接口；密钥在真实桌面端存入系统凭据库。</p>
+            <h2 style={embedded ? { margin: '0 0 4px', fontSize: 17, fontWeight: 600 } : undefined}>
+              {creating ? '添加模型服务' : `编辑 · ${draft.name}`}
+            </h2>
+            <p>配置「AI 解析」使用的视觉模型接口；API Key 在桌面端加密存入操作系统凭据库。</p>
           </div>
-          <button className="button secondary" onClick={() => setDraft(null)}>
+          <button className="button secondary sm" onClick={() => setDraft(null)}>
             <ArrowLeft size={14} /> 返回列表
           </button>
         </div>
 
-        <form className="editor-panel" onSubmit={saveDraft}>
+        <form className="editor-panel" onSubmit={(e) => void saveDraft(e)}>
           <div className="editor-panel-header">
             <strong>服务商预设</strong>
             <span className="badge neutral">{preset.company}</span>
@@ -133,34 +165,33 @@ export default function ProvidersView({
 
           <div className="editor-panel-body">
             <div className="preset-grid">
-              {PROVIDER_PRESETS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`preset-chip ${draft.presetId === item.id ? 'selected' : ''}`}
-                  onClick={() =>
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            presetId: item.id,
-                            name: item.name,
-                            model: item.model,
-                            endpoint: item.endpoint,
-                            protocol: item.protocol,
-                          }
-                        : null
-                    )
-                  }
-                >
-                  {item.id === 'custom' ? (
-                    <Settings2 size={15} />
-                  ) : (
-                    <img src={`./providers/${item.id}.svg`} alt="" width={16} height={16} />
-                  )}
-                  <span>{item.name}</span>
-                </button>
-              ))}
+              {PROVIDER_PRESETS.map((item) => {
+                const icon = providerIconSrc(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`preset-chip ${draft.presetId === item.id ? 'selected' : ''}`}
+                    onClick={() =>
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              presetId: item.id,
+                              name: item.name,
+                              model: item.model,
+                              endpoint: item.endpoint,
+                              protocol: item.protocol,
+                            }
+                          : null
+                      )
+                    }
+                  >
+                    {icon ? <img src={icon} alt="" width={16} height={16} /> : <Settings2 size={15} />}
+                    <span>{item.name}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="field-grid">
@@ -186,9 +217,11 @@ export default function ProvidersView({
                   <input
                     id="cfg-key"
                     type={showKey ? 'text' : 'password'}
-                    placeholder="sk-..."
+                    placeholder={keyPlaceholder}
                     value={draft.key}
-                    onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, key: e.target.value, keyEdited: true })
+                    }
                   />
                   <button
                     type="button"
@@ -198,7 +231,12 @@ export default function ProvidersView({
                     {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                     {showKey ? '隐藏' : '显示'}
                   </button>
-                  <button type="button" className="button secondary" onClick={runDemoTest} disabled={testing}>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => void runTestConnection()}
+                    disabled={testing}
+                  >
                     {testing && <LoaderCircle size={14} className="spin" />}
                     测试连接
                   </button>
@@ -212,7 +250,7 @@ export default function ProvidersView({
                 className="button ghost sm"
                 onClick={() => setAdvancedOpen((v) => !v)}
               >
-                {advancedOpen ? '收起高级设置 ▲' : '展开高级设置（地址 / 超时 / 补充提示词）▼'}
+                {advancedOpen ? '收起高级设置 ▲' : '展开高级设置（地址 / 协议 / 超时 / 提示词）▼'}
               </button>
             </div>
 
@@ -233,6 +271,25 @@ export default function ProvidersView({
                     value={draft.timeout}
                     onChange={(e) => setDraft({ ...draft, timeout: e.target.value })}
                   />
+                </div>
+                <div className="field-block full">
+                  <label>接口协议</label>
+                  <div className="segmented-control" role="radiogroup" aria-label="接口协议">
+                    {([
+                      { id: 'responses', label: 'OpenAI Responses' },
+                      { id: 'chat-completions', label: 'Chat Completions' },
+                      { id: 'anthropic-messages', label: 'Anthropic Messages' },
+                    ] as const).map((proto) => (
+                      <button
+                        key={proto.id}
+                        type="button"
+                        className={draft.protocol === proto.id ? 'selected' : ''}
+                        onClick={() => setDraft({ ...draft, protocol: proto.id })}
+                      >
+                        {proto.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="field-block full">
                   <label htmlFor="cfg-note">补充系统要求</label>
@@ -273,16 +330,18 @@ export default function ProvidersView({
   );
 
   return (
-    <div className="page-container">
-      <div className="page-heading">
-        <div>
-          <h1>模型服务</h1>
-          <p>仅用于可选「AI 解析」把批注整理为纯文本；直接让 Codex / Claude Code 等 Agent 读图时无需配置。</p>
+    <div>
+      {!embedded && (
+        <div className="page-heading">
+          <div>
+            <h1>模型服务</h1>
+            <p>仅用于可选「AI 解析」把批注整理为纯文本；直接让 Agent 读图时无需配置。</p>
+          </div>
+          <button className="button primary" onClick={() => openEditor()}>
+            <Plus size={14} /> 添加服务
+          </button>
         </div>
-        <button className="button primary" onClick={() => openEditor()}>
-          <Plus size={14} /> 添加服务
-        </button>
-      </div>
+      )}
 
       <div className="toolbar-row">
         <div className="search-field">
@@ -294,12 +353,20 @@ export default function ProvidersView({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <span className="badge neutral">共 {filtered.length} 项配置</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="badge neutral">共 {filtered.length} 项配置</span>
+          {embedded && (
+            <button className="button primary sm" onClick={() => openEditor()}>
+              <Plus size={13} /> 添加服务
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="provider-list">
         {filtered.map((cfg) => {
           const isDefault = cfg.id === defaultProviderId;
+          const icon = providerIconSrc(cfg.presetId);
           let host = '未填地址';
           try {
             if (cfg.endpoint) host = new URL(cfg.endpoint).host;
@@ -310,11 +377,7 @@ export default function ProvidersView({
           return (
             <div key={cfg.id} className={`provider-card ${isDefault ? 'is-default' : ''}`}>
               <span className="provider-brand">
-                {cfg.presetId === 'custom' ? (
-                  <Settings2 size={18} />
-                ) : (
-                  <img src={`./providers/${cfg.presetId}.svg`} alt="" />
-                )}
+                {icon ? <img src={icon} alt="" /> : <Settings2 size={18} />}
               </span>
 
               <div className="provider-info">
@@ -322,7 +385,9 @@ export default function ProvidersView({
                   <strong>{cfg.name}</strong>
                   {isDefault && <span className="badge accent">当前默认</span>}
                   {cfg.saved || cfg.key ? (
-                    <span className="badge success">Key 已配置</span>
+                    <span className="badge success">
+                      {cfg.keyPreview ? `Key 已配置 (${cfg.keyPreview})` : 'Key 已配置'}
+                    </span>
                   ) : (
                     <span className="badge neutral">未填 Key</span>
                   )}
@@ -339,7 +404,7 @@ export default function ProvidersView({
                   <button
                     className="button secondary sm"
                     onClick={() => {
-                      onChangeDefault(cfg.id);
+                      void onSaveProviders(providers, cfg.id);
                       onToast(`已将「${cfg.name}」设为默认解析模型`);
                     }}
                   >
@@ -371,11 +436,12 @@ export default function ProvidersView({
                         className="dropdown-item"
                         onSelect={() => {
                           const p = presetFor(cfg.presetId);
-                          onUpdateProviders(
-                            providers.map((x) =>
-                              x.id === cfg.id ? { ...x, model: p.model, endpoint: p.endpoint, protocol: p.protocol } : x
-                            )
+                          const next = providers.map((x) =>
+                            x.id === cfg.id
+                              ? { ...x, model: p.model, endpoint: p.endpoint, protocol: p.protocol }
+                              : x
                           );
+                          void onSaveProviders(next, defaultProviderId);
                           onToast('已恢复默认端点与模型');
                         }}
                       >

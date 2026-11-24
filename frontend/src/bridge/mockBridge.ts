@@ -25,22 +25,25 @@ export function isBlockTransformed(block: ExplodeBlock): boolean {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   { id: 'openai', name: 'OpenAI', company: 'OpenAI', model: 'gpt-6.1-sol', endpoint: 'https://api.openai.com/v1', protocol: 'responses', docs: 'https://platform.openai.com' },
-  { id: 'claude', name: 'Claude', company: 'Anthropic', model: 'claude-sonnet-5-5', endpoint: 'https://api.anthropic.com/v1', protocol: 'anthropic', docs: 'https://platform.claude.com' },
-  { id: 'deepseek', name: 'DeepSeek', company: '深度求索', model: 'deepseek-chat', endpoint: 'https://api.deepseek.com', protocol: 'chat', docs: 'https://platform.deepseek.com' },
-  { id: 'glm', name: 'GLM', company: '智谱 · Z.AI', model: 'glm-4.6v', endpoint: 'https://open.bigmodel.cn/api/paas/v4', protocol: 'chat', docs: 'https://open.bigmodel.cn', regional: true },
-  { id: 'kimi', name: 'Kimi', company: '月之暗面', model: 'kimi-k3', endpoint: 'https://api.moonshot.cn/v1', protocol: 'chat', docs: 'https://platform.moonshot.cn', regional: true },
-  { id: 'custom', name: '自定义接口', company: 'OpenAI / Anthropic 兼容', model: '', endpoint: '', protocol: 'chat', docs: '' },
+  { id: 'claude', name: 'Claude', company: 'Anthropic', model: 'claude-sonnet-5-5', endpoint: 'https://api.anthropic.com/v1', protocol: 'anthropic-messages', docs: 'https://platform.claude.com' },
+  { id: 'deepseek', name: 'DeepSeek', company: '深度求索', model: 'deepseek-flash', endpoint: 'https://api.deepseek.com', protocol: 'chat-completions', docs: 'https://platform.deepseek.com' },
+  { id: 'glm-cn', name: 'GLM（中国）', company: '智谱 · Z.AI', model: 'glm-4.6v', endpoint: 'https://open.bigmodel.cn/api/paas/v4', protocol: 'chat-completions', docs: 'https://open.bigmodel.cn', regional: true },
+  { id: 'glm-global', name: 'GLM / Z.AI（全球）', company: 'Z.AI', model: 'glm-4.6v', endpoint: 'https://api.z.ai/api/paas/v4', protocol: 'chat-completions', docs: 'https://docs.z.ai', regional: true },
+  { id: 'kimi-cn', name: 'Kimi（中国）', company: '月之暗面', model: 'kimi-k3', endpoint: 'https://api.moonshot.cn/v1', protocol: 'chat-completions', docs: 'https://platform.moonshot.cn', regional: true },
+  { id: 'kimi-global', name: 'Kimi（全球）', company: 'Moonshot AI', model: 'kimi-k3', endpoint: 'https://api.moonshot.ai/v1', protocol: 'chat-completions', docs: 'https://platform.kimi.ai', regional: true },
+  { id: 'custom', name: '自定义接口', company: 'OpenAI / Anthropic 兼容', model: '', endpoint: '', protocol: 'chat-completions', docs: '' },
 ];
 
 export function createInitialProviders(): ProviderConfig[] {
-  return PROVIDER_PRESETS.map((p) => ({
+  return PROVIDER_PRESETS.filter((p) => p.id !== 'custom').map((p) => ({
     id: p.id,
     presetId: p.id,
     name: p.name,
     model: p.model,
     endpoint: p.endpoint,
     protocol: p.protocol,
-    key: p.id === 'openai' ? 'sk-demo-••••••••••••4291' : '',
+    key: '',
+    keyPreview: p.id === 'openai' ? 'sk-demo-••••4291' : '',
     region: 'cn',
     timeout: '120',
     note: '',

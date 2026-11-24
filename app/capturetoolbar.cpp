@@ -37,10 +37,10 @@ namespace {
 // The two panels and the bar are all drawn by hand rather than by the style of the
 // day, so that a light theme cannot turn the controls into dark shapes on a dark
 // face. The colours are written down once here.
-const QColor kFace(28, 30, 36, 240);
-const QColor kEdge(255, 255, 255, 40);
-const QColor kInk(0xe8, 0xe9, 0xee);
-const QColor kGlyph(0xd4, 0xd5, 0xdd);
+const QColor kFace(20, 22, 27, 242);
+const QColor kEdge(255, 255, 255, 34);
+const QColor kInk(0xf5, 0xf5, 0xf7);
+const QColor kGlyph(0xd1, 0xd1, 0xd6);
 
 class RoundedCropPopup final : public QWidget {
   public:
@@ -242,35 +242,33 @@ void StylePanel::popupBeside(const QWidget *anchor, const QRect &bounds) {
 void StylePanel::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setPen(QPen(kEdge, 1));
     painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+    painter.drawRoundedRect(r, 12, 12);
+    painter.setPen(QPen(QColor(255, 255, 255, 22), 1));
+    painter.drawLine(QPointF(r.left() + 12, r.top() + 0.5), QPointF(r.right() - 12, r.top() + 0.5));
 }
 
 // ------------------------------------------------------------- CaptureToolbar
 
 CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("captureToolbar"));
-    // The face of the bar is drawn by hand, so the controls on it are told to stay out
-    // of the way and the light glyphs stay readable whatever the application theme is.
-    // 批注 is why the program exists, so it gets the one coloured shape on an otherwise
-    // monochrome bar: a blue rounded rectangle around it, which is how a capture tool
-    // marks the thing it is for.
     const QColor mark = accent();
     setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; }"
-                                 "QPushButton[tool=\"true\"]:hover { background: rgba(255, 255, 255, 0.14);"
+                                 "QPushButton[tool=\"true\"]:hover { background: rgba(120, 120, 128, 0.24);"
                                  " border-radius: 8px; }"
-                                 "QPushButton[primary=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
-                                 " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
-                                 "QPushButton[primary=\"true\"]:hover { background: rgba(%1, %2, %3, 0.46); }"
-                                 "QPushButton:disabled { color: rgba(232, 233, 238, 0.4); }"
-                                 "QLabel { color: #e8e9ee; }")
+                                 "QPushButton[primary=\"true\"] { background: rgb(%1, %2, %3);"
+                                 " border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 8px; }"
+                                 "QPushButton[primary=\"true\"]:hover { background: #409cff; }"
+                                 "QPushButton:disabled { color: rgba(245, 245, 247, 0.4); }"
+                                 "QLabel { color: #f5f5f7; }")
                       .arg(mark.red())
                       .arg(mark.green())
                       .arg(mark.blue()));
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 6, 8, 6);
-    layout->setSpacing(4);
+    layout->setContentsMargins(6, 5, 6, 5);
+    layout->setSpacing(3);
     size_ = new QPushButton(this);
     size_->setProperty("flat", true);
     size_->setCursor(Qt::PointingHandCursor);
@@ -324,16 +322,16 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
     // The bar keeps its own dark face whatever the application theme is, so the glyphs
     // are built in a light colour instead of following the theme.
     auto *button = new QPushButton(this);
+    const bool isPrimary = glyphName == QLatin1String("edit");
+    const QColor iconTint = isPrimary ? QColor(Qt::white) : kGlyph;
     button->setProperty("glyphName", glyphName);
-    button->setProperty("glyphColor", kGlyph);
-    button->setIcon(glyph(glyphName, kGlyph));
-    button->setIconSize({20, 20});
+    button->setProperty("glyphColor", iconTint);
+    button->setIcon(glyph(glyphName, iconTint));
+    button->setIconSize({19, 19});
     button->setToolTip(label);
     button->setAccessibleName(label);
     button->setProperty("tool", true);
-    // The one action that is the point of the whole program is wrapped in a coloured
-    // rectangle rather than left as one glyph among seven.
-    if (glyphName == QLatin1String("edit"))
+    if (isPrimary)
         button->setProperty("primary", true);
     button->setFixedSize(34, 34);
     button->setCursor(Qt::PointingHandCursor);
@@ -478,9 +476,12 @@ void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
 void CaptureToolbar::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setPen(QPen(kEdge, 1));
     painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+    painter.drawRoundedRect(r, 12, 12);
+    painter.setPen(QPen(QColor(255, 255, 255, 22), 1));
+    painter.drawLine(QPointF(r.left() + 12, r.top() + 0.5), QPointF(r.right() - 12, r.top() + 0.5));
 }
 
 void CaptureToolbar::copy() {
@@ -1701,8 +1702,11 @@ void CaptureSidebar::placeBeside(const QRect &selection, const QRect &bounds) {
 void CaptureSidebar::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setPen(QPen(kEdge, 1));
     painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+    painter.drawRoundedRect(r, 12, 12);
+    painter.setPen(QPen(QColor(255, 255, 255, 22), 1));
+    painter.drawLine(QPointF(r.left() + 12, r.top() + 0.5), QPointF(r.right() - 12, r.top() + 0.5));
 }
 } // namespace h2d

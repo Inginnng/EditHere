@@ -53,51 +53,29 @@ textarea:focus-visible {
   background: transparent;
 }
 
-/* Unified Ambient Window Chassis + Inset Rounded Surfaces */
+/* Unified Full-Width Ambient Window Chassis + Inset Rounded Surfaces */
 .app-shell {
   height: 100dvh;
   overflow: hidden;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 216px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 48px minmax(0, 1fr);
   background: var(--bg-shell);
-}
-
-.app-shell.sidebar-collapsed {
-  --sidebar-width: 64px;
-}
-
-/* Borderless Ambient Sidebar sitting directly on Window Chassis */
-.app-sidebar {
-  grid-column: 1;
-  grid-row: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  padding: 0 8px 10px 10px;
-  background: transparent;
-  min-height: 0;
-  user-select: none;
-  z-index: 30;
-}
-
-.sidebar-brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 48px;
-  min-height: 48px;
-  padding: 0 4px;
 }
 
 .brand-lockup-btn {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 2px;
+  gap: 8px;
+  padding: 3px 6px;
   border: 0;
   background: transparent;
   border-radius: var(--r-control);
+  flex-shrink: 0;
+  transition: background 0.14s ease;
+}
+.brand-lockup-btn:hover {
+  background: var(--fill);
 }
 
 .brand-squircle {
@@ -108,117 +86,20 @@ textarea:focus-visible {
 }
 
 .brand-wordmark {
-  height: 16px;
+  height: 15px;
   width: auto;
   display: block;
 }
 
-.sidebar-section-label {
-  padding: 0 10px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-}
-
-.sidebar-collapsed .sidebar-brand-row {
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  height: auto;
-  padding: 10px 0 12px;
-}
-.sidebar-collapsed .brand-wordmark,
-.sidebar-collapsed .sidebar-section-label,
-.sidebar-collapsed .nav-item span,
-.sidebar-collapsed .sidebar-footer-version {
-  display: none;
-}
-.sidebar-collapsed .brand-squircle {
-  width: 26px;
-  height: 26px;
-}
-.sidebar-collapsed .nav-item {
-  justify-content: center;
-  padding: 0;
-}
-.sidebar-collapsed .sidebar-footer {
-  justify-content: center;
-  padding-inline: 0;
-}
-
-.primary-navigation {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 32px;
-  width: 100%;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--r-control);
-  background: transparent;
-  color: var(--secondary);
-  font-size: 13px;
-  font-weight: 450;
-  text-align: left;
-  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
-}
-
-.nav-item:hover {
-  background: var(--hover);
-  color: var(--ink);
-}
-
-.nav-item.active {
-  background: var(--surface);
-  color: var(--ink);
-  font-weight: 500;
-  box-shadow: var(--shadow-nav-active);
-}
-
-.nav-item.active svg {
-  color: var(--accent);
-}
-
-.sidebar-bottom {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar-separator {
-  height: 1px;
-  background: var(--line);
-  margin: 8px 6px;
-}
-
-.sidebar-footer {
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 6px;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-/* Seamless Unified Topbar over Window Chassis */
+/* Full-Width Translucent Topbar over Window Chassis */
 .topbar {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 0 12px 0 6px;
+  gap: 12px;
+  padding: 0 12px;
   background: transparent;
   user-select: none;
   z-index: 40;
@@ -232,17 +113,18 @@ textarea:focus-visible {
 }
 
 .topbar-view-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--ink);
   white-space: nowrap;
 }
 
 .topbar-divider {
   width: 1px;
-  height: 13px;
+  height: 14px;
   background: var(--line-strong);
+  flex-shrink: 0;
 }
 
 .topbar-meta {
@@ -284,13 +166,19 @@ textarea:focus-visible {
   background: var(--accent);
 }
 
+.icon-button.is-active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-nav-active);
+}
+
 /* Inset Main Viewport */
 .app-main {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
-  padding: 0 10px 10px 4px;
+  padding: 0 10px 10px 10px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -299,6 +187,20 @@ textarea:focus-visible {
 .app-main.is-workspace > .workspace-root {
   flex: 1;
   min-height: 0;
+}
+
+@media (max-width: 1040px) {
+  .session-pill,
+  .topbar-meta {
+    display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .topbar-view-title,
+  .topbar-divider {
+    display: none;
+  }
 }
 
 .page-sheet {
@@ -810,6 +712,57 @@ textarea:focus-visible {
   flex-direction: column;
   overflow: hidden;
 }
+.analysis-source-tabs {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.analysis-source-tab {
+  border: 0;
+  background: none;
+  padding: 0 0 8px;
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.analysis-source-tab:hover {
+  color: var(--ink);
+}
+.analysis-source-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.analysis-preview-box {
+  position: relative;
+  margin: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  overflow: hidden;
+  aspect-ratio: 5 / 3;
+  background: var(--stage);
+}
+.analysis-preview-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.analysis-redacted-tag {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+}
+
+@media (max-width: 820px) {
+  .analysis-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .card-head {
   display: flex;
   align-items: center;
@@ -930,7 +883,7 @@ textarea:focus-visible {
 .toast {
   position: fixed;
   top: 56px;
-  left: calc(50% + var(--sidebar-width, 216px) / 2 - 44px);
+  left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
