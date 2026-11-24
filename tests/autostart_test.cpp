@@ -174,7 +174,7 @@ class AutostartTests : public QObject {
         QVERIFY(!disabled.contains("程序已不存在"));
         const auto moved = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/EditHere.exe"),
                                                     current, true, StartupApproval::NotRecorded);
-        QVERIFY(moved.contains("保持勾选并保存"));
+        QVERIFY(moved.isEmpty());
         const auto missing = windowsLaunchAtLoginNotice(windowsLaunchCommand("E:/old/EditHere.exe"),
                                                       current, false, StartupApproval::Disabled);
         QVERIFY(missing.contains("程序已不存在"));

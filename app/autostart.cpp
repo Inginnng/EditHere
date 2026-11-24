@@ -174,8 +174,6 @@ QString windowsLaunchAtLoginNotice(const QString &command, const QString &execut
     QStringList notices;
     if (!registeredExecutableExists)
         notices << QCoreApplication::translate("h2d", "开机自启记录中的程序已不存在或路径无效。保持勾选并保存，即可修复为当前程序位置。");
-    else if (command.compare(formattedCommand(executablePath), Qt::CaseInsensitive) != 0)
-        notices << QCoreApplication::translate("h2d", "开机自启项指向其他位置或使用旧的启动参数。保持勾选并保存，即可更新为当前程序。");
     if (approval == StartupApproval::Disabled)
         notices << QCoreApplication::translate("h2d", "Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere；仅在此处保存不会解除系统禁用。");
     else if (approval == StartupApproval::Unknown)

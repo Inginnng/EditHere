@@ -481,6 +481,7 @@ QVector<Candidate> linuxAccessibleElements(QPoint, qint64);
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excluded) { return linuxAccessibleElements(point, excluded); }
 bool requestAccessibility() { return false; }
 void configureNativeWindow(QWidget *, bool, bool) {}
+void orderWindowBelow(QWidget *, const QWidget *) {}
 bool usesNativeWindowControls() { return false; }
 bool screenCaptureAllowed(QString *) { return true; }
 bool excludedFromCapture(const QWidget *) { return false; }

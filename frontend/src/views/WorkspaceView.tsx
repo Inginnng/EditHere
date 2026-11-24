@@ -3,48 +3,48 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
-  Brush,
-  Camera,
-  ClipboardCopy,
-  Code2,
-  Copy,
-  Crop,
-  Download,
-  Eye,
-  EyeOff,
-  Film,
-  FolderOutput,
-  Grid2x2,
-  Hand,
-  ImageDown,
-  ImagePlus,
-  Layers2,
-  Maximize2,
-  MessageSquarePlus,
-  Minus,
-  MoreHorizontal,
-  MousePointer2,
-  MousePointerClick,
-  PanelRightClose,
-  PanelRightOpen,
-  Pause,
-  Pencil,
-  Pin,
-  Play,
-  Plus,
-  Redo2,
-  RotateCcw,
-  Save,
-  Scan,
-  ScanText,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Square,
-  Trash2,
-  Undo2,
-  X,
-} from 'lucide-react';
+  AiSparkleIcon,
+  BrushToolIcon,
+  CaptureIcon,
+  CloseIcon,
+  CopyBundleIcon,
+  CopyImageIcon,
+  CopyTextIcon,
+  CropToolIcon,
+  DeleteIcon,
+  EditIcon,
+  ExplodeIcon,
+  ExportFileIcon,
+  FitCanvasIcon,
+  HideIcon,
+  ImportImageIcon,
+  InspectorCloseIcon,
+  InspectorOpenIcon,
+  JsonFileIcon,
+  MagnifierIcon,
+  MinusIcon,
+  MoreIcon,
+  MosaicToolIcon,
+  NoteAddIcon,
+  OcrIcon,
+  PanToolIcon,
+  PauseIcon,
+  PinIcon,
+  PlayIcon,
+  PlusIcon,
+  PointToolIcon,
+  RectToolIcon,
+  RedoIcon,
+  ResetIcon,
+  SaveImageIcon,
+  SaveProjectIcon,
+  SelectToolIcon,
+  ShieldOkIcon,
+  ShowIcon,
+  SmartSelectIcon,
+  UndoIcon,
+  VideoIcon,
+} from '../components/AppIcons';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import {
@@ -1610,7 +1610,7 @@ export default function WorkspaceView({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setInlineEditNoteId(isEditing ? null : note.id)}
             >
-              <Pencil size={12} />
+              <EditIcon size={12} />
             </button>
             {note.blockId && (
               <button
@@ -1619,7 +1619,7 @@ export default function WorkspaceView({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => resetBlockMovement(note.blockId!)}
               >
-                <RotateCcw size={12} />
+                <ResetIcon size={12} />
               </button>
             )}
             <button
@@ -1628,7 +1628,7 @@ export default function WorkspaceView({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => deleteNote(note)}
             >
-              <Trash2 size={12} />
+              <DeleteIcon size={12} />
             </button>
           </div>
         </div>
@@ -1712,7 +1712,7 @@ export default function WorkspaceView({
                   aria-label="撤销"
                   {...tipProps('撤销 (Ctrl+Z)', 'below')}
                 >
-                  <Undo2 size={14} />
+                  <UndoIcon size={14} />
                 </button>
                 <button
                   className="icon-button"
@@ -1721,7 +1721,7 @@ export default function WorkspaceView({
                   aria-label="重做"
                   {...tipProps('重做 (Ctrl+Y)', 'below')}
                 >
-                  <Redo2 size={14} />
+                  <RedoIcon size={14} />
                 </button>
                 <button
                   className={`icon-button ${hideAnnotations ? 'is-active' : ''}`}
@@ -1729,7 +1729,7 @@ export default function WorkspaceView({
                   aria-label={hideAnnotations ? '显示批注' : '隐藏批注'}
                   {...tipProps(hideAnnotations ? '显示批注标记 (H)' : '隐藏批注标记 (H)', 'below')}
                 >
-                  {hideAnnotations ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {hideAnnotations ? <HideIcon size={14} /> : <ShowIcon size={14} />}
                 </button>
               </div>
 
@@ -1740,7 +1740,7 @@ export default function WorkspaceView({
                   onClick={() => setZoom((z) => Math.max(60, z - 15))}
                   {...tipProps('缩小画布', 'below')}
                 >
-                  <Minus size={14} />
+                  <MinusIcon size={14} />
                 </button>
                 <span>{zoom}%</span>
                 <button
@@ -1749,7 +1749,7 @@ export default function WorkspaceView({
                   onClick={() => setZoom((z) => Math.min(180, z + 15))}
                   {...tipProps('放大画布', 'below')}
                 >
-                  <Plus size={14} />
+                  <PlusIcon size={14} />
                 </button>
                 <button
                   className="button ghost sm"
@@ -1773,7 +1773,7 @@ export default function WorkspaceView({
                   }}
                   {...tipProps(inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏', 'below')}
                 >
-                  {inspectorOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+                  {inspectorOpen ? <InspectorCloseIcon size={14} /> : <InspectorOpenIcon size={14} />}
                   <span>批注栏</span>
                   <span className="inspector-toggle-count">{activePage.annotations.length}</span>
                 </button>
@@ -2364,7 +2364,7 @@ export default function WorkspaceView({
                 onChange={(e) => setMosaicStrength(Number(e.target.value))}
               />
               <span className="badge success">
-                <ShieldCheck size={11} /> AI 不可见
+                <ShieldOkIcon size={12} /> AI 不可见
               </span>
               {pageMosaics.length > 0 && (
                 <>
@@ -2453,7 +2453,7 @@ export default function WorkspaceView({
                 <>
                   <span className="dock-subbar-sep" />
                   <button className="button ghost sm" onClick={resetAllExplodeBlocks}>
-                    <RotateCcw size={12} /> 复位全部
+                    <ResetIcon size={12} /> 复位全部
                   </button>
                 </>
               )}
@@ -2468,7 +2468,7 @@ export default function WorkspaceView({
                 aria-label={videoPlaying ? '暂停' : '播放'}
                 onClick={() => setVideoPlaying((p) => !p)}
               >
-                {videoPlaying ? <Pause size={15} /> : <Play size={15} />}
+                {videoPlaying ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
               </button>
               <code style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>
                 {(videoTimeMs / 1000).toFixed(2)}s / 12.00s
@@ -2513,7 +2513,7 @@ export default function WorkspaceView({
               aria-label="选择与移动"
               {...tipProps('选择与移动 (V)')}
             >
-              <MousePointer2 size={15} />
+              <SelectToolIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'pan' ? 'active' : ''}`}
@@ -2521,7 +2521,7 @@ export default function WorkspaceView({
               aria-label="拖动画布"
               {...tipProps('拖动画布 (G / Space)')}
             >
-              <Hand size={15} />
+              <PanToolIcon size={16} />
             </button>
 
             <span className="dock-sep" />
@@ -2533,7 +2533,7 @@ export default function WorkspaceView({
               aria-label="智能选块"
               {...tipProps('智能选块 (S)')}
             >
-              <Scan size={15} />
+              <SmartSelectIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'point' ? 'active' : ''}`}
@@ -2541,7 +2541,7 @@ export default function WorkspaceView({
               aria-label="点批注"
               {...tipProps('点批注 (P)')}
             >
-              <MousePointerClick size={15} />
+              <PointToolIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'box' ? 'active' : ''}`}
@@ -2549,7 +2549,7 @@ export default function WorkspaceView({
               aria-label="框批注"
               {...tipProps('框批注 (R)')}
             >
-              <Square size={15} />
+              <RectToolIcon size={16} />
             </button>
             <button
               ref={brushBtnRef}
@@ -2558,14 +2558,14 @@ export default function WorkspaceView({
               aria-label="画笔"
               {...tipProps('画笔与荧光笔 (B)')}
             >
-              <Brush size={15} />
+              <BrushToolIcon size={16} />
             </button>
             <button
               className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
               onClick={toggleExplodeMode}
               {...tipProps('大爆炸布局拆解 (E)')}
             >
-              <Layers2 size={15} />
+              <ExplodeIcon size={16} />
               <span>大爆炸</span>
             </button>
             <button
@@ -2575,7 +2575,7 @@ export default function WorkspaceView({
               aria-label="马赛克"
               {...tipProps('马赛克 / 模糊 (M)')}
             >
-              <Grid2x2 size={15} />
+              <MosaicToolIcon size={16} />
             </button>
             <button
               ref={cropBtnRef}
@@ -2584,7 +2584,7 @@ export default function WorkspaceView({
               aria-label="裁剪"
               {...tipProps('裁剪画布 (C)')}
             >
-              <Crop size={15} />
+              <CropToolIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${magnifierEnabled ? 'active' : ''}`}
@@ -2595,7 +2595,7 @@ export default function WorkspaceView({
               aria-label="像素放大镜"
               {...tipProps('像素放大镜与取色')}
             >
-              <Search size={15} />
+              <MagnifierIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${includeOcr ? 'active' : ''}`}
@@ -2606,7 +2606,7 @@ export default function WorkspaceView({
               aria-label="切换自动 OCR"
               {...tipProps(includeOcr ? '区域自动 OCR：开启' : '区域自动 OCR：关闭')}
             >
-              <ScanText size={15} />
+              <OcrIcon size={16} />
             </button>
             {onCapture && (
               <button
@@ -2615,7 +2615,7 @@ export default function WorkspaceView({
                 aria-label="重新截图"
                 {...tipProps('重新截图')}
               >
-                <Camera size={15} />
+                <CaptureIcon size={16} />
               </button>
             )}
             {isVideoPage && (
@@ -2625,7 +2625,7 @@ export default function WorkspaceView({
                 aria-label="视频时间轴"
                 {...tipProps('视频时间轴批注条')}
               >
-                <Film size={15} />
+                <VideoIcon size={16} />
               </button>
             )}
 
@@ -2638,7 +2638,7 @@ export default function WorkspaceView({
               aria-label="保存图片"
               {...tipProps('保存图片 (PNG)')}
             >
-              <ImageDown size={15} />
+              <SaveImageIcon size={16} />
             </button>
             <button
               className="dock-tool icon-only"
@@ -2646,7 +2646,7 @@ export default function WorkspaceView({
               aria-label="贴图"
               {...tipProps('桌面置顶贴图窗')}
             >
-              <Pin size={15} />
+              <PinIcon size={16} />
             </button>
             <button
               className="dock-tool icon-only"
@@ -2654,7 +2654,7 @@ export default function WorkspaceView({
               aria-label="导入图片"
               {...tipProps('导入图片或项目 (Ctrl+I)')}
             >
-              <ImagePlus size={15} />
+              <ImportImageIcon size={16} />
             </button>
 
             <DropdownMenu.Root>
@@ -2664,22 +2664,22 @@ export default function WorkspaceView({
                   aria-label="更多操作"
                   {...tipProps('更多操作')}
                 >
-                  <MoreHorizontal size={15} />
+                  <MoreIcon size={16} />
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="dropdown-menu" side="top" sideOffset={8} align="end">
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleSaveProject()}>
-                    <Save size={14} /> 保存项目 (.edithere)
+                    <SaveProjectIcon size={14} /> 保存项目 (.edithere)
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleCopyFeedbackBundle()}>
-                    <FolderOutput size={14} /> 复制 JSON 与原图
+                    <CopyBundleIcon size={14} /> 复制 JSON 与原图
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void copyJson()}>
-                    <Copy size={14} /> 复制 JSON 文本
+                    <CopyTextIcon size={14} /> 复制 JSON 文本
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => setJsonOpen(true)}>
-                    <Code2 size={14} /> 查看 / 导出 JSON
+                    <JsonFileIcon size={14} /> 查看 / 导出 JSON
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator className="dropdown-separator" />
                   <DropdownMenu.Item
@@ -2689,7 +2689,7 @@ export default function WorkspaceView({
                       setPanOffset({ x: 0, y: 0 });
                     }}
                   >
-                    <Maximize2 size={14} /> 适应并归位画布
+                    <FitCanvasIcon size={14} /> 适应并归位画布
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
@@ -2700,7 +2700,7 @@ export default function WorkspaceView({
               onClick={() => void handleCopyAnnotatedImage()}
               {...tipProps('复制带批注与图片到剪贴板')}
             >
-              <ClipboardCopy size={14} />
+              <CopyImageIcon size={15} />
               <span>复制带批注与图片</span>
             </button>
 
@@ -2709,7 +2709,7 @@ export default function WorkspaceView({
               onClick={onAnalyze}
               {...tipProps('打开 AI 解析视图')}
             >
-              <Sparkles size={14} />
+              <AiSparkleIcon size={15} />
               <span>AI 解析</span>
             </button>
           </div>
@@ -2743,7 +2743,7 @@ export default function WorkspaceView({
             );
           })}
           <button className="button ghost sm" onClick={triggerImport}>
-            <Plus size={14} /> 添加页面
+            <PlusIcon size={14} /> 添加页面
           </button>
         </div>
       </section>
@@ -2773,7 +2773,7 @@ export default function WorkspaceView({
                 className="button ghost sm"
                 onClick={() => appendAnnotation({ kind: 'global', text: '' })}
               >
-                <MessageSquarePlus size={14} /> 全局意见
+                <NoteAddIcon size={14} /> 全局意见
               </button>
             </div>
             <div className="inspector-list">
@@ -2814,7 +2814,7 @@ export default function WorkspaceView({
                               resetBlockMovement(note.blockId!);
                             }}
                           >
-                            <RotateCcw size={13} />
+                            <ResetIcon size={14} />
                           </button>
                         )}
                         <button
@@ -2825,7 +2825,7 @@ export default function WorkspaceView({
                             deleteNote(note);
                           }}
                         >
-                          <Trash2 size={13} />
+                          <DeleteIcon size={14} />
                         </button>
                       </div>
                     </div>
@@ -2874,7 +2874,7 @@ export default function WorkspaceView({
             <div className="inspector-subbar">
               <span>跨页面共用修改意见</span>
               <button className="button ghost sm" onClick={addGlobalGroupNote}>
-                <Plus size={14} /> 添加整组意见
+                <PlusIcon size={14} /> 添加整组意见
               </button>
             </div>
             <div className="inspector-list">
@@ -2889,7 +2889,7 @@ export default function WorkspaceView({
                         title="删除整组意见"
                         onClick={() => onUpdateGroupNotes((prev) => prev.filter((item) => item.id !== g.id))}
                       >
-                        <Trash2 size={13} />
+                        <DeleteIcon size={14} />
                       </button>
                     </div>
                   </div>
@@ -2922,11 +2922,11 @@ export default function WorkspaceView({
 
           <div className="inspector-footer">
             <button className="button secondary" onClick={() => void handleCopyFeedbackBundle()}>
-              <FolderOutput size={15} /> 复制 JSON 与图片
+              <CopyBundleIcon size={15} /> 复制 JSON 与图片
             </button>
 
             <button className="button primary" onClick={onAnalyze}>
-              <Sparkles size={15} /> AI 解析
+              <AiSparkleIcon size={15} /> AI 解析
             </button>
           </div>
         </Tabs.Root>
@@ -2939,7 +2939,7 @@ export default function WorkspaceView({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Dialog.Title className="dialog-title">实时反馈 JSON</Dialog.Title>
               <Dialog.Close className="icon-button" aria-label="关闭">
-                <X size={16} />
+                <CloseIcon size={16} />
               </Dialog.Close>
             </div>
             <Dialog.Description className="dialog-desc">
@@ -2948,10 +2948,10 @@ export default function WorkspaceView({
             <pre className="json-preview-pre">{liveJson}</pre>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
               <button className="button secondary" onClick={downloadJson}>
-                <Download size={14} /> 导出 JSON
+                <ExportFileIcon size={14} /> 导出 JSON
               </button>
               <button className="button primary" onClick={copyJson}>
-                <Copy size={14} /> 复制 JSON
+                <CopyTextIcon size={14} /> 复制 JSON
               </button>
             </div>
           </Dialog.Content>

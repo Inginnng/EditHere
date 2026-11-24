@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Camera,
-  Check,
-  Moon,
-  Send,
-  Settings,
-  Sun,
-  X,
-} from 'lucide-react';
+  CaptureIcon,
+  CheckIcon,
+  CloseIcon,
+  MoonIcon,
+  SendIcon,
+  SettingsIcon,
+  SunIcon,
+} from './components/AppIcons';
 import {
   desktopRpc,
   isDesktopWebView,
@@ -675,7 +675,7 @@ export default function App() {
 
         <div className="topbar-right">
           <button className="button secondary sm" onClick={handleCaptureStart} title="截取屏幕画面">
-            <Camera size={13} /> 屏幕截图
+            <CaptureIcon size={14} /> 屏幕截图
           </button>
 
           <div className="segmented-control" aria-label="工作模式切换">
@@ -697,7 +697,7 @@ export default function App() {
                 取消
               </button>
               <button className="button primary sm" onClick={handleCompleteAgent}>
-                <Send size={13} /> 完成并返回 AI
+                <SendIcon size={14} /> 完成并返回 AI
               </button>
             </>
           )}
@@ -710,7 +710,7 @@ export default function App() {
             title={isDark ? '切换浅色外观' : '切换深色外观'}
             onClick={() => handleChangeTheme(isDark ? 'light' : 'dark')}
           >
-            {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            {isDark ? <SunIcon size={16} /> : <MoonIcon size={16} />}
           </button>
 
           <button
@@ -719,7 +719,7 @@ export default function App() {
             title="设置与关于 (Ctrl+,)"
             onClick={() => setView((cur) => (cur === 'settings' ? 'workspace' : 'settings'))}
           >
-            <Settings size={15} />
+            <SettingsIcon size={16} />
           </button>
         </div>
       </header>
@@ -791,10 +791,10 @@ export default function App() {
 
       {toast && (
         <div className="toast" role="status">
-          <Check size={14} className="toast-ok" />
+          <CheckIcon size={14} className="toast-ok" />
           <span>{toast}</span>
           <button className="icon-button" aria-label="关闭提示" onClick={() => setToast('')}>
-            <X size={13} />
+            <CloseIcon size={14} />
           </button>
         </div>
       )}

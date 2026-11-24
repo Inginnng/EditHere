@@ -25,6 +25,30 @@ constexpr double magnifierZoomCell = 15;
 // pointer. The window and the tests ask for the same rectangle from here, so the two
 // cannot drift apart.
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools = {});
+struct CaptureChromeTokens {
+    QColor panelBg;
+    QColor panelBorder;
+    QColor panelHighlight;
+    QColor text;
+    QColor textSecondary;
+    QColor textMuted;
+    QColor glyph;
+    QColor hoverBg;
+    QColor pressedBg;
+    QColor activeBg;
+    QColor divider;
+    QColor accent;
+    QColor accentHover;
+    QColor danger;
+    QColor tooltipBg;
+    QColor tooltipText;
+    QColor tooltipBorder;
+    int panelRadius = 12;
+    int controlRadius = 8;
+    int microRadius = 6;
+};
+CaptureChromeTokens captureChromeTokens();
+void paintFloatingPanel(QPainter &painter, const QRect &rect, int radius = 12);
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin

@@ -1,20 +1,20 @@
 import { useState, type FormEvent } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  ArrowLeft,
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  LoaderCircle,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Search,
-  Settings2,
-  Star,
-} from 'lucide-react';
+  BackIcon,
+  CheckIcon,
+  ConfigSlidersIcon,
+  CopyTextIcon,
+  EditIcon,
+  HideIcon,
+  MoreIcon,
+  PlusIcon,
+  ResetIcon,
+  SearchIcon,
+  ShowIcon,
+  SpinnerIcon,
+  StarIcon,
+} from '../components/AppIcons';
 import { PROVIDER_PRESETS } from '../bridge/mockBridge';
 import type { ProviderConfig, ProviderPreset } from '../bridge/types';
 
@@ -152,7 +152,7 @@ export default function ProvidersView({
             </h2>
           </div>
           <button className="button secondary sm" onClick={() => setDraft(null)}>
-            <ArrowLeft size={14} /> 返回列表
+            <BackIcon size={14} /> 返回列表
           </button>
         </div>
 
@@ -186,7 +186,7 @@ export default function ProvidersView({
                       )
                     }
                   >
-                    {icon ? <img src={icon} alt="" width={16} height={16} /> : <Settings2 size={15} />}
+                    {icon ? <img src={icon} alt="" width={16} height={16} /> : <ConfigSlidersIcon size={16} />}
                     <span>{item.name}</span>
                   </button>
                 );
@@ -227,7 +227,7 @@ export default function ProvidersView({
                     className="button secondary"
                     onClick={() => setShowKey((v) => !v)}
                   >
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showKey ? <HideIcon size={14} /> : <ShowIcon size={14} />}
                     {showKey ? '隐藏' : '显示'}
                   </button>
                   <button
@@ -236,7 +236,7 @@ export default function ProvidersView({
                     onClick={() => void runTestConnection()}
                     disabled={testing}
                   >
-                    {testing && <LoaderCircle size={14} className="spin" />}
+                    {testing && <SpinnerIcon size={14} className="spin" />}
                     测试连接
                   </button>
                 </div>
@@ -315,7 +315,7 @@ export default function ProvidersView({
                 取消
               </button>
               <button type="submit" className="button primary">
-                <Check size={14} /> 保存配置
+                <CheckIcon size={14} /> 保存配置
               </button>
             </div>
           </div>
@@ -337,14 +337,14 @@ export default function ProvidersView({
             <p>仅用于可选「AI 解析」把批注整理为纯文本；直接让 Agent 读图时无需配置。</p>
           </div>
           <button className="button primary" onClick={() => openEditor()}>
-            <Plus size={14} /> 添加服务
+            <PlusIcon size={14} /> 添加服务
           </button>
         </div>
       )}
 
       <div className="toolbar-row">
         <div className="search-field">
-          <Search size={14} />
+          <SearchIcon size={14} />
           <input
             aria-label="搜索模型配置"
             placeholder="搜索服务商、模型或接口域名…"
@@ -356,7 +356,7 @@ export default function ProvidersView({
           <span className="badge neutral">共 {filtered.length} 项配置</span>
           {embedded && (
             <button className="button primary sm" onClick={() => openEditor()}>
-              <Plus size={13} /> 添加服务
+              <PlusIcon size={14} /> 添加服务
             </button>
           )}
         </div>
@@ -376,7 +376,7 @@ export default function ProvidersView({
           return (
             <div key={cfg.id} className={`provider-card ${isDefault ? 'is-default' : ''}`}>
               <span className="provider-brand">
-                {icon ? <img src={icon} alt="" /> : <Settings2 size={18} />}
+                {icon ? <img src={icon} alt="" /> : <ConfigSlidersIcon size={18} />}
               </span>
 
               <div className="provider-info">
@@ -407,16 +407,16 @@ export default function ProvidersView({
                       onToast(`已将「${cfg.name}」设为默认解析模型`);
                     }}
                   >
-                    <Star size={13} /> 设为默认
+                    <StarIcon size={14} /> 设为默认
                   </button>
                 )}
                 <button className="button secondary sm" onClick={() => openEditor(cfg)}>
-                  <Pencil size={13} /> 编辑
+                  <EditIcon size={14} /> 编辑
                 </button>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
                     <button className="icon-button" aria-label="更多操作">
-                      <MoreHorizontal size={16} />
+                      <MoreIcon size={16} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -429,7 +429,7 @@ export default function ProvidersView({
                           onToast('已复制接口地址');
                         }}
                       >
-                        <Copy size={13} /> 复制接口地址
+                        <CopyTextIcon size={14} /> 复制接口地址
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
                         className="dropdown-item"
@@ -444,7 +444,7 @@ export default function ProvidersView({
                           onToast('已恢复默认端点与模型');
                         }}
                       >
-                        <RotateCcw size={13} /> 恢复默认参数
+                        <ResetIcon size={14} /> 恢复默认参数
                       </DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>

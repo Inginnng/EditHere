@@ -70,6 +70,7 @@ void moveCapturePointer(const ScreenFrame &frame, QPoint pixel);
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
 void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCapture = true);
+void orderWindowBelow(QWidget *window, const QWidget *above);
 // macOS draws close, minimize and zoom as traffic lights in the system title bar,
 // so the editor keeps that title bar and leaves the window controls to it. The
 // other desktops have no equivalent and use the editor's own buttons instead.

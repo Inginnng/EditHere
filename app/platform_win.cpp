@@ -743,6 +743,16 @@ void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCaptur
         window->setProperty("_edithereDisplayAffinityState", QString());
     }
 }
+void orderWindowBelow(QWidget *window, const QWidget *above) {
+    if (!window || !above || QGuiApplication::platformName() != "windows")
+        return;
+    if (!window->testAttribute(Qt::WA_WState_Created) || !above->testAttribute(Qt::WA_WState_Created))
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    HWND ref = reinterpret_cast<HWND>(above->winId());
+    if (hwnd && ref && hwnd != ref)
+        SetWindowPos(hwnd, ref, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
 bool excludedFromCapture(const QWidget *window) {
     DWORD affinity = 0;
     return window && window->internalWinId() &&

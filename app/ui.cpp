@@ -192,12 +192,12 @@ QScrollBar::handle:vertical:hover,QScrollBar::handle:horizontal:hover { backgrou
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height:0; }
 QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal { width:0; }
 QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical,QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal { background:transparent; }
-QMenu { background:@window@; color:@text@; padding:6px; border:1px solid @border@; }
-QMenu::item { padding:8px 24px; border-radius:5px; }
+QMenu { background:@window@; color:@text@; padding:5px; border:1px solid @border@; border-radius:10px; }
+QMenu::item { padding:6px 18px 6px 10px; border-radius:6px; }
 QMenu::item:selected { background:@accent@; color:white; }
 QMenu::item:disabled { color:@disabled@; }
 QMenu::separator { height:1px; margin:5px 8px; background:@border@; }
-QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0; }
+QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 9px; border:1px solid @tooltipBorder@; border-radius:6px; }
 )");
 #ifdef Q_OS_MAC
     // macOS draws the window frame itself, and the traffic lights live in its title
@@ -205,51 +205,62 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
     // inside the real one, so a later rule of the same specificity removes it.
     css += QStringLiteral("QWidget#editorShell { border:0; border-radius:0; }\n");
 #endif
-    const QList<std::pair<QString, QColor>> colors{
-        {"text", palette.color(QPalette::WindowText)},
-        {"window", palette.color(QPalette::Window)},
-        {"surface", palette.color(QPalette::Base)},
-        {"alternate", palette.color(QPalette::AlternateBase)},
-        {"border", tone("#dddde5", "#41434d")},
-        {"well", tone("#efeff2", "#18191e")},
-        {"button", palette.color(QPalette::Button)},
-        {"hover", tone("#e3e3e9", "#41444e")},
-        {"pressed", tone("#d6d6df", "#4a4e5a")},
-        {"selected", tone("#e5efff", "#243d5e")},
-        {"cardSelected", tone("#f3f7ff", "#27364c")},
-        {"disabledBg", palette.color(QPalette::Disabled, QPalette::Button)},
-        {"disabled", palette.color(QPalette::Disabled, QPalette::Text)},
-        {"muted", palette.color(QPalette::PlaceholderText)},
-        {"accent", accent()},
-        {"error", tone("#bd252f", "#ff8991")},
-        {"accentHover", tone("#0870df", "#3297ff")},
-        {"accentPressed", tone("#005fc7", "#0070de")},
-        {"focus", tone("#9cc9ff", "#4c83bd")},
-        {"purple", tone("#7656d9", "#8061df")},
-        {"purpleHover", tone("#6947ce", "#9172ed")},
-        {"scroll", tone("#c8c8d0", "#595c68")},
-        {"tooltip", palette.color(QPalette::ToolTipBase)},
-        {"tooltipText", palette.color(QPalette::ToolTipText)}};
-    for (const auto &[name, color] : colors)
-        css.replace("@" + name + "@", color.name());
+    const QList<std::pair<QString, QString>> colors{
+        {"text", palette.color(QPalette::WindowText).name()},
+        {"window", palette.color(QPalette::Window).name()},
+        {"surface", palette.color(QPalette::Base).name()},
+        {"alternate", palette.color(QPalette::AlternateBase).name()},
+        {"border", tone("#dddde5", "#41434d").name()},
+        {"well", tone("#efeff2", "#18191e").name()},
+        {"button", palette.color(QPalette::Button).name()},
+        {"hover", tone("#e3e3e9", "#41444e").name()},
+        {"pressed", tone("#d6d6df", "#4a4e5a").name()},
+        {"selected", tone("#e5efff", "#243d5e").name()},
+        {"cardSelected", tone("#f3f7ff", "#27364c").name()},
+        {"disabledBg", palette.color(QPalette::Disabled, QPalette::Button).name()},
+        {"disabled", palette.color(QPalette::Disabled, QPalette::Text).name()},
+        {"muted", palette.color(QPalette::PlaceholderText).name()},
+        {"accent", accent().name()},
+        {"error", tone("#bd252f", "#ff8991").name()},
+        {"accentHover", tone("#0870df", "#3297ff").name()},
+        {"accentPressed", tone("#005fc7", "#0070de").name()},
+        {"focus", tone("#9cc9ff", "#4c83bd").name()},
+        {"purple", tone("#7656d9", "#8061df").name()},
+        {"purpleHover", tone("#6947ce", "#9172ed").name()},
+        {"scroll", tone("#c8c8d0", "#595c68").name()},
+        {"tooltip", palette.color(QPalette::ToolTipBase).name()},
+        {"tooltipText", palette.color(QPalette::ToolTipText).name()},
+        {"tooltipBorder", tone("#41434d", "#d0d1da").name()}};
+    for (const auto &[name, value] : colors)
+        css.replace("@" + name + "@", value);
     qApp->setStyleSheet(css);
+    const auto chrome = captureChromeTokens();
     for (auto widget : QApplication::allWidgets()) {
         if (auto button = qobject_cast<QPushButton *>(widget)) {
             const auto name = button->property("glyphName").toString();
             if (!name.isEmpty()) {
-                QColor color = button->property("glyphColor").value<QColor>();
-                if (button->objectName() == "scrollStop")
-                    color = tone("#bd252f", "#ff8991");
+                QColor color = button->property("captureChrome").toBool()
+                                   ? chrome.glyph
+                                   : button->property("glyphColor").value<QColor>();
+                if (button->objectName() == "scrollStop" && name == QLatin1String("scroll-stop"))
+                    color = chrome.danger;
                 else if (button->property("primary").toBool() ||
                          (button->objectName() == "explodeButton" && button->isChecked()))
                     color = Qt::white;
+                else if (button->property("captureChrome").toBool() &&
+                         (button->property("active").toBool() || button->isChecked()))
+                    color = chrome.accent;
                 button->setIcon(glyph(name, color));
             }
         }
         if (auto label = qobject_cast<QLabel *>(widget)) {
             const auto name = label->property("glyphName").toString();
-            if (!name.isEmpty())
-                label->setPixmap(glyph(name, palette.color(QPalette::PlaceholderText)).pixmap(24, 24));
+            if (!name.isEmpty()) {
+                const bool isGrip = name == QLatin1String("scroll-grip");
+                const QColor tint = isGrip ? chrome.textMuted : palette.color(QPalette::PlaceholderText);
+                const int iconDim = isGrip ? 16 : 24;
+                label->setPixmap(glyph(name, tint).pixmap(iconDim, iconDim));
+            }
         }
         if (auto input = qobject_cast<QKeySequenceEdit *>(widget))
             for (auto clear : input->findChildren<QToolButton *>())
@@ -262,6 +273,62 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
 
 bool isDarkTheme() {
     return darkTheme;
+}
+CaptureChromeTokens captureChromeTokens() {
+    CaptureChromeTokens t;
+    if (darkTheme) {
+        t.panelBg = QColor(30, 32, 38, 244);
+        t.panelBorder = QColor(255, 255, 255, 36);
+        t.panelHighlight = QColor(255, 255, 255, 24);
+        t.text = QColor("#f5f5f7");
+        t.textSecondary = QColor("#c7c7cc");
+        t.textMuted = QColor("#8e8e93");
+        t.glyph = QColor("#d4d5dd");
+        t.hoverBg = QColor(255, 255, 255, 26);
+        t.pressedBg = QColor(255, 255, 255, 42);
+        t.activeBg = QColor(10, 132, 255, 56);
+        t.divider = QColor(255, 255, 255, 28);
+        t.accent = QColor("#0a84ff");
+        t.accentHover = QColor("#409cff");
+        t.danger = QColor("#ff453a");
+        t.tooltipBg = QColor(24, 26, 32, 248);
+        t.tooltipText = QColor("#f5f5f7");
+        t.tooltipBorder = QColor(255, 255, 255, 36);
+    } else {
+        t.panelBg = QColor(255, 255, 255, 246);
+        t.panelBorder = QColor(0, 0, 0, 28);
+        t.panelHighlight = QColor(255, 255, 255, 210);
+        t.text = QColor("#1d1d1f");
+        t.textSecondary = QColor("#515154");
+        t.textMuted = QColor("#86868b");
+        t.glyph = QColor("#3a3a3e");
+        t.hoverBg = QColor(0, 0, 0, 15);
+        t.pressedBg = QColor(0, 0, 0, 28);
+        t.activeBg = QColor(0, 122, 255, 31);
+        t.divider = QColor(0, 0, 0, 22);
+        t.accent = QColor("#007aff");
+        t.accentHover = QColor("#0066d6");
+        t.danger = QColor("#d93025");
+        t.tooltipBg = QColor(29, 29, 31, 246);
+        t.tooltipText = QColor("#f5f5f7");
+        t.tooltipBorder = QColor(255, 255, 255, 28);
+    }
+    return t;
+}
+void paintFloatingPanel(QPainter &painter, const QRect &rect, int radius) {
+    const auto tokens = captureChromeTokens();
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QRectF r = QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5);
+    painter.setPen(QPen(tokens.panelBorder, 1));
+    painter.setBrush(tokens.panelBg);
+    painter.drawRoundedRect(r, radius, radius);
+    if (r.width() > radius * 2) {
+        painter.setPen(QPen(tokens.panelHighlight, 1));
+        painter.drawLine(QPointF(r.left() + radius, r.top() + 1.0),
+                         QPointF(r.right() - radius, r.top() + 1.0));
+    }
+    painter.restore();
 }
 QColor accent() {
     return QColor(darkTheme ? "#0a84ff" : "#007aff");

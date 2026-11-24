@@ -4868,6 +4868,88 @@ class UiTests : public QObject {
         QCOMPARE(notAccepted.count(), 0);
         cancelledOverlay.hide();
     }
+    void captureToolbarSupportsGripDraggingAndRetainsPositionUntilReset() {
+        QImage image(960, 640, QImage::Format_ARGB32);
+        image.fill(QColor(236, 240, 246));
+        QPainter bg(&image);
+        bg.fillRect(140, 120, 400, 260, QColor(255, 255, 255));
+        bg.setPen(QPen(QColor(180, 190, 205), 1));
+        bg.drawRect(140, 120, 400, 260);
+        bg.end();
+        ScreenFrame frame{"drag-test", {0, 0, 960, 640}, {0, 0, 960, 640}, image, true};
+        applyTheme(ThemeMode::Light);
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(960, 640);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {140, 120});
+        QTest::mouseMove(&overlay, {540, 380});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {540, 380});
+        const QRect initialSelection = overlay.selection();
+        QVERIFY(!initialSelection.isEmpty());
+        auto *bar = overlay.findChild<CaptureToolbar *>(QStringLiteral("captureToolbar"));
+        QVERIFY(bar != nullptr && bar->isVisible());
+        QCOMPARE(bar->height(), 44);
+        auto *grip = bar->findChild<QWidget *>(QStringLiteral("captureDragBar"));
+        QVERIFY(grip != nullptr && grip->isVisible());
+        const QPoint startPos = bar->pos();
+        const QPoint pressLocal = grip->rect().center();
+        const QPoint pressGlobal = grip->mapToGlobal(pressLocal);
+        {
+            QMouseEvent press(QEvent::MouseButtonPress, pressLocal, pressGlobal,
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(grip, &press);
+            QMouseEvent move(QEvent::MouseMove, pressLocal + QPoint(50, -18),
+                             pressGlobal + QPoint(50, -18),
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(grip, &move);
+            QMouseEvent release(QEvent::MouseButtonRelease, pressLocal + QPoint(50, -18),
+                                pressGlobal + QPoint(50, -18),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(grip, &release);
+        }
+        const QPoint draggedPos = bar->pos();
+        QVERIFY(draggedPos != startPos);
+        QVERIFY(overlay.rect().contains(bar->geometry()));
+        QCOMPARE(overlay.selection(), initialSelection);
+        artifact(overlay, "capture-unified-light.png");
+        applyTheme(ThemeMode::Dark);
+        QTest::qWait(30);
+        artifact(overlay, "capture-unified-dark.png");
+        applyTheme(ThemeMode::Light);
+        overlay.hide();
+    }
+    void captureAndScrollBarsShareUnifiedChromeActionsAndWording() {
+        applyTheme(ThemeMode::Light);
+        ScrollCaptureProgress progress;
+        QImage shot(240, 320, QImage::Format_ARGB32);
+        shot.fill(QColor("#f5f7fa"));
+        progress.setProgress(shot, 2, shot.size(), QRect(0, 0, 240, 320), true, Qt::Vertical);
+        progress.move(100, 100);
+        progress.show();
+        QTest::qWait(30);
+        QCOMPARE(progress.height(), 44);
+        auto *grip = progress.findChild<QWidget *>(QStringLiteral("scrollDragBar"));
+        auto *finish = progress.findChild<QPushButton *>(QStringLiteral("scrollFinish"));
+        auto *pin = progress.findChild<QPushButton *>(QStringLiteral("scrollPin"));
+        auto *save = progress.findChild<QPushButton *>(QStringLiteral("scrollSave"));
+        auto *copy = progress.findChild<QPushButton *>(QStringLiteral("scrollCopy"));
+        auto *cancel = progress.findChild<QPushButton *>(QStringLiteral("scrollCancel"));
+        QVERIFY(grip && finish && pin && save && copy && cancel);
+        QVERIFY(finish->property("primary").toBool());
+        QVERIFY(finish->x() < pin->x() && pin->x() < save->x() && save->x() < copy->x() && copy->x() < cancel->x());
+        QCOMPARE(finish->toolTip(), QStringLiteral("批注"));
+        QCOMPARE(pin->toolTip(), QStringLiteral("贴图"));
+        QCOMPARE(save->toolTip(), QStringLiteral("保存图片"));
+        QCOMPARE(copy->toolTip(), QStringLiteral("复制图像"));
+        QVERIFY(!copy->toolTip().contains(QStringLiteral("关闭长截图")));
+        artifact(progress, "scroll-unified-light.png");
+        applyTheme(ThemeMode::Dark);
+        QTest::qWait(30);
+        artifact(progress, "scroll-unified-dark.png");
+        applyTheme(ThemeMode::Light);
+        progress.hide();
+    }
 };
 QTEST_MAIN(UiTests)
 #include "ui_test.moc"

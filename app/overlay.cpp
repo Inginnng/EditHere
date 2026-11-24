@@ -110,6 +110,11 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         applySelection(captureRectWithRatio(selected_, ratio_, bar_->customWidth(), bar_->customHeight()),
                        false);
     });
+    connect(bar_, &CaptureToolbar::moved, this, [this] {
+        if (captureNotice_ && captureNotice_->isVisible())
+            placeCaptureNotice();
+        update();
+    });
     sidebar_ = new CaptureSidebar(this);
     sidebar_->hide();
     // A style change alters what the region looks like, not where it is.
@@ -277,6 +282,8 @@ void Overlay::resetSelection() {
     // being kept: wanting the row rather than the cell is a wish about this look, not
     // a setting for the next one.
     picker_.forget();
+    if (bar_ != nullptr)
+        bar_->resetUserPosition();
     hideTools();
     update();
 }
@@ -365,10 +372,11 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
         const bool overlapsBar = bar_ != nullptr && bar_->isVisible() &&
                                  dimRect.intersects(QRectF(bar_->geometry()).adjusted(-6, -6, 6, 6));
         if (!overlapsBar) {
-            p.setPen(QPen(QColor(255, 255, 255, 34), 1));
-            p.setBrush(QColor(18, 20, 26, 234));
+            const auto t = captureChromeTokens();
+            p.setPen(QPen(t.panelBorder, 1));
+            p.setBrush(t.panelBg);
             p.drawRoundedRect(dimRect, 6, 6);
-            p.setPen(QColor(0xf5, 0xf5, 0xf7));
+            p.setPen(t.text);
             p.drawText(dimRect, Qt::AlignCenter, dimText);
         }
     }
@@ -419,15 +427,16 @@ void Overlay::paintEvent(QPaintEvent *) {
         drawMagnifier(p, at);
     }
     const auto drawHintPill = [&](const QString &text, qreal topY) {
+        const auto t = captureChromeTokens();
         QFont hintFont(h2d::cjkFontFamily());
         hintFont.setPointSizeF(9.5);
         p.setFont(hintFont);
         const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 28);
         const QRectF hint((width() - w) / 2.0, topY, w, 32);
-        p.setPen(QPen(QColor(255, 255, 255, 34), 1));
-        p.setBrush(QColor(20, 22, 27, 236));
+        p.setPen(QPen(t.panelBorder, 1));
+        p.setBrush(t.panelBg);
         p.drawRoundedRect(hint, 8, 8);
-        p.setPen(QColor(0xf5, 0xf5, 0xf7));
+        p.setPen(t.text);
         p.drawText(hint, Qt::AlignCenter, text);
     };
     if (picking_) {
@@ -970,10 +979,14 @@ void Overlay::setCaptureNotice(const QString &message) {
         captureNotice_->setObjectName(QStringLiteral("captureStatus"));
         captureNotice_->setWordWrap(true);
         captureNotice_->setAttribute(Qt::WA_TransparentForMouseEvents);
-        captureNotice_->setStyleSheet(QStringLiteral(
-            "QLabel { color: #e8e9ee; background: rgba(28, 30, 36, 240);"
-            " border: 1px solid rgba(255, 255, 255, 40); border-radius: 8px; padding: 10px; }"));
     }
+    const auto t = captureChromeTokens();
+    captureNotice_->setStyleSheet(QStringLiteral(
+        "QLabel#captureStatus { color: %1; background: rgba(%2, %3, %4, %5);"
+        " border: 1px solid rgba(%6, %7, %8, %9); border-radius: 10px; padding: 10px 12px; }")
+        .arg(t.text.name())
+        .arg(t.panelBg.red()).arg(t.panelBg.green()).arg(t.panelBg.blue()).arg(t.panelBg.alpha())
+        .arg(t.panelBorder.red()).arg(t.panelBorder.green()).arg(t.panelBorder.blue()).arg(t.panelBorder.alpha()));
     captureNotice_->setText(message);
     placeCaptureNotice();
     captureNotice_->show();

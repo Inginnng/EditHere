@@ -6,6 +6,7 @@
 #include <QWidget>
 #include <optional>
 class QCheckBox;
+class QFrame;
 class QLabel;
 class QPushButton;
 class QSlider;
@@ -39,8 +40,10 @@ class StylePanel final : public QWidget {
 
   protected:
     void paintEvent(QPaintEvent *) override;
+    void changeEvent(QEvent *event) override;
 
   private:
+    void applyChromeTheme();
     void syncFromStyle();
     void emitStyle();
     void setTab(int tab);
@@ -66,6 +69,7 @@ class CaptureToolbar final : public QWidget {
     // Places the bar above the selection, which is where a capture tool puts it: the
     // space under a selection is usually the part the user just decided to keep.
     void placeNear(const QRect &selection, const QRect &bounds);
+    void resetUserPosition() { userMoved_ = false; }
     void setSelectionSize(QSize size);
     // The corner of the screen the selection sits in, as "1234, 567".
     void setSelectionOrigin(QPoint origin);
@@ -128,21 +132,27 @@ class CaptureToolbar final : public QWidget {
     // The user stepped one capture back (-1) or forward (+1) through the history.
     void historyStepRequested(int delta);
     void selectionRequested(QRect selection);
+    void moved();
 
   protected:
     void paintEvent(QPaintEvent *) override;
+    void changeEvent(QEvent *event) override;
 
   private:
+    void applyChromeTheme();
+    void updateActionIcons();
     // Qt 6 dropped QInputDialog::getSize, so the two numbers are asked for by hand.
     static QSize askForSize(QWidget *parent, QSize current, bool *accepted);
     void chooseSize();
     void buildMenu();
     void setRatio(CaptureRatio ratio, int customWidth = 16, int customHeight = 10);
     QPushButton *addButton(const QString &glyph, const QString &label);
+    QWidget *dragBar_ = nullptr;
     QPushButton *size_ = nullptr;
     QPushButton *ratio_ = nullptr;
     QLabel *status_ = nullptr;
     QPushButton *more_ = nullptr;
+    QPushButton *close_ = nullptr;
     QVector<QPushButton *> buttons_;
     CaptureRatio ratioChoice_ = CaptureRatio::Free;
     OcrLanguageMode ocrLanguage_ = OcrLanguageMode::System;
@@ -152,6 +162,7 @@ class CaptureToolbar final : public QWidget {
     int historyIndex_ = -1;
     bool busy_ = false;
     bool scrollAvailable_ = true;
+    bool userMoved_ = false;
     QString message_;
 };
 
@@ -174,6 +185,7 @@ class ScrollCaptureRegion final : public QWidget {
     void dragFinished();
   protected:
     void paintEvent(QPaintEvent *) override;
+    void changeEvent(QEvent *event) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
@@ -181,6 +193,7 @@ class ScrollCaptureRegion final : public QWidget {
     void hideEvent(QHideEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
   private:
+    void applyChromeTheme();
     void updateMask();
     void placeHandle();
     void dragTo(QPoint global);
@@ -283,12 +296,17 @@ class ScrollCaptureProgress final : public QWidget {
     void positionChanged(QPoint handlePosition);
   protected:
     void paintEvent(QPaintEvent *event) override;
+    void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
   private:
+    void applyChromeTheme();
+    void syncPreviewOverlay(bool ensureVisible);
+    QWidget *dragBar_ = nullptr;
     QScrollArea *previewArea_ = nullptr;
     ScrollCapturePreview *preview_ = nullptr;
     QLabel *status_ = nullptr;
@@ -302,6 +320,7 @@ class ScrollCaptureProgress final : public QWidget {
     QCheckBox *automatic_ = nullptr;
     QPushButton *automaticButton_ = nullptr;
     QPushButton *direction_ = nullptr, *cropBegin_ = nullptr, *cropEnd_ = nullptr;
+    QPushButton *cancel_ = nullptr;
     QVector<QPushButton *> outputButtons_;
     QRect captureSelection_, captureScreen_;
     int previewMaximumWidth_ = 150;
@@ -338,8 +357,10 @@ class CaptureSidebar final : public QWidget {
 
   protected:
     void paintEvent(QPaintEvent *) override;
+    void changeEvent(QEvent *event) override;
 
   private:
+    void applyChromeTheme();
     void openPanel(StylePanel::Mode mode, QPushButton *anchor);
     void refreshButtons();
     QPushButton *corner_ = nullptr;

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowDownToLine,
-  ArrowLeft,
-  Copy,
-  FileText,
-  LoaderCircle,
-  RefreshCw,
-  Settings2,
-  Sparkles,
-  Square,
-} from 'lucide-react';
+  AiSparkleIcon,
+  BackIcon,
+  CopyTextIcon,
+  DocumentIcon,
+  ExportFileIcon,
+  SettingsIcon,
+  SpinnerIcon,
+  StopIcon,
+  SyncIcon,
+} from '../components/AppIcons';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import { generateAnalysisText } from '../bridge/mockBridge';
@@ -170,7 +170,7 @@ export default function AnalysisView({
           <h1>AI 解析</h1>
         </div>
         <button className="button secondary sm" onClick={onBack}>
-          <ArrowLeft size={14} /> 返回工作台
+          <BackIcon size={14} /> 返回工作台
         </button>
       </div>
 
@@ -233,7 +233,7 @@ export default function AnalysisView({
 
           <div style={{ margin: '0 14px 14px', paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 12 }}>
-              <FileText size={15} />
+              <DocumentIcon size={15} />
               <span>{selectedPage.name} · {selectedPage.width}×{selectedPage.height}</span>
             </div>
             <button
@@ -242,7 +242,7 @@ export default function AnalysisView({
               onClick={onOpenProviders}
             >
               <span>解析模型：{providerName}</span>
-              <Settings2 size={14} />
+              <SettingsIcon size={14} />
             </button>
           </div>
         </section>
@@ -275,7 +275,7 @@ export default function AnalysisView({
                 color: 'var(--accent)',
               }}
             >
-              <LoaderCircle size={17} className="spin" />
+              <SpinnerIcon size={17} className="spin" />
               <span>正在调用「{providerName}」分析画面与批注…</span>
             </div>
           )}
@@ -284,10 +284,10 @@ export default function AnalysisView({
             <span>{output.replace(/\s/g, '').length} 字 · Markdown 纯文本</span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="button ghost sm" onClick={() => setOutput(generateAnalysisText(pages, groupNotes))}>
-                <RefreshCw size={13} /> 从工作台同步
+                <SyncIcon size={14} /> 从工作台同步
               </button>
               <button className="button ghost sm" onClick={() => void exportMarkdown()}>
-                <ArrowDownToLine size={13} /> 导出 .md
+                <ExportFileIcon size={14} /> 导出 .md
               </button>
             </div>
           </div>
@@ -296,11 +296,11 @@ export default function AnalysisView({
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
         <button className="button secondary" onClick={() => void handleAnalyze()}>
-          {busy ? <Square size={13} /> : <Sparkles size={14} />}
+          {busy ? <StopIcon size={14} /> : <AiSparkleIcon size={14} />}
           {busy ? '停止解析' : isDesktopWebView() && hasDesktopPages ? 'AI 重新解析' : '本地生成清单'}
         </button>
         <button className="button primary" onClick={() => void copyText()}>
-          <Copy size={14} /> 复制修改说明
+          <CopyTextIcon size={14} /> 复制修改说明
         </button>
       </div>
     </div>

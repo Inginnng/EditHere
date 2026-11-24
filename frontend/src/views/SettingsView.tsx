@@ -2,33 +2,38 @@ import { useState, type KeyboardEvent } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Switch from '@radix-ui/react-switch';
 import {
-  ArrowLeft,
-  ArrowUpRight,
-  Camera,
-  CheckCircle2,
-  ChevronDown,
-  Copy,
-  Download,
-  FileCode2,
-  FolderOpen,
-  Globe,
-  HardDriveDownload,
-  Keyboard,
-  Layers,
-  LoaderCircle,
-  Maximize2,
-  MousePointerClick,
-  Palette,
-  Power,
-  RotateCcw,
-  ScanText,
-  ScrollText,
-  ShieldAlert,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  X,
-} from 'lucide-react';
+  BackIcon,
+  CaptureIcon,
+  ChevronDownIcon,
+  ClickActionIcon,
+  CloseIcon,
+  ConfirmDiscardIcon,
+  CopyTextIcon,
+  CornerRadiusIcon,
+  CropToolIcon,
+  DeleteIcon,
+  EditIcon,
+  ExportFileIcon,
+  ExternalLinkIcon,
+  FitCanvasIcon,
+  JsonFileIcon,
+  KeyboardIcon,
+  LanguageIcon,
+  OcrIcon,
+  OpenFolderIcon,
+  PowerIcon,
+  ResetIcon,
+  ScrollAxisIcon,
+  ScrollCaptureIcon,
+  SelectToolIcon,
+  ShadowIcon,
+  ShieldOkIcon,
+  SpinnerIcon,
+  StatusOkIcon,
+  TerminalIcon,
+  ThemeIcon,
+  WindowTitleIcon,
+} from '../components/AppIcons';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import type {
   DiagnosticsInfo,
@@ -300,7 +305,7 @@ export default function SettingsView({
             ))}
           </div>
           <button className="button secondary sm" onClick={onBack}>
-            <ArrowLeft size={14} /> 返回工作台
+            <BackIcon size={14} /> 返回工作台
           </button>
         </div>
       </div>
@@ -311,7 +316,7 @@ export default function SettingsView({
             <h2>外观与语言</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><Palette size={18} /></span>
+                <span className="settings-row-icon"><ThemeIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>应用主题</strong>
                 </div>
@@ -333,7 +338,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Globe size={18} /></span>
+                <span className="settings-row-icon"><LanguageIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>界面语言</strong>
                 </div>
@@ -341,7 +346,7 @@ export default function SettingsView({
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
                       <span>{LANGUAGE_LABELS[preferences.language]}</span>
-                      <ChevronDown size={14} />
+                      <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -361,7 +366,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ScanText size={18} /></span>
+                <span className="settings-row-icon"><OcrIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>文字识别语言</strong>
                 </div>
@@ -369,7 +374,7 @@ export default function SettingsView({
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
                       <span>{OCR_LANGUAGE_LABELS[preferences.ocrLanguage]}</span>
-                      <ChevronDown size={14} />
+                      <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -394,7 +399,7 @@ export default function SettingsView({
             <h2>启动与窗口行为</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><Camera size={18} /></span>
+                <span className="settings-row-icon"><CaptureIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>启动后立即截图</strong>
                 </div>
@@ -408,7 +413,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Power size={18} /></span>
+                <span className="settings-row-icon"><PowerIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>开机时启动 EditHere</strong>
                   {preferences.launchAtLoginNotice && <p>{preferences.launchAtLoginNotice}</p>}
@@ -423,7 +428,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Maximize2 size={18} /></span>
+                <span className="settings-row-icon"><FitCanvasIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>打开图片时自动适应窗口</strong>
                 </div>
@@ -437,7 +442,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ShieldAlert size={18} /></span>
+                <span className="settings-row-icon"><ConfirmDiscardIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>关闭批注窗口时询问是否保存</strong>
                 </div>
@@ -451,7 +456,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <span className="settings-row-icon"><EditIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>默认标注工具</strong>
                 </div>
@@ -459,7 +464,7 @@ export default function SettingsView({
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
                       <span>{TOOL_LABELS[preferences.defaultTool] ?? TOOL_LABELS[0]}</span>
-                      <ChevronDown size={14} />
+                      <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -484,7 +489,7 @@ export default function SettingsView({
             <h2>系统托盘</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <span className="settings-row-icon"><ClickActionIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>托盘图标单击</strong>
                 </div>
@@ -492,7 +497,7 @@ export default function SettingsView({
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
                       <span>{trayLabel(preferences.traySingleClick)}</span>
-                      <ChevronDown size={14} />
+                      <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -512,7 +517,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <span className="settings-row-icon"><SelectToolIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>托盘图标双击</strong>
                 </div>
@@ -520,7 +525,7 @@ export default function SettingsView({
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
                       <span>{trayLabel(preferences.trayDoubleClick)}</span>
-                      <ChevronDown size={14} />
+                      <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
@@ -556,7 +561,7 @@ export default function SettingsView({
                 void onResetShortcuts();
               }}
             >
-              <RotateCcw size={13} /> 恢复默认快捷键
+              <ResetIcon size={14} /> 恢复默认快捷键
             </button>
           </div>
 
@@ -574,7 +579,7 @@ export default function SettingsView({
                   const recording = recordingId === def.id;
                   return (
                     <div key={def.id} className="settings-row">
-                      <span className="settings-row-icon"><Keyboard size={17} /></span>
+                      <span className="settings-row-icon"><KeyboardIcon size={18} /></span>
                       <div className="settings-row-label">
                         <strong>{def.label}</strong>
                       </div>
@@ -612,7 +617,7 @@ export default function SettingsView({
                             aria-label={`清空 ${def.label} 快捷键`}
                             onClick={() => void applyShortcut(def.id, '')}
                           >
-                            <X size={14} />
+                            <CloseIcon size={14} />
                           </button>
                         )}
                       </div>
@@ -631,7 +636,7 @@ export default function SettingsView({
             <h2>批注导出与 OCR</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><ScanText size={18} /></span>
+                <span className="settings-row-icon"><OcrIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>导出时附带区域识别文字</strong>
                 </div>
@@ -645,7 +650,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <span className="settings-row-icon"><WindowTitleIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>导出时附带窗口标题</strong>
                 </div>
@@ -659,7 +664,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><FileCode2 size={18} /></span>
+                <span className="settings-row-icon"><JsonFileIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>默认反馈导出模式</strong>
                 </div>
@@ -686,7 +691,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Copy size={18} /></span>
+                <span className="settings-row-icon"><CopyTextIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>复制 JSON 文本时携带原图信息</strong>
                 </div>
@@ -700,7 +705,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><FolderOpen size={18} /></span>
+                <span className="settings-row-icon"><OpenFolderIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>反馈临时目录</strong>
                   <p>{preferences.feedbackDir || '默认缓存目录'}</p>
@@ -712,7 +717,7 @@ export default function SettingsView({
                       aria-label="恢复默认目录"
                       onClick={() => void commitPatch({ feedbackDir: '' }, '已恢复默认反馈目录')}
                     >
-                      <Trash2 size={14} />
+                      <DeleteIcon size={14} />
                     </button>
                   )}
                   <button className="button secondary sm" onClick={() => void handleChooseFeedbackDir()}>
@@ -727,7 +732,7 @@ export default function SettingsView({
             <h2>截屏外观与长截图</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><Layers size={18} /></span>
+                <span className="settings-row-icon"><ShadowIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>桌面截图柔和投影</strong>
                 </div>
@@ -741,7 +746,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Layers size={18} /></span>
+                <span className="settings-row-icon"><CornerRadiusIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>截图默认圆角（{preferences.captureCornerRadius} px）</strong>
                 </div>
@@ -757,7 +762,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <span className="settings-row-icon"><ScrollAxisIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>长截图默认滚动方向</strong>
                 </div>
@@ -778,7 +783,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <span className="settings-row-icon"><CropToolIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>长截图自动裁掉固定页眉与页脚</strong>
                 </div>
@@ -792,7 +797,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <span className="settings-row-icon"><ScrollCaptureIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>超长截图分段拼接模式</strong>
                 </div>
@@ -826,7 +831,7 @@ export default function SettingsView({
             <h2>诊断日志</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><HardDriveDownload size={18} /></span>
+                <span className="settings-row-icon"><ExportFileIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>本机运行日志与错误报告</strong>
                   <p>
@@ -841,14 +846,14 @@ export default function SettingsView({
                     className="button secondary sm"
                     onClick={() => void handleOpenDiagnosticsFolder()}
                   >
-                    <FolderOpen size={13} /> 打开日志目录
+                    <OpenFolderIcon size={14} /> 打开日志目录
                   </button>
                   <button
                     className="button primary sm"
                     disabled={exportingDiag}
                     onClick={() => void handleExportDiagnostics()}
                   >
-                    <Download size={13} /> {exportingDiag ? '导出中…' : '导出诊断日志…'}
+                    <ExportFileIcon size={14} /> {exportingDiag ? '导出中…' : '导出诊断日志…'}
                   </button>
                 </div>
               </div>
@@ -859,7 +864,7 @@ export default function SettingsView({
             <h2>版本与更新</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><CheckCircle2 size={18} /></span>
+                <span className="settings-row-icon"><StatusOkIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>启动时自动检查更新</strong>
                   {updateStatus?.message && <p>{updateStatus.message}</p>}
@@ -874,7 +879,7 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Globe size={18} /></span>
+                <span className="settings-row-icon"><LanguageIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>更新源</strong>
                 </div>
@@ -883,7 +888,7 @@ export default function SettingsView({
                     <DropdownMenu.Trigger asChild>
                       <button className="button secondary sm">
                         <span>{UPDATE_SOURCE_LABELS[preferences.updateSource]}</span>
-                        <ChevronDown size={14} />
+                        <ChevronDownIcon size={14} />
                       </button>
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Portal>
@@ -905,11 +910,11 @@ export default function SettingsView({
                     disabled={checkingUpdate}
                     onClick={() => void handleCheckUpdates()}
                   >
-                    {checkingUpdate && <LoaderCircle size={13} className="spin" />}
+                    {checkingUpdate && <SpinnerIcon size={14} className="spin" />}
                     检查更新
                   </button>
                   <button className="button ghost sm" onClick={() => void handleOpenReleases()}>
-                    打开发布页 <ArrowUpRight size={13} />
+                    打开发布页 <ExternalLinkIcon size={14} />
                   </button>
                 </div>
               </div>
@@ -923,9 +928,9 @@ export default function SettingsView({
                 <div key={item.id} className="settings-row">
                   <span className="settings-row-icon">
                     {item.status === 'ok' ? (
-                      <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
+                      <StatusOkIcon size={18} style={{ color: 'var(--success)' }} />
                     ) : (
-                      <ShieldCheck size={18} style={{ color: 'var(--warning)' }} />
+                      <ShieldOkIcon size={18} style={{ color: 'var(--warning)' }} />
                     )}
                   </span>
                   <div className="settings-row-label">
@@ -939,13 +944,13 @@ export default function SettingsView({
               ))}
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Terminal size={18} /></span>
+                <span className="settings-row-icon"><TerminalIcon size={18} /></span>
                 <div className="settings-row-label">
                   <strong>统一 MCP 配置</strong>
                   <p>执行 <code>node cli/edithere.mjs init</code> 安装 AI 编程助手 Skill。</p>
                 </div>
                 <button className="button secondary sm" onClick={() => void copyMcpSnippet()}>
-                  <Copy size={13} /> 复制 MCP 配置
+                  <CopyTextIcon size={14} /> 复制 MCP 配置
                 </button>
               </div>
             </div>
@@ -977,10 +982,10 @@ export default function SettingsView({
                     }
                   }}
                 >
-                  GitHub 仓库 <ArrowUpRight size={13} />
+                  GitHub 仓库 <ExternalLinkIcon size={14} />
                 </button>
                 <button className="button secondary sm" onClick={() => void onResetDefaults()}>
-                  <RotateCcw size={13} /> 恢复全部默认设置
+                  <ResetIcon size={14} /> 恢复全部默认设置
                 </button>
               </div>
             </div>
