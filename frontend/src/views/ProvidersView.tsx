@@ -150,7 +150,6 @@ export default function ProvidersView({
             <h2 style={embedded ? { margin: '0 0 4px', fontSize: 17, fontWeight: 600 } : undefined}>
               {creating ? '添加模型服务' : `编辑 · ${draft.name}`}
             </h2>
-            <p>配置「AI 解析」使用的视觉模型接口；API Key 在桌面端加密存入操作系统凭据库。</p>
           </div>
           <button className="button secondary sm" onClick={() => setDraft(null)}>
             <ArrowLeft size={14} /> 返回列表

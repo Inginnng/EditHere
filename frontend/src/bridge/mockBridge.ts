@@ -1,12 +1,16 @@
 import type {
+  DiagnosticsInfo,
   DoctorSnapshot,
   EditHereBridge,
   ExplodeBlock,
   GalleryPage,
+  GeneralPreferences,
   GroupNote,
   PixelRect,
   ProviderConfig,
   ProviderPreset,
+  ShortcutDefinitionItem,
+  TrayActionDefinitionItem,
   VideoMarker,
 } from './types';
 
@@ -146,6 +150,75 @@ export const INITIAL_VIDEO_MARKERS: VideoMarker[] = [
   { id: 'vm-3', timestampMs: 8420, label: '弹窗收起', note: '00:08.42 · 确认弹窗关闭瞬间有轻微闪烁' },
 ];
 
+export const DEFAULT_SHORTCUT_DEFINITIONS: ShortcutDefinitionItem[] = [
+  { id: 'capture', label: '截图', global: true, defaultKey: 'Alt+Shift+2' },
+  { id: 'annotate', label: '新建批注（空窗口）', global: true, defaultKey: 'Alt+Shift+1' },
+  { id: 'open', label: '打开图片或项目', global: false, defaultKey: 'Ctrl+O' },
+  { id: 'paste', label: '粘贴图片', global: false, defaultKey: 'Ctrl+V' },
+  { id: 'save', label: '保存项目', global: false, defaultKey: 'Ctrl+S' },
+  { id: 'export', label: '查看 JSON', global: false, defaultKey: 'Ctrl+E' },
+  { id: 'copy', label: '复制带批注图片', global: false, defaultKey: 'Ctrl+C' },
+  { id: 'copyJson', label: '复制 JSON 与图片', global: false, defaultKey: '' },
+  { id: 'saveImage', label: '保存图片', global: false, defaultKey: '' },
+  { id: 'hideAnnotations', label: '隐藏 / 显示批注标记', global: false, defaultKey: '' },
+  { id: 'addGlobalNote', label: '添加全局批注', global: false, defaultKey: '' },
+  { id: 'undo', label: '撤销', global: false, defaultKey: 'Ctrl+Z' },
+  { id: 'redo', label: '重做', global: false, defaultKey: 'Ctrl+Y' },
+  { id: 'fit', label: '适应窗口', global: false, defaultKey: 'Ctrl+0' },
+  { id: 'delete', label: '删除所选批注', global: false, defaultKey: 'Del' },
+  { id: 'close', label: '取消操作 / 关闭截图', global: false, defaultKey: 'Esc' },
+  { id: 'smart', label: '智能选块', global: false, defaultKey: 'B' },
+  { id: 'point', label: '点标注', global: false, defaultKey: 'P' },
+  { id: 'rectangle', label: '框选标注', global: false, defaultKey: 'R' },
+  { id: 'adjust', label: '调整批注', global: false, defaultKey: 'V' },
+  { id: 'explode', label: '切换大爆炸', global: false, defaultKey: 'E' },
+  { id: 'component', label: '调整组件', global: false, defaultKey: 'M' },
+];
+
+export const DEFAULT_TRAY_ACTIONS: TrayActionDefinitionItem[] = [
+  { id: 'capture', label: '截图' },
+  { id: 'annotate', label: '新建批注（空窗口）' },
+  { id: 'show', label: '显示当前窗口' },
+  { id: 'open', label: '打开图片或项目' },
+  { id: 'none', label: '不执行操作' },
+];
+
+export const INITIAL_PREFERENCES: GeneralPreferences = {
+  language: 'system',
+  ocrLanguage: 'system',
+  captureOnStartup: true,
+  launchAtLogin: false,
+  launchAtLoginNotice: '',
+  fitImageOnOpen: true,
+  confirmBeforeDiscard: true,
+  defaultTool: 0,
+  traySingleClick: 'capture',
+  trayDoubleClick: 'annotate',
+  trayActions: DEFAULT_TRAY_ACTIONS,
+  includeCoordinates: true,
+  includeOcr: true,
+  includeRecognizedText: true,
+  includeWindowTitle: true,
+  exportMode: 'file',
+  copyJsonTextWithImage: false,
+  captureShadow: true,
+  captureCornerRadius: 10,
+  feedbackDir: '',
+  scrollAxis: 'vertical',
+  scrollAutoCrop: false,
+  scrollUltraLong: false,
+  checkUpdatesOnStartup: true,
+  updateSource: 'auto',
+  shortcuts: Object.fromEntries(DEFAULT_SHORTCUT_DEFINITIONS.map((d) => [d.id, d.defaultKey])),
+  shortcutDefinitions: DEFAULT_SHORTCUT_DEFINITIONS,
+};
+
+export const INITIAL_DIAGNOSTICS_INFO: DiagnosticsInfo = {
+  directory: 'C:\\Users\\Local\\AppData\\Local\\EditHere\\logs',
+  fileCount: 2,
+  lastError: '',
+};
+
 export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
   activeRoute: 'desktop',
   desktopVersion: '0.14.0-dev (Qt6 Native Core)',
@@ -163,15 +236,9 @@ export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
     2
   ),
   checks: [
-    { id: 'core', label: '原生截图 / OCR / 长截图内核', detail: 'C++20 + Qt6 · 保留零延迟遮罩与 Windows HDR 支持', status: 'ok' },
-    {
-      id: 'bridge',
-      label: 'B2 前端与大爆炸分割',
-      detail: 'M3 交互壳使用轻量端侧像素分割检测；M4 WebView2 Bridge 将接入 C++ detector.cpp 多层级选区与本地 OCR',
-      status: 'warn',
-    },
-    { id: 'mcp', label: '统一 CLI & MCP 路由', detail: 'cli/edithere.mjs · cli/unified-mcp.mjs（桌面优先，Web 自动回退）', status: 'ok' },
-    { id: 'skills', label: '英文单源 Skills 构建', detail: '5 端同步零漂移 · 含局部/设计系统分层与代码影响面换图规范', status: 'ok' },
+    { id: 'core', label: '原生截图与长截图核心', detail: 'C++20 + Qt6 · Windows HDR 与 DWM + UIA 窗口识别', status: 'ok' },
+    { id: 'mcp', label: '统一 CLI & MCP 路由', detail: 'cli/edithere.mjs · cli/unified-mcp.mjs', status: 'ok' },
+    { id: 'skills', label: '多端 Skills 同步', detail: '5 端配置同步', status: 'ok' },
   ],
 };
 

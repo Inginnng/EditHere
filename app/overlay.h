@@ -117,6 +117,7 @@ class Overlay final : public QWidget {
     quint64 detectionGeneration_ = 0;
     void requestProbe();
     QVector<Candidate> candidates() const;
+    bool shouldPreferWindow() const;
     void finish(bool copy);
     // Moves the region to a new rectangle and brings the tools up to date with it.
     void applySelection(QRect area, bool move);

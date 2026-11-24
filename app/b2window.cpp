@@ -1,6 +1,7 @@
 #include "b2window.h"
 #include "agentprotocol.h"
 #include "aifeedbacksnapshot.h"
+#include "autostart.h"
 #include "detector.h"
 #include "diagnostics.h"
 #include "i18n.h"
@@ -12,6 +13,7 @@
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -61,19 +63,45 @@ ThemeMode stringToThemeMode(const QString &value) {
 
 QString languageModeToString(LanguageMode lang) {
     switch (lang) {
-    case LanguageMode::English: return "English";
-    case LanguageMode::TraditionalChinese: return QString::fromUtf8("繁體中文");
-    case LanguageMode::SimplifiedChinese:
+    case LanguageMode::English: return "en";
+    case LanguageMode::TraditionalChinese: return "zh_TW";
+    case LanguageMode::SimplifiedChinese: return "zh_CN";
     case LanguageMode::System:
-    default: return QString::fromUtf8("简体中文");
+    default: return "system";
     }
 }
 
 LanguageMode stringToLanguageMode(const QString &value, LanguageMode fallback) {
-    if (value == "English") return LanguageMode::English;
-    if (value == QString::fromUtf8("繁體中文")) return LanguageMode::TraditionalChinese;
-    if (value == QString::fromUtf8("简体中文")) return LanguageMode::SimplifiedChinese;
+    if (value == "en" || value == "English") return LanguageMode::English;
+    if (value == "zh_TW" || value == QString::fromUtf8("繁體中文")) return LanguageMode::TraditionalChinese;
+    if (value == "zh_CN" || value == QString::fromUtf8("简体中文")) return LanguageMode::SimplifiedChinese;
+    if (value == "system" || value == QString::fromUtf8("跟随系统")) return LanguageMode::System;
     return fallback;
+}
+
+QString ocrLanguageModeToString(OcrLanguageMode mode) {
+    switch (mode) {
+    case OcrLanguageMode::SimplifiedChinese: return "zh_CN";
+    case OcrLanguageMode::English: return "en";
+    case OcrLanguageMode::System:
+    default: return "system";
+    }
+}
+
+OcrLanguageMode stringToOcrLanguageMode(const QString &value, OcrLanguageMode fallback) {
+    if (value == "zh_CN" || value == QString::fromUtf8("简体中文")) return OcrLanguageMode::SimplifiedChinese;
+    if (value == "en" || value == "English") return OcrLanguageMode::English;
+    if (value == "system" || value == QString::fromUtf8("跟随系统")) return OcrLanguageMode::System;
+    return fallback;
+}
+
+QString exportModeToString(ImageExportMode mode) {
+    switch (mode) {
+    case ImageExportMode::Embedded: return "embedded";
+    case ImageExportMode::None: return "none";
+    case ImageExportMode::File:
+    default: return "file";
+    }
 }
 
 QJsonObject rectToJson(const QRect &r) {
@@ -218,6 +246,24 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
     });
 
     preloadAiCredentials();
+
+    updater_ = new UpdateChecker(this);
+    connect(updater_, &UpdateChecker::finished, this, [this]() {
+        if (pendingUpdateCheckId_.isNull() || pendingUpdateCheckId_.isUndefined()) return;
+        const QJsonValue id = pendingUpdateCheckId_;
+        pendingUpdateCheckId_ = QJsonValue();
+        const auto &res = updater_->lastResult();
+        QString statusStr = "failed";
+        if (res.status == UpdateChecker::Available) statusStr = "available";
+        else if (res.status == UpdateChecker::Current || res.status == UpdateChecker::NewerLocal) statusStr = "upToDate";
+        sendRpcResult(id, true, QJsonObject{
+            {"status", statusStr},
+            {"tagName", res.tagName},
+            {"currentVersion", EDITHERE_VERSION},
+            {"url", res.url.toString()},
+            {"message", res.message},
+        });
+    });
 
     QString serverError;
     if (!server_.start(&serverError)) {
@@ -472,6 +518,7 @@ QJsonArray B2Window::buildPagesJson() const {
             {"width", page.document.image.width()},
             {"height", page.document.image.height()},
             {"imageUrl", page.mediaUrl},
+            {"isVideo", page.document.source == "video"},
             {"blocks", blocksForPage(page)},
             {"annotations", annArr},
         });
@@ -479,15 +526,70 @@ QJsonArray B2Window::buildPagesJson() const {
     return arr;
 }
 
+QJsonObject B2Window::buildDiagnosticsJson() const {
+    const QString dir = diagnostics::directory();
+    return QJsonObject{
+        {"directory", dir.isEmpty() ? QString() : QDir::toNativeSeparators(dir)},
+        {"fileCount", int(diagnostics::logFiles().size())},
+        {"lastError", diagnostics::lastError()},
+    };
+}
+
 QJsonObject B2Window::buildPreferencesJson() const {
+    QString startupError;
+    const bool registeredLaunch = launchAtLoginEnabled(&startupError);
+    const bool effectiveLaunch = startupError.isEmpty() ? registeredLaunch : settings_.launchAtLogin;
+    const QString loginNotice = startupError.isEmpty() ? launchAtLoginNotice() : startupError;
+
+    QJsonObject shortcutsObj;
+    QJsonArray shortcutDefsArr;
+    for (const auto &def : shortcutDefinitions()) {
+        shortcutsObj.insert(def.id, settings_.shortcuts.value(def.id).toString(QKeySequence::PortableText));
+        shortcutDefsArr.append(QJsonObject{
+            {"id", def.id},
+            {"label", def.label},
+            {"global", def.global},
+            {"defaultKey", def.defaultKey.toString(QKeySequence::PortableText)},
+        });
+    }
+
+    QJsonArray trayActionsArr;
+    for (const auto &def : trayActionDefinitions()) {
+        trayActionsArr.append(QJsonObject{
+            {"id", def.id},
+            {"label", def.label},
+        });
+    }
+
     return QJsonObject{
         {"theme", themeModeToString(settings_.theme)},
+        {"language", languageModeToString(settings_.language)},
+        {"ocrLanguage", ocrLanguageModeToString(settings_.ocrLanguage)},
+        {"captureOnStartup", settings_.captureOnStartup},
+        {"launchAtLogin", effectiveLaunch},
+        {"launchAtLoginNotice", loginNotice},
+        {"fitImageOnOpen", settings_.fitImageOnOpen},
+        {"confirmBeforeDiscard", settings_.confirmBeforeDiscard},
+        {"defaultTool", settings_.defaultTool},
+        {"traySingleClick", settings_.traySingleClick},
+        {"trayDoubleClick", settings_.trayDoubleClick},
+        {"trayActions", trayActionsArr},
         {"includeCoordinates", true},
         {"includeOcr", settings_.regionOcrEnabled},
+        {"includeRecognizedText", settings_.includeRecognizedText},
+        {"includeWindowTitle", settings_.includeWindowTitle},
+        {"exportMode", exportModeToString(settings_.imageExportMode)},
+        {"copyJsonTextWithImage", settings_.copyJsonTextWithImage},
         {"captureShadow", settings_.captureStyle.shadow},
-        {"compactDensity", false},
-        {"exportMode", settings_.imageExportMode == ImageExportMode::Embedded ? "embedded" : "file"},
-        {"language", languageModeToString(settings_.language)},
+        {"captureCornerRadius", settings_.captureStyle.cornerRadius},
+        {"feedbackDir", settings_.feedbackDir},
+        {"scrollAxis", settings_.scrollAxis == Qt::Horizontal ? "horizontal" : "vertical"},
+        {"scrollAutoCrop", settings_.scrollAutoCrop},
+        {"scrollUltraLong", settings_.scrollUltraLong},
+        {"checkUpdatesOnStartup", settings_.checkUpdatesOnStartup},
+        {"updateSource", settings_.updateSource},
+        {"shortcuts", shortcutsObj},
+        {"shortcutDefinitions", shortcutDefsArr},
     };
 }
 
@@ -550,6 +652,7 @@ QJsonObject B2Window::buildSessionStateJson() const {
         {"pages", buildPagesJson()},
         {"groupNotes", groupNotes_},
         {"preferences", buildPreferencesJson()},
+        {"diagnostics", buildDiagnosticsJson()},
         {"doctor", buildDoctorSnapshotJson()},
         {"ai", buildAiStateJson()},
     };
@@ -734,26 +837,94 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
     }
 
     if (method == "settings.save") {
-        if (params.contains("theme")) settings_.theme = stringToThemeMode(params.value("theme").toString());
-        if (params.contains("includeOcr")) settings_.regionOcrEnabled = params.value("includeOcr").toBool();
-        if (params.contains("captureShadow")) settings_.captureStyle.shadow = params.value("captureShadow").toBool();
-        if (params.contains("exportMode")) {
-            settings_.imageExportMode = params.value("exportMode").toString() == "embedded"
-                                            ? ImageExportMode::Embedded
-                                            : ImageExportMode::File;
-        }
-        if (params.contains("language")) {
-            settings_.language = stringToLanguageMode(params.value("language").toString(), settings_.language);
-        }
-        QString saveErr;
-        if (!saveSettings(settings_, &saveErr, settingsFile_)) {
-            sendRpcResult(id, false, {}, saveErr);
+        handleSaveSettings(id, params);
+        return;
+    }
+
+    if (method == "settings.resetShortcuts") {
+        AppSettings next = settings_;
+        next.shortcuts = defaultSettings().shortcuts;
+        QString err = settingsApplyHandler_ ? settingsApplyHandler_(next) : validateSettings(next);
+        if (err.isEmpty() && !settingsApplyHandler_) saveSettings(next, &err, settingsFile_);
+        if (!err.isEmpty()) {
+            sendRpcResult(id, false, {}, err);
             return;
         }
+        settings_ = next;
+        sendRpcResult(id, true, buildPreferencesJson());
+        return;
+    }
+
+    if (method == "settings.resetDefaults") {
+        AppSettings next = defaultSettings();
+        next.aiProviderId = settings_.aiProviderId;
+        next.aiProviders = settings_.aiProviders;
+        next.aiSystemPrompt = settings_.aiSystemPrompt;
+        QString err = settingsApplyHandler_ ? settingsApplyHandler_(next) : validateSettings(next);
+        if (err.isEmpty() && !settingsApplyHandler_) saveSettings(next, &err, settingsFile_);
+        if (!err.isEmpty()) {
+            sendRpcResult(id, false, {}, err);
+            return;
+        }
+        settings_ = next;
         hasDarkOverride_ = false;
         syncDwmTitleBar(isEffectiveDark());
-        emit preferencesUpdated(settings_);
         sendRpcResult(id, true, buildPreferencesJson());
+        return;
+    }
+
+    if (method == "settings.chooseFeedbackDir") {
+        const QString picked = QFileDialog::getExistingDirectory(
+            this, tr("选择反馈临时目录"),
+            settings_.feedbackDir.isEmpty() ? QString() : settings_.feedbackDir);
+        if (picked.isEmpty()) {
+            sendRpcResult(id, true, QJsonObject{{"cancelled", true}});
+            return;
+        }
+        sendRpcResult(id, true, QJsonObject{{"cancelled", false}, {"path", QDir::toNativeSeparators(picked)}});
+        return;
+    }
+
+    if (method == "diagnostics.getInfo") {
+        sendRpcResult(id, true, buildDiagnosticsJson());
+        return;
+    }
+
+    if (method == "diagnostics.export") {
+        handleDiagnosticsExport(id);
+        return;
+    }
+
+    if (method == "diagnostics.openFolder") {
+        handleDiagnosticsOpenFolder(id);
+        return;
+    }
+
+    if (method == "updates.check") {
+        handleUpdatesCheck(id);
+        return;
+    }
+
+    if (method == "updates.openReleases") {
+        const QString requested = params.value("url").toString().trimmed();
+        const QUrl url = requested.startsWith("https://", Qt::CaseInsensitive)
+                             ? QUrl(requested)
+                             : UpdateChecker::releasesUrl(UpdateChecker::preferredSource(settings_.updateSource));
+        const bool opened = QDesktopServices::openUrl(url);
+        sendRpcResult(id, opened, QJsonObject{{"opened", opened}},
+                      opened ? QString() : tr("无法打开浏览器，请访问：%1").arg(url.toString()));
+        return;
+    }
+
+    if (method == "shell.openExternal") {
+        const QUrl url(params.value("url").toString().trimmed());
+        if (!url.isValid() || url.scheme().compare("https", Qt::CaseInsensitive) != 0) {
+            sendRpcResult(id, false, {}, tr("仅允许打开 HTTPS 链接。"));
+            return;
+        }
+        const bool opened = QDesktopServices::openUrl(url);
+        sendRpcResult(id, opened, QJsonObject{{"opened", opened}},
+                      opened ? QString() : tr("无法打开浏览器，请访问：%1").arg(url.toString()));
         return;
     }
 
@@ -1156,8 +1327,10 @@ void B2Window::handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObje
         QString schema;
         buildBundleFromPayload(payload, options, &bundle, &total, &schema);
 
-        const QString cacheRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-                                      .filePath("feedback");
+        const QString cacheRoot =
+            settings_.feedbackDir.isEmpty()
+                ? QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)).filePath("feedback")
+                : settings_.feedbackDir;
         QDir().mkpath(cacheRoot);
         const QString folderName = "edithere-b2-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
                                    "-" + uniqueId();
@@ -1339,6 +1512,152 @@ void B2Window::handleAiAnalyze(const QJsonValue &rpcId, const QJsonObject &param
     } catch (const std::exception &e) {
         sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
     }
+}
+
+void B2Window::handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &params) {
+    AppSettings next = settings_;
+    if (params.contains("theme"))
+        next.theme = stringToThemeMode(params.value("theme").toString());
+    if (params.contains("language"))
+        next.language = stringToLanguageMode(params.value("language").toString(), next.language);
+    if (params.contains("ocrLanguage"))
+        next.ocrLanguage = stringToOcrLanguageMode(params.value("ocrLanguage").toString(), next.ocrLanguage);
+    if (params.contains("captureOnStartup"))
+        next.captureOnStartup = params.value("captureOnStartup").toBool();
+    if (params.contains("launchAtLogin"))
+        next.launchAtLogin = params.value("launchAtLogin").toBool();
+    if (params.contains("fitImageOnOpen"))
+        next.fitImageOnOpen = params.value("fitImageOnOpen").toBool();
+    if (params.contains("confirmBeforeDiscard"))
+        next.confirmBeforeDiscard = params.value("confirmBeforeDiscard").toBool();
+    if (params.contains("defaultTool"))
+        next.defaultTool = params.value("defaultTool").toInt(next.defaultTool);
+    if (params.contains("traySingleClick"))
+        next.traySingleClick = params.value("traySingleClick").toString();
+    if (params.contains("trayDoubleClick"))
+        next.trayDoubleClick = params.value("trayDoubleClick").toString();
+    if (params.contains("includeOcr")) {
+        next.regionOcrEnabled = params.value("includeOcr").toBool();
+        if (!params.contains("includeRecognizedText"))
+            next.includeRecognizedText = next.regionOcrEnabled;
+    }
+    if (params.contains("includeRecognizedText"))
+        next.includeRecognizedText = params.value("includeRecognizedText").toBool();
+    if (params.contains("includeWindowTitle"))
+        next.includeWindowTitle = params.value("includeWindowTitle").toBool();
+    if (params.contains("exportMode")) {
+        const QString m = params.value("exportMode").toString();
+        next.imageExportMode = m == "embedded" ? ImageExportMode::Embedded
+                                               : (m == "none" ? ImageExportMode::None : ImageExportMode::File);
+    }
+    if (params.contains("copyJsonTextWithImage"))
+        next.copyJsonTextWithImage = params.value("copyJsonTextWithImage").toBool();
+    if (params.contains("captureShadow"))
+        next.captureStyle.shadow = params.value("captureShadow").toBool();
+    if (params.contains("captureCornerRadius"))
+        next.captureStyle.cornerRadius = std::clamp(params.value("captureCornerRadius").toInt(next.captureStyle.cornerRadius), 0, 100);
+    if (params.contains("feedbackDir"))
+        next.feedbackDir = params.value("feedbackDir").toString().trimmed();
+    if (params.contains("scrollAxis"))
+        next.scrollAxis = params.value("scrollAxis").toString() == "horizontal" ? Qt::Horizontal : Qt::Vertical;
+    if (params.contains("scrollAutoCrop"))
+        next.scrollAutoCrop = params.value("scrollAutoCrop").toBool();
+    if (params.contains("scrollUltraLong"))
+        next.scrollUltraLong = params.value("scrollUltraLong").toBool();
+    if (params.contains("checkUpdatesOnStartup"))
+        next.checkUpdatesOnStartup = params.value("checkUpdatesOnStartup").toBool();
+    if (params.contains("updateSource"))
+        next.updateSource = params.value("updateSource").toString();
+
+    if (params.contains("shortcuts") && params.value("shortcuts").isObject()) {
+        const QJsonObject map = params.value("shortcuts").toObject();
+        for (const auto &def : shortcutDefinitions()) {
+            if (!map.contains(def.id))
+                continue;
+            const QString raw = map.value(def.id).toString().trimmed();
+            if (raw.isEmpty()) {
+                next.shortcuts[def.id] = QKeySequence();
+            } else {
+                const QKeySequence seq = QKeySequence::fromString(raw, QKeySequence::PortableText);
+                if (seq.isEmpty()) {
+                    sendRpcResult(rpcId, false, {}, tr("快捷键格式无效：%1").arg(raw));
+                    return;
+                }
+                next.shortcuts[def.id] = seq;
+            }
+        }
+    }
+
+    QString error;
+    if (settingsApplyHandler_) {
+        error = settingsApplyHandler_(next);
+    } else {
+        error = validateSettings(next);
+        if (error.isEmpty())
+            saveSettings(next, &error, settingsFile_);
+    }
+    if (!error.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, error);
+        return;
+    }
+
+    settings_ = next;
+    hasDarkOverride_ = false;
+    syncDwmTitleBar(isEffectiveDark());
+    if (!settingsApplyHandler_)
+        emit preferencesUpdated(settings_);
+    sendRpcResult(rpcId, true, buildPreferencesJson());
+}
+
+void B2Window::handleDiagnosticsExport(const QJsonValue &rpcId) {
+    const auto filename = QStringLiteral("EditHere-diagnostics-%1.txt")
+                              .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+    QString dest = QFileDialog::getSaveFileName(
+        this, tr("导出诊断日志"),
+        QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).filePath(filename),
+        tr("文本文件 (*.txt);;所有文件 (*.*)"));
+    if (dest.isEmpty()) {
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
+        return;
+    }
+    if (QFileInfo(dest).suffix().isEmpty())
+        dest += QStringLiteral(".txt");
+    const QString error = diagnostics::exportReport(dest);
+    if (!error.isEmpty()) {
+        diagnostics::write(diagnostics::Level::Error, "diagnostics.export", error);
+        sendRpcResult(rpcId, false, {}, tr("日志导出失败：%1").arg(error));
+        return;
+    }
+    sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", QDir::toNativeSeparators(dest)}});
+}
+
+void B2Window::handleDiagnosticsOpenFolder(const QJsonValue &rpcId) {
+    const QString folder = diagnostics::directory();
+    if (folder.isEmpty()) {
+        sendRpcResult(rpcId, false, {}, tr("日志目录尚未初始化。"));
+        return;
+    }
+    QDir().mkpath(folder);
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(folder))) {
+        diagnostics::write(diagnostics::Level::Warning, "diagnostics.open_folder", "Unable to open log folder");
+        sendRpcResult(rpcId, false, {}, tr("无法打开日志目录：%1").arg(QDir::toNativeSeparators(folder)));
+        return;
+    }
+    sendRpcResult(rpcId, true, QJsonObject{{"opened", true}, {"path", QDir::toNativeSeparators(folder)}});
+}
+
+void B2Window::handleUpdatesCheck(const QJsonValue &rpcId) {
+    if (!updater_) {
+        sendRpcResult(rpcId, false, {}, tr("更新检查器尚未初始化。"));
+        return;
+    }
+    if (updater_->busy()) {
+        sendRpcResult(rpcId, false, {}, tr("正在检查更新，请稍候…"));
+        return;
+    }
+    pendingUpdateCheckId_ = rpcId;
+    updater_->setSourcePreference(settings_.updateSource);
+    updater_->check();
 }
 
 } // namespace h2d

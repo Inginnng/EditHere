@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -221,7 +221,23 @@ export default function WorkspaceView({
   const [hoverBlockId, setHoverBlockId] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [explosionWaveKey, setExplosionWaveKey] = useState(0);
+  const [showExplosionWave, setShowExplosionWave] = useState(false);
+  const explosionWaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [jsonOpen, setJsonOpen] = useState(false);
+
+  // Instant custom tooltip state (Point 2)
+  const [dockTip, setDockTip] = useState<{
+    text: string;
+    left: number;
+    top: number;
+    placement: 'above' | 'below';
+  } | null>(null);
+  const tipDelayRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tipVisibleRef = useRef(false);
+  tipVisibleRef.current = Boolean(dockTip);
+
+  // Anchored contextual subbar offset (Point 6)
+  const [subbarLeft, setSubbarLeft] = useState<number | null>(null);
 
   // PixPin-grade tool options & Brush state
   const [hideAnnotations, setHideAnnotations] = useState(false);
@@ -272,6 +288,11 @@ export default function WorkspaceView({
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoTimeMs, setVideoTimeMs] = useState(3240);
 
+  const canvasColRef = useRef<HTMLDivElement>(null);
+  const brushBtnRef = useRef<HTMLButtonElement>(null);
+  const mosaicBtnRef = useRef<HTMLButtonElement>(null);
+  const cropBtnRef = useRef<HTMLButtonElement>(null);
+  const subbarRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const artboardMediaRef = useRef<HTMLDivElement>(null);
   const mosaicCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -289,7 +310,78 @@ export default function WorkspaceView({
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  useEffect(() => () => clearTimeout(hoverCloseTimerRef.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(hoverCloseTimerRef.current);
+      clearTimeout(tipDelayRef.current);
+      clearTimeout(explosionWaveTimerRef.current);
+    },
+    []
+  );
+
+  const showTip = (target: HTMLElement, text: string, placement: 'above' | 'below' = 'above') => {
+    clearTimeout(tipDelayRef.current);
+    const col = canvasColRef.current;
+    if (!col) return;
+    const colRect = col.getBoundingClientRect();
+    const btnRect = target.getBoundingClientRect();
+    const left = Math.max(54, Math.min(colRect.width - 54, btnRect.left - colRect.left + btnRect.width / 2));
+    const top = placement === 'above' ? btnRect.top - colRect.top - 8 : btnRect.bottom - colRect.top + 8;
+    if (tipVisibleRef.current) {
+      setDockTip({ text, left, top, placement });
+    } else {
+      tipDelayRef.current = setTimeout(() => {
+        setDockTip({ text, left, top, placement });
+      }, 65);
+    }
+  };
+
+  const hideTip = () => {
+    clearTimeout(tipDelayRef.current);
+    setDockTip(null);
+  };
+
+  const tipProps = (text: string, placement: 'above' | 'below' = 'above') => ({
+    onPointerEnter: (e: React.PointerEvent<HTMLElement>) => showTip(e.currentTarget, text, placement),
+    onPointerLeave: hideTip,
+    onPointerDown: hideTip,
+  });
+
+  useLayoutEffect(() => {
+    const computeSubbarPos = () => {
+      const col = canvasColRef.current;
+      const bar = subbarRef.current;
+      if (!col || !bar) {
+        setSubbarLeft(null);
+        return;
+      }
+      const anchor =
+        tool === 'brush'
+          ? brushBtnRef.current
+          : tool === 'mosaic'
+            ? mosaicBtnRef.current
+            : tool === 'crop'
+              ? cropBtnRef.current
+              : null;
+      if (!anchor) {
+        setSubbarLeft(null);
+        return;
+      }
+      const colRect = col.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      const subW = bar.offsetWidth;
+      if (colRect.width <= 0 || subW <= 0) {
+        setSubbarLeft(null);
+        return;
+      }
+      const desired = anchorRect.left - colRect.left + anchorRect.width / 2 - subW / 2;
+      const clamped = Math.round(Math.max(12, Math.min(colRect.width - subW - 12, desired)));
+      setSubbarLeft(clamped);
+    };
+    computeSubbarPos();
+    window.addEventListener('resize', computeSubbarPos);
+    return () => window.removeEventListener('resize', computeSubbarPos);
+  }, [tool, inspectorOpen, pages.length, cropRect !== null, activePage?.mosaics?.length, activePage?.brushStrokes?.length]);
 
   const scheduleHoverOpen = (noteId: string) => {
     clearTimeout(hoverCloseTimerRef.current);
@@ -300,7 +392,7 @@ export default function WorkspaceView({
     clearTimeout(hoverCloseTimerRef.current);
     hoverCloseTimerRef.current = setTimeout(() => {
       setHoveredNoteId((cur) => (cur === noteId && inlineEditNoteId !== noteId ? null : cur));
-    }, 150);
+    }, 260);
   };
 
   const pushUndoSnapshot = (snapshot: GalleryPage[]) => {
@@ -397,8 +489,9 @@ export default function WorkspaceView({
     setLoupe(null);
     setCropRect(null);
     setPanOffset({ x: 0, y: 0 });
+    setVideoMode(false);
     setTool((t) => (t === 'crop' ? 'box' : t));
-  }, [activePage?.id]);
+  }, [activePage?.id, activePage?.isVideo]);
 
   const triggerImport = () => {
     if (onRequestImport) {
@@ -1081,6 +1174,7 @@ export default function WorkspaceView({
       drawStartRef.current = null;
       const w = draftBox.x2 - draftBox.x1;
       const h = draftBox.y2 - draftBox.y1;
+      const clickPt = { x: draftBox.x1, y: draftBox.y1 };
       const finalBox = clampRect(draftBox, activePage.width, activePage.height);
       setDraftBox(null);
       if (w >= 10 && h >= 10) {
@@ -1097,6 +1191,17 @@ export default function WorkspaceView({
           )
         );
         setSelectedMosaicId(mId);
+      } else {
+        const hit = [...(activePage.mosaics ?? [])]
+          .reverse()
+          .find(
+            (m) =>
+              clickPt.x >= m.rect.x1 &&
+              clickPt.x <= m.rect.x2 &&
+              clickPt.y >= m.rect.y1 &&
+              clickPt.y <= m.rect.y2
+          );
+        setSelectedMosaicId(hit ? hit.id : null);
       }
     }
 
@@ -1291,10 +1396,14 @@ export default function WorkspaceView({
     const next = tool === 'explode' ? 'box' : 'explode';
     setTool(next);
     setHoverBlockId(null);
+    clearTimeout(explosionWaveTimerRef.current);
     if (next === 'explode') {
       setExplosionWaveKey((k) => k + 1);
-      onToast('已进入视觉大爆炸模式');
+      setShowExplosionWave(true);
+      explosionWaveTimerRef.current = setTimeout(() => setShowExplosionWave(false), 950);
+      onToast('已进入大爆炸布局拆解模式');
     } else {
+      setShowExplosionWave(false);
       setSelectedBlockId(null);
     }
   };
@@ -1315,7 +1424,7 @@ export default function WorkspaceView({
     if (isDesktopWebView()) {
       try {
         await desktopRpc('clipboard.copyImage', { pngBase64: rendered.pngBase64 });
-        onToast('已复制带批注与遮罩的高清图片');
+        onToast('已复制带批注图片');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '复制图片失败');
       }
@@ -1373,7 +1482,7 @@ export default function WorkspaceView({
         pageId: activePage.id,
         pngBase64: rendered?.pngBase64 ?? '',
       });
-      onToast('已生成桌面置顶贴图窗（含马赛克、画笔与裁剪）');
+      onToast('已生成桌面置顶贴图窗');
     } catch (err) {
       onToast(err instanceof Error ? err.message : '当前页面无法贴图');
     }
@@ -1389,7 +1498,7 @@ export default function WorkspaceView({
           { defaultName, payload: redactedPayload },
           0
         );
-        if (res.saved) onToast('已保存 EditHere 项目文件（含脱敏像素）');
+        if (res.saved) onToast('已保存 EditHere 项目文件');
       } catch (err) {
         onToast(err instanceof Error ? err.message : '保存项目失败');
       }
@@ -1431,7 +1540,7 @@ export default function WorkspaceView({
         'clipboard.copyFeedbackBundle',
         { payload: redactedPayload }
       );
-      onToast(`已复制 JSON 与脱敏原图文件（共 ${res.files ?? 2} 项）`);
+      onToast(`已复制 JSON 与原图（共 ${res.files ?? 2} 项）`);
     } catch (err) {
       onToast(err instanceof Error ? err.message : '复制 JSON 文件包失败');
     }
@@ -1469,14 +1578,13 @@ export default function WorkspaceView({
     height: pctY(r.y2 - r.y1),
   });
 
-  const renderInlinePopover = (note: AnnotationItem, anchorX: number, anchorY: number) => {
-    const placeBelow = anchorY < activePage.height * 0.34;
+  const renderInlinePopover = (note: AnnotationItem, anchorX: number) => {
     const placeLeft = anchorX > activePage.width * 0.58;
     const isEditing = inlineEditNoteId === note.id;
 
     return (
       <div
-        className={`inline-note-popover ${placeBelow ? 'place-below' : ''} ${placeLeft ? 'place-left' : ''}`}
+        className={`inline-note-popover ${placeLeft ? 'place-left' : ''}`}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onPointerEnter={() => scheduleHoverOpen(note.id)}
@@ -1499,6 +1607,7 @@ export default function WorkspaceView({
             <button
               className="icon-button"
               title="编辑批注"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setInlineEditNoteId(isEditing ? null : note.id)}
             >
               <Pencil size={12} />
@@ -1507,6 +1616,7 @@ export default function WorkspaceView({
               <button
                 className="icon-button"
                 title="复位组件位移"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => resetBlockMovement(note.blockId!)}
               >
                 <RotateCcw size={12} />
@@ -1515,6 +1625,7 @@ export default function WorkspaceView({
             <button
               className="icon-button"
               title="删除批注"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => deleteNote(note)}
             >
               <Trash2 size={12} />
@@ -1562,6 +1673,9 @@ export default function WorkspaceView({
   const canUndo = undoStackRef.current.length > 0;
   const canRedo = redoStackRef.current.length > 0;
   const canPanActive = tool === 'pan' || spacePressed;
+  const isDrawingTool =
+    !canPanActive && (tool === 'box' || tool === 'point' || tool === 'mosaic' || tool === 'brush');
+  const isVideoPage = Boolean(activePage?.isVideo);
 
   return (
     <div className={`workspace-root ${!inspectorOpen ? 'inspector-collapsed' : ''}`}>
@@ -1579,7 +1693,7 @@ export default function WorkspaceView({
 
       {/* Main Canvas Architecture */}
       <section className="canvas-surface">
-        <div className="canvas-column">
+        <div className="canvas-column" ref={canvasColRef}>
           <div className="canvas-top-hud">
             <div className="canvas-meta-chip">
               <span className="canvas-meta-dot" />
@@ -1593,8 +1707,38 @@ export default function WorkspaceView({
               <div className="canvas-zoom-pill">
                 <button
                   className="icon-button"
+                  disabled={!canUndo}
+                  onClick={handleUndo}
+                  aria-label="撤销"
+                  {...tipProps('撤销 (Ctrl+Z)', 'below')}
+                >
+                  <Undo2 size={14} />
+                </button>
+                <button
+                  className="icon-button"
+                  disabled={!canRedo}
+                  onClick={handleRedo}
+                  aria-label="重做"
+                  {...tipProps('重做 (Ctrl+Y)', 'below')}
+                >
+                  <Redo2 size={14} />
+                </button>
+                <button
+                  className={`icon-button ${hideAnnotations ? 'is-active' : ''}`}
+                  onClick={() => setHideAnnotations((h) => !h)}
+                  aria-label={hideAnnotations ? '显示批注' : '隐藏批注'}
+                  {...tipProps(hideAnnotations ? '显示批注标记 (H)' : '隐藏批注标记 (H)', 'below')}
+                >
+                  {hideAnnotations ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+
+              <div className="canvas-zoom-pill">
+                <button
+                  className="icon-button"
                   aria-label="缩小画布"
                   onClick={() => setZoom((z) => Math.max(60, z - 15))}
+                  {...tipProps('缩小画布', 'below')}
                 >
                   <Minus size={14} />
                 </button>
@@ -1603,6 +1747,7 @@ export default function WorkspaceView({
                   className="icon-button"
                   aria-label="放大画布"
                   onClick={() => setZoom((z) => Math.min(180, z + 15))}
+                  {...tipProps('放大画布', 'below')}
                 >
                   <Plus size={14} />
                 </button>
@@ -1612,7 +1757,7 @@ export default function WorkspaceView({
                     setZoom(100);
                     setPanOffset({ x: 0, y: 0 });
                   }}
-                  title="适应窗口并复位画布位置"
+                  {...tipProps('适应窗口并复位画布位置', 'below')}
                 >
                   适应
                 </button>
@@ -1622,11 +1767,11 @@ export default function WorkspaceView({
                 <button
                   className={`inspector-toggle-btn ${inspectorOpen ? 'is-open' : ''}`}
                   aria-label={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
-                  title={inspectorOpen ? '收起批注栏（切为框边悬浮气泡模式）' : '展开右侧批注栏'}
                   onClick={() => {
                     setInspectorOpen((o) => !o);
                     setInlineEditNoteId(null);
                   }}
+                  {...tipProps(inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏', 'below')}
                 >
                   {inspectorOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
                   <span>批注栏</span>
@@ -1644,9 +1789,7 @@ export default function WorkspaceView({
               <div
                 ref={artboardRef}
                 className={`artboard ${isPanning ? 'is-panning' : ''} ${
-                  !canPanActive && (tool === 'box' || tool === 'point' || tool === 'mosaic' || tool === 'brush')
-                    ? 'cursor-crosshair'
-                    : ''
+                  isDrawingTool ? 'cursor-crosshair drawing-tool-active' : ''
                 }`}
                 style={{
                   aspectRatio: `${activePage.width} / ${activePage.height}`,
@@ -1724,14 +1867,9 @@ export default function WorkspaceView({
                     />
                   ))}
 
-                {/* Apple Intelligence Flowing Rainbow Perimeter Ripple (Explode) */}
-                {tool === 'explode' && (
-                  <>
-                    <div className="explode-apple-frame" aria-hidden="true" />
-                    {explosionWaveKey > 0 && (
-                      <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
-                    )}
-                  </>
+                {/* Brief Entry Rainbow Ripple Only (Explode) */}
+                {tool === 'explode' && showExplosionWave && explosionWaveKey > 0 && (
+                  <div key={explosionWaveKey} className="explosion-wave" aria-hidden="true" />
                 )}
 
                 {/* Smart hover highlight */}
@@ -1798,11 +1936,8 @@ export default function WorkspaceView({
                       );
                       const dx = block.dest.x1 - block.source.x1;
                       const dy = block.dest.y1 - block.source.y1;
-                      const sw = Math.max(1, block.source.x2 - block.source.x1);
-                      const sh = Math.max(1, block.source.y2 - block.source.y1);
-                      const sx = (block.dest.x2 - block.dest.x1) / sw;
-                      const sy = (block.dest.y2 - block.dest.y1) / sh;
-                      const scaled = Math.abs(sx - 1) > 0.02 || Math.abs(sy - 1) > 0.02;
+                      void dx;
+                      void dy;
 
                       return (
                         <div
@@ -1830,12 +1965,15 @@ export default function WorkspaceView({
                                   scheduleHoverClose(linkedNote.id);
                                 }
                               }}
+                              onPointerDown={(e) => {
+                                if (!inspectorOpen) e.stopPropagation();
+                              }}
                               onClick={(e) => {
                                 if (!inspectorOpen) {
                                   e.stopPropagation();
                                   setSelectedNoteId(linkedNote.id);
                                   scheduleHoverOpen(linkedNote.id);
-                                  setInlineEditNoteId((cur) => (cur === linkedNote.id ? null : linkedNote.id));
+                                  setInlineEditNoteId(linkedNote.id);
                                 }
                               }}
                             >
@@ -1847,14 +1985,7 @@ export default function WorkspaceView({
                             !inspectorOpen &&
                             linkedNote &&
                             (hoveredNoteId === linkedNote.id || inlineEditNoteId === linkedNote.id) &&
-                            renderInlinePopover(linkedNote, block.dest.x1, block.dest.y1)}
-
-                          {(isSelected || isHovered) && transformed && (
-                            <span className="explode-delta-pill">
-                              Δ {dx >= 0 ? '+' : ''}{dx}, {dy >= 0 ? '+' : ''}{dy}
-                              {scaled ? ` · ${sx.toFixed(2)}×` : ''}
-                            </span>
-                          )}
+                            renderInlinePopover(linkedNote, block.dest.x1)}
 
                           {isSelected &&
                             RESIZE_HANDLES.map((h) => (
@@ -1976,13 +2107,13 @@ export default function WorkspaceView({
                               setInspectorTab('page');
                               if (!inspectorOpen) {
                                 scheduleHoverOpen(note.id);
-                                setInlineEditNoteId((cur) => (cur === note.id ? null : note.id));
+                                setInlineEditNoteId(note.id);
                               }
                             }}
                           >
                             {note.number}
                           </button>
-                          {showPopover && renderInlinePopover(note, note.point.x, note.point.y)}
+                          {showPopover && renderInlinePopover(note, note.point.x)}
                         </div>
                       );
                     }
@@ -2010,18 +2141,21 @@ export default function WorkspaceView({
                                 scheduleHoverClose(note.id);
                               }
                             }}
+                            onPointerDown={(e) => {
+                              if (!inspectorOpen) e.stopPropagation();
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedNoteId(note.id);
                               if (!inspectorOpen) {
                                 scheduleHoverOpen(note.id);
-                                setInlineEditNoteId((cur) => (cur === note.id ? null : note.id));
+                                setInlineEditNoteId(note.id);
                               }
                             }}
                           >
                             {note.number}
                           </span>
-                          {showPopover && renderInlinePopover(note, note.rect.x1, note.rect.y1)}
+                          {showPopover && renderInlinePopover(note, note.rect.x1)}
                         </div>
                       );
                     }
@@ -2078,9 +2212,15 @@ export default function WorkspaceView({
             </div>
           </div>
 
-          {/* Two-Tier Contextual Sub-Bars */}
+          {/* Two-Tier Contextual Sub-Bars (anchored above source tool button) */}
           {!videoMode && tool === 'brush' && (
-            <div className="dock-subbar" role="region" aria-label="画笔工具选项">
+            <div
+              ref={subbarRef}
+              className="dock-subbar"
+              role="region"
+              aria-label="画笔工具选项"
+              style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
+            >
               <div className="segmented-control">
                 <button
                   className={brushMode === 'pen' ? 'selected' : ''}
@@ -2159,7 +2299,13 @@ export default function WorkspaceView({
           )}
 
           {!videoMode && tool === 'mosaic' && (
-            <div className="dock-subbar" role="region" aria-label="马赛克工具选项">
+            <div
+              ref={subbarRef}
+              className="dock-subbar"
+              role="region"
+              aria-label="马赛克工具选项"
+              style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
+            >
               <div className="segmented-control">
                 <button
                   className={mosaicStyle === 'pixelate' ? 'selected' : ''}
@@ -2217,7 +2363,7 @@ export default function WorkspaceView({
                 value={mosaicStrength}
                 onChange={(e) => setMosaicStrength(Number(e.target.value))}
               />
-              <span className="badge success" title="导出与发送 AI 解析前会自动涂抹遮挡像素，AI 无法读取隐私">
+              <span className="badge success">
                 <ShieldCheck size={11} /> AI 不可见
               </span>
               {pageMosaics.length > 0 && (
@@ -2262,7 +2408,13 @@ export default function WorkspaceView({
           )}
 
           {!videoMode && tool === 'crop' && cropRect && (
-            <div className="dock-subbar" role="region" aria-label="裁剪选项">
+            <div
+              ref={subbarRef}
+              className="dock-subbar"
+              role="region"
+              aria-label="裁剪选项"
+              style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
+            >
               <code style={{ fontFamily: 'var(--mono)' }}>
                 {cropRect.x2 - cropRect.x1} × {cropRect.y2 - cropRect.y1} px
               </code>
@@ -2308,8 +2460,8 @@ export default function WorkspaceView({
             </div>
           )}
 
-          {/* Optional Video Timeline Strip */}
-          {videoMode && (
+          {/* Video Timeline Strip (only shown when active page is video) */}
+          {isVideoPage && videoMode && (
             <div className="video-timeline-bar">
               <button
                 className="icon-button"
@@ -2352,125 +2504,87 @@ export default function WorkspaceView({
             </div>
           )}
 
-          {/* Full-Parity Concentric Bottom Dock */}
-          <div className="floating-dock" role="toolbar" aria-label="全套批注与图像工具栏">
-            {/* Cluster 1: Pointer / Pan / Annotation / Brush / Explode */}
+          {/* Reorganized Concentric Bottom Dock by Category */}
+          <div className="floating-dock" role="toolbar" aria-label="工具栏">
+            {/* Group 1: Selection & Navigation */}
             <button
               className={`dock-tool icon-only ${tool === 'select' ? 'active' : ''}`}
               onClick={() => setTool('select')}
-              title="选择与拖动标注位置 (V)"
               aria-label="选择与移动"
+              {...tipProps('选择与移动 (V)')}
             >
               <MousePointer2 size={15} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'pan' ? 'active' : ''}`}
               onClick={() => setTool('pan')}
-              title="拖动画布视图 (G 或按住 Space)"
               aria-label="拖动画布"
+              {...tipProps('拖动画布 (G / Space)')}
             >
               <Hand size={15} />
             </button>
+
+            <span className="dock-sep" />
+
+            {/* Group 2: Image Edit & Annotations */}
             <button
               className={`dock-tool icon-only ${tool === 'smart' ? 'active' : ''}`}
               onClick={() => setTool('smart')}
-              title="智能吸附选块 (S)"
               aria-label="智能选块"
+              {...tipProps('智能选块 (S)')}
             >
               <Scan size={15} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'point' ? 'active' : ''}`}
               onClick={() => setTool('point')}
-              title="点批注 (P)"
               aria-label="点批注"
+              {...tipProps('点批注 (P)')}
             >
               <MousePointerClick size={15} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'box' ? 'active' : ''}`}
               onClick={() => setTool('box')}
-              title="框批注 (R)"
               aria-label="框批注"
+              {...tipProps('框批注 (R)')}
             >
               <Square size={15} />
             </button>
             <button
+              ref={brushBtnRef}
               className={`dock-tool icon-only ${tool === 'brush' ? 'active' : ''}`}
               onClick={() => setTool((t) => (t === 'brush' ? 'box' : 'brush'))}
-              title="自由画笔与荧光笔 (B)"
               aria-label="画笔"
+              {...tipProps('画笔与荧光笔 (B)')}
             >
               <Brush size={15} />
             </button>
             <button
               className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
               onClick={toggleExplodeMode}
-              title="大爆炸视觉切片拆解 (E)"
+              {...tipProps('大爆炸布局拆解 (E)')}
             >
               <Layers2 size={15} />
               <span>大爆炸</span>
             </button>
-
-            <span className="dock-sep" />
-
-            {/* Cluster 2: Image Redaction & Crop */}
             <button
+              ref={mosaicBtnRef}
               className={`dock-tool icon-only ${tool === 'mosaic' ? 'active' : ''}`}
               onClick={() => setTool((t) => (t === 'mosaic' ? 'box' : 'mosaic'))}
-              title="马赛克脱敏遮罩 · 避免 AI 看到敏感信息 (M)"
               aria-label="马赛克"
+              {...tipProps('马赛克 / 模糊 (M)')}
             >
               <Grid2x2 size={15} />
             </button>
             <button
+              ref={cropBtnRef}
               className={`dock-tool icon-only ${tool === 'crop' ? 'active' : ''}`}
               onClick={() => (tool === 'crop' ? (setCropRect(null), setTool('box')) : enterCropMode())}
-              title="交互式裁剪画布 (C)"
               aria-label="裁剪"
+              {...tipProps('裁剪画布 (C)')}
             >
               <Crop size={15} />
-            </button>
-
-            <span className="dock-sep" />
-
-            {/* Cluster 3: History & View Assists */}
-            <button
-              className="dock-tool icon-only"
-              disabled={!canUndo}
-              onClick={handleUndo}
-              title="撤销 (Ctrl+Z)"
-              aria-label="撤销"
-            >
-              <Undo2 size={15} />
-            </button>
-            <button
-              className="dock-tool icon-only"
-              disabled={!canRedo}
-              onClick={handleRedo}
-              title="重做 (Ctrl+Y)"
-              aria-label="重做"
-            >
-              <Redo2 size={15} />
-            </button>
-            <button
-              className={`dock-tool icon-only ${hideAnnotations ? 'active' : ''}`}
-              onClick={() => setHideAnnotations((h) => !h)}
-              title={hideAnnotations ? '显示批注标记 (H)' : '隐藏批注标记 (H)'}
-              aria-label="切换批注显示"
-            >
-              {hideAnnotations ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-            <button
-              className={`dock-tool icon-only ${includeOcr ? 'active' : ''}`}
-              onClick={() => {
-                onToggleOcr?.();
-                onToast(includeOcr ? '已关闭框选自动 OCR' : '已开启框选自动 OCR');
-              }}
-              title={includeOcr ? '区域自动 OCR：已开启' : '区域自动 OCR：已关闭'}
-              aria-label="切换自动 OCR"
-            >
-              <ScanText size={15} />
             </button>
             <button
               className={`dock-tool icon-only ${magnifierEnabled ? 'active' : ''}`}
@@ -2478,59 +2592,78 @@ export default function WorkspaceView({
                 setMagnifierEnabled((v) => !v);
                 setLoupe(null);
               }}
-              title="像素放大镜与取色"
               aria-label="像素放大镜"
+              {...tipProps('像素放大镜与取色')}
             >
               <Search size={15} />
             </button>
             <button
-              className={`dock-tool icon-only ${videoMode ? 'active' : ''}`}
-              onClick={() => setVideoMode((v) => !v)}
-              title="视频时间轴批注条"
-              aria-label="视频时间轴"
+              className={`dock-tool icon-only ${includeOcr ? 'active' : ''}`}
+              onClick={() => {
+                onToggleOcr?.();
+                onToast(includeOcr ? '已关闭自动 OCR' : '已开启自动 OCR');
+              }}
+              aria-label="切换自动 OCR"
+              {...tipProps(includeOcr ? '区域自动 OCR：开启' : '区域自动 OCR：关闭')}
             >
-              <Film size={15} />
+              <ScanText size={15} />
             </button>
+            {onCapture && (
+              <button
+                className="dock-tool icon-only"
+                onClick={onCapture}
+                aria-label="重新截图"
+                {...tipProps('重新截图')}
+              >
+                <Camera size={15} />
+              </button>
+            )}
+            {isVideoPage && (
+              <button
+                className={`dock-tool icon-only ${videoMode ? 'active' : ''}`}
+                onClick={() => setVideoMode((v) => !v)}
+                aria-label="视频时间轴"
+                {...tipProps('视频时间轴批注条')}
+              >
+                <Film size={15} />
+              </button>
+            )}
 
             <span className="dock-sep" />
 
-            {/* Cluster 4: Output, More & Direct AI Analysis Entry */}
-            <button
-              className="dock-tool icon-only"
-              onClick={() => void handleCopyAnnotatedImage()}
-              title="复制带批注与脱敏遮罩图片"
-              aria-label="复制图片"
-            >
-              <ClipboardCopy size={15} />
-            </button>
+            {/* Group 3: Export, Share & Direct CTAs */}
             <button
               className="dock-tool icon-only"
               onClick={() => void handleSaveAnnotatedImage()}
-              title="保存带批注图片 (PNG)"
               aria-label="保存图片"
+              {...tipProps('保存图片 (PNG)')}
             >
               <ImageDown size={15} />
             </button>
             <button
               className="dock-tool icon-only"
               onClick={() => void handlePinCurrentPage()}
-              title="桌面置顶贴图窗"
               aria-label="贴图"
+              {...tipProps('桌面置顶贴图窗')}
             >
               <Pin size={15} />
             </button>
             <button
               className="dock-tool icon-only"
               onClick={triggerImport}
-              title="导入本地图片或组图项目 (Ctrl+I)"
               aria-label="导入图片"
+              {...tipProps('导入图片或项目 (Ctrl+I)')}
             >
               <ImagePlus size={15} />
             </button>
 
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <button className="dock-tool icon-only" title="更多操作与项目输出" aria-label="更多操作">
+                <button
+                  className="dock-tool icon-only"
+                  aria-label="更多操作"
+                  {...tipProps('更多操作')}
+                >
                   <MoreHorizontal size={15} />
                 </button>
               </DropdownMenu.Trigger>
@@ -2540,20 +2673,15 @@ export default function WorkspaceView({
                     <Save size={14} /> 保存项目 (.edithere)
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleCopyFeedbackBundle()}>
-                    <FolderOutput size={14} /> 复制 JSON 与脱敏原图
+                    <FolderOutput size={14} /> 复制 JSON 与原图
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void copyJson()}>
-                    <Copy size={14} /> 复制实时 JSON 文本
+                    <Copy size={14} /> 复制 JSON 文本
                   </DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => setJsonOpen(true)}>
                     <Code2 size={14} /> 查看 / 导出 JSON
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator className="dropdown-separator" />
-                  {onCapture && (
-                    <DropdownMenu.Item className="dropdown-item" onSelect={onCapture}>
-                      <Camera size={14} /> 重新截图
-                    </DropdownMenu.Item>
-                  )}
                   <DropdownMenu.Item
                     className="dropdown-item"
                     onSelect={() => {
@@ -2568,14 +2696,34 @@ export default function WorkspaceView({
             </DropdownMenu.Root>
 
             <button
+              className="dock-tool copy-cta"
+              onClick={() => void handleCopyAnnotatedImage()}
+              {...tipProps('复制带批注与图片到剪贴板')}
+            >
+              <ClipboardCopy size={14} />
+              <span>复制带批注与图片</span>
+            </button>
+
+            <button
               className="dock-tool analyze-cta"
               onClick={onAnalyze}
-              title="打开 AI 解析视图（基于脱敏后截图与批注）"
+              {...tipProps('打开 AI 解析视图')}
             >
               <Sparkles size={14} />
               <span>AI 解析</span>
             </button>
           </div>
+
+          {/* Instant Responsive Tooltip Overlay */}
+          {dockTip && (
+            <div
+              className={`instant-tooltip ${dockTip.placement}`}
+              style={{ left: dockTip.left, top: dockTip.top }}
+              role="tooltip"
+            >
+              {dockTip.text}
+            </div>
+          )}
         </div>
 
         {/* Multi-Page Gallery Strip */}
@@ -2724,7 +2872,7 @@ export default function WorkspaceView({
 
           <Tabs.Content value="group" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="inspector-subbar">
-              <span>作用于多页、共享组件或主题 Token</span>
+              <span>跨页面共用修改意见</span>
               <button className="button ghost sm" onClick={addGlobalGroupNote}>
                 <Plus size={14} /> 添加整组意见
               </button>
@@ -2773,8 +2921,8 @@ export default function WorkspaceView({
           </Tabs.Content>
 
           <div className="inspector-footer">
-            <button className="button secondary" onClick={() => setJsonOpen(true)}>
-              <Code2 size={15} /> 查看 JSON
+            <button className="button secondary" onClick={() => void handleCopyFeedbackBundle()}>
+              <FolderOutput size={15} /> 复制 JSON 与图片
             </button>
 
             <button className="button primary" onClick={onAnalyze}>
@@ -2789,13 +2937,13 @@ export default function WorkspaceView({
           <Dialog.Overlay className="dialog-overlay" />
           <Dialog.Content className="dialog-content">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Dialog.Title className="dialog-title">实时反馈 JSON（image-set-feedback-1）</Dialog.Title>
+              <Dialog.Title className="dialog-title">实时反馈 JSON</Dialog.Title>
               <Dialog.Close className="icon-button" aria-label="关闭">
                 <X size={16} />
               </Dialog.Close>
             </div>
             <Dialog.Description className="dialog-desc">
-              仅附带存在批注或布局位移的页面；未批注页面只留在 pageIndex 中作为索引。
+              仅导出包含批注或布局调整的页面。
             </Dialog.Description>
             <pre className="json-preview-pre">{liveJson}</pre>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>

@@ -71,11 +71,12 @@
   justify-content: space-between;
   gap: 8px;
   pointer-events: none;
-  z-index: 16;
 }
 
 .canvas-top-hud > * {
   pointer-events: auto;
+  position: relative;
+  z-index: 16;
 }
 
 .canvas-top-right-hud {
@@ -194,7 +195,7 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 52px 24px 86px;
+  padding: 58px 24px 88px;
   overflow: auto;
 }
 
@@ -208,6 +209,7 @@
 }
 
 .canvas-stage-inner {
+  position: relative;
   flex: 1;
   width: 100%;
   height: 100%;
@@ -216,6 +218,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10;
+}
+
+.canvas-stage-inner:has(.has-popover) {
+  z-index: 22;
 }
 
 .artboard {
@@ -233,8 +240,29 @@
   transition: none;
 }
 
-.artboard.cursor-crosshair {
-  cursor: crosshair;
+.artboard.cursor-crosshair,
+.artboard.drawing-tool-active,
+.artboard.drawing-tool-active .mosaic-canvas,
+.artboard.drawing-tool-active .brush-svg-layer {
+  cursor: crosshair !important;
+}
+
+.artboard.drawing-tool-active .box-annotation-rect,
+.artboard.drawing-tool-active .mosaic-region-outline {
+  pointer-events: none;
+  cursor: crosshair !important;
+}
+
+.artboard.drawing-tool-active .corner-badge.interactive,
+.artboard.drawing-tool-active .point-pin,
+.artboard.drawing-tool-active .inline-note-popover,
+.artboard.drawing-tool-active .inline-note-popover * {
+  pointer-events: auto;
+}
+
+.artboard.drawing-tool-active .corner-badge.interactive,
+.artboard.drawing-tool-active .point-pin {
+  cursor: pointer !important;
 }
 
 .artboard-media {
@@ -376,21 +404,13 @@
   flex-shrink: 0;
 }
 
-/* Apple Intelligence Flowing Rainbow Perimeter Ripple (Explode Mode) */
-.explode-apple-frame {
+/* Brief Apple Intelligence Flowing Rainbow Perimeter Ripple (Explode Entry Only) */
+.explosion-wave {
   position: absolute;
-  inset: -3px;
-  border-radius: calc(var(--r-card) + 3px);
+  inset: -4px;
+  border-radius: calc(var(--r-card) + 4px);
   pointer-events: none;
   z-index: 18;
-}
-
-.explode-apple-frame::before,
-.explode-apple-frame::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
   background: conic-gradient(
     from var(--apple-glow-angle),
     #0a84ff,
@@ -402,56 +422,29 @@
     #64d2ff,
     #0a84ff
   );
-  animation: appleGlowRotate 4.2s linear infinite;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-}
-
-.explode-apple-frame::before {
-  padding: 3.5px;
-  filter: blur(11px);
-  opacity: 0.72;
-}
-
-.explode-apple-frame::after {
-  padding: 2px;
-  opacity: 0.94;
-}
-
-.explosion-wave {
-  position: absolute;
-  inset: -4px;
-  border-radius: calc(var(--r-card) + 4px);
-  pointer-events: none;
-  z-index: 17;
-  background: conic-gradient(
-    from var(--apple-glow-angle),
-    rgba(10, 132, 255, 0.45),
-    rgba(191, 90, 242, 0.45),
-    rgba(255, 55, 95, 0.45),
-    rgba(255, 159, 10, 0.45),
-    rgba(48, 209, 88, 0.45),
-    rgba(10, 132, 255, 0.45)
-  );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
   padding: 4px;
-  filter: blur(6px);
-  animation: explosionRippleOut 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  filter: blur(5px);
+  animation:
+    appleGlowRotate 1.4s linear infinite,
+    explosionRippleOut 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes explosionRippleOut {
   0% {
     opacity: 0.95;
-    transform: scale(0.97);
+    transform: scale(0.985);
+  }
+  55% {
+    opacity: 0.72;
+    transform: scale(1.012);
   }
   100% {
     opacity: 0;
-    transform: scale(1.035);
+    transform: scale(1.03);
   }
 }
 
@@ -541,6 +534,7 @@
 .corner-badge.interactive {
   pointer-events: auto;
   cursor: pointer;
+  z-index: 35;
 }
 
 .corner-badge.interactive:hover {
@@ -549,8 +543,33 @@
 }
 
 .corner-badge.explode {
+  left: 12px;
+  top: -13px;
+  z-index: 14;
   background: var(--explode);
   color: #ffffff;
+}
+
+/* Enlarged badges when right inspector is collapsed (inline mode), shrink back when open */
+.workspace-root.inspector-collapsed .corner-badge {
+  left: -14px;
+  top: -14px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.workspace-root.inspector-collapsed .corner-badge.explode {
+  left: 13px;
+  top: -16px;
+}
+
+.workspace-root.inspector-collapsed .point-pin {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  font-size: 13px;
 }
 
 .point-pin {
@@ -570,6 +589,8 @@
   place-items: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   z-index: 9;
+  cursor: pointer;
+  transition: transform 0.12s ease, min-width 0.14s ease, height 0.14s ease, font-size 0.14s ease;
 }
 
 .point-pin.draggable {
@@ -581,7 +602,7 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
-/* On-Frame Inline Hover/Edit Note Popover (when right inspector is collapsed) */
+/* On-Frame Inline Hover/Edit Note Popover: ALWAYS above badge with hover bridge */
 .inline-note-anchor {
   position: absolute;
   z-index: 25;
@@ -589,8 +610,8 @@
 
 .inline-note-popover {
   position: absolute;
-  left: -10px;
-  bottom: calc(100% + 14px);
+  left: -12px;
+  bottom: calc(100% + 16px);
   width: 272px;
   padding: 10px 11px;
   border-radius: var(--r-panel);
@@ -604,12 +625,39 @@
   text-align: left;
 }
 
-.inline-note-popover.place-below {
-  bottom: auto;
-  top: calc(100% + 14px);
+.workspace-root.inspector-collapsed .inline-note-popover {
+  left: -14px;
+  bottom: calc(100% + 20px);
+}
+
+.inline-note-popover::after {
+  content: '';
+  position: absolute;
+  left: -12px;
+  right: -12px;
+  top: 100%;
+  height: 10px;
+}
+
+.explode-block .inline-note-popover {
+  left: 10px;
+}
+
+.workspace-root.inspector-collapsed .explode-block .inline-note-popover {
+  left: 13px;
+  bottom: calc(100% + 22px);
+}
+
+.inline-note-anchor .inline-note-popover {
+  bottom: calc(100% + 20px);
 }
 
 .inline-note-popover.place-left {
+  left: auto;
+  right: -10px;
+}
+
+.explode-block .inline-note-popover.place-left {
   left: auto;
   right: -10px;
 }
@@ -749,24 +797,6 @@
   pointer-events: none;
   z-index: 11;
   overflow: visible;
-}
-
-.explode-delta-pill {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 2px 6px;
-  border-radius: var(--r-micro);
-  background: var(--glass-strong);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--line-strong);
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: var(--shadow-sm);
-  pointer-events: none;
 }
 
 /* PixPin Two-Tier Contextual Sub-bar floating 8px above .floating-dock */
@@ -940,12 +970,48 @@
   color: #ffffff;
 }
 
+.dock-tool.copy-cta {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  padding: 0 11px;
+  margin-left: 2px;
+}
+
+.dock-tool.copy-cta:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+  color: var(--accent);
+}
+
 .dock-tool.analyze-cta {
   background: var(--accent);
   color: var(--on-accent);
   padding: 0 11px;
   margin-left: 2px;
   box-shadow: 0 1px 3px rgba(0, 122, 255, 0.26);
+}
+
+/* Instant Responsive Tooltip Layer */
+.instant-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 4px 9px;
+  border-radius: var(--r-control);
+  background: rgba(18, 20, 26, 0.92);
+  color: #f5f5f7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
+  z-index: 60;
+}
+
+.instant-tooltip.below {
+  transform: translate(-50%, 0);
 }
 
 .dock-tool.analyze-cta:hover:not(:disabled) {
@@ -1199,6 +1265,9 @@
 
 /* On narrow/short viewports: canvas NEVER shrinks vertically; inspector slides over as right drawer */
 @media (max-width: 960px) {
+  .canvas-meta-chip span:nth-last-child(-n+2) {
+    display: none;
+  }
   .workspace-root {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);

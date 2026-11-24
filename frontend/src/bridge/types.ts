@@ -1,7 +1,10 @@
 export type BridgeMode = 'desktop-webview' | 'web-agent' | 'mcp-app' | 'preview-shell';
 export type ViewId = 'workspace' | 'analysis' | 'settings';
-export type SettingsTabId = 'general' | 'providers' | 'about';
+export type SettingsTabId = 'general' | 'shortcuts' | 'capture' | 'providers' | 'diagnostics';
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type LanguageCode = 'system' | 'zh_CN' | 'zh_TW' | 'en';
+export type OcrLanguageCode = 'system' | 'zh_CN' | 'en';
+export type UpdateSourceId = 'auto' | 'atomgit' | 'github' | 'gitee';
 export type ToolMode = 'select' | 'pan' | 'smart' | 'point' | 'box' | 'brush' | 'explode' | 'mosaic' | 'crop';
 export type AnnotationKind = 'region' | 'point' | 'global';
 
@@ -79,6 +82,7 @@ export interface GalleryPage {
   height: number;
   sceneId?: 'home' | 'inventory' | 'settings';
   imageUrl?: string;
+  isVideo?: boolean;
   blocks: ExplodeBlock[];
   annotations: AnnotationItem[];
   mosaics?: MosaicRegion[];
@@ -112,13 +116,60 @@ export interface ProviderConfig {
   saved: boolean;
 }
 
+export interface ShortcutDefinitionItem {
+  id: string;
+  label: string;
+  global: boolean;
+  defaultKey: string;
+}
+
+export interface TrayActionDefinitionItem {
+  id: string;
+  label: string;
+}
+
 export interface GeneralPreferences {
+  language: LanguageCode;
+  ocrLanguage: OcrLanguageCode;
+  captureOnStartup: boolean;
+  launchAtLogin: boolean;
+  launchAtLoginNotice: string;
+  fitImageOnOpen: boolean;
+  confirmBeforeDiscard: boolean;
+  defaultTool: number;
+  traySingleClick: string;
+  trayDoubleClick: string;
+  trayActions: TrayActionDefinitionItem[];
   includeCoordinates: boolean;
   includeOcr: boolean;
+  includeRecognizedText: boolean;
+  includeWindowTitle: boolean;
+  exportMode: 'file' | 'embedded' | 'none';
+  copyJsonTextWithImage: boolean;
   captureShadow: boolean;
-  compactDensity: boolean;
-  exportMode: 'file' | 'embedded';
-  language: '简体中文' | '繁體中文' | 'English';
+  captureCornerRadius: number;
+  feedbackDir: string;
+  scrollAxis: 'vertical' | 'horizontal';
+  scrollAutoCrop: boolean;
+  scrollUltraLong: boolean;
+  checkUpdatesOnStartup: boolean;
+  updateSource: UpdateSourceId;
+  shortcuts: Record<string, string>;
+  shortcutDefinitions: ShortcutDefinitionItem[];
+}
+
+export interface DiagnosticsInfo {
+  directory: string;
+  fileCount: number;
+  lastError: string;
+}
+
+export interface UpdateCheckResult {
+  status: 'available' | 'upToDate' | 'failed';
+  tagName?: string;
+  currentVersion?: string;
+  url?: string;
+  message?: string;
 }
 
 export interface DoctorSnapshot {

@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowLeft,
-  Check,
   Copy,
   FileText,
   LoaderCircle,
   RefreshCw,
   Settings2,
-  ShieldCheck,
   Sparkles,
   Square,
 } from 'lucide-react';
@@ -170,7 +168,6 @@ export default function AnalysisView({
       <div className="page-heading">
         <div>
           <h1>AI 解析</h1>
-          <p>自动对马赛克遮挡区域做防泄漏重绘后再交付模型，结合批注、画笔与布局位移输出结构化需求。</p>
         </div>
         <button className="button secondary sm" onClick={onBack}>
           <ArrowLeft size={14} /> 返回工作台
@@ -217,11 +214,6 @@ export default function AnalysisView({
                 <img src={redactedPreviewUrl} alt={selectedPage.name} />
               ) : (
                 <SceneArtwork sceneId={selectedPage.sceneId} imageUrl={selectedPage.imageUrl} />
-              )}
-              {mosaicCount > 0 && (
-                <span className="badge success analysis-redacted-tag">
-                  <ShieldCheck size={12} /> 已遮罩 {mosaicCount} 处敏感区域 · AI 不可见
-                </span>
               )}
             </div>
           ) : (
@@ -302,20 +294,14 @@ export default function AnalysisView({
         </section>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
-          <Check size={14} />
-          发送给模型前已烘焙马赛克遮罩像素，敏感信息不会泄露给 AI
-        </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="button secondary" onClick={() => void handleAnalyze()}>
-            {busy ? <Square size={13} /> : <Sparkles size={14} />}
-            {busy ? '停止解析' : isDesktopWebView() && hasDesktopPages ? 'AI 重新解析' : '本地生成清单'}
-          </button>
-          <button className="button primary" onClick={() => void copyText()}>
-            <Copy size={14} /> 复制修改说明
-          </button>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
+        <button className="button secondary" onClick={() => void handleAnalyze()}>
+          {busy ? <Square size={13} /> : <Sparkles size={14} />}
+          {busy ? '停止解析' : isDesktopWebView() && hasDesktopPages ? 'AI 重新解析' : '本地生成清单'}
+        </button>
+        <button className="button primary" onClick={() => void copyText()}>
+          <Copy size={14} /> 复制修改说明
+        </button>
       </div>
     </div>
   );

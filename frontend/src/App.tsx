@@ -17,11 +17,14 @@ import {
   buildFeedbackPayload,
   createInitialPages,
   createInitialProviders,
+  INITIAL_DIAGNOSTICS_INFO,
   INITIAL_DOCTOR_SNAPSHOT,
   INITIAL_GROUP_NOTES,
+  INITIAL_PREFERENCES,
   previewShellBridge,
 } from './bridge/mockBridge';
 import type {
+  DiagnosticsInfo,
   DoctorSnapshot,
   GalleryPage,
   GeneralPreferences,
@@ -65,20 +68,17 @@ export default function App() {
   const [activePageId, setActivePageId] = useState<string>('home');
   const [groupNotes, setGroupNotes] = useState<GroupNote[]>(() => INITIAL_GROUP_NOTES);
   const [doctor, setDoctor] = useState<DoctorSnapshot>(INITIAL_DOCTOR_SNAPSHOT);
+  const [diagnosticsInfo, setDiagnosticsInfo] = useState<DiagnosticsInfo>(INITIAL_DIAGNOSTICS_INFO);
   const [desktopConnected, setDesktopConnected] = useState(false);
   const [hasDesktopPages, setHasDesktopPages] = useState(false);
 
   const [providers, setProviders] = useState<ProviderConfig[]>(() => createInitialProviders());
   const [defaultProviderId, setDefaultProviderId] = useState('openai');
 
-  const [preferences, setPreferences] = useState<GeneralPreferences>({
-    includeCoordinates: true,
-    includeOcr: true,
-    captureShadow: true,
-    compactDensity: false,
-    exportMode: 'file',
-    language: '简体中文',
-  });
+  const [preferences, setPreferences] = useState<GeneralPreferences>(() => ({
+    ...INITIAL_PREFERENCES,
+    shortcuts: { ...INITIAL_PREFERENCES.shortcuts },
+  }));
 
   const notify = (msg: string) => {
     clearTimeout(toastTimer.current);
@@ -119,6 +119,77 @@ export default function App() {
       }
     };
 
+    const hydratePreferences = (p: Record<string, unknown>) => {
+      if (p.theme === 'light' || p.theme === 'dark' || p.theme === 'system') {
+        setTheme(p.theme);
+      }
+      setPreferences((prev) => ({
+        ...prev,
+        language:
+          p.language === 'system' || p.language === 'zh_CN' || p.language === 'zh_TW' || p.language === 'en'
+            ? p.language
+            : prev.language,
+        ocrLanguage:
+          p.ocrLanguage === 'system' || p.ocrLanguage === 'zh_CN' || p.ocrLanguage === 'en'
+            ? p.ocrLanguage
+            : prev.ocrLanguage,
+        captureOnStartup:
+          typeof p.captureOnStartup === 'boolean' ? p.captureOnStartup : prev.captureOnStartup,
+        launchAtLogin: typeof p.launchAtLogin === 'boolean' ? p.launchAtLogin : prev.launchAtLogin,
+        launchAtLoginNotice:
+          typeof p.launchAtLoginNotice === 'string' ? p.launchAtLoginNotice : prev.launchAtLoginNotice,
+        fitImageOnOpen: typeof p.fitImageOnOpen === 'boolean' ? p.fitImageOnOpen : prev.fitImageOnOpen,
+        confirmBeforeDiscard:
+          typeof p.confirmBeforeDiscard === 'boolean' ? p.confirmBeforeDiscard : prev.confirmBeforeDiscard,
+        defaultTool: typeof p.defaultTool === 'number' ? p.defaultTool : prev.defaultTool,
+        traySingleClick: typeof p.traySingleClick === 'string' ? p.traySingleClick : prev.traySingleClick,
+        trayDoubleClick: typeof p.trayDoubleClick === 'string' ? p.trayDoubleClick : prev.trayDoubleClick,
+        trayActions: Array.isArray(p.trayActions)
+          ? (p.trayActions as GeneralPreferences['trayActions'])
+          : prev.trayActions,
+        includeOcr: typeof p.includeOcr === 'boolean' ? p.includeOcr : prev.includeOcr,
+        includeRecognizedText:
+          typeof p.includeRecognizedText === 'boolean'
+            ? p.includeRecognizedText
+            : prev.includeRecognizedText,
+        includeWindowTitle:
+          typeof p.includeWindowTitle === 'boolean' ? p.includeWindowTitle : prev.includeWindowTitle,
+        exportMode:
+          p.exportMode === 'embedded' || p.exportMode === 'none' || p.exportMode === 'file'
+            ? p.exportMode
+            : prev.exportMode,
+        copyJsonTextWithImage:
+          typeof p.copyJsonTextWithImage === 'boolean'
+            ? p.copyJsonTextWithImage
+            : prev.copyJsonTextWithImage,
+        captureShadow: typeof p.captureShadow === 'boolean' ? p.captureShadow : prev.captureShadow,
+        captureCornerRadius:
+          typeof p.captureCornerRadius === 'number' ? p.captureCornerRadius : prev.captureCornerRadius,
+        feedbackDir: typeof p.feedbackDir === 'string' ? p.feedbackDir : prev.feedbackDir,
+        scrollAxis: p.scrollAxis === 'horizontal' ? 'horizontal' : p.scrollAxis === 'vertical' ? 'vertical' : prev.scrollAxis,
+        scrollAutoCrop: typeof p.scrollAutoCrop === 'boolean' ? p.scrollAutoCrop : prev.scrollAutoCrop,
+        scrollUltraLong: typeof p.scrollUltraLong === 'boolean' ? p.scrollUltraLong : prev.scrollUltraLong,
+        checkUpdatesOnStartup:
+          typeof p.checkUpdatesOnStartup === 'boolean'
+            ? p.checkUpdatesOnStartup
+            : prev.checkUpdatesOnStartup,
+        updateSource:
+          p.updateSource === 'auto' ||
+          p.updateSource === 'atomgit' ||
+          p.updateSource === 'github' ||
+          p.updateSource === 'gitee'
+            ? p.updateSource
+            : prev.updateSource,
+        shortcuts:
+          p.shortcuts && typeof p.shortcuts === 'object'
+            ? (p.shortcuts as Record<string, string>)
+            : prev.shortcuts,
+        shortcutDefinitions: Array.isArray(p.shortcutDefinitions)
+          ? (p.shortcutDefinitions as GeneralPreferences['shortcutDefinitions'])
+          : prev.shortcutDefinitions,
+      }));
+    };
+
     const applyDesktopState = (state: Record<string, unknown>) => {
       if (typeof state.agentMode === 'boolean') {
         setAgentMode(state.agentMode);
@@ -126,24 +197,14 @@ export default function App() {
       if (state.doctor && typeof state.doctor === 'object') {
         setDoctor(state.doctor as DoctorSnapshot);
       }
+      if (state.diagnostics && typeof state.diagnostics === 'object') {
+        setDiagnosticsInfo(state.diagnostics as DiagnosticsInfo);
+      }
       if (state.ai && typeof state.ai === 'object') {
         applyAiState(state.ai as Record<string, unknown>);
       }
       if (state.preferences && typeof state.preferences === 'object') {
-        const p = state.preferences as Record<string, unknown>;
-        if (p.theme === 'light' || p.theme === 'dark' || p.theme === 'system') {
-          setTheme(p.theme);
-        }
-        setPreferences((prev) => ({
-          ...prev,
-          includeOcr: typeof p.includeOcr === 'boolean' ? p.includeOcr : prev.includeOcr,
-          captureShadow: typeof p.captureShadow === 'boolean' ? p.captureShadow : prev.captureShadow,
-          exportMode: p.exportMode === 'embedded' ? 'embedded' : 'file',
-          language:
-            p.language === 'English' || p.language === '繁體中文' || p.language === '简体中文'
-              ? p.language
-              : prev.language,
-        }));
+        hydratePreferences(state.preferences as Record<string, unknown>);
       }
       if (typeof state.hasDesktopPages === 'boolean') {
         setHasDesktopPages(state.hasDesktopPages);
@@ -172,6 +233,12 @@ export default function App() {
         } else if (v === 'providers') {
           setSettingsTab('providers');
           setView('settings');
+        } else if (v === 'diagnostics' || v === 'about') {
+          setSettingsTab('diagnostics');
+          setView('settings');
+        } else if (v === 'shortcuts') {
+          setSettingsTab('shortcuts');
+          setView('settings');
         }
       }
     });
@@ -191,6 +258,9 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.target as HTMLElement | null)?.closest('.shortcut-capture-btn.recording')) {
+        return;
+      }
       if (event.ctrlKey || event.metaKey) {
         if (event.key === '1') {
           event.preventDefault();
@@ -238,14 +308,227 @@ export default function App() {
   const handleChangeTheme = (nextTheme: ThemeMode) => {
     setTheme(nextTheme);
     if (isDesktopWebView()) {
-      desktopRpc('settings.save', { theme: nextTheme }).catch(() => {});
+      desktopRpc('settings.save', { theme: nextTheme }).catch((err) => {
+        notify(err instanceof Error ? err.message : '切换主题失败');
+      });
     }
   };
 
-  const handleChangePreferences = (nextPrefs: GeneralPreferences) => {
-    setPreferences(nextPrefs);
-    if (isDesktopWebView()) {
-      desktopRpc('settings.save', { ...nextPrefs }).catch(() => {});
+  const handleSaveSettingsPatch = async (patch: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+    if (!isDesktopWebView()) {
+      setPreferences((prev) => ({
+        ...prev,
+        ...(patch as Partial<GeneralPreferences>),
+      }));
+      return { ok: true };
+    }
+    try {
+      const updated = await desktopRpc<Record<string, unknown>>('settings.save', patch);
+      setPreferences((prev) => ({
+        ...prev,
+        language:
+          updated.language === 'system' ||
+          updated.language === 'zh_CN' ||
+          updated.language === 'zh_TW' ||
+          updated.language === 'en'
+            ? updated.language
+            : prev.language,
+        ocrLanguage:
+          updated.ocrLanguage === 'system' ||
+          updated.ocrLanguage === 'zh_CN' ||
+          updated.ocrLanguage === 'en'
+            ? updated.ocrLanguage
+            : prev.ocrLanguage,
+        captureOnStartup:
+          typeof updated.captureOnStartup === 'boolean'
+            ? updated.captureOnStartup
+            : prev.captureOnStartup,
+        launchAtLogin:
+          typeof updated.launchAtLogin === 'boolean' ? updated.launchAtLogin : prev.launchAtLogin,
+        launchAtLoginNotice:
+          typeof updated.launchAtLoginNotice === 'string'
+            ? updated.launchAtLoginNotice
+            : prev.launchAtLoginNotice,
+        fitImageOnOpen:
+          typeof updated.fitImageOnOpen === 'boolean' ? updated.fitImageOnOpen : prev.fitImageOnOpen,
+        confirmBeforeDiscard:
+          typeof updated.confirmBeforeDiscard === 'boolean'
+            ? updated.confirmBeforeDiscard
+            : prev.confirmBeforeDiscard,
+        defaultTool: typeof updated.defaultTool === 'number' ? updated.defaultTool : prev.defaultTool,
+        traySingleClick:
+          typeof updated.traySingleClick === 'string' ? updated.traySingleClick : prev.traySingleClick,
+        trayDoubleClick:
+          typeof updated.trayDoubleClick === 'string' ? updated.trayDoubleClick : prev.trayDoubleClick,
+        includeOcr: typeof updated.includeOcr === 'boolean' ? updated.includeOcr : prev.includeOcr,
+        includeRecognizedText:
+          typeof updated.includeRecognizedText === 'boolean'
+            ? updated.includeRecognizedText
+            : prev.includeRecognizedText,
+        includeWindowTitle:
+          typeof updated.includeWindowTitle === 'boolean'
+            ? updated.includeWindowTitle
+            : prev.includeWindowTitle,
+        exportMode:
+          updated.exportMode === 'embedded' ||
+          updated.exportMode === 'none' ||
+          updated.exportMode === 'file'
+            ? updated.exportMode
+            : prev.exportMode,
+        copyJsonTextWithImage:
+          typeof updated.copyJsonTextWithImage === 'boolean'
+            ? updated.copyJsonTextWithImage
+            : prev.copyJsonTextWithImage,
+        captureShadow:
+          typeof updated.captureShadow === 'boolean' ? updated.captureShadow : prev.captureShadow,
+        captureCornerRadius:
+          typeof updated.captureCornerRadius === 'number'
+            ? updated.captureCornerRadius
+            : prev.captureCornerRadius,
+        feedbackDir: typeof updated.feedbackDir === 'string' ? updated.feedbackDir : prev.feedbackDir,
+        scrollAxis: updated.scrollAxis === 'horizontal' ? 'horizontal' : 'vertical',
+        scrollAutoCrop:
+          typeof updated.scrollAutoCrop === 'boolean' ? updated.scrollAutoCrop : prev.scrollAutoCrop,
+        scrollUltraLong:
+          typeof updated.scrollUltraLong === 'boolean' ? updated.scrollUltraLong : prev.scrollUltraLong,
+        checkUpdatesOnStartup:
+          typeof updated.checkUpdatesOnStartup === 'boolean'
+            ? updated.checkUpdatesOnStartup
+            : prev.checkUpdatesOnStartup,
+        updateSource:
+          updated.updateSource === 'auto' ||
+          updated.updateSource === 'atomgit' ||
+          updated.updateSource === 'github' ||
+          updated.updateSource === 'gitee'
+            ? updated.updateSource
+            : prev.updateSource,
+        shortcuts:
+          updated.shortcuts && typeof updated.shortcuts === 'object'
+            ? (updated.shortcuts as Record<string, string>)
+            : prev.shortcuts,
+      }));
+      return { ok: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '保存设置失败';
+      notify(msg);
+      return { ok: false, error: msg };
+    }
+  };
+
+  const handleResetShortcuts = async () => {
+    if (!isDesktopWebView()) {
+      setPreferences((prev) => ({
+        ...prev,
+        shortcuts: { ...INITIAL_PREFERENCES.shortcuts },
+      }));
+      notify('已恢复默认快捷键');
+      return;
+    }
+    try {
+      const updated = await desktopRpc<Record<string, unknown>>('settings.resetShortcuts');
+      if (updated.shortcuts && typeof updated.shortcuts === 'object') {
+        setPreferences((prev) => ({ ...prev, shortcuts: updated.shortcuts as Record<string, string> }));
+      }
+      notify('已恢复默认快捷键');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '恢复默认快捷键失败');
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    if (!isDesktopWebView()) {
+      setTheme('system');
+      setPreferences({ ...INITIAL_PREFERENCES, shortcuts: { ...INITIAL_PREFERENCES.shortcuts } });
+      notify('已恢复全部默认设置');
+      return;
+    }
+    try {
+      const updated = await desktopRpc<Record<string, unknown>>('settings.resetDefaults');
+      if (updated.theme === 'light' || updated.theme === 'dark' || updated.theme === 'system') {
+        setTheme(updated.theme);
+      }
+      setPreferences((prev) => ({
+        ...prev,
+        language:
+          updated.language === 'system' ||
+          updated.language === 'zh_CN' ||
+          updated.language === 'zh_TW' ||
+          updated.language === 'en'
+            ? updated.language
+            : prev.language,
+        ocrLanguage:
+          updated.ocrLanguage === 'system' ||
+          updated.ocrLanguage === 'zh_CN' ||
+          updated.ocrLanguage === 'en'
+            ? updated.ocrLanguage
+            : prev.ocrLanguage,
+        captureOnStartup:
+          typeof updated.captureOnStartup === 'boolean'
+            ? updated.captureOnStartup
+            : prev.captureOnStartup,
+        launchAtLogin:
+          typeof updated.launchAtLogin === 'boolean' ? updated.launchAtLogin : prev.launchAtLogin,
+        fitImageOnOpen:
+          typeof updated.fitImageOnOpen === 'boolean' ? updated.fitImageOnOpen : prev.fitImageOnOpen,
+        confirmBeforeDiscard:
+          typeof updated.confirmBeforeDiscard === 'boolean'
+            ? updated.confirmBeforeDiscard
+            : prev.confirmBeforeDiscard,
+        defaultTool: typeof updated.defaultTool === 'number' ? updated.defaultTool : prev.defaultTool,
+        traySingleClick:
+          typeof updated.traySingleClick === 'string' ? updated.traySingleClick : prev.traySingleClick,
+        trayDoubleClick:
+          typeof updated.trayDoubleClick === 'string' ? updated.trayDoubleClick : prev.trayDoubleClick,
+        includeOcr: typeof updated.includeOcr === 'boolean' ? updated.includeOcr : prev.includeOcr,
+        includeRecognizedText:
+          typeof updated.includeRecognizedText === 'boolean'
+            ? updated.includeRecognizedText
+            : prev.includeRecognizedText,
+        includeWindowTitle:
+          typeof updated.includeWindowTitle === 'boolean'
+            ? updated.includeWindowTitle
+            : prev.includeWindowTitle,
+        exportMode:
+          updated.exportMode === 'embedded' ||
+          updated.exportMode === 'none' ||
+          updated.exportMode === 'file'
+            ? updated.exportMode
+            : prev.exportMode,
+        copyJsonTextWithImage:
+          typeof updated.copyJsonTextWithImage === 'boolean'
+            ? updated.copyJsonTextWithImage
+            : prev.copyJsonTextWithImage,
+        captureShadow:
+          typeof updated.captureShadow === 'boolean' ? updated.captureShadow : prev.captureShadow,
+        captureCornerRadius:
+          typeof updated.captureCornerRadius === 'number'
+            ? updated.captureCornerRadius
+            : prev.captureCornerRadius,
+        feedbackDir: typeof updated.feedbackDir === 'string' ? updated.feedbackDir : prev.feedbackDir,
+        scrollAxis: updated.scrollAxis === 'horizontal' ? 'horizontal' : 'vertical',
+        scrollAutoCrop:
+          typeof updated.scrollAutoCrop === 'boolean' ? updated.scrollAutoCrop : prev.scrollAutoCrop,
+        scrollUltraLong:
+          typeof updated.scrollUltraLong === 'boolean' ? updated.scrollUltraLong : prev.scrollUltraLong,
+        checkUpdatesOnStartup:
+          typeof updated.checkUpdatesOnStartup === 'boolean'
+            ? updated.checkUpdatesOnStartup
+            : prev.checkUpdatesOnStartup,
+        updateSource:
+          updated.updateSource === 'auto' ||
+          updated.updateSource === 'atomgit' ||
+          updated.updateSource === 'github' ||
+          updated.updateSource === 'gitee'
+            ? updated.updateSource
+            : prev.updateSource,
+        shortcuts:
+          updated.shortcuts && typeof updated.shortcuts === 'object'
+            ? (updated.shortcuts as Record<string, string>)
+            : prev.shortcuts,
+      }));
+      notify('已恢复全部默认设置');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '恢复默认设置失败');
     }
   };
 
@@ -339,7 +622,7 @@ export default function App() {
           { payload: redactedPayload },
           0
         );
-        notify(`已写入批注与脱敏画面并提交返回 AI（共 ${res.annotations ?? totalNotesCount} 条）`);
+        notify(`已写入批注并提交返回 AI（共 ${res.annotations ?? totalNotesCount} 条）`);
       } catch (err) {
         notify(err instanceof Error ? err.message : '提交返回失败');
       }
@@ -364,7 +647,7 @@ export default function App() {
   const totalNotesCount = pages.reduce((acc, p) => acc + p.annotations.length, 0) + groupNotes.length;
 
   return (
-    <div className={`app-shell ${preferences.compactDensity ? 'density-compact' : ''}`}>
+    <div className="app-shell">
       {/* Full-Width Seamless Translucent Window Header (Zero Left Sidebar) */}
       <header className="topbar">
         <div className="topbar-left">
@@ -432,8 +715,8 @@ export default function App() {
 
           <button
             className={`icon-button ${view === 'settings' ? 'is-active' : ''}`}
-            aria-label="设置、模型服务与关于"
-            title="设置、模型服务与关于 (Ctrl+,)"
+            aria-label="设置与关于"
+            title="设置与关于 (Ctrl+,)"
             onClick={() => setView((cur) => (cur === 'settings' ? 'workspace' : 'settings'))}
           >
             <Settings size={15} />
@@ -450,7 +733,7 @@ export default function App() {
             groupNotes={groupNotes}
             includeOcr={preferences.includeOcr}
             onToggleOcr={() =>
-              handleChangePreferences({ ...preferences, includeOcr: !preferences.includeOcr })
+              void handleSaveSettingsPatch({ includeOcr: !preferences.includeOcr })
             }
             onCapture={handleCaptureStart}
             onSelectPage={setActivePageId}
@@ -488,7 +771,11 @@ export default function App() {
                 theme={theme}
                 onChangeTheme={handleChangeTheme}
                 preferences={preferences}
-                onChangePreferences={handleChangePreferences}
+                onSavePatch={handleSaveSettingsPatch}
+                onResetShortcuts={handleResetShortcuts}
+                onResetDefaults={handleResetDefaults}
+                diagnosticsInfo={diagnosticsInfo}
+                onUpdateDiagnosticsInfo={setDiagnosticsInfo}
                 doctor={doctor}
                 desktopConnected={desktopConnected}
                 providers={providers}

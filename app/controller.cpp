@@ -197,6 +197,7 @@ B2Window *Controller::ensureB2Window() {
             const bool langChanged = settings_.language != next.language;
             settings_ = next;
             editor_.setPreferences(settings_);
+            editor_.setShortcuts(settings_.shortcuts);
             applyTheme(settings_.theme);
             if (langChanged) {
                 installLanguage(settings_.language);
@@ -204,6 +205,90 @@ B2Window *Controller::ensureB2Window() {
             } else {
                 updateTrayShortcut();
             }
+        });
+        b2Window_->setSettingsApplyHandler([this](const AppSettings &next) -> QString {
+            if (auto error = validateSettings(next); !error.isEmpty())
+                return error;
+            const auto previousLanguage = settings_.language;
+            if (!installLanguage(next.language))
+                return tr("界面语言加载失败，请重新安装 EditHere。");
+
+            const bool globalShortcutsChanged =
+                next.shortcuts.value("capture") != settings_.shortcuts.value("capture") ||
+                next.shortcuts.value("annotate") != settings_.shortcuts.value("annotate");
+            const auto oldShortcut = shortcut_.sequence();
+            const auto oldAnnotateShortcut = annotateShortcut_.sequence();
+            auto restoreShortcuts = [&] {
+                shortcut_.stop();
+                annotateShortcut_.stop();
+                QString err;
+                if (!shortcut_.start(oldShortcut))
+                    err += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
+                if (!annotateShortcut_.start(oldAnnotateShortcut))
+                    err += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
+                return err;
+            };
+            if (globalShortcutsChanged) {
+                shortcut_.stop();
+                annotateShortcut_.stop();
+                if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable()) {
+                    const auto err = shortcut_.lastError().isEmpty()
+                                         ? tr("截图快捷键无法注册，请更换组合键。")
+                                         : shortcut_.lastError();
+                    return err + restoreShortcuts();
+                }
+                if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable()) {
+                    const auto err = annotateShortcut_.lastError().isEmpty()
+                                         ? tr("新建批注快捷键无法注册，请更换组合键。")
+                                         : tr("新建批注（空窗口）：") + annotateShortcut_.lastError();
+                    return err + restoreShortcuts();
+                }
+            }
+
+            QString startupError;
+            const bool wasRegistered = launchAtLoginEnabled(&startupError);
+            const bool loginRequestedChange = next.launchAtLogin != settings_.launchAtLogin;
+            bool startupChanged = false;
+            if (startupError.isEmpty()) {
+                startupChanged = wasRegistered != next.launchAtLogin;
+                if (startupChanged) {
+                    QString loginErr;
+                    if (!setLaunchAtLoginEnabled(next.launchAtLogin, &loginErr)) {
+                        if (globalShortcutsChanged)
+                            loginErr += restoreShortcuts();
+                        return loginErr;
+                    }
+                }
+            } else if (loginRequestedChange) {
+                if (globalShortcutsChanged)
+                    startupError += restoreShortcuts();
+                return startupError;
+            }
+
+            QString saveErr;
+            if (!saveSettings(next, &saveErr, settingsFile_)) {
+                if (next.language != previousLanguage)
+                    installLanguage(previousLanguage);
+                if (startupChanged) {
+                    QString rollbackErr;
+                    if (!setLaunchAtLoginEnabled(wasRegistered, &rollbackErr))
+                        saveErr += tr("\n开机自启未能恢复：") + rollbackErr;
+                }
+                if (globalShortcutsChanged)
+                    saveErr += restoreShortcuts();
+                return saveErr;
+            }
+
+            settings_ = next;
+            trayClickTimer_.stop();
+            editor_.setPreferences(settings_);
+            editor_.setShortcuts(settings_.shortcuts);
+            applyTheme(settings_.theme);
+            if (next.language != previousLanguage)
+                retranslate();
+            else
+                updateTrayShortcut();
+            return {};
         });
         connect(b2Window_.get(), &B2Window::agentSessionCompleted, this,
                 [this](const QString &output, int annotationCount, const QString &schemaVersion,
@@ -354,9 +439,9 @@ void Controller::openFromTray() {
     });
 }
 void Controller::openSettings(bool updates, bool toolbar) {
-    if (useB2Ui_ && !updates && !toolbar) {
+    if (useB2Ui_ && !toolbar) {
         showCurrentWindow();
-        ensureB2Window()->navigateToView("settings");
+        ensureB2Window()->navigateToView(updates ? "diagnostics" : "settings");
         return;
     }
     openSettingsDialog(updates, toolbar);

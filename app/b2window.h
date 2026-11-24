@@ -7,12 +7,14 @@
 #include "imageset.h"
 #include "ocr.h"
 #include "settings.h"
+#include "updatechecker.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QMap>
 #include <QVector>
+#include <functional>
 
 namespace h2d {
 
@@ -41,6 +43,8 @@ class B2Window final : public QMainWindow {
     void setAgentSession(bool active, const QString &outputPath = {},
                          const FeedbackExportOptions &options = {});
     void setPreferences(const AppSettings &settings);
+    using SettingsApplyHandler = std::function<QString(const AppSettings &)>;
+    void setSettingsApplyHandler(SettingsApplyHandler handler) { settingsApplyHandler_ = std::move(handler); }
     void navigateToView(const QString &viewId);
     void triggerOpenDialog();
 
@@ -73,6 +77,7 @@ class B2Window final : public QMainWindow {
 
     QJsonObject buildSessionStateJson() const;
     QJsonObject buildDoctorSnapshotJson() const;
+    QJsonObject buildDiagnosticsJson() const;
     QJsonObject buildPreferencesJson() const;
     QJsonObject buildAiStateJson() const;
     QJsonArray buildPagesJson() const;
@@ -92,6 +97,10 @@ class B2Window final : public QMainWindow {
     void handleSaveImageDialog(const QJsonValue &rpcId, const QJsonObject &params);
     void handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params);
     void handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &params);
+    void handleDiagnosticsExport(const QJsonValue &rpcId);
+    void handleDiagnosticsOpenFolder(const QJsonValue &rpcId);
+    void handleUpdatesCheck(const QJsonValue &rpcId);
     void handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAiSaveProviders(const QJsonValue &rpcId, const QJsonObject &params);
@@ -103,11 +112,14 @@ class B2Window final : public QMainWindow {
     OcrEngine *ocr_ = nullptr;
     AiCredentials *aiCredentials_ = nullptr;
     AiFeedbackClient *aiClient_ = nullptr;
+    UpdateChecker *updater_ = nullptr;
+    SettingsApplyHandler settingsApplyHandler_;
     AppSettings settings_;
     QString settingsFile_;
     QMap<QString, QString> apiKeys_;
     QJsonValue pendingAiTestId_;
     QJsonValue pendingAiAnalyzeId_;
+    QJsonValue pendingUpdateCheckId_;
     qint64 lastInputTokens_ = 0;
     qint64 lastOutputTokens_ = 0;
 

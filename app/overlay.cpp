@@ -30,6 +30,22 @@ constexpr double kRowHeight = 18;
 // the keyboard can do. Each one is a slot the panel paints into.
 enum Slot { kPixelSlot, kRgbSlot, kHexSlot, kHsvSlot, kHslSlot };
 constexpr int kSlotCount = 5;
+double rectOverlapRatio(QRect a, QRect b) {
+    const QRect inter = a.intersected(b);
+    if (inter.isEmpty())
+        return 0.0;
+    const qint64 interArea = qint64(inter.width()) * inter.height();
+    const qint64 unionArea = qint64(a.width()) * a.height() + qint64(b.width()) * b.height() - interArea;
+    return unionArea > 0 ? double(interArea) / unionArea : 0.0;
+}
+double rectContainedRatio(QRect inner, QRect outer) {
+    const qint64 innerArea = qint64(inner.width()) * inner.height();
+    if (innerArea <= 0)
+        return 0.0;
+    const QRect inter = inner.intersected(outer);
+    const qint64 interArea = qint64(inter.width()) * inter.height();
+    return double(interArea) / innerArea;
+}
 } // namespace
 
 Overlay::Overlay(ScreenFrame frame, QWidget *parent)
@@ -115,7 +131,7 @@ void Overlay::requestDetection() {
             full["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
             visual_.append({QRect(QPoint(0, 0), frame_.image.size()), full});
             if (selected_.isEmpty()) {
-                picker_.update(candidates(), cursor_);
+                picker_.update(candidates(), cursor_, false, shouldPreferWindow());
                 update();
             }
         }
@@ -172,16 +188,82 @@ QVector<Candidate> Overlay::candidates() const {
     if(frame_.windowScopeAvailable) {
         if(!front) { auto target=manualTarget(); target["label"]=QT_TRANSLATE_NOOP("EditHere", "整个屏幕"); return {{frame_.image.rect(),target}}; }
         QVector<Candidate> result;
-        for(const auto &candidate:native_)
-            if(front->bounds.contains(candidate.bounds)) result.append(candidate);
-        for(const auto &candidate:visual_)
-            if(front->bounds.contains(candidate.bounds) && candidate.bounds!=front->bounds) result.append(candidate);
+        for(auto candidate:native_) {
+            if(rectContainedRatio(candidate.bounds, front->bounds) < 0.85)
+                continue;
+            const QRect clipped = candidate.bounds.intersected(front->bounds);
+            if(clipped.width() < 12 || clipped.height() < 10 || clipped == front->bounds ||
+               rectOverlapRatio(clipped, front->bounds) >= 0.92)
+                continue;
+            candidate.target["clipped"] = candidate.target["clipped"].toBool() || clipped != candidate.bounds;
+            candidate.bounds = clipped;
+            result.append(candidate);
+        }
+        const int nativeCount = result.size();
+        for(auto candidate:visual_) {
+            if(rectContainedRatio(candidate.bounds, front->bounds) < 0.88)
+                continue;
+            const QRect clipped = candidate.bounds.intersected(front->bounds);
+            if(clipped.width() < 12 || clipped.height() < 10 || clipped == front->bounds ||
+               rectOverlapRatio(clipped, front->bounds) >= 0.82)
+                continue;
+            bool shadowedByNative = false;
+            for(int i = 0; i < nativeCount; ++i) {
+                if(rectOverlapRatio(clipped, result.at(i).bounds) >= 0.85) {
+                    shadowedByNative = true;
+                    break;
+                }
+            }
+            if(shadowedByNative)
+                continue;
+            candidate.bounds = clipped;
+            result.append(candidate);
+        }
         result.append(*front);
+        if(front->bounds != frame_.image.rect() &&
+           rectOverlapRatio(front->bounds, frame_.image.rect()) < 0.95) {
+            auto screenTarget = manualTarget();
+            screenTarget["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
+            result.append({frame_.image.rect(), screenTarget});
+        }
         return result;
     }
     auto result = native_;
     result += visual_;
     return result;
+}
+bool Overlay::shouldPreferWindow() const {
+    if (!frame_.windowScopeAvailable)
+        return false;
+    const Candidate *front = nullptr;
+    for (const auto &window : frame_.frontWindows) {
+        if (window.bounds.contains(cursor_)) {
+            front = &window;
+            break;
+        }
+    }
+    if (!front || front->target.value("source").toString() != QLatin1String("window"))
+        return false;
+    const QRect fb = front->bounds;
+    if (cursor_.y() - fb.top() <= 48 || cursor_.x() - fb.left() <= 14 ||
+        fb.right() - cursor_.x() <= 14 || fb.bottom() - cursor_.y() <= 14)
+        return true;
+    const qint64 winArea = std::max<qint64>(1, qint64(fb.width()) * fb.height());
+    qint64 smallestUiaArea = std::numeric_limits<qint64>::max();
+    bool hasUiaSubElement = false;
+    for (const auto &cand : native_) {
+        if (!cand.bounds.contains(cursor_) || rectContainedRatio(cand.bounds, fb) < 0.85)
+            continue;
+        const QRect clipped = cand.bounds.intersected(fb);
+        if (clipped.width() < 12 || clipped.height() < 10 || clipped == fb ||
+            rectOverlapRatio(clipped, fb) >= 0.92)
+            continue;
+        hasUiaSubElement = true;
+        smallestUiaArea = std::min(smallestUiaArea, qint64(clipped.width()) * clipped.height());
+    }
+    if (!hasUiaSubElement)
+        return true;
+    return double(smallestUiaArea) / winArea > 0.55;
 }
 void Overlay::resetSelection() {
     selected_ = {};
@@ -248,9 +330,27 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
     }
     p.setPen(QPen(accent(), 1.5));
     p.drawRoundedRect(outline, radius, radius);
-    // Compact PixPin-grade dimension readout while dragging or when clear of toolbar.
+    // Compact PixPin-grade dimension readout while dragging or hovering a candidate/window.
     {
-        const QString dimText = QStringLiteral("%1 × %2").arg(active.width()).arg(active.height());
+        QString dimText = QStringLiteral("%1 × %2").arg(active.width()).arg(active.height());
+        if (!drawing_ && selected_.isEmpty()) {
+            if (const auto current = picker_.current()) {
+                if (current->target.value("source").toString() == QLatin1String("window")) {
+                    QString winHint;
+                    for (const auto &cw : frame_.captureWindows) {
+                        if (cw.bounds == current->bounds) {
+                            winHint = !cw.windowTitle.isEmpty() ? cw.windowTitle : cw.appName;
+                            break;
+                        }
+                    }
+                    if (winHint.isEmpty())
+                        winHint = tr("窗口");
+                    if (winHint.size() > 22)
+                        winHint = winHint.left(21) + QStringLiteral("…");
+                    dimText += QStringLiteral(" · %1").arg(winHint);
+                }
+            }
+        }
         QFont dimFont(QStringLiteral("Consolas"));
         dimFont.setStyleHint(QFont::Monospace);
         dimFont.setPointSizeF(9.0);
@@ -503,7 +603,7 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     nudged_ = false;
     setCursor(Qt::BlankCursor);
     setFocus();
-    picker_.update(candidates(), start_);
+    picker_.update(candidates(), start_, false, shouldPreferWindow());
     drawing_ = true;
     selected_ = {};
     update();
@@ -570,7 +670,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (drawing_)
         selected_ = captureRectFromDrag(start_, cursor_, ratio_, bar_->customWidth(), bar_->customHeight());
     else if (!ready_ && selected_.isEmpty()) {
-        picker_.update(candidates(), cursor_);
+        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
         debounce_.start();
     }
     updateCursor();
@@ -621,7 +721,7 @@ void Overlay::wheelEvent(QWheelEvent *e) {
         return;
     pointer_ = e->position();
     cursor_ = pixelPoint(e->position());
-    picker_.update(candidates(), cursor_);
+    picker_.update(candidates(), cursor_, false, shouldPreferWindow());
     if (e->angleDelta().y() != 0)
         picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
     update();
@@ -759,8 +859,15 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         // offer is kept while the pointer is still inside it. A mouse that travels is
         // not fine-tuning: there the block follows the pointer, which is the whole
         // point of finding blocks by hovering.
-        picker_.update(candidates(), cursor_, true);
+        picker_.update(candidates(), cursor_, true, shouldPreferWindow());
         debounce_.start();
+        update();
+        e->accept();
+        return;
+    }
+    if (e->key() == Qt::Key_Tab && selected_.isEmpty() && !drawing_ && !picking_) {
+        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
+        picker_.toggleWindow();
         update();
         e->accept();
         return;
@@ -1211,7 +1318,7 @@ void Overlay::requestProbe() {
                         }
                     }
                     if (selected_.isEmpty() && !drawing_) {
-                        picker_.update(candidates(), cursor_);
+                        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
                         update();
                     }
                 }

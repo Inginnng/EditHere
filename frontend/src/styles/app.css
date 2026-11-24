@@ -220,10 +220,6 @@ textarea:focus-visible {
   padding: 26px 32px 44px;
 }
 
-.density-compact .page-container {
-  padding: 18px 24px 30px;
-}
-
 .page-heading {
   display: flex;
   align-items: flex-start;
@@ -442,10 +438,6 @@ textarea:focus-visible {
 .settings-row:hover {
   background: color-mix(in srgb, var(--fill) 45%, transparent);
 }
-.density-compact .settings-row {
-  min-height: 48px;
-  padding: 10px 14px;
-}
 .settings-row-icon {
   width: 30px;
   height: 30px;
@@ -478,6 +470,66 @@ textarea:focus-visible {
   border-radius: var(--r-micro);
   background: var(--fill);
   color: var(--secondary);
+}
+
+.settings-inline-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.settings-input {
+  height: 30px;
+  min-width: 190px;
+  padding: 0 9px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--line-strong);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.shortcut-capture-btn {
+  min-width: 156px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--line-strong);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  transition: border-color 0.14s, background 0.14s, box-shadow 0.14s;
+}
+
+.shortcut-capture-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.shortcut-capture-btn.recording {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.shortcut-capture-btn.empty {
+  color: var(--muted);
+}
+
+.settings-error-banner {
+  padding: 10px 14px;
+  border-radius: var(--r-card);
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: 12.5px;
+  margin-bottom: 14px;
 }
 
 /* Providers View */

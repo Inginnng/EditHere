@@ -1,26 +1,46 @@
+import { useState, type KeyboardEvent } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Switch from '@radix-ui/react-switch';
 import {
   ArrowLeft,
+  ArrowUpRight,
+  Camera,
   CheckCircle2,
   ChevronDown,
   Copy,
+  Download,
   FileCode2,
+  FolderOpen,
   Globe,
+  HardDriveDownload,
+  Keyboard,
   Layers,
+  LoaderCircle,
+  Maximize2,
+  MousePointerClick,
   Palette,
+  Power,
+  RotateCcw,
   ScanText,
+  ScrollText,
+  ShieldAlert,
   ShieldCheck,
-  SlidersHorizontal,
   Terminal,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import type {
+  DiagnosticsInfo,
   DoctorSnapshot,
   GeneralPreferences,
+  LanguageCode,
+  OcrLanguageCode,
   ProviderConfig,
   SettingsTabId,
   ThemeMode,
+  UpdateCheckResult,
+  UpdateSourceId,
 } from '../bridge/types';
 import ProvidersView from './ProvidersView';
 
@@ -32,7 +52,11 @@ interface SettingsViewProps {
   theme: ThemeMode;
   onChangeTheme: (theme: ThemeMode) => void;
   preferences: GeneralPreferences;
-  onChangePreferences: (next: GeneralPreferences) => void;
+  onSavePatch: (patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+  onResetShortcuts: () => Promise<void> | void;
+  onResetDefaults: () => Promise<void> | void;
+  diagnosticsInfo: DiagnosticsInfo;
+  onUpdateDiagnosticsInfo: (info: DiagnosticsInfo) => void;
   doctor: DoctorSnapshot;
   desktopConnected?: boolean;
   providers: ProviderConfig[];
@@ -42,14 +66,70 @@ interface SettingsViewProps {
   onToast: (message: string) => void;
 }
 
-const SHORTCUTS = [
-  { key: 'V / G', desc: '选择移动 / 拖动画布（或按住 Space 临时拖拽）' },
-  { key: 'R / P / S', desc: '框选批注 / 点批注 / 智能吸附选块' },
-  { key: 'B / M / C', desc: '画笔标记 / 马赛克遮罩 / 交互式裁剪' },
-  { key: 'E / Esc', desc: '进入视觉大爆炸拆解 / 退出当前选择或裁剪' },
-  { key: 'Ctrl + Z / Y', desc: '撤销 / 重做（含马赛克、画笔与裁剪还原）' },
-  { key: 'H / Ctrl + I', desc: '显隐批注标记 / 导入本地图片或项目' },
-];
+const LANGUAGE_LABELS: Record<LanguageCode, string> = {
+  system: '跟随系统',
+  zh_CN: '简体中文',
+  zh_TW: '繁體中文',
+  en: 'English',
+};
+
+const OCR_LANGUAGE_LABELS: Record<OcrLanguageCode, string> = {
+  system: '跟随系统',
+  zh_CN: '简体中文',
+  en: 'English',
+};
+
+const TOOL_LABELS = ['智能选块', '点批注', '框选批注', '选择与移动'];
+
+const UPDATE_SOURCE_LABELS: Record<UpdateSourceId, string> = {
+  auto: '自动',
+  atomgit: 'AtomGit',
+  github: 'GitHub',
+  gitee: 'Gitee',
+};
+
+function keyEventToPortable(event: KeyboardEvent<HTMLButtonElement>): string | null {
+  const modifierKeys = new Set(['Control', 'Shift', 'Alt', 'Meta', 'OS', 'AltGraph']);
+  if (modifierKeys.has(event.key)) return null;
+
+  let keyName = '';
+  if (event.code.startsWith('Key') && event.code.length === 4) {
+    keyName = event.code.slice(3).toUpperCase();
+  } else if (event.code.startsWith('Digit') && event.code.length === 6) {
+    keyName = event.code.slice(5);
+  } else if (/^F([1-9]|1\d|2[0-4])$/.test(event.key)) {
+    keyName = event.key;
+  } else {
+    const special: Record<string, string> = {
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right',
+      Delete: 'Del',
+      Escape: 'Esc',
+      Insert: 'Ins',
+      Backspace: 'Backspace',
+      Enter: 'Return',
+      Tab: 'Tab',
+      Home: 'Home',
+      End: 'End',
+      PageUp: 'PgUp',
+      PageDown: 'PgDown',
+      PrintScreen: 'Print',
+      Pause: 'Pause',
+      ' ': 'Space',
+    };
+    keyName = special[event.key] ?? (event.key.length === 1 ? event.key.toUpperCase() : '');
+  }
+  if (!keyName) return null;
+
+  const mods: string[] = [];
+  if (event.ctrlKey) mods.push('Ctrl');
+  if (event.altKey) mods.push('Alt');
+  if (event.shiftKey) mods.push('Shift');
+  if (event.metaKey) mods.push('Meta');
+  return [...mods, keyName].join('+');
+}
 
 export default function SettingsView({
   activeTab,
@@ -59,7 +139,11 @@ export default function SettingsView({
   theme,
   onChangeTheme,
   preferences,
-  onChangePreferences,
+  onSavePatch,
+  onResetShortcuts,
+  onResetDefaults,
+  diagnosticsInfo,
+  onUpdateDiagnosticsInfo,
   doctor,
   desktopConnected = false,
   providers,
@@ -68,6 +152,108 @@ export default function SettingsView({
   onTestProvider,
   onToast,
 }: SettingsViewProps) {
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [shortcutError, setShortcutError] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null);
+  const [exportingDiag, setExportingDiag] = useState(false);
+
+  const commitPatch = async (patch: Record<string, unknown>, okToast?: string) => {
+    const res = await onSavePatch(patch);
+    if (res.ok) {
+      setShortcutError('');
+      if (okToast) onToast(okToast);
+    }
+    return res;
+  };
+
+  const applyShortcut = async (id: string, sequence: string) => {
+    const res = await onSavePatch({
+      shortcuts: { ...preferences.shortcuts, [id]: sequence },
+    });
+    if (!res.ok && res.error) {
+      setShortcutError(res.error);
+    } else {
+      setShortcutError('');
+      onToast(sequence ? `已设置快捷键 ${sequence}` : '已停用该快捷键');
+    }
+  };
+
+  const handleChooseFeedbackDir = async () => {
+    if (!isDesktopWebView()) {
+      onToast('请在桌面客户端中选择反馈目录');
+      return;
+    }
+    try {
+      const res = await desktopRpc<{ cancelled?: boolean; path?: string }>('settings.chooseFeedbackDir', {}, 0);
+      if (!res.cancelled && typeof res.path === 'string') {
+        await commitPatch({ feedbackDir: res.path }, '已更新反馈临时目录');
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '选择目录失败');
+    }
+  };
+
+  const handleExportDiagnostics = async () => {
+    if (!isDesktopWebView()) {
+      onToast('请在桌面客户端中导出诊断日志');
+      return;
+    }
+    setExportingDiag(true);
+    try {
+      const res = await desktopRpc<{ saved?: boolean; path?: string }>('diagnostics.export', {}, 0);
+      if (res.saved && res.path) {
+        onToast(`已导出诊断日志：${res.path}`);
+      }
+      const fresh = await desktopRpc<DiagnosticsInfo>('diagnostics.getInfo').catch(() => null);
+      if (fresh) onUpdateDiagnosticsInfo(fresh);
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '导出诊断日志失败');
+    } finally {
+      setExportingDiag(false);
+    }
+  };
+
+  const handleOpenDiagnosticsFolder = async () => {
+    if (!isDesktopWebView()) {
+      onToast('请在桌面客户端中打开日志目录');
+      return;
+    }
+    try {
+      await desktopRpc('diagnostics.openFolder');
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '打开日志目录失败');
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    if (!isDesktopWebView()) {
+      setUpdateStatus({ status: 'upToDate', message: '预览环境已是最新前端资源。' });
+      return;
+    }
+    setCheckingUpdate(true);
+    try {
+      const res = await desktopRpc<UpdateCheckResult>('updates.check', {}, 35000);
+      setUpdateStatus(res);
+      if (res.message) onToast(res.message);
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '检查更新失败');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleOpenReleases = async () => {
+    const targetUrl = updateStatus?.url || '';
+    if (isDesktopWebView()) {
+      await desktopRpc('updates.openReleases', { url: targetUrl }).catch((err) => {
+        onToast(err instanceof Error ? err.message : '无法打开发布页');
+      });
+    } else if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const copyMcpSnippet = async () => {
     try {
       if (isDesktopWebView()) {
@@ -75,39 +261,43 @@ export default function SettingsView({
       } else {
         await navigator.clipboard.writeText(doctor.unifiedMcpSnippet);
       }
-      onToast('已复制统一 MCP 配置 JSON（cli/unified-mcp.mjs）');
+      onToast('已复制 MCP 配置 JSON');
     } catch {
       onToast('剪贴板访问受限');
     }
   };
 
+  const trayLabel = (id: string) =>
+    preferences.trayActions.find((a) => a.id === id)?.label ?? id;
+
+  const globalShortcuts = preferences.shortcutDefinitions.filter((d) => d.global);
+  const localShortcuts = preferences.shortcutDefinitions.filter((d) => !d.global);
+
   return (
     <div className="page-container">
       <div className="page-heading">
         <div>
-          <h1>设置与系统中心</h1>
-          <p>统一管理外观、模型服务凭据、MCP/CLI 环境自检与关于信息。</p>
+          <h1>设置</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="segmented-control" role="tablist" aria-label="设置分页">
-            <button
-              className={activeTab === 'general' ? 'selected' : ''}
-              onClick={() => onChangeTab('general')}
-            >
-              常规与诊断
-            </button>
-            <button
-              className={activeTab === 'providers' ? 'selected' : ''}
-              onClick={() => onChangeTab('providers')}
-            >
-              模型服务
-            </button>
-            <button
-              className={activeTab === 'about' ? 'selected' : ''}
-              onClick={() => onChangeTab('about')}
-            >
-              关于 EditHere
-            </button>
+            {(
+              [
+                { id: 'general', label: '常规' },
+                { id: 'shortcuts', label: '快捷键' },
+                { id: 'capture', label: '截图与导出' },
+                { id: 'providers', label: '模型服务' },
+                { id: 'diagnostics', label: '诊断与关于' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                className={activeTab === tab.id ? 'selected' : ''}
+                onClick={() => onChangeTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
           <button className="button secondary sm" onClick={onBack}>
             <ArrowLeft size={14} /> 返回工作台
@@ -118,13 +308,12 @@ export default function SettingsView({
       {activeTab === 'general' && (
         <>
           <section className="settings-group" style={{ marginTop: 0 }}>
-            <h2>外观与界面</h2>
+            <h2>外观与语言</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><Palette size={19} /></span>
+                <span className="settings-row-icon"><Palette size={18} /></span>
                 <div className="settings-row-label">
                   <strong>应用主题</strong>
-                  <p>所有页面与截屏浮层共享同一套建筑感几何语义 Token。</p>
                 </div>
                 <div className="segmented-control" aria-label="应用主题">
                   {([
@@ -144,45 +333,54 @@ export default function SettingsView({
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><SlidersHorizontal size={19} /></span>
-                <div className="settings-row-label">
-                  <strong>紧凑布局密度</strong>
-                  <p>收窄卡片上下留白，在小尺寸屏幕下容纳更多设置行与批注条目。</p>
-                </div>
-                <Switch.Root
-                  className="ui-switch"
-                  checked={preferences.compactDensity}
-                  onCheckedChange={(v) => onChangePreferences({ ...preferences, compactDensity: v })}
-                >
-                  <Switch.Thumb className="ui-switch-thumb" />
-                </Switch.Root>
-              </div>
-
-              <div className="settings-row">
-                <span className="settings-row-icon"><Globe size={19} /></span>
+                <span className="settings-row-icon"><Globe size={18} /></span>
                 <div className="settings-row-label">
                   <strong>界面语言</strong>
-                  <p>与桌面端多语言词库同步。</p>
                 </div>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
-                      <span>{preferences.language}</span>
+                      <span>{LANGUAGE_LABELS[preferences.language]}</span>
                       <ChevronDown size={14} />
                     </button>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
-                      {(['简体中文', '繁體中文', 'English'] as const).map((lang) => (
+                      {(['system', 'zh_CN', 'zh_TW', 'en'] as LanguageCode[]).map((code) => (
                         <DropdownMenu.Item
-                          key={lang}
+                          key={code}
                           className="dropdown-item"
-                          onSelect={() => {
-                            onChangePreferences({ ...preferences, language: lang });
-                            onToast(`已选择语言：${lang}`);
-                          }}
+                          onSelect={() => void commitPatch({ language: code }, `已切换界面语言：${LANGUAGE_LABELS[code]}`)}
                         >
-                          {lang}
+                          {LANGUAGE_LABELS[code]}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><ScanText size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>文字识别语言</strong>
+                </div>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="button secondary sm">
+                      <span>{OCR_LANGUAGE_LABELS[preferences.ocrLanguage]}</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
+                      {(['system', 'zh_CN', 'en'] as OcrLanguageCode[]).map((code) => (
+                        <DropdownMenu.Item
+                          key={code}
+                          className="dropdown-item"
+                          onSelect={() => void commitPatch({ ocrLanguage: code })}
+                        >
+                          {OCR_LANGUAGE_LABELS[code]}
                         </DropdownMenu.Item>
                       ))}
                     </DropdownMenu.Content>
@@ -193,56 +391,332 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>批注、OCR 与反馈导出</h2>
+            <h2>启动与窗口行为</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
-                <span className="settings-row-icon"><ScanText size={19} /></span>
+                <span className="settings-row-icon"><Camera size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>导出时附带区域 OCR 文字</strong>
-                  <p>框选区域自动在本机识别文本写入 <code>ocrtext</code>；已被马赛克遮挡区域会自动擦除，不泄漏隐私。</p>
+                  <strong>启动后立即截图</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.captureOnStartup}
+                  onCheckedChange={(v) => void commitPatch({ captureOnStartup: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><Power size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>开机时启动 EditHere</strong>
+                  {preferences.launchAtLoginNotice && <p>{preferences.launchAtLoginNotice}</p>}
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.launchAtLogin}
+                  onCheckedChange={(v) => void commitPatch({ launchAtLogin: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><Maximize2 size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>打开图片时自动适应窗口</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.fitImageOnOpen}
+                  onCheckedChange={(v) => void commitPatch({ fitImageOnOpen: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><ShieldAlert size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>关闭批注窗口时询问是否保存</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.confirmBeforeDiscard}
+                  onCheckedChange={(v) => void commitPatch({ confirmBeforeDiscard: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>默认标注工具</strong>
+                </div>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="button secondary sm">
+                      <span>{TOOL_LABELS[preferences.defaultTool] ?? TOOL_LABELS[0]}</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
+                      {TOOL_LABELS.map((label, idx) => (
+                        <DropdownMenu.Item
+                          key={label}
+                          className="dropdown-item"
+                          onSelect={() => void commitPatch({ defaultTool: idx })}
+                        >
+                          {label}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-group">
+            <h2>系统托盘</h2>
+            <div className="settings-card-stack">
+              <div className="settings-row">
+                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>托盘图标单击</strong>
+                </div>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="button secondary sm">
+                      <span>{trayLabel(preferences.traySingleClick)}</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
+                      {preferences.trayActions.map((act) => (
+                        <DropdownMenu.Item
+                          key={act.id}
+                          className="dropdown-item"
+                          onSelect={() => void commitPatch({ traySingleClick: act.id })}
+                        >
+                          {act.label}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><MousePointerClick size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>托盘图标双击</strong>
+                </div>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="button secondary sm">
+                      <span>{trayLabel(preferences.trayDoubleClick)}</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
+                      {preferences.trayActions.map((act) => (
+                        <DropdownMenu.Item
+                          key={act.id}
+                          className="dropdown-item"
+                          onSelect={() => void commitPatch({ trayDoubleClick: act.id })}
+                        >
+                          {act.label}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'shortcuts' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+              点击录制新快捷键，清空则停用。
+            </span>
+            <button
+              className="button secondary sm"
+              onClick={() => {
+                setShortcutError('');
+                void onResetShortcuts();
+              }}
+            >
+              <RotateCcw size={13} /> 恢复默认快捷键
+            </button>
+          </div>
+
+          {shortcutError && <div className="settings-error-banner">{shortcutError}</div>}
+
+          {[
+            { title: '全局快捷键', list: globalShortcuts },
+            { title: '应用内快捷键', list: localShortcuts },
+          ].map((group) => (
+            <section key={group.title} className="settings-group" style={group.title === '全局快捷键' ? { marginTop: 0 } : undefined}>
+              <h2>{group.title}</h2>
+              <div className="settings-card-stack">
+                {group.list.map((def) => {
+                  const val = preferences.shortcuts[def.id] ?? '';
+                  const recording = recordingId === def.id;
+                  return (
+                    <div key={def.id} className="settings-row">
+                      <span className="settings-row-icon"><Keyboard size={17} /></span>
+                      <div className="settings-row-label">
+                        <strong>{def.label}</strong>
+                      </div>
+                      <div className="settings-inline-controls">
+                        <button
+                          type="button"
+                          className={`shortcut-capture-btn ${recording ? 'recording' : ''} ${!val ? 'empty' : ''}`}
+                          onClick={() => setRecordingId(recording ? null : def.id)}
+                          onBlur={() => setRecordingId((cur) => (cur === def.id ? null : cur))}
+                          onKeyDown={(e) => {
+                            if (!recording) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (e.key === 'Escape' && def.id !== 'close') {
+                              setRecordingId(null);
+                              return;
+                            }
+                            if (e.key === 'Backspace' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+                              setRecordingId(null);
+                              void applyShortcut(def.id, '');
+                              return;
+                            }
+                            const combo = keyEventToPortable(e);
+                            if (!combo) return;
+                            setRecordingId(null);
+                            void applyShortcut(def.id, combo);
+                          }}
+                        >
+                          {recording ? '请按下组合键…' : val || '未绑定'}
+                        </button>
+                        {val && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`清空 ${def.label} 快捷键`}
+                            onClick={() => void applyShortcut(def.id, '')}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </>
+      )}
+
+      {activeTab === 'capture' && (
+        <>
+          <section className="settings-group" style={{ marginTop: 0 }}>
+            <h2>批注导出与 OCR</h2>
+            <div className="settings-card-stack">
+              <div className="settings-row">
+                <span className="settings-row-icon"><ScanText size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>导出时附带区域识别文字</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
                   checked={preferences.includeOcr}
-                  onCheckedChange={(v) => onChangePreferences({ ...preferences, includeOcr: v })}
+                  onCheckedChange={(v) => void commitPatch({ includeOcr: v, includeRecognizedText: v })}
                 >
                   <Switch.Thumb className="ui-switch-thumb" />
                 </Switch.Root>
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Layers size={19} /></span>
+                <span className="settings-row-icon"><ScrollText size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>桌面截图柔和投影与圆角</strong>
-                  <p>保留原图真实像素，仅在复制带效果图片或贴图窗口时应用柔和边缘。</p>
+                  <strong>导出时附带窗口标题</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
-                  checked={preferences.captureShadow}
-                  onCheckedChange={(v) => onChangePreferences({ ...preferences, captureShadow: v })}
+                  checked={preferences.includeWindowTitle}
+                  onCheckedChange={(v) => void commitPatch({ includeWindowTitle: v })}
                 >
                   <Switch.Thumb className="ui-switch-thumb" />
                 </Switch.Root>
               </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><FileCode2 size={19} /></span>
+                <span className="settings-row-icon"><FileCode2 size={18} /></span>
                 <div className="settings-row-label">
                   <strong>默认反馈导出模式</strong>
-                  <p>Agent 会话默认使用 JSON + 同目录原图，减少上下文 Base64 占用。</p>
                 </div>
                 <div className="segmented-control">
                   <button
                     className={preferences.exportMode === 'file' ? 'selected' : ''}
-                    onClick={() => onChangePreferences({ ...preferences, exportMode: 'file' })}
+                    onClick={() => void commitPatch({ exportMode: 'file' })}
                   >
-                    JSON + 同目录原图
+                    JSON + 原图文件
                   </button>
                   <button
                     className={preferences.exportMode === 'embedded' ? 'selected' : ''}
-                    onClick={() => onChangePreferences({ ...preferences, exportMode: 'embedded' })}
+                    onClick={() => void commitPatch({ exportMode: 'embedded' })}
                   >
-                    内嵌原图 DataURL
+                    内嵌原图
+                  </button>
+                  <button
+                    className={preferences.exportMode === 'none' ? 'selected' : ''}
+                    onClick={() => void commitPatch({ exportMode: 'none' })}
+                  >
+                    仅 JSON
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><Copy size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>复制 JSON 文本时携带原图信息</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.copyJsonTextWithImage}
+                  onCheckedChange={(v) => void commitPatch({ copyJsonTextWithImage: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><FolderOpen size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>反馈临时目录</strong>
+                  <p>{preferences.feedbackDir || '默认缓存目录'}</p>
+                </div>
+                <div className="settings-inline-controls">
+                  {preferences.feedbackDir && (
+                    <button
+                      className="icon-button"
+                      aria-label="恢复默认目录"
+                      onClick={() => void commitPatch({ feedbackDir: '' }, '已恢复默认反馈目录')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  <button className="button secondary sm" onClick={() => void handleChooseFeedbackDir()}>
+                    选择目录…
                   </button>
                 </div>
               </div>
@@ -250,36 +724,85 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>统一 CLI / MCP 与运行环境自检</h2>
+            <h2>截屏外观与长截图</h2>
             <div className="settings-card-stack">
-              {doctor.checks.map((item) => (
-                <div key={item.id} className="settings-row">
-                  <span className="settings-row-icon">
-                    {item.status === 'ok' ? (
-                      <CheckCircle2 size={19} style={{ color: 'var(--success)' }} />
-                    ) : (
-                      <ShieldCheck size={19} style={{ color: 'var(--warning)' }} />
-                    )}
-                  </span>
-                  <div className="settings-row-label">
-                    <strong>{item.label}</strong>
-                    <p>{item.detail}</p>
-                  </div>
-                  <span className={`badge ${item.status === 'ok' ? 'success' : 'warning'}`}>
-                    {item.status === 'ok' ? '已就绪' : desktopConnected ? '待检查' : '预览模式'}
-                  </span>
+              <div className="settings-row">
+                <span className="settings-row-icon"><Layers size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>桌面截图柔和投影</strong>
                 </div>
-              ))}
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.captureShadow}
+                  onCheckedChange={(v) => void commitPatch({ captureShadow: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
 
               <div className="settings-row">
-                <span className="settings-row-icon"><Terminal size={19} /></span>
+                <span className="settings-row-icon"><Layers size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>统一 MCP 接入配置（自动路由桌面或 Web）</strong>
-                  <p>执行 <code>node cli/edithere.mjs init</code> 可一键向 Codex / Claude / Cursor / Trae 安装 Skill。</p>
+                  <strong>截图默认圆角（{preferences.captureCornerRadius} px）</strong>
                 </div>
-                <button className="button primary sm" onClick={copyMcpSnippet}>
-                  <Copy size={13} /> 复制 MCP 配置
-                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={32}
+                  step={2}
+                  value={preferences.captureCornerRadius}
+                  onChange={(e) => void commitPatch({ captureCornerRadius: Number(e.target.value) })}
+                  style={{ width: 140, accentColor: 'var(--accent)' }}
+                />
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>长截图默认滚动方向</strong>
+                </div>
+                <div className="segmented-control">
+                  <button
+                    className={preferences.scrollAxis === 'vertical' ? 'selected' : ''}
+                    onClick={() => void commitPatch({ scrollAxis: 'vertical' })}
+                  >
+                    纵向
+                  </button>
+                  <button
+                    className={preferences.scrollAxis === 'horizontal' ? 'selected' : ''}
+                    onClick={() => void commitPatch({ scrollAxis: 'horizontal' })}
+                  >
+                    横向
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>长截图自动裁掉固定页眉与页脚</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.scrollAutoCrop}
+                  onCheckedChange={(v) => void commitPatch({ scrollAutoCrop: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><ScrollText size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>超长截图分段拼接模式</strong>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.scrollUltraLong}
+                  onCheckedChange={(v) => void commitPatch({ scrollUltraLong: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
               </div>
             </div>
           </section>
@@ -297,51 +820,172 @@ export default function SettingsView({
         />
       )}
 
-      {activeTab === 'about' && (
-        <div className="settings-card-stack" style={{ padding: 24, gap: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <img
-              src={isDark ? './brand/edithere-lockup-light.svg' : './brand/edithere-lockup.svg'}
-              alt="EditHere"
-              style={{ height: 32, width: 'auto' }}
-            />
-            <span className="badge accent">
-              {desktopConnected ? doctor.desktopVersion : '0.14 B2 Web Shell'}
-            </span>
-          </div>
-
-          <div>
-            <h2 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 600 }}>EditHere · 改这里</h2>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.75, color: 'var(--secondary)' }}>
-              C++20 / Qt6 原生 HDR 截屏、8 锚点智能吸附选区、WinRT 本机离线 OCR、置顶贴图 + Edge WebView2 协同工作台。
-              支持视觉大爆炸组件级拆解与位移跟踪、AI 不可见马赛克脱敏遮罩、画笔自由标注、交互式裁剪与无边栏双模批注（行内直达气泡 + 右侧抽屉）。
-            </p>
-          </div>
-
+      {activeTab === 'diagnostics' && (
+        <>
           <section className="settings-group" style={{ marginTop: 0 }}>
-            <h2>常用快捷键一览</h2>
+            <h2>诊断日志</h2>
             <div className="settings-card-stack">
-              {SHORTCUTS.map((s) => (
-                <div key={s.key} className="settings-row" style={{ minHeight: 44, padding: '8px 14px' }}>
-                  <code style={{
-                    fontFamily: 'var(--mono)',
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    padding: '3px 8px',
-                    borderRadius: 'var(--r-micro)',
-                    background: 'var(--fill)',
-                    color: 'var(--ink)',
-                    minWidth: 110,
-                    textAlign: 'center',
-                  }}>
-                    {s.key}
-                  </code>
-                  <span style={{ fontSize: 12.5, color: 'var(--secondary)' }}>{s.desc}</span>
+              <div className="settings-row">
+                <span className="settings-row-icon"><HardDriveDownload size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>本机运行日志与错误报告</strong>
+                  <p>
+                    <code>{diagnosticsInfo.directory || '尚未初始化'}</code> · {diagnosticsInfo.fileCount} 个日志文件
+                  </p>
+                  {diagnosticsInfo.lastError && (
+                    <p style={{ color: 'var(--danger)' }}>最近写入异常：{diagnosticsInfo.lastError}</p>
+                  )}
                 </div>
-              ))}
+                <div className="settings-inline-controls">
+                  <button
+                    className="button secondary sm"
+                    onClick={() => void handleOpenDiagnosticsFolder()}
+                  >
+                    <FolderOpen size={13} /> 打开日志目录
+                  </button>
+                  <button
+                    className="button primary sm"
+                    disabled={exportingDiag}
+                    onClick={() => void handleExportDiagnostics()}
+                  >
+                    <Download size={13} /> {exportingDiag ? '导出中…' : '导出诊断日志…'}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
-        </div>
+
+          <section className="settings-group">
+            <h2>版本与更新</h2>
+            <div className="settings-card-stack">
+              <div className="settings-row">
+                <span className="settings-row-icon"><CheckCircle2 size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>启动时自动检查更新</strong>
+                  {updateStatus?.message && <p>{updateStatus.message}</p>}
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.checkUpdatesOnStartup}
+                  onCheckedChange={(v) => void commitPatch({ checkUpdatesOnStartup: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><Globe size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>更新源</strong>
+                </div>
+                <div className="settings-inline-controls">
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger asChild>
+                      <button className="button secondary sm">
+                        <span>{UPDATE_SOURCE_LABELS[preferences.updateSource]}</span>
+                        <ChevronDown size={14} />
+                      </button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
+                        {(['auto', 'atomgit', 'github', 'gitee'] as UpdateSourceId[]).map((src) => (
+                          <DropdownMenu.Item
+                            key={src}
+                            className="dropdown-item"
+                            onSelect={() => void commitPatch({ updateSource: src })}
+                          >
+                            {UPDATE_SOURCE_LABELS[src]}
+                          </DropdownMenu.Item>
+                        ))}
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Root>
+                  <button
+                    className="button secondary sm"
+                    disabled={checkingUpdate}
+                    onClick={() => void handleCheckUpdates()}
+                  >
+                    {checkingUpdate && <LoaderCircle size={13} className="spin" />}
+                    检查更新
+                  </button>
+                  <button className="button ghost sm" onClick={() => void handleOpenReleases()}>
+                    打开发布页 <ArrowUpRight size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-group">
+            <h2>运行环境与 MCP 接入</h2>
+            <div className="settings-card-stack">
+              {doctor.checks.map((item) => (
+                <div key={item.id} className="settings-row">
+                  <span className="settings-row-icon">
+                    {item.status === 'ok' ? (
+                      <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
+                    ) : (
+                      <ShieldCheck size={18} style={{ color: 'var(--warning)' }} />
+                    )}
+                  </span>
+                  <div className="settings-row-label">
+                    <strong>{item.label}</strong>
+                    <p>{item.detail}</p>
+                  </div>
+                  <span className={`badge ${item.status === 'ok' ? 'success' : 'warning'}`}>
+                    {item.status === 'ok' ? '已就绪' : desktopConnected ? '待检查' : '预览模式'}
+                  </span>
+                </div>
+              ))}
+
+              <div className="settings-row">
+                <span className="settings-row-icon"><Terminal size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>统一 MCP 配置</strong>
+                  <p>执行 <code>node cli/edithere.mjs init</code> 安装 AI 编程助手 Skill。</p>
+                </div>
+                <button className="button secondary sm" onClick={() => void copyMcpSnippet()}>
+                  <Copy size={13} /> 复制 MCP 配置
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-group">
+            <h2>关于 EditHere</h2>
+            <div className="settings-card-stack" style={{ padding: 20, gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                <img
+                  src={isDark ? './brand/edithere-lockup-light.svg' : './brand/edithere-lockup.svg'}
+                  alt="EditHere"
+                  style={{ height: 30, width: 'auto' }}
+                />
+                <span className="badge accent">
+                  {desktopConnected ? doctor.desktopVersion : '0.14 B2 Web Shell'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <button
+                  className="button ghost sm"
+                  onClick={() => {
+                    const url = 'https://github.com/Inginnng/EditHere';
+                    if (isDesktopWebView()) {
+                      void desktopRpc('shell.openExternal', { url });
+                    } else {
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                >
+                  GitHub 仓库 <ArrowUpRight size={13} />
+                </button>
+                <button className="button secondary sm" onClick={() => void onResetDefaults()}>
+                  <RotateCcw size={13} /> 恢复全部默认设置
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );

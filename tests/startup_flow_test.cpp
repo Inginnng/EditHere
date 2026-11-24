@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QFile>
+#include <QFutureWatcherBase>
 #include <QJsonDocument>
 #include <QSettings>
 #include <QFontDatabase>
@@ -19,6 +20,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -404,6 +406,53 @@ class StartupFlowTests : public QObject {
         QTest::keyClick(&overlay,Qt::Key_Return);
         QCOMPARE(accepted.count(),1);
         QCOMPARE(accepted.first().first().toRect(),QRect(100,100,200,200));
+    }
+    void hybridWindowCapturePrefersRealOsWindow() {
+        QImage shot(800, 600, QImage::Format_RGB32);
+        shot.fill(QColor(220, 224, 232));
+        {
+            QPainter p(&shot);
+            // Draw App A window with header + inner visual panels that detectBlocks() will segment.
+            p.fillRect(QRect(80, 60, 520, 420), QColor(248, 249, 251));
+            p.fillRect(QRect(80, 60, 520, 44), QColor(36, 41, 52));
+            p.fillRect(QRect(110, 140, 210, 120), QColor(210, 225, 248));
+            p.fillRect(QRect(340, 140, 220, 260), QColor(232, 236, 242));
+        }
+        auto winTarget = manualTarget();
+        winTarget["source"] = "window";
+        winTarget["windowId"] = "42";
+
+        ScreenFrame frame;
+        frame.image = shot;
+        frame.logicalGeometry = QRect(0, 0, 800, 600);
+        frame.nativeGeometry = QRect(0, 0, 800, 600);
+        frame.nativePixels = true;
+        frame.windowScopeAvailable = true;
+        frame.elementProbingAllowed = false;
+        frame.frontWindows = {{QRect(80, 60, 520, 420), winTarget}};
+        frame.captureWindows = {{QRect(80, 60, 520, 420), QStringLiteral("App A"), QStringLiteral("appA.exe")}};
+
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+
+        // Hovering inside App A (even over inner visual panels) should select the whole App A window.
+        QTest::mouseMove(&overlay, QPoint(215, 200));
+        QTest::qWait(60);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+
+        // Pressing Tab toggles cleanly down into an inner visual block, and again back to the whole window.
+        QTest::keyClick(&overlay, Qt::Key_Tab);
+        QTest::qWait(30);
+        QVERIFY(overlay.hovered().has_value());
+        QVERIFY(overlay.hovered()->bounds != QRect(80, 60, 520, 420));
+        QTest::keyClick(&overlay, Qt::Key_Tab);
+        QTest::qWait(30);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+        overlay.hide();
     }
     void magnifierToggleDefaultsOn() {
         Editor editor;
