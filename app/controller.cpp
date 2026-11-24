@@ -27,7 +27,9 @@
 #endif
 #include "updateauth.h"
 #include <QApplication>
+#include <QBuffer>
 #include <QClipboard>
+#include <QJsonArray>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
@@ -812,9 +814,13 @@ void Controller::beginCapture(bool fromTray) {
     trayClickTimer_.stop();
     if (fromTray)
         scheduleStartupUpdate();
-    if (!agentSessionId_.isEmpty()) { activate(); return; }
-    if (capturing_ || QApplication::activeModalWidget())
+    if (!agentSessionId_.isEmpty() && !agentCapturePending_) { activate(); return; }
+    if (capturing_ || QApplication::activeModalWidget()) {
+        if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
+            cancelAgentSession(agentSessionId_, "busy", "EditHere is busy with another request, capture or dialog.");
+        }
         return;
+    }
     if (guidePending_) {
         showGuide();
         return;
@@ -823,8 +829,12 @@ void Controller::beginCapture(bool fromTray) {
     editor_.dismissGuide();
     if (auto menu = tray_.contextMenu())
         menu->close();
-    if (!editor_.allowReplace())
+    if (!editor_.allowReplace()) {
+        if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
+            cancelAgentSession(agentSessionId_, "busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
+        }
         return;
+    }
     capturing_ = true;
     captureForeground_ = fromTray ? 0 : foreground;
     // A new capture always starts on the screen, not on whatever was being browsed
@@ -846,6 +856,11 @@ void Controller::beginCapture(bool fromTray) {
                 diagnostics::write(diagnostics::Level::Error, "capture.screens", error);
                 owner->capturing_ = false;
                 owner->restoreAfterCapture();
+                if (owner->agentCapturePending_ && !owner->agentSessionId_.isEmpty()) {
+                    owner->cancelAgentSession(owner->agentSessionId_, "capture_failed",
+                                              error.isEmpty() ? QStringLiteral("Screen capture failed.") : error);
+                    return;
+                }
                 QMessageBox::warning(&owner->editor_, tr("截图未完成"), error);
                 return;
             }
@@ -1682,6 +1697,9 @@ void Controller::abortScrollCapture(const QString &message) {
 void Controller::cancelCapture() {
     clearOverlays();
     restoreAfterCapture();
+    if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
+        cancelAgentSession(agentSessionId_, "cancelled", "User cancelled capture.");
+    }
 }
 void Controller::remember(const QImage &image, const QRect &selection) {
     // The recent captures and the recent selections are what the history is for, and
@@ -1968,16 +1986,41 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
             c.bounds = intersection.translated(-area.topLeft());
             doc.candidates.append(c);
         }
+        const bool attachAgentSession = agentCapturePending_ && !agentSessionId_.isEmpty();
+        const QString pendingContext = agentPageContext_;
+        const bool hasPendingContext = agentHasPageContext_;
+        if (attachAgentSession && hasPendingContext) {
+            doc.capture["page"] = pendingContext;
+            doc.capture["pageSource"] = "agent";
+        }
         clearOverlays();
         if (useB2Ui_) {
-            ensureB2Window()->openCapturedDocument(std::move(doc));
+            auto *w = ensureB2Window();
+            w->openCapturedDocument(std::move(doc), attachAgentSession);
+            if (attachAgentSession) {
+                if (hasPendingContext) w->setPageContext(pendingContext);
+                w->setAgentSession(true, agentOutput_, agentExportOptions_);
+            }
         } else {
             editor_.setDocument(std::move(doc));
+            if (attachAgentSession) {
+                if (hasPendingContext) editor_.setPageContext(pendingContext);
+                editor_.setAgentSession(true);
+            }
+        }
+        if (attachAgentSession) {
+            agentCapturePending_ = false;
+            agentHasPageContext_ = false;
+            agentPageContext_.clear();
         }
     } catch (const std::exception &e) {
         clearOverlays();
         restoreAfterCapture();
         diagnostics::write(diagnostics::Level::Error, "capture.complete", QString::fromUtf8(e.what()));
+        if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
+            cancelAgentSession(agentSessionId_, "capture_failed", QString::fromUtf8(e.what()));
+            return;
+        }
         QMessageBox::warning(&editor_, tr("截图未完成"), QString::fromUtf8(e.what()));
     }
 }
@@ -1998,14 +2041,28 @@ void Controller::quit() {
     tray_.hide();
     qApp->quit();
 }
+bool Controller::hasAnyUnsavedChanges() {
+    return editor_.hasUnsavedChanges() || (useB2Ui_ && b2Window_ && b2Window_->hasUnsavedChanges());
+}
 QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     const auto command = request["command"].toString();
-    if (request.contains("pageContext")) {
-        if ((command != "open" && command != "annotate") || !request["pageContext"].isString())
-            return agentError("invalid_arguments", "pageContext must be a page description for open or annotate.");
-        try { validatePageContext(request["pageContext"].toString().trimmed()); }
-        catch (const std::exception &error) { return agentError("invalid_arguments", QString::fromUtf8(error.what())); }
+    const bool annotateRequested = command == "capture" && request.value("annotate").toBool();
+    if (request.contains("annotate") && (command != "capture" || !request["annotate"].isBool()))
+        return agentError("invalid_arguments", "annotate must be a boolean for capture.");
+
+    const bool hasPageContext = request.contains("pageContext");
+    QString pageContext;
+    if (hasPageContext) {
+        if ((command != "open" && command != "annotate" && !annotateRequested) || !request["pageContext"].isString())
+            return agentError("invalid_arguments", "pageContext must be a page description for open, annotate, or capture --annotate.");
+        pageContext = request["pageContext"].toString().trimmed();
+        try {
+            validatePageContext(pageContext);
+        } catch (const std::exception &error) {
+            return agentError("invalid_arguments", QString::fromUtf8(error.what()));
+        }
     }
+
     if (command == "status") {
         QString startupError;
         const bool startupRegistered = launchAtLoginEnabled(&startupError);
@@ -2018,18 +2075,218 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
                 {"hasDocument", hasDoc}, {"dirty", dirty},
                 {"capturing", capturing_}, {"agentSession", !agentSessionId_.isEmpty()}};
     }
+    if (command == "windows") {
+        const auto windows = listHeadlessCaptureWindows();
+        QJsonArray arr;
+        for (const auto &w : windows) {
+            arr.append(QJsonObject{
+                {"id", QString::number(w.id)},
+                {"pid", qint64(w.pid)},
+                {"title", w.title},
+                {"appName", w.appName},
+                {"width", w.bounds.width()},
+                {"height", w.bounds.height()},
+                {"x", w.bounds.x()},
+                {"y", w.bounds.y()},
+                {"minimized", w.minimized},
+                {"visible", w.visible},
+            });
+        }
+        return {{"ok", true}, {"command", command}, {"windows", arr}};
+    }
     if (command != "open" && command != "capture" && command != "annotate")
         return agentError("invalid_arguments", "Unsupported command.");
+
+    auto windowCandidatesJson = [](const QVector<HeadlessWindowInfo> &list) -> QJsonArray {
+        QJsonArray out;
+        for (const auto &w : list) {
+            out.append(QJsonObject{
+                {"id", QString::number(w.id)},
+                {"pid", qint64(w.pid)},
+                {"title", w.title},
+                {"appName", w.appName},
+                {"width", w.bounds.width()},
+                {"height", w.bounds.height()},
+                {"minimized", w.minimized},
+            });
+        }
+        return out;
+    };
+
+    if (command == "capture") {
+        const bool hasOutput = request.contains("output");
+        const bool screenFlag = request.value("screen").toBool();
+        if (request.contains("screen") && !request["screen"].isBool())
+            return agentError("invalid_arguments", "screen must be boolean.");
+        const bool hasWindow = request.contains("window");
+        if (hasWindow && !request["window"].isString())
+            return agentError("invalid_arguments", "window must be a string title query.");
+        const bool hasWindowId = request.contains("windowId");
+        quint64 windowId = 0;
+        if (hasWindowId) {
+            bool ok = false;
+            if (request["windowId"].isString()) windowId = request["windowId"].toString().toULongLong(&ok);
+            else if (request["windowId"].isDouble()) {
+                const qint64 v = request["windowId"].toInteger(-1);
+                ok = v > 0;
+                if (ok) windowId = quint64(v);
+            }
+            if (!ok || windowId == 0)
+                return agentError("invalid_arguments", "windowId must be a positive window identifier.");
+        }
+        const int targetCount = (screenFlag ? 1 : 0) + (hasWindow ? 1 : 0) + (hasWindowId ? 1 : 0);
+        if (targetCount > 1)
+            return agentError("invalid_arguments", "screen, window, and windowId are mutually exclusive.");
+        if (!hasOutput && (annotateRequested || targetCount > 0))
+            return agentError("invalid_arguments", "output path is required for headless capture and capture --annotate.");
+        if (!annotateRequested && (request.contains("imageMode") || request.contains("embed") || request.contains("preview") || request.contains("timeout")))
+            return agentError("invalid_arguments", "imageMode, embed, preview and timeout with capture require annotate=true.");
+
+        if (!hasOutput) {
+            if (!agentSessionId_.isEmpty() || capturing_ || QApplication::activeModalWidget())
+                return agentError("busy", "EditHere is busy with another request, capture or dialog.");
+            if (hasAnyUnsavedChanges())
+                return agentError("busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
+            guidePending_ = false;
+            // An Agent capture is not the user's first interactive desktop launch.
+            beginCapture(false);
+            return {{"ok", true}, {"command", command}, {"accepted", true}};
+        }
+
+        const auto output = request["output"].toString();
+        if (!annotateRequested) {
+            // Headless fast path: read-only, never interrupts or modifies open editor state.
+            if (const auto err = validateNewCapturePath(output); !err.isEmpty())
+                return agentError("io_error", err);
+            const HeadlessCaptureResult captured = (hasWindow || hasWindowId)
+                ? captureHeadlessWindow(request["window"].toString(), windowId)
+                : captureHeadlessScreen(-1);
+            if (!captured.ok) {
+                auto err = agentError(captured.errorCode.isEmpty() ? "capture_failed" : captured.errorCode,
+                                      captured.message.isEmpty() ? "Capture failed." : captured.message);
+                if (!captured.candidates.isEmpty())
+                    err.insert("candidates", windowCandidatesJson(captured.candidates));
+                return err;
+            }
+            QByteArray pngBytes;
+            {
+                QBuffer buffer(&pngBytes);
+                if (!buffer.open(QIODevice::WriteOnly) || !captured.image.save(&buffer, "PNG"))
+                    return agentError("io_error", "Failed to encode captured PNG image.");
+            }
+            try {
+                writeNewCapturePng(output, pngBytes);
+            } catch (const std::exception &error) {
+                return agentError("io_error", QString::fromUtf8(error.what()));
+            }
+            return {
+                {"ok", true},
+                {"command", "capture"},
+                {"mode", (hasWindow || hasWindowId) ? "window" : "screen"},
+                {"output", output},
+                {"width", captured.image.width()},
+                {"height", captured.image.height()},
+                {"windowTitle", captured.windowTitle},
+                {"appName", captured.appName},
+            };
+        }
+
+        // capture --annotate path: validate all args & busy state first.
+        if (!agentSessionId_.isEmpty() || capturing_ || QApplication::activeModalWidget())
+            return agentError("busy", "EditHere is busy with another request, capture or dialog.");
+        if (hasAnyUnsavedChanges())
+            return agentError("busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
+        if (const auto err = validateNewFeedbackPath(output); !err.isEmpty())
+            return agentError("io_error", err);
+        const int timeout = request["timeout"].toInt(1800);
+        if (timeout < 1 || timeout > 86400)
+            return agentError("invalid_arguments", "Timeout must be between 1 and 86400 seconds.");
+        FeedbackExportOptions exportOptions;
+        if (request.contains("imageMode")) {
+            const auto mode = request["imageMode"].toString();
+            if (mode != "file" && mode != "embedded" && mode != "none")
+                return agentError("invalid_arguments", "Unsupported image mode.");
+            exportOptions.mode = mode == "file" ? ImageExportMode::File : mode == "embedded" ? ImageExportMode::Embedded : ImageExportMode::None;
+        } else if (request.contains("embed")) {
+            if (!request["embed"].isBool()) return agentError("invalid_arguments", "embed must be boolean.");
+            exportOptions.mode = request["embed"].toBool() ? ImageExportMode::Embedded : ImageExportMode::None;
+        }
+        if (request.contains("preview") && !request["preview"].isBool())
+            return agentError("invalid_arguments", "preview must be boolean.");
+        exportOptions.preview = request["preview"].toBool();
+        exportOptions.imageFile = QFileInfo(output).completeBaseName() + ".png";
+        exportOptions.previewFile = QFileInfo(output).completeBaseName() + ".annotated.png";
+
+        if (targetCount > 0) {
+            const HeadlessCaptureResult captured = (hasWindow || hasWindowId)
+                ? captureHeadlessWindow(request["window"].toString(), windowId)
+                : captureHeadlessScreen(-1);
+            if (!captured.ok) {
+                auto err = agentError(captured.errorCode.isEmpty() ? "capture_failed" : captured.errorCode,
+                                      captured.message.isEmpty() ? "Capture failed." : captured.message);
+                if (!captured.candidates.isEmpty())
+                    err.insert("candidates", windowCandidatesJson(captured.candidates));
+                return err;
+            }
+            const QString defaultTitle = captured.windowTitle.isEmpty() ? tr("屏幕截图") : captured.windowTitle;
+            Document doc = fromImage(captured.image, (hasWindow || hasWindowId) ? "window" : "screen", defaultTitle);
+            doc.screenBounds = captured.screenBounds;
+            if (!captured.windowTitle.isEmpty()) doc.capture["windowTitle"] = captured.windowTitle.left(1000);
+            if (!captured.appName.isEmpty()) doc.capture["appName"] = captured.appName.left(1000);
+            if (hasPageContext) {
+                doc.capture["page"] = pageContext;
+                doc.capture["pageSource"] = "agent";
+            }
+            guidePending_ = false;
+            agentCapturePending_ = false;
+            agentHasPageContext_ = false;
+            agentPageContext_.clear();
+            agentSessionId_ = uniqueId();
+            agentOutput_ = output;
+            agentExportOptions_ = exportOptions;
+            const auto id = agentSessionId_;
+            if (useB2Ui_) {
+                auto *w = ensureB2Window();
+                w->openCapturedDocument(std::move(doc), true);
+                if (hasPageContext) w->setPageContext(pageContext);
+                w->setAgentSession(true, output, exportOptions);
+            } else {
+                editor_.setDocument(std::move(doc));
+                if (hasPageContext) editor_.setPageContext(pageContext);
+                editor_.setAgentSession(true);
+            }
+            diagnostics::write(diagnostics::Level::Info, "agent.session_start", "Capture+annotate session started",
+                               {{"session", id}, {"timeoutSeconds", timeout}, {"headless", true}, {"b2", useB2Ui_}});
+            QTimer::singleShot(timeout * 1000, this, [this, id] {
+                cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
+            });
+            return {{"ok", true}, {"pending", true}, {"session", id}};
+        }
+
+        // Interactive screen capture -> annotate session
+        guidePending_ = false;
+        agentSessionId_ = uniqueId();
+        agentOutput_ = output;
+        agentExportOptions_ = exportOptions;
+        agentCapturePending_ = true;
+        agentHasPageContext_ = hasPageContext;
+        agentPageContext_ = pageContext;
+        const auto id = agentSessionId_;
+        diagnostics::write(diagnostics::Level::Info, "agent.session_start", "Interactive capture+annotate session started",
+                           {{"session", id}, {"timeoutSeconds", timeout}, {"b2", useB2Ui_}});
+        QTimer::singleShot(timeout * 1000, this, [this, id] {
+            cancelAgentSession(id, "timeout", "Annotation timed out. Your edits remain in EditHere.");
+        });
+        QTimer::singleShot(0, this, [this, id] {
+            if (agentSessionId_ == id && agentCapturePending_) beginCapture(false);
+        });
+        return {{"ok", true}, {"pending", true}, {"session", id}};
+    }
+
     if (!agentSessionId_.isEmpty() || capturing_ || QApplication::activeModalWidget())
         return agentError("busy", "EditHere is busy with another request, capture or dialog.");
-    if (editor_.hasUnsavedChanges())
+    if (hasAnyUnsavedChanges())
         return agentError("busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
-    if (command == "capture") {
-        guidePending_ = false;
-        // An Agent capture is not the user's first interactive desktop launch.
-        beginCapture(false);
-        return {{"ok", true}, {"command", command}, {"accepted", true}};
-    }
     const auto input = request["input"].toString();
     if (!QFileInfo(input).isAbsolute()) return agentError("invalid_arguments", "Input path must be absolute.");
     QString output;
@@ -2091,6 +2348,14 @@ void Controller::cancelAgentSession(const QString &id, const QString &code, cons
     const auto finishedId = agentSessionId_;
     agentSessionId_.clear();
     agentOutput_.clear();
+    const bool clearPendingCapture = agentCapturePending_;
+    agentCapturePending_ = false;
+    agentHasPageContext_ = false;
+    agentPageContext_.clear();
+    if (clearPendingCapture && capturing_) {
+        clearOverlays();
+        restoreAfterCapture();
+    }
     if (b2Window_) b2Window_->setAgentSession(false);
     editor_.setAgentSession(false);
     emit agentSessionFinished(finishedId, agentError(code, message));

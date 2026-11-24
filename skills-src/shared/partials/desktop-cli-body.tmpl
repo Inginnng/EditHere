@@ -1,27 +1,22 @@
-## Locating Desktop CLI & Version Check
+## Optimistic Fast Execution & CLI Discovery
 
-Requires a local EditHere installation or extracted portable package (never install packages silently or mutate global PATH). Resolve `edithere-cli` in order and verify `--version` + `--help` (confirm `image-set` support):
+Requires a local EditHere installation or extracted portable package (never install packages silently or mutate global `PATH`). Resolve `$EditHereCli` in priority order and execute your target command immediately (check `--version` / `--help` / `status` only when troubleshooting a failure or verifying capabilities):
 
 1. User-provided path in the current turn, or `references/local-installation.md` if present;
 2. `$env:EDITHERE_CLI`, `PATH`, or default install location (Windows: `%LOCALAPPDATA%\Programs\EditHere\edithere-cli.exe`; macOS: `/Applications/EditHere.app/Contents/MacOS/edithere-cli` or `~/Applications/...`).
 
-```powershell
-& $EditHereCli --version
-& $EditHereCli --help
-```
-
 If missing or below required version, direct the user to <https://github.com/Inginnng/EditHere/releases/latest> rather than switching to an older binary.
 
-## Commands & Session Execution
+## Commands & Single-Call Capture
 
 ```text
-edithere-cli status
-edithere-cli open <image-video-or-manifest>
-edithere-cli capture
-edithere-cli export <image-video-project-or-feedback> --output <new-feedback.json> [--embed-image | --no-image] [--preview]
+edithere-cli windows
+edithere-cli capture --output <new.png> [--screen | --window <title> | --window-id <id>]
+edithere-cli capture --annotate --output <new-feedback.json> [--screen | --window <title> | --window-id <id>] [--page-context "Page label"] [--embed-image | --no-image] [--preview] [--timeout 1800]
 edithere-cli annotate <image-video-project-or-manifest> --output <new-feedback.json> [--page-context "Page label"] [--embed-image | --no-image] [--preview] [--timeout 1800]
+edithere-cli open <image-video-or-manifest> | edithere-cli export <input> --output <new-feedback.json> | edithere-cli status
 ```
 
-- **Unique `--output`**: Must be an absolute path that does NOT exist yet inside an existing parent directory (e.g., `.edithere/reviews/`).
-- **Single-process wait**: `open` and `capture` return immediately and do not replace `annotate`. Wait for `annotate` to exit `0` with stdout `ok: true` and a valid output JSON before editing code.
-- **Sandboxes & recovery**: `status` / `open` / `capture` / `annotate` need logged-in desktop access (exit code `8` on restricted sandboxes -> use approved escalation such as `require_escalated`). See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md).
+- **Unique `--output`**: Must be an absolute path that does NOT exist yet inside an existing parent directory (`.png` for headless capture, `.json` for feedback).
+- **Capture boundaries**: Bare `capture` (no `--output`/`--annotate`) and `open` acknowledge asynchronously; `capture --output <new.png>` is headless and read-only; wait for `capture --annotate` or `annotate` to exit `0` with stdout `ok: true` and valid output JSON before editing code.
+- **Sandboxes & recovery**: `status` / `windows` / `open` / `capture` / `annotate` need logged-in desktop access (exit code `8` on restricted sandboxes -> use approved escalation such as `require_escalated`). See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md).

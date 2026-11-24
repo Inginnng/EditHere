@@ -2,7 +2,8 @@
 /**
  * Lossless web page capture utility for EditHere gallery reviews.
  * Uses Playwright when installed in the target project (or Node resolution path)
- * and optionally registers captured PNGs in an EditHere image-set manifest.
+ * with smart critical-resource settlement, BrowserContext pooling, bounded
+ * concurrency, and optional manifest registration.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,10 +12,23 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
+const CRITICAL_RESOURCE_TYPES = new Set([
+  'document',
+  'stylesheet',
+  'script',
+  'image',
+  'font',
+  'xhr',
+  'fetch',
+]);
+
+const IGNORED_STREAM_URL_RE = /(__vite_ping|@vite\/client|webpack-hmr|__webpack_hmr|sockjs-node|\.hot-update\.|\/events\b|\/sse\b)/i;
+
 function loadImageSetHelpers() {
   const candidates = [
     new URL('./image-set.cjs', import.meta.url),
     new URL('../web/image-set.cjs', import.meta.url),
+    new URL('../../../web/image-set.cjs', import.meta.url),
   ];
   const found = candidates.find((candidate) => fs.existsSync(candidate));
   if (!found) {
@@ -41,18 +55,20 @@ export function usageText() {
     '  node capture-web.mjs --batch <spec.json> [--manifest <project.json>] [--manifest-name <title>]',
     '',
     'Options:',
-    '  --viewport <WxH>       Logical viewport size (default: 1440x900)',
-    '  --dpr <1..4>           Device scale factor (default: 2)',
-    '  --theme <mode>         Color scheme: light | dark | no-preference (default: light)',
-    '  --full-page            Capture full scrollable page instead of viewport',
-    '  --selector <css>       Capture a specific element matching CSS selector',
-    '  --wait-ms <0..30000>   Extra settle delay after load & fonts ready (default: 250)',
+    '  --viewport <WxH>        Logical viewport size (default: 1440x900)',
+    '  --dpr <1..4>            Device scale factor (default: 2)',
+    '  --theme <mode>          Color scheme: light | dark | no-preference (default: light)',
+    '  --full-page             Capture full scrollable page instead of viewport',
+    '  --selector <css>        Capture a specific element matching CSS selector',
+    '  --wait-selector <css>   Wait until CSS selector becomes visible before capture',
+    '  --wait-ms <0..30000>    Extra settle delay after load & fonts ready (default: 0)',
+    '  --concurrency <1..6>    Parallel page workers for batch mode (default: 3)',
     '  --timeout <1000..300000> Navigation/element timeout in ms (default: 30000)',
-    '  --manifest <set.json>  Upsert captured page(s) into an EditHere image-set manifest',
-    '  --manifest-name <name> Create manifest with this name if --manifest does not exist yet',
-    '  --id <page-id>         Stable page ID (required in single mode when --manifest is set)',
-    '  --name <page-name>     Human-readable page label for the manifest',
-    '  -h, --help             Show this help',
+    '  --manifest <set.json>   Upsert captured page(s) into an EditHere image-set manifest',
+    '  --manifest-name <name>  Create manifest with this name if --manifest does not exist yet',
+    '  --id <page-id>          Stable page ID (required in single mode when --manifest is set)',
+    '  --name <page-name>      Human-readable page label for the manifest',
+    '  -h, --help              Show this help',
   ].join('\n');
 }
 
@@ -108,7 +124,9 @@ export function parseCliArgs(argv) {
     theme: 'light',
     fullPage: false,
     selector: null,
-    waitMs: 250,
+    waitSelector: null,
+    waitMs: 0,
+    concurrency: 3,
     timeout: 30000,
     manifest: null,
     manifestName: null,
@@ -118,7 +136,8 @@ export function parseCliArgs(argv) {
 
   const VALUE_FLAGS = new Set([
     '--url', '--output', '--batch', '--viewport', '--dpr', '--theme',
-    '--selector', '--wait-ms', '--timeout', '--manifest', '--manifest-name', '--id', '--name',
+    '--selector', '--wait-selector', '--wait-ms', '--concurrency', '--timeout',
+    '--manifest', '--manifest-name', '--id', '--name',
   ]);
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -147,7 +166,9 @@ export function parseCliArgs(argv) {
       case '--dpr': opts.dpr = parseBoundedNumber(value, '--dpr', 1, 4, false); break;
       case '--theme': opts.theme = validateTheme(value); break;
       case '--selector': opts.selector = value; break;
+      case '--wait-selector': opts.waitSelector = value; break;
       case '--wait-ms': opts.waitMs = parseBoundedNumber(value, '--wait-ms', 0, 30000, true); break;
+      case '--concurrency': opts.concurrency = parseBoundedNumber(value, '--concurrency', 1, 6, true); break;
       case '--timeout': opts.timeout = parseBoundedNumber(value, '--timeout', 1000, 300000, true); break;
       case '--manifest': opts.manifest = path.resolve(value); break;
       case '--manifest-name': opts.manifestName = value; break;
@@ -189,7 +210,17 @@ export function readPngSize(filePath) {
   }
 }
 
-function loadPlaywright() {
+export function loadPlaywright() {
+  const explicit = process.env.EDITHERE_PLAYWRIGHT_MODULE;
+  if (explicit) {
+    try {
+      const mod = require(path.isAbsolute(explicit) || explicit.startsWith('.') ? path.resolve(explicit) : explicit);
+      if (mod && mod.chromium) return mod;
+    } catch (error) {
+      if (error && error.code !== 'MODULE_NOT_FOUND') throw error;
+    }
+  }
+
   const loaders = [
     createRequire(path.join(process.cwd(), 'package.json')),
     require,
@@ -211,6 +242,55 @@ function loadPlaywright() {
       hint: 'Use the host browser screenshot tool (see references/capture.md) or run inside a project that already has Playwright installed.',
     }
   );
+}
+
+export function resolveBrowserExecutablePath(playwrightMod) {
+  const explicit = process.env.EDITHERE_BROWSER_PATH;
+  if (explicit && fs.existsSync(explicit)) {
+    return explicit;
+  }
+  try {
+    const bundled = playwrightMod?.chromium?.executablePath?.();
+    if (bundled && fs.existsSync(bundled)) {
+      return null;
+    }
+  } catch {
+    /* playwright-core throws when browser path is unmanaged */
+  }
+
+  const candidates = process.platform === 'win32'
+    ? [
+        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env['LOCALAPPDATA'] || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft\\Edge\\Application\\msedge.exe'),
+        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Microsoft\\Edge\\Application\\msedge.exe'),
+      ]
+    : process.platform === 'darwin'
+      ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        ]
+      : [
+          '/usr/bin/google-chrome',
+          '/usr/bin/google-chrome-stable',
+          '/usr/bin/chromium',
+          '/usr/bin/chromium-browser',
+          '/usr/bin/microsoft-edge',
+        ];
+
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+}
+
+export async function launchCaptureBrowser({ headless = true } = {}) {
+  const pw = loadPlaywright();
+  const executablePath = resolveBrowserExecutablePath(pw);
+  const launchOpts = { headless };
+  if (executablePath) {
+    launchOpts.executablePath = executablePath;
+  }
+  return pw.chromium.launch(launchOpts);
 }
 
 function normalizeBatchSpec(opts) {
@@ -249,12 +329,13 @@ function normalizeBatchSpec(opts) {
     const theme = validateTheme(entry.theme ?? defaults.theme ?? opts.theme);
     const fullPage = Boolean(entry.fullPage ?? defaults.fullPage ?? opts.fullPage);
     const selector = entry.selector ?? defaults.selector ?? opts.selector ?? null;
+    const waitSelector = entry.waitSelector ?? defaults.waitSelector ?? opts.waitSelector ?? null;
     const waitMs = parseBoundedNumber(entry.waitMs ?? defaults.waitMs ?? opts.waitMs, 'waitMs', 0, 30000, true);
     const timeout = parseBoundedNumber(entry.timeout ?? defaults.timeout ?? opts.timeout, 'timeout', 1000, 300000, true);
     if (manifestPath && !entry.id) {
       throw createAppError('invalid_argument', `Batch item at index ${idx} needs an "id" when updating manifest "${manifestPath}".`);
     }
-    return { id: entry.id || null, name: entry.name || null, url, output, viewport, dpr, theme, fullPage, selector, waitMs, timeout };
+    return { id: entry.id || null, name: entry.name || null, url, output, viewport, dpr, theme, fullPage, selector, waitSelector, waitMs, timeout };
   });
 
   return { manifestPath, manifestName, jobs };
@@ -272,25 +353,116 @@ function ensureManifestReady(manifestPath, manifestName, helpers) {
   helpers.writeManifest(manifestPath, { schemaVersion: helpers.VERSION, name: manifestName, pages: [] }, { create: true });
 }
 
-async function captureJob(browser, job) {
-  const context = await browser.newContext({
-    viewport: job.viewport,
-    deviceScaleFactor: job.dpr,
-    colorScheme: job.theme,
-  });
+function isTrackedCriticalRequest(request) {
+  if (!CRITICAL_RESOURCE_TYPES.has(request.resourceType())) return false;
+  if (IGNORED_STREAM_URL_RE.test(request.url())) return false;
   try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(job.timeout);
-    await page.goto(job.url, { waitUntil: 'load', timeout: job.timeout });
+    const accept = String(request.headers()?.accept || '');
+    if (accept.includes('text/event-stream')) return false;
+  } catch {
+    /* ignore header read failure */
+  }
+  return true;
+}
+
+export async function waitForPageSettled(page, {
+  url,
+  timeout = 30000,
+  waitSelector = null,
+  waitMs = 0,
+  quietMs = 300,
+  maxWaitMs = 1500,
+} = {}) {
+  const inflight = new Set();
+  let onSettleTick = null;
+
+  const onRequest = (req) => {
+    if (isTrackedCriticalRequest(req)) {
+      inflight.add(req);
+      onSettleTick?.();
+    }
+  };
+  const onResponse = (res) => {
     try {
-      await page.waitForLoadState('networkidle', { timeout: Math.min(job.timeout, 5000) });
+      const ct = String(res.headers()?.['content-type'] || '');
+      if (ct.includes('text/event-stream') && inflight.delete(res.request())) {
+        onSettleTick?.();
+      }
     } catch {
-      // Keep moving when long-polling / SSE keeps connections open after load.
+      /* response headers may already be disposed */
     }
-    await page.evaluate(() => document.fonts ? document.fonts.ready : Promise.resolve());
-    if (job.waitMs > 0) {
-      await page.waitForTimeout(job.waitMs);
+  };
+  const onRequestDone = (req) => {
+    if (inflight.delete(req)) {
+      onSettleTick?.();
     }
+  };
+
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+  page.on('requestfinished', onRequestDone);
+  page.on('requestfailed', onRequestDone);
+
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+
+    if (waitSelector) {
+      await page.locator(waitSelector).first().waitFor({ state: 'visible', timeout: Math.min(timeout, 10000) });
+    }
+
+    if (maxWaitMs > 0) {
+      await new Promise((resolve) => {
+        let done = false;
+        let quietTimer = null;
+        let capTimer = null;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (quietTimer) clearTimeout(quietTimer);
+          if (capTimer) clearTimeout(capTimer);
+          onSettleTick = null;
+          resolve();
+        };
+        const scheduleQuiet = () => {
+          if (done) return;
+          if (quietTimer) clearTimeout(quietTimer);
+          if (inflight.size === 0) {
+            quietTimer = setTimeout(finish, quietMs);
+          }
+        };
+        capTimer = setTimeout(finish, maxWaitMs);
+        onSettleTick = scheduleQuiet;
+        scheduleQuiet();
+      });
+    }
+
+    await page.evaluate(() => Promise.all([
+      document.fonts ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
+      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    ]));
+
+    if (waitMs > 0) {
+      await page.waitForTimeout(waitMs);
+    }
+  } finally {
+    onSettleTick = null;
+    page.off('request', onRequest);
+    page.off('response', onResponse);
+    page.off('requestfinished', onRequestDone);
+    page.off('requestfailed', onRequestDone);
+  }
+}
+
+async function captureJobWithContext(context, job) {
+  const page = await context.newPage();
+  page.setDefaultTimeout(job.timeout);
+  try {
+    await waitForPageSettled(page, {
+      url: job.url,
+      timeout: job.timeout,
+      waitSelector: job.waitSelector,
+      waitMs: job.waitMs,
+    });
     fs.mkdirSync(path.dirname(job.output), { recursive: true });
     if (job.selector) {
       const locator = page.locator(job.selector).first();
@@ -311,7 +483,72 @@ async function captureJob(browser, job) {
       theme: job.theme,
     };
   } finally {
-    await context.close();
+    await page.close().catch(() => {});
+  }
+}
+
+/**
+ * Capture a list of normalized jobs using an already-launched Playwright browser.
+ * Reuses one BrowserContext per `(viewport, dpr, theme)` and closes all created
+ * contexts in `finally` without closing `browser`.
+ */
+export async function capturePlanWithBrowser(browser, jobs, { concurrency = 3 } = {}) {
+  const list = Array.isArray(jobs) ? jobs : [];
+  if (list.length === 0) return [];
+  const workerCount = Math.min(Math.max(1, Math.min(6, Number(concurrency) || 3)), list.length);
+  const contextPromises = new Map();
+
+  const getContext = (job) => {
+    const vp = job.viewport || { width: 1440, height: 900 };
+    const dpr = job.dpr ?? 2;
+    const theme = job.theme || 'light';
+    const key = `${vp.width}x${vp.height}@${dpr}:${theme}`;
+    let promise = contextPromises.get(key);
+    if (!promise) {
+      promise = browser.newContext({
+        viewport: vp,
+        deviceScaleFactor: dpr,
+        colorScheme: theme,
+      });
+      contextPromises.set(key, promise);
+    }
+    return promise;
+  };
+
+  const results = new Array(list.length);
+  let nextIndex = 0;
+
+  try {
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= list.length) return;
+        const rawJob = list[index];
+        const job = {
+          viewport: { width: 1440, height: 900 },
+          dpr: 2,
+          theme: 'light',
+          fullPage: false,
+          selector: null,
+          waitSelector: null,
+          waitMs: 0,
+          timeout: 30000,
+          ...rawJob,
+        };
+        const context = await getContext(job);
+        results[index] = await captureJobWithContext(context, job);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  } finally {
+    const resolved = await Promise.allSettled([...contextPromises.values()]);
+    await Promise.allSettled(
+      resolved
+        .filter((entry) => entry.status === 'fulfilled' && entry.value)
+        .map((entry) => entry.value.close())
+    );
   }
 }
 
@@ -337,6 +574,7 @@ async function main() {
           theme: opts.theme,
           fullPage: opts.fullPage,
           selector: opts.selector,
+          waitSelector: opts.waitSelector,
           waitMs: opts.waitMs,
           timeout: opts.timeout,
         }],
@@ -354,22 +592,23 @@ async function main() {
     }
   }
 
-  const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ headless: true });
-  const captured = [];
+  const browser = await launchCaptureBrowser({ headless: true });
+  let captured = [];
   try {
     if (plan.manifestPath) {
       ensureManifestReady(plan.manifestPath, plan.manifestName, helpers);
     }
-    for (const job of plan.jobs) {
-      const item = await captureJob(browser, job);
-      if (plan.manifestPath && job.id) {
-        helpers.upsertPage(plan.manifestPath, { id: job.id, name: job.name || undefined, imagePath: item.output });
+    captured = await capturePlanWithBrowser(browser, plan.jobs, { concurrency: opts.concurrency });
+    if (plan.manifestPath) {
+      for (let i = 0; i < plan.jobs.length; i += 1) {
+        const job = plan.jobs[i];
+        if (job.id && captured[i]) {
+          helpers.upsertPage(plan.manifestPath, { id: job.id, name: job.name || undefined, imagePath: captured[i].output });
+        }
       }
-      captured.push(item);
     }
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 
   const summary = {

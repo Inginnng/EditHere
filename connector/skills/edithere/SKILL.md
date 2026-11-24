@@ -5,7 +5,7 @@ display_name_en: EditHere
 description: Collect screenshot annotations and multi-page project gallery reviews via the EditHere Desktop MCP Connector. Capture accessible pages, maintain the gallery, apply scoped code changes after user submission, and refresh code-affected screenshots.
 description_zh: 让 AI 维护项目全部可访问页面的组图，读取用户评审意见后修改源码并按代码影响面更新截图。
 description_en: Let the AI maintain a gallery of all accessible project pages, read user review feedback, update source code, verify changes and refresh affected screenshots.
-version: 0.2.1
+version: 0.2.2
 author: EditHere
 ---
 
@@ -33,25 +33,25 @@ When the user asks for a project gallery review or post-build UI review, execute
 | `feedback-minimal-4`, video, gallery & legacy compat | [Feedback JSON Protocol & Compatibility Reference](references/feedback-format.md) |
 | Exit codes, version baselines, sandboxes & recovery | [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md) |
 
-## Prerequisites & MCP Tools
+## Optimistic Fast Path & MCP Tools
 
-Having the connector installed does not guarantee EditHere is installed. Call `edithere_status` first to verify CLI resolution and `version` (also check `--version` if uncertain; `running:null` means unknown). If missing or outdated, direct the user to <https://github.com/Inginnng/EditHere/releases/latest> or ask them to set `EDITHERE_CLI`; never install binaries silently.
+Execute directly without mandatory status pre-flight; fall back to `edithere_status` (and <https://github.com/Inginnng/EditHere/releases/latest> or `EDITHERE_CLI`) only if a call reports missing/outdated CLI or `running:null`:
 
 | Tool | Purpose |
 | --- | --- |
-| `edithere_status` | Query desktop & document state without launching GUI (**call first**) |
-| `edithere_open` / `edithere_capture` | View-only open or trigger interactive capture (**never replaces `annotate`**) |
-| `edithere_annotate_start` | **Recommended**: start session immediately and return `sessionId` (`imagePath`, `pageContext`, `outputDir`) |
+| `edithere_capture` | **Fast capture + optional annotate**: headless `screen`/`window` PNG, interactive capture, or `annotate: true` returning `sessionId` immediately |
+| `edithere_windows` | Read-only window list (`id`, `title`, `appName`, `minimized`), excluding EditHere itself |
+| `edithere_annotate_start` | Start session on an existing image, video, or manifest and return `sessionId` immediately |
 | `edithere_annotate_poll` | Poll `sessionId` status and read completion summary / JSON path |
-| `edithere_annotate` | Blocking wait (up to 1800s); use only when non-concurrent long tasks are supported |
-| `edithere_export` | Offline export of saved `.edithere` projects, images, or feedback JSON |
+| `edithere_annotate` | Blocking wait (up to 1800s); use only when long-blocking calls are supported |
+| `edithere_status` / `edithere_open` / `edithere_export` | Probe state on error, view-only open, or offline project/feedback export |
 
-### Async Call Pattern
+### Fast Async Call Pattern
 
-1. Run `edithere_status` and prepare an absolute image, video, or `.edithere/results/project.json` path.
-2. Call `edithere_annotate_start` (pass `pageContext` when known; optionally `outputDir`, `imageMode`, `includeImage`) and keep `sessionId`. Only one active session is allowed at a time (`busy` = finish current session first).
+1. **New screenshot -> annotate**: Call `edithere_capture({ source: "screen" | "window" | "interactive", window?, windowId?, annotate: true, pageContext? })` (call `edithere_windows` first only if target window selection needs disambiguation) and keep `sessionId`.
+2. **Existing media / manifest**: Call `edithere_annotate_start({ imagePath, pageContext?, outputDir?, imageMode?, includeImage? })`. Only one active session is allowed at a time (`busy` = finish current session first).
 3. Ask the user to annotate (pause video on target frames first) and click **Finish and return to AI**.
-4. Poll with the same `sessionId` via `edithere_annotate_poll` (do not start duplicate sessions). If summary caps trigger ("read frame-by-frame"), inspect the feedback JSON directly. See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md) for sandbox exit code `8` and recovery.
+4. Poll with the same `sessionId` via `edithere_annotate_poll` (never start duplicate sessions). On summary truncation ("read frame-by-frame"), inspect the feedback JSON directly. See [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md) for sandbox exit code `8` and recovery.
 
 ## Feedback Format & Version Quick Reference
 

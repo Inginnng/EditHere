@@ -6,15 +6,170 @@
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inspectDesktopCli, resolveDesktopCli } from './desktop-locator.mjs';
+import { inspectDesktopCli, resolveDesktopCli, runDesktopCliSync } from './desktop-locator.mjs';
 import { startInboxWatcher } from './inbox-watcher.mjs';
+import { capturePlanWithBrowser, launchCaptureBrowser } from '../scripts/capture-web.mjs';
+
+const require = createRequire(import.meta.url);
+const imageSetHelpers = require('../web/image-set.cjs');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WEB_AGENT_CLI = path.join(ROOT, 'web', 'agent.cjs');
 
 const desktopSessions = new Map();
+
+let warmBrowser = null;
+let warmBrowserLaunching = null;
+let warmIdleTimer = null;
+
+function warmIdleTimeoutMs(env = process.env) {
+  const raw = Number(env?.EDITHERE_BROWSER_IDLE_MS ?? 60000);
+  if (!Number.isFinite(raw)) return 60000;
+  return Math.max(100, Math.min(300000, Math.round(raw)));
+}
+
+function clearWarmIdleTimer() {
+  if (warmIdleTimer) {
+    clearTimeout(warmIdleTimer);
+    warmIdleTimer = null;
+  }
+}
+
+function scheduleWarmBrowserIdleClose(idleMs) {
+  clearWarmIdleTimer();
+  warmIdleTimer = setTimeout(() => {
+    void closeWarmBrowser();
+  }, idleMs);
+  warmIdleTimer.unref?.();
+}
+
+async function acquireWarmBrowser() {
+  clearWarmIdleTimer();
+  if (warmBrowser && (typeof warmBrowser.isConnected !== 'function' || warmBrowser.isConnected())) {
+    return warmBrowser;
+  }
+  warmBrowser = null;
+  if (!warmBrowserLaunching) {
+    warmBrowserLaunching = launchCaptureBrowser({ headless: true })
+      .then((browser) => {
+        warmBrowser = browser;
+        browser.once?.('disconnected', () => {
+          if (warmBrowser === browser) {
+            warmBrowser = null;
+            clearWarmIdleTimer();
+          }
+        });
+        return browser;
+      })
+      .finally(() => {
+        warmBrowserLaunching = null;
+      });
+  }
+  return warmBrowserLaunching;
+}
+
+export async function closeWarmBrowser() {
+  clearWarmIdleTimer();
+  if (warmBrowserLaunching) {
+    try {
+      await warmBrowserLaunching;
+    } catch {
+      /* ignore launch error on teardown */
+    }
+  }
+  const browser = warmBrowser;
+  warmBrowser = null;
+  if (browser) {
+    await browser.close().catch(() => {});
+  }
+}
+
+export function getWarmBrowserState() {
+  return {
+    connected: Boolean(warmBrowser && (typeof warmBrowser.isConnected !== 'function' || warmBrowser.isConnected())),
+    idleTimerActive: Boolean(warmIdleTimer),
+  };
+}
+
+function makeTempFile(subDir, prefix, ext) {
+  const dir = path.join(os.tmpdir(), subDir);
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const rand = crypto.randomBytes(4).toString('hex');
+  return path.join(dir, `${prefix}-${stamp}-${rand}${ext}`);
+}
+
+function spawnTrackedDesktopSession(desktopPath, cliArgs, { inputPath = null, outputPath, watcher = null, env = process.env } = {}) {
+  const sessionId = crypto.randomBytes(16).toString('hex');
+  const child = spawn(desktopPath, cliArgs, {
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const record = {
+    sessionId,
+    transport: 'desktop',
+    inputPath,
+    outputPath,
+    startedAt: Date.now(),
+    state: 'pending',
+    exitCode: null,
+    stdout: '',
+    stderr: '',
+    receipt: null,
+    watcher,
+    child,
+  };
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => { record.stdout += chunk; });
+  child.stderr.on('data', (chunk) => { record.stderr += chunk; });
+  child.once('error', (err) => {
+    if (record.watcher) {
+      record.watcher.stop();
+      record.watcher = null;
+    }
+    record.exitCode = -1;
+    record.stderr += String(err?.message || err);
+    record.state = 'failed';
+  });
+  child.once('close', (code) => {
+    record.exitCode = code;
+    if (record.watcher) {
+      record.watcher.stop();
+      record.watcher = null;
+    }
+    const line = record.stdout.trim().split(/\r?\n/).pop();
+    if (line && line.startsWith('{')) {
+      try {
+        record.receipt = JSON.parse(line);
+      } catch {
+        record.receipt = null;
+      }
+    }
+    if (code === 0 && fs.existsSync(outputPath)) {
+      record.state = 'completed';
+    } else if (code === 6) {
+      record.state = 'cancelled';
+    } else if (code === 7) {
+      record.state = 'expired';
+    } else {
+      record.state = 'failed';
+    }
+  });
+  desktopSessions.set(sessionId, record);
+  return {
+    ok: true,
+    transport: 'desktop',
+    sessionId,
+    state: 'pending',
+    outputPath,
+  };
+}
 
 /**
  * Determine effective transport (`desktop` | `web`) given requested mode.
@@ -170,7 +325,7 @@ export function runBlockingAnnotate({
  */
 export function startAsyncSession({
   inputPath,
-  outputPath,
+  outputPath = null,
   mode = 'auto',
   pageContext = null,
   timeoutSeconds = 1800,
@@ -178,7 +333,7 @@ export function startAsyncSession({
   env = process.env,
 } = {}) {
   const absInput = path.resolve(inputPath);
-  const absOutput = path.resolve(outputPath);
+  const absOutput = outputPath ? path.resolve(outputPath) : makeTempFile('edithere-feedback', 'annotate', '.json');
   if (!fs.existsSync(absInput)) throw new Error(`Input file does not exist: ${absInput}`);
   if (fs.existsSync(absOutput)) throw new Error(`Output file already exists: ${absOutput}`);
 
@@ -188,54 +343,13 @@ export function startAsyncSession({
     : null;
 
   if (transport === 'desktop') {
-    const sessionId = crypto.randomBytes(16).toString('hex');
     const cliArgs = buildDesktopAnnotateArgs({ inputPath: absInput, outputPath: absOutput, pageContext, timeoutSeconds });
-    const child = spawn(desktop.path, cliArgs, {
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    const record = {
-      sessionId,
-      transport: 'desktop',
+    return spawnTrackedDesktopSession(desktop.path, cliArgs, {
       inputPath: absInput,
       outputPath: absOutput,
-      startedAt: Date.now(),
-      state: 'pending',
-      exitCode: null,
-      stdout: '',
-      stderr: '',
       watcher,
-      child,
-    };
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => { record.stdout += chunk; });
-    child.stderr.on('data', (chunk) => { record.stderr += chunk; });
-    child.once('close', (code) => {
-      record.exitCode = code;
-      if (record.watcher) {
-        record.watcher.stop();
-        record.watcher = null;
-      }
-      if (code === 0 && fs.existsSync(absOutput)) {
-        record.state = 'completed';
-      } else if (code === 6) {
-        record.state = 'cancelled';
-      } else if (code === 7) {
-        record.state = 'expired';
-      } else {
-        record.state = 'failed';
-      }
+      env,
     });
-    desktopSessions.set(sessionId, record);
-    return {
-      ok: true,
-      transport: 'desktop',
-      sessionId,
-      state: 'pending',
-      outputPath: absOutput,
-    };
   }
 
   try {
@@ -292,6 +406,8 @@ export function pollAsyncSession(sessionId, { env = process.env } = {}) {
       exitCode: local.exitCode,
       outputPath: local.outputPath,
       feedbackSummary,
+      receipt: local.receipt || undefined,
+      error: local.state === 'failed' ? (local.receipt?.error || local.stderr || undefined) : undefined,
     };
   }
 
@@ -303,7 +419,226 @@ export function pollAsyncSession(sessionId, { env = process.env } = {}) {
   };
 }
 
-export function shutdownManagedSessions() {
+/**
+ * List visible desktop windows (excluding EditHere) via `edithere-cli windows`.
+ */
+export function listDesktopWindows({ env = process.env } = {}) {
+  const desktop = resolveDesktopCli({ env });
+  if (!desktop.found || !desktop.path) {
+    throw new Error(desktop.error || 'Desktop edithere-cli not found.');
+  }
+  const res = runDesktopCliSync(desktop.path, ['windows'], { timeoutMs: 8000 });
+  return {
+    ok: res.exitCode === 0 && res.json?.ok === true,
+    transport: 'desktop',
+    exitCode: res.exitCode,
+    windows: res.json?.windows || [],
+    receipt: res.json,
+    error: res.json?.error || res.error || (res.stderr || undefined),
+  };
+}
+
+function normalizeWebViewport(raw) {
+  if (!raw) return { width: 1440, height: 900 };
+  if (typeof raw === 'string') {
+    const match = /^(\d{2,5})x(\d{2,5})$/i.exec(raw.trim());
+    if (!match) throw new Error(`Invalid viewport "${raw}". Expected WxH.`);
+    return { width: Number(match[1]), height: Number(match[2]) };
+  }
+  if (typeof raw === 'object' && Number.isInteger(raw.width) && Number.isInteger(raw.height)) {
+    return { width: raw.width, height: raw.height };
+  }
+  throw new Error('Invalid viewport format.');
+}
+
+/**
+ * Single-call fast capture router across `interactive | screen | window | web`,
+ * with optional direct handoff into a non-blocking annotation session.
+ */
+export async function runFastCapture({
+  source = 'interactive',
+  window = null,
+  windowId = null,
+  url = null,
+  urls = null,
+  viewport = null,
+  dpr = 2,
+  theme = 'light',
+  fullPage = false,
+  selector = null,
+  waitSelector = null,
+  waitMs = 0,
+  concurrency = 3,
+  timeoutMs = 30000,
+  annotate = false,
+  outputPath = null,
+  imagePath = null,
+  pageContext = null,
+  timeoutSeconds = 1800,
+  mode = 'auto',
+  env = process.env,
+} = {}) {
+  if (!['interactive', 'screen', 'window', 'web'].includes(source)) {
+    throw new Error(`Invalid capture source "${source}". Expected interactive, screen, window, or web.`);
+  }
+
+  if (source === 'web') {
+    const targetUrls = Array.isArray(urls) && urls.length > 0 ? urls : url ? [url] : [];
+    if (targetUrls.length === 0) {
+      throw new Error('Web capture requires `url` or non-empty `urls`.');
+    }
+    const vp = normalizeWebViewport(viewport);
+    const clampedConcurrency = Math.min(3, Math.max(1, Number(concurrency) || 3));
+    const batchDir = targetUrls.length > 1 || annotate
+      ? makeTempFile('edithere-captures', 'web-batch', '')
+      : null;
+    if (batchDir) fs.mkdirSync(batchDir, { recursive: true });
+
+    const jobs = targetUrls.map((targetUrl, idx) => {
+      const targetOutput = targetUrls.length === 1
+        ? path.resolve(
+            imagePath || (!annotate && outputPath ? outputPath : makeTempFile('edithere-captures', 'web', '.png'))
+          )
+        : path.join(batchDir, `page-${idx + 1}.png`);
+      return {
+        id: `page-${idx + 1}`,
+        name: targetUrl,
+        url: targetUrl,
+        output: targetOutput,
+        viewport: vp,
+        dpr: dpr ?? 2,
+        theme: theme || 'light',
+        fullPage: Boolean(fullPage),
+        selector: selector || null,
+        waitSelector: waitSelector || null,
+        waitMs: waitMs ?? 0,
+        timeout: timeoutMs ?? 30000,
+      };
+    });
+
+    const browser = await acquireWarmBrowser();
+    let captures;
+    try {
+      captures = await capturePlanWithBrowser(browser, jobs, { concurrency: clampedConcurrency });
+    } finally {
+      scheduleWarmBrowserIdleClose(warmIdleTimeoutMs(env));
+    }
+
+    if (!annotate) {
+      return {
+        ok: true,
+        transport: 'web',
+        source: 'web',
+        count: captures.length,
+        outputPath: captures.length === 1 ? captures[0].output : undefined,
+        width: captures.length === 1 ? captures[0].width : undefined,
+        height: captures.length === 1 ? captures[0].height : undefined,
+        captures,
+      };
+    }
+
+    let annotateInput = captures[0].output;
+    if (captures.length > 1 || (Array.isArray(urls) && urls.length > 0)) {
+      const manifestPath = path.join(batchDir, 'project.json');
+      imageSetHelpers.writeManifest(
+        manifestPath,
+        { schemaVersion: imageSetHelpers.VERSION, name: pageContext || 'Web Capture', pages: [] },
+        { create: true }
+      );
+      for (const item of captures) {
+        imageSetHelpers.upsertPage(manifestPath, {
+          id: item.id,
+          name: item.name,
+          imagePath: item.output,
+        });
+      }
+      annotateInput = manifestPath;
+    }
+
+    const session = startAsyncSession({
+      inputPath: annotateInput,
+      outputPath: outputPath || null,
+      mode,
+      pageContext: pageContext || (captures.length === 1 ? url : null),
+      timeoutSeconds,
+      env,
+    });
+    return {
+      ...session,
+      source: 'web',
+      captures,
+      captureOutputPath: captures.length === 1 ? captures[0].output : annotateInput,
+    };
+  }
+
+  const desktop = resolveDesktopCli({ env });
+  if (!desktop.found || !desktop.path) {
+    throw new Error(desktop.error || 'Desktop edithere-cli requested but not found.');
+  }
+  if (window && windowId) {
+    throw new Error('`window` and `windowId` are mutually exclusive.');
+  }
+  if (source === 'interactive' && (window || windowId)) {
+    throw new Error('Cannot combine source="interactive" with `window` or `windowId`.');
+  }
+  if (source === 'window' && !window && !windowId) {
+    throw new Error('source="window" requires `window` or `windowId`.');
+  }
+
+  if (source === 'interactive' && !annotate && !outputPath) {
+    const res = runDesktopCliSync(desktop.path, ['capture'], { timeoutMs: 30000 });
+    return {
+      ok: res.exitCode === 0 && res.json?.ok === true,
+      transport: 'desktop',
+      source: 'interactive',
+      exitCode: res.exitCode,
+      receipt: res.json,
+      error: res.json?.error || res.error || (res.stderr || undefined),
+    };
+  }
+
+  const sourceArgs = source === 'screen'
+    ? ['--screen']
+    : source === 'window'
+      ? (windowId ? ['--window-id', String(windowId)] : ['--window', String(window)])
+      : [];
+
+  if (!annotate) {
+    const absOutput = outputPath ? path.resolve(outputPath) : makeTempFile('edithere-captures', 'capture', '.png');
+    const cliArgs = ['capture', '--output', absOutput, ...sourceArgs];
+    const res = runDesktopCliSync(desktop.path, cliArgs, { timeoutMs: 30000 });
+    return {
+      ok: res.exitCode === 0 && res.json?.ok === true,
+      transport: 'desktop',
+      source,
+      exitCode: res.exitCode,
+      outputPath: res.json?.output || absOutput,
+      width: res.json?.width,
+      height: res.json?.height,
+      windowTitle: res.json?.windowTitle,
+      appName: res.json?.appName,
+      receipt: res.json,
+      candidates: res.json?.candidates,
+      error: res.json?.error || res.error || (res.stderr || undefined),
+    };
+  }
+
+  const absOutput = outputPath ? path.resolve(outputPath) : makeTempFile('edithere-feedback', 'capture-annotate', '.json');
+  if (fs.existsSync(absOutput)) {
+    throw new Error(`Output file already exists: ${absOutput}`);
+  }
+  const cliArgs = ['capture', '--annotate', '--output', absOutput, '--timeout', String(timeoutSeconds), ...sourceArgs];
+  if (pageContext) {
+    cliArgs.push('--page-context', pageContext);
+  }
+  return spawnTrackedDesktopSession(desktop.path, cliArgs, {
+    inputPath: null,
+    outputPath: absOutput,
+    env,
+  });
+}
+
+export async function shutdownManagedSessions() {
   for (const session of desktopSessions.values()) {
     if (session.watcher) session.watcher.stop();
     if (session.state === 'pending' && session.child && !session.child.killed) {
@@ -311,4 +646,5 @@ export function shutdownManagedSessions() {
     }
   }
   desktopSessions.clear();
+  await closeWarmBrowser();
 }

@@ -4,6 +4,13 @@
 
 以下保留各版本发布时的变更记录；旧版本中的名称、图标与实现描述反映当时状态，当前功能请以产品介绍与使用指南为准。原记录未提供发布日期，本页不补写日期。
 
+## 0.14.1
+
+- **原生高速截图与窗口发现**：`edithere-cli` 与桌面 Agent 服务新增 `windows` 只读窗口枚举与 `capture --output` / `capture --annotate` 一步直达能力；Windows 支持 `PrintWindow(..., PW_RENDERFULLCONTENT)` 抗遮挡离屏抓图与 GDI 黑帧兜底、自动排除自身进程、标题模糊歧义与最小化安全拒绝、原子 `.png` 创建及 B2 未保存文档防护，连接启动采用 `15ms -> 25ms -> 40ms -> 60ms` 渐进短轮询退避。
+- **Web 截图引擎提速**：`capture-web.mjs` 用智能网络稳定等待替代盲等 5s `networkidle`（忽略 HMR / WebSocket / SSE 等长连接，关键请求静默 `300ms` 封顶 `1500ms` 并等待双 `rAF`），支持按 `(viewport, dpr, theme)` 复用 `BrowserContext` 与可控并发采集（`--concurrency 1..6`），默认额外等待降至 `0ms`。
+- **统一 MCP 与连接器快路径**：`cli/unified-mcp.mjs` 与 `connector/mcp-server.mjs`（升至 `0.2.2`）新增单调用直达入口 `edithere_capture`（支持 `interactive` / `screen` / `window` / `web`，省略输出路径自动分配临时目录）与只读 `edithere_windows`，配合 `desktop-locator` 探测缓存及 60s 闲置自动回收的温 Playwright 浏览器池，显著缩短 AI 截图决策与唤醒链路。
+- **精简多端 Skill 工作流**：收敛 `skills-src/` 为乐观快路径，去除强制前置状态探测，统一在单次调用中完成截取与标注。
+
 ## 0.14.0
 
 - **品牌与视觉统一**：正式将产品名称统一为 `EditHere`，升级精密取景器与钴蓝焦距节点图标体系，替换旧版方框铅笔图标与渐变铅笔字标。

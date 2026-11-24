@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Unified EditHere MCP server (zero dependencies, stdio transport, MCP 2025-06-18).
- * Automatically routes between Desktop `edithere-cli` and Web Agent fallback,
- * exposing `edithere_doctor`, `edithere_status`, `edithere_annotate_start`,
- * `edithere_annotate_poll`, and `edithere_convert_project`.
+ * Automatically routes between Desktop `edithere-cli` and Web Agent / Playwright fast capture,
+ * exposing `edithere_doctor`, `edithere_status`, `edithere_windows`, `edithere_capture`,
+ * `edithere_annotate_start`, `edithere_annotate_poll`, and `edithere_convert_project`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,10 +11,17 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { runDoctor } from './doctor.mjs';
 import { manifestToUnifiedProject, unifiedProjectToManifest } from './project-format.mjs';
-import { pollAsyncSession, queryStatus, shutdownManagedSessions, startAsyncSession } from './router.mjs';
+import {
+  listDesktopWindows,
+  pollAsyncSession,
+  queryStatus,
+  runFastCapture,
+  shutdownManagedSessions,
+  startAsyncSession,
+} from './router.mjs';
 
 export const SERVER_NAME = 'edithere-unified';
-export const SERVER_VERSION = '0.14.0';
+export const SERVER_VERSION = '0.14.1';
 export const PROTOCOL_VERSION = '2025-06-18';
 
 export const UNIFIED_TOOLS = [
@@ -39,19 +46,57 @@ export const UNIFIED_TOOLS = [
     },
   },
   {
+    name: 'edithere_windows',
+    description: 'List visible desktop windows (id, pid, title, appName, bounds, minimized) excluding EditHere itself, without changing focus or stealing screenshots.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'edithere_capture',
+    description: 'Single-call fast screenshot capture across desktop screens, desktop windows, interactive selection, or live web pages (with optional immediate annotation session handoff).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', enum: ['interactive', 'screen', 'window', 'web'], default: 'interactive', description: 'Capture source target' },
+        window: { type: 'string', description: 'Case-insensitive window title or app query when source="window"' },
+        windowId: { type: 'string', description: 'Exact OS window handle/ID when source="window"' },
+        url: { type: 'string', description: 'Target URL when source="web"' },
+        urls: { type: 'array', items: { type: 'string' }, description: 'Multiple URLs when source="web" for concurrent warm capture' },
+        viewport: { type: 'string', description: 'Web viewport WxH (default 1440x900)' },
+        dpr: { type: 'number', description: 'Web device scale factor 1..4 (default 2)' },
+        theme: { type: 'string', enum: ['light', 'dark', 'no-preference'], description: 'Web color scheme' },
+        fullPage: { type: 'boolean', description: 'Capture full scrollable web page' },
+        selector: { type: 'string', description: 'CSS selector to crop web screenshot' },
+        waitSelector: { type: 'string', description: 'CSS selector to wait for before web capture' },
+        waitMs: { type: 'number', description: 'Extra settle wait in ms (default 0)' },
+        concurrency: { type: 'number', description: 'Web concurrent capture workers 1..6 (default 3)' },
+        annotate: { type: 'boolean', default: false, description: 'Open captured screenshot(s) directly in a non-blocking EditHere annotation session' },
+        outputPath: { type: 'string', description: 'Optional unique output file path (.png or .json when annotate=true); auto-generated if omitted' },
+        imagePath: { type: 'string', description: 'Optional intermediate PNG path when source="web" and annotate=true' },
+        pageContext: { type: 'string', description: 'Optional page description attached when annotate=true' },
+        timeoutSeconds: { type: 'number', description: 'Annotation timeout 1..86400s when annotate=true' },
+        mode: { type: 'string', enum: ['auto', 'desktop', 'web'], description: 'Annotation transport mode when annotate=true' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'edithere_annotate_start',
     description: 'Start a non-blocking EditHere annotation session for an image, video, or project manifest.',
     inputSchema: {
       type: 'object',
       properties: {
         imagePath: { type: 'string', description: 'Absolute path to image, video, or project.json manifest.' },
-        outputPath: { type: 'string', description: 'Absolute path for the new feedback JSON output.' },
+        outputPath: { type: 'string', description: 'Optional absolute path for the new feedback JSON output (auto-generated if omitted).' },
         mode: { type: 'string', enum: ['auto', 'desktop', 'web'] },
         pageContext: { type: 'string' },
         timeoutSeconds: { type: 'number' },
         inboxDir: { type: 'string', description: 'Optional hot-add inbox directory for gallery sessions.' },
       },
-      required: ['imagePath', 'outputPath'],
+      required: ['imagePath'],
       additionalProperties: false,
     },
   },
@@ -100,10 +145,38 @@ export async function callUnifiedTool(name, args = {}) {
       const status = queryStatus({ mode: args.mode || 'auto' });
       return jsonContent(status, !status.ok);
     }
+    case 'edithere_windows': {
+      const res = listDesktopWindows();
+      return jsonContent(res, !res.ok);
+    }
+    case 'edithere_capture': {
+      const res = await runFastCapture({
+        source: args.source || (args.url || args.urls ? 'web' : args.window || args.windowId ? 'window' : 'interactive'),
+        window: args.window || null,
+        windowId: args.windowId || null,
+        url: args.url || null,
+        urls: Array.isArray(args.urls) ? args.urls : null,
+        viewport: args.viewport || undefined,
+        dpr: args.dpr,
+        theme: args.theme,
+        fullPage: args.fullPage,
+        selector: args.selector || null,
+        waitSelector: args.waitSelector || null,
+        waitMs: args.waitMs,
+        concurrency: args.concurrency,
+        annotate: Boolean(args.annotate),
+        outputPath: args.outputPath || null,
+        imagePath: args.imagePath || null,
+        pageContext: args.pageContext || null,
+        timeoutSeconds: args.timeoutSeconds ?? 1800,
+        mode: args.mode || 'auto',
+      });
+      return jsonContent(res, !res.ok);
+    }
     case 'edithere_annotate_start': {
       const started = startAsyncSession({
         inputPath: args.imagePath,
-        outputPath: args.outputPath,
+        outputPath: args.outputPath || null,
         mode: args.mode || 'auto',
         pageContext: args.pageContext || null,
         timeoutSeconds: args.timeoutSeconds ?? 1800,
@@ -184,9 +257,12 @@ export async function handleRpcMessage(msg) {
 }
 
 export async function runStdioServer() {
-  process.once('exit', shutdownManagedSessions);
-  process.once('SIGINT', () => process.exit(0));
-  process.once('SIGTERM', () => process.exit(0));
+  const shutdownAndExit = () => {
+    void shutdownManagedSessions().finally(() => process.exit(0));
+  };
+  process.once('exit', () => { void shutdownManagedSessions(); });
+  process.once('SIGINT', shutdownAndExit);
+  process.once('SIGTERM', shutdownAndExit);
 
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   try {
@@ -206,7 +282,7 @@ export async function runStdioServer() {
       }
     }
   } finally {
-    shutdownManagedSessions();
+    await shutdownManagedSessions();
   }
 }
 

@@ -172,13 +172,16 @@ QJsonObject ensureAgentConnection(bool mayStart, const QString &version,
         // Missing endpoints fail immediately, so wait explicitly for that initialization gap.
         QElapsedTimer initializing;
         initializing.start();
+        static constexpr qint64 kBackoffMs[] = {15, 25, 40, 60};
+        int attempt = 0;
         do {
             result = connect(AgentEndpoint::Agent, 150);
             if (result.connected) return {};
             if (!missing(result)) return agentConnectionError(result, AgentEndpoint::Agent, "connect");
             const qint64 remaining = startupTimeoutMs - initializing.elapsed();
             if (remaining <= 0) break;
-            QThread::msleep(static_cast<unsigned long>(qMin<qint64>(100, remaining)));
+            const qint64 step = kBackoffMs[qMin(attempt++, 3)];
+            QThread::msleep(static_cast<unsigned long>(qMin(step, remaining)));
         } while (initializing.elapsed() < startupTimeoutMs);
         return endpointUnavailable(result);
     }
@@ -194,6 +197,8 @@ QJsonObject ensureAgentConnection(bool mayStart, const QString &version,
     }
     QElapsedTimer starting;
     starting.start();
+    static constexpr qint64 kBackoffMs[] = {15, 25, 40, 60};
+    int attempt = 0;
     do {
         result = connect(AgentEndpoint::Agent, 150);
         if (result.connected) return {};
@@ -201,7 +206,8 @@ QJsonObject ensureAgentConnection(bool mayStart, const QString &version,
         if (!missing(result)) return agentConnectionError(result, AgentEndpoint::Agent, "startup");
         const qint64 remaining = startupTimeoutMs - starting.elapsed();
         if (remaining <= 0) break;
-        QThread::msleep(static_cast<unsigned long>(qMin<qint64>(100, remaining)));
+        const qint64 step = kBackoffMs[qMin(attempt++, 3)];
+        QThread::msleep(static_cast<unsigned long>(qMin(step, remaining)));
     } while (starting.elapsed() < startupTimeoutMs);
     auto response = agentError("startup_timeout",
         "The OS accepted EditHere's launch, but its Agent endpoint did not become available in time. "

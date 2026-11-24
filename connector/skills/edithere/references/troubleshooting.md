@@ -9,7 +9,7 @@ All `edithere-cli` commands (except `--help` and `--version`) print single-line 
 | Exit Code | Meaning / Code | Action |
 | --- | --- | --- |
 | `0` | Success | Verify `ok === true` in stdout JSON and confirm the unique `--output` file exists and parses cleanly before acting |
-| `2` | Invalid arguments / protocol | Verify input image/manifest path is absolute and exists, and options are valid |
+| `2` | Invalid arguments / ambiguity / protocol | Verify input/output paths, flags, or pass a more specific `--window` / `--window-id` when `ambiguous_window` returns `candidates` |
 | `3` | App / Agent endpoint unavailable | Run `status`; on `agent_endpoint_unavailable`, save user work and ask user to restart cleanly (never kill-9 processes) |
 | `4` | `busy` | Unsaved document, active screenshot, or running session exists; ask user to finish or resolve it before retrying |
 | `5` | File / I/O error | Check input readability, confirm `--output` does NOT yet exist, and confirm parent dir exists |
@@ -19,10 +19,11 @@ All `edithere-cli` commands (except `--help` and `--version`) print single-line 
 
 ## 2. Version Baselines
 
-Always run `edithere-cli --version` (offline, sandbox-safe) and compare against `status.version`. If they differ, two installations exist — use the **lower** version to judge capabilities and alert the user without silently switching executables:
+When troubleshooting failures or checking version-gated capabilities, run `edithere-cli --version` (offline, sandbox-safe) and compare against `status.version`. If they differ, two installations exist — use the **lower** version to judge capabilities and alert the user without silently switching executables:
 
 | EditHere Version | Supported Capabilities & Caveats |
 | --- | --- |
+| **0.14.1+** | Headless `windows`, `capture --output`, single-call `capture --annotate`, and fast smart web capture |
 | **0.10.0+** | Images, `.edithere` projects, project galleries, and video annotation (`video-feedback-1`) |
 | **0.9.8 – 0.9.9** | Images and `.edithere` projects only (videos fail with `io_error`) |
 | **0.9.6 – 0.9.7** | IPC endpoint name mismatch: `status` misreports `running:false` and `annotate` hits `startup_timeout`; upgrade |

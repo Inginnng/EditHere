@@ -214,11 +214,11 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
     const init = await client.request('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.0' },
+      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
     });
     assert.equal(init.result.protocolVersion, '2025-06-18');
     assert.equal(init.result.serverInfo.name, 'edithere-unified');
-    assert.equal(init.result.serverInfo.version, '0.14.0');
+    assert.equal(init.result.serverInfo.version, '0.14.1');
 
     client.notify('notifications/initialized', {});
     const ping = await client.request('ping');
@@ -229,6 +229,8 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
     assert.deepEqual(names, [
       'edithere_doctor',
       'edithere_status',
+      'edithere_windows',
+      'edithere_capture',
       'edithere_annotate_start',
       'edithere_annotate_poll',
       'edithere_convert_project',
@@ -251,7 +253,7 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
     assert.equal(doctor.web.files.mcpBundle, true);
     if (REAL_CLI) {
       assert.equal(doctor.desktop.found, true);
-      assert.equal(doctor.desktop.version, '0.14.0');
+      assert.equal(doctor.desktop.version, '0.14.1');
     }
 
     const webStatus = await client.request('tools/call', {
@@ -270,7 +272,7 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
       const desktopJson = JSON.parse(desktopStatus.result.content[0].text);
       assert.equal(desktopJson.ok, true);
       assert.equal(desktopJson.transport, 'desktop');
-      assert.equal(desktopJson.version, '0.14.0');
+      assert.equal(desktopJson.version, '0.14.1');
       assert.equal(desktopJson.running, false);
 
       const autoStatus = await client.request('tools/call', {
@@ -343,18 +345,20 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
     const init = await client.request('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.0' },
+      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
     });
     assert.ok(init.result.serverInfo.name);
+    assert.equal(init.result.serverInfo.version, '0.2.2');
     client.notify('notifications/initialized', {});
 
     const toolsResp = await client.request('tools/list');
     const toolNames = toolsResp.result.tools.map((tool) => tool.name);
-    assert.equal(toolNames.length, 7);
+    assert.equal(toolNames.length, 8);
     assert.deepEqual(toolNames, [
       'edithere_status',
       'edithere_open',
       'edithere_capture',
+      'edithere_windows',
       'edithere_annotate',
       'edithere_annotate_start',
       'edithere_annotate_poll',
@@ -367,7 +371,7 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
     const statusResp = await client.request('tools/call', { name: 'edithere_status', arguments: {} });
     assert.equal(statusResp.result.isError, false);
     const statusText = statusResp.result.content[0].text;
-    assert.match(statusText, /0\.14\.0/);
+    assert.match(statusText, /0\.14\.1/);
     assert.ok(statusText.includes(path.basename(REAL_CLI)));
 
     // Headless export from a schema-valid v3 .edithere project (file + preview + includeImage)
@@ -391,7 +395,7 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
     const exportedJson = JSON.parse(fs.readFileSync(path.join(outFileDir, feedbackFiles[0]), 'utf8'));
     assert.equal(exportedJson.schemaVersion, 'feedback-minimal-4');
     assert.equal(exportedJson.tool.name, 'EditHere');
-    assert.equal(exportedJson.tool.version, '0.14.0');
+    assert.equal(exportedJson.tool.version, '0.14.1');
     assert.equal(exportedJson.capture.page, 'MCP集成测试页');
 
     // Embedded imageMode export
@@ -419,6 +423,11 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
       arguments: { imagePath: path.join(tmpDir, 'capture.png'), pageContext: '   ' },
     });
     assert.equal(blankContextErr.error.code, -32602);
+    const conflictingCaptureErr = await client.request('tools/call', {
+      name: 'edithere_capture',
+      arguments: { source: 'window', window: 'App', windowId: '12345' },
+    });
+    assert.equal(conflictingCaptureErr.error.code, -32602);
   } finally {
     await client.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -445,7 +454,7 @@ test('Suite 3: Web MCP server (web/mcp/server.bundle.cjs) resource, draft and fe
           'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] },
         },
       },
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.0' },
+      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
     });
     assert.equal(init.result.serverInfo.name, 'edithere-web');
     client.notify('notifications/initialized', {});

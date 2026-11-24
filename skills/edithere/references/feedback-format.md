@@ -13,7 +13,7 @@ Complete schema reference for EditHere feedback payloads: `feedback-minimal-4` (
 ```jsonc
 {
   "schemaVersion": "feedback-minimal-4",
-  "tool": { "name": "EditHere", "version": "0.14.0" },
+  "tool": { "name": "EditHere", "version": "0.14.1" },
   "annotationSpace": "result",
   "image": {
     "mode": "file",

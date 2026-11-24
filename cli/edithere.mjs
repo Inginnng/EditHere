@@ -11,10 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { formatDoctorReport, runDoctor } from './doctor.mjs';
 import { runInit } from './init.mjs';
 import { manifestToUnifiedProject, unifiedProjectToManifest } from './project-format.mjs';
-import { queryStatus, runBlockingAnnotate } from './router.mjs';
+import { closeWarmBrowser, listDesktopWindows, queryStatus, runBlockingAnnotate, runFastCapture } from './router.mjs';
 import { runStdioServer } from './unified-mcp.mjs';
 
-const CLI_VERSION = '0.14.0';
+const CLI_VERSION = '0.14.1';
 
 export function usageText() {
   return [
@@ -25,6 +25,9 @@ export function usageText() {
     '  init [--host auto|codex|claude|cursor|trae|all]       Install canonical English skill and output unified MCP config',
     '       [--destination ABS] [--force] [--dry-run] [--json]',
     '  status [--mode auto|desktop|web]                      Probe active transport without launching GUI',
+    '  windows                                               List visible desktop windows excluding EditHere',
+    '  capture [--source interactive|screen|window|web]      Fast single-call screen, window, or web capture',
+    '          [--window TXT | --window-id ID | --url URL] [--output PATH] [--annotate]',
     '  annotate <input> --output <new.json>                  Open image/video/manifest via Desktop CLI or Web fallback',
     '       [--mode auto|desktop|web] [--page-context TXT] [--timeout SEC] [--inbox DIR]',
     '  convert to-unified <manifest.json> --output <proj.json> Convert image-set manifest into edithere-project-2',
@@ -37,7 +40,7 @@ export function usageText() {
 function parseFlags(argv) {
   const positionals = [];
   const flags = {};
-  const BOOLEAN_FLAGS = new Set(['--json', '--force', '--dry-run', '--help', '-h', '--version', '-v']);
+  const BOOLEAN_FLAGS = new Set(['--json', '--force', '--dry-run', '--help', '-h', '--version', '-v', '--screen', '--full-page', '--annotate']);
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!token.startsWith('-')) {
@@ -95,6 +98,41 @@ export async function main(argv = process.argv.slice(2)) {
       const status = queryStatus({ mode: flags.mode || 'auto' });
       console.log(JSON.stringify(status));
       return status.ok ? 0 : 1;
+    }
+    case 'windows': {
+      const res = listDesktopWindows();
+      console.log(JSON.stringify(res));
+      return res.ok ? 0 : 1;
+    }
+    case 'capture': {
+      const inferredSource = flags.source
+        || (flags.url ? 'web' : flags.window || flags['window-id'] ? 'window' : flags.screen ? 'screen' : 'interactive');
+      try {
+        const res = await runFastCapture({
+          source: inferredSource,
+          window: flags.window || null,
+          windowId: flags['window-id'] || null,
+          url: flags.url || null,
+          viewport: flags.viewport || undefined,
+          dpr: flags.dpr !== undefined ? Number(flags.dpr) : undefined,
+          theme: flags.theme || undefined,
+          fullPage: Boolean(flags['full-page']),
+          selector: flags.selector || null,
+          waitSelector: flags['wait-selector'] || null,
+          waitMs: flags['wait-ms'] !== undefined ? Number(flags['wait-ms']) : undefined,
+          concurrency: flags.concurrency !== undefined ? Number(flags.concurrency) : undefined,
+          annotate: Boolean(flags.annotate),
+          outputPath: flags.output || null,
+          imagePath: flags.image || null,
+          pageContext: flags['page-context'] || null,
+          timeoutSeconds: flags.timeout !== undefined ? Number(flags.timeout) : 1800,
+          mode: flags.mode || 'auto',
+        });
+        console.log(JSON.stringify(res));
+        return res.ok ? 0 : 1;
+      } finally {
+        await closeWarmBrowser();
+      }
     }
     case 'annotate': {
       if (!positionals[0] || !flags.output) {

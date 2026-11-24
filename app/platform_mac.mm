@@ -4,7 +4,9 @@
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #include <QApplication>
+#include <QColorSpace>
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QScreen>
 #include <QTimer>
 #include <QWidget>
@@ -716,6 +718,225 @@ void captureScreens(CaptureCallback callback) {
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES
                                              onScreenWindowsOnly:YES
                                                completionHandler:onContent];
+}
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows() {
+    QVector<HeadlessWindowInfo> out;
+    const pid_t ownPid = NSProcessInfo.processInfo.processIdentifier;
+    CFArrayRef list = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    for (NSDictionary *info in (__bridge NSArray *)list) {
+        if (out.size() >= 80) break;
+        const pid_t pid = [info[(__bridge NSString *)kCGWindowOwnerPID] intValue];
+        if (pid <= 0 || pid == ownPid) continue;
+        if ([info[(__bridge NSString *)kCGWindowLayer] intValue] != 0) continue;
+        if ([info[(__bridge NSString *)kCGWindowAlpha] doubleValue] <= 0) continue;
+        NSString *nameObj = info[(__bridge NSString *)kCGWindowName];
+        QString title = nameObj ? QString::fromUtf8(nameObj.UTF8String).trimmed().left(160) : QString();
+        if (title.isEmpty()) continue;
+        CGRect bounds{};
+        if (!CGRectMakeWithDictionaryRepresentation(
+                (__bridge CFDictionaryRef)info[(__bridge NSString *)kCGWindowBounds], &bounds))
+            continue;
+        if (bounds.size.width < 24 || bounds.size.height < 24) continue;
+        const bool onscreen = [info[(__bridge NSString *)kCGWindowIsOnscreen] boolValue];
+        NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        QString appName = app.localizedName ? QString::fromUtf8(app.localizedName.UTF8String).left(80) : QString();
+        out.append({quint64([info[(__bridge NSString *)kCGWindowNumber] unsignedIntValue]),
+                    quint32(pid), title, appName,
+                    QRect(qRound(bounds.origin.x), qRound(bounds.origin.y),
+                          qRound(bounds.size.width), qRound(bounds.size.height)),
+                    !onscreen, onscreen});
+    }
+    if (list) CFRelease(list);
+    return out;
+}
+
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
+    HeadlessCaptureResult res;
+    QString permissionError;
+    if (!screenRecordingAllowed(&permissionError, false)) {
+        res.errorCode = "desktop_access_required";
+        res.message = permissionError;
+        return res;
+    }
+    QEventLoop loop;
+    bool done = false;
+    QTimer::singleShot(8000, &loop, [&] {
+        if (!done) {
+            done = true;
+            res.errorCode = "capture_failed";
+            res.message = "macOS screen capture timed out.";
+            loop.quit();
+        }
+    });
+    [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                             onScreenWindowsOnly:YES
+                                               completionHandler:^(SCShareableContent *content, NSError *error) {
+        QMetaObject::invokeMethod(&loop, [&] {
+            if (done) return;
+            if (error || !content.displays.count) {
+                done = true;
+                res.errorCode = "capture_failed";
+                res.message = "Unable to enumerate displays.";
+                loop.quit();
+                return;
+            }
+            const NSInteger idx = screenIndex < 0 ? 0 : screenIndex;
+            if (idx < 0 || idx >= NSInteger(content.displays.count)) {
+                done = true;
+                res.errorCode = "invalid_arguments";
+                res.message = QString("Screen index %1 out of range.").arg(screenIndex);
+                loop.quit();
+                return;
+            }
+            SCDisplay *display = content.displays[idx];
+            const CGRect bounds = CGDisplayBounds(display.displayID);
+            const QRect logical = logicalDisplayGeometry(bounds);
+            SCContentFilter *filter = displayFilter(content, display, nullptr);
+            const QSize size = nativeDisplaySize(filter, bounds);
+            SCStreamConfiguration *cfg = [SCStreamConfiguration new];
+            cfg.width = size.width();
+            cfg.height = size.height();
+            cfg.showsCursor = NO;
+            cfg.colorSpaceName = kCGColorSpaceSRGB;
+            [SCScreenshotManager captureImageWithFilter:filter
+                                         configuration:cfg
+                                     completionHandler:^(CGImageRef image, NSError *capErr) {
+                QImage pixels = capErr ? QImage() : fromCGImage(image);
+                QMetaObject::invokeMethod(&loop, [&, pixels, logical] {
+                    if (done) return;
+                    done = true;
+                    if (pixels.isNull()) {
+                        res.errorCode = "capture_failed";
+                        res.message = "Screen capture failed.";
+                    } else {
+                        res.ok = true;
+                        res.image = pixels;
+                        res.image.setDevicePixelRatio(1);
+                        res.image.setColorSpace(QColorSpace::SRgb);
+                        res.screenBounds = QRect(logical.topLeft(), pixels.size());
+                    }
+                    loop.quit();
+                }, Qt::QueuedConnection);
+            }];
+        }, Qt::QueuedConnection);
+    }];
+    loop.exec();
+    return res;
+}
+
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId) {
+    HeadlessCaptureResult res;
+    QString permissionError;
+    if (!screenRecordingAllowed(&permissionError, false)) {
+        res.errorCode = "desktop_access_required";
+        res.message = permissionError;
+        return res;
+    }
+    const auto windows = listHeadlessCaptureWindows();
+    HeadlessWindowInfo chosen;
+    bool found = false;
+    if (windowId != 0) {
+        for (const auto &w : windows) {
+            if (w.id == windowId) { chosen = w; found = true; break; }
+        }
+        if (!found) {
+            res.errorCode = "window_not_found";
+            res.message = QString("Window ID %1 not found.").arg(windowId);
+            return res;
+        }
+    } else {
+        const QString query = titleQuery.trimmed();
+        if (query.isEmpty()) {
+            res.errorCode = "invalid_arguments";
+            res.message = "Window selector query cannot be empty.";
+            return res;
+        }
+        QVector<HeadlessWindowInfo> exactMatches, titleMatches, appMatches;
+        for (const auto &w : windows) {
+            if (w.title.compare(query, Qt::CaseInsensitive) == 0) exactMatches.append(w);
+            else if (w.title.contains(query, Qt::CaseInsensitive)) titleMatches.append(w);
+            else if (w.appName.contains(query, Qt::CaseInsensitive)) appMatches.append(w);
+        }
+        const auto &bucket = !exactMatches.isEmpty() ? exactMatches
+                           : !titleMatches.isEmpty() ? titleMatches : appMatches;
+        if (bucket.isEmpty()) {
+            res.errorCode = "window_not_found";
+            res.message = QString("No capturable window matched \"%1\".").arg(query);
+            return res;
+        }
+        if (bucket.size() > 1) {
+            res.errorCode = "ambiguous_window";
+            res.message = QString("Multiple windows (%1) matched \"%2\"; pass --window-id.").arg(bucket.size()).arg(query);
+            res.candidates = bucket;
+            return res;
+        }
+        chosen = bucket.first();
+    }
+    if (chosen.minimized) {
+        res.errorCode = "window_minimized";
+        res.message = QString("Window \"%1\" is minimized.").arg(chosen.title);
+        return res;
+    }
+    QEventLoop loop;
+    bool done = false;
+    QTimer::singleShot(8000, &loop, [&] {
+        if (!done) {
+            done = true;
+            res.errorCode = "capture_failed";
+            res.message = "macOS window capture timed out.";
+            loop.quit();
+        }
+    });
+    [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                             onScreenWindowsOnly:YES
+                                               completionHandler:^(SCShareableContent *content, NSError *error) {
+        QMetaObject::invokeMethod(&loop, [&] {
+            if (done) return;
+            SCWindow *targetWin = nil;
+            if (!error) {
+                for (SCWindow *w in content.windows) {
+                    if (quint64(w.windowID) == chosen.id) { targetWin = w; break; }
+                }
+            }
+            if (!targetWin) {
+                done = true;
+                res.errorCode = "window_not_found";
+                res.message = "Target window could not be shared via ScreenCaptureKit.";
+                loop.quit();
+                return;
+            }
+            SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:targetWin];
+            SCStreamConfiguration *cfg = [SCStreamConfiguration new];
+            cfg.showsCursor = NO;
+            cfg.colorSpaceName = kCGColorSpaceSRGB;
+            [SCScreenshotManager captureImageWithFilter:filter
+                                         configuration:cfg
+                                     completionHandler:^(CGImageRef image, NSError *capErr) {
+                QImage pixels = capErr ? QImage() : fromCGImage(image);
+                QMetaObject::invokeMethod(&loop, [&, pixels] {
+                    if (done) return;
+                    done = true;
+                    if (pixels.isNull()) {
+                        res.errorCode = "capture_failed";
+                        res.message = QString("Failed to capture window \"%1\".").arg(chosen.title);
+                    } else {
+                        res.ok = true;
+                        res.image = pixels;
+                        res.image.setDevicePixelRatio(1);
+                        res.image.setColorSpace(QColorSpace::SRgb);
+                        res.windowTitle = chosen.title;
+                        res.appName = chosen.appName;
+                        res.screenBounds = chosen.bounds;
+                    }
+                    loop.quit();
+                }, Qt::QueuedConnection);
+            }];
+        }, Qt::QueuedConnection);
+    }];
+    loop.exec();
+    return res;
 }
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
     QVector<Candidate> output;

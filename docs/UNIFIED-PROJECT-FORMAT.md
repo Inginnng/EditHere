@@ -7,7 +7,7 @@
 ```json
 {
   "schemaVersion": "edithere-project-2",
-  "tool": { "name": "EditHere", "version": "0.14.0" },
+  "tool": { "name": "EditHere", "version": "0.14.1" },
   "kind": "set",
   "name": "Project Review Gallery",
   "createdAt": "2026-11-22T07:00:00.000Z",

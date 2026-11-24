@@ -37,7 +37,7 @@ class B2Window final : public QMainWindow {
     explicit B2Window(const AppSettings &settings, const QString &settingsFile = {}, QWidget *parent = nullptr);
     ~B2Window() override;
 
-    void openCapturedDocument(Document doc);
+    void openCapturedDocument(Document doc, bool replaceExisting = false);
     void openMediaPath(const QString &path);
     void setPageContext(const QString &pageContext);
     void setAgentSession(bool active, const QString &outputPath = {},

@@ -62,6 +62,31 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fr
 quintptr captureForegroundWindow();
 void restoreCaptureForegroundWindow(quintptr window);
 void captureScreens(CaptureCallback callback);
+
+struct HeadlessWindowInfo {
+    quint64 id = 0;
+    quint32 pid = 0;
+    QString title;
+    QString appName;
+    QRect bounds;
+    bool minimized = false;
+    bool visible = false;
+};
+
+struct HeadlessCaptureResult {
+    bool ok = false;
+    QString errorCode;
+    QString message;
+    QImage image;
+    QString windowTitle;
+    QString appName;
+    QRect screenBounds;
+    QVector<HeadlessWindowInfo> candidates;
+};
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows();
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex = -1);
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId = 0);
 #ifdef Q_OS_WIN
 // Windows' logical cursor API rounds away sub-DIP positions. Capture aiming uses
 // the exact per-monitor native pixel instead, including negative screen origins.

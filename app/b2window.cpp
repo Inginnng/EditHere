@@ -318,12 +318,12 @@ void B2Window::closeEvent(QCloseEvent *event) {
     event->ignore();
 }
 
-void B2Window::openCapturedDocument(Document doc) {
+void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     if (doc.image.isNull()) return;
     if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
     if (doc.candidates.isEmpty()) doc.candidates = detectBlocks(doc.image);
 
-    if (isImageSetProject_) {
+    if (replaceExisting || isImageSetProject_) {
         pages_.clear();
         groupNotes_ = QJsonArray();
         server_.clearImages();

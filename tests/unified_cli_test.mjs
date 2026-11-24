@@ -1,14 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileAsync = promisify(execFile);
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { clearDesktopProbeCache, getDesktopCapabilities } from '../cli/desktop-locator.mjs';
 import { runDoctor } from '../cli/doctor.mjs';
 import { runInit } from '../cli/init.mjs';
 import { sanitizePageId, startInboxWatcher } from '../cli/inbox-watcher.mjs';
 import { manifestToUnifiedProject, unifiedProjectToManifest, validateUnifiedProject } from '../cli/project-format.mjs';
+import { closeWarmBrowser, getWarmBrowserState, runFastCapture } from '../cli/router.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE_PNG = path.join(ROOT, 'tests', 'fixtures', 'ocr-small-url.png');
@@ -201,7 +206,15 @@ test('unified CLI status and unified MCP stdio server handle initialize, tools/l
 
     const list = await request(2, 'tools/list', {});
     const names = list.result.tools.map((t) => t.name);
-    for (const expected of ['edithere_doctor', 'edithere_status', 'edithere_annotate_start', 'edithere_annotate_poll', 'edithere_convert_project']) {
+    for (const expected of [
+      'edithere_doctor',
+      'edithere_status',
+      'edithere_windows',
+      'edithere_capture',
+      'edithere_annotate_start',
+      'edithere_annotate_poll',
+      'edithere_convert_project',
+    ]) {
       assert.ok(names.includes(expected), `Missing unified MCP tool ${expected}`);
     }
 
@@ -217,4 +230,154 @@ test('unified CLI status and unified MCP stdio server handle initialize, tools/l
     child.stdin.end();
     child.kill();
   }
+});
+
+test('desktop-locator caches --version and --help probes by path/mtime and clears cleanly', () => {
+  clearDesktopProbeCache();
+  const env = { ...process.env, EDITHERE_CLI: process.execPath };
+  const first = getDesktopCapabilities({ env });
+  assert.equal(first.found, true);
+  assert.equal(first.cacheHit, false);
+  assert.ok(typeof first.version === 'string' && /^\d+\.\d+\.\d+$/.test(first.version));
+
+  const second = getDesktopCapabilities({ env });
+  assert.equal(second.found, true);
+  assert.equal(second.cacheHit, true);
+  assert.equal(second.version, first.version);
+
+  clearDesktopProbeCache();
+  const third = getDesktopCapabilities({ env });
+  assert.equal(third.cacheHit, false);
+});
+
+test('capture-web and warm browser pool settle fast on pages with open SSE streams and evict on idle', async (t) => {
+  const localPw = 'e:\\Project\\EditHere总包\\EditHere宣传\\动画\\node_modules\\playwright-core\\index.js';
+  const prevPwEnv = process.env.EDITHERE_PLAYWRIGHT_MODULE;
+  const prevBrowserEnv = process.env.EDITHERE_BROWSER_PATH;
+  const prevIdleEnv = process.env.EDITHERE_BROWSER_IDLE_MS;
+
+  if (!prevPwEnv && fs.existsSync(localPw)) {
+    process.env.EDITHERE_PLAYWRIGHT_MODULE = localPw;
+  }
+
+  // Verify Playwright availability before running live headless Chrome SSE assertions.
+  let canLaunchWeb = false;
+  try {
+    const { launchCaptureBrowser } = await import('../scripts/capture-web.mjs');
+    const b = await launchCaptureBrowser({ headless: true });
+    await b.close();
+    canLaunchWeb = true;
+  } catch (err) {
+    if (err?.code === 'playwright_not_found' || /playwright/i.test(String(err?.message))) {
+      t.skip(`Skipping live web capture benchmark: ${err.message}`);
+      return;
+    }
+    throw err;
+  }
+  assert.equal(canLaunchWeb, true);
+
+  const sseConnections = new Set();
+  const server = http.createServer((req, res) => {
+    const urlPath = (req.url || '/').split('?')[0];
+    if (urlPath === '/sse') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      res.write(': connected\n\n');
+      const iv = setInterval(() => res.write('data: {"tick":1}\n\n'), 150);
+      sseConnections.add(res);
+      req.on('close', () => {
+        clearInterval(iv);
+        sseConnections.delete(res);
+      });
+      return;
+    }
+    if (urlPath === '/api/data') {
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      }, 40);
+      return;
+    }
+    const label = urlPath.replace('/', '') || 'home';
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><html><body style="margin:0;background:#101520;color:#eef2ff;font:24px sans-serif">
+      <main id="ready" style="padding:32px">SSE Page: ${label}</main>
+      <script>
+        fetch('/api/data').then(() => {
+          const es = new EventSource('/sse');
+          window.__es = es;
+        });
+      </script>
+    </body></html>`);
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-fast-web-'));
+
+  t.after(async () => {
+    await closeWarmBrowser();
+    for (const r of sseConnections) r.destroy();
+    sseConnections.clear();
+    server.close();
+    fs.rmSync(outDir, { recursive: true, force: true });
+    if (prevPwEnv === undefined) delete process.env.EDITHERE_PLAYWRIGHT_MODULE;
+    else process.env.EDITHERE_PLAYWRIGHT_MODULE = prevPwEnv;
+    if (prevBrowserEnv === undefined) delete process.env.EDITHERE_BROWSER_PATH;
+    else process.env.EDITHERE_BROWSER_PATH = prevBrowserEnv;
+    if (prevIdleEnv === undefined) delete process.env.EDITHERE_BROWSER_IDLE_MS;
+    else process.env.EDITHERE_BROWSER_IDLE_MS = prevIdleEnv;
+  });
+
+  const startedAt = Date.now();
+  const batchRes = await runFastCapture({
+    source: 'web',
+    urls: [`${baseUrl}/one`, `${baseUrl}/two`, `${baseUrl}/three`],
+    viewport: '1440x900',
+    dpr: 2,
+    concurrency: 3,
+    waitMs: 0,
+    env: { ...process.env, EDITHERE_BROWSER_IDLE_MS: '350' },
+  });
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(batchRes.ok, true);
+  assert.equal(batchRes.count, 3);
+  assert.ok(elapsedMs < 8000, `Expected 3 concurrent SSE pages well under 3x5s stall, took ${elapsedMs}ms`);
+  const { readPngSize } = await import('../scripts/capture-web.mjs');
+  for (const item of batchRes.captures) {
+    assert.equal(fs.existsSync(item.output), true);
+    const sz = readPngSize(item.output);
+    assert.equal(sz.width, 2880);
+    assert.equal(sz.height, 1800);
+  }
+  // Pool stays briefly warm immediately after completion, then auto-closes after idle TTL.
+  assert.equal(getWarmBrowserState().connected, true);
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(getWarmBrowserState().connected, false);
+
+  // Verify standalone capture-web.mjs CLI with --wait-selector & --wait-ms 0 on open SSE page
+  // Use async execFile so the in-process HTTP server event loop continues serving /sse.
+  const singleOut = path.join(outDir, 'standalone.png');
+  const cliStarted = Date.now();
+  const { stdout: cliStdout } = await execFileAsync(
+    process.execPath,
+    [
+      path.join(ROOT, 'scripts', 'capture-web.mjs'),
+      '--url', `${baseUrl}/single`,
+      '--output', singleOut,
+      '--wait-selector', '#ready',
+      '--wait-ms', '0',
+    ],
+    { cwd: ROOT, env: process.env, encoding: 'utf8', timeout: 15000, windowsHide: true }
+  );
+  const cliElapsed = Date.now() - cliStarted;
+  const cliJson = JSON.parse(cliStdout.trim());
+  assert.equal(cliJson.ok, true);
+  assert.ok(cliElapsed < 8000, `Standalone SSE capture took ${cliElapsed}ms`);
+  assert.equal(fs.existsSync(singleOut), true);
 });

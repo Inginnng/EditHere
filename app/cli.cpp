@@ -66,26 +66,30 @@ int main(int argc, char **argv) {
                   "Usage:\n"
                   "  edithere-cli --help | --version\n"
                   "  edithere-cli status\n"
+                  "  edithere-cli windows\n"
                   "  edithere-cli open <image-video-or-project> [--page-context <page>]\n"
                   "  edithere-cli capture\n"
+                  "  edithere-cli capture --output <new.png> [--screen | --window <title> | --window-id <id>]\n"
+                  "  edithere-cli capture --annotate --output <new.json> [--screen | --window <title> | --window-id <id>] [--embed-image | --no-image] [--preview] [--timeout <seconds>] [--page-context <page>]\n"
                   "  edithere-cli export <project> --output <new.json> [--embed-image | --no-image] [--preview]\n"
                   "  edithere-cli annotate <image-video-or-project> --output <new.json> [--embed-image | --no-image] [--preview] [--timeout <seconds>] [--page-context <page>]\n\n"
                   "annotate waits for the user to finish in EditHere (default timeout 1800s; range 1..86400).\n"
                   "Feedback saves the original beside JSON by default. Output and sidecars must not exist; their parent must exist.\n"
                   "Video projects export video-feedback-1: timestamped frames and an object index linked by frameId.\n"
                   "Source videos stay referenced by path. --embed-image embeds originals; --no-image keeps only image metadata. --preview adds lossless numbered PNG previews.\n"
-                  "open/capture only acknowledge acceptance; status never starts the app.\n"
+                  "open and bare capture only acknowledge acceptance; capture --output writes a new PNG without opening the editor; status and windows are read-only.\n"
                   "Project image-set manifests (edithere-image-set-1) keep stable page IDs; only annotated pages are returned.\n"
                   "Results are one UTF-8 JSON object on stdout. No feedback file is written on cancel/timeout.\n"
-                  "Exit codes: 0 success, 2 arguments/protocol, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
+                  "Exit codes: 0 success, 2 arguments/protocol/ambiguity, 3 unavailable, 4 busy, 5 I/O, 6 cancelled, 7 timeout, 8 desktop access required.");
         return 0;
     }
     if (args == QStringList{"--version"}) { std::puts("EditHere " EDITHERE_VERSION); return 0; }
     const auto command = args.takeFirst();
     const bool withPath = command == "open" || command == "export" || command == "annotate";
-    if (!withPath && command != "status" && command != "capture")
+    if (!withPath && command != "status" && command != "capture" && command != "windows")
         return printResult(agentError("invalid_arguments", "Unknown command. Run edithere-cli --help."));
-    QString input, output, pageContext;
+    QString input, output, pageContext, windowQuery;
+    quint64 windowId = 0;
     FeedbackExportOptions options;
     options.includeRecognizedText = recognizedTextExportEnabled();
     options.includeWindowTitle = windowTitleExportEnabled();
@@ -96,31 +100,60 @@ int main(int argc, char **argv) {
         input = QFileInfo(args.takeFirst()).absoluteFilePath();
     }
     bool outputSeen = false, imageSeen = false, timeoutSeen = false, previewSeen = false, pageSeen = false;
+    bool annotateSeen = false, screenSeen = false, windowSeen = false, windowIdSeen = false;
     while (!args.isEmpty()) {
         const auto option = args.takeFirst();
-        if (option == "--output" && !outputSeen && (command == "export" || command == "annotate") && !args.isEmpty()) {
+        if (option == "--output" && !outputSeen && (command == "export" || command == "annotate" || command == "capture") && !args.isEmpty()) {
             outputSeen = true;
             output = QFileInfo(args.takeFirst()).absoluteFilePath();
-        } else if ((option == "--no-image" || option == "--embed-image") && !imageSeen && (command == "export" || command == "annotate")) {
+        } else if (option == "--annotate" && !annotateSeen && command == "capture") {
+            annotateSeen = true;
+        } else if (option == "--screen" && !screenSeen && command == "capture") {
+            screenSeen = true;
+        } else if (option == "--window" && !windowSeen && command == "capture" && !args.isEmpty()) {
+            windowSeen = true;
+            windowQuery = args.takeFirst().trimmed();
+            if (windowQuery.isEmpty())
+                return printResult(agentError("invalid_arguments", "--window title query cannot be empty."));
+        } else if (option == "--window-id" && !windowIdSeen && command == "capture" && !args.isEmpty()) {
+            windowIdSeen = true;
+            bool ok = false;
+            windowId = args.takeFirst().toULongLong(&ok);
+            if (!ok || windowId == 0)
+                return printResult(agentError("invalid_arguments", "--window-id must be a positive integer handle."));
+        } else if ((option == "--no-image" || option == "--embed-image") && !imageSeen && (command == "export" || command == "annotate" || command == "capture")) {
             imageSeen = true; options.mode = option == "--embed-image" ? ImageExportMode::Embedded : ImageExportMode::None;
-        } else if (option == "--preview" && !previewSeen && (command == "export" || command == "annotate")) {
+        } else if (option == "--preview" && !previewSeen && (command == "export" || command == "annotate" || command == "capture")) {
             previewSeen = true; options.preview = true;
-        } else if (option == "--page-context" && !pageSeen && (command == "open" || command == "annotate") && !args.isEmpty()) {
+        } else if (option == "--page-context" && !pageSeen && (command == "open" || command == "annotate" || command == "capture") && !args.isEmpty()) {
             pageSeen = true; pageContext = args.takeFirst().trimmed();
             try { validatePageContext(pageContext); } catch (const std::exception &error) { return printResult(agentError("invalid_arguments", QString::fromUtf8(error.what()))); }
-        } else if (option == "--timeout" && !timeoutSeen && command == "annotate" && !args.isEmpty()) {
+        } else if (option == "--timeout" && !timeoutSeen && (command == "annotate" || command == "capture") && !args.isEmpty()) {
             timeoutSeen = true;
             bool ok = false; timeoutSeconds = args.takeFirst().toInt(&ok);
             if (!ok || timeoutSeconds < 1 || timeoutSeconds > 86400)
                 return printResult(agentError("invalid_arguments", "--timeout must be between 1 and 86400 seconds."));
         } else return printResult(agentError("invalid_arguments", "Unknown, duplicate or incomplete option: " + option));
     }
+    if (command == "capture") {
+        const int targetCount = (screenSeen ? 1 : 0) + (windowSeen ? 1 : 0) + (windowIdSeen ? 1 : 0);
+        if (targetCount > 1)
+            return printResult(agentError("invalid_arguments", "--screen, --window and --window-id are mutually exclusive."));
+        if (annotateSeen && !outputSeen)
+            return printResult(agentError("invalid_arguments", "--output <new.json> is required with capture --annotate."));
+        if (!annotateSeen && (pageSeen || imageSeen || previewSeen || timeoutSeen))
+            return printResult(agentError("invalid_arguments", "--page-context, --embed-image, --no-image, --preview and --timeout with capture require --annotate."));
+        if (!outputSeen && targetCount > 0)
+            return printResult(agentError("invalid_arguments", "--screen, --window and --window-id require --output."));
+    }
     if ((command == "export" || command == "annotate") && !outputSeen)
         return printResult(agentError("invalid_arguments", "--output <new.json> is required."));
     if (withPath && !QFileInfo(input).isFile())
         return printResult(agentError("io_error", "Input file does not exist: " + input));
     if (outputSeen) {
-        const auto error = validateNewFeedbackPath(output);
+        const auto error = (command == "capture" && !annotateSeen)
+            ? validateNewCapturePath(output)
+            : validateNewFeedbackPath(output);
         if (!error.isEmpty()) return printResult(agentError("io_error", error));
     }
     options.imageFile = QFileInfo(output).completeBaseName() + ".png";
@@ -182,13 +215,25 @@ int main(int argc, char **argv) {
     QJsonObject request{{"protocol", 1}, {"token", QString::fromLatin1(token)}, {"command", command}};
     if (withPath) request["input"] = input;
     if (pageSeen) request["pageContext"] = pageContext;
-    if (outputSeen) { request["output"] = output; request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none"; request["preview"] = options.preview; }
+    if (outputSeen) {
+        request["output"] = output;
+        if (command != "capture" || annotateSeen) {
+            request["imageMode"] = options.mode == ImageExportMode::File ? "file" : options.mode == ImageExportMode::Embedded ? "embedded" : "none";
+            request["preview"] = options.preview;
+        }
+    }
+    if (command == "capture") {
+        if (annotateSeen) { request["annotate"] = true; request["timeout"] = timeoutSeconds; }
+        if (screenSeen) request["screen"] = true;
+        if (windowSeen) request["window"] = windowQuery;
+        if (windowIdSeen) request["windowId"] = QString::number(windowId);
+    }
     if (command == "annotate") request["timeout"] = timeoutSeconds;
     const auto message = encodeAgentMessage(request);
     if (socket.write(message) != message.size())
         return printResult(agentConnectionError({false, socket.error(), socket.errorString()}, AgentEndpoint::Agent, "send", "Unable to send the request."));
     socket.flush();
-    const qint64 deadlineMs = command == "annotate" ? qint64(timeoutSeconds) * 1000 + 10000 : 30000;
+    const qint64 deadlineMs = (command == "annotate" || (command == "capture" && annotateSeen)) ? qint64(timeoutSeconds) * 1000 + 10000 : 30000;
     QElapsedTimer waiting; waiting.start();
     QByteArray responseBytes;
     while (waiting.elapsed() < deadlineMs) {

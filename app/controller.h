@@ -64,6 +64,7 @@ class Controller final : public QObject {
     void clearOverlays();
     void cancelCapture();
     void raiseEditor();
+    bool hasAnyUnsavedChanges();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
     void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates,
                          QImage picture = {});
@@ -181,6 +182,9 @@ class Controller final : public QObject {
     QVector<Overlay *> overlays_;
     QString agentSessionId_, agentOutput_;
     FeedbackExportOptions agentExportOptions_;
+    bool agentCapturePending_ = false;
+    bool agentHasPageContext_ = false;
+    QString agentPageContext_;
     bool startupUpdateChecked_ = false;
     std::optional<UpdateChecker::Result> pendingStartupUpdate_;
     bool installationReceiptChecked_ = false;

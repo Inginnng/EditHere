@@ -21,7 +21,7 @@ High-fidelity screenshots directly determine how accurately EditHere aligns anno
 3. If auth or backend dependencies block certain routes, capture accessible routes and clearly note the gaps.
 
 ### 3.2 Preferred Tool: `scripts/capture-web.mjs`
-When `playwright` or `playwright-core` is available in the target project, invoke the skill's bundled `scripts/capture-web.mjs` (waits for network idle and `document.fonts.ready`, captures DPR=2 lossless PNGs, and optionally updates the gallery manifest):
+When `playwright` or `playwright-core` is available in the target project (or via `EDITHERE_PLAYWRIGHT_MODULE`), invoke the skill's bundled `scripts/capture-web.mjs` (or unified `edithere_capture` with `source: "web"`). It waits for `domcontentloaded`, critical-resource settlement (`300ms` quiet window capped at `1500ms`, ignoring HMR/WebSocket/SSE streams), `document.fonts.ready`, and double-`rAF`, captures DPR=2 lossless PNGs with shared `BrowserContext` reuse (`--concurrency 1..6`, `--wait-selector`, default `--wait-ms 0`), and optionally updates the gallery manifest:
 
 - **Single page capture (+ optional manifest upsert)**:
 
@@ -53,7 +53,7 @@ If `capture-web.mjs` exits with `code: "playwright_not_found"`, do NOT install P
 - **Window capture over full desktop**: Use an authorized window-capture tool targeting the exact app/game window to avoid desktop clutter. Ensure the window is unobstructed, past splash/loading screens, and on the target view.
 - **Multi-state games / HUDs**: Enter each live state (main menu, inventory, combat HUD, settings modal) and capture separately. Explicitly distinguish live interactive window captures from deterministic script-rendered reproductions.
 - **Windows `computer-use` / `@oai/sky` rules**: Discover real window targets via `list_windows()`, fetch `get_window_state({ window, include_screenshot: true, include_text: false })`, verify `screenshots` contains the single intended target image, and decode its base64 `data:image/(png|jpeg);base64,...` to disk without printing raw data URLs to chat.
-- **`edithere-cli capture` boundary**: `edithere-cli capture` only launches EditHere's interactive screenshot overlay and returns an immediate acknowledgement; it does **not** accept `--output` or `--window` flags and does not save a file synchronously.
+- **`edithere-cli capture` & MCP fast path (`0.14.1+`)**: Prefer `edithere_capture({ source: "screen" | "window", window?, windowId?, annotate: true })` (or `edithere-cli windows` + `edithere-cli capture --output <new.png>` / `capture --annotate --output <new.json> [--screen | --window <title> | --window-id <id>]`). Bare `edithere-cli capture` without `--output` still launches EditHere's interactive selection overlay and acknowledges immediately; headless `capture --output <new.png>` writes a PNG cleanly without disturbing open editor documents.
 
 ## 5. Pre-Handoff 5-Point Visual Check
 

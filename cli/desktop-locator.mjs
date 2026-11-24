@@ -136,10 +136,26 @@ export function versionAtLeast(actual, minimum) {
   return true;
 }
 
+const probeCache = new Map();
+
+function buildProbeCacheKey(cliPath) {
+  try {
+    const stat = fs.statSync(cliPath);
+    return `${cliPath}|${stat.mtimeMs}|${stat.size}`;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDesktopProbeCache() {
+  probeCache.clear();
+}
+
 /**
- * Probe desktop binary capabilities (--version, --help, status).
+ * Probe static desktop binary capabilities (--version, --help) with mtime/size caching.
+ * Never caches live `status` / `running`.
  */
-export function inspectDesktopCli({ env = process.env } = {}) {
+export function getDesktopCapabilities({ env = process.env } = {}) {
   const resolved = resolveDesktopCli({ env });
   if (!resolved.found || !resolved.path) {
     return {
@@ -147,8 +163,17 @@ export function inspectDesktopCli({ env = process.env } = {}) {
       version: null,
       supportsVideo: false,
       supportsImageSet: false,
-      running: false,
-      statusProbe: null,
+      supportsFastCapture: false,
+      cacheHit: false,
+    };
+  }
+
+  const cacheKey = buildProbeCacheKey(resolved.path);
+  if (cacheKey && probeCache.has(cacheKey)) {
+    return {
+      ...resolved,
+      ...probeCache.get(cacheKey),
+      cacheHit: true,
     };
   }
 
@@ -157,17 +182,45 @@ export function inspectDesktopCli({ env = process.env } = {}) {
   const version = versionTuple ? versionTuple.join('.') : null;
 
   const helpRes = runDesktopCliSync(resolved.path, ['--help'], { timeoutMs: 5000 });
-  const supportsImageSet = /image-set/i.test(helpRes.stdout + '\n' + helpRes.stderr);
+  const helpText = helpRes.stdout + '\n' + helpRes.stderr;
+  const supportsImageSet = /image-set/i.test(helpText);
+  const supportsFastCapture = /--window/i.test(helpText) || Boolean(version && versionAtLeast(version, '0.14.1'));
 
-  const statusRes = runDesktopCliSync(resolved.path, ['status'], { timeoutMs: 5000 });
+  const caps = {
+    version,
+    supportsVideo: Boolean(version && versionAtLeast(version, '0.10.0')),
+    supportsImageSet,
+    supportsFastCapture,
+  };
+  if (cacheKey && (verRes.exitCode === 0 || helpRes.exitCode === 0)) {
+    probeCache.set(cacheKey, caps);
+  }
+  return {
+    ...resolved,
+    ...caps,
+    cacheHit: false,
+  };
+}
+
+/**
+ * Probe desktop binary capabilities (--version, --help, live status).
+ */
+export function inspectDesktopCli({ env = process.env } = {}) {
+  const caps = getDesktopCapabilities({ env });
+  if (!caps.found || !caps.path) {
+    return {
+      ...caps,
+      running: false,
+      statusProbe: null,
+    };
+  }
+
+  const statusRes = runDesktopCliSync(caps.path, ['status'], { timeoutMs: 5000 });
   const statusJson = statusRes.json;
   const running = statusJson && Object.hasOwn(statusJson, 'running') ? statusJson.running : null;
 
   return {
-    ...resolved,
-    version,
-    supportsVideo: Boolean(version && versionAtLeast(version, '0.10.0')),
-    supportsImageSet,
+    ...caps,
     running,
     statusProbe: statusJson || { exitCode: statusRes.exitCode, error: statusRes.error || statusRes.stderr },
   };

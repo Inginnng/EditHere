@@ -221,7 +221,7 @@ export const INITIAL_DIAGNOSTICS_INFO: DiagnosticsInfo = {
 
 export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
   activeRoute: 'desktop',
-  desktopVersion: '0.14.0 (Qt6 Native Core)',
+  desktopVersion: '0.14.1 (Qt6 Native Core)',
   nodeVersion: 'v23.9.0',
   unifiedMcpSnippet: JSON.stringify(
     {
@@ -253,7 +253,7 @@ export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote
 
   return {
     schemaVersion: 'image-set-feedback-1',
-    tool: { name: 'EditHere', version: '0.14.0' },
+    tool: { name: 'EditHere', version: '0.14.1' },
     annotationSpace: 'result',
     set: {
       name: '示例项目组图',
@@ -276,7 +276,7 @@ export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote
       height: p.height,
       feedback: {
         schemaVersion: 'feedback-minimal-4',
-        tool: { name: 'EditHere', version: '0.14.0' },
+        tool: { name: 'EditHere', version: '0.14.1' },
         annotationSpace: 'result',
         image: {
           mode: 'none',

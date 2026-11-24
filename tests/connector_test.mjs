@@ -14,7 +14,7 @@ import imageFixture from '../web/tests/image-fixture.cjs';
 // EditHere binary, or third-party test package is required.
 process.env.EDITHERE_CLI = process.execPath;
 const connectorUrl = new URL('../connector/mcp-server.mjs', import.meta.url);
-const { runCli, cliResultToContent, statusContent, annotateResultToContent, feedbackImageCliArgs, pageContextCliArgs, TOOLS } = await import(connectorUrl);
+const { runCli, cliResultToContent, statusContent, annotateResultToContent, feedbackImageCliArgs, pageContextCliArgs, captureTargetArgs, TOOLS, toolCall } = await import(connectorUrl);
 
 test('the running connector version matches the package and pinned market configuration', () => {
   const readJson = (name) => JSON.parse(fs.readFileSync(new URL(`../connector/${name}`, import.meta.url), 'utf8'));
@@ -1215,4 +1215,34 @@ test('a missing MCP session directs callers to their earlier feedback path befor
   } finally {
     server.kill('SIGKILL');
   }
+});
+
+test('0.2.2 captureTargetArgs, edithere_capture, and edithere_windows validate cleanly and preserve legacy compatibility', async () => {
+  const captureTool = TOOLS.find((t) => t.name === 'edithere_capture');
+  const windowsTool = TOOLS.find((t) => t.name === 'edithere_windows');
+  assert.ok(captureTool);
+  assert.ok(windowsTool);
+  assert.deepEqual(captureTool.inputSchema.properties.source.enum, ['interactive', 'screen', 'window']);
+
+  // Legacy zero-arg edithere_capture keeps exact interactive invocation
+  assert.deepEqual(captureTargetArgs({}), { source: 'interactive', annotate: false, sourceArgs: [] });
+  assert.deepEqual(captureTargetArgs({ source: 'screen' }), { source: 'screen', annotate: false, sourceArgs: ['--screen'] });
+  assert.deepEqual(captureTargetArgs({ window: 'Figma' }), { source: 'window', annotate: false, sourceArgs: ['--window', 'Figma'] });
+  assert.deepEqual(captureTargetArgs({ windowId: '98765', annotate: true }), { source: 'window', annotate: true, sourceArgs: ['--window-id', '98765'] });
+
+  // Conflict & missing argument checks throw -32602 before spawning CLI
+  assert.throws(() => captureTargetArgs({ window: 'A', windowId: '1' }), { code: -32602 });
+  assert.throws(() => captureTargetArgs({ source: 'window' }), { code: -32602 });
+  assert.throws(() => captureTargetArgs({ source: 'interactive', window: 'A' }), { code: -32602 });
+  assert.throws(() => captureTargetArgs({ windowId: 'not-a-number' }), { code: -32602 });
+
+  // toolCall rejects annotate-only flags when annotate is false (does not spawn CLI)
+  await assert.rejects(
+    () => toolCall('edithere_capture', { source: 'screen', pageContext: 'Home' }),
+    (err) => err && err.code === -32602
+  );
+  await assert.rejects(
+    () => toolCall('edithere_capture', { source: 'screen', imageMode: 'embedded' }),
+    (err) => err && err.code === -32602
+  );
 });
