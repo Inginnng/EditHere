@@ -65,7 +65,8 @@ class Controller final : public QObject {
     void cancelCapture();
     void raiseEditor();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
-    void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates);
+    void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates,
+                         QImage picture = {});
     void updateTrayShortcut();
     void scheduleStartupUpdate();
     void startupUpdateFinished(const UpdateChecker::Result &result);

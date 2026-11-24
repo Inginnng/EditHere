@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 #endif
     app.setOrganizationName("EditHere");
     const QString state = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    app.setApplicationDisplayName(QCoreApplication::translate("h2d", "EditHere · 改这里"));
+    app.setApplicationDisplayName(QCoreApplication::translate("h2d", "EditHere"));
     app.setApplicationVersion(EDITHERE_VERSION);
     QString logError;
     if (!diagnostics::start({}, &logError))

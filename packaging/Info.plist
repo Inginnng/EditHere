@@ -4,7 +4,7 @@
 <key>CFBundleExecutable</key><string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
 <key>CFBundleIdentifier</key><string>com.edithere.capture</string>
 <key>CFBundleName</key><string>EditHere</string>
-<key>CFBundleDisplayName</key><string>EditHere · 改这里</string>
+<key>CFBundleDisplayName</key><string>EditHere</string>
 <key>CFBundleIconFile</key><string>${MACOSX_BUNDLE_ICON_FILE}</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>

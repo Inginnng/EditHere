@@ -821,6 +821,7 @@ void configureNativeWindow(QWidget *widget, bool overlay, bool) {
         window.sharingType = NSWindowSharingReadWrite;
     }
 }
+void configureRoundedPopupWindow(QWidget *) {}
 void orderWindowBelow(QWidget *, const QWidget *) {}
 QString globalShortcutLabel() {
     return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);

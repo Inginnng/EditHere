@@ -2,7 +2,7 @@
   <img src="assets/icons/edithere-256.png" width="104" alt="EditHere 图标">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
-<p align="center"><b>改这里 —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
+<p align="center"><b>EditHere —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
 <p align="center">面向 Vibe Coding 与视觉创作的本地优先反馈工作台。<br>圈出问题、拖动布局、多页评审，把「改哪里、怎么改」交给 AI。<br><sub>网页前端 · 桌面软件 · 游戏 HUD · AI 生图 · 视频与动画</sub></p>
 
 <p align="center">

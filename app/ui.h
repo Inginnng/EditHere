@@ -8,11 +8,13 @@ class QLabel;
 class QPainter;
 class QWheelEvent;
 namespace h2d {
+constexpr int captureInstructionHeight = 48;
 // The magnifier panel. It is laid out from these rather than from a layout class,
 // because it is painted rather than assembled and the two have to agree exactly, and
 // they live here because the tests locate the panel by the same numbers.
 constexpr double magnifierPanelWidth = 162;
 constexpr double magnifierPanelHeight = 236;
+constexpr double magnifierCompactPanelHeight = 170;
 constexpr double magnifierPanelPadding = 8;
 constexpr double magnifierZoomHeight = 94;
 // One pixel of the screen is this many pixels wide inside the enlargement.
@@ -26,9 +28,15 @@ constexpr double magnifierZoomCell = 15;
 // cannot drift apart.
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools = {});
 struct CaptureChromeTokens {
+    static constexpr int panelRadius = 12;
+    static constexpr int cardRadius = 8;
+    static constexpr int controlRadius = 6;
+
     QColor panelBg;
     QColor panelBorder;
     QColor panelHighlight;
+    QColor stage;
+    QColor scrim;
     QColor text;
     QColor textSecondary;
     QColor textMuted;
@@ -39,16 +47,19 @@ struct CaptureChromeTokens {
     QColor divider;
     QColor accent;
     QColor accentHover;
+    QColor success;
+    QColor successSoft;
+    QColor warning;
+    QColor warningSoft;
     QColor danger;
     QColor tooltipBg;
     QColor tooltipText;
     QColor tooltipBorder;
-    int panelRadius = 12;
-    int controlRadius = 8;
-    int microRadius = 6;
 };
 CaptureChromeTokens captureChromeTokens();
-void paintFloatingPanel(QPainter &painter, const QRect &rect, int radius = 12);
+void paintFloatingPanel(QPainter &painter, const QRectF &rect,
+                        int radius = CaptureChromeTokens::panelRadius);
+void paintCaptureHandles(QPainter &painter, const QRectF &selection);
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin

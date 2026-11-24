@@ -283,7 +283,7 @@ try {
         try{$meta.SetValue('InstallDir',$root);$meta.SetValue('AddedToPath',$added,[Microsoft.Win32.RegistryValueKind]::DWord);$meta.SetValue('Version',$Version)}finally{$meta.Dispose()}
         $uninstall=$user.CreateSubKey($uninstallKey)
         try {
-            $uninstall.SetValue('DisplayName','EditHere · 改这里');$uninstall.SetValue('DisplayVersion',$Version)
+            $uninstall.SetValue('DisplayName','EditHere');$uninstall.SetValue('DisplayVersion',$Version)
             $uninstall.SetValue('Publisher','Inginnng');$uninstall.SetValue('InstallLocation',$root)
             $uninstall.SetValue('DisplayIcon',$exe);$uninstall.SetValue('UninstallString','"'+(Join-Path $root 'Uninstall.exe')+'"')
             $uninstall.SetValue('QuietUninstallString','"'+(Join-Path $root 'Uninstall.exe')+'" /S')

@@ -1,6 +1,6 @@
 {
-  "name": "EditHere 改这里",
-  "name_zh": "EditHere 改这里",
+  "name": "EditHere",
+  "name_zh": "EditHere",
   "name_en": "EditHere",
   "description": "Annotate screenshots and mockups visually, then hand structured feedback to the AI.",
   "description_zh": "在截图或设计图上批注、移动和缩放组件，把修改意图结构化地交给 AI。适用于需要明确指出界面上改哪里、怎么改的场景。",

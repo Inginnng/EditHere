@@ -66,27 +66,27 @@ textarea:focus-visible {
 .brand-lockup-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 6px;
+  gap: 7px;
+  padding: 3px 7px;
   border: 0;
   background: transparent;
   border-radius: var(--r-control);
   flex-shrink: 0;
-  transition: background 0.14s ease;
+  transition: background 0.14s ease, opacity 0.14s ease;
 }
 .brand-lockup-btn:hover {
   background: var(--fill);
 }
 
 .brand-squircle {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: block;
   flex-shrink: 0;
 }
 
 .brand-wordmark {
-  height: 15px;
+  height: 14px;
   width: auto;
   display: block;
 }

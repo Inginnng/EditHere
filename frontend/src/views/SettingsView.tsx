@@ -966,7 +966,7 @@ export default function SettingsView({
                   style={{ height: 30, width: 'auto' }}
                 />
                 <span className="badge accent">
-                  {desktopConnected ? doctor.desktopVersion : '0.14 B2 Web Shell'}
+                  {desktopConnected ? doctor.desktopVersion : '0.14.0'}
                 </span>
               </div>
 

@@ -828,7 +828,7 @@ void SettingsDialog::retranslate() {
             checkbox->setToolTip(tr("将 JSON 与配套原图文件复制到剪贴板。"));
     }
     if (versionLabel_)
-        versionLabel_->setText(tr("EditHere · 改这里") + "  " EDITHERE_VERSION);
+        versionLabel_->setText(tr("EditHere") + "  " EDITHERE_VERSION);
     if (auto description = findChild<QLabel *>("aboutDescription"))
         description->setText(tr("截图、批注与布局调整，让设计修改意见更清楚。"));
     if (auto note = findChild<QPushButton *>("aboutNoteButton")) {

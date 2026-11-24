@@ -18,6 +18,30 @@
   },
   "icons": [
     {
+      "id": "brush",
+      "file": "icons/brush.svg",
+      "label": "画笔",
+      "category": "编辑与批注",
+      "description": "在截图上自由绘制",
+      "source": "lucide",
+      "upstream": "brush",
+      "sourceUrl": "https://github.com/lucide-icons/lucide/blob/70562c1ee1c4fdcf736fe97bc893fb8511927934/icons/brush.svg",
+      "recommended": true,
+      "sha256": "7e8300717c7f7a3d9a2b54328ab3d0739d1612407ae514d52703f219c45014a7"
+    },
+    {
+      "id": "mosaic",
+      "file": "icons/mosaic.svg",
+      "label": "马赛克",
+      "category": "编辑与批注",
+      "description": "用深浅交错的 3 × 3 方格表现马赛克效果。",
+      "source": "edithere",
+      "upstream": null,
+      "sourceUrl": "https://lucide.dev/contribute/icons/specification",
+      "recommended": true,
+      "sha256": "0ddacad347bd6deba9629a00948da865826beef06c3d86de68511e128871c5e4"
+    },
+    {
       "id": "open",
       "file": "icons/open.svg",
       "label": "打开素材或项目",

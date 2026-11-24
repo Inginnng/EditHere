@@ -167,7 +167,7 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
       aiClient_(new AiFeedbackClient(this)),
       settings_(settings),
       settingsFile_(settingsFile) {
-    setWindowTitle(tr("EditHere · 改这里"));
+    setWindowTitle(tr("EditHere"));
     setWindowIcon(QGuiApplication::windowIcon());
     resize(1360, 860);
     setMinimumSize(820, 580);
@@ -595,9 +595,17 @@ QJsonObject B2Window::buildPreferencesJson() const {
 
 QJsonObject B2Window::buildDoctorSnapshotJson() const {
     const QString wvVer = webview_->runtimeVersion().isEmpty() ? tr("内置运行") : webview_->runtimeVersion();
-    const QString cliPath = QDir::fromNativeSeparators(
-        QDir(QFileInfo(QCoreApplication::applicationDirPath()).absolutePath())
-            .filePath("../cli/unified-mcp.mjs"));
+    const QString cliPath = []() {
+        const QDir appDir(QCoreApplication::applicationDirPath());
+        QString resolved = QDir::cleanPath(appDir.filePath("cli/unified-mcp.mjs"));
+        if (!QFileInfo::exists(resolved)) {
+            const QString devPath = QDir::cleanPath(appDir.filePath("../cli/unified-mcp.mjs"));
+            if (QFileInfo::exists(devPath)) {
+                resolved = devPath;
+            }
+        }
+        return QDir::fromNativeSeparators(resolved);
+    }();
     const QJsonObject snippetObj{
         {"mcpServers", QJsonObject{
             {"edithere", QJsonObject{

@@ -1,7 +1,8 @@
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.006em;
   color: var(--ink);
   background: var(--bg-shell);
   font-synthesis: none;
@@ -18,9 +19,9 @@
   --r-circle: 50%;
 
   /* Typography & Ink */
-  --ink: #1d1d1f;
-  --secondary: #48484a;
-  --muted: #86868b;
+  --ink: #111318;
+  --secondary: #434752;
+  --muted: #6e7382;
   --line: rgba(15, 23, 42, 0.075);
   --line-strong: rgba(15, 23, 42, 0.14);
   --fill: rgba(120, 120, 128, 0.10);
@@ -79,9 +80,9 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --ink: #f5f5f7;
-  --secondary: #d1d1d6;
-  --muted: #8e8e93;
+  --ink: #f4f6fa;
+  --secondary: #cfd5e0;
+  --muted: #8f96a6;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.15);
   --fill: rgba(120, 120, 128, 0.22);

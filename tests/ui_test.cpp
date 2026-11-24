@@ -56,6 +56,7 @@
 #include <QTest>
 #include <QTextCursor>
 #include <QTimer>
+#include <QToolTip>
 #include <QVariantAnimation>
 #include <QWheelEvent>
 using namespace h2d;
@@ -118,8 +119,9 @@ static void putPointerOn(QWidget &overlay, QPointF at) {
 // The rectangles the window's own tools occupy. They are children, so they are painted
 // over the magnifier, and the panel has to be placed clear of them.
 static QVector<QRectF> magnifierTools(QWidget &overlay) {
-    QVector<QRectF> tools;
-    for (const auto &name : {QStringLiteral("captureToolbar"), QStringLiteral("captureSidebar")}) {
+    QVector<QRectF> tools{QRectF(0, 0, overlay.width(), captureInstructionHeight)};
+    for (const auto &name : {QStringLiteral("captureToolbar"), QStringLiteral("captureSidebar"),
+                             QStringLiteral("captureStatus")}) {
         const auto *tool = overlay.findChild<QWidget *>(name);
         if (tool != nullptr && tool->isVisible())
             tools.append(tool->geometry());
@@ -161,20 +163,6 @@ static bool isAccentColour(const QColor &colour) {
     return std::abs(colour.red() - 0) < 40 && std::abs(colour.green() - 122) < 40 &&
            std::abs(colour.blue() - 255) < 40;
 }
-// How much of a rendering is painted darker than a limit on every channel. The panel
-// draws its own background over whatever is behind it, so no single exact colour can
-// name it; "a lot more dark pixels" can, and it survives the panel moving.
-static int countDark(const QImage &image, int limit) {
-    int found = 0;
-    for (int row = 0; row < image.height(); ++row)
-        for (int column = 0; column < image.width(); ++column) {
-            const QColor pixel = image.pixelColor(column, row);
-            if (pixel.red() < limit && pixel.green() < limit && pixel.blue() < limit)
-                ++found;
-        }
-    return found;
-}
-
 // Read JSON from clipboard — supports both file-URL (new copy behavior) and text (legacy).
 static QJsonDocument clipboardJson(QJsonParseError *error = nullptr) {
     const auto *mime = QApplication::clipboard()->mimeData();
@@ -4302,17 +4290,26 @@ class UiTests : public QObject {
         movePointerTo(overlay, {520, 40});
         QTest::qWait(30);
         const QImage away = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        // Back over the picture that was just taken it is up again, without a keystroke.
-        movePointerTo(overlay, {200, 180});
-        QTest::qWait(30);
-        const QImage over = overlay.grab().toImage().convertedTo(QImage::Format_ARGB32);
-        artifact(overlay, "magnifier-settled.png");
-        const int before = countDark(away, 60);
-        const int after = countDark(over, 60);
-        QVERIFY2(after > before + 5000,
-                 qPrintable(QString("the panel has to appear over the region (away %1, over %2)")
-                                .arg(before)
-                                .arg(after)));
+        // Returning to the settled region brings the magnifier up in the current theme.
+        const QPoint at(200, 180);
+        movePointerTo(overlay, at);
+        for (const auto theme : {ThemeMode::Light, ThemeMode::Dark}) {
+            applyTheme(theme);
+            QTest::qWait(30);
+            const auto over = overlay.grab().toImage();
+            const QRect panel = magnifierPanel(overlay, at, overlay.size());
+            for (const QRectF &tool : magnifierTools(overlay))
+                QVERIFY(!tool.intersects(panel));
+            const QPoint probe = (QPointF(panel.left() + 4, panel.center().y()) *
+                                  over.devicePixelRatio()).toPoint();
+            QVERIFY(away.rect().contains(probe));
+            const QColor background = over.pixelColor(probe);
+            QVERIFY(background != away.pixelColor(probe));
+            const bool dark = theme == ThemeMode::Dark;
+            QVERIFY(dark ? background.lightness() < 75 : background.lightness() > 205);
+            artifact(overlay, dark ? "magnifier-dark.png" : "magnifier-light.png");
+        }
+        applyTheme(ThemeMode::Light);
         overlay.hide();
     }
     // #62: the selection outline stays on the screen; the magnifier must show
@@ -4727,28 +4724,29 @@ class UiTests : public QObject {
     // are its children and are painted over it, so a panel placed without looking at
     // them ends up half behind the toolbar — exactly the moment a colour is being read.
     void theMagnifierPanelKeepsClearOfTheTools() {
-        QImage image(1120, 720, QImage::Format_ARGB32);
+        const QSize window(760, 480);
+        QImage image(window * 2, QImage::Format_ARGB32);
         image.fill(QColor(240, 240, 240));
-        ScreenFrame frame{"magnifier", {0, 0, 560, 360}, {0, 0, 1120, 720}, image, true};
+        ScreenFrame frame{"magnifier", QRect(QPoint(), window), image.rect(), image, true};
         Overlay overlay(frame);
         overlay.show();
-        overlay.setFixedSize(560, 360);
+        overlay.setFixedSize(window);
         QTest::qWait(50);
-        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {100, 100});
-        QTest::mouseMove(&overlay, {300, 260});
-        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {300, 260});
+        QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, {120, 90});
+        QTest::mouseMove(&overlay, {680, 225});
+        QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, {680, 225});
         QVERIFY(!overlay.selection().isEmpty());
-        const QPoint at(overlay.selection().x() / 2, overlay.selection().center().y() / 2);
+        const QPoint at(300, 208);
         movePointerTo(overlay, at);
         QTest::qWait(50);
         const auto *bar = overlay.findChild<QWidget *>(QStringLiteral("captureToolbar"));
         QVERIFY2(bar != nullptr && bar->isVisible(), "the bar has to be up for this to mean anything");
         // Without looking at the tools this is where the panel would go, and it is on
         // the bar: that is the situation being guarded against, not an assumption.
-        QVERIFY2(magnifierPlacement(at, QSize(560, 360), {}).toRect().intersects(bar->geometry()),
+        QVERIFY2(magnifierPlacement(at, window, {}).toRect().intersects(bar->geometry()),
                  "the panel has to want the bar's place before stepping aside means anything");
-        const QRect panel = magnifierPanel(overlay, at, QSize(560, 360));
-        QVERIFY2(!panel.intersects(bar->geometry()),
+        const QRect panel = magnifierPanel(overlay, at, window);
+        QVERIFY2(!panel.isEmpty() && !panel.intersects(bar->geometry()),
                  "the panel is drawn by the window and the bar is drawn over it, so the "
                  "panel has to be placed somewhere the bar is not");
         // The original light pixels must remain visible throughout the panel;
@@ -4912,30 +4910,216 @@ class UiTests : public QObject {
         QVERIFY(draggedPos != startPos);
         QVERIFY(overlay.rect().contains(bar->geometry()));
         QCOMPARE(overlay.selection(), initialSelection);
+
+        auto *sidebar = overlay.findChild<CaptureSidebar *>(QStringLiteral("captureSidebar"));
+        QVERIFY(sidebar != nullptr && sidebar->isVisible());
+        for (auto *btn : bar->findChildren<QPushButton *>()) {
+            if (btn->property("tool").toBool())
+                QCOMPARE(btn->size(), QSize(32, 32));
+        }
+        for (auto *btn : sidebar->findChildren<QPushButton *>()) {
+            if (btn->property("tool").toBool())
+                QCOMPARE(btn->size(), QSize(32, 32));
+        }
+        auto blueBounds = [](const QImage &img) {
+            int minX = img.width(), minY = img.height(), maxX = -1, maxY = -1;
+            for (int y = 0; y < img.height(); ++y) {
+                for (int x = 0; x < img.width(); ++x) {
+                    const QColor c = img.pixelColor(x, y);
+                    if (c.blue() > 200 && c.red() < 40 && c.green() > 80 && c.green() < 180) {
+                        minX = std::min(minX, x);
+                        minY = std::min(minY, y);
+                        maxX = std::max(maxX, x);
+                        maxY = std::max(maxY, y);
+                    }
+                }
+            }
+            return maxX >= minX ? QRect(minX, minY, maxX - minX + 1, maxY - minY + 1) : QRect();
+        };
+        const QImage barImg = bar->grab().toImage();
+        QCOMPARE(barImg.pixelColor(barImg.width() / 2, 3).alpha(), 255);
+        const QRect barBlue = blueBounds(barImg);
+        QVERIFY(!barBlue.isEmpty());
+        QVERIFY(barBlue.width() >= qRound(28 * barImg.devicePixelRatio()));
+        QVERIFY(barBlue.height() >= qRound(28 * barImg.devicePixelRatio()));
+        QVERIFY(std::abs(barBlue.width() - barBlue.height()) <= 2);
+
         artifact(overlay, "capture-unified-light.png");
         applyTheme(ThemeMode::Dark);
         QTest::qWait(30);
+        const QImage darkBarImg = bar->grab().toImage();
+        const QRect darkBarBlue = blueBounds(darkBarImg);
+        QVERIFY(!darkBarBlue.isEmpty());
+        QVERIFY(std::abs(darkBarBlue.width() - darkBarBlue.height()) <= 2);
         artifact(overlay, "capture-unified-dark.png");
         applyTheme(ThemeMode::Light);
         overlay.hide();
     }
+
+    void captureToolbarAnchorsBelowSelectionAndKeepsInstructionsClear() {
+        QImage image(960, 640, QImage::Format_RGB32);
+        image.fill(QColor("#202228"));
+        applyTheme(ThemeMode::Light);
+        Overlay overlay(ScreenFrame{"capture-layout", image.rect(), image.rect(), image, true});
+        overlay.show();
+        overlay.setFixedSize(image.size());
+        auto *bar = overlay.findChild<CaptureToolbar *>();
+        QVERIFY(bar);
+        const auto hintPixel = [&overlay] {
+            const QImage shot = overlay.grab().toImage();
+            return shot.pixelColor((QPointF(overlay.width() / 2, 13) * shot.devicePixelRatio()).toPoint());
+        };
+        const auto select = [&](QPoint start, QPoint end, bool withMove) {
+            QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, start);
+            if (withMove)
+                QTest::mouseMove(&overlay, end);
+            QCOMPARE(hintPixel(), QColor(Qt::white));
+            QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, end);
+            QCOMPARE(hintPixel(), QColor(Qt::white));
+            QVERIFY(bar->isVisible());
+            QVERIFY(bar->y() >= captureInstructionHeight);
+        };
+        select({120, 90}, {880, 320}, false);
+        QCOMPARE(bar->geometry().right() + 1, overlay.selection().x() + overlay.selection().width());
+        QVERIFY(bar->y() > overlay.selection().bottom());
+
+        overlay.resetSelection();
+        select({120, 95}, {880, 630}, true);
+        QVERIFY(overlay.rect().contains(bar->geometry()));
+        QCOMPARE(bar->y(), captureInstructionHeight);
+
+        auto *more = bar->findChild<QPushButton *>("captureMore");
+        QVERIFY(more);
+        bool foundMenu = false;
+        bool foundIcon = false;
+        QTimer::singleShot(0, &overlay, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            foundMenu = menu->parentWidget() == more && menu->isVisible() && !menu->actions().isEmpty();
+            const auto hasIcon = [](const QMenu *item) {
+                const auto actions = item->actions();
+                return std::any_of(actions.cbegin(), actions.cend(), [](const QAction *action) {
+                    return !action->icon().isNull();
+                });
+            };
+            foundIcon = hasIcon(menu);
+            for (auto *submenu : menu->findChildren<QMenu *>())
+                foundIcon |= hasIcon(submenu);
+            menu->close();
+        });
+        QTest::mouseClick(more, Qt::LeftButton);
+        QVERIFY(foundMenu);
+        QVERIFY(!foundIcon);
+    }
+
+    void captureBrushAndMosaicRenderAtNativeResolutionAndUndo() {
+        const QRect logical(0, 0, 900, 600);
+        QImage image(logical.size() * 2, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        {
+            QPainter painter(&image);
+            for (int x = 700; x < 900; x += 2)
+                painter.fillRect(x, 480, 1, 160, Qt::black);
+        }
+        applyTheme(ThemeMode::Light);
+        Overlay overlay(ScreenFrame{"capture-markup", logical, image.rect(), image, true});
+        overlay.show();
+        overlay.setFixedSize(logical.size());
+        CaptureStyle style;
+        style.shadow = false;
+        overlay.setStyle(style);
+        const auto drag = [&overlay](QPoint start, QPoint end) {
+            QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, start);
+            QTest::mouseMove(&overlay, end);
+            QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, end);
+        };
+        drag({100, 100}, {790, 450});
+        auto *bar = overlay.findChild<CaptureToolbar *>();
+        QVERIFY(bar && bar->isVisible());
+        const auto button = [bar](const QString &glyph) -> QPushButton * {
+            for (auto *control : bar->findChildren<QPushButton *>())
+                if (control->property("glyphName").toString() == glyph)
+                    return control;
+            return nullptr;
+        };
+        auto *brush = button("brush");
+        auto *mosaic = button("mosaic");
+        auto *undo = button("undo");
+        auto *scroll = button("scroll");
+        QVERIFY(brush && mosaic && undo && scroll);
+        QVERIFY(!undo->isEnabled());
+        const auto original = overlay.selectionPixels();
+        const QRect area = overlay.selection();
+        auto *readout = bar->findChild<QPushButton *>("captureSize");
+        QVERIFY(readout);
+        QVERIFY(readout->width() >= readout->fontMetrics().horizontalAdvance(readout->text()) + 12);
+        auto *ratio = bar->findChild<QPushButton *>("captureRatio");
+        QVERIFY(ratio);
+        QVERIFY(ratio->mapTo(bar, QPoint(ratio->width(), 0)).x() <= brush->x());
+        QTest::mouseClick(brush, Qt::LeftButton);
+        QVERIFY(brush->isChecked());
+        drag({180, 200}, {290, 200});
+        const auto brushed = overlay.selectionImage();
+        const QPoint strokeProbe = QPoint(440, 400) - area.topLeft();
+        QCOMPARE(brushed.size(), original.size());
+        QCOMPARE(brushed.pixelColor(strokeProbe), QColor("#ff453a"));
+        QCOMPARE(original.pixelColor(strokeProbe), QColor(Qt::white));
+
+        QTest::keyClick(&overlay, Qt::Key_M);
+        QVERIFY(mosaic->isChecked());
+        QVERIFY(!brush->isChecked());
+        drag({355, 245}, {435, 310});
+        QCOMPARE(overlay.selection(), area);
+        QCOMPARE(overlay.selectionPixels(), original);
+        const QImage edited = overlay.selectionImage();
+        const QPoint mosaicProbe = QPoint(760, 540) - area.topLeft();
+        const QColor pixelated = edited.pixelColor(mosaicProbe);
+        QVERIFY(pixelated.red() > 40 && pixelated.red() < 215);
+        QCOMPARE(edited.pixelColor(strokeProbe), QColor("#ff453a"));
+        QCOMPARE(edited.pixelColor(QPoint(600, 530) - area.topLeft()), QColor(Qt::white));
+        QVERIFY(!scroll->isEnabled());
+        QVERIFY(undo->isEnabled());
+        artifact(overlay, "capture-brush-mosaic.png");
+
+        QSignalSpy copied(&overlay, &Overlay::copyRequested);
+        QTest::keyClick(&overlay, Qt::Key_C, Qt::ControlModifier);
+        QCOMPARE(copied.count(), 1);
+        QTest::keyClick(&overlay, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(overlay.selectionImage(), brushed);
+        QTest::mouseClick(undo, Qt::LeftButton);
+        QCOMPARE(overlay.selectionImage(), original);
+        QVERIFY(!undo->isEnabled());
+        QVERIFY(scroll->isEnabled());
+        QSignalSpy cancelled(&overlay, &Overlay::cancelled);
+        QTest::keyClick(&overlay, Qt::Key_Escape);
+        QVERIFY(!mosaic->isChecked());
+        QCOMPARE(cancelled.count(), 0);
+    }
+
     void captureAndScrollBarsShareUnifiedChromeActionsAndWording() {
         applyTheme(ThemeMode::Light);
         ScrollCaptureProgress progress;
         QImage shot(240, 320, QImage::Format_ARGB32);
         shot.fill(QColor("#f5f7fa"));
-        progress.setProgress(shot, 2, shot.size(), QRect(0, 0, 240, 320), true, Qt::Vertical);
         progress.move(100, 100);
         progress.show();
         QTest::qWait(30);
+        auto *finish = progress.findChild<QPushButton *>(QStringLiteral("scrollFinish"));
+        QVERIFY(finish && !finish->isEnabled());
+        progress.setProgress(shot, 2, shot.size(), QRect(0, 0, 240, 320), true, Qt::Vertical);
+        QTest::qWait(30);
         QCOMPARE(progress.height(), 44);
         auto *grip = progress.findChild<QWidget *>(QStringLiteral("scrollDragBar"));
-        auto *finish = progress.findChild<QPushButton *>(QStringLiteral("scrollFinish"));
         auto *pin = progress.findChild<QPushButton *>(QStringLiteral("scrollPin"));
         auto *save = progress.findChild<QPushButton *>(QStringLiteral("scrollSave"));
         auto *copy = progress.findChild<QPushButton *>(QStringLiteral("scrollCopy"));
         auto *cancel = progress.findChild<QPushButton *>(QStringLiteral("scrollCancel"));
         QVERIFY(grip && finish && pin && save && copy && cancel);
+        for (auto *btn : progress.findChildren<QPushButton *>()) {
+            if (btn->property("tool").toBool())
+                QCOMPARE(btn->size(), QSize(32, 32));
+        }
         QVERIFY(finish->property("primary").toBool());
         QVERIFY(finish->x() < pin->x() && pin->x() < save->x() && save->x() < copy->x() && copy->x() < cancel->x());
         QCOMPARE(finish->toolTip(), QStringLiteral("批注"));
@@ -4943,12 +5127,123 @@ class UiTests : public QObject {
         QCOMPARE(save->toolTip(), QStringLiteral("保存图片"));
         QCOMPARE(copy->toolTip(), QStringLiteral("复制图像"));
         QVERIFY(!copy->toolTip().contains(QStringLiteral("关闭长截图")));
+        auto blueBounds = [](const QImage &img) {
+            int minX = img.width(), minY = img.height(), maxX = -1, maxY = -1;
+            for (int y = 0; y < img.height(); ++y) {
+                for (int x = 0; x < img.width(); ++x) {
+                    const QColor c = img.pixelColor(x, y);
+                    if (c.blue() > 200 && c.red() < 40 && c.green() > 80 && c.green() < 180) {
+                        minX = std::min(minX, x);
+                        minY = std::min(minY, y);
+                        maxX = std::max(maxX, x);
+                        maxY = std::max(maxY, y);
+                    }
+                }
+            }
+            return maxX >= minX ? QRect(minX, minY, maxX - minX + 1, maxY - minY + 1) : QRect();
+        };
+        const QImage scrollImg = progress.grab().toImage();
+        QCOMPARE(scrollImg.pixelColor(scrollImg.width() / 2, 3).alpha(), 255);
+        const QRect scrollBlue = blueBounds(scrollImg);
+        QVERIFY(!scrollBlue.isEmpty());
+        QVERIFY(scrollBlue.width() >= qRound(28 * scrollImg.devicePixelRatio()));
+        QVERIFY(std::abs(scrollBlue.width() - scrollBlue.height()) <= 2);
         artifact(progress, "scroll-unified-light.png");
         applyTheme(ThemeMode::Dark);
         QTest::qWait(30);
+        const QImage darkScrollImg = progress.grab().toImage();
+        const QRect darkScrollBlue = blueBounds(darkScrollImg);
+        QVERIFY(!darkScrollBlue.isEmpty());
+        QVERIFY(std::abs(darkScrollBlue.width() - darkScrollBlue.height()) <= 2);
         artifact(progress, "scroll-unified-dark.png");
         applyTheme(ThemeMode::Light);
         progress.hide();
+    }
+    void roundedMenusAndTooltipsHaveTransparentCorners() {
+        auto grabTransparent = [](QWidget *w) {
+            const qreal dpr = w->devicePixelRatioF();
+            QImage img(qRound(w->width() * dpr), qRound(w->height() * dpr), QImage::Format_ARGB32_Premultiplied);
+            img.setDevicePixelRatio(dpr);
+            img.fill(Qt::transparent);
+            w->render(&img, QPoint(), QRegion(), QWidget::DrawWindowBackground | QWidget::DrawChildren);
+            return img;
+        };
+        auto assertTransparentCorners = [](const QImage &img) {
+            QVERIFY(img.width() >= 12 && img.height() >= 12);
+            QCOMPARE(img.pixelColor(0, 0).alpha(), 0);
+            QCOMPARE(img.pixelColor(img.width() - 1, 0).alpha(), 0);
+            QCOMPARE(img.pixelColor(0, img.height() - 1).alpha(), 0);
+            QCOMPARE(img.pixelColor(img.width() - 1, img.height() - 1).alpha(), 0);
+        };
+        const QString folder = qEnvironmentVariable("H2D_TEST_ARTIFACTS");
+        auto saveImg = [&](const QImage &img, const QString &name) {
+            if (!folder.isEmpty()) {
+                QDir().mkpath(folder);
+                QVERIFY(img.save(QDir(folder).filePath(name)));
+            }
+        };
+
+        for (const auto mode : {ThemeMode::Dark, ThemeMode::Light}) {
+            const QString tag = mode == ThemeMode::Dark ? QStringLiteral("dark") : QStringLiteral("light");
+            applyTheme(mode);
+
+            QMenu menu;
+            menu.addAction(QStringLiteral("截图（Ctrl+Shift+A）"));
+            menu.addAction(QStringLiteral("贴图（Ctrl+T）"));
+            menu.addSeparator();
+            menu.addAction(QStringLiteral("设置"));
+            menu.popup(QPoint(120, 120));
+            QTest::qWait(30);
+            QVERIFY(menu.testAttribute(Qt::WA_TranslucentBackground));
+            QVERIFY(menu.windowFlags().testFlag(Qt::NoDropShadowWindowHint));
+            QVERIFY(!menu.autoFillBackground());
+            const QImage menuImg = grabTransparent(&menu);
+            assertTransparentCorners(menuImg);
+            QVERIFY(menuImg.pixelColor(menuImg.width() / 2, menuImg.height() / 2).alpha() > 200);
+            saveImg(menuImg, QStringLiteral("menu-rounded-%1.png").arg(tag));
+            menu.hide();
+
+            QWidget host;
+            host.setObjectName(QStringLiteral("tooltipHost"));
+            host.setAttribute(Qt::WA_AlwaysShowToolTips);
+            host.resize(160, 60);
+            host.move(100, 100);
+            host.setToolTip(QStringLiteral("重置圆角、边框与阴影"));
+            host.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&host));
+            QHelpEvent tipHelp(QEvent::ToolTip, host.rect().center(), host.mapToGlobal(host.rect().center()));
+            QApplication::sendEvent(&host, &tipHelp);
+            QCoreApplication::processEvents();
+            QVERIFY(QToolTip::isVisible());
+            QWidget *tip = nullptr;
+            for (QWidget *w : QApplication::topLevelWidgets()) {
+                if (w->isVisible() && (w->inherits("QTipLabel") || w->windowType() == Qt::ToolTip)) {
+                    tip = w;
+                    break;
+                }
+            }
+            if (!tip) {
+                for (QWidget *w : QApplication::topLevelWidgets()) {
+                    qDebug() << "TOPLEVEL:" << w->metaObject()->className() << w->objectName()
+                             << "vis=" << w->isVisible() << "type=" << int(w->windowType());
+                }
+            }
+            QVERIFY(tip != nullptr);
+            QVERIFY(tip->testAttribute(Qt::WA_TranslucentBackground));
+            QVERIFY(tip->windowFlags().testFlag(Qt::NoDropShadowWindowHint));
+            QVERIFY(!tip->autoFillBackground());
+            const QImage tipImg = grabTransparent(tip);
+            assertTransparentCorners(tipImg);
+            // Interior edge padding pixel (inside the border, left of text) must be dark glass, not white.
+            const QColor inside = tipImg.pixelColor(qRound(4 * tipImg.devicePixelRatio()),
+                                                    tipImg.height() / 2);
+            QVERIFY(inside.alpha() > 200);
+            QVERIFY(inside.red() < 60 && inside.green() < 60 && inside.blue() < 68);
+            saveImg(tipImg, QStringLiteral("tooltip-rounded-%1.png").arg(tag));
+            QToolTip::hideText();
+            host.hide();
+        }
+        applyTheme(ThemeMode::Light);
     }
 };
 QTEST_MAIN(UiTests)

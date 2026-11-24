@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=EditHere
-Name[zh_CN]=EditHere · 改这里
+Name[zh_CN]=EditHere
 Comment=Screenshot annotation and visual feedback
 Exec=EditHere %f
 Icon=edithere

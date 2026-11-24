@@ -380,8 +380,9 @@ class StartupFlowTests : public QObject {
         const auto before=overlay.grab().toImage();
         QTest::qWait(320);
         const auto after=overlay.grab().toImage();
-        QVERIFY(after.pixelColor(227,250).lightness()<100);
-        QVERIFY(before.pixelColor(227,250).lightness()<100);
+        const QPoint probe = (QPointF(227, 250) * after.devicePixelRatio()).toPoint();
+        QVERIFY(before.pixelColor(probe).lightness() > 205);
+        QVERIFY(after.pixelColor(probe).lightness() > 205);
         QTest::mousePress(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(200,200));
         QMouseEvent drag(QEvent::MouseMove,QPointF(300,300),QPointF(300,300),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
         QApplication::sendEvent(&overlay,&drag);
@@ -437,21 +438,35 @@ class StartupFlowTests : public QObject {
         overlay.setFixedSize(800, 600);
         QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
 
-        // Hovering inside App A (even over inner visual panels) should select the whole App A window.
-        QTest::mouseMove(&overlay, QPoint(215, 200));
-        QTest::qWait(60);
+        // Hovering App A's titlebar or flat background selects the whole App A OS window.
+        QTest::mouseMove(&overlay, QPoint(200, 80));
+        QTest::qWait(40);
         QVERIFY(overlay.hovered().has_value());
         QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
 
-        // Pressing Tab toggles cleanly down into an inner visual block, and again back to the whole window.
-        QTest::keyClick(&overlay, Qt::Key_Tab);
-        QTest::qWait(30);
+        QTest::mouseMove(&overlay, QPoint(200, 420));
+        QTest::qWait(40);
         QVERIFY(overlay.hovered().has_value());
-        QVERIFY(overlay.hovered()->bounds != QRect(80, 60, 520, 420));
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+
+        // Hovering an inner pixel-bordered card inside App A detects that visual block.
+        QTest::mouseMove(&overlay, QPoint(215, 200));
+        QTest::qWait(40);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect innerBounds = overlay.hovered()->bounds;
+        QVERIFY(innerBounds != QRect(80, 60, 520, 420));
+        QVERIFY(QRect(80, 60, 520, 420).contains(innerBounds));
+        QVERIFY(innerBounds.contains(QPoint(215, 200)));
+
+        // Pressing Tab toggles cleanly up to the whole window, and again back down to the visual block.
         QTest::keyClick(&overlay, Qt::Key_Tab);
         QTest::qWait(30);
         QVERIFY(overlay.hovered().has_value());
         QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+        QTest::keyClick(&overlay, Qt::Key_Tab);
+        QTest::qWait(30);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, innerBounds);
         overlay.hide();
     }
     void magnifierToggleDefaultsOn() {

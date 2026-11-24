@@ -5,6 +5,7 @@
 #include <QColor>
 #include <QImage>
 #include <QElapsedTimer>
+#include <QPainterPath>
 #include <optional>
 #include <QProcess>
 #include <QRect>
@@ -16,7 +17,7 @@ namespace h2d {
 class CaptureToolbar;
 class CaptureSidebar;
 // The window a capture starts in. It shows one screen, lets a region be drawn, and
-// then keeps that region while the bar above it and the column of tools beside it
+// then keeps that region while the bar and the column of tools beside it
 // offer what to do with it. Handing the region to the annotation editor is one of
 // those things rather than the only one, which is the difference from the way a
 // capture used to end.
@@ -33,10 +34,10 @@ class Overlay final : public QWidget {
     // The pixels of the region with the chosen corner radius, border and shadow
     // applied, which is the picture the picture-making actions work on.
     QImage selectionImage() const;
-    // The region exactly as it was captured, with no decoration. Reading text works on
-    // this rather than on the decorated picture: a shadow is presentation, and a halo
-    // around the words is neither something to recognise nor a place to point at.
+    // The region exactly as it was captured.
     QImage selectionPixels() const;
+    // Original size with the on-screen brush and mosaic applied.
+    QImage selectionContent() const;
     QRect selection() const {
         return selected_;
     }
@@ -117,6 +118,7 @@ class Overlay final : public QWidget {
     quint64 detectionGeneration_ = 0;
     void requestProbe();
     QVector<Candidate> candidates() const;
+    QVector<Candidate> documentCandidates() const;
     bool shouldPreferWindow() const;
     void finish(bool copy);
     // Moves the region to a new rectangle and brings the tools up to date with it.
@@ -136,6 +138,14 @@ class Overlay final : public QWidget {
     // The magnifier reads the original frame instead of this decorated scene.
     void drawScene(QPainter &painter, const QRectF &viewport);
     void drawMagnifier(QPainter &painter, QPointF at);
+    QString captureHint() const;
+    QRect captureToolBounds() const;
+    void beginMarkup(QPoint pixel);
+    void updateMarkup(QPoint pixel);
+    void finishMarkup(QPoint pixel);
+    void undoMarkup();
+    void clearMarkup();
+    void drawMarkup(QPainter &painter, bool includeDraft) const;
     // The next click reads a colour instead of touching the region.
     void startPicking();
     void leavePicking();
@@ -171,6 +181,18 @@ class Overlay final : public QWidget {
     CaptureStyle style_;
     CaptureRatio ratio_ = CaptureRatio::Free;
     OcrLanguageMode ocrLanguage_ = OcrLanguageMode::System;
+    struct Markup {
+        QPoint start;
+        QPainterPath stroke;
+        QColor ink;
+        qreal width = 0;
+        QRect area;
+        QImage mosaic;
+        int strength = 0;
+        bool blur = false;
+    };
+    QVector<Markup> markup_;
+    std::optional<Markup> draftMarkup_;
     // The region is settled and the tools are up: the pointer now moves and resizes it
     // rather than drawing a new one.
     bool ready_ = false;

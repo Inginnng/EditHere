@@ -320,8 +320,8 @@
     </message>
     <message>
         <location filename="../main.cpp" line="77"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="60"/>
@@ -2809,8 +2809,8 @@
     <name>h2d::B2Window</name>
     <message>
         <location filename="../b2window.cpp" line="170"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../b2window.cpp" line="239"/>
@@ -3320,6 +3320,111 @@
         <source>取消</source>
         <translation>取消</translation>
     </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="493"/>
+        <location filename="../capturetoolbar.cpp" line="605"/>
+        <source>画笔（B）</source>
+        <translation>畫筆（B）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="494"/>
+        <location filename="../capturetoolbar.cpp" line="607"/>
+        <source>马赛克（M）</source>
+        <translation>馬賽克（M）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="497"/>
+        <location filename="../capturetoolbar.cpp" line="609"/>
+        <source>绘制设置</source>
+        <translation>繪製設定</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="498"/>
+        <location filename="../capturetoolbar.cpp" line="611"/>
+        <source>撤销绘制（Ctrl+Z）</source>
+        <translation>復原繪製（Ctrl+Z）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="724"/>
+        <source>撤销绘制后可开始长截图</source>
+        <translation>復原繪製後即可開始長截圖</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1857"/>
+        <location filename="../capturetoolbar.cpp" line="1938"/>
+        <source>画笔</source>
+        <translation>畫筆</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1859"/>
+        <source>荧光笔</source>
+        <translation>螢光筆</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1861"/>
+        <source>颜色</source>
+        <translation>色彩</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1863"/>
+        <source>红色</source>
+        <translation>紅色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1863"/>
+        <source>黄色</source>
+        <translation>黃色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1864"/>
+        <source>绿色</source>
+        <translation>綠色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1864"/>
+        <source>蓝色</source>
+        <translation>藍色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1865"/>
+        <source>白色</source>
+        <translation>白色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1865"/>
+        <source>黑色</source>
+        <translation>黑色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1869"/>
+        <source>线宽</source>
+        <translation>線寬</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1874"/>
+        <source>像素化</source>
+        <translation>像素化</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1875"/>
+        <source>模糊</source>
+        <translation>模糊</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1876"/>
+        <source>强度</source>
+        <translation>強度</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1939"/>
+        <source>马赛克</source>
+        <translation>馬賽克</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1940"/>
+        <source>撤销绘制</source>
+        <translation>復原繪製</translation>
+    </message>
 </context>
 <context>
     <name>h2d::Controller</name>
@@ -3398,8 +3503,8 @@
     </message>
     <message>
         <location filename="../controller.cpp" line="404"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../controller.cpp" line="214"/>
@@ -3829,8 +3934,8 @@
     </message>
     <message>
         <location filename="../editor.cpp" line="672"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../editor.cpp" line="684"/>
@@ -4917,6 +5022,21 @@
         <source>%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小</source>
         <translation>%1  ·  %2 / %3  ·  滾輪 ↑ 更大 ↓ 更小</translation>
     </message>
+    <message>
+        <location filename="../overlay.cpp" line="482"/>
+        <source>在选区内拖动画笔 · Ctrl+Z 撤销 · Esc 退出画笔</source>
+        <translation>在選區內拖動畫筆 · Ctrl+Z 復原 · Esc 退出畫筆</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="484"/>
+        <source>在选区内拖出马赛克区域 · Ctrl+Z 撤销 · Esc 退出马赛克</source>
+        <translation>在選區內拖出馬賽克區域 · Ctrl+Z 復原 · Esc 退出馬賽克</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="488"/>
+        <source>松开鼠标完成选区 · Esc 取消</source>
+        <translation>放開滑鼠完成選區 · Esc 取消</translation>
+    </message>
 </context>
 <context>
     <name>h2d::PinWindow</name>
@@ -5619,8 +5739,8 @@
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="831"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="833"/>

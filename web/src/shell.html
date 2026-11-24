@@ -6,7 +6,7 @@
 <meta name="edithere-version" content="/*__VERSION__*/">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; worker-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="description" content="EditHere 无边界工作台：图片批注、组件布局与视频时间点批注，在你的设备上完成。">
-<title>EditHere · 改这里</title>
+<title>EditHere</title>
 <link rel="icon" type="image/svg+xml" href="/*__BRAND_ICON__*/">
 <style>/*__STYLE__*/</style>
 </head>
@@ -16,7 +16,7 @@
 -->
 <svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>/*__UI_ICONS__*/</defs></svg>
 <header class="header">
-  <div class="brand surface" aria-label="EditHere · 改这里"><img class="brand-lockup brand-lockup-light" src="/*__BRAND_LOCKUP__*/" alt="EditHere" width="141" height="25"><img class="brand-lockup brand-lockup-dark" src="/*__BRAND_LOCKUP_DARK__*/" alt="EditHere" width="141" height="25"><img class="brand-symbol" src="/*__BRAND_ICON__*/" alt="EditHere" width="30" height="30"></div>
+  <div class="brand surface" aria-label="EditHere"><img class="brand-lockup brand-lockup-light" src="/*__BRAND_LOCKUP__*/" alt="EditHere" width="141" height="25"><img class="brand-lockup brand-lockup-dark" src="/*__BRAND_LOCKUP_DARK__*/" alt="EditHere" width="141" height="25"><img class="brand-symbol" src="/*__BRAND_ICON__*/" alt="EditHere" width="30" height="30"></div>
   <div class="view-controls surface" role="toolbar" aria-label="画布显示与缩放"><button id="toggle-annotations" class="icon-button" aria-label="隐藏批注标记" aria-pressed="true" title="隐藏批注与位移箭头"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button><span class="separator"></span><button id="zoom-out" class="icon-button" aria-label="缩小"><svg class="icon" aria-hidden="true"><use href="#i-zoom-out"/></svg></button><button id="fit" title="适应画布 (Ctrl / ⌘ + 0)">100%</button><button id="zoom-in" class="icon-button" aria-label="放大"><svg class="icon" aria-hidden="true"><use href="#i-zoom-in"/></svg></button><button id="fit-icon" class="icon-button" aria-label="适应画布" title="适应画布"><svg class="icon" aria-hidden="true"><use href="#i-fit"/></svg></button></div>
   <div class="header-actions surface">
     <button id="open" class="button" aria-label="打开图片、视频或项目" title="打开图片、视频或项目 (Ctrl / ⌘ + O)"><svg class="icon" aria-hidden="true"><use href="#i-open"/></svg><span>打开</span></button>
@@ -28,7 +28,7 @@
 </header>
 <main class="app">
   <section id="empty" class="empty">
-    <div class="empty-heading"><span class="eyebrow"><span></span>改这里 · 视觉工作台</span><h1>让 AI 看懂，<br>你想怎么改。</h1><p class="intro">圈出细节，挪动组件，在画面里把想法说清楚。</p></div>
+    <div class="empty-heading"><span class="eyebrow"><span></span>EditHere · 视觉工作台</span><h1>让 AI 看懂，<br>你想怎么改。</h1><p class="intro">圈出细节，挪动组件，在画面里把想法说清楚。</p></div>
     <button id="drop-card" class="drop-card"><span class="drop-symbol"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span>＋</span></span><strong>放入画面，开始表达</strong><span>拖入多张页面自动组成组图，也可以拖入视频</span><small>PNG · JPG · WebP · MP4 · WebM</small></button>
     <button id="demo" class="demo quiet">打开示例画布 <span>↗</span></button>
     <div class="features"><span><svg class="icon" aria-hidden="true"><use href="#i-point"/></svg>精确批注</span><span><svg class="icon" aria-hidden="true"><use href="#i-notes"/></svg>组图批注</span><span><svg class="icon" aria-hidden="true"><use href="#i-explode"/></svg>自由布局</span><span><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>视频时间点</span></div>

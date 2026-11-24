@@ -401,7 +401,7 @@ void Controller::updateTrayShortcut() {
     const auto annotateLabel = settings_.shortcuts.value("annotate").toString(QKeySequence::NativeText);
     annotateAction_->setText(annotateLabel.isEmpty() ? tr("新建批注（空窗口）")
                                                   : tr("新建批注（空窗口）") + "    " + annotateLabel);
-    const auto brand = tr("EditHere · 改这里");
+    const auto brand = tr("EditHere");
     tray_.setToolTip(label.isEmpty() ? brand : brand + " · " + label);
 }
 void Controller::openAnnotation() {
@@ -1778,7 +1778,7 @@ void Controller::copyRegion(Overlay *source) {
     restoreAfterCapture();
 }
 void Controller::pinRegion(Overlay *source) {
-    const QImage bare = source->selectionPixels();
+    const QImage bare = source->selectionContent();
     const CaptureStyle style = source->style();
     const QImage picture = composeCapture(bare, style);
     if (!picture.isNull()) {
@@ -1817,10 +1817,8 @@ void Controller::saveRegion(Overlay *source) {
     recoverAfterDialog();
 }
 void Controller::recognizeRegion(Overlay *source, OcrLanguageMode language) {
-    // The bare region, not the decorated picture: a shadow is drawn for the eye, and a
-    // halo around the words would both be misread and shift every line box away from
-    // the text it points at.
-    const QImage picture = source->selectionPixels();
+    // Keep edits to the pixels while leaving the border and shadow out of OCR.
+    const QImage picture = source->selectionContent();
     if (picture.isNull())
         return;
     remember(picture, source->selection());
@@ -1941,11 +1939,15 @@ void Controller::runRecognition(OcrLanguageMode language) {
 
 void Controller::completeCapture(Overlay *source, QRect area, QVector<Candidate> candidates) {
     const ScreenFrame frame = source->frame();
-    completeCapture(frame, area, std::move(candidates));
+    QImage picture = area == source->selection() ? source->selectionContent() : QImage();
+    completeCapture(frame, area, std::move(candidates), std::move(picture));
 }
-void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<Candidate> candidates) {
+void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<Candidate> candidates,
+                                 QImage picture) {
     try {
-        auto doc = fromImage(frame.image.copy(area), "screen", tr("屏幕截图"));
+        if (picture.isNull())
+            picture = frame.image.copy(area);
+        auto doc = fromImage(picture, "screen", tr("屏幕截图"));
         if (!frame.capturedAt.isEmpty()) {
             doc.createdAt = frame.capturedAt;
             doc.capture["capturedAt"] = frame.capturedAt;

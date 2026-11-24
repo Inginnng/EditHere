@@ -1,4 +1,4 @@
-# EditHere · 改这里：AI 与命令行
+# EditHere：AI 与命令行
 
 ## 0.12.0 兼容范围
 

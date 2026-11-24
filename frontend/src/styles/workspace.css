@@ -294,8 +294,8 @@
 
 .mosaic-region-outline {
   position: absolute;
-  border: 1px dashed rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.72));
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.22);
   border-radius: var(--r-micro);
   z-index: 7;
   cursor: pointer;
@@ -303,7 +303,7 @@
 
 .mosaic-region-outline.selected {
   border: 1.5px solid var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 /* Freehand Brush SVG Layer */
@@ -329,10 +329,11 @@
 
 .crop-window {
   position: absolute;
-  border: 1.5px solid #ffffff;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--r-micro);
   box-shadow:
     0 0 0 9999px rgba(8, 10, 14, 0.56),
-    inset 0 0 0 1px rgba(0, 122, 255, 0.9);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72);
   cursor: move;
 }
 
@@ -489,9 +490,9 @@
 }
 
 .box-annotation-rect.selected {
-  border-width: 2px;
-  background: color-mix(in srgb, var(--accent) 11%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  border-width: 1.5px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .box-annotation-rect.has-popover,
@@ -543,8 +544,8 @@
 }
 
 .corner-badge.explode {
-  left: 12px;
-  top: -13px;
+  left: 16px;
+  top: -12px;
   z-index: 14;
   background: var(--explode);
   color: #ffffff;
@@ -561,8 +562,8 @@
 }
 
 .workspace-root.inspector-collapsed .corner-badge.explode {
-  left: 13px;
-  top: -16px;
+  left: 18px;
+  top: -15px;
 }
 
 .workspace-root.inspector-collapsed .point-pin {
@@ -751,32 +752,33 @@
 
 .explode-block {
   position: absolute;
-  border: 1px solid rgba(0, 122, 255, 0.26);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 34%, transparent);
   background: transparent;
   border-radius: var(--r-micro);
   cursor: move;
   z-index: 10;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
 .explode-block.hovered {
   border: 1.5px dashed var(--accent);
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .explode-block.selected {
   border: 1.5px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .explode-handle {
   position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: var(--r-circle);
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
   background: #ffffff;
   border: 1.5px solid var(--accent);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
   transform: translate(-50%, -50%);
   z-index: 12;
 }

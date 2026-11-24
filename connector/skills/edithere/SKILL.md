@@ -1,6 +1,6 @@
 ---
 name: edithere
-display_name: EditHere 改这里
+display_name: EditHere
 display_name_en: EditHere
 description: Collect screenshot annotations and multi-page project gallery reviews via the EditHere Desktop MCP Connector. Capture accessible pages, maintain the gallery, apply scoped code changes after user submission, and refresh code-affected screenshots.
 description_zh: 让 AI 维护项目全部可访问页面的组图，读取用户评审意见后修改源码并按代码影响面更新截图。

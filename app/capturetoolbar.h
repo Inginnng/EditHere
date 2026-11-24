@@ -7,11 +7,23 @@
 #include <optional>
 class QCheckBox;
 class QFrame;
+class QHBoxLayout;
 class QLabel;
+class QMenu;
 class QPushButton;
 class QSlider;
 class QScrollArea;
+class QVBoxLayout;
 namespace h2d {
+enum class CaptureMarkupTool { None, Brush, Mosaic };
+
+struct CaptureMarkupOptions {
+    QColor brushColor = QColor("#ff453a");
+    int brushWidth = 4;
+    int mosaicStrength = 12;
+    bool highlighter = false;
+    bool blur = false;
+};
 // The one popup both the corner tool and the shadow tool open. Two tabs rather than a
 // list of steps, and a slider rather than a set of numbers, because both effects are
 // the kind of thing that has to be judged by eye on the picture itself.
@@ -66,8 +78,7 @@ class CaptureToolbar final : public QWidget {
     Q_OBJECT
   public:
     explicit CaptureToolbar(QWidget *parent = nullptr);
-    // Places the bar above the selection, which is where a capture tool puts it: the
-    // space under a selection is usually the part the user just decided to keep.
+    // Places the bar at the selection's lower-right edge when space allows.
     void placeNear(const QRect &selection, const QRect &bounds);
     void resetUserPosition() { userMoved_ = false; }
     void setSelectionSize(QSize size);
@@ -102,6 +113,10 @@ class CaptureToolbar final : public QWidget {
     // needs while it runs.
     void setBusy(bool busy, const QString &message = {});
     void setScrollAvailable(bool available);
+    void setMarkupTool(CaptureMarkupTool tool);
+    CaptureMarkupTool markupTool() const { return markupTool_; }
+    const CaptureMarkupOptions &markupOptions() const { return markupOptions_; }
+    void setHasMarkup(bool hasMarkup);
     // Re-applies every visible string; called once at construction and again on a
     // language change.
     void retranslate();
@@ -123,6 +138,8 @@ class CaptureToolbar final : public QWidget {
     void annotateRequested();
     void dismissed();
     void scrollRequested();
+    void markupToolChanged();
+    void undoMarkupRequested();
     // The user picked a size or a ratio, which the window applies to the selection
     // before the bar is told what came of it.
     void sizeRequested(QSize size);
@@ -144,15 +161,26 @@ class CaptureToolbar final : public QWidget {
     // Qt 6 dropped QInputDialog::getSize, so the two numbers are asked for by hand.
     static QSize askForSize(QWidget *parent, QSize current, bool *accepted);
     void chooseSize();
-    void buildMenu();
+    void buildMenu(QMenu *menu);
+    void showMarkupOptions();
+    void updateActionAvailability();
+    void moveWithinBounds(QPoint position);
+    void populateRatioMenu(QMenu *menu);
     void setRatio(CaptureRatio ratio, int customWidth = 16, int customHeight = 10);
     QPushButton *addButton(const QString &glyph, const QString &label);
     QWidget *dragBar_ = nullptr;
+    QWidget *readout_ = nullptr;
+    QHBoxLayout *actions_ = nullptr;
+    QVBoxLayout *dockLayout_ = nullptr;
     QPushButton *size_ = nullptr;
     QPushButton *ratio_ = nullptr;
     QLabel *status_ = nullptr;
     QPushButton *more_ = nullptr;
     QPushButton *close_ = nullptr;
+    QPushButton *brush_ = nullptr;
+    QPushButton *mosaic_ = nullptr;
+    QPushButton *markupSettings_ = nullptr;
+    QPushButton *undoMarkup_ = nullptr;
     QVector<QPushButton *> buttons_;
     CaptureRatio ratioChoice_ = CaptureRatio::Free;
     OcrLanguageMode ocrLanguage_ = OcrLanguageMode::System;
@@ -163,6 +191,11 @@ class CaptureToolbar final : public QWidget {
     bool busy_ = false;
     bool scrollAvailable_ = true;
     bool userMoved_ = false;
+    bool readoutAbove_ = false;
+    bool hasMarkup_ = false;
+    QRect toolBounds_;
+    CaptureMarkupTool markupTool_ = CaptureMarkupTool::None;
+    CaptureMarkupOptions markupOptions_;
     QString message_;
 };
 

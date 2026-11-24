@@ -1,4 +1,4 @@
-# EditHere · 改这里：问题归档与回归测试
+# EditHere：问题归档与回归测试
 
 [返回产品介绍](../README.md) · [开发说明](DEVELOPMENT.md) · [更新记录](../CHANGELOG.md)
 

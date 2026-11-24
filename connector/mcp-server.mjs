@@ -1178,7 +1178,7 @@ function feedbackImageCliArgs(p) {
 const TOOLS = [
   {
     name: 'edithere_status',
-    description: '查询本机 EditHere（改这里）桌面程序的运行与文档状态，不启动 GUI。用于发起标注前确认程序可用。',
+    description: '查询本机 EditHere 桌面程序的运行与文档状态，不启动 GUI。用于发起标注前确认程序可用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {

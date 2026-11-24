@@ -743,6 +743,17 @@ void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCaptur
         window->setProperty("_edithereDisplayAffinityState", QString());
     }
 }
+void configureRoundedPopupWindow(QWidget *window) {
+    if (!window || QGuiApplication::platformName() != "windows" || !window->testAttribute(Qt::WA_WState_Created))
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    if (!hwnd)
+        return;
+    // Tell DWM not to apply native rectangular/hardware rounding over alpha-layered
+    // QMenu/QTipLabel popups whose QSS border-radius draws its own anti-aliased shape.
+    DWORD preference = 1; // DWMWCP_DONOTROUND
+    DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
+}
 void orderWindowBelow(QWidget *window, const QWidget *above) {
     if (!window || !above || QGuiApplication::platformName() != "windows")
         return;

@@ -98,10 +98,12 @@ class CaptureTests : public QObject {
         QCOMPARE(viewport.left(), fit.left());
         QCOMPARE(viewport.width(), fit.width());
         const QImage painted = preview.grab().toImage();
-        const QPoint greenLine(qRound(viewport.center().x()), qRound(viewport.top() + 1));
+        const qreal dpr = painted.devicePixelRatio();
+        const QPoint greenLine(qRound(viewport.center().x() * dpr), qRound((viewport.top() + 1) * dpr));
+        const QColor success = captureChromeTokens().success;
         bool hasGreen = false;
         for (int dy = -2; dy <= 2; ++dy)
-            hasGreen |= painted.pixelColor(greenLine + QPoint(0, dy)) == QColor("#83e54f");
+            hasGreen |= painted.pixelColor(greenLine + QPoint(0, dy)) == success;
         QVERIFY2(hasGreen, "the current viewport is not outlined in green");
 
         // Revisiting an earlier screen moves its locator up without clipping
@@ -411,11 +413,15 @@ class CaptureTests : public QObject {
         QVERIFY(qAbs(locator.top() - (preview->imageRect().top() + 120 * scale)) <= 1.0);
         QVERIFY(qAbs(locator.height() - 360 * scale) <= 1.0);
         const QImage painted = preview->grab().toImage();
-        const QPoint greenLine(qRound(locator.center().x()), qRound(locator.top() + 1));
+        const qreal dpr = painted.devicePixelRatio();
+        const QPoint greenLine(qRound(locator.center().x() * dpr), qRound((locator.top() + 1) * dpr));
+        const QColor success = captureChromeTokens().success;
         bool hasGreen = false;
-        for (int dy = -2; dy <= 2; ++dy)
-            if (painted.rect().contains(greenLine + QPoint(0, dy)))
-                hasGreen |= painted.pixelColor(greenLine + QPoint(0, dy)) == QColor("#83e54f");
+        for (int dy = -2; dy <= 2; ++dy) {
+            const QPoint point = greenLine + QPoint(0, dy);
+            if (painted.rect().contains(point))
+                hasGreen |= painted.pixelColor(point) == success;
+        }
         QVERIFY2(hasGreen, "the green locator does not follow the earlier native viewport");
         QCOMPARE(image, stripedImage(420, 2400));
 
@@ -696,7 +702,8 @@ class CaptureTests : public QObject {
                 auto *button = panel.findChild<QPushButton *>(objectName);
                 QVERIFY2(button, qPrintable(objectName));
                 QCOMPARE(button->property("glyphName").toString(), glyphName);
-                QCOMPARE(button->icon().pixmap(20, 20).toImage(), glyph(glyphName).pixmap(20, 20).toImage());
+                const auto tint = button->property("primary").toBool() ? QColor(Qt::white) : captureChromeTokens().glyph;
+                QCOMPARE(button->icon().pixmap(20, 20).toImage(), glyph(glyphName, tint).pixmap(20, 20).toImage());
             }
             for (auto *button : panel.findChildren<QPushButton *>()) {
                 QVERIFY2(!button->toolTip().isEmpty(), qPrintable(button->objectName()));
@@ -710,6 +717,10 @@ class CaptureTests : public QObject {
             QVERIFY(popup->testAttribute(Qt::WA_AlwaysShowToolTips));
             const QImage panelImage = panel.grab().toImage();
             const QImage popupImage = popup->grab().toImage();
+            auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
+            QVERIFY(area && area->isVisible());
+            const QImage previewImage = area->grab().toImage();
+            QCOMPARE(previewImage.pixelColor(0, 0).alpha(), 0);
             const bool dark = mode == ThemeMode::Dark;
             QVERIFY(dark ? panelImage.pixelColor(50, 3).lightness() < 100
                          : panelImage.pixelColor(50, 3).lightness() > 180);
@@ -719,8 +730,7 @@ class CaptureTests : public QObject {
                 const QString suffix = dark ? "dark" : "light";
                 QVERIFY(panelImage.save(QDir(artifactDir).filePath("longcapture-toolbar-" + suffix + ".png")));
                 QVERIFY(popupImage.save(QDir(artifactDir).filePath("longcapture-crop-menu-" + suffix + ".png")));
-                auto *area = panel.findChild<QScrollArea *>("scrollPreviewArea");
-                QVERIFY(area->grab().save(QDir(artifactDir).filePath("longcapture-preview-" + suffix + ".png")));
+                QVERIFY(previewImage.save(QDir(artifactDir).filePath("longcapture-preview-" + suffix + ".png")));
             }
             popup->hide();
             panel.setStopped(QStringLiteral("已停止截图"));
@@ -1339,6 +1349,17 @@ class CaptureTests : public QObject {
     }
     void captureCopyCancelAndStyleResetKeepTheirMeaning() {
         CaptureToolbar bar;
+        auto *ratio = bar.findChild<QPushButton *>("captureRatio");
+        QVERIFY(ratio && ratio->menu() && !ratio->menu()->actions().isEmpty());
+        QVERIFY(ratio->menu()->actions().front()->isChecked());
+        QSignalSpy ratioChanged(&bar, &CaptureToolbar::ratioChanged);
+        auto *square = ratio->menu()->actions().at(1);
+        square->trigger();
+        QCOMPARE(ratioChanged.size(), 1);
+        QCOMPARE(bar.ratio(), CaptureRatio::Square);
+        QVERIFY(square->isChecked());
+        QVERIFY(!ratio->menu()->actions().front()->isChecked());
+
         QPushButton *copy = nullptr;
         for (auto *button : bar.findChildren<QPushButton *>())
             if (button->property("glyphName").toString() == QStringLiteral("image-copy"))
@@ -1371,17 +1392,18 @@ class CaptureTests : public QObject {
         QCOMPARE(sidebar.style().border, CaptureStyle{}.border);
         QCOMPARE(sidebar.style().shadow, CaptureStyle{}.shadow);
     }
-    void fixedDarkCaptureSurfacesKeepReadableIconsAfterThemeChanges() {
+    void captureSurfacesKeepReadableIconsAfterThemeChanges() {
         CaptureToolbar bar;
         CaptureSidebar sidebar;
         for (const auto theme : {ThemeMode::Light, ThemeMode::Dark, ThemeMode::Light}) {
             applyTheme(theme);
+            const auto t = captureChromeTokens();
             for (auto *surface : {static_cast<QWidget *>(&bar), static_cast<QWidget *>(&sidebar)}) {
                 for (auto *button : surface->findChildren<QPushButton *>()) {
                     const auto name = button->property("glyphName").toString();
                     if (name.isEmpty()) continue;
-                    const QColor expected = button->property("primary").toBool()
-                        ? QColor(Qt::white) : QColor("#d4d5dd");
+                    const QColor expected = button->property("primary").toBool() ? QColor(Qt::white)
+                        : button->property("active").toBool() ? t.accent : t.glyph;
                     QCOMPARE(button->icon().pixmap(24, QIcon::Normal, QIcon::Off).toImage(),
                              glyph(name, expected).pixmap(24, QIcon::Normal, QIcon::Off).toImage());
                 }

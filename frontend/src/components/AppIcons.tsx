@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import mosaicMask from '../../../assets/ui-icons/icons/mosaic.svg?inline';
 import {
   AppWindow,
   ArrowLeft,
@@ -18,7 +19,6 @@ import {
   Files,
   FolderOpen,
   Globe,
-  Grid2x2,
   Hand,
   ImageDown,
   ImagePlus,
@@ -182,7 +182,21 @@ export const PointToolIcon = wrapLucide(CircleDot);
 export const RectToolIcon = wrapLucide(RectangleHorizontal);
 export const ExplodeIcon = wrapLucide(Blocks);
 export const BrushToolIcon = wrapLucide(Brush);
-export const MosaicToolIcon = wrapLucide(Grid2x2);
+export function MosaicToolIcon({ size = 16 }: Pick<AppIconProps, 'size'>) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        flex: 'none',
+        width: size,
+        height: size,
+        backgroundColor: 'currentColor',
+        mask: `url("${mosaicMask}") center / contain no-repeat`,
+      }}
+    />
+  );
+}
 export const CropToolIcon = wrapLucide(Crop);
 export const EditIcon = wrapLucide(Pencil);
 export const NoteAddIcon = wrapLucide(MessageSquarePlus);

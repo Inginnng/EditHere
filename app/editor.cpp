@@ -669,7 +669,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
     retranslate();
 }
 void Editor::retranslate() {
-    const auto brandLabel = tr("EditHere · 改这里");
+    const auto brandLabel = tr("EditHere");
     setWindowTitle(brandLabel);
     if (auto brand = findChild<QLabel *>("brand"))
         brand->setText(brandLabel);
