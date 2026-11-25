@@ -1161,39 +1161,24 @@ export default function SettingsView({
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gap: 8 }}>
-                {[
-                  { label: 'GitHub', url: 'https://github.com/Inginnng/EditHere' },
-                  { label: 'AtomGit', url: 'https://atomgit.com/qq_30293075/EditHere' },
-                  { label: 'Gitee', url: 'https://gitee.com/InnGing/EditHere' },
-                ].map((repo) => (
-                  <div
-                    key={repo.label}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                      fontSize: 12.5,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-                      <strong style={{ minWidth: 64 }}>{repo.label}</strong>
-                      <code style={{ wordBreak: 'break-all' }}>{repo.url}</code>
-                    </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  {[
+                    { label: 'GitHub', url: 'https://github.com/Inginnng/EditHere' },
+                    { label: 'AtomGit', url: 'https://atomgit.com/Inginnng/EditHere' },
+                    { label: 'Gitee', url: 'https://gitee.com/InnGing/EditHere' },
+                  ].map((repo) => (
                     <button
-                      className="button ghost sm"
+                      key={repo.label}
+                      className="button secondary sm"
+                      title={`打开 ${repo.label} 仓库`}
                       onClick={() => openExternalUrl(repo.url)}
                     >
-                      访问仓库 <ExternalLinkIcon size={14} />
+                      {repo.label} <ExternalLinkIcon size={14} />
                     </button>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
-                <button className="button secondary sm" onClick={() => void onResetDefaults()}>
+                  ))}
+                </div>
+                <button className="button ghost sm" onClick={() => void onResetDefaults()}>
                   <ResetIcon size={14} /> 恢复全部默认设置
                 </button>
               </div>

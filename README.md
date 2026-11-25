@@ -25,7 +25,7 @@
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
-<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/qq_30293075/EditHere">AtomGit</a></p>
+<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/Inginnng/EditHere">AtomGit</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-zh.gif" width="960" alt="AI 发起标注，用户在 EditHere 中圈出位置并写下意见，完成后 AI 读取反馈继续修改">
