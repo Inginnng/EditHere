@@ -11,6 +11,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+#include <cstring>
+
 namespace h2d {
 
 namespace {
@@ -86,9 +88,14 @@ QUrl B2AssetServer::indexUrl() const {
     return QUrl(QString("http://127.0.0.1:%1/index.html").arg(server_->serverPort()));
 }
 
-QString B2AssetServer::registerImage(const QString &pageId, const QImage &image) {
+QString B2AssetServer::registerImage(const QString &pageId, const QImage &image, const QByteArray &preencodedPng) {
     if (!isRunning() || pageId.isEmpty() || image.isNull()) return {};
-    images_[pageId] = encodePng(image);
+    static constexpr char kPngMagic[8] = {'\x89', 'P', 'N', 'G', '\r', '\n', '\x1a', '\n'};
+    if (preencodedPng.size() >= 8 && std::memcmp(preencodedPng.constData(), kPngMagic, 8) == 0) {
+        images_[pageId] = preencodedPng;
+    } else {
+        images_[pageId] = encodePng(image);
+    }
     const quint64 v = ++mediaVersion_;
     const QByteArray encodedId = QUrl::toPercentEncoding(pageId);
     return QString("http://127.0.0.1:%1/media/%2/%3.png?v=%4")

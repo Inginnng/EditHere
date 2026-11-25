@@ -6,9 +6,10 @@ Desktop (Windows / macOS / Linux), Desktop MCP Connector, Trae Plugin, Web Agent
 
 ## 1. Initial Page Coverage
 
-Project gallery reviews cover all implemented and accessible pages by default (unless the user explicitly narrows the scope):
+Match initial screenshot scope directly to the user's request rather than over-capturing unrelated screens:
 
-- **Enumerate routes & states**: Inspect router tables, navigation menus, scene directories, and entry points. Cover main pages plus relevant dialogs/drawers, empty/error states, and light/dark themes or mobile viewports when requested.
+- **Targeted fixes vs. full gallery reviews**: For targeted screen fixes or localized UI tweaks, capture only the 1-2 directly relevant pages (do not capture the entire app when the user asked about a specific view). For explicit project-level gallery reviews or broad post-build audits, cover all implemented and accessible pages by default.
+- **Enumerate routes & states**: When running a multi-page or full gallery review, inspect router tables, navigation menus, scene directories, and entry points. Cover main pages plus relevant dialogs/drawers, empty/error states, and light/dark themes or mobile viewports when requested.
 - **Real runtime screenshots only**: Existing mockups are design references only. Never pass off stale screenshots, demo art, or fixed-seed test renders as live app output. When login gates, external services, or sandbox limits block specific routes, keep the accessible pages and clearly report the missing gaps.
 - **Lossless quality**: Capture lossless PNGs at real device pixels (respecting DPR). Never resize JPEG previews up or rename `.jpg` to `.png`. See `references/capture.md` for Web and Desktop/Game capture SOPs.
 
@@ -21,24 +22,32 @@ Maintain one manifest per project (default `.edithere/results/project.json`):
   "schemaVersion": "edithere-image-set-1",
   "name": "Project Review Gallery",
   "pages": [
-    {"id": "home", "name": "Home", "path": "shots/home.png"},
-    {"id": "inventory", "name": "Inventory", "path": "shots/inventory.png"}
+    {"id": "home", "name": "Home", "path": "shots/round-001/home.png"},
+    {"id": "inventory", "name": "Inventory", "path": "shots/round-001/inventory.png"}
   ]
 }
 ```
 
 - **Stable `id` identity**: Use durable page IDs (`home`, `inventory`, `settings.ai`). Preserve IDs and page order across renames, resizes, and screenshot replacements; only new pages get new IDs. Keep `name` human-readable for non-coders.
-- **Round isolation**: Store round artifacts separately (e.g., `shots/round-001/`, `reviews/round-001/feedback.json`). Never overwrite screenshots or feedback files currently open for user review.
-- **Use the bundled `scripts/image-set.mjs`** (invoke by its absolute path inside this skill directory; zero external dependencies):
+- **Round isolation**: Write captures directly into `.edithere/results/shots/round-NNN/` (no temp-folder staging + extra `cp`), and isolate feedback outputs per round (`reviews/round-001/feedback.json`). Never overwrite screenshots or feedback files currently open for user review.
+- **Prefer single-call batch updates via `scripts/image-set.mjs`** (invoke by its absolute path inside this skill directory; validates image headers + SHA-256 checksums and prints a compact summary — never hand-write `project.json`):
 
 ```powershell
+# Preferred: create/update multiple pages in a single process (via --page, --from-dir, or --pages-json)
+node "<skill-dir>/scripts/image-set.mjs" upsert-batch .edithere/results/project.json --name "Project Review Gallery" `
+  --page "home=.edithere/results/shots/round-001/home.png=Home" `
+  --page "inventory=.edithere/results/shots/round-001/inventory.png=Inventory"
+node "<skill-dir>/scripts/image-set.mjs" upsert-batch .edithere/results/project.json --name "Project Review Gallery" --from-dir .edithere/results/shots/round-001
+node "<skill-dir>/scripts/image-set.mjs" upsert-batch .edithere/results/project.json --pages-json .edithere/captures/pages.json
+
+# Single-page and inspection commands
 node "<skill-dir>/scripts/image-set.mjs" create .edithere/results/project.json --name "Project Review Gallery"
-node "<skill-dir>/scripts/image-set.mjs" upsert .edithere/results/project.json --id inventory --name "Inventory" --image shots/inventory.png
+node "<skill-dir>/scripts/image-set.mjs" upsert .edithere/results/project.json --id inventory --name "Inventory" --image .edithere/results/shots/round-001/inventory.png
 node "<skill-dir>/scripts/image-set.mjs" list .edithere/results/project.json
 node "<skill-dir>/scripts/image-set.mjs" remove .edithere/results/project.json --id deprecated-page
 ```
 
-`upsert` updates the file path and SHA-256 checksum; always re-run `upsert` whenever a screenshot changes. `remove` removes only the manifest reference and keeps the image file on disk.
+`upsert-batch` (alias `sync`) and `upsert` update file paths and SHA-256 checksums in one atomic write; always re-run them whenever screenshots change. `remove` removes only the manifest reference and keeps the image file on disk.
 
 ## 3. Handing Off for User Review
 

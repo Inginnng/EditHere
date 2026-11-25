@@ -13,6 +13,8 @@
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QMap>
+#include <QSet>
+#include <QStringList>
 #include <QVector>
 #include <functional>
 
@@ -26,6 +28,7 @@ struct B2Page {
     QString routeHint;
     Document document;
     QString mediaUrl;
+    bool blocksDetected = false;
 };
 
 // Native desktop shell window hosting the unified React/Radix B2 workbench
@@ -85,6 +88,9 @@ class B2Window final : public QMainWindow {
     void syncDwmTitleBar(bool dark);
     bool isEffectiveDark() const;
     void preloadAiCredentials();
+    void resetBlockDetectionQueue();
+    void enqueueBlockDetection(const QStringList &pageIds, bool prioritizeActive = false);
+    void pumpBlockDetectionQueue();
 
     Document buildDocumentFromJsPage(const B2Page &basePage, const QJsonObject &jsPage) const;
     ImageSet buildImageSetFromPayload(const QJsonObject &payload) const;
@@ -137,6 +143,11 @@ class B2Window final : public QMainWindow {
     bool dirty_ = false;
     bool uiDarkOverride_ = false;
     bool hasDarkOverride_ = false;
+
+    quint64 detectGeneration_ = 0;
+    QStringList detectQueue_;
+    QSet<QString> detectPending_;
+    bool detectRunning_ = false;
 };
 
 } // namespace h2d

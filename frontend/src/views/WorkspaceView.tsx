@@ -282,6 +282,7 @@ export default function WorkspaceView({
   const panDragRef = useRef<{ startClientX: number; startClientY: number; origX: number; origY: number } | null>(null);
   const updatePagesRef = useRef(onUpdatePages);
   updatePagesRef.current = onUpdatePages;
+  const requestedDetectKeysRef = useRef<Set<string>>(new Set());
 
   // Video timeline preview shell
   const [videoMode, setVideoMode] = useState(false);
@@ -309,6 +310,40 @@ export default function WorkspaceView({
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
+
+  const activePageIdForDetect = activePage?.id ?? '';
+  const activePageUrlForDetect = activePage?.imageUrl ?? '';
+  const activePageBlockCount = activePage?.blocks.length ?? 0;
+  const activePageIsVideo = Boolean(activePage?.isVideo);
+
+  useEffect(() => {
+    if (
+      tool !== 'explode' ||
+      !isDesktopWebView() ||
+      !activePageIdForDetect ||
+      activePageIsVideo ||
+      activePageBlockCount > 0
+    ) {
+      return;
+    }
+    const detectKey = `${activePageIdForDetect}|${activePageUrlForDetect}`;
+    if (requestedDetectKeysRef.current.has(detectKey)) return;
+    requestedDetectKeysRef.current.add(detectKey);
+
+    desktopRpc<{ blocks?: ExplodeBlock[] }>('detect.regions', { pageId: activePageIdForDetect })
+      .then((res) => {
+        const blocks = Array.isArray(res?.blocks) ? res.blocks : [];
+        if (blocks.length === 0) return;
+        updatePagesRef.current((prev) =>
+          prev.map((p) =>
+            p.id === activePageIdForDetect && p.blocks.length === 0 ? { ...p, blocks } : p
+          )
+        );
+      })
+      .catch(() => {
+        requestedDetectKeysRef.current.delete(detectKey);
+      });
+  }, [tool, activePageIdForDetect, activePageUrlForDetect, activePageBlockCount, activePageIsVideo]);
 
   useEffect(
     () => () => {

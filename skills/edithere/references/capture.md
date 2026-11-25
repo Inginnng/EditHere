@@ -10,7 +10,7 @@ High-fidelity screenshots directly determine how accurately EditHere aligns anno
 
 ## 2. File Layout & Quality Rules
 
-- Save new screenshots under `.edithere/captures/` or `.edithere/results/shots/round-NNN/` using unique filenames and absolute paths.
+- Write screenshots **directly** to their final target directory — `.edithere/results/shots/round-NNN/` for multi-page/round reviews or `.edithere/captures/` for single shots — using unique filenames and absolute paths. Avoid saving to a staging directory and copying (`cp`) files in a second pass.
 - Prefer **lossless PNG** matching actual device pixels (check logical viewport vs. DPR pixel size). Never disguise a downscaled JPEG by renaming `.jpg` to `.png`. If a tool only provides JPEG, keep the true extension and disclose the quality limit.
 
 ## 3. Web Frontend Capture SOP
@@ -51,7 +51,8 @@ If `capture-web.mjs` exits with `code: "playwright_not_found"`, do NOT install P
 ## 4. Desktop Apps & Game HUD Capture SOP
 
 - **Window capture over full desktop**: Use an authorized window-capture tool targeting the exact app/game window to avoid desktop clutter. Ensure the window is unobstructed, past splash/loading screens, and on the target view.
-- **Multi-state games / HUDs**: Enter each live state (main menu, inventory, combat HUD, settings modal) and capture separately. Explicitly distinguish live interactive window captures from deterministic script-rendered reproductions.
+- **Single-process multi-page capture**: When a desktop app or game UI harness supports multi-page batch capture (for example comma-separated views like `--capture=menu,play,shop` writing directly into an output directory), export all target views in one engine launch instead of cold-starting the runtime once per page.
+- **Multi-state games / HUDs**: Enter each live state (main menu, inventory, combat HUD, settings modal) and capture separately when no batch harness exists. Explicitly distinguish live interactive window captures from deterministic script-rendered reproductions.
 - **Windows `computer-use` / `@oai/sky` rules**: Discover real window targets via `list_windows()`, fetch `get_window_state({ window, include_screenshot: true, include_text: false })`, verify `screenshots` contains the single intended target image, and decode its base64 `data:image/(png|jpeg);base64,...` to disk without printing raw data URLs to chat.
 - **`edithere-cli capture` & MCP fast path (`0.14.1+`)**: Prefer `edithere_capture({ source: "screen" | "window", window?, windowId?, annotate: true })` (or `edithere-cli windows` + `edithere-cli capture --output <new.png>` / `capture --annotate --output <new.json> [--screen | --window <title> | --window-id <id>]`). Bare `edithere-cli capture` without `--output` still launches EditHere's interactive selection overlay and acknowledges immediately; headless `capture --output <new.png>` writes a PNG cleanly without disturbing open editor documents.
 

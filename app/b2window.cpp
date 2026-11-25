@@ -18,7 +18,9 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QtConcurrent/QtConcurrentRun>
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QMimeData>
@@ -321,9 +323,9 @@ void B2Window::closeEvent(QCloseEvent *event) {
 void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     if (doc.image.isNull()) return;
     if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
-    if (doc.candidates.isEmpty()) doc.candidates = detectBlocks(doc.image);
 
     if (replaceExisting || isImageSetProject_) {
+        resetBlockDetectionQueue();
         pages_.clear();
         groupNotes_ = QJsonArray();
         server_.clearImages();
@@ -337,7 +339,9 @@ void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     page.routeHint = doc.capture.value("windowTitle").toString();
     if (page.routeHint.isEmpty()) page.routeHint = tr("桌面捕获");
     page.document = std::move(doc);
-    page.mediaUrl = server_.registerImage(pageId, page.document.image);
+    page.blocksDetected = !page.document.candidates.isEmpty();
+    page.mediaUrl = server_.registerImage(pageId, page.document.image, page.document.png);
+    const bool needsDetect = !page.blocksDetected;
 
     pages_.append(std::move(page));
     activePageId_ = pageId;
@@ -347,12 +351,18 @@ void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     show();
     raise();
     activateWindow();
+
+    if (needsDetect) {
+        enqueueBlockDetection({pageId}, true);
+    }
 }
 
 void B2Window::openMediaPath(const QString &path) {
     const QFileInfo fi(path);
+    QStringList pagesNeedingDetect;
     if (isImageSetFile(path)) {
         ImageSet set = loadImageSet(path);
+        resetBlockDetectionQueue();
         pages_.clear();
         groupNotes_ = QJsonArray();
         server_.clearImages();
@@ -362,16 +372,15 @@ void B2Window::openMediaPath(const QString &path) {
         for (int i = 0; i < set.pages.size(); ++i) {
             auto setPage = set.pages[i];
             if (setPage.document.image.isNull()) continue;
-            if (setPage.document.candidates.isEmpty()) {
-                setPage.document.candidates = detectBlocks(setPage.document.image);
-            }
             B2Page page;
             page.id = setPage.id.isEmpty() ? QString("page-%1").arg(i + 1) : setPage.id;
             page.name = setPage.name.isEmpty() ? page.id : setPage.name;
             page.routeHint = QFileInfo(setPage.document.imageFile).fileName();
             if (page.routeHint.isEmpty()) page.routeHint = page.id;
             page.document = std::move(setPage.document);
-            page.mediaUrl = server_.registerImage(page.id, page.document.image);
+            page.blocksDetected = !page.document.candidates.isEmpty();
+            page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
+            if (!page.blocksDetected) pagesNeedingDetect.append(page.id);
             pages_.append(std::move(page));
         }
 
@@ -389,8 +398,8 @@ void B2Window::openMediaPath(const QString &path) {
         Document doc = loadDocument(path);
         if (doc.image.isNull()) throw std::runtime_error(tr("无法读取图片或项目文件").toStdString());
         if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
-        if (doc.candidates.isEmpty()) doc.candidates = detectBlocks(doc.image);
 
+        resetBlockDetectionQueue();
         pages_.clear();
         groupNotes_ = QJsonArray();
         server_.clearImages();
@@ -402,7 +411,9 @@ void B2Window::openMediaPath(const QString &path) {
         page.name = doc.title.isEmpty() ? fi.completeBaseName() : doc.title;
         page.routeHint = fi.fileName();
         page.document = std::move(doc);
-        page.mediaUrl = server_.registerImage(page.id, page.document.image);
+        page.blocksDetected = !page.document.candidates.isEmpty();
+        page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
+        if (!page.blocksDetected) pagesNeedingDetect.append(page.id);
         pages_.append(std::move(page));
         activePageId_ = pages_.first().id;
     }
@@ -412,6 +423,10 @@ void B2Window::openMediaPath(const QString &path) {
     show();
     raise();
     activateWindow();
+
+    if (!pagesNeedingDetect.isEmpty()) {
+        enqueueBlockDetection(pagesNeedingDetect, true);
+    }
 }
 
 void B2Window::setPageContext(const QString &pageContext) {
@@ -462,6 +477,72 @@ void B2Window::pushEvent(const QString &eventName, const QJsonObject &data) {
 void B2Window::pushSessionState() {
     if (!jsReady_) return;
     pushEvent("session.state", buildSessionStateJson());
+}
+
+void B2Window::resetBlockDetectionQueue() {
+    ++detectGeneration_;
+    detectQueue_.clear();
+    detectPending_.clear();
+    detectRunning_ = false;
+}
+
+void B2Window::enqueueBlockDetection(const QStringList &pageIds, bool prioritizeActive) {
+    for (const QString &pageId : pageIds) {
+        if (pageId.isEmpty() || detectPending_.contains(pageId)) continue;
+        const auto it = std::find_if(pages_.cbegin(), pages_.cend(),
+                                     [&pageId](const B2Page &p) { return p.id == pageId && !p.blocksDetected; });
+        if (it == pages_.cend()) continue;
+        detectPending_.insert(pageId);
+        if (prioritizeActive && pageId == activePageId_) {
+            detectQueue_.prepend(pageId);
+        } else {
+            detectQueue_.append(pageId);
+        }
+    }
+    pumpBlockDetectionQueue();
+}
+
+void B2Window::pumpBlockDetectionQueue() {
+    if (detectRunning_) return;
+    while (!detectQueue_.isEmpty()) {
+        const QString pageId = detectQueue_.takeFirst();
+        auto it = std::find_if(pages_.cbegin(), pages_.cend(),
+                               [&pageId](const B2Page &p) { return p.id == pageId && !p.blocksDetected; });
+        if (it == pages_.cend() || it->document.image.isNull()) {
+            detectPending_.remove(pageId);
+            continue;
+        }
+        const QImage img = it->document.image;
+        const quint64 gen = detectGeneration_;
+        detectRunning_ = true;
+        auto *watcher = new QFutureWatcher<QVector<Candidate>>(this);
+        connect(watcher, &QFutureWatcher<QVector<Candidate>>::finished, this,
+                [this, watcher, pageId, gen]() {
+                    const QVector<Candidate> result = watcher->result();
+                    watcher->deleteLater();
+                    if (gen != detectGeneration_) return;
+                    detectPending_.remove(pageId);
+                    detectRunning_ = false;
+                    for (auto &page : pages_) {
+                        if (page.id == pageId) {
+                            if (!page.blocksDetected) {
+                                page.document.candidates = result;
+                                page.blocksDetected = true;
+                                if (jsReady_) {
+                                    pushEvent("page.blocksUpdated", QJsonObject{
+                                        {"pageId", pageId},
+                                        {"blocks", blocksForPage(page)},
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    pumpBlockDetectionQueue();
+                });
+        watcher->setFuture(QtConcurrent::run([img]() { return detectBlocks(img); }));
+        return;
+    }
 }
 
 QJsonArray B2Window::blocksForPage(const B2Page &page) const {
@@ -756,10 +837,36 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
         const QString pageId = params.value("pageId").toString();
         for (auto &page : pages_) {
             if (page.id == pageId) {
-                if (page.document.candidates.isEmpty()) {
-                    page.document.candidates = detectBlocks(page.document.image);
+                if (page.blocksDetected || page.document.image.isNull()) {
+                    sendRpcResult(id, true, QJsonObject{{"blocks", blocksForPage(page)}});
+                    return;
                 }
-                sendRpcResult(id, true, QJsonObject{{"blocks", blocksForPage(page)}});
+                const quint64 gen = detectGeneration_;
+                const QImage img = page.document.image;
+                auto *watcher = new QFutureWatcher<QVector<Candidate>>(this);
+                connect(watcher, &QFutureWatcher<QVector<Candidate>>::finished, this,
+                        [this, watcher, id, pageId, gen]() {
+                            const QVector<Candidate> result = watcher->result();
+                            watcher->deleteLater();
+                            if (gen != detectGeneration_) {
+                                sendRpcResult(id, true, QJsonObject{{"blocks", QJsonArray()}});
+                                return;
+                            }
+                            detectPending_.remove(pageId);
+                            detectQueue_.removeAll(pageId);
+                            for (auto &p : pages_) {
+                                if (p.id == pageId) {
+                                    if (!p.blocksDetected) {
+                                        p.document.candidates = result;
+                                        p.blocksDetected = true;
+                                    }
+                                    sendRpcResult(id, true, QJsonObject{{"blocks", blocksForPage(p)}});
+                                    return;
+                                }
+                            }
+                            sendRpcResult(id, true, QJsonObject{{"blocks", QJsonArray()}});
+                        });
+                watcher->setFuture(QtConcurrent::run([img]() { return detectBlocks(img); }));
                 return;
             }
         }
@@ -991,11 +1098,11 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
         if (files.size() == 1 && (isImageSetFile(files.first()) || files.first().endsWith(".edithere", Qt::CaseInsensitive))) {
             openMediaPath(files.first());
         } else {
+            QStringList addedNeedingDetect;
             for (const QString &file : files) {
                 Document doc = loadDocument(file);
                 if (doc.image.isNull()) continue;
                 if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
-                if (doc.candidates.isEmpty()) doc.candidates = detectBlocks(doc.image);
 
                 B2Page page;
                 page.id = doc.id.isEmpty() ? uniqueId() : doc.id;
@@ -1003,13 +1110,18 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
                 page.name = doc.title.isEmpty() ? fi.completeBaseName() : doc.title;
                 page.routeHint = fi.fileName();
                 page.document = std::move(doc);
-                page.mediaUrl = server_.registerImage(page.id, page.document.image);
-                pages_.append(page);
-                activePageId_ = page.id;
+                page.blocksDetected = !page.document.candidates.isEmpty();
+                page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
+                if (!page.blocksDetected) addedNeedingDetect.append(page.id);
+                pages_.append(std::move(page));
+                activePageId_ = pages_.last().id;
             }
             if (pages_.size() > 1) isImageSetProject_ = true;
             dirty_ = true;
             pushSessionState();
+            if (!addedNeedingDetect.isEmpty()) {
+                enqueueBlockDetection(addedNeedingDetect, true);
+            }
         }
         sendRpcResult(rpcId, true, QJsonObject{
             {"opened", pages_.size()},
@@ -1241,9 +1353,10 @@ void B2Window::handleUpdatePageImage(const QJsonValue &rpcId, const QJsonObject 
             page.document.image = img;
             page.document.png = bytes;
             page.document.candidates = detectBlocks(page.document.image);
+            page.blocksDetected = true;
             page.document.notes.clear();
             page.document.layout.reset();
-            page.mediaUrl = server_.registerImage(page.id, page.document.image);
+            page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
             dirty_ = true;
             sendRpcResult(rpcId, true, QJsonObject{
                 {"ok", true},

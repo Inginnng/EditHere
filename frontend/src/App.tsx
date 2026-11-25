@@ -26,6 +26,7 @@ import {
 import type {
   DiagnosticsInfo,
   DoctorSnapshot,
+  ExplodeBlock,
   GalleryPage,
   GeneralPreferences,
   GroupNote,
@@ -224,6 +225,14 @@ export default function App() {
     const unsub = subscribeDesktopEvents((eventName, data) => {
       if (eventName === 'session.state') {
         applyDesktopState(data);
+      } else if (eventName === 'page.blocksUpdated') {
+        const targetId = typeof data.pageId === 'string' ? data.pageId : '';
+        const nextBlocks = Array.isArray(data.blocks) ? (data.blocks as ExplodeBlock[]) : [];
+        if (targetId && nextBlocks.length > 0) {
+          setPages((prev) =>
+            prev.map((p) => (p.id === targetId && p.blocks.length === 0 ? { ...p, blocks: nextBlocks } : p))
+          );
+        }
       } else if (eventName === 'ai.state') {
         applyAiState(data);
       } else if (eventName === 'view.navigate') {

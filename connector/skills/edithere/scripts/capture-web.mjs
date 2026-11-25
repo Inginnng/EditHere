@@ -600,10 +600,20 @@ async function main() {
     }
     captured = await capturePlanWithBrowser(browser, plan.jobs, { concurrency: opts.concurrency });
     if (plan.manifestPath) {
+      const manifestEntries = [];
       for (let i = 0; i < plan.jobs.length; i += 1) {
         const job = plan.jobs[i];
         if (job.id && captured[i]) {
-          helpers.upsertPage(plan.manifestPath, { id: job.id, name: job.name || undefined, imagePath: captured[i].output });
+          manifestEntries.push({ id: job.id, name: job.name || undefined, imagePath: captured[i].output });
+        }
+      }
+      if (manifestEntries.length > 0) {
+        if (typeof helpers.upsertPages === 'function') {
+          helpers.upsertPages(plan.manifestPath, manifestEntries);
+        } else {
+          for (const entry of manifestEntries) {
+            helpers.upsertPage(plan.manifestPath, entry);
+          }
         }
       }
     }

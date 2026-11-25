@@ -127,6 +127,7 @@ function buildManifest() {
 
   files.set('docs/PROJECT-REVIEW.en.md', readUtf8Lf(path.join(SRC, 'shared', 'references', 'project-review.md')));
   files.set('scripts/capture-web.mjs', readUtf8Lf(path.join(SRC, 'shared', 'scripts', 'capture-web.mjs')));
+  files.set('scripts/image-set.mjs', readUtf8Lf(path.join(SRC, 'shared', 'scripts', 'image-set.mjs')));
 
   return { files, targetOwnedDirs };
 }

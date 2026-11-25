@@ -26,7 +26,7 @@ class B2AssetServer final : public QObject {
     QString distDir() const { return distDir_; }
     QUrl indexUrl() const;
 
-    QString registerImage(const QString &pageId, const QImage &image);
+    QString registerImage(const QString &pageId, const QImage &image, const QByteArray &preencodedPng = {});
     void clearImages();
 
   private:

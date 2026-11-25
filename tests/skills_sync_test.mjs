@@ -85,6 +85,7 @@ test('all 5 targets share identical English references and scripts and preserve 
     }
   }
   assert.equal(readLf('scripts/capture-web.mjs'), readLf('skills-src/shared/scripts/capture-web.mjs'));
+  assert.equal(readLf('scripts/image-set.mjs'), readLf('skills-src/shared/scripts/image-set.mjs'));
 });
 
 test('English domain guides enforce Local vs Design-System scope and Code-Impact-Driven refresh', () => {
@@ -99,6 +100,10 @@ test('English domain guides enforce Local vs Design-System scope and Code-Impact
   assert.ok(reviewGuide.includes('Mandatory pages'));
   assert.ok(reviewGuide.includes('Ripple pages'));
   assert.ok(reviewGuide.includes('pixel-diff sweeps'));
+  assert.ok(reviewGuide.includes('upsert-batch'));
+
+  const captureGuide = readLf('skills-src/shared/references/capture.md');
+  assert.ok(captureGuide.includes('Single-process multi-page capture'));
 });
 
 test('capture-web.mjs validates arguments cleanly and runs standalone outside the repository', (t) => {
