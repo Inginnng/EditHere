@@ -772,7 +772,7 @@ export default function App() {
             title="回到批注工作台"
             onClick={() => setView('workspace')}
           >
-            <img className="brand-squircle" src="./brand/edithere-macos.svg" alt="EditHere 图标" />
+            <img className="brand-squircle" src="./brand/edithere.svg" alt="EditHere 图标" />
             <img
               className="brand-wordmark"
               src={isDark ? './brand/edithere-wordmark-light.svg' : './brand/edithere-wordmark.svg'}

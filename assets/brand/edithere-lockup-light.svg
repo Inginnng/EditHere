@@ -1,33 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2888" height="512" viewBox="0 0 722 128" role="img" aria-labelledby="edithere-lockup-light-title">
   <title id="edithere-lockup-light-title">EditHere</title>
-  <desc>EditHere precision viewfinder icon lockup with light off-white Manrope wordmark and cobalt focal tittle.</desc>
-  <svg width="124" height="124" viewBox="76 76 872 872" x="2" y="2">
+  <desc>EditHere 0.13 blue editing icon lockup with light off-white Manrope wordmark and cobalt focal tittle.</desc>
+  <svg width="150" height="150" viewBox="8 6 52 52" x="-12" y="-12">
     <defs>
-      <linearGradient id="lu-rim-l" gradientUnits="userSpaceOnUse" x1="512" y1="76" x2="512" y2="948">
-        <stop offset="0" stop-color="#4A5468" />
-        <stop offset="1" stop-color="#282E3B" />
-      </linearGradient>
-      <linearGradient id="lu-plinth-l" gradientUnits="userSpaceOnUse" x1="220" y1="80" x2="804" y2="944">
-        <stop offset="0" stop-color="#232834" />
-        <stop offset="1" stop-color="#0F1218" />
-      </linearGradient>
-      <linearGradient id="lu-metal-l" gradientUnits="userSpaceOnUse" x1="512" y1="248" x2="512" y2="776">
-        <stop offset="0" stop-color="#FFFFFF" />
-        <stop offset="1" stop-color="#DDE4EE" />
-      </linearGradient>
-      <linearGradient id="lu-cobalt-l" gradientUnits="userSpaceOnUse" x1="386" y1="386" x2="638" y2="638">
-        <stop offset="0" stop-color="#3D9BFF" />
-        <stop offset="1" stop-color="#005EEB" />
+      <linearGradient id="edithere-blue-l" gradientUnits="userSpaceOnUse" x1="48" y1="10" x2="16" y2="48">
+        <stop offset="0" stop-color="#61ADFF" />
+        <stop offset="1" stop-color="#3155D9" />
       </linearGradient>
     </defs>
-    <rect x="76" y="76" width="872" height="872" rx="196" fill="url(#lu-rim-l)" />
-    <rect x="86" y="86" width="852" height="852" rx="186" fill="url(#lu-plinth-l)" />
-    <path fill="url(#lu-metal-l)" d="M 300 248 H 402 A 10 10 0 0 1 412 258 V 302 A 10 10 0 0 1 402 312 H 326 A 14 14 0 0 0 312 326 V 402 A 10 10 0 0 1 302 412 H 258 A 10 10 0 0 1 248 402 V 300 A 52 52 0 0 1 300 248 Z" />
-    <path fill="url(#lu-metal-l)" d="M 622 248 H 724 A 52 52 0 0 1 776 300 V 402 A 10 10 0 0 1 766 412 H 722 A 10 10 0 0 1 712 402 V 326 A 14 14 0 0 0 698 312 H 622 A 10 10 0 0 1 612 302 V 258 A 10 10 0 0 1 622 248 Z" />
-    <path fill="url(#lu-metal-l)" d="M 722 612 H 766 A 10 10 0 0 1 776 622 V 724 A 52 52 0 0 1 724 776 H 622 A 10 10 0 0 1 612 766 V 722 A 10 10 0 0 1 622 712 H 698 A 14 14 0 0 0 712 698 V 622 A 10 10 0 0 1 722 612 Z" />
-    <path fill="url(#lu-metal-l)" d="M 258 612 H 302 A 10 10 0 0 1 312 622 V 698 A 14 14 0 0 0 326 712 H 402 A 10 10 0 0 1 412 722 V 766 A 10 10 0 0 1 402 776 H 300 A 52 52 0 0 1 248 724 V 622 A 10 10 0 0 1 258 612 Z" />
-    <rect x="386" y="386" width="252" height="252" rx="58" fill="url(#lu-cobalt-l)" />
-    <rect x="476" y="476" width="72" height="72" rx="20" fill="#F8FAFC" />
+    <path fill="url(#edithere-blue-l)" d="M 48 34 V 40.2 A 7.8 7.8 0 0 1 40.2 48 H 23.8 A 7.8 7.8 0 0 1 16 40.2 V 23.8 A 7.8 7.8 0 0 1 23.8 16 H 30 A 2.5 2.5 0 0 1 30 21 H 23.8 A 2.8 2.8 0 0 0 21 23.8 V 40.2 A 2.8 2.8 0 0 0 23.8 43 H 40.2 A 2.8 2.8 0 0 0 43 40.2 V 34 A 2.5 2.5 0 0 1 48 34 Z" />
+    <path fill="url(#edithere-blue-l)" d="M 33.52406 31.8923 A 0.75 0.75 0 0 1 32.61326 30.98149 L 33.90457 25.86793 A 2.5 2.5 0 0 1 34.56071 24.71226 L 45.66988 13.60309 A 1.4 1.4 0 0 1 47.64978 13.60309 L 50.90247 16.85578 A 1.4 1.4 0 0 1 50.90247 18.83568 L 39.7933 29.94485 A 2.5 2.5 0 0 1 38.63763 30.60099 Z" />
   </svg>
   <g transform="translate(150 0)">
     <g fill="#F4F6FA">

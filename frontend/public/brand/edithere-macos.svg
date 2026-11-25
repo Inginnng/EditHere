@@ -1,30 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="edithere-icon-title">
-  <title id="edithere-icon-title">EditHere</title>
-  <desc>EditHere precision viewfinder and cobalt focal node app icon on an anodized obsidian squircle.</desc>
-  <defs>
-    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="512" y1="76" x2="512" y2="948">
-      <stop offset="0" stop-color="#434C5E" />
-      <stop offset="1" stop-color="#222732" />
-    </linearGradient>
-    <linearGradient id="plinth" gradientUnits="userSpaceOnUse" x1="220" y1="80" x2="804" y2="944">
-      <stop offset="0" stop-color="#232834" />
-      <stop offset="1" stop-color="#0F1218" />
-    </linearGradient>
-    <linearGradient id="metal" gradientUnits="userSpaceOnUse" x1="512" y1="248" x2="512" y2="776">
-      <stop offset="0" stop-color="#FFFFFF" />
-      <stop offset="1" stop-color="#DDE4EE" />
-    </linearGradient>
-    <linearGradient id="cobalt" gradientUnits="userSpaceOnUse" x1="386" y1="386" x2="638" y2="638">
-      <stop offset="0" stop-color="#3D9BFF" />
-      <stop offset="1" stop-color="#005EEB" />
-    </linearGradient>
-  </defs>
-  <rect x="76" y="76" width="872" height="872" rx="196" fill="url(#rim)" />
-  <rect x="86" y="86" width="852" height="852" rx="186" fill="url(#plinth)" />
-  <path fill="url(#metal)" d="M 300 248 H 402 A 10 10 0 0 1 412 258 V 302 A 10 10 0 0 1 402 312 H 326 A 14 14 0 0 0 312 326 V 402 A 10 10 0 0 1 302 412 H 258 A 10 10 0 0 1 248 402 V 300 A 52 52 0 0 1 300 248 Z" />
-  <path fill="url(#metal)" d="M 622 248 H 724 A 52 52 0 0 1 776 300 V 402 A 10 10 0 0 1 766 412 H 722 A 10 10 0 0 1 712 402 V 326 A 14 14 0 0 0 698 312 H 622 A 10 10 0 0 1 612 302 V 258 A 10 10 0 0 1 622 248 Z" />
-  <path fill="url(#metal)" d="M 722 612 H 766 A 10 10 0 0 1 776 622 V 724 A 52 52 0 0 1 724 776 H 622 A 10 10 0 0 1 612 766 V 722 A 10 10 0 0 1 622 712 H 698 A 14 14 0 0 0 712 698 V 622 A 10 10 0 0 1 722 612 Z" />
-  <path fill="url(#metal)" d="M 258 612 H 302 A 10 10 0 0 1 312 622 V 698 A 14 14 0 0 0 326 712 H 402 A 10 10 0 0 1 412 722 V 766 A 10 10 0 0 1 402 776 H 300 A 52 52 0 0 1 248 724 V 622 A 10 10 0 0 1 258 612 Z" />
-  <rect x="386" y="386" width="252" height="252" rx="58" fill="url(#cobalt)" />
-  <rect x="476" y="476" width="72" height="72" rx="20" fill="#F8FAFC" />
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><title>EditHere</title><defs><linearGradient id="edithere-plate" gradientUnits="userSpaceOnUse" x1="512" y1="100" x2="512" y2="924"><stop offset="0" stop-color="#63AFFF"/><stop offset="1" stop-color="#2E4FD0"/></linearGradient></defs><rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#edithere-plate)"/>
+  <path fill="#FFFFFF" d="M 719.958 561.202 V 651.018 A 112.993 112.993 0 0 1 606.964 764.011 H 369.389 A 112.993 112.993 0 0 1 256.396 651.018 V 413.442 A 112.993 112.993 0 0 1 369.389 300.449 H 459.204 A 36.216 36.216 0 0 1 459.204 372.881 H 369.389 A 40.562 40.562 0 0 0 328.828 413.442 V 651.018 A 40.562 40.562 0 0 0 369.389 691.579 H 606.964 A 40.562 40.562 0 0 0 647.526 651.018 V 561.202 A 36.216 36.216 0 0 1 719.958 561.202 Z"/>
+  <path fill="#FFFFFF" d="M 510.255 530.67 A 10.865 10.865 0 0 1 497.061 517.475 L 515.767 443.399 A 36.216 36.216 0 0 1 525.272 426.658 L 686.203 265.727 A 20.281 20.281 0 0 1 714.884 265.727 L 762.004 312.846 A 20.281 20.281 0 0 1 762.004 341.528 L 601.073 502.458 A 36.216 36.216 0 0 1 584.332 511.963 Z"/>
 </svg>
