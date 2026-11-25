@@ -83,11 +83,13 @@ class B2Window final : public QMainWindow {
     QJsonObject buildDiagnosticsJson() const;
     QJsonObject buildPreferencesJson() const;
     QJsonObject buildAiStateJson() const;
+    QJsonObject buildSkillsStateJson() const;
     QJsonArray buildPagesJson() const;
     QJsonArray blocksForPage(const B2Page &page) const;
     void syncDwmTitleBar(bool dark);
     bool isEffectiveDark() const;
     void preloadAiCredentials();
+    void runStartupSkillCheckIfNeeded();
     void resetBlockDetectionQueue();
     void enqueueBlockDetection(const QStringList &pageIds, bool prioritizeActive = false);
     void pumpBlockDetectionQueue();
@@ -107,6 +109,7 @@ class B2Window final : public QMainWindow {
     void handleDiagnosticsExport(const QJsonValue &rpcId);
     void handleDiagnosticsOpenFolder(const QJsonValue &rpcId);
     void handleUpdatesCheck(const QJsonValue &rpcId);
+    void handleSkillsSync(const QJsonValue &rpcId, const QJsonObject &params);
     void handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &params);
     void handleAiSaveProviders(const QJsonValue &rpcId, const QJsonObject &params);
@@ -143,6 +146,7 @@ class B2Window final : public QMainWindow {
     bool dirty_ = false;
     bool uiDarkOverride_ = false;
     bool hasDarkOverride_ = false;
+    bool startupSkillSyncChecked_ = false;
 
     quint64 detectGeneration_ = 0;
     QStringList detectQueue_;

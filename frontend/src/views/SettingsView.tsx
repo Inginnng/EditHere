@@ -43,6 +43,8 @@ import type {
   OcrLanguageCode,
   ProviderConfig,
   SettingsTabId,
+  SkillSyncState,
+  SkillSyncStatus,
   ThemeMode,
   UpdateCheckResult,
   UpdateSourceId,
@@ -63,6 +65,10 @@ interface SettingsViewProps {
   diagnosticsInfo: DiagnosticsInfo;
   onUpdateDiagnosticsInfo: (info: DiagnosticsInfo) => void;
   doctor: DoctorSnapshot;
+  skillsState: SkillSyncState;
+  syncingSkills?: boolean;
+  onRefreshSkills?: () => Promise<void> | void;
+  onSyncSkills?: (opts?: { hostIds?: string[]; onlyUpdateInstalled?: boolean; force?: boolean }) => Promise<void> | void;
   desktopConnected?: boolean;
   providers: ProviderConfig[];
   defaultProviderId: string;
@@ -150,6 +156,10 @@ export default function SettingsView({
   diagnosticsInfo,
   onUpdateDiagnosticsInfo,
   doctor,
+  skillsState,
+  syncingSkills = false,
+  onRefreshSkills,
+  onSyncSkills,
   desktopConnected = false,
   providers,
   defaultProviderId,
@@ -258,6 +268,27 @@ export default function SettingsView({
       window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
   };
+
+  const skillStatusBadge = (status: SkillSyncStatus) => {
+    switch (status) {
+      case 'up-to-date':
+        return { label: '已最新', cls: 'success' };
+      case 'outdated':
+        return { label: '可更新', cls: 'warning' };
+      case 'legacy':
+        return { label: '旧版', cls: 'warning' };
+      case 'path-stale':
+        return { label: '路径变更', cls: 'warning' };
+      case 'newer':
+        return { label: '版本更高', cls: 'accent' };
+      default:
+        return { label: '未安装', cls: 'neutral' };
+    }
+  };
+
+  const actionableSkills = skillsState.hosts.filter(
+    (h) => h.status === 'outdated' || h.status === 'legacy' || h.status === 'path-stale'
+  );
 
   const copyMcpSnippet = async () => {
     try {
@@ -918,6 +949,108 @@ export default function SettingsView({
                   </button>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="settings-group">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0 }}>AI 助手 Skill 版本与同步</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge accent">当前程序内置 Skill v{skillsState.bundledSkillVersion}</span>
+                <button
+                  className="button secondary sm"
+                  disabled={syncingSkills}
+                  onClick={() => void onRefreshSkills?.()}
+                >
+                  <ResetIcon size={14} /> 刷新状态
+                </button>
+                <button
+                  className="button primary sm"
+                  disabled={syncingSkills || !skillsState.sourceAvailable || actionableSkills.length === 0}
+                  onClick={() => void onSyncSkills?.({ onlyUpdateInstalled: true })}
+                >
+                  {syncingSkills && <SpinnerIcon size={14} className="spin" />}
+                  一键同步全部旧版{actionableSkills.length > 0 ? ` (${actionableSkills.length})` : ''}
+                </button>
+              </div>
+            </div>
+            <div className="settings-card-stack">
+              <div className="settings-row">
+                <span className="settings-row-icon"><ShieldOkIcon size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>软件启动时自动同步旧版 Skill</strong>
+                  <p>仅在宿主 Skill 版本落后或当前程序目录变更时自动更新，绝不降级覆盖更高版本。</p>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.autoSyncSkills}
+                  onCheckedChange={(v) => void commitPatch({ autoSyncSkills: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              {!skillsState.sourceAvailable && (
+                <div className="settings-row">
+                  <span className="settings-row-icon"><ShieldOkIcon size={18} style={{ color: 'var(--warning)' }} /></span>
+                  <div className="settings-row-label">
+                    <strong>未找到内置 Skill 目录（skills/edithere）</strong>
+                    <p>请保留完整程序目录下的 skills 文件夹后再执行同步。</p>
+                  </div>
+                </div>
+              )}
+
+              {skillsState.hosts.map((host) => {
+                const badge = skillStatusBadge(host.status);
+                const versionDetail = host.installed
+                  ? host.installedVersion
+                    ? `已安装 v${host.installedVersion}`
+                    : '旧版安装（无版本记录）'
+                  : host.hostPresent
+                    ? '已检测到宿主目录，尚未安装 EditHere Skill'
+                    : '尚未检测到该宿主目录';
+                const actionLabel =
+                  host.status === 'outdated' || host.status === 'legacy'
+                    ? '更新'
+                    : host.status === 'path-stale'
+                      ? '刷新路径'
+                      : host.status === 'not-installed'
+                        ? '安装'
+                        : host.status === 'newer'
+                          ? '强制切换'
+                          : '重装';
+                const actionOpts =
+                  host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
+                    ? { hostIds: [host.id], onlyUpdateInstalled: true, force: false }
+                    : host.status === 'not-installed'
+                      ? { hostIds: [host.id], onlyUpdateInstalled: false, force: false }
+                      : { hostIds: [host.id], onlyUpdateInstalled: false, force: true };
+                return (
+                  <div key={host.id} className="settings-row">
+                    <span className="settings-row-icon"><TerminalIcon size={18} /></span>
+                    <div className="settings-row-label">
+                      <strong>{host.name}</strong>
+                      <p>
+                        {versionDetail} · <code>{host.skillDir}</code>
+                      </p>
+                    </div>
+                    <div className="settings-inline-controls">
+                      <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                      <button
+                        className={
+                          host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
+                            ? 'button primary sm'
+                            : 'button secondary sm'
+                        }
+                        disabled={syncingSkills || !skillsState.sourceAvailable}
+                        onClick={() => void onSyncSkills?.(actionOpts)}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
 

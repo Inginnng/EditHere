@@ -88,8 +88,20 @@ function walkRelativeFiles(rootDir, relative = '') {
   return results.sort();
 }
 
+function loadSkillVersionFile() {
+  const versionPath = path.join(SRC, 'skill-version.json');
+  const raw = readUtf8Lf(versionPath);
+  const parsed = JSON.parse(raw);
+  const semverRe = /^\d+\.\d+\.\d+$/;
+  if (!semverRe.test(String(parsed.skillVersion || '')) || !semverRe.test(String(parsed.minCompatibleSkillVersion || ''))) {
+    throw new Error(`Invalid skill-version.json at ${path.relative(ROOT, versionPath)}`);
+  }
+  return raw.endsWith('\n') ? raw : `${raw}\n`;
+}
+
 function buildManifest() {
   const partials = loadPartials();
+  const skillVersionContent = loadSkillVersionFile();
   const files = new Map(); // repo-relative posix path -> string content (LF)
   const targetOwnedDirs = [];
 
@@ -100,6 +112,9 @@ function buildManifest() {
     const skillContent = renderTemplate(path.join(SRC, 'targets', spec.template), partials);
     files.set(`${targetPrefix}/SKILL.md`, skillContent);
     expectedSubfiles.add('SKILL.md');
+
+    files.set(`${targetPrefix}/skill-version.json`, skillVersionContent);
+    expectedSubfiles.add('skill-version.json');
 
     for (const refName of SHARED_REFERENCES) {
       const content = readUtf8Lf(path.join(SRC, 'shared', 'references', refName));

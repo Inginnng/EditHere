@@ -10,6 +10,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { inspectDesktopCli } from './desktop-locator.mjs';
+import { inspectHostSkills } from './init.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,35 +45,6 @@ function detectPlaywright(cwd) {
     }
   }
   return { installed: false, package: null, resolved: null };
-}
-
-function detectHosts({ homeDir = os.homedir(), env = process.env } = {}) {
-  const codexRoot = env.CODEX_HOME ? path.resolve(env.CODEX_HOME) : path.join(homeDir, '.codex');
-  const definitions = [
-    { id: 'codex', name: 'Codex', root: codexRoot, skillSubdir: ['skills', 'edithere'] },
-    { id: 'agents', name: 'Codex Agents (~/.agents)', root: path.join(homeDir, '.agents'), skillSubdir: ['skills', 'edithere'] },
-    { id: 'claude', name: 'Claude Code', root: path.join(homeDir, '.claude'), skillSubdir: ['skills', 'edithere'] },
-    { id: 'cursor', name: 'Cursor', root: path.join(homeDir, '.cursor'), skillSubdir: ['skills', 'edithere'] },
-    { id: 'trae', name: 'Trae', root: path.join(homeDir, '.trae'), skillSubdir: ['skills', 'edithere'] },
-    { id: 'antigravity', name: 'Antigravity', root: path.join(homeDir, '.gemini', 'antigravity'), skillSubdir: ['skills', 'edithere'] },
-  ];
-
-  return definitions.map((def) => {
-    const hostExists = fs.existsSync(def.root);
-    const skillPath = path.join(def.root, ...def.skillSubdir);
-    const webSkillPath = path.join(def.root, 'skills', 'edithere-web');
-    const skillInstalled = fs.existsSync(path.join(skillPath, 'SKILL.md'));
-    const webSkillInstalled = fs.existsSync(path.join(webSkillPath, 'SKILL.md'));
-    return {
-      id: def.id,
-      name: def.name,
-      root: def.root,
-      present: hostExists,
-      skillPath,
-      skillInstalled,
-      webSkillInstalled,
-    };
-  });
 }
 
 /**
@@ -112,12 +84,14 @@ export async function runDoctor({
   const portBusy = probePort && validPort ? await probeTcpPort(port) : false;
 
   const playwright = detectPlaywright(cwd);
-  const hosts = detectHosts({ homeDir, env });
+  const skillInspection = inspectHostSkills({ homeDir, env });
+  const hosts = skillInspection.hosts;
 
   const webReady = webFiles.agentCli && webFiles.offlineHtml && webFiles.mcpBundle;
   const activeRoute = desktop.found ? 'desktop' : (webReady && node.compatOk ? 'web' : 'unavailable');
   const ok = Boolean(node.compatOk && webFiles.canonicalSkill && (desktop.found || webReady));
 
+  const outdatedSkillHosts = hosts.filter((h) => ['outdated', 'legacy', 'path-stale'].includes(h.skillStatus));
   const recommendations = [];
   if (!desktop.found) {
     recommendations.push('Desktop edithere-cli was not detected; unified CLI/MCP will auto-route to the bundled Web workbench. Install Desktop from https://github.com/Inginnng/EditHere/releases/latest for native screenshot/OCR/video support.');
@@ -129,6 +103,8 @@ export async function runDoctor({
   }
   if (!hosts.some((h) => h.skillInstalled || h.webSkillInstalled)) {
     recommendations.push('No AI host has EditHere skill installed yet. Run: node cli/edithere.mjs init');
+  } else if (outdatedSkillHosts.length > 0) {
+    recommendations.push(`Outdated EditHere skill detected (${outdatedSkillHosts.map((h) => h.id).join(', ')}). Run: node cli/edithere.mjs init --update`);
   }
   if (!playwright.installed) {
     recommendations.push('Optional: Playwright was not found in the current working directory (capture-web.mjs needs Playwright; host browser screenshot tools still work).');
@@ -141,6 +117,7 @@ export async function runDoctor({
       desktopAvailable: desktop.found,
       webAvailable: webReady,
       nodeOk: node.compatOk,
+      bundledSkillVersion: skillInspection.bundledSkillVersion,
       installedHosts: hosts.filter((h) => h.skillInstalled || h.webSkillInstalled).map((h) => h.id),
     },
     desktop,
@@ -165,9 +142,14 @@ export function formatDoctorReport(report) {
   lines.push(`[Node.js] ${report.node.compatOk ? 'OK' : 'TOO OLD'} v${report.node.version} (${report.node.executable})`);
   lines.push(`[Web Fallback] ${report.web.ready ? 'OK' : 'INCOMPLETE'} (port ${report.web.port}${report.web.portListening ? ' listening' : ' free'})`);
   lines.push(`[Playwright] ${report.playwright.installed ? `OK (${report.playwright.package})` : 'Not found in cwd (optional for capture-web.mjs)'}`);
+  lines.push(`[Bundled Skill] v${report.summary.bundledSkillVersion || 'unknown'}`);
   lines.push('[AI Hosts]');
   for (const h of report.hosts) {
-    const state = h.skillInstalled ? 'skill installed' : h.present ? 'detected (skill missing)' : 'not present';
+    const state = h.skillInstalled
+      ? `skill ${h.skillVersion ? `v${h.skillVersion} ` : ''}[${h.skillStatus || 'installed'}]`
+      : h.present
+        ? 'detected (skill missing)'
+        : 'not present';
     lines.push(`  - ${h.id}: ${state} (${h.skillPath})`);
   }
   if (report.recommendations.length) {

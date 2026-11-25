@@ -42,6 +42,7 @@ struct AppSettings {
     // than a one-off so that it can be turned back on in the settings.
     bool confirmBeforeDiscard = true;
     bool checkUpdatesOnStartup = true;
+    bool autoSyncSkills = false;
     QString updateSource = "auto";
     QString aiProviderId = "openai";
     QMap<QString, AiConnectionSettings> aiProviders;

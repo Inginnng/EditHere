@@ -30,6 +30,7 @@ MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", 
 WEB_GUIDES = ("AI-SETUP.md", "AI-SETUP.en.md")
 SKILL_SHARED_FILES = (
     "SKILL.md",
+    "skill-version.json",
     "references/project-review.md",
     "references/capture.md",
     "references/layout-translation.md",

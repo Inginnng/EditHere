@@ -153,6 +153,7 @@ export interface GeneralPreferences {
   scrollAutoCrop: boolean;
   scrollUltraLong: boolean;
   checkUpdatesOnStartup: boolean;
+  autoSyncSkills: boolean;
   updateSource: UpdateSourceId;
   shortcuts: Record<string, string>;
   shortcutDefinitions: ShortcutDefinitionItem[];
@@ -190,4 +191,49 @@ export interface EditHereBridge {
   submitAgentSession(payload: unknown): Promise<{ ok: boolean; message: string }>;
   cancelAgentSession(): Promise<{ ok: boolean; message: string }>;
   getDoctorSnapshot(): Promise<DoctorSnapshot>;
+}
+
+export type SkillSyncStatus =
+  | 'not-installed'
+  | 'legacy'
+  | 'outdated'
+  | 'path-stale'
+  | 'up-to-date'
+  | 'newer';
+
+export interface SkillHostStatus {
+  id: string;
+  name: string;
+  hostRoot: string;
+  skillDir: string;
+  hostPresent: boolean;
+  installed: boolean;
+  installedVersion: string;
+  status: SkillSyncStatus;
+  recordedCliPath?: string;
+  recordedMcpPath?: string;
+}
+
+export interface SkillSyncState {
+  bundledSkillVersion: string;
+  minCompatibleSkillVersion: string;
+  appVersion: string;
+  sourceAvailable: boolean;
+  sourceSkillDir: string;
+  cliPath: string;
+  unifiedCliPath: string;
+  unifiedMcpPath: string;
+  installedCount: number;
+  outdatedCount: number;
+  hosts: SkillHostStatus[];
+}
+
+export interface SkillSyncActionResult {
+  id: string;
+  name: string;
+  destination: string;
+  state: 'installed' | 'updated' | 'up-to-date' | 'skipped-newer' | 'skipped-not-installed' | 'failed';
+  fromVersion?: string;
+  toVersion?: string;
+  error?: string;
 }

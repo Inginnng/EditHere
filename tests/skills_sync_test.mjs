@@ -86,6 +86,14 @@ test('all 5 targets share identical English references and scripts and preserve 
   }
   assert.equal(readLf('scripts/capture-web.mjs'), readLf('skills-src/shared/scripts/capture-web.mjs'));
   assert.equal(readLf('scripts/image-set.mjs'), readLf('skills-src/shared/scripts/image-set.mjs'));
+
+  const expectedVersionJson = readLf('skills-src/skill-version.json');
+  const parsedVersion = JSON.parse(expectedVersionJson);
+  assert.match(String(parsedVersion.skillVersion || ''), /^\d+\.\d+\.\d+$/);
+  assert.match(String(parsedVersion.minCompatibleSkillVersion || ''), /^\d+\.\d+\.\d+$/);
+  for (const target of SKILL_TARGETS) {
+    assert.equal(readLf(`${target}/skill-version.json`), expectedVersionJson, `${target}/skill-version.json drifted`);
+  }
 });
 
 test('English domain guides enforce Local vs Design-System scope and Code-Impact-Driven refresh', () => {

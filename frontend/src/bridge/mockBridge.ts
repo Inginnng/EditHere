@@ -10,6 +10,7 @@ import type {
   ProviderConfig,
   ProviderPreset,
   ShortcutDefinitionItem,
+  SkillSyncState,
   TrayActionDefinitionItem,
   VideoMarker,
 } from './types';
@@ -208,6 +209,7 @@ export const INITIAL_PREFERENCES: GeneralPreferences = {
   scrollAutoCrop: false,
   scrollUltraLong: false,
   checkUpdatesOnStartup: true,
+  autoSyncSkills: false,
   updateSource: 'auto',
   shortcuts: Object.fromEntries(DEFAULT_SHORTCUT_DEFINITIONS.map((d) => [d.id, d.defaultKey])),
   shortcutDefinitions: DEFAULT_SHORTCUT_DEFINITIONS,
@@ -239,6 +241,41 @@ export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
     { id: 'core', label: '原生截图与长截图核心', detail: 'C++20 + Qt6 · Windows HDR 与 DWM + UIA 窗口识别', status: 'ok' },
     { id: 'mcp', label: '统一 CLI & MCP 路由', detail: 'cli/edithere.mjs · cli/unified-mcp.mjs', status: 'ok' },
     { id: 'skills', label: '多端 Skills 同步', detail: '5 端配置同步', status: 'ok' },
+  ],
+};
+
+export const INITIAL_SKILLS_STATE: SkillSyncState = {
+  bundledSkillVersion: '1.0.0',
+  minCompatibleSkillVersion: '1.0.0',
+  appVersion: '0.14.1',
+  sourceAvailable: true,
+  sourceSkillDir: 'skills/edithere',
+  cliPath: 'edithere-cli.exe',
+  unifiedCliPath: 'cli/edithere.mjs',
+  unifiedMcpPath: 'cli/unified-mcp.mjs',
+  installedCount: 1,
+  outdatedCount: 0,
+  hosts: [
+    {
+      id: 'codex',
+      name: 'Codex',
+      hostRoot: '~/.codex',
+      skillDir: '~/.codex/skills/edithere',
+      hostPresent: true,
+      installed: true,
+      installedVersion: '1.0.0',
+      status: 'up-to-date',
+    },
+    {
+      id: 'claude',
+      name: 'Claude Code',
+      hostRoot: '~/.claude',
+      skillDir: '~/.claude/skills/edithere',
+      hostPresent: false,
+      installed: false,
+      installedVersion: '',
+      status: 'not-installed',
+    },
   ],
 };
 

@@ -6,6 +6,7 @@ import {
   MoonIcon,
   SendIcon,
   SettingsIcon,
+  ShieldOkIcon,
   SunIcon,
 } from './components/AppIcons';
 import {
@@ -21,6 +22,7 @@ import {
   INITIAL_DOCTOR_SNAPSHOT,
   INITIAL_GROUP_NOTES,
   INITIAL_PREFERENCES,
+  INITIAL_SKILLS_STATE,
   previewShellBridge,
 } from './bridge/mockBridge';
 import type {
@@ -32,6 +34,8 @@ import type {
   GroupNote,
   ProviderConfig,
   SettingsTabId,
+  SkillSyncActionResult,
+  SkillSyncState,
   ThemeMode,
   ViewId,
 } from './bridge/types';
@@ -69,6 +73,9 @@ export default function App() {
   const [activePageId, setActivePageId] = useState<string>('home');
   const [groupNotes, setGroupNotes] = useState<GroupNote[]>(() => INITIAL_GROUP_NOTES);
   const [doctor, setDoctor] = useState<DoctorSnapshot>(INITIAL_DOCTOR_SNAPSHOT);
+  const [skillsState, setSkillsState] = useState<SkillSyncState>(INITIAL_SKILLS_STATE);
+  const [syncingSkills, setSyncingSkills] = useState(false);
+  const [skillBannerDismissed, setSkillBannerDismissed] = useState(false);
   const [diagnosticsInfo, setDiagnosticsInfo] = useState<DiagnosticsInfo>(INITIAL_DIAGNOSTICS_INFO);
   const [desktopConnected, setDesktopConnected] = useState(false);
   const [hasDesktopPages, setHasDesktopPages] = useState(false);
@@ -174,6 +181,8 @@ export default function App() {
           typeof p.checkUpdatesOnStartup === 'boolean'
             ? p.checkUpdatesOnStartup
             : prev.checkUpdatesOnStartup,
+        autoSyncSkills:
+          typeof p.autoSyncSkills === 'boolean' ? p.autoSyncSkills : prev.autoSyncSkills,
         updateSource:
           p.updateSource === 'auto' ||
           p.updateSource === 'atomgit' ||
@@ -197,6 +206,9 @@ export default function App() {
       }
       if (state.doctor && typeof state.doctor === 'object') {
         setDoctor(state.doctor as DoctorSnapshot);
+      }
+      if (state.skills && typeof state.skills === 'object') {
+        setSkillsState(state.skills as SkillSyncState);
       }
       if (state.diagnostics && typeof state.diagnostics === 'object') {
         setDiagnosticsInfo(state.diagnostics as DiagnosticsInfo);
@@ -235,6 +247,16 @@ export default function App() {
         }
       } else if (eventName === 'ai.state') {
         applyAiState(data);
+      } else if (eventName === 'skills.state') {
+        setSkillsState(data as unknown as SkillSyncState);
+      } else if (eventName === 'skills.autoSynced') {
+        const names = Array.isArray(data.updatedHosts)
+          ? (data.updatedHosts as string[]).join('、')
+          : '';
+        const ver = typeof data.skillVersion === 'string' ? data.skillVersion : '';
+        if (names) {
+          notify(`已自动同步 ${names} 的 Skill${ver ? ` 至 v${ver}` : ''}`);
+        }
       } else if (eventName === 'view.navigate') {
         const v = data.view;
         if (v === 'workspace' || v === 'analysis' || v === 'settings') {
@@ -404,6 +426,10 @@ export default function App() {
           typeof updated.checkUpdatesOnStartup === 'boolean'
             ? updated.checkUpdatesOnStartup
             : prev.checkUpdatesOnStartup,
+        autoSyncSkills:
+          typeof updated.autoSyncSkills === 'boolean'
+            ? updated.autoSyncSkills
+            : prev.autoSyncSkills,
         updateSource:
           updated.updateSource === 'auto' ||
           updated.updateSource === 'atomgit' ||
@@ -523,6 +549,10 @@ export default function App() {
           typeof updated.checkUpdatesOnStartup === 'boolean'
             ? updated.checkUpdatesOnStartup
             : prev.checkUpdatesOnStartup,
+        autoSyncSkills:
+          typeof updated.autoSyncSkills === 'boolean'
+            ? updated.autoSyncSkills
+            : prev.autoSyncSkills,
         updateSource:
           updated.updateSource === 'auto' ||
           updated.updateSource === 'atomgit' ||
@@ -652,6 +682,82 @@ export default function App() {
     notify(receipt.message);
   };
 
+  const handleRefreshSkills = async () => {
+    if (!isDesktopWebView()) {
+      onToastSkillSync('当前已在预览模式下刷新 Skill 状态');
+      return;
+    }
+    try {
+      const res = await desktopRpc<SkillSyncState>('skills.getStatus');
+      if (res && Array.isArray(res.hosts)) {
+        setSkillsState(res);
+      }
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '读取 Skill 状态失败');
+    }
+  };
+
+  const onToastSkillSync = (msg: string) => notify(msg);
+
+  const handleSyncSkills = async (
+    opts: { hostIds?: string[]; onlyUpdateInstalled?: boolean; force?: boolean } = {}
+  ) => {
+    if (!isDesktopWebView()) {
+      setSkillsState((prev) => ({
+        ...prev,
+        outdatedCount: 0,
+        hosts: prev.hosts.map((h) => {
+          if (opts.hostIds?.length && !opts.hostIds.includes(h.id)) return h;
+          if ((opts.onlyUpdateInstalled ?? true) && h.status === 'not-installed') return h;
+          return {
+            ...h,
+            installed: true,
+            installedVersion: prev.bundledSkillVersion,
+            status: 'up-to-date',
+          };
+        }),
+      }));
+      notify(`预览模式：已将 Skill 同步至 v${skillsState.bundledSkillVersion}`);
+      return;
+    }
+    setSyncingSkills(true);
+    try {
+      const res = await desktopRpc<{
+        results?: SkillSyncActionResult[];
+        skills?: SkillSyncState;
+      }>('skills.sync', {
+        hostIds: opts.hostIds ?? [],
+        onlyUpdateInstalled: opts.onlyUpdateInstalled ?? true,
+        force: opts.force ?? false,
+      });
+      if (res?.skills) {
+        setSkillsState(res.skills);
+      }
+      const list = Array.isArray(res?.results) ? res.results : [];
+      const changed = list.filter((r) => r.state === 'updated' || r.state === 'installed');
+      const failed = list.filter((r) => r.state === 'failed');
+      if (failed.length > 0) {
+        notify(failed[0].error || `${failed[0].name} Skill 同步失败`);
+      } else if (changed.length > 0) {
+        const names = changed.map((r) => r.name).join('、');
+        const ver = res?.skills?.bundledSkillVersion ?? skillsState.bundledSkillVersion;
+        notify(`已同步 ${names} 的 Skill 至 v${ver}`);
+      } else if (list.some((r) => r.state === 'skipped-newer')) {
+        notify('检测到 AI 宿主中已安装更高版本 Skill，已跳过覆盖');
+      } else {
+        notify('AI 助手 Skill 已是最新且路径有效');
+      }
+    } catch (err) {
+      notify(err instanceof Error ? err.message : '同步 Skill 失败');
+    } finally {
+      setSyncingSkills(false);
+    }
+  };
+
+  const actionableSkillHosts = skillsState.hosts.filter(
+    (h) => h.status === 'outdated' || h.status === 'legacy' || h.status === 'path-stale'
+  );
+
   const defaultProvider = providers.find((p) => p.id === defaultProviderId) ?? providers[0];
   const totalNotesCount = pages.reduce((acc, p) => acc + p.annotations.length, 0) + groupNotes.length;
 
@@ -735,6 +841,42 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className={`app-main ${view === 'workspace' ? 'is-workspace' : 'is-page-view'}`}>
+        {!agentMode && !skillBannerDismissed && skillsState.sourceAvailable && actionableSkillHosts.length > 0 && (
+          <div className="skill-update-banner" role="region" aria-label="Skill 同步提示">
+            <div className="skill-update-banner-main">
+              <ShieldOkIcon size={15} style={{ color: 'var(--warning)' }} />
+              <span>
+                检测到 {actionableSkillHosts.length} 个 AI 工具中的 EditHere Skill 需要更新或刷新路径
+                （当前内置 v{skillsState.bundledSkillVersion}：{actionableSkillHosts.map((h) => h.name).join('、')}）
+              </span>
+            </div>
+            <div className="skill-update-banner-actions">
+              <button
+                className="button primary sm"
+                disabled={syncingSkills}
+                onClick={() => void handleSyncSkills({ onlyUpdateInstalled: true })}
+              >
+                {syncingSkills ? '同步中…' : '一键同步'}
+              </button>
+              <button
+                className="button secondary sm"
+                onClick={() => {
+                  setSettingsTab('diagnostics');
+                  setView('settings');
+                }}
+              >
+                管理
+              </button>
+              <button
+                className="icon-button"
+                aria-label="忽略本轮 Skill 提示"
+                onClick={() => setSkillBannerDismissed(true)}
+              >
+                <CloseIcon size={14} />
+              </button>
+            </div>
+          </div>
+        )}
         {view === 'workspace' && (
           <WorkspaceView
             pages={pages}
@@ -786,6 +928,10 @@ export default function App() {
                 diagnosticsInfo={diagnosticsInfo}
                 onUpdateDiagnosticsInfo={setDiagnosticsInfo}
                 doctor={doctor}
+                skillsState={skillsState}
+                syncingSkills={syncingSkills}
+                onRefreshSkills={handleRefreshSkills}
+                onSyncSkills={handleSyncSkills}
                 desktopConnected={desktopConnected}
                 providers={providers}
                 defaultProviderId={defaultProviderId}

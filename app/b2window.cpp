@@ -5,6 +5,7 @@
 #include "detector.h"
 #include "diagnostics.h"
 #include "i18n.h"
+#include "skillsync.h"
 #include "ui.h"
 #include "webview2host.h"
 
@@ -668,6 +669,7 @@ QJsonObject B2Window::buildPreferencesJson() const {
         {"scrollAutoCrop", settings_.scrollAutoCrop},
         {"scrollUltraLong", settings_.scrollUltraLong},
         {"checkUpdatesOnStartup", settings_.checkUpdatesOnStartup},
+        {"autoSyncSkills", settings_.autoSyncSkills},
         {"updateSource", settings_.updateSource},
         {"shortcuts", shortcutsObj},
         {"shortcutDefinitions", shortcutDefsArr},
@@ -730,10 +732,52 @@ QJsonObject B2Window::buildDoctorSnapshotJson() const {
     };
 }
 
+QJsonObject B2Window::buildSkillsStateJson() const {
+    return skillSyncSnapshotToJson(inspectHostSkills());
+}
+
+void B2Window::runStartupSkillCheckIfNeeded() {
+    if (startupSkillSyncChecked_) return;
+    startupSkillSyncChecked_ = true;
+    if (!settings_.autoSyncSkills) return;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    struct StartupSkillOutcome {
+        QVector<SkillSyncActionResult> results;
+        SkillSyncSnapshot snapshot;
+    };
+    auto *watcher = new QFutureWatcher<StartupSkillOutcome>(this);
+    connect(watcher, &QFutureWatcher<StartupSkillOutcome>::finished, this, [this, watcher]() {
+        const StartupSkillOutcome out = watcher->result();
+        watcher->deleteLater();
+        if (!jsReady_) return;
+        const QJsonObject snapshotJson = skillSyncSnapshotToJson(out.snapshot);
+        pushEvent("skills.state", snapshotJson);
+        QJsonArray updatedNames;
+        for (const auto &r : out.results) {
+            if (r.state == "updated" || r.state == "installed") {
+                updatedNames.append(r.name);
+            }
+        }
+        if (!updatedNames.isEmpty()) {
+            pushEvent("skills.autoSynced", QJsonObject{
+                {"updatedHosts", updatedNames},
+                {"skillVersion", out.snapshot.bundledSkillVersion},
+            });
+        }
+    });
+    watcher->setFuture(QtConcurrent::run([appDir]() {
+        StartupSkillOutcome out;
+        out.results = syncHostSkills({}, true, false, {}, {}, appDir);
+        out.snapshot = inspectHostSkills({}, {}, appDir);
+        return out;
+    }));
+}
+
 QJsonObject B2Window::buildSessionStateJson() const {
     return QJsonObject{
         {"mode", "desktop-webview"},
         {"version", EDITHERE_VERSION},
+        {"skillVersion", EDITHERE_SKILL_VERSION},
         {"runtimeVersion", webview_->runtimeVersion()},
         {"agentMode", agentSession_},
         {"hasDesktopPages", !pages_.isEmpty()},
@@ -743,6 +787,7 @@ QJsonObject B2Window::buildSessionStateJson() const {
         {"preferences", buildPreferencesJson()},
         {"diagnostics", buildDiagnosticsJson()},
         {"doctor", buildDoctorSnapshotJson()},
+        {"skills", buildSkillsStateJson()},
         {"ai", buildAiStateJson()},
     };
 }
@@ -818,6 +863,7 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
                            "WebView2 JS bridge connected",
                            {{"pages", pages_.size()}, {"agentMode", agentSession_}});
         sendRpcResult(id, true, buildSessionStateJson());
+        runStartupSkillCheckIfNeeded();
         return;
     }
 
@@ -1017,6 +1063,16 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
 
     if (method == "updates.check") {
         handleUpdatesCheck(id);
+        return;
+    }
+
+    if (method == "skills.getStatus") {
+        sendRpcResult(id, true, buildSkillsStateJson());
+        return;
+    }
+
+    if (method == "skills.sync") {
+        handleSkillsSync(id, params);
         return;
     }
 
@@ -1687,6 +1743,8 @@ void B2Window::handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &pa
         next.scrollUltraLong = params.value("scrollUltraLong").toBool();
     if (params.contains("checkUpdatesOnStartup"))
         next.checkUpdatesOnStartup = params.value("checkUpdatesOnStartup").toBool();
+    if (params.contains("autoSyncSkills"))
+        next.autoSyncSkills = params.value("autoSyncSkills").toBool();
     if (params.contains("updateSource"))
         next.updateSource = params.value("updateSource").toString();
 
@@ -1779,6 +1837,44 @@ void B2Window::handleUpdatesCheck(const QJsonValue &rpcId) {
     pendingUpdateCheckId_ = rpcId;
     updater_->setSourcePreference(settings_.updateSource);
     updater_->check();
+}
+
+void B2Window::handleSkillsSync(const QJsonValue &rpcId, const QJsonObject &params) {
+    QStringList hostIds;
+    for (const auto &v : params.value("hostIds").toArray()) {
+        const QString id = v.toString().trimmed();
+        if (!id.isEmpty()) hostIds.append(id);
+    }
+    const QString mode = params.value("mode").toString();
+    const bool onlyUpdateInstalled = params.contains("onlyUpdateInstalled")
+        ? params.value("onlyUpdateInstalled").toBool()
+        : (mode != "install");
+    const bool force = params.value("force").toBool(false);
+    const QString appDir = QCoreApplication::applicationDirPath();
+
+    struct SyncOutcome {
+        QVector<SkillSyncActionResult> results;
+        SkillSyncSnapshot snapshot;
+    };
+    auto *watcher = new QFutureWatcher<SyncOutcome>(this);
+    connect(watcher, &QFutureWatcher<SyncOutcome>::finished, this, [this, watcher, rpcId]() {
+        const SyncOutcome out = watcher->result();
+        watcher->deleteLater();
+        const QJsonObject snapshotJson = skillSyncSnapshotToJson(out.snapshot);
+        if (jsReady_) {
+            pushEvent("skills.state", snapshotJson);
+        }
+        sendRpcResult(rpcId, true, QJsonObject{
+            {"results", skillSyncResultsToJson(out.results)},
+            {"skills", snapshotJson},
+        });
+    });
+    watcher->setFuture(QtConcurrent::run([hostIds, onlyUpdateInstalled, force, appDir]() {
+        SyncOutcome out;
+        out.results = syncHostSkills(hostIds, onlyUpdateInstalled, force, {}, {}, appDir);
+        out.snapshot = inspectHostSkills({}, {}, appDir);
+        return out;
+    }));
 }
 
 } // namespace h2d

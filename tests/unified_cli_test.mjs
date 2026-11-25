@@ -68,6 +68,86 @@ test('init supports dry-run, installs canonical English skill cleanly, and respe
 
   const forced = runInit({ destination: dest, force: true, env: {} });
   assert.equal(forced.results[0].state, 'updated');
+  assert.equal(typeof forced.skillVersion, 'string');
+  assert.equal(fs.existsSync(path.join(dest, '.edithere-skill.json')), true);
+});
+
+test('init --update handles versioned, legacy, path-stale, up-to-date and newer skills without downgrading', (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-init-version-test-'));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+  const home = path.join(tempRoot, 'home');
+  const codexSkill = path.join(home, '.codex', 'skills', 'edithere');
+  const claudeSkill = path.join(home, '.claude', 'skills', 'edithere');
+  const cursorSkill = path.join(home, '.cursor', 'skills', 'edithere');
+  const traeSkill = path.join(home, '.trae', 'skills', 'edithere');
+  const agentsDir = path.join(home, '.agents');
+
+  // 1. Codex: up-to-date skillVersion even if appVersion was older (0.14.0 -> 0.14.1 asymmetric bugfix)
+  runInit({ destination: codexSkill, env: {} });
+  const codexMetaPath = path.join(codexSkill, '.edithere-skill.json');
+  const codexMeta = JSON.parse(fs.readFileSync(codexMetaPath, 'utf8'));
+  const installedVer = codexMeta.skillVersion;
+  codexMeta.appVersion = '0.14.0';
+  fs.writeFileSync(codexMetaPath, JSON.stringify(codexMeta, null, 2));
+
+  // 2. Claude: outdated skillVersion
+  runInit({ destination: claudeSkill, env: {} });
+  const claudeMetaPath = path.join(claudeSkill, '.edithere-skill.json');
+  const claudeMeta = JSON.parse(fs.readFileSync(claudeMetaPath, 'utf8'));
+  claudeMeta.skillVersion = '0.9.0';
+  fs.writeFileSync(claudeMetaPath, JSON.stringify(claudeMeta, null, 2));
+  fs.writeFileSync(path.join(claudeSkill, 'obsolete-file.txt'), 'remove on atomic replace');
+
+  // 3. Cursor: legacy (no .edithere-skill.json)
+  fs.mkdirSync(cursorSkill, { recursive: true });
+  fs.writeFileSync(path.join(cursorSkill, 'SKILL.md'), 'legacy skill');
+
+  // 4. Trae: newer (9.0.0) must never auto-downgrade
+  runInit({ destination: traeSkill, env: {} });
+  const traeMetaPath = path.join(traeSkill, '.edithere-skill.json');
+  const traeMeta = JSON.parse(fs.readFileSync(traeMetaPath, 'utf8'));
+  traeMeta.skillVersion = '9.0.0';
+  fs.writeFileSync(traeMetaPath, JSON.stringify(traeMeta, null, 2));
+
+  // 5. Agents host present without skill -> --update skips not-installed
+  fs.mkdirSync(agentsDir, { recursive: true });
+
+  const updateRes = runInit({ host: 'auto', update: true, homeDir: home, env: {} });
+  const stateByHost = Object.fromEntries(updateRes.results.map((r) => [r.host, r]));
+  assert.equal(stateByHost.codex.state, 'up-to-date');
+  assert.equal(stateByHost.claude.state, 'updated');
+  assert.equal(stateByHost.claude.fromVersion, '0.9.0');
+  assert.equal(fs.existsSync(path.join(claudeSkill, 'obsolete-file.txt')), false);
+  assert.equal(stateByHost.cursor.state, 'updated');
+  assert.equal(stateByHost.trae.state, 'skipped-newer');
+  assert.equal(JSON.parse(fs.readFileSync(traeMetaPath, 'utf8')).skillVersion, '9.0.0');
+  assert.equal(stateByHost.agents.state, 'skipped-not-installed');
+
+  // Same skillVersion with broken recorded MCP/CLI path triggers path-stale refresh on update
+  codexMeta.skillVersion = installedVer;
+  codexMeta.unifiedMcpPath = path.join(tempRoot, 'missing-old', 'unified-mcp.mjs');
+  fs.writeFileSync(codexMetaPath, JSON.stringify(codexMeta, null, 2));
+  const staleRes = runInit({ destination: codexSkill, update: true, env: {} });
+  assert.equal(staleRes.results[0].state, 'updated');
+});
+
+test('doctor reports bundledSkillVersion and per-host skillStatus', async (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-doctor-skill-test-'));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+  const home = path.join(tempRoot, 'home');
+  const codexSkill = path.join(home, '.codex', 'skills', 'edithere');
+  fs.mkdirSync(codexSkill, { recursive: true });
+  fs.writeFileSync(path.join(codexSkill, 'SKILL.md'), 'old');
+  fs.writeFileSync(path.join(codexSkill, '.edithere-skill.json'), JSON.stringify({ skillVersion: '0.1.0' }));
+
+  const report = await runDoctor({ cwd: ROOT, homeDir: home, env: {}, probePort: false, probeDesktop: false });
+  assert.match(report.summary.bundledSkillVersion, /^\d+\.\d+\.\d+$/);
+  const codex = report.hosts.find((h) => h.id === 'codex');
+  assert.equal(codex.skillStatus, 'outdated');
+  assert.equal(codex.skillVersion, '0.1.0');
+  assert.ok(report.recommendations.some((r) => r.includes('init --update')));
 });
 
 test('inbox-watcher ingests dropped PNGs, handles CJK filenames safely, and deduplicates', (t) => {

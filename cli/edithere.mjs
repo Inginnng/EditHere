@@ -22,8 +22,8 @@ export function usageText() {
     '',
     'Commands:',
     '  doctor [--json]                                       Diagnose Desktop CLI, Node, Web runtime, Playwright & AI hosts',
-    '  init [--host auto|codex|claude|cursor|trae|all]       Install canonical English skill and output unified MCP config',
-    '       [--destination ABS] [--force] [--dry-run] [--json]',
+    '  init [--host auto|codex|agents|claude|cursor|trae|antigravity|all] Install/update skill and output MCP config',
+    '       [--destination ABS] [--update] [--force] [--dry-run] [--json]',
     '  status [--mode auto|desktop|web]                      Probe active transport without launching GUI',
     '  windows                                               List visible desktop windows excluding EditHere',
     '  capture [--source interactive|screen|window|web]      Fast single-call screen, window, or web capture',
@@ -40,7 +40,7 @@ export function usageText() {
 function parseFlags(argv) {
   const positionals = [];
   const flags = {};
-  const BOOLEAN_FLAGS = new Set(['--json', '--force', '--dry-run', '--help', '-h', '--version', '-v', '--screen', '--full-page', '--annotate']);
+  const BOOLEAN_FLAGS = new Set(['--json', '--force', '--update', '--dry-run', '--help', '-h', '--version', '-v', '--screen', '--full-page', '--annotate']);
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!token.startsWith('-')) {
@@ -89,6 +89,7 @@ export async function main(argv = process.argv.slice(2)) {
         destination: flags.destination || null,
         homeDir: flags['home-dir'] || undefined,
         force: Boolean(flags.force),
+        update: Boolean(flags.update),
         dryRun: Boolean(flags['dry-run']),
       });
       console.log(JSON.stringify(receipt, null, 2));
