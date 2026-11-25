@@ -143,14 +143,14 @@ export function formatDoctorReport(report) {
   lines.push(`[Web Fallback] ${report.web.ready ? 'OK' : 'INCOMPLETE'} (port ${report.web.port}${report.web.portListening ? ' listening' : ' free'})`);
   lines.push(`[Playwright] ${report.playwright.installed ? `OK (${report.playwright.package})` : 'Not found in cwd (optional for capture-web.mjs)'}`);
   lines.push(`[Bundled Skill] v${report.summary.bundledSkillVersion || 'unknown'}`);
-  lines.push('[AI Hosts]');
-  for (const h of report.hosts) {
-    const state = h.skillInstalled
+  const detectedHosts = report.hosts.filter((h) => h.present || h.skillInstalled || (h.otherVariants && h.otherVariants.length > 0));
+  lines.push(`[AI Hosts] detected ${detectedHosts.length} of ${report.hosts.length} supported`);
+  for (const h of detectedHosts) {
+    const baseState = h.skillInstalled
       ? `skill ${h.skillVersion ? `v${h.skillVersion} ` : ''}[${h.skillStatus || 'installed'}]`
-      : h.present
-        ? 'detected (skill missing)'
-        : 'not present';
-    lines.push(`  - ${h.id}: ${state} (${h.skillPath})`);
+      : 'detected (skill missing)';
+    const extra = h.otherVariants && h.otherVariants.length ? ` + ${h.otherVariants.join(', ')}` : '';
+    lines.push(`  - ${h.id}: ${baseState}${extra} (${h.skillPath})`);
   }
   if (report.recommendations.length) {
     lines.push('');

@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearDesktopProbeCache, getDesktopCapabilities } from '../cli/desktop-locator.mjs';
 import { runDoctor } from '../cli/doctor.mjs';
-import { runInit } from '../cli/init.mjs';
+import { runInit, inspectHostSkills } from '../cli/init.mjs';
 import { sanitizePageId, startInboxWatcher } from '../cli/inbox-watcher.mjs';
 import { manifestToUnifiedProject, unifiedProjectToManifest, validateUnifiedProject } from '../cli/project-format.mjs';
 import { closeWarmBrowser, getWarmBrowserState, runFastCapture } from '../cli/router.mjs';
@@ -148,6 +148,47 @@ test('doctor reports bundledSkillVersion and per-host skillStatus', async (t) =>
   assert.equal(codex.skillStatus, 'outdated');
   assert.equal(codex.skillVersion, '0.1.0');
   assert.ok(report.recommendations.some((r) => r.includes('init --update')));
+});
+
+test('expanded AI host catalog detects workbuddy, dsh, qoder, grok, zcode, trae-cn and opencode safely', (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'edithere-hosts-catalog-test-'));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+  const home = path.join(tempRoot, 'home');
+  fs.mkdirSync(path.join(home, '.workbuddy', 'skills', 'edithere'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.workbuddy', 'skills', 'edithere', 'SKILL.md'), 'legacy wb');
+  fs.mkdirSync(path.join(home, '.workbuddy', 'skills', 'edithere-web'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.workbuddy', 'skills', 'edithere-web', 'SKILL.md'), 'web variant');
+  fs.mkdirSync(path.join(home, '.dsh', 'skills', 'edithere-dsh'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.dsh', 'skills', 'edithere-dsh', 'SKILL.md'), 'dsh variant');
+  for (const dir of ['.qoder', '.grok', '.zcode', '.trae-cn', '.config/opencode']) {
+    fs.mkdirSync(path.join(home, ...dir.split('/')), { recursive: true });
+  }
+
+  const snap = inspectHostSkills({ homeDir: home, env: {} });
+  const byId = Object.fromEntries(snap.hosts.map((h) => [h.id, h]));
+  assert.equal(byId.workbuddy.present, true);
+  assert.equal(byId.workbuddy.skillStatus, 'legacy');
+  assert.deepEqual(byId.workbuddy.otherVariants, ['edithere-web']);
+  assert.equal(byId.dsh.present, true);
+  assert.equal(byId.dsh.skillStatus, 'not-installed');
+  assert.deepEqual(byId.dsh.otherVariants, ['edithere-dsh']);
+  assert.equal(byId.qoder.present, true);
+  assert.equal(byId.grok.present, true);
+  assert.equal(byId.zcode.present, true);
+  assert.equal(byId['trae-cn'].present, true);
+  assert.equal(byId.opencode.present, true);
+
+  // init --host auto --update updates installed legacy workbuddy, skips detected-but-not-installed hosts, preserves variants
+  const upd = runInit({ host: 'auto', update: true, homeDir: home, env: {} });
+  const resByHost = Object.fromEntries(upd.results.map((r) => [r.host, r]));
+  assert.equal(resByHost.workbuddy.state, 'updated');
+  assert.equal(resByHost.qoder.state, 'skipped-not-installed');
+  assert.equal(resByHost.grok.state, 'skipped-not-installed');
+  assert.equal(resByHost.zcode.state, 'skipped-not-installed');
+  assert.equal(resByHost.dsh.state, 'skipped-not-installed');
+  assert.equal(fs.existsSync(path.join(home, '.dsh', 'skills', 'edithere-dsh', 'SKILL.md')), true);
+  assert.equal(fs.existsSync(path.join(home, '.workbuddy', 'skills', 'edithere-web', 'SKILL.md')), true);
 });
 
 test('inbox-watcher ingests dropped PNGs, handles CJK filenames safely, and deduplicates', (t) => {

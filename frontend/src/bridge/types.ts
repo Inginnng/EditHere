@@ -212,6 +212,7 @@ export interface SkillHostStatus {
   status: SkillSyncStatus;
   recordedCliPath?: string;
   recordedMcpPath?: string;
+  otherVariants?: string[];
 }
 
 export interface SkillSyncState {
@@ -223,6 +224,7 @@ export interface SkillSyncState {
   cliPath: string;
   unifiedCliPath: string;
   unifiedMcpPath: string;
+  detectedCount?: number;
   installedCount: number;
   outdatedCount: number;
   hosts: SkillHostStatus[];

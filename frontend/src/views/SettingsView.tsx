@@ -172,6 +172,15 @@ export default function SettingsView({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null);
   const [exportingDiag, setExportingDiag] = useState(false);
+  const [skillFilter, setSkillFilter] = useState<'detected' | 'installed'>('detected');
+
+  const openExternalUrl = (url: string) => {
+    if (isDesktopWebView()) {
+      void desktopRpc('shell.openExternal', { url });
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const commitPatch = async (patch: Record<string, unknown>, okToast?: string) => {
     const res = await onSavePatch(patch);
@@ -285,6 +294,10 @@ export default function SettingsView({
         return { label: '未安装', cls: 'neutral' };
     }
   };
+
+  const detectedSkills = skillsState.hosts.filter((h) => h.hostPresent || h.installed);
+  const installedSkills = detectedSkills.filter((h) => h.installed);
+  const visibleSkills = skillFilter === 'installed' ? installedSkills : detectedSkills;
 
   const actionableSkills = skillsState.hosts.filter(
     (h) => h.status === 'outdated' || h.status === 'legacy' || h.status === 'path-stale'
@@ -953,108 +966,6 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0 }}>AI 助手 Skill 版本与同步</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="badge accent">当前程序内置 Skill v{skillsState.bundledSkillVersion}</span>
-                <button
-                  className="button secondary sm"
-                  disabled={syncingSkills}
-                  onClick={() => void onRefreshSkills?.()}
-                >
-                  <ResetIcon size={14} /> 刷新状态
-                </button>
-                <button
-                  className="button primary sm"
-                  disabled={syncingSkills || !skillsState.sourceAvailable || actionableSkills.length === 0}
-                  onClick={() => void onSyncSkills?.({ onlyUpdateInstalled: true })}
-                >
-                  {syncingSkills && <SpinnerIcon size={14} className="spin" />}
-                  一键同步全部旧版{actionableSkills.length > 0 ? ` (${actionableSkills.length})` : ''}
-                </button>
-              </div>
-            </div>
-            <div className="settings-card-stack">
-              <div className="settings-row">
-                <span className="settings-row-icon"><ShieldOkIcon size={18} /></span>
-                <div className="settings-row-label">
-                  <strong>软件启动时自动同步旧版 Skill</strong>
-                  <p>仅在宿主 Skill 版本落后或当前程序目录变更时自动更新，绝不降级覆盖更高版本。</p>
-                </div>
-                <Switch.Root
-                  className="ui-switch"
-                  checked={preferences.autoSyncSkills}
-                  onCheckedChange={(v) => void commitPatch({ autoSyncSkills: v })}
-                >
-                  <Switch.Thumb className="ui-switch-thumb" />
-                </Switch.Root>
-              </div>
-
-              {!skillsState.sourceAvailable && (
-                <div className="settings-row">
-                  <span className="settings-row-icon"><ShieldOkIcon size={18} style={{ color: 'var(--warning)' }} /></span>
-                  <div className="settings-row-label">
-                    <strong>未找到内置 Skill 目录（skills/edithere）</strong>
-                    <p>请保留完整程序目录下的 skills 文件夹后再执行同步。</p>
-                  </div>
-                </div>
-              )}
-
-              {skillsState.hosts.map((host) => {
-                const badge = skillStatusBadge(host.status);
-                const versionDetail = host.installed
-                  ? host.installedVersion
-                    ? `已安装 v${host.installedVersion}`
-                    : '旧版安装（无版本记录）'
-                  : host.hostPresent
-                    ? '已检测到宿主目录，尚未安装 EditHere Skill'
-                    : '尚未检测到该宿主目录';
-                const actionLabel =
-                  host.status === 'outdated' || host.status === 'legacy'
-                    ? '更新'
-                    : host.status === 'path-stale'
-                      ? '刷新路径'
-                      : host.status === 'not-installed'
-                        ? '安装'
-                        : host.status === 'newer'
-                          ? '强制切换'
-                          : '重装';
-                const actionOpts =
-                  host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
-                    ? { hostIds: [host.id], onlyUpdateInstalled: true, force: false }
-                    : host.status === 'not-installed'
-                      ? { hostIds: [host.id], onlyUpdateInstalled: false, force: false }
-                      : { hostIds: [host.id], onlyUpdateInstalled: false, force: true };
-                return (
-                  <div key={host.id} className="settings-row">
-                    <span className="settings-row-icon"><TerminalIcon size={18} /></span>
-                    <div className="settings-row-label">
-                      <strong>{host.name}</strong>
-                      <p>
-                        {versionDetail} · <code>{host.skillDir}</code>
-                      </p>
-                    </div>
-                    <div className="settings-inline-controls">
-                      <span className={`badge ${badge.cls}`}>{badge.label}</span>
-                      <button
-                        className={
-                          host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
-                            ? 'button primary sm'
-                            : 'button secondary sm'
-                        }
-                        disabled={syncingSkills || !skillsState.sourceAvailable}
-                        onClick={() => void onSyncSkills?.(actionOpts)}
-                      >
-                        {actionLabel}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="settings-group">
             <h2>运行环境与 MCP 接入</h2>
             <div className="settings-card-stack">
               {doctor.checks.map((item) => (
@@ -1090,6 +1001,153 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0 }}>AI 助手 Skill 版本与同步</h2>
+                <span className="badge accent">当前程序内置 Skill v{skillsState.bundledSkillVersion}</span>
+                <span className="badge neutral">
+                  已检测到 {detectedSkills.length} 个（支持 {skillsState.hosts.length} 种）
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className="segmented-control" aria-label="Agent 筛选">
+                  <button
+                    className={skillFilter === 'detected' ? 'selected' : ''}
+                    onClick={() => setSkillFilter('detected')}
+                  >
+                    已检测到 ({detectedSkills.length})
+                  </button>
+                  <button
+                    className={skillFilter === 'installed' ? 'selected' : ''}
+                    onClick={() => setSkillFilter('installed')}
+                  >
+                    仅已安装 ({installedSkills.length})
+                  </button>
+                </div>
+                <button
+                  className="button secondary sm"
+                  disabled={syncingSkills}
+                  onClick={() => void onRefreshSkills?.()}
+                >
+                  <ResetIcon size={14} /> 刷新状态
+                </button>
+                <button
+                  className="button primary sm"
+                  disabled={syncingSkills || !skillsState.sourceAvailable || actionableSkills.length === 0}
+                  onClick={() => void onSyncSkills?.({ onlyUpdateInstalled: true })}
+                >
+                  {syncingSkills && <SpinnerIcon size={14} className="spin" />}
+                  一键同步全部旧版{actionableSkills.length > 0 ? ` (${actionableSkills.length})` : ''}
+                </button>
+              </div>
+            </div>
+            <div className="settings-card-stack">
+              <div className="settings-row">
+                <span className="settings-row-icon"><ShieldOkIcon size={18} /></span>
+                <div className="settings-row-label">
+                  <strong>软件启动时自动同步旧版 Skill</strong>
+                  <p>仅自动更新已安装 EditHere Skill 且版本落后或路径变更的 Agent，不向未安装的 Agent 写入，也不降级覆盖更高版本。</p>
+                </div>
+                <Switch.Root
+                  className="ui-switch"
+                  checked={preferences.autoSyncSkills}
+                  onCheckedChange={(v) => void commitPatch({ autoSyncSkills: v })}
+                >
+                  <Switch.Thumb className="ui-switch-thumb" />
+                </Switch.Root>
+              </div>
+
+              {!skillsState.sourceAvailable && (
+                <div className="settings-row">
+                  <span className="settings-row-icon"><ShieldOkIcon size={18} style={{ color: 'var(--warning)' }} /></span>
+                  <div className="settings-row-label">
+                    <strong>未找到内置 Skill 目录（skills/edithere）</strong>
+                    <p>请保留完整程序目录下的 skills 文件夹后再执行同步。</p>
+                  </div>
+                </div>
+              )}
+
+              {visibleSkills.length === 0 ? (
+                <div className="settings-row">
+                  <span className="settings-row-icon"><TerminalIcon size={18} /></span>
+                  <div className="settings-row-label">
+                    <strong>
+                      {skillFilter === 'installed'
+                        ? '尚未在已检测到的 Agent 中安装 EditHere Skill'
+                        : '当前用户目录下未检测到受支持的 AI 助手'}
+                    </strong>
+                    <p>
+                      {skillFilter === 'installed' && detectedSkills.length > 0
+                        ? `已检测到 ${detectedSkills.length} 个 Agent 目录，可切回“已检测到”列表按需点击安装。`
+                        : '支持 Codex、Claude Code、Cursor、Antigravity、Windsurf、Kiro、Trae / Trae CN、WorkBuddy、CodeBuddy、Qoder / QoderWork、DSH、Grok、ZCode、OpenCode、Cline 等；安装后点击“刷新状态”即可识别。'}
+                    </p>
+                  </div>
+                  {skillFilter === 'installed' && detectedSkills.length > 0 && (
+                    <button className="button secondary sm" onClick={() => setSkillFilter('detected')}>
+                      查看已检测 Agent
+                    </button>
+                  )}
+                </div>
+              ) : (
+                visibleSkills.map((host) => {
+                  const badge = skillStatusBadge(host.status);
+                  const versionDetail = host.installed
+                    ? host.installedVersion
+                      ? `已安装 v${host.installedVersion}`
+                      : '旧版安装（无版本记录）'
+                    : '已检测到 Agent，尚未安装 EditHere Skill';
+                  const variantsNote =
+                    host.otherVariants && host.otherVariants.length > 0
+                      ? ` · 另检测到 ${host.otherVariants.join('、')}`
+                      : '';
+                  const actionLabel =
+                    host.status === 'outdated' || host.status === 'legacy'
+                      ? '更新'
+                      : host.status === 'path-stale'
+                        ? '刷新路径'
+                        : host.status === 'not-installed'
+                          ? '安装'
+                          : host.status === 'newer'
+                            ? '强制切换'
+                            : '重装';
+                  const actionOpts =
+                    host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
+                      ? { hostIds: [host.id], onlyUpdateInstalled: true, force: false }
+                      : host.status === 'not-installed'
+                        ? { hostIds: [host.id], onlyUpdateInstalled: false, force: false }
+                        : { hostIds: [host.id], onlyUpdateInstalled: false, force: true };
+                  return (
+                    <div key={host.id} className="settings-row">
+                      <span className="settings-row-icon"><TerminalIcon size={18} /></span>
+                      <div className="settings-row-label">
+                        <strong>{host.name}</strong>
+                        <p>
+                          {versionDetail}
+                          {variantsNote} · <code>{host.skillDir}</code>
+                        </p>
+                      </div>
+                      <div className="settings-inline-controls">
+                        <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                        <button
+                          className={
+                            host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
+                              ? 'button primary sm'
+                              : 'button secondary sm'
+                          }
+                          disabled={syncingSkills || !skillsState.sourceAvailable}
+                          onClick={() => void onSyncSkills?.(actionOpts)}
+                        >
+                          {actionLabel}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="settings-group">
             <h2>关于 EditHere</h2>
             <div className="settings-card-stack" style={{ padding: 20, gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -1103,20 +1161,38 @@ export default function SettingsView({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                <button
-                  className="button ghost sm"
-                  onClick={() => {
-                    const url = 'https://github.com/Inginnng/EditHere';
-                    if (isDesktopWebView()) {
-                      void desktopRpc('shell.openExternal', { url });
-                    } else {
-                      window.open(url, '_blank', 'noopener,noreferrer');
-                    }
-                  }}
-                >
-                  GitHub 仓库 <ExternalLinkIcon size={14} />
-                </button>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {[
+                  { label: 'GitHub', url: 'https://github.com/Inginnng/EditHere' },
+                  { label: 'AtomGit', url: 'https://atomgit.com/qq_30293075/EditHere' },
+                  { label: 'Gitee', url: 'https://gitee.com/InnGing/EditHere' },
+                ].map((repo) => (
+                  <div
+                    key={repo.label}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+                      <strong style={{ minWidth: 64 }}>{repo.label}</strong>
+                      <code style={{ wordBreak: 'break-all' }}>{repo.url}</code>
+                    </div>
+                    <button
+                      className="button ghost sm"
+                      onClick={() => openExternalUrl(repo.url)}
+                    >
+                      访问仓库 <ExternalLinkIcon size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
                 <button className="button secondary sm" onClick={() => void onResetDefaults()}>
                   <ResetIcon size={14} /> 恢复全部默认设置
                 </button>

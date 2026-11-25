@@ -24,6 +24,7 @@ struct SkillHostStatus {
     QString status; // not-installed | legacy | outdated | path-stale | up-to-date | newer
     QString recordedCliPath;
     QString recordedMcpPath;
+    QStringList otherVariants;
 };
 
 struct SkillSyncSnapshot {

@@ -75,25 +75,68 @@ QString resolveRelativeTool(const QString &baseAppDir, const QString &relative) 
     return {};
 }
 
+QString pickExistingRoot(const QString &primary, const QString &fallback = {}) {
+    const QString p = normPath(primary);
+    const QString f = normPath(fallback);
+    if (f.isEmpty()) return p;
+    const bool pSkill = QFileInfo::exists(QDir(p).filePath("skills/edithere/SKILL.md"));
+    const bool fSkill = QFileInfo::exists(QDir(f).filePath("skills/edithere/SKILL.md"));
+    if (!pSkill && fSkill) return f;
+    const QFileInfo pInfo(p);
+    const QFileInfo fInfo(f);
+    if (!(pInfo.exists() && pInfo.isDir()) && (fInfo.exists() && fInfo.isDir())) return f;
+    return p;
+}
+
+QString resolveEnvRoot(const QString &homeDir, const char *envVar, const QString &homeRelative) {
+    if (homeDir.isEmpty() && qEnvironmentVariableIsSet(envVar)) {
+        const QString envVal = normPath(qEnvironmentVariable(envVar));
+        if (!envVal.isEmpty()) return envVal;
+    }
+    const QString home = homeDir.isEmpty() ? normPath(QDir::homePath()) : normPath(homeDir);
+    return normPath(QDir(home).filePath(homeRelative));
+}
+
 QVector<HostDef> hostDefinitions(const QString &homeDir, const QString &codexHome) {
     const QString home = homeDir.isEmpty() ? normPath(QDir::homePath()) : normPath(homeDir);
     QString codexRoot = normPath(codexHome);
     if (codexRoot.isEmpty()) {
-        if (homeDir.isEmpty() && qEnvironmentVariableIsSet("CODEX_HOME")) {
-            const QString envVal = normPath(qEnvironmentVariable("CODEX_HOME"));
-            if (!envVal.isEmpty()) codexRoot = envVal;
-        }
-        if (codexRoot.isEmpty()) {
-            codexRoot = normPath(QDir(home).filePath(".codex"));
-        }
+        codexRoot = resolveEnvRoot(homeDir, "CODEX_HOME", QStringLiteral(".codex"));
     }
+    const auto h = [&home](const QString &rel) { return normPath(QDir(home).filePath(rel)); };
     return {
         {"codex", "Codex", codexRoot},
-        {"agents", "Codex Agents (~/.agents)", normPath(QDir(home).filePath(".agents"))},
-        {"claude", "Claude Code", normPath(QDir(home).filePath(".claude"))},
-        {"cursor", "Cursor", normPath(QDir(home).filePath(".cursor"))},
-        {"trae", "Trae", normPath(QDir(home).filePath(".trae"))},
-        {"antigravity", "Antigravity", normPath(QDir(home).filePath(".gemini/antigravity"))},
+        {"agents", "Shared Agents (~/.agents)", h(".agents")},
+        {"claude", "Claude Code", h(".claude")},
+        {"cursor", "Cursor", h(".cursor")},
+        {"antigravity", "Antigravity", h(".gemini/antigravity")},
+        {"gemini", "Gemini CLI", h(".gemini")},
+        {"windsurf", "Windsurf", pickExistingRoot(h(".codeium/windsurf"), h(".windsurf"))},
+        {"kiro", "Kiro", h(".kiro")},
+        {"copilot", "GitHub Copilot", h(".copilot")},
+        {"trae", "Trae", h(".trae")},
+        {"trae-cn", "Trae CN", h(".trae-cn")},
+        {"workbuddy", "WorkBuddy", h(".workbuddy")},
+        {"codebuddy", "CodeBuddy", h(".codebuddy")},
+        {"qoder", "Qoder", h(".qoder")},
+        {"qoderwork", "QoderWork", h(".qoderwork")},
+        {"qoderwork-cn", "QoderWork CN", h(".qoderworkcn")},
+        {"dsh", "DeepSeek Harness (DSH)", resolveEnvRoot(homeDir, "DSH_HOME", QStringLiteral(".dsh"))},
+        {"grok", "Grok CLI", resolveEnvRoot(homeDir, "GROK_HOME", QStringLiteral(".grok"))},
+        {"zcode", "ZCode", h(".zcode")},
+        {"zed", "Zed", pickExistingRoot(h(".config/zed"), h(".zed"))},
+        {"opencode", "OpenCode", pickExistingRoot(h(".config/opencode"), h(".opencode"))},
+        {"cline", "Cline", h(".cline")},
+        {"roo", "Roo Code", h(".roo")},
+        {"kilocode", "Kilo Code", h(".kilocode")},
+        {"qwen", "Qwen Code", h(".qwen")},
+        {"kimi", "Kimi Code", pickExistingRoot(h(".kimi-code"), h(".kimi"))},
+        {"codearts", "CodeArts Doer", pickExistingRoot(h(".codeartsdoer"), h(".codearts-doer-for-coding"))},
+        {"augment", "Augment", h(".augment")},
+        {"continue", "Continue", h(".continue")},
+        {"factory", "Factory Droid", h(".factory")},
+        {"goose", "Goose", h(".config/goose")},
+        {"amp", "Amp", h(".config/amp")},
     };
 }
 
@@ -287,6 +330,11 @@ SkillSyncSnapshot inspectHostSkills(const QString &homeDir, const QString &codex
         st.skillDir = normPath(QDir(def.hostRoot).filePath("skills/edithere"));
         st.hostPresent = QFileInfo::exists(def.hostRoot) && QFileInfo(def.hostRoot).isDir();
         st.installed = QFileInfo::exists(QDir(st.skillDir).filePath("SKILL.md"));
+        for (const QString &variant : {QStringLiteral("edithere-web"), QStringLiteral("edithere-dsh")}) {
+            if (QFileInfo::exists(QDir(def.hostRoot).filePath(QString("skills/%1/SKILL.md").arg(variant)))) {
+                st.otherVariants.append(variant);
+            }
+        }
 
         if (!st.installed) {
             st.status = QStringLiteral("not-installed");
@@ -471,11 +519,15 @@ QVector<SkillSyncActionResult> syncHostSkills(const QStringList &hostIds,
 
 QJsonObject skillSyncSnapshotToJson(const SkillSyncSnapshot &snapshot) {
     QJsonArray hostsArr;
+    int detectedCount = 0;
     int outdatedCount = 0;
     int installedCount = 0;
     for (const auto &h : snapshot.hosts) {
+        if (h.hostPresent || h.installed) ++detectedCount;
         if (h.installed) ++installedCount;
         if (h.status == "outdated" || h.status == "legacy" || h.status == "path-stale") ++outdatedCount;
+        QJsonArray variantsArr;
+        for (const auto &v : h.otherVariants) variantsArr.append(v);
         hostsArr.append(QJsonObject{
             {"id", h.id},
             {"name", h.name},
@@ -487,6 +539,7 @@ QJsonObject skillSyncSnapshotToJson(const SkillSyncSnapshot &snapshot) {
             {"status", h.status},
             {"recordedCliPath", h.recordedCliPath},
             {"recordedMcpPath", h.recordedMcpPath},
+            {"otherVariants", variantsArr},
         });
     }
     return QJsonObject{
@@ -498,6 +551,7 @@ QJsonObject skillSyncSnapshotToJson(const SkillSyncSnapshot &snapshot) {
         {"cliPath", snapshot.cliPath},
         {"unifiedCliPath", snapshot.unifiedCliPath},
         {"unifiedMcpPath", snapshot.unifiedMcpPath},
+        {"detectedCount", detectedCount},
         {"installedCount", installedCount},
         {"outdatedCount", outdatedCount},
         {"hosts", hostsArr},

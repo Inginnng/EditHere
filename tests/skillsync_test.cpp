@@ -15,6 +15,7 @@ class SkillSyncTests : public QObject {
     void semverComparison();
     void inspectAllSixStatesAndPreventDowngrade();
     void syncUpdatesLegacyOutdatedAndPathStaleAtomically();
+    void expandedCatalogFallbackRootsAndVariantsSafe();
 };
 
 namespace {
@@ -178,12 +179,89 @@ void SkillSyncTests::syncUpdatesLegacyOutdatedAndPathStaleAtomically() {
     // Explicit force switches even newer cursor.
     const auto forcedRes = syncHostSkills({"cursor"}, false, true, homeDir, {}, appDir);
     QCOMPARE(forcedRes[0].state, QString("updated"));
-    QCOMPARE(inspectHostSkills(homeDir, {}, appDir).hosts[3].status, QString("up-to-date"));
+    bool foundCursorUpToDate = false;
+    for (const auto &h : inspectHostSkills(homeDir, {}, appDir).hosts) {
+        if (h.id == "cursor") {
+            QCOMPARE(h.status, QString("up-to-date"));
+            foundCursorUpToDate = true;
+        }
+    }
+    QVERIFY(foundCursorUpToDate);
 
     // Explicit install creates claude.
     const auto installRes = syncHostSkills({"claude"}, false, false, homeDir, {}, appDir);
     QCOMPARE(installRes[0].state, QString("installed"));
     QVERIFY(QFileInfo::exists(homeDir + "/.claude/skills/edithere/SKILL.md"));
+}
+
+void SkillSyncTests::expandedCatalogFallbackRootsAndVariantsSafe() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString root = tmp.path();
+    const QString appDir = root + "/app";
+    const QString homeDir = root + "/home";
+    const QString skillSrc = appDir + "/skills/edithere";
+
+    QVERIFY(writeFile(skillSrc + "/SKILL.md", "bundled v1.2.0\n"));
+    QVERIFY(writeFile(skillSrc + "/skill-version.json",
+                      R"({"skillVersion":"1.2.0","minCompatibleSkillVersion":"1.0.0"})"));
+#ifdef Q_OS_WIN
+    QVERIFY(writeFile(appDir + "/edithere-cli.exe", "cli"));
+#else
+    QVERIFY(writeFile(appDir + "/edithere-cli", "cli"));
+#endif
+    QVERIFY(writeFile(appDir + "/cli/edithere.mjs", "// cli\n"));
+    QVERIFY(writeFile(appDir + "/cli/unified-mcp.mjs", "// mcp\n"));
+
+    // Detectable ecosystems: WorkBuddy (with edithere + edithere-web), DSH (edithere-dsh only), Qoder, Grok, ZCode, Trae CN, CodeBuddy, OpenCode, Kimi fallback
+    QVERIFY(writeFile(homeDir + "/.workbuddy/skills/edithere/SKILL.md", "old wb\n"));
+    QVERIFY(writeFile(homeDir + "/.workbuddy/skills/edithere-web/SKILL.md", "web variant\n"));
+    QVERIFY(writeFile(homeDir + "/.dsh/skills/edithere-dsh/SKILL.md", "dsh variant\n"));
+    QVERIFY(QDir().mkpath(homeDir + "/.qoder"));
+    QVERIFY(QDir().mkpath(homeDir + "/.grok"));
+    QVERIFY(QDir().mkpath(homeDir + "/.zcode"));
+    QVERIFY(QDir().mkpath(homeDir + "/.trae-cn"));
+    QVERIFY(QDir().mkpath(homeDir + "/.codebuddy"));
+    QVERIFY(QDir().mkpath(homeDir + "/.config/opencode"));
+    QVERIFY(writeFile(homeDir + "/.kimi/skills/edithere/SKILL.md", "kimi fallback old\n"));
+    QVERIFY(QDir().mkpath(homeDir + "/.zed"));
+
+    // A stray regular file named ".windsurf" must NOT be falsely treated as a host directory.
+    QVERIFY(writeFile(homeDir + "/.windsurf", "not-a-dir"));
+
+    const SkillSyncSnapshot snap = inspectHostSkills(homeDir, {}, appDir);
+    auto hostById = [&](const QString &id) -> SkillHostStatus {
+        for (const auto &h : snap.hosts) {
+            if (h.id == id) return h;
+        }
+        return {};
+    };
+    QCOMPARE(hostById("workbuddy").hostPresent, true);
+    QCOMPARE(hostById("workbuddy").status, QString("legacy"));
+    QVERIFY(hostById("workbuddy").otherVariants.contains("edithere-web"));
+    QCOMPARE(hostById("dsh").hostPresent, true);
+    QCOMPARE(hostById("dsh").status, QString("not-installed"));
+    QVERIFY(hostById("dsh").otherVariants.contains("edithere-dsh"));
+    QCOMPARE(hostById("qoder").hostPresent, true);
+    QCOMPARE(hostById("grok").hostPresent, true);
+    QCOMPARE(hostById("zcode").hostPresent, true);
+    QCOMPARE(hostById("trae-cn").hostPresent, true);
+    QCOMPARE(hostById("codebuddy").hostPresent, true);
+    QCOMPARE(hostById("opencode").hostPresent, true);
+    QCOMPARE(hostById("kimi").hostPresent, true);
+    QCOMPARE(hostById("kimi").status, QString("legacy"));
+    QCOMPARE(hostById("zed").hostPresent, true);
+    QCOMPARE(hostById("windsurf").hostPresent, false);
+
+    // Auto/bulk sync with onlyUpdateInstalled=true MUST update only workbuddy & kimi, preserve variants, and NOT install into qoder/dsh/grok/zcode.
+    const auto syncRes = syncHostSkills({}, true, false, homeDir, {}, appDir);
+    QCOMPARE(syncRes.size(), 2);
+    QVERIFY(QFileInfo::exists(homeDir + "/.workbuddy/skills/edithere-web/SKILL.md"));
+    QVERIFY(QFileInfo::exists(homeDir + "/.dsh/skills/edithere-dsh/SKILL.md"));
+    QVERIFY(!QFileInfo::exists(homeDir + "/.dsh/skills/edithere/SKILL.md"));
+    QVERIFY(!QFileInfo::exists(homeDir + "/.qoder/skills/edithere/SKILL.md"));
+    QVERIFY(!QFileInfo::exists(homeDir + "/.grok/skills/edithere/SKILL.md"));
+    QVERIFY(!QFileInfo::exists(homeDir + "/.zcode/skills/edithere/SKILL.md"));
 }
 
 QTEST_MAIN(SkillSyncTests)

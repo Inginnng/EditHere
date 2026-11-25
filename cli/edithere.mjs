@@ -22,7 +22,7 @@ export function usageText() {
     '',
     'Commands:',
     '  doctor [--json]                                       Diagnose Desktop CLI, Node, Web runtime, Playwright & AI hosts',
-    '  init [--host auto|codex|agents|claude|cursor|trae|antigravity|all] Install/update skill and output MCP config',
+    '  init [--host auto|<agent-id>|all]                       Install/update skill and output MCP config',
     '       [--destination ABS] [--update] [--force] [--dry-run] [--json]',
     '  status [--mode auto|desktop|web]                      Probe active transport without launching GUI',
     '  windows                                               List visible desktop windows excluding EditHere',

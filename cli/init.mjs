@@ -121,6 +121,23 @@ function collectFiles(rootDir, rel = '') {
   return files.sort();
 }
 
+function isDir(dirPath) {
+  try {
+    return fs.statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function pickExistingRoot(primary, fallback = null) {
+  if (!fallback) return primary;
+  const pSkill = fs.existsSync(path.join(primary, 'skills', 'edithere', 'SKILL.md'));
+  const fSkill = fs.existsSync(path.join(fallback, 'skills', 'edithere', 'SKILL.md'));
+  if (!pSkill && fSkill) return fallback;
+  if (!isDir(primary) && isDir(fallback)) return fallback;
+  return primary;
+}
+
 export function resolveHostTargets({
   host = 'auto',
   destination = null,
@@ -131,28 +148,65 @@ export function resolveHostTargets({
     if (!path.isAbsolute(destination)) {
       throw new Error('--destination must be an absolute directory path.');
     }
-    return [{ host: 'custom', destination: path.resolve(destination) }];
+    return [{ host: 'custom', name: 'Custom', destination: path.resolve(destination) }];
   }
 
   const codexHome = env.CODEX_HOME ? path.resolve(env.CODEX_HOME) : path.join(homeDir, '.codex');
-  const map = {
-    codex: { host: 'codex', name: 'Codex', root: codexHome, destination: path.join(codexHome, 'skills', 'edithere') },
-    agents: { host: 'agents', name: 'Codex Agents (~/.agents)', root: path.join(homeDir, '.agents'), destination: path.join(homeDir, '.agents', 'skills', 'edithere') },
-    claude: { host: 'claude', name: 'Claude Code', root: path.join(homeDir, '.claude'), destination: path.join(homeDir, '.claude', 'skills', 'edithere') },
-    cursor: { host: 'cursor', name: 'Cursor', root: path.join(homeDir, '.cursor'), destination: path.join(homeDir, '.cursor', 'skills', 'edithere') },
-    trae: { host: 'trae', name: 'Trae', root: path.join(homeDir, '.trae'), destination: path.join(homeDir, '.trae', 'skills', 'edithere') },
-    antigravity: { host: 'antigravity', name: 'Antigravity', root: path.join(homeDir, '.gemini', 'antigravity'), destination: path.join(homeDir, '.gemini', 'antigravity', 'skills', 'edithere') },
-  };
+  const dshHome = env.DSH_HOME ? path.resolve(env.DSH_HOME) : path.join(homeDir, '.dsh');
+  const grokHome = env.GROK_HOME ? path.resolve(env.GROK_HOME) : path.join(homeDir, '.grok');
+  const h = (...parts) => path.join(homeDir, ...parts);
+
+  const defs = [
+    ['codex', 'Codex', codexHome],
+    ['agents', 'Shared Agents (~/.agents)', h('.agents')],
+    ['claude', 'Claude Code', h('.claude')],
+    ['cursor', 'Cursor', h('.cursor')],
+    ['antigravity', 'Antigravity', h('.gemini', 'antigravity')],
+    ['gemini', 'Gemini CLI', h('.gemini')],
+    ['windsurf', 'Windsurf', pickExistingRoot(h('.codeium', 'windsurf'), h('.windsurf'))],
+    ['kiro', 'Kiro', h('.kiro')],
+    ['copilot', 'GitHub Copilot', h('.copilot')],
+    ['trae', 'Trae', h('.trae')],
+    ['trae-cn', 'Trae CN', h('.trae-cn')],
+    ['workbuddy', 'WorkBuddy', h('.workbuddy')],
+    ['codebuddy', 'CodeBuddy', h('.codebuddy')],
+    ['qoder', 'Qoder', h('.qoder')],
+    ['qoderwork', 'QoderWork', h('.qoderwork')],
+    ['qoderwork-cn', 'QoderWork CN', h('.qoderworkcn')],
+    ['dsh', 'DeepSeek Harness (DSH)', dshHome],
+    ['grok', 'Grok CLI', grokHome],
+    ['zcode', 'ZCode', h('.zcode')],
+    ['zed', 'Zed', pickExistingRoot(h('.config', 'zed'), h('.zed'))],
+    ['opencode', 'OpenCode', pickExistingRoot(h('.config', 'opencode'), h('.opencode'))],
+    ['cline', 'Cline', h('.cline')],
+    ['roo', 'Roo Code', h('.roo')],
+    ['kilocode', 'Kilo Code', h('.kilocode')],
+    ['qwen', 'Qwen Code', h('.qwen')],
+    ['kimi', 'Kimi Code', pickExistingRoot(h('.kimi-code'), h('.kimi'))],
+    ['codearts', 'CodeArts Doer', pickExistingRoot(h('.codeartsdoer'), h('.codearts-doer-for-coding'))],
+    ['augment', 'Augment', h('.augment')],
+    ['continue', 'Continue', h('.continue')],
+    ['factory', 'Factory Droid', h('.factory')],
+    ['goose', 'Goose', h('.config', 'goose')],
+    ['amp', 'Amp', h('.config', 'amp')],
+  ];
+
+  const map = Object.fromEntries(
+    defs.map(([id, name, root]) => [
+      id,
+      { host: id, name, root, destination: path.join(root, 'skills', 'edithere') },
+    ])
+  );
 
   if (host === 'all') {
     return Object.values(map);
   }
   if (host === 'auto') {
-    const detected = Object.values(map).filter((item) => fs.existsSync(item.root));
+    const detected = Object.values(map).filter((item) => isDir(item.root));
     return detected.length ? detected : [map.codex];
   }
   if (!Object.hasOwn(map, host)) {
-    throw new Error(`Unsupported --host "${host}". Expected auto, codex, agents, claude, cursor, trae, antigravity, or all.`);
+    throw new Error(`Unsupported --host "${host}". Expected auto, ${defs.map((d) => d[0]).join(', ')}, or all.`);
   }
   return [map[host]];
 }
@@ -193,8 +247,10 @@ export function inspectHostSkills({ homeDir = os.homedir(), env = process.env } 
   const desktop = resolveEffectiveDesktopCli({ env });
   const targets = resolveHostTargets({ host: 'all', homeDir, env });
   const hosts = targets.map((t) => {
-    const webSkillPath = path.join(t.root, 'skills', 'edithere-web');
-    const webSkillInstalled = fs.existsSync(path.join(webSkillPath, 'SKILL.md'));
+    const otherVariants = ['edithere-web', 'edithere-dsh'].filter((v) =>
+      fs.existsSync(path.join(t.root, 'skills', v, 'SKILL.md'))
+    );
+    const webSkillInstalled = otherVariants.includes('edithere-web');
     const statusInfo = inspectSkillDestination(t.destination, {
       bundledVersion: versionInfo.skillVersion,
       cliPath: desktop.found ? desktop.path : null,
@@ -204,12 +260,13 @@ export function inspectHostSkills({ homeDir = os.homedir(), env = process.env } 
       id: t.host,
       name: t.name,
       root: t.root,
-      present: fs.existsSync(t.root),
+      present: isDir(t.root),
       skillPath: t.destination,
       skillInstalled: statusInfo.installed,
       skillVersion: statusInfo.installedVersion,
       skillStatus: statusInfo.status,
       webSkillInstalled,
+      otherVariants,
     };
   });
   return {
