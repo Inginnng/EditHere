@@ -9,6 +9,8 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <limits>
+#define LLM_RETRY_IMPLEMENTATION
+#include <llm_retry.hpp>
 namespace h2d {
 namespace {
 constexpr qsizetype MaxResponseBytes = 2 * 1024 * 1024;
@@ -87,9 +89,11 @@ AiFeedbackClient::AiFeedbackClient(QObject *parent) : QObject(parent) {
         terminalError_ = tr("请求超时，请重试或调整超时时间。");
         reply_->abort();
     });
+    retry_.setSingleShot(true);
+    connect(&retry_, &QTimer::timeout, this, &AiFeedbackClient::sendNext);
 }
 AiFeedbackClient::~AiFeedbackClient() {
-    timeout_.stop();
+    timeout_.stop(); retry_.stop();
     if (reply_) {
         disconnect(reply_, nullptr, this, nullptr);
         reply_->abort();
@@ -248,6 +252,7 @@ void AiFeedbackClient::sendNext() {
     QByteArray bytes;
     for (;;) {
         const auto input = pending_.takeFirst();
+        current_ = input;
         // DeepSeek has a stricter edge limit at 15 images, so keep set batches below it.
         const auto maxImages = imageSet_ && connection_.providerId == "deepseek" ? 14 : MaxImages;
         if (input.images.size() > maxImages) {
@@ -285,6 +290,7 @@ void AiFeedbackClient::sendNext() {
     timeout_.start(connection_.timeoutSeconds * 1000);
 }
 void AiFeedbackClient::cancel() {
+    if (retry_.isActive()) { retry_.stop(); resetRun(); emit cancelled(); return; }
     if (!reply_) return;
     cancelled_ = true; reply_->abort();
 }
@@ -296,7 +302,7 @@ void AiFeedbackClient::fail(const QString &message) {
 void AiFeedbackClient::resetRun() {
     key_.fill(QChar('\0')); key_.clear();
     facts_ = {}; context_.clear(); prompt_.clear(); response_.clear(); pending_.clear(); results_.clear();
-    renderedCount_ = 0; inputTokens_ = 0; outputTokens_ = 0; usageKnown_ = true; cancelled_ = false;
+    renderedCount_ = 0; attempt_ = 0; inputTokens_ = 0; outputTokens_ = 0; usageKnown_ = true; cancelled_ = false;
 }
 void AiFeedbackClient::finish() {
     if (!reply_) return;
@@ -316,6 +322,11 @@ void AiFeedbackClient::finish() {
     QJsonParseError parse;
     const auto document = QJsonDocument::fromJson(response_, &parse); response_.clear();
     if (reply->error() != QNetworkReply::NoError || status < 200 || status >= 300) {
+        // 408, 429, 5xx and Anthropic's 529 are transient: back off (honouring Retry-After) and resend.
+        bool hinted = false;
+        const auto retryAfter = reply->rawHeader("Retry-After").toDouble(&hinted);
+        const auto wait = status > 0 ? llm::retry_delay_ms(++attempt_, status, hinted ? retryAfter : -1.0) : -1.0;
+        if (wait >= 0 && wait <= 30000) { pending_.prepend(current_); retry_.start(int(wait)); return; }
         auto detail = document.object()["error"].toObject()["message"].toString();
         if (detail.isEmpty()) detail = reply->errorString();
         fail(tr("API 请求失败（HTTP %1）：%2").arg(status).arg(detail)); return;
@@ -323,6 +334,7 @@ void AiFeedbackClient::finish() {
     if (parse.error != QJsonParseError::NoError || !document.isObject()) { fail(tr("API 返回了无效的 JSON 回复。")); return; }
     const auto object = document.object();
     if (object.contains("error") && !object["error"].isNull()) { fail(tr("API 返回错误：%1").arg(object["error"].toObject()["message"].toString())); return; }
+    attempt_ = 0;
     QString error;
     auto content = textFromResponse(object, connection_.protocol, &error);
     if (!error.isEmpty()) { fail(error); return; }

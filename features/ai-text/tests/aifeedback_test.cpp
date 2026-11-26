@@ -411,6 +411,15 @@ class AiFeedbackTests : public QObject {
         client.generate(config(api), "test-secret-123456", input()); QTRY_COMPARE(errors.size(), 1);
         QVERIFY(!errors.first().first().toString().contains("test-secret-123456")); QCOMPARE(api.requests.size(), 1);
     }
+    void rateLimitIsRetriedAfterRetryAfter() {
+        FakeAiApi api; api.status = 429; api.extraHeaders = "Retry-After: 1\r\n";
+        api.response = QJsonDocument(QJsonObject{{"error", QJsonObject{{"message", "rate limited"}}}}).toJson();
+        AiFeedbackClient client; QSignalSpy errors(&client, &AiFeedbackClient::failed), done(&client, &AiFeedbackClient::completed);
+        client.generate(config(api, "anthropic-messages"), "secret", input()); QTRY_COMPARE(api.requests.size(), 1);
+        api.status = 200; api.extraHeaders.clear(); api.response = responseFor("anthropic-messages", modelContent());
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 10000);
+        QCOMPARE(errors.size(), 0); QCOMPARE(api.requests.size(), 2); QCOMPARE(api.requests[0], api.requests[1]);
+    }
     void redirectDoesNotForwardCredentials() {
         FakeAiApi api; FakeAiApi destination;
         api.status = 307; api.extraHeaders = "Location: " + destination.base().toUtf8() + "/responses\r\n";
