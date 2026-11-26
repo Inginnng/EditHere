@@ -194,7 +194,8 @@ def publish_gitee(meta: dict, files: list[Path], token: str) -> None:
     status, existing = request_json(
         "GET", f"{base}/tags/{tag}?{urllib.parse.urlencode({'access_token': token})}", allow_404=True
     )
-    if status == 404:
+    # Gitee also returns HTTP 200 with a JSON null body for a missing release.
+    if status == 404 or existing is None:
         payload = urllib.parse.urlencode(
             {
                 "access_token": token,
