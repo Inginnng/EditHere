@@ -1,28 +1,5 @@
 #!/usr/bin/env python3
-"""把 GitHub 的正式发行版同步到 Gitee 与 AtomGit。
-
-GitHub 是唯一上游：``release.yml`` 在 GitHub 建好发行版之后，由本脚本把同一批
-文件、同一份说明发到两个国内镜像。镜像的 Release 页面不是 git 对象，仓库镜像
-（AtomGit 的镜像仓库）不会同步它，所以必须单独发布。
-
-用法::
-
-    python3 scripts/publish-mirror-release.py \\
-        --assets mirror-assets --meta mirror-release.json
-
-``--assets`` 是待上传的文件目录，``--meta`` 是 ``gh release view --json`` 的输出
-（读到 tagName、name、body、isPrerelease）。令牌从环境变量读：
-``ATOMGIT_TOKEN``、``GITEE_TOKEN``；缺失的那个站点会被跳过，不影响另一个。
-
-两个平台的差异（踩过的坑）：
-
-* AtomGit 的 release 对象没有数字 id，只能按 tag 定位；也没有 ``attach_files``
-  接口，附件要先 ``GET .../upload_url`` 拿签名地址和请求头，再 ``PUT`` 文件。
-* AtomGit 新建之后还要 ``PATCH`` 一次把 ``release_status`` 标成 ``latest``，
-  否则发行版页面上不会显示为最新版本。
-* Gitee 用数字 id 传附件，走 ``POST .../releases/{id}/attach_files`` 的
-  multipart 表单。
-"""
+"""发布并回查 EditHere 在 AtomGit 和 Gitee 上的发行版。"""
 
 from __future__ import annotations
 
@@ -30,6 +7,8 @@ import argparse
 import json
 import mimetypes
 import os
+import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -42,6 +21,10 @@ ATOMGIT_API = "https://api.atomgit.com/api/v5"
 ATOMGIT_REPO = "Inginnng/EditHere"
 GITEE_API = "https://gitee.com/api/v5"
 GITEE_REPO = "InnGing/EditHere"
+GITHUB_API = "https://api.github.com"
+GITHUB_REPO = "Inginnng/EditHere"
+ATOM_DOWNLOAD = f"https://gitcode.com/{ATOMGIT_REPO}/releases/download"
+FALLBACK_HEADING = "## 补充下载 / Additional downloads"
 
 #: 单个附件超过这个体积时 Gitee 会拒绝（其上限为 100 MB）。
 GITEE_MAX_BYTES = 100 * 1024 * 1024
@@ -51,7 +34,7 @@ USER_AGENT = "EditHere-release-mirror"
 
 class HttpError(Exception):
     def __init__(self, status: int, body: bytes, url: str) -> None:
-        super().__init__(f"HTTP {status} for {url}: {body[:400]!r}")
+        super().__init__(f"HTTP {status} from {urllib.parse.urlsplit(url).hostname}")
         self.status = status
         self.body = body
         self.url = url
@@ -92,7 +75,7 @@ def request(
     raise HttpError(0, str(last_error).encode(), url)
 
 
-def request_json(method: str, url: str, **kwargs) -> tuple[int, dict]:
+def request_json(method: str, url: str, **kwargs) -> tuple[int, dict | None]:
     status, body = request(method, url, **kwargs)
     if not body:
         return status, {}
@@ -128,167 +111,227 @@ def collect_assets(directory: Path) -> list[Path]:
     return files
 
 
-def publish_atomgit(meta: dict, files: list[Path], token: str, mark_latest: bool) -> None:
+def tag_commit(remote: str, tag: str) -> str | None:
+    ref = f"refs/tags/{tag}"
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", remote, ref, f"{ref}^{{}}"],
+            check=True, capture_output=True, text=True, timeout=30,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (subprocess.SubprocessError, OSError) as error:
+        raise ValueError(f"无法读取 {remote} 上的标签 {tag}") from error
+    refs = {name: sha for sha, name in (line.split() for line in result.stdout.splitlines())}
+    return refs.get(f"{ref}^{{}}", refs.get(ref))
+
+
+def wait_for_mirror_tag(remote: str, tag: str, commit: str) -> None:
+    for delay in (0, 15, 30, 60, 60, 60, 75):
+        if delay:
+            time.sleep(delay)
+        actual = tag_commit(remote, tag)
+        if actual == commit:
+            return
+        if actual:
+            raise ValueError(f"{remote} 的 {tag} 指向 {actual}，GitHub 指向 {commit}")
+        if delay == 0:
+            print(f"等待 {remote} 从 GitHub 同步标签 {tag}", flush=True)
+    raise ValueError(f"{remote} 等待镜像标签 {tag} 超时，请更新仓库镜像后重新运行 mirror_only")
+
+
+def asset_map(release: dict) -> dict[str, dict]:
+    return {item["name"]: item for item in release.get("assets") or [] if item.get("name")}
+
+
+def check_release(release: dict | None, meta: dict, *, exact_notes: bool) -> None:
+    if not release or release.get("tag_name") != meta["tagName"] or release.get("name") != meta["name"]:
+        raise ValueError("公开发行版的标签或标题与 GitHub 不一致")
+    notes = (release.get("body") or "").replace("\r\n", "\n").rstrip()
+    source = (meta["body"] or "").replace("\r\n", "\n").rstrip()
+    if notes != source and (exact_notes or not notes.startswith(source + "\n\n")):
+        raise ValueError("公开发行版的说明与 GitHub 不一致")
+
+
+def publish_atomgit(meta: dict, files: list[Path], token: str, commit: str, mark_latest: bool) -> None:
     base = f"{ATOMGIT_API}/repos/{ATOMGIT_REPO}/releases"
-    query = urllib.parse.urlencode({"access_token": token})
     tag = meta["tagName"]
-
-    status, existing = request_json("GET", f"{base}/{tag}?{query}", allow_404=True)
+    detail = f"{base}/{tag}"
+    query = urllib.parse.urlencode({"access_token": token})
+    headers = {"Content-Type": "application/json"}
+    status, existing = request_json("GET", detail, allow_404=True)
+    payload = {
+        "tag_name": tag, "target_commitish": commit, "name": meta["name"], "body": meta["body"],
+    }
+    if meta["isPrerelease"]:
+        payload["release_status"] = "pre"
     if status == 404:
-        payload = json.dumps(
-            {
-                "tag_name": tag,
-                "name": meta["name"],
-                "body": meta["body"],
-                "release_status": "pre" if meta["isPrerelease"] else "latest",
-            }
-        ).encode("utf-8")
-        status, existing = request_json(
-            "POST",
-            f"{base}?{query}",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        print(f"AtomGit：已创建发行版 {tag}")
-    else:
-        print(f"AtomGit：发行版 {tag} 已存在，补齐缺失附件")
+        if not token:
+            raise ValueError("缺少 ATOMGIT_TOKEN，使用网页发布后可重新验证")
+        try:
+            _, existing = request_json("POST", f"{base}?{query}", data=json.dumps(payload).encode(),
+                                       headers=headers, retries=1)
+        except HttpError as error:
+            if b"image repository" in error.body:
+                raise ValueError("AtomGit 拒绝通过 API 写入拉取镜像。用已同步的标签在网页新建发行版、上传全部附件，再运行 mirror_only") from error
+            raise
+        if not existing:
+            _, existing = request_json("GET", f"{detail}?{query}")
 
-    if mark_latest and not meta["isPrerelease"]:
-        # 新建之后必须再 PATCH 一次，发行版页面才会把它标成最新版本。
-        payload = json.dumps(
-            {
-                "tag_name": tag,
-                "name": meta["name"],
-                "body": meta["body"],
-                "release_status": "latest",
-            }
-        ).encode("utf-8")
-        request(
-            "PATCH",
-            f"{base}/{tag}?{query}",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        print("AtomGit：已标记为最新版本")
-
-    remote_names = {item.get("name") for item in existing.get("assets") or []}
     for path in files:
-        if path.name in remote_names:
-            print(f"AtomGit：跳过已存在的 {path.name}")
+        previous = asset_map(existing or {}).get(path.name)
+        if previous:
+            if previous.get("size") != path.stat().st_size:
+                raise ValueError(f"AtomGit 同名附件大小不一致：{path.name}")
             continue
-        # 没有 attach_files 接口：先要签名上传地址，再把文件 PUT 上去。
+        if not token:
+            raise ValueError(f"AtomGit 缺少附件 {path.name}，请在网页补传或配置 ATOMGIT_TOKEN")
         upload_query = urllib.parse.urlencode({"access_token": token, "file_name": path.name})
-        _, ticket = request_json("GET", f"{base}/{tag}/upload_url?{upload_query}")
-        url = ticket.get("url")
-        headers = ticket.get("headers") or {}
-        if not url:
-            raise SystemExit(f"AtomGit 没有返回 {path.name} 的上传地址")
-        request("PUT", url, data=path.read_bytes(), headers=headers, timeout=600)
-        print(f"AtomGit：已上传 {path.name} ({path.stat().st_size} 字节)")
+        _, ticket = request_json("GET", f"{detail}/upload_url?{upload_query}", retries=1)
+        if not ticket or not ticket.get("url"):
+            raise ValueError(f"AtomGit 没有返回 {path.name} 的上传地址")
+        request("PUT", ticket["url"], data=path.read_bytes(), headers=ticket.get("headers") or {}, timeout=600)
+        print(f"AtomGit：已上传 {path.name}")
+
+    _, published = request_json("GET", detail)
+    check_release(published, meta, exact_notes=True)
+    if published.get("target_commitish") != commit or published.get("prerelease") != meta["isPrerelease"]:
+        raise ValueError("AtomGit 公开发行版的提交或发布状态与 GitHub 不一致")
+    assets = asset_map(published)
+    missing = [p.name for p in files if not assets.get(p.name, {}).get("browser_download_url")
+               or assets[p.name].get("size") != p.stat().st_size]
+    if missing:
+        raise ValueError(f"AtomGit 公共发行版附件缺失或大小不符：{', '.join(missing)}")
+    if mark_latest and published.get("release_status") != "latest":
+        if not token:
+            raise ValueError("请在 AtomGit 网页将发行版设为最新版本")
+        payload["release_status"] = "latest"
+        request("PATCH", f"{detail}?{query}", data=json.dumps(payload).encode(), headers=headers, retries=1)
+        _, published = request_json("GET", detail)
+        if (published or {}).get("release_status") != "latest":
+            raise ValueError("AtomGit 尚未将发行版公开标记为最新")
+    print(f"AtomGit：已回查 {len(files)} 个附件  https://gitcode.com/{ATOMGIT_REPO}/releases/{tag}")
 
 
-def publish_gitee(meta: dict, files: list[Path], token: str) -> None:
+def publish_gitee(meta: dict, files: list[Path], token: str, commit: str, atomgit_verified: bool) -> None:
     base = f"{GITEE_API}/repos/{GITEE_REPO}/releases"
     tag = meta["tagName"]
+    detail = f"{base}/tags/{tag}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"tag_name": tag, "target_commitish": commit, "name": meta["name"],
+               "body": meta["body"], "prerelease": meta["isPrerelease"]}
+    _, existing = request_json("GET", detail, allow_404=True)
+    if not existing:
+        if not token:
+            raise ValueError("缺少 GITEE_TOKEN，使用网页发布后可重新验证")
+        _, existing = request_json("POST", base, data=json.dumps(payload).encode(), headers=headers, retries=1)
+        if not existing or not existing.get("id"):
+            _, existing = request_json("GET", detail)
+    if not existing or not existing.get("id"):
+        raise ValueError("Gitee 未返回发行版 ID")
+    release_id = existing["id"]
+    if existing.get("target_commitish") != commit:
+        raise ValueError("Gitee 发行版关联的提交与 GitHub 不一致")
 
-    status, existing = request_json(
-        "GET", f"{base}/tags/{tag}?{urllib.parse.urlencode({'access_token': token})}", allow_404=True
-    )
-    # Gitee also returns HTTP 200 with a JSON null body for a missing release.
-    if status == 404 or existing is None:
-        payload = urllib.parse.urlencode(
-            {
-                "access_token": token,
-                "tag_name": tag,
-                "name": meta["name"],
-                "body": meta["body"],
-                "prerelease": "true" if meta["isPrerelease"] else "false",
-            }
-        ).encode("utf-8")
-        status, existing = request_json(
-            "POST",
-            base,
-            data=payload,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        print(f"Gitee：已创建发行版 {tag}")
-    else:
-        print(f"Gitee：发行版 {tag} 已存在，补齐缺失附件")
-
-    release_id = existing.get("id")
-    if not release_id:
-        raise SystemExit("Gitee 没有返回发行版 id，无法上传附件")
-
-    remote_names = {item.get("name") for item in existing.get("assets") or []}
-    for path in files:
-        if path.name in remote_names:
-            print(f"Gitee：跳过已存在的 {path.name}")
+    hosted = asset_map(existing)
+    notes = existing.get("body") or ""
+    quota_exceeded = False
+    quota_blocked = set()
+    links = {p.name: f"{ATOM_DOWNLOAD}/{tag}/{urllib.parse.quote(p.name)}" for p in files}
+    for path in sorted(files, key=lambda p: (p.stat().st_size, p.name)):
+        if path.name in hosted or (atomgit_verified and f"]({links[path.name]})" in notes):
             continue
-        size = path.stat().st_size
-        if size > GITEE_MAX_BYTES:
-            raise SystemExit(f"Gitee 单附件上限 100 MB，{path.name} 有 {size} 字节")
+        if quota_exceeded or path.stat().st_size > GITEE_MAX_BYTES:
+            quota_blocked.add(path.name)
+            continue
+        if not token:
+            raise ValueError(f"Gitee 缺少附件 {path.name}，请配置 GITEE_TOKEN 或在网页补传")
         body, content_type = multipart("file", path.name, path.read_bytes())
-        upload_url = f"{base}/{release_id}/attach_files?{urllib.parse.urlencode({'access_token': token})}"
-        request(
-            "POST",
-            upload_url,
-            data=body,
-            headers={"Content-Type": content_type},
-            timeout=600,
-        )
-        print(f"Gitee：已上传 {path.name} ({size} 字节)")
+        try:
+            request("POST", f"{base}/{release_id}/attach_files", data=body,
+                    headers={**headers, "Content-Type": content_type}, timeout=600, retries=1)
+        except HttpError as error:
+            if error.status == 400 and "配额" in error.body.decode("utf-8", errors="replace"):
+                quota_exceeded = True
+                quota_blocked.add(path.name)
+                continue
+            raise
+        print(f"Gitee：已上传 {path.name}")
+
+    _, published = request_json("GET", detail)
+    check_release(published, meta, exact_notes=False)
+    if published.get("target_commitish") != commit or published.get("prerelease") != meta["isPrerelease"]:
+        raise ValueError("Gitee 公开发行版的提交或发布状态与 GitHub 不一致")
+    hosted = asset_map(published)
+    missing = [p.name for p in files if not hosted.get(p.name, {}).get("browser_download_url")]
+    if missing:
+        notes = published.get("body") or ""
+        if not atomgit_verified:
+            raise ValueError(f"Gitee 缺少 {', '.join(missing)}，需先完成 AtomGit 验收才能使用直链")
+        new_links = [name for name in missing if f"]({links[name]})" not in notes]
+        if set(new_links) - quota_blocked:
+            raise ValueError("Gitee 未回查到本次上传的附件，请重跑验收")
+        if new_links:
+            if not token:
+                raise ValueError("请配置 GITEE_TOKEN 或在网页补上缺少附件的 AtomGit 直链")
+            items = "\n".join(f"- [{name}]({links[name]})" for name in missing)
+            payload["body"] = f"{(meta['body'] or '').rstrip()}\n\n{FALLBACK_HEADING}\n\n{items}\n"
+            request("PATCH", f"{base}/{release_id}", data=json.dumps(payload).encode(), headers=headers, retries=1)
+            _, published = request_json("GET", detail)
+            check_release(published, meta, exact_notes=False)
+        if any(f"]({links[name]})" not in (published.get("body") or "") for name in missing):
+            raise ValueError("Gitee 公开发行版缺少经核对的附件直链")
+        print(f"Gitee：附件配额替代下载（AtomGit）：{', '.join(missing)}")
+    print(f"Gitee：已回查 {len(files) - len(missing)} 个原生附件、{len(missing)} 个 AtomGit 直链"
+          f"  https://gitee.com/{GITEE_REPO}/releases/tag/{tag}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="把 GitHub 发行版同步到 Gitee 与 AtomGit")
-    parser.add_argument("--assets", type=Path, required=True, help="待上传的文件目录")
-    parser.add_argument("--meta", type=Path, required=True, help="gh release view --json 的输出")
-    parser.add_argument(
-        "--targets",
-        default="atomgit,gitee",
-        help="要发布的站点，逗号分隔（默认 atomgit,gitee）",
-    )
-    parser.add_argument("--no-latest", action="store_true", help="不把 AtomGit 发行版标为最新")
-    parser.add_argument("--dry-run", action="store_true", help="只打印将要执行的动作")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--assets", type=Path, required=True)
+    parser.add_argument("--meta", type=Path, required=True)
+    parser.add_argument("--targets", default="atomgit,gitee", choices=("atomgit,gitee", "atomgit", "gitee"))
+    parser.add_argument("--no-latest", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-
     meta = load_meta(args.meta)
     files = collect_assets(args.assets)
-    targets = [item.strip() for item in args.targets.split(",") if item.strip()]
-
-    print(f"发行版 {meta['tagName']}（{meta['name']}），共 {len(files)} 个文件")
-
+    tag = meta["tagName"]
+    if not re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag):
+        parser.error(f"无效的稳定版本标签：{tag}")
+    print(f"发行版 {tag}（{meta['name']}），共 {len(files)} 个文件")
     if args.dry_run:
-        for target in targets:
-            print(f"[dry-run] 将发布到 {target}：{', '.join(p.name for p in files)}")
+        print(f"[dry-run] {args.targets}：{', '.join(p.name for p in files)}")
         return 0
 
-    failures: list[str] = []
-
+    try:
+        _, source = request_json("GET", f"{GITHUB_API}/repos/{GITHUB_REPO}/commits/{tag}", timeout=20)
+    except (HttpError, ValueError) as error:
+        raise SystemExit(f"无法核对 GitHub 标签 {tag}：{error}") from None
+    commit = (source or {}).get("sha", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise SystemExit(f"GitHub 未返回标签 {tag} 对应的提交")
+    mark_latest = not args.no_latest and meta.get("isLatest", False) and not meta["isPrerelease"]
+    failures = []
+    atomgit_verified = False
+    targets = args.targets.split(",")
     if "atomgit" in targets:
-        token = os.environ.get("ATOMGIT_TOKEN", "").strip()
-        if token:
-            try:
-                publish_atomgit(meta, files, token, mark_latest=not args.no_latest)
-            except HttpError as error:
-                print(f"AtomGit 发布失败：{error}", file=sys.stderr)
-                failures.append("atomgit")
-        else:
-            print("跳过 AtomGit：没有配置 ATOMGIT_TOKEN")
-
+        try:
+            wait_for_mirror_tag(f"https://atomgit.com/{ATOMGIT_REPO}.git", tag, commit)
+            publish_atomgit(meta, files, os.environ.get("ATOMGIT_TOKEN", "").strip(), commit, mark_latest)
+            atomgit_verified = True
+        except (HttpError, ValueError) as error:
+            print(f"AtomGit 发布未完成：{error}", file=sys.stderr)
+            failures.append("AtomGit")
     if "gitee" in targets:
-        token = os.environ.get("GITEE_TOKEN", "").strip()
-        if token:
-            try:
-                publish_gitee(meta, files, token)
-            except HttpError as error:
-                print(f"Gitee 发布失败：{error}", file=sys.stderr)
-                failures.append("gitee")
-        else:
-            print("跳过 Gitee：没有配置 GITEE_TOKEN")
-
+        try:
+            token = os.environ.get("GITEE_TOKEN", "").strip()
+            wait_for_mirror_tag(f"https://gitee.com/{GITEE_REPO}.git", tag, commit)
+            publish_gitee(meta, files, token, commit, atomgit_verified)
+        except (HttpError, ValueError) as error:
+            print(f"Gitee 发布未完成：{error}", file=sys.stderr)
+            failures.append("Gitee")
     if failures:
-        print(f"失败站点：{', '.join(failures)}", file=sys.stderr)
+        print(f"未通过发行版验收：{', '.join(failures)}", file=sys.stderr)
         return 1
     return 0
 

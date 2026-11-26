@@ -14,6 +14,10 @@
 4. 涉及反馈 JSON 或项目文件格式的改动，请同时更新 `schema/` 下的对应文件与文档。
 5. Windows PowerShell 脚本请以**带 BOM 的 UTF-8**保存：PowerShell 5.1 会把无 BOM 的 UTF-8 按系统 ANSI 代码页解码，中文字符串会破坏脚本解析。
 
+## 发行版本
+
+正式版须通过 GitHub、AtomGit 和 Gitee 的公开发行验收。操作和补发步骤见 [发版规范](docs/RELEASING.md)。
+
 ## 贡献的许可
 
 外部贡献在合并前需要明确同意 [贡献者许可协议 v2](cla/v2.md)。你保留贡献的著作权，并授权项目作者将贡献和项目一起发布、提供商业许可或按其他许可发布。项目公开版本继续采用 [PolyForm Noncommercial License 1.0.0](LICENSE)；该贡献协议不直接给普通用户商业使用权。

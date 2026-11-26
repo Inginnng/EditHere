@@ -12,12 +12,17 @@ on:
         description: "Build and verify all packages without publishing"
         type: boolean
         default: true
+      mirror_only:
+        description: "Sync and verify an already published GitHub release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   build-windows:
+    if: ${{ !inputs.mirror_only }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +144,7 @@ jobs:
             dist/*.exe.sha256
 
   build-macos:
+    if: ${{ !inputs.mirror_only }}
     runs-on: macos-15
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
@@ -176,11 +182,13 @@ jobs:
           path: dist/*.dmg
 
   build-linux:
+    if: ${{ !inputs.mirror_only }}
     # One definition of the Linux build: the same workflow that validates pull
     # requests produces the AppImage a tag publishes.
     uses: ./.github/workflows/native-linux.yml
 
   build-web:
+    if: ${{ !inputs.mirror_only }}
     # The web packages are platform independent: one dependency-free build step
     # plus the committed MCP bundle, whose source/artifact hashes are checked
     # before packaging (scripts/prepare-distribution.py --web-only).
@@ -459,24 +467,32 @@ jobs:
           gh api --method PATCH "$release_api" -F draft=false -f make_latest=legacy --jq '.html_url'
 
   mirror-release:
-    # 镜像站点的发行版不是 git 对象，AtomGit 的镜像仓库只同步分支与标签，所以国内
-    # 两个站的 Release 必须单独发布一次。GitHub 仍是唯一上游：这里只下载刚发布的
-    # 同一批文件，不改内容、不改名。
     needs: release
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.validate_only }}
+    if: ${{ !cancelled() && (needs.release.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.mirror_only)) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
     concurrency:
-      group: mirror-release-${{ github.ref }}
+      group: mirror-release-${{ inputs.tag || github.ref_name }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
+          MIRROR_ONLY: ${{ inputs.mirror_only }}
+          VALIDATE_ONLY: ${{ inputs.validate_only }}
         run: |
+          if [[ "$MIRROR_ONLY" == true && "$VALIDATE_ONLY" == true ]]; then
+            echo '::error::Disable validate_only when requesting mirror_only.'
+            exit 1
+          fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             tag="$INPUT_TAG"
           else
@@ -491,18 +507,18 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p mirror-assets
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > github-release.json
           gh release download "$RELEASE_TAG" --dir mirror-assets --clobber
-          gh release view "$RELEASE_TAG" \
-            --json tagName,name,body,isPrerelease > mirror-release.json
-          ls -l mirror-assets
+          node scripts/verify-release-assets.cjs --published github-release.json "$RELEASE_TAG" mirror-assets/*
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          jq --arg latest "$latest" '{tagName: .tag_name, name, body, isPrerelease: .prerelease, isLatest: (.tag_name == $latest)}' \
+            github-release.json > mirror-release.json
 
       - name: Publish to AtomGit and Gitee
         env:
           ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 没有配置令牌的站点会被脚本跳过并打印一行说明，不影响另一个站点；
-          # 任一站点真正失败时脚本以非零码退出，让这次发版可见地失败。
           python3 scripts/publish-mirror-release.py \
             --assets mirror-assets \
             --meta mirror-release.json
