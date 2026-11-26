@@ -1293,6 +1293,7 @@ class StartupFlowTests : public QObject {
         QVERIFY(directory.isValid());
         const auto settingsFile = directory.filePath("settings.ini");
         auto settings = quietSettings();
+        settings.language = LanguageMode::SimplifiedChinese;
         settings.launchAtLogin = launchAtLoginEnabled();
         settings.shortcuts["capture"] = QKeySequence("Ctrl+Alt+Shift+F21", QKeySequence::PortableText);
         settings.shortcuts["annotate"] = QKeySequence("Ctrl+Alt+Shift+F22", QKeySequence::PortableText);
