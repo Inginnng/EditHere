@@ -1,4 +1,4 @@
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "platform.h"
 #include "ui.h"
 #include <QApplication>
@@ -29,7 +29,7 @@ constexpr int kMinimumSide = 24;
 constexpr auto kIdleShadow = QColor(120, 120, 122);
 } // namespace
 
-PinWindow::PinWindow(QImage image, QRect placement, QWidget *parent)
+PinnedImageWindow::PinnedImageWindow(QImage image, QRect placement, QWidget *parent)
     : QWidget(parent, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool),
       image_(std::move(image)), baseSize_(image_.size()), placement_(placement) {
     setAttribute(Qt::WA_DeleteOnClose, false);
@@ -56,13 +56,13 @@ PinWindow::PinWindow(QImage image, QRect placement, QWidget *parent)
     retranslate();
 }
 
-void PinWindow::retranslate() {
+void PinnedImageWindow::retranslate() {
     setWindowTitle(tr("置顶图片 %1 × %2").arg(image_.width()).arg(image_.height()));
     setToolTip(tr("拖动移动 · 拖边缘缩放 · 滚轮缩放 · 双击关闭 · Ctrl+C 复制 · 右键更多选项 · Esc 关闭"));
     setAccessibleName(windowTitle());
 }
 
-qreal PinWindow::deviceRatio() const {
+qreal PinnedImageWindow::deviceRatio() const {
     // The picture is made of device pixels and the window is measured in logical ones.
     // On a display scaled by two they are not the same number, and drawing without
     // saying so throws away half the pixels on the way in and invents them again on
@@ -76,7 +76,7 @@ qreal PinWindow::deviceRatio() const {
     return 1.0;
 }
 
-void PinWindow::fitToScreen() {
+void PinnedImageWindow::fitToScreen() {
     if (image_.isNull())
         return;
     const QRect available = screen() != nullptr ? screen()->availableGeometry()
@@ -101,7 +101,7 @@ void PinWindow::fitToScreen() {
     move(available.center() - rect().center());
 }
 
-QSize PinWindow::baseLogical() const {
+QSize PinnedImageWindow::baseLogical() const {
     // The size the picture is shown at before any wheel zoom, in the units the window
     // manager uses. A capture carries the region it came from and is shown at that
     // size; one that arrived on its own is shown at its own size.
@@ -112,7 +112,7 @@ QSize PinWindow::baseLogical() const {
                  std::max(1, qRound(image_.height() / ratio)));
 }
 
-void PinWindow::setZoom(qreal zoom) {
+void PinnedImageWindow::setZoom(qreal zoom) {
     zoom_ = std::clamp(zoom, kMinimumZoom, kMaximumZoom);
     const qreal ratio = deviceRatio();
     const QSize logical(std::max(1, qRound(baseLogical().width() * zoom_)),
@@ -143,25 +143,25 @@ void PinWindow::setZoom(qreal zoom) {
     update();
 }
 
-void PinWindow::setDecoration(int pixels) {
+void PinnedImageWindow::setDecoration(int pixels) {
     decoration_ = std::max(0, pixels);
 }
 
-void PinWindow::setUndecorated(const QImage &source, const CaptureStyle &style) {
+void PinnedImageWindow::setUndecorated(const QImage &source, const CaptureStyle &style) {
     if (source.isNull())
         return;
     undecorated_ = source;
     style_ = style;
 }
 
-void PinWindow::setShadowEnabled(bool on) {
+void PinnedImageWindow::setShadowEnabled(bool on) {
     if (undecorated_.isNull() || style_.shadow == on)
         return;
     style_.shadow = on;
     rebuild();
 }
 
-void PinWindow::changeEvent(QEvent *event) {
+void PinnedImageWindow::changeEvent(QEvent *event) {
     // Becoming the window the user is on, and ceasing to be it, both arrive here.
     // Nothing else about the pin changes: the same picture stays put, only the halo
     // changes colour.
@@ -170,14 +170,14 @@ void PinWindow::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
 }
 
-CaptureStyle PinWindow::effectiveStyle() const {
+CaptureStyle PinnedImageWindow::effectiveStyle() const {
     CaptureStyle style = style_;
     if (!active_ && style.shadow)
         style.shadowColor = kIdleShadow;
     return style;
 }
 
-void PinWindow::setActive(bool active) {
+void PinnedImageWindow::setActive(bool active) {
     if (active_ == active)
         return;
     active_ = active;
@@ -189,7 +189,7 @@ void PinWindow::setActive(bool active) {
         update();
 }
 
-void PinWindow::rebuild() {
+void PinnedImageWindow::rebuild() {
     // A pin is dragged around by hand as often as it is placed, so what has to stay
     // put is the middle of where it is now rather than the rectangle it arrived in.
     const QPoint centre = geometry().center();
@@ -211,7 +211,7 @@ void PinWindow::rebuild() {
     retranslate();
 }
 
-void PinWindow::rotate(int quarters) {
+void PinnedImageWindow::rotate(int quarters) {
     if (quarters % 4 == 0)
         return;
     QTransform turn;
@@ -232,7 +232,7 @@ void PinWindow::rotate(int quarters) {
     retranslate();
 }
 
-QImage PinWindow::editableImage() const {
+QImage PinnedImageWindow::editableImage() const {
     // The editor gets the screenshot inside the shadow rather than the shadow with it:
     // a margin of nothing is not something to mark up, and 批注 from the capture bar
     // starts from the bare region too.
@@ -242,7 +242,7 @@ QImage PinWindow::editableImage() const {
     return image_.copy(decoration_, decoration_, image_.width() - twice, image_.height() - twice);
 }
 
-void PinWindow::flip(bool horizontal) {
+void PinnedImageWindow::flip(bool horizontal) {
     QTransform mirror;
     mirror.scale(horizontal ? -1.0 : 1.0, horizontal ? 1.0 : -1.0);
     image_ = image_.transformed(mirror);
@@ -253,12 +253,12 @@ void PinWindow::flip(bool horizontal) {
     setZoom(zoom_);
 }
 
-void PinWindow::setTransparency(qreal transparency) {
+void PinnedImageWindow::setTransparency(qreal transparency) {
     transparency_ = std::clamp(transparency, 0.0, 0.9);
     setWindowOpacity(1.0 - transparency_);
 }
 
-void PinWindow::paintEvent(QPaintEvent *) {
+void PinnedImageWindow::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     // The picture and nothing else. A pin is told apart from the desktop by its
@@ -269,7 +269,7 @@ void PinWindow::paintEvent(QPaintEvent *) {
     painter.drawImage(QPoint(0, 0), display_);
 }
 
-void PinWindow::mousePressEvent(QMouseEvent *event) {
+void PinnedImageWindow::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
     const QPoint global = event->globalPosition().toPoint();
@@ -285,7 +285,7 @@ void PinWindow::mousePressEvent(QMouseEvent *event) {
         setCursor(Qt::ClosedHandCursor);
 }
 
-void PinWindow::mouseMoveEvent(QMouseEvent *event) {
+void PinnedImageWindow::mouseMoveEvent(QMouseEvent *event) {
     const QPoint global = event->globalPosition().toPoint();
     if (!dragging_) {
         // The cursor is the whole hint: an edge that can be dragged has to say so
@@ -311,7 +311,7 @@ void PinWindow::mouseMoveEvent(QMouseEvent *event) {
     move(global - offset_);
 }
 
-void PinWindow::mouseReleaseEvent(QMouseEvent *event) {
+void PinnedImageWindow::mouseReleaseEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
     dragging_ = false;
@@ -319,7 +319,7 @@ void PinWindow::mouseReleaseEvent(QMouseEvent *event) {
     applyEdgeCursor(edgeAt(event->position().toPoint()));
 }
 
-QRect PinWindow::pictureRect() const {
+QRect PinnedImageWindow::pictureRect() const {
     QRect area = rect();
     if (decoration_ <= 0 || image_.isNull() || image_.width() <= 0 || image_.height() <= 0)
         return area;
@@ -334,7 +334,7 @@ QRect PinWindow::pictureRect() const {
     return area.adjusted(marginX, marginY, -marginX, -marginY);
 }
 
-int PinWindow::edgeAt(QPoint point) const {
+int PinnedImageWindow::edgeAt(QPoint point) const {
     // The edge a drag grabs is the edge that is drawn, which is the picture's and not
     // the window's: a shadow is margin, and grabbing margin to resize a picture would
     // be grabbing a place the picture is not.
@@ -354,7 +354,7 @@ int PinWindow::edgeAt(QPoint point) const {
     return edge;
 }
 
-void PinWindow::applyEdgeCursor(int edge) {
+void PinnedImageWindow::applyEdgeCursor(int edge) {
     switch (edge) {
     case SideLeft | SideTop:
     case SideRight | SideBottom:
@@ -378,7 +378,7 @@ void PinWindow::applyEdgeCursor(int edge) {
     }
 }
 
-void PinWindow::resizeTo(QSize size) {
+void PinnedImageWindow::resizeTo(QSize size) {
     const QSize logical(std::max(kMinimumSide, size.width()), std::max(kMinimumSide, size.height()));
     const QSize base = baseLogical();
     if (base.isEmpty())
@@ -392,21 +392,21 @@ void PinWindow::resizeTo(QSize size) {
     setZoom(ratio);
 }
 
-void PinWindow::mouseDoubleClickEvent(QMouseEvent *event) {
+void PinnedImageWindow::mouseDoubleClickEvent(QMouseEvent *event) {
     // A double click puts the pin away, the same as Escape does. It is the gesture a
     // window this size is closed by, and copying is already on Ctrl+C and on the menu.
     if (event->button() == Qt::LeftButton)
         close();
 }
 
-void PinWindow::wheelEvent(QWheelEvent *event) {
+void PinnedImageWindow::wheelEvent(QWheelEvent *event) {
     // Every notch is a tenth of the size, which reaches both ends of the range
     // without needing many turns.
     setZoom(zoom_ * (event->angleDelta().y() > 0 ? 1.1 : 1.0 / 1.1));
     event->accept();
 }
 
-void PinWindow::keyPressEvent(QKeyEvent *event) {
+void PinnedImageWindow::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Escape) {
         close();
         return;
@@ -426,7 +426,7 @@ void PinWindow::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
 }
 
-QMenu *PinWindow::createContextMenu() {
+QMenu *PinnedImageWindow::createContextMenu() {
     auto *menu = new QMenu(this);
     // 批注 is the reason the program exists, so it leads even here, where the picture
     // has already been taken off the screen.
@@ -479,12 +479,12 @@ QMenu *PinWindow::createContextMenu() {
     return menu;
 }
 
-void PinWindow::contextMenuEvent(QContextMenuEvent *event) {
+void PinnedImageWindow::contextMenuEvent(QContextMenuEvent *event) {
     std::unique_ptr<QMenu> menu(createContextMenu());
     menu->exec(event->globalPos());
 }
 
-void PinWindow::closeEvent(QCloseEvent *event) {
+void PinnedImageWindow::closeEvent(QCloseEvent *event) {
     // The owner keeps the windows in a list and has to be told, whether the close
     // came from the menu, from Escape, or from the window manager.
     emit closed(this);

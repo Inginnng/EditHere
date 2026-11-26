@@ -80,7 +80,6 @@ class CaptureToolbar final : public QWidget {
     explicit CaptureToolbar(QWidget *parent = nullptr);
     // Places the bar at the selection's lower-right edge when space allows.
     void placeNear(const QRect &selection, const QRect &bounds);
-    void resetUserPosition() { userMoved_ = false; }
     void setSelectionSize(QSize size);
     // The corner of the screen the selection sits in, as "1234, 567".
     void setSelectionOrigin(QPoint origin);
@@ -149,7 +148,6 @@ class CaptureToolbar final : public QWidget {
     // The user stepped one capture back (-1) or forward (+1) through the history.
     void historyStepRequested(int delta);
     void selectionRequested(QRect selection);
-    void moved();
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -164,11 +162,9 @@ class CaptureToolbar final : public QWidget {
     void buildMenu(QMenu *menu);
     void showMarkupOptions();
     void updateActionAvailability();
-    void moveWithinBounds(QPoint position);
     void populateRatioMenu(QMenu *menu);
     void setRatio(CaptureRatio ratio, int customWidth = 16, int customHeight = 10);
     QPushButton *addButton(const QString &glyph, const QString &label);
-    QWidget *dragBar_ = nullptr;
     QWidget *readout_ = nullptr;
     QHBoxLayout *actions_ = nullptr;
     QVBoxLayout *dockLayout_ = nullptr;
@@ -190,10 +186,8 @@ class CaptureToolbar final : public QWidget {
     int historyIndex_ = -1;
     bool busy_ = false;
     bool scrollAvailable_ = true;
-    bool userMoved_ = false;
     bool readoutAbove_ = false;
     bool hasMarkup_ = false;
-    QRect toolBounds_;
     CaptureMarkupTool markupTool_ = CaptureMarkupTool::None;
     CaptureMarkupOptions markupOptions_;
     QString message_;
@@ -339,7 +333,6 @@ class ScrollCaptureProgress final : public QWidget {
   private:
     void applyChromeTheme();
     void syncPreviewOverlay(bool ensureVisible);
-    QWidget *dragBar_ = nullptr;
     QScrollArea *previewArea_ = nullptr;
     ScrollCapturePreview *preview_ = nullptr;
     QLabel *status_ = nullptr;

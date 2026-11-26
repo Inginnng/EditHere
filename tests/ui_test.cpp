@@ -4866,7 +4866,7 @@ class UiTests : public QObject {
         QCOMPARE(notAccepted.count(), 0);
         cancelledOverlay.hide();
     }
-    void captureToolbarSupportsGripDraggingAndRetainsPositionUntilReset() {
+    void captureToolbarStartsWithTheSizeControl() {
         QImage image(960, 640, QImage::Format_ARGB32);
         image.fill(QColor(236, 240, 246));
         QPainter bg(&image);
@@ -4888,26 +4888,10 @@ class UiTests : public QObject {
         auto *bar = overlay.findChild<CaptureToolbar *>(QStringLiteral("captureToolbar"));
         QVERIFY(bar != nullptr && bar->isVisible());
         QCOMPARE(bar->height(), 44);
-        auto *grip = bar->findChild<QWidget *>(QStringLiteral("captureDragBar"));
-        QVERIFY(grip != nullptr && grip->isVisible());
-        const QPoint startPos = bar->pos();
-        const QPoint pressLocal = grip->rect().center();
-        const QPoint pressGlobal = grip->mapToGlobal(pressLocal);
-        {
-            QMouseEvent press(QEvent::MouseButtonPress, pressLocal, pressGlobal,
-                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-            QApplication::sendEvent(grip, &press);
-            QMouseEvent move(QEvent::MouseMove, pressLocal + QPoint(50, -18),
-                             pressGlobal + QPoint(50, -18),
-                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
-            QApplication::sendEvent(grip, &move);
-            QMouseEvent release(QEvent::MouseButtonRelease, pressLocal + QPoint(50, -18),
-                                pressGlobal + QPoint(50, -18),
-                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-            QApplication::sendEvent(grip, &release);
-        }
-        const QPoint draggedPos = bar->pos();
-        QVERIFY(draggedPos != startPos);
+        QVERIFY(!bar->findChild<QWidget *>(QStringLiteral("captureDragBar")));
+        const auto *size = bar->findChild<QPushButton *>(QStringLiteral("captureSize"));
+        QVERIFY(size && size->isVisible());
+        QCOMPARE(size->mapTo(bar, QPoint()).x(), 8);
         QVERIFY(overlay.rect().contains(bar->geometry()));
         QCOMPARE(overlay.selection(), initialSelection);
 
@@ -5110,12 +5094,15 @@ class UiTests : public QObject {
         progress.setProgress(shot, 2, shot.size(), QRect(0, 0, 240, 320), true, Qt::Vertical);
         QTest::qWait(30);
         QCOMPARE(progress.height(), 44);
-        auto *grip = progress.findChild<QWidget *>(QStringLiteral("scrollDragBar"));
+        QVERIFY(!progress.findChild<QWidget *>(QStringLiteral("scrollDragBar")));
+        const auto *size = progress.findChild<QLabel *>(QStringLiteral("scrollSize"));
+        QVERIFY(size && size->isVisible());
+        QCOMPARE(progress.layout()->itemAt(0)->widget(), static_cast<const QWidget *>(size));
         auto *pin = progress.findChild<QPushButton *>(QStringLiteral("scrollPin"));
         auto *save = progress.findChild<QPushButton *>(QStringLiteral("scrollSave"));
         auto *copy = progress.findChild<QPushButton *>(QStringLiteral("scrollCopy"));
         auto *cancel = progress.findChild<QPushButton *>(QStringLiteral("scrollCancel"));
-        QVERIFY(grip && finish && pin && save && copy && cancel);
+        QVERIFY(finish && pin && save && copy && cancel);
         for (auto *btn : progress.findChildren<QPushButton *>()) {
             if (btn->property("tool").toBool())
                 QCOMPARE(btn->size(), QSize(32, 32));

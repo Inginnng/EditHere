@@ -33,7 +33,7 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent Network
 qt_standard_project_setup()
 add_subdirectory(features/ai-text)
 set(CORE app/settings.cpp app/model.cpp app/videoproject.cpp app/imageset.cpp app/skillsync.cpp app/detector.cpp app/table_detector.cpp app/layout.cpp app/fonts.cpp)
-set(UI app/agentserver.cpp app/b2assetserver.cpp app/b2window.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinwindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
+set(UI app/agentserver.cpp app/b2assetserver.cpp app/b2window.cpp app/ui.cpp app/i18n.cpp app/canvas.cpp app/editor.cpp app/inlinenoteedit.cpp app/overlay.cpp app/controller.cpp app/explosion.cpp app/settingsdialog.cpp app/updatechecker.cpp app/updateauth.cpp app/projectfiles.cpp app/guide.cpp app/autostart.cpp app/ocr.cpp app/capturesession.cpp app/capturetoolbar.cpp app/pinnedimagewindow.cpp app/ocrdialog.cpp app/scrollstitch.cpp app/scrollpng.cpp app/scrollcapture.cpp)
 if(WIN32)
   set(PLATFORM app/platform_win.cpp app/windowscapture.cpp app/webview2host_win.cpp)
 elseif(APPLE)
