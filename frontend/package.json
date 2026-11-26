@@ -1,7 +1,7 @@
 {
   "name": "edithere-frontend",
   "private": true,
-  "version": "0.14.5",
+  "version": "0.14.6",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4314 --strictPort",

@@ -63,6 +63,9 @@ class StartupFlowTestAccess {
     }
     static void receipt(Controller &controller) { controller.readInstallationReceipt(); }
     static void presentReceipt(Controller &controller) { controller.presentInstallationReceipt(); }
+    static QString applySettings(Controller &controller, const AppSettings &settings) {
+        return controller.applySettingsTransaction(settings);
+    }
     static const QJsonObject &pendingReceipt(const Controller &controller) {
         return controller.pendingInstallationReceipt_;
     }
@@ -1285,6 +1288,42 @@ class StartupFlowTests : public QObject {
         QCOMPARE(editor->document().id, document.id);
         QVERIFY(!editor->isVisible());
     }
+    void unrelatedSettingsSaveLeavesInactiveShortcutsUnregistered() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto settingsFile = directory.filePath("settings.ini");
+        auto settings = quietSettings();
+        settings.launchAtLogin = launchAtLoginEnabled();
+        settings.shortcuts["capture"] = QKeySequence("Ctrl+Alt+Shift+F21", QKeySequence::PortableText);
+        settings.shortcuts["annotate"] = QKeySequence("Ctrl+Alt+Shift+F22", QKeySequence::PortableText);
+#ifdef Q_OS_WIN
+        GlobalShortcut occupiedCapture;
+        GlobalShortcut occupiedAnnotate;
+        QVERIFY2(occupiedCapture.start(settings.shortcuts.value("capture")), qPrintable(occupiedCapture.lastError()));
+        QVERIFY2(occupiedAnnotate.start(settings.shortcuts.value("annotate")), qPrintable(occupiedAnnotate.lastError()));
+#endif
+        QVERIFY(saveSettings(settings, nullptr, settingsFile));
+        Controller controller(nullptr, settings, settingsFile);
+        auto capture = controller.findChild<GlobalShortcut *>("captureShortcut");
+        auto annotate = controller.findChild<GlobalShortcut *>("annotateShortcut");
+        QVERIFY(capture && annotate);
+#ifndef Q_OS_WIN
+        // Simulate inactive bindings on desktops without reliable global shortcut registration.
+        capture->stop();
+        annotate->stop();
+#endif
+        QVERIFY(capture->sequence().isEmpty());
+        QVERIFY(annotate->sequence().isEmpty());
+
+        auto next = settings;
+        next.updateSource = "atomgit";
+        const auto error = StartupFlowTestAccess::applySettings(controller, next);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(loadSettings(settingsFile).updateSource, next.updateSource);
+        QCOMPARE(loadSettings(settingsFile).shortcuts, settings.shortcuts);
+        QVERIFY(capture->sequence().isEmpty());
+        QVERIFY(annotate->sequence().isEmpty());
+    }
     void annotationShortcutSettingsApplyIsTransactional_data() {
         QTest::addColumn<bool>("saveChanges");
         QTest::newRow("native-and-cancel") << false;
@@ -1362,6 +1401,11 @@ class StartupFlowTests : public QObject {
             editor->hide();
             return;
         }
+
+        editBindings(originalCapture, originalAnnotate, true);
+        QCOMPARE(capture->sequence(), originalCapture);
+        QCOMPARE(annotate->sequence(), originalAnnotate);
+        QCOMPARE(loadSettings(settingsFile).shortcuts, settings.shortcuts);
 
         // Both registrations must be released before saving a swap.
         editBindings(originalAnnotate, originalCapture, true);

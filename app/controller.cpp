@@ -382,8 +382,8 @@ QString Controller::applySettingsTransaction(const AppSettings &next, bool *shor
     const auto previousLanguage = settings_.language;
     const auto oldShortcut = shortcut_.sequence();
     const auto oldAnnotateShortcut = annotateShortcut_.sequence();
-    const bool shortcutsChanged = next.shortcuts.value("capture") != oldShortcut ||
-                                  next.shortcuts.value("annotate") != oldAnnotateShortcut;
+    const bool captureChanged = next.shortcuts.value("capture") != settings_.shortcuts.value("capture");
+    const bool annotateChanged = next.shortcuts.value("annotate") != settings_.shortcuts.value("annotate");
     bool shortcutsApplied = false;
     bool startupApplied = false;
     QString startupError;
@@ -395,11 +395,11 @@ QString Controller::applySettingsTransaction(const AppSettings &next, bool *shor
                 error += tr("\n开机自启未能恢复：") + restoreError;
         }
         if (shortcutsApplied) {
-            shortcut_.stop();
-            annotateShortcut_.stop();
-            if (!shortcut_.start(oldShortcut))
+            if (captureChanged) shortcut_.stop();
+            if (annotateChanged) annotateShortcut_.stop();
+            if (captureChanged && !oldShortcut.isEmpty() && !shortcut_.start(oldShortcut))
                 error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
-            if (!annotateShortcut_.start(oldAnnotateShortcut))
+            if (annotateChanged && !oldAnnotateShortcut.isEmpty() && !annotateShortcut_.start(oldAnnotateShortcut))
                 error += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
         }
         if (next.language != previousLanguage) {
@@ -413,14 +413,14 @@ QString Controller::applySettingsTransaction(const AppSettings &next, bool *shor
         return rollback(startupError);
     if (!installLanguage(next.language))
         return rollback(tr("界面语言加载失败，请重新安装 EditHere。"));
-    if (shortcutsChanged) {
+    if (captureChanged || annotateChanged) {
         shortcutsApplied = true;
-        shortcut_.stop();
-        annotateShortcut_.stop();
-        if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable())
+        if (captureChanged) shortcut_.stop();
+        if (annotateChanged) annotateShortcut_.stop();
+        if (captureChanged && !shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable())
             return rollback(shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
                                                             : shortcut_.lastError());
-        if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable())
+        if (annotateChanged && !annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable())
             return rollback(annotateShortcut_.lastError().isEmpty() ? tr("新建批注快捷键无法注册，请更换组合键。")
                 : tr("新建批注（空窗口）：") + annotateShortcut_.lastError());
     }
@@ -507,12 +507,16 @@ void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChec
         exitForUpdate();
         return;
     }
-    if (!accepted) {
-        if (!shortcut_.start(activeShortcut))
-            tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
-        if (!annotateShortcut_.start(activeAnnotateShortcut))
-            tray_.showMessage("EditHere", tr("新建批注快捷键未能恢复，请在设置中更换组合键。"));
-    }
+    if (!activeShortcut.isEmpty() &&
+        (!accepted || (shortcut_.sequence().isEmpty() &&
+                       settings_.shortcuts.value("capture") == draft.shortcuts.value("capture"))) &&
+        !shortcut_.start(activeShortcut))
+        tray_.showMessage("EditHere", tr("截图快捷键未能恢复，请在设置中更换组合键。"));
+    if (!activeAnnotateShortcut.isEmpty() &&
+        (!accepted || (annotateShortcut_.sequence().isEmpty() &&
+                       settings_.shortcuts.value("annotate") == draft.shortcuts.value("annotate"))) &&
+        !annotateShortcut_.start(activeAnnotateShortcut))
+        tray_.showMessage("EditHere", tr("新建批注快捷键未能恢复，请在设置中更换组合键。"));
     if (accepted) {
         if (shortcutsUnavailable) {
             diagnostics::write(diagnostics::Level::Warning, "settings.shortcuts", unavailableNotice);
