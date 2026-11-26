@@ -1,7 +1,7 @@
 #include "capturesession.h"
 #include "capturetoolbar.h"
 #include "model.h"
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "scrollcapture.h"
 #include "ui.h"
 #include <QCheckBox>
@@ -232,7 +232,7 @@ class CaptureTests : public QObject {
             preview.setCapture(image, QSize(240, length), QRect(0, position, 240, 400), true,
                                Qt::Vertical);
         };
-        // The official PixPin demonstration enables the option after growth.
+        // The official demonstration enables the option after growth.
         sample(400, 0);
         sample(800, 400);
         sample(800, 200); // Off by default: returning does not discard pixels.
@@ -868,7 +868,7 @@ class CaptureTests : public QObject {
         QImage picture(400, 300, QImage::Format_ARGB32);
         picture.fill(Qt::red);
         const QRect taken(120, 80, 200, 150);
-        PinWindow window(picture, taken);
+        PinnedImageWindow window(picture, taken);
         QCOMPARE(window.placement(), taken);
         QVERIFY(!window.image().isNull());
         // It is drawn at the size the region was on screen, not at twice that, and it
@@ -877,7 +877,7 @@ class CaptureTests : public QObject {
         QCOMPARE(window.pos(), taken.topLeft());
         // A pin with no place to go back to is the editor's kind: it has nothing to
         // remember and keeps the picture at its own size.
-        PinWindow centred(picture);
+        PinnedImageWindow centred(picture);
         QVERIFY(centred.placement().isEmpty());
         QCOMPARE(centred.baseSize(), picture.size());
         window.hide();
@@ -1058,7 +1058,7 @@ class CaptureTests : public QObject {
         // 400x300 pixels out of a region the window manager measured at 200x150.
         QImage picture(400, 300, QImage::Format_ARGB32);
         picture.fill(Qt::red);
-        PinWindow window(picture, QRect(120, 80, 200, 150));
+        PinnedImageWindow window(picture, QRect(120, 80, 200, 150));
         QCOMPARE(window.size(), QSize(200, 150));
         QCOMPARE(window.display().size(), picture.size());
         QCOMPARE(window.display().devicePixelRatio(), 2.0);
@@ -1069,8 +1069,8 @@ class CaptureTests : public QObject {
     void aPinnedPictureCanAlwaysBeAnnotated() {
         QImage picture(40, 30, QImage::Format_ARGB32);
         picture.fill(Qt::blue);
-        PinWindow window(picture);
-        QSignalSpy annotated(&window, &PinWindow::annotateRequested);
+        PinnedImageWindow window(picture);
+        QSignalSpy annotated(&window, &PinnedImageWindow::annotateRequested);
         const std::unique_ptr<QMenu> menu(window.createContextMenu());
         const auto actions = menu->actions();
         QVERIFY(!actions.isEmpty());
@@ -1088,10 +1088,10 @@ class CaptureTests : public QObject {
     void aDoubleClickPutsAPinAway() {
         QImage picture(40, 30, QImage::Format_ARGB32);
         picture.fill(Qt::blue);
-        PinWindow window(picture);
+        PinnedImageWindow window(picture);
         window.show();
         QVERIFY(window.isVisible());
-        QSignalSpy copied(&window, &PinWindow::copyRequested);
+        QSignalSpy copied(&window, &PinnedImageWindow::copyRequested);
         QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, {20, 15});
         QVERIFY(!window.isVisible());
         QCOMPARE(copied.count(), 0);
@@ -1103,7 +1103,7 @@ class CaptureTests : public QObject {
         // A 60x50 screenshot inside a 5px halo on every side.
         QImage picture(70, 60, QImage::Format_ARGB32);
         picture.fill(Qt::transparent);
-        PinWindow window(picture);
+        PinnedImageWindow window(picture);
         QCOMPARE(window.editableImage().size(), picture.size());
         window.setDecoration(5);
         QCOMPARE(window.decoration(), 5);
@@ -1126,7 +1126,7 @@ class CaptureTests : public QObject {
     void anEdgeOfAPinIsDraggedToResizeIt() {
         QImage picture(200, 150, QImage::Format_ARGB32);
         picture.fill(Qt::green);
-        PinWindow window(picture);
+        PinnedImageWindow window(picture);
         window.show();
         const QSize before = window.size();
         const QPoint grab(before.width() - 2, before.height() / 2);
@@ -1156,7 +1156,7 @@ class CaptureTests : public QObject {
         for (int row = 0; row < picture.height(); ++row)
             for (int column = picture.width() / 2; column < picture.width(); ++column)
                 picture.setPixel(column, row, qRgb(0, 0, 255));
-        PinWindow window(picture);
+        PinnedImageWindow window(picture);
         window.show();
         window.rotate(1);
         QCOMPARE(window.image().size(), QSize(150, 200));
@@ -1178,7 +1178,7 @@ class CaptureTests : public QObject {
         CaptureStyle style = bareStyle();
         style.shadow = true;
         style.shadowStrength = 42;
-        PinWindow window(composeCapture(region, style));
+        PinnedImageWindow window(composeCapture(region, style));
         window.setUndecorated(region, style);
         window.setDecoration(style.shadowRadius());
         window.show();
@@ -1205,7 +1205,7 @@ class CaptureTests : public QObject {
         CaptureStyle style = bareStyle();
         style.shadow = true;
         style.shadowStrength = 100;
-        PinWindow window(composeCapture(region, style));
+        PinnedImageWindow window(composeCapture(region, style));
         window.setUndecorated(region, style);
         window.setDecoration(style.shadowRadius());
         window.show();
@@ -1255,7 +1255,7 @@ class CaptureTests : public QObject {
         CaptureStyle style = bareStyle();
         style.shadow = true;
         style.shadowStrength = 100;
-        PinWindow window(composeCapture(region, style));
+        PinnedImageWindow window(composeCapture(region, style));
         window.setUndecorated(region, style);
         window.setDecoration(style.shadowRadius());
         window.show();
@@ -1297,7 +1297,7 @@ class CaptureTests : public QObject {
     void aPinOffersMoreThanCopying() {
         QImage picture(40, 30, QImage::Format_ARGB32);
         picture.fill(Qt::blue);
-        PinWindow window(picture);
+        PinnedImageWindow window(picture);
         const std::unique_ptr<QMenu> menu(window.createContextMenu());
         for (const QString &wanted : {QStringLiteral("旋转"), QStringLiteral("透明度"),
                                       QStringLiteral("阴影"), QStringLiteral("缩放")})
