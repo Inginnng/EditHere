@@ -597,7 +597,7 @@ test('Suite 4: Unified CLI init and B2 doctor unified-mcp path resolution', () =
   }
 });
 
-test('Built HTML and connector metadata use the EditHere brand', () => {
+test('HTML and connector metadata use the EditHere brand', () => {
   const connectorMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'connector', 'connector-meta.json'), 'utf8'));
   assert.equal(connectorMeta.name, 'EditHere');
   assert.equal(connectorMeta.name_zh, 'EditHere');
@@ -605,7 +605,11 @@ test('Built HTML and connector metadata use the EditHere brand', () => {
 
   const oldBrand = [];
   const webBundles = ['web/EditHere.html', 'web/EditHere.dsh.html', 'web/EditHere.mcp.html'];
-  for (const relative of ['frontend/dist/index.html', ...webBundles]) {
+  const htmlFiles = ['frontend/index.html', ...webBundles];
+  // Native builds can run without the optional B2 frontend bundle.
+  const builtFrontend = 'frontend/dist/index.html';
+  if (fs.existsSync(path.join(ROOT, builtFrontend))) htmlFiles.push(builtFrontend);
+  for (const relative of htmlFiles) {
     const html = fs.readFileSync(path.join(ROOT, relative), 'utf8');
     assert.ok(html.includes('<title>EditHere</title>'), `${relative} must have <title>EditHere</title>`);
     if (html.includes('改这里')) oldBrand.push(relative);

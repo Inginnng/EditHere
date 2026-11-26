@@ -752,6 +752,36 @@ QVector<HeadlessWindowInfo> listHeadlessCaptureWindows() {
     return out;
 }
 
+namespace {
+// Only the synchronous caller owns the request. Native callbacks carry a weak
+// reference and access the request only after returning to the Qt GUI thread.
+struct HeadlessCaptureRequest {
+    QEventLoop loop;
+    HeadlessCaptureResult result;
+    bool completed = false;
+
+    void finish() {
+        completed = true;
+        loop.quit();
+    }
+
+    void fail(const QString &code, const QString &message) {
+        result.errorCode = code;
+        result.message = message;
+        finish();
+    }
+
+    HeadlessCaptureResult wait(const QString &timeoutMessage) {
+        QTimer::singleShot(8000, &loop, [this, timeoutMessage] {
+            if (!completed)
+                fail("capture_failed", timeoutMessage);
+        });
+        loop.exec();
+        return std::move(result);
+    }
+};
+} // namespace
+
 HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
     HeadlessCaptureResult res;
     QString permissionError;
@@ -760,34 +790,22 @@ HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
         res.message = permissionError;
         return res;
     }
-    QEventLoop loop;
-    bool done = false;
-    QTimer::singleShot(8000, &loop, [&] {
-        if (!done) {
-            done = true;
-            res.errorCode = "capture_failed";
-            res.message = "macOS screen capture timed out.";
-            loop.quit();
-        }
-    });
+    const auto request = std::make_shared<HeadlessCaptureRequest>();
+    const std::weak_ptr<HeadlessCaptureRequest> pending = request;
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES
                                              onScreenWindowsOnly:YES
                                                completionHandler:^(SCShareableContent *content, NSError *error) {
-        QMetaObject::invokeMethod(&loop, [&] {
-            if (done) return;
+        QMetaObject::invokeMethod(qApp, [pending, content, error, screenIndex] {
+            const auto active = pending.lock();
+            if (!active || active->completed)
+                return;
             if (error || !content.displays.count) {
-                done = true;
-                res.errorCode = "capture_failed";
-                res.message = "Unable to enumerate displays.";
-                loop.quit();
+                active->fail("capture_failed", "Unable to enumerate displays.");
                 return;
             }
             const NSInteger idx = screenIndex < 0 ? 0 : screenIndex;
-            if (idx < 0 || idx >= NSInteger(content.displays.count)) {
-                done = true;
-                res.errorCode = "invalid_arguments";
-                res.message = QString("Screen index %1 out of range.").arg(screenIndex);
-                loop.quit();
+            if (idx >= NSInteger(content.displays.count)) {
+                active->fail("invalid_arguments", QString("Screen index %1 out of range.").arg(screenIndex));
                 return;
             }
             SCDisplay *display = content.displays[idx];
@@ -804,26 +822,26 @@ HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
                                          configuration:cfg
                                      completionHandler:^(CGImageRef image, NSError *capErr) {
                 QImage pixels = capErr ? QImage() : fromCGImage(image);
-                QMetaObject::invokeMethod(&loop, [&, pixels, logical] {
-                    if (done) return;
-                    done = true;
+                QMetaObject::invokeMethod(qApp, [pending, pixels, logical] {
+                    const auto active = pending.lock();
+                    if (!active || active->completed)
+                        return;
                     if (pixels.isNull()) {
-                        res.errorCode = "capture_failed";
-                        res.message = "Screen capture failed.";
-                    } else {
-                        res.ok = true;
-                        res.image = pixels;
-                        res.image.setDevicePixelRatio(1);
-                        res.image.setColorSpace(QColorSpace::SRgb);
-                        res.screenBounds = QRect(logical.topLeft(), pixels.size());
+                        active->fail("capture_failed", "Screen capture failed.");
+                        return;
                     }
-                    loop.quit();
+                    auto &result = active->result;
+                    result.ok = true;
+                    result.image = pixels;
+                    result.image.setDevicePixelRatio(1);
+                    result.image.setColorSpace(QColorSpace::SRgb);
+                    result.screenBounds = QRect(logical.topLeft(), pixels.size());
+                    active->finish();
                 }, Qt::QueuedConnection);
             }];
         }, Qt::QueuedConnection);
     }];
-    loop.exec();
-    return res;
+    return request->wait("macOS screen capture timed out.");
 }
 
 HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId) {
@@ -879,21 +897,15 @@ HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 w
         res.message = QString("Window \"%1\" is minimized.").arg(chosen.title);
         return res;
     }
-    QEventLoop loop;
-    bool done = false;
-    QTimer::singleShot(8000, &loop, [&] {
-        if (!done) {
-            done = true;
-            res.errorCode = "capture_failed";
-            res.message = "macOS window capture timed out.";
-            loop.quit();
-        }
-    });
+    const auto request = std::make_shared<HeadlessCaptureRequest>();
+    const std::weak_ptr<HeadlessCaptureRequest> pending = request;
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES
                                              onScreenWindowsOnly:YES
                                                completionHandler:^(SCShareableContent *content, NSError *error) {
-        QMetaObject::invokeMethod(&loop, [&] {
-            if (done) return;
+        QMetaObject::invokeMethod(qApp, [pending, content, error, chosen] {
+            const auto active = pending.lock();
+            if (!active || active->completed)
+                return;
             SCWindow *targetWin = nil;
             if (!error) {
                 for (SCWindow *w in content.windows) {
@@ -901,10 +913,7 @@ HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 w
                 }
             }
             if (!targetWin) {
-                done = true;
-                res.errorCode = "window_not_found";
-                res.message = "Target window could not be shared via ScreenCaptureKit.";
-                loop.quit();
+                active->fail("window_not_found", "Target window could not be shared via ScreenCaptureKit.");
                 return;
             }
             SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:targetWin];
@@ -915,28 +924,28 @@ HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 w
                                          configuration:cfg
                                      completionHandler:^(CGImageRef image, NSError *capErr) {
                 QImage pixels = capErr ? QImage() : fromCGImage(image);
-                QMetaObject::invokeMethod(&loop, [&, pixels] {
-                    if (done) return;
-                    done = true;
+                QMetaObject::invokeMethod(qApp, [pending, pixels, chosen] {
+                    const auto active = pending.lock();
+                    if (!active || active->completed)
+                        return;
                     if (pixels.isNull()) {
-                        res.errorCode = "capture_failed";
-                        res.message = QString("Failed to capture window \"%1\".").arg(chosen.title);
-                    } else {
-                        res.ok = true;
-                        res.image = pixels;
-                        res.image.setDevicePixelRatio(1);
-                        res.image.setColorSpace(QColorSpace::SRgb);
-                        res.windowTitle = chosen.title;
-                        res.appName = chosen.appName;
-                        res.screenBounds = chosen.bounds;
+                        active->fail("capture_failed", QString("Failed to capture window \"%1\".").arg(chosen.title));
+                        return;
                     }
-                    loop.quit();
+                    auto &result = active->result;
+                    result.ok = true;
+                    result.image = pixels;
+                    result.image.setDevicePixelRatio(1);
+                    result.image.setColorSpace(QColorSpace::SRgb);
+                    result.windowTitle = chosen.title;
+                    result.appName = chosen.appName;
+                    result.screenBounds = chosen.bounds;
+                    active->finish();
                 }, Qt::QueuedConnection);
             }];
         }, Qt::QueuedConnection);
     }];
-    loop.exec();
-    return res;
+    return request->wait("macOS window capture timed out.");
 }
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
     QVector<Candidate> output;
