@@ -730,13 +730,51 @@ void UpdateChecker::pollHandoff() {
     installing_ = false;
     emit installStarted();
 }
+#ifdef Q_OS_WIN
+static QString defaultInstallerDataRoot() {
+    const auto local = qEnvironmentVariable("LOCALAPPDATA");
+    return local.isEmpty() ? QString() : QDir(local).filePath("EditHere/Installer");
+}
+#endif
 QString UpdateChecker::installationResultPath() {
 #ifdef Q_OS_WIN
-    const auto local = qEnvironmentVariable("LOCALAPPDATA");
-    return local.isEmpty() ? QString() : QDir(local).filePath("EditHere/Installer/Results/last.json");
+    const auto root = defaultInstallerDataRoot();
+    return root.isEmpty() ? QString() : QDir(root).filePath("Results/last.json");
 #else
     return {};
 #endif
+}
+bool UpdateChecker::installationInProgress(const QString &target, const QString &installerDataRoot) {
+#ifdef Q_OS_WIN
+    const auto root = installerDataRoot.isEmpty() ? defaultInstallerDataRoot() : installerDataRoot;
+    if (root.isEmpty() || target.isEmpty())
+        return false;
+    auto path = QDir::toNativeSeparators(QDir(target).absolutePath());
+    if (path.endsWith(u'\\'))
+        path.chop(1);
+    // Match the invariant uppercase target used by maintain.ps1 for the transaction key.
+    QString upper;
+    upper.resize(path.size());
+    const int mapped = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE,
+                                     reinterpret_cast<LPCWSTR>(path.utf16()), int(path.size()),
+                                     reinterpret_cast<LPWSTR>(upper.data()), int(upper.size()), nullptr, nullptr, 0);
+    if (!mapped)
+        return false;
+    upper.resize(mapped);
+    const auto hash = QCryptographicHash::hash(upper.toUtf8(), QCryptographicHash::Sha256).toHex();
+    const auto lockPath = QDir::toNativeSeparators(
+        QDir(root).filePath("Transactions/" + QString::fromLatin1(hash) + "/lock"));
+    const auto lock = CreateFileW(reinterpret_cast<LPCWSTR>(lockPath.utf16()), GENERIC_READ,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (lock == INVALID_HANDLE_VALUE)
+        return GetLastError() == ERROR_SHARING_VIOLATION;
+    CloseHandle(lock);
+#else
+    Q_UNUSED(target);
+    Q_UNUSED(installerDataRoot);
+#endif
+    return false;
 }
 QString UpdateChecker::installationResultMessage(const QJsonObject &receipt, const QString &target,
                                                   const QString &currentVersion) {
@@ -865,9 +903,9 @@ bool UpdateChecker::startVerifiedInstaller(const QString &filePath, const QStrin
         return false;
     QProcess installer;
     installer.setProgram(filePath);
-    installer.setArguments(isInstaller ? QStringList{"/S", "/UPDATE"}
-                                       : QStringList{"/S", "/UPDATE", "/PORTABLE"});
-    auto arguments = installer.arguments();
+    QStringList arguments{"/UPDATE"};
+    if (!isInstaller)
+        arguments.append("/PORTABLE");
     arguments.append("/HANDOFF=" + handoffId_);
     installer.setArguments(arguments);
     // NSIS requires /D= last and unquoted even with spaces. No command shell is

@@ -23,7 +23,8 @@ include(FetchContent)
 set(BUILD_WITH_QT6 ON CACHE BOOL "Build QtKeychain against Qt 6" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build bundled dependencies statically" FORCE)
 set(BUILD_TRANSLATIONS OFF CACHE BOOL "Do not build QtKeychain translations" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "Do not build dependency tests" FORCE)
+# Disable QtKeychain tests without changing the application's cache setting.
+set(BUILD_TESTING OFF)
 FetchContent_Declare(qtkeychain
   URL https://codeload.github.com/frankosterfeld/qtkeychain/tar.gz/refs/tags/0.15.0
   URL_HASH SHA256=f4254dc8f0933b06d90672d683eab08ef770acd8336e44dfa030ce041dc2ca22

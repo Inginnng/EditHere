@@ -443,7 +443,7 @@ class UpdateTests : public QObject {
         QCOMPARE(request.value("version").toString(), QString("0.11.0"));
         QCOMPARE(request.value("sha256").toString(), payloadHash());
         QCOMPARE(request.value("processId").toInteger(), QCoreApplication::applicationPid());
-        QVERIFY(arguments.contains("/HANDOFF=" + request.value("id").toString()));
+        QCOMPARE(arguments, (QStringList{"/UPDATE", "/HANDOFF=" + request.value("id").toString()}));
         QCOMPARE(nativeArguments, "/D=" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
         QVERIFY(UpdateCheckerTestAccess::action(path).isEmpty());
         QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready"));

@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCryptographicHash>
 #include <QDialog>
 #include <QFileInfo>
 #include <QFileDialog>
@@ -62,7 +63,9 @@ class StartupFlowTestAccess {
     }
     static void receipt(Controller &controller) { controller.readInstallationReceipt(); }
     static void presentReceipt(Controller &controller) { controller.presentInstallationReceipt(); }
-    static bool pendingReceipt(Controller &controller) { return !controller.pendingInstallationReceipt_.isEmpty(); }
+    static const QJsonObject &pendingReceipt(const Controller &controller) {
+        return controller.pendingInstallationReceipt_;
+    }
 #ifdef Q_OS_WIN
     static void useLegacyUi(Controller &controller) { controller.useB2Ui_ = false; }
     static void captureFixture(Controller &controller, const ScreenFrame &frame, int &reads) {
@@ -163,7 +166,7 @@ class StartupFlowTests : public QObject {
         QVERIFY(!QApplication::activeModalWidget());
         StartupFlowTestAccess::setCapture(controller, true);
         StartupFlowTestAccess::receipt(controller);
-        QVERIFY(StartupFlowTestAccess::pendingReceipt(controller));
+        QVERIFY(!StartupFlowTestAccess::pendingReceipt(controller).isEmpty());
         QVERIFY(!QApplication::activeModalWidget());
         StartupFlowTestAccess::setCapture(controller, false);
         bool prompted = false;
@@ -177,7 +180,7 @@ class StartupFlowTests : public QObject {
         });
         StartupFlowTestAccess::presentReceipt(controller);
         QVERIFY(prompted);
-        QVERIFY(!StartupFlowTestAccess::pendingReceipt(controller));
+        QVERIFY(StartupFlowTestAccess::pendingReceipt(controller).isEmpty());
         QCOMPARE(editor->document().id, document.id);
         QVERIFY(editor->document().dirty);
         QVERIFY(!controller.findChild<UpdateChecker *>("startupUpdateChecker"));
@@ -185,13 +188,53 @@ class StartupFlowTests : public QObject {
         QSettings persisted(settingsFile, QSettings::IniFormat);
         QCOMPARE(persisted.value("updates/seenInstallerResult").toString(), receipt.value("id").toString());
         StartupFlowTestAccess::receipt(controller);
-        QVERIFY(!StartupFlowTestAccess::pendingReceipt(controller));
+        QVERIFY(StartupFlowTestAccess::pendingReceipt(controller).isEmpty());
         Controller nextLaunch(nullptr, settings, settingsFile);
         StartupFlowTestAccess::receipt(nextLaunch);
-        QVERIFY(!StartupFlowTestAccess::pendingReceipt(nextLaunch));
+        QVERIFY(StartupFlowTestAccess::pendingReceipt(nextLaunch).isEmpty());
         QVERIFY(!QApplication::activeModalWidget());
         editor->hide();
     }
+#ifdef Q_OS_WIN
+    void installationReceiptWaitsForTransactionLock() {
+        QTemporaryDir directory;
+        const auto settingsFile = directory.filePath("settings.ini");
+        const QDir installerRoot(directory.filePath("installer-results"));
+        const auto target = QCoreApplication::applicationDirPath();
+        const auto nativeTarget = QDir::toNativeSeparators(target);
+        QString upperTarget;
+        upperTarget.resize(nativeTarget.size());
+        QCOMPARE(qsizetype(LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE,
+                                        reinterpret_cast<LPCWSTR>(nativeTarget.utf16()), int(nativeTarget.size()),
+                                        reinterpret_cast<LPWSTR>(upperTarget.data()), int(upperTarget.size()),
+                                        nullptr, nullptr, 0)), upperTarget.size());
+        const auto hash = QCryptographicHash::hash(upperTarget.toUtf8(), QCryptographicHash::Sha256).toHex();
+        const auto transactionPath = installerRoot.filePath("Transactions/" + QString::fromLatin1(hash));
+        QVERIFY(QDir().mkpath(transactionPath));
+        const auto lockPath = QDir::toNativeSeparators(QDir(transactionPath).filePath("lock"));
+        auto writeReceipt = [&](const QString &id, const QString &status) {
+            const auto oldVersion = QCoreApplication::applicationVersion() == "0.0.0" ? "0.0.1" : "0.0.0";
+            const QJsonObject receipt{{"id", id}, {"status", status}, {"version", oldVersion}, {"target", target}};
+            const auto json = QJsonDocument(receipt).toJson();
+            QFile file(installerRoot.filePath("last.json"));
+            return file.open(QIODevice::WriteOnly) && file.write(json) == json.size();
+        };
+        Controller controller(nullptr, quietSettings(), settingsFile);
+        StartupFlowTestAccess::setCapture(controller, true); // Keep any receipt available for inspection.
+        QVERIFY(writeReceipt("previous", "committed"));
+        {
+            const auto lock = CreateFileW(reinterpret_cast<LPCWSTR>(lockPath.utf16()), GENERIC_READ | GENERIC_WRITE,
+                                          0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+            QVERIFY(lock != INVALID_HANDLE_VALUE);
+            const auto release = qScopeGuard([lock] { CloseHandle(lock); });
+            StartupFlowTestAccess::receipt(controller);
+            QVERIFY(StartupFlowTestAccess::pendingReceipt(controller).isEmpty());
+            QVERIFY(writeReceipt("current", "failed"));
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(StartupFlowTestAccess::pendingReceipt(controller).value("id").toString(),
+                                  QString("current"), 4000);
+    }
+#endif
     void startupUpdateWaitsForFirstUserInteractionAndSchedulesOnce() {
         QTemporaryDir directory;
         auto settings = quietSettings();
@@ -549,6 +592,24 @@ class StartupFlowTests : public QObject {
         QVERIFY(!editor->guideActive());
         QVERIFY(editor->hasDocument());
         editor->hide();
+    }
+    void openWindowStartupShowsEmptyEditorWithoutCapture() {
+        QTemporaryDir directory;
+        auto settings = quietSettings();
+        settings.captureOnStartup = true;
+        Controller controller(nullptr, settings, directory.filePath("settings.ini"));
+#ifdef Q_OS_WIN
+        StartupFlowTestAccess::useLegacyUi(controller);
+#endif
+        int captures = 0;
+        StartupFlowTestAccess::countCaptures(controller, captures);
+        auto editor = editorOf(controller);
+        QVERIFY(editor);
+        controller.start(false, {}, false, true, true);
+        QVERIFY(editor->isVisible());
+        QVERIFY(!editor->hasDocument());
+        QVERIFY(!editor->guideActive());
+        QCOMPARE(captures, 0);
     }
     void loginLaunchDefersGuideUntilManualActivation() {
         QTemporaryDir directory;

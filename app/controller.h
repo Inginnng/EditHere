@@ -24,7 +24,8 @@ class Controller final : public QObject {
     explicit Controller(QObject *parent = nullptr, const AppSettings &settings = loadSettings(),
                         const QString &settingsFile = {});
     ~Controller() override;
-    void start(bool demo, const QString &path = {}, bool background = false, bool firstUse = false);
+    void start(bool demo, const QString &path = {}, bool background = false, bool firstUse = false,
+               bool openWindow = false);
     void showGuide();
     void capture();
     void activate();
@@ -77,7 +78,7 @@ class Controller final : public QObject {
     void scheduleStartupUpdate();
     void startupUpdateFinished(const UpdateChecker::Result &result);
     void presentStartupUpdate();
-    void readInstallationReceipt();
+    void readInstallationReceipt(int retries = 0);
     void presentInstallationReceipt();
     void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr, bool ai = false);
     QString applySettingsTransaction(const AppSettings &next, bool *shortcutsUnavailableOut = nullptr);
