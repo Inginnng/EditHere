@@ -200,6 +200,8 @@ def publish_gitee(meta: dict, files: list[Path], token: str) -> None:
             {
                 "access_token": token,
                 "tag_name": tag,
+                # Gitee 现在把 target_commitish 当必填，缺了直接 400。
+                "target_commitish": tag,
                 "name": meta["name"],
                 "body": meta["body"],
                 "prerelease": "true" if meta["isPrerelease"] else "false",
@@ -212,10 +214,16 @@ def publish_gitee(meta: dict, files: list[Path], token: str) -> None:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         print(f"Gitee：已创建发行版 {tag}")
-    else:
-        print(f"Gitee：发行版 {tag} 已存在，补齐缺失附件")
 
-    release_id = existing.get("id")
+    # POST 有时返回空体，拿不到 id 就回查一次。
+    if not existing or not existing.get("id"):
+        status, existing = request_json(
+            "GET", f"{base}/tags/{tag}?{urllib.parse.urlencode({'access_token': token})}"
+        )
+        if existing:
+            print(f"Gitee：发行版 {tag} 已存在，补齐缺失附件")
+
+    release_id = (existing or {}).get("id")
     if not release_id:
         raise SystemExit("Gitee 没有返回发行版 id，无法上传附件")
 
