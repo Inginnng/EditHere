@@ -26,6 +26,63 @@
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
 - 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」（发布页是单字段，没有语言切换；英文用真正的标题而不是折叠块，否则指向它的锚点点不开）。只写中文时 `check-packaging.py` 的检查会失败。
 
+## 镜像推送
+
+GitHub 是唯一的上游，Gitee 与 AtomGit 只是镜像，但两者的机制不同：
+
+| 远程名 | 地址 | 同步方式 |
+| --- | --- | --- |
+| `origin` | `github.com/Inginnng/EditHere` | HTTPS，凭据由 `gh` 提供，唯一上游 |
+| `gitee` | `gitee.com/InnGing/EditHere` | SSH，别名 `gitee-edithere`，仓库**部署公钥**（需勾选推送权限），需本地手动推 |
+| `atomgit` | `atomgit.com/Inginnng/EditHere` | **只读镜像仓库**，由 AtomGit 自己从 GitHub 拉取，本地推不进去 |
+
+AtomGit 那个仓库是「镜像仓库」，`git push` 会被服务端拒绝并返回 `This operation is not allowed because the repository is an image repository`。它跟随 GitHub，所以 `origin` 更新后它会自己同步，本地无需也不该向它推送；脚本默认只推 `gitee`。
+
+Gitee 推送走一把专用密钥 `~/.ssh/id_ed25519_edithere`，`~/.ssh/config` 里的 `gitee-edithere` 别名把它绑定到 Gitee，不影响原有的 GitHub/Gitee 个人密钥。部署公钥与账号公钥各自只能登记一处，这把密钥不要在其他仓库复用。
+
+```bash
+# 当前分支 + 标签
+scripts/push-mirrors.sh
+# 全部分支 + 标签（换分支前用这个补齐镜像）
+ALL_BRANCHES=1 scripts/push-mirrors.sh
+# 只演练
+DRY_RUN=1 scripts/push-mirrors.sh
+# 覆盖远端已存在但指向不同的标签（例如 v0.8.22 曾指向错误的提交）
+FORCE_TAGS=1 scripts/push-mirrors.sh
+```
+
+Windows 上用 `powershell -File scripts/push-mirrors.ps1`，参数为 `-AllBranches`、`-DryRun`、`-ForceTags`、`-Branch <名字>`、`-Targets gitee`。
+
+标签与分支分开推：脚本先比对 `git ls-remote --tags` 与本地标签，只推送缺失的，对同名但指向不同的标签默认跳过并提示（这类冲突通常意味着某一侧曾经挪过标签，需要先确认哪边正确再决定是否覆盖）。任何一个远程失败，脚本都会以非零码退出并列出失败的远程。
+
+权限报错时先分清三类：`Permission denied (publickey)` 表示公钥没登记或密钥不对；Gitee 返回 `Auth error: Access denied` 表示公钥认证成功但该账号对仓库没有写权限（部署公钥没勾推送权限，或公钥属于别的账号）；`image repository` 表示目标是只读镜像仓库，只能由平台侧拉取。
+
+### 发行版的自动同步
+
+镜像仓库只同步分支与标签；Release 页面不是 git 对象，所以永远不会被镜像同步。`release.yml` 在 GitHub 发布完成后再跑 `mirror-release` 作业，调用 `scripts/publish-mirror-release.py`，把刚发布的同一批文件（用 `gh release download` 原样取回，不改名、不改内容）和同一份说明发到 Gitee 与 AtomGit。
+
+需要在仓库里配置两个 secret（Settings → Secrets and variables → Actions）：
+
+| Secret | 用途 | 申请位置 |
+| --- | --- | --- |
+| `ATOMGIT_TOKEN` | 创建 AtomGit 发行版并上传附件 | atomgit.com → 头像 → 安全设置 → 访问令牌，勾选仓库写权限（repo / projects） |
+| `GITEE_TOKEN` | 创建 Gitee 发行版并上传附件 | gitee.com → 设置 → 安全设置 → 私人令牌，勾选 `projects` |
+
+缺哪个 secret 就跳过哪个站点并打印一行说明，不影响另一个；站点真的失败时作业以非零码退出，让这次发版可见地失败。
+
+三个平台差异写在脚本注释里，改脚本前先看：AtomGit 的 release 对象没有数字 id（只能按 tag 定位）、没有 `attach_files` 接口（先 `GET .../releases/<tag>/upload_url` 拿签名地址，再 `PUT` 文件）、新建后还要 `PATCH` 一次把 `release_status` 标成 `latest`，否则页面不显示为最新版本；Gitee 反过来用数字 id 加 multipart 表单传附件。
+
+补发漏掉的版本时不必重跑 CI，按同一条命令手动打一次即可：
+
+```bash
+gh release download v0.13.6 --dir mirror-assets --clobber
+gh release view v0.13.6 --json tagName,name,body,isPrerelease > mirror-release.json
+ATOMGIT_TOKEN=... GITEE_TOKEN=... python3 scripts/publish-mirror-release.py \
+  --assets mirror-assets --meta mirror-release.json
+```
+
+脚本对已存在的发行版是幂等的：已建好的不重建，已上传的同名附件不覆盖，只补缺失的。
+
 ## 文档语言
 
 界面文案走 Qt 翻译（见[多语言与翻译](i18n.md)）；**仓库里的说明文档不走翻译，中英各存一份文件**，文件名加 `.en` 后缀：
