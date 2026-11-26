@@ -42,13 +42,13 @@ test('blocks publication when the draft is wrong or uploaded assets are incomple
   const { release, run } = draftFixture(t);
   const [installer, checksum, signature] = release.assets;
   const cases = [
-    [{ draft: false }, /Expected a stable release draft/],
-    [{ tag_name: 'v1.2.4' }, /Expected a stable release draft/],
+    [{ draft: false }, /Expected a draft stable release/],
+    [{ tag_name: 'v1.2.4' }, /Expected a draft stable release/],
     [{ assets: [installer, checksum] }, /not uploaded: .*\.sig/],
     [{ assets: [installer, checksum, { ...signature, state: 'starter' }] }, /not uploaded: .*\.sig/],
     [{ assets: [installer, checksum, { ...signature, size: signature.size - 1 }] }, /size does not match: .*\.sig/],
     [{ assets: [{ ...installer, digest: `sha256:${'0'.repeat(64)}` }, checksum, signature] }, /SHA-256 does not match: .*\.exe/],
-    [{ assets: [installer, checksum, signature, { ...signature, name: 'stale.sig' }] }, /Unexpected or duplicate draft asset/],
+    [{ assets: [installer, checksum, signature, { ...signature, name: 'stale.sig' }] }, /Unexpected or duplicate asset/],
   ];
   for (const [patch, expectedError] of cases) {
     const result = run({ ...release, ...patch });
