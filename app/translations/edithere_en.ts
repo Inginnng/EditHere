@@ -2173,10 +2173,6 @@
         <source>待确认：%1</source>
         <translation>To clarify: %1</translation>
     </message>
-    <message>
-        <source>当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。</source>
-        <translation>EditHere is already running as administrator. Quit it from the system tray and try again.</translation>
-    </message>
 </context>
 <context>
     <name>h2d::AiCredentials</name>

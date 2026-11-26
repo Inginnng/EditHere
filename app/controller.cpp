@@ -539,7 +539,11 @@ void Controller::showGuide() {
     }
     editor_.showGuide();
 }
-void Controller::start(bool demo, const QString &path, bool background, bool firstUse) {
+void Controller::start(bool demo, const QString &path, bool background, bool firstUse, bool openWindow) {
+    if (openWindow && path.isEmpty()) {
+        showCurrentWindow();
+        return;
+    }
     if (!background)
         scheduleStartupUpdate();
 #ifdef Q_OS_MACOS
@@ -609,7 +613,7 @@ void Controller::scheduleStartupUpdate() {
         return;
     if (!installationReceiptChecked_) {
         installationReceiptChecked_ = true;
-        QTimer::singleShot(3000, this, &Controller::readInstallationReceipt);
+        QTimer::singleShot(3000, this, [this] { readInstallationReceipt(); });
     }
     if (startupUpdateChecked_ || !settings_.checkUpdatesOnStartup)
         return;
@@ -658,12 +662,20 @@ void Controller::presentStartupUpdate() {
     if (prompt.clickedButton() == update)
         openSettingsDialog(true, false, &release);
 }
-void Controller::readInstallationReceipt() {
+void Controller::readInstallationReceipt(int retries) {
     // An explicit settings file keeps test/development instances isolated from
     // the normal application's persistent installer result.
-    const auto path = settingsFile_.isEmpty()
-                          ? UpdateChecker::installationResultPath()
-                          : QDir(QFileInfo(settingsFile_).absolutePath()).filePath("installer-results/last.json");
+    const auto isolatedRoot = settingsFile_.isEmpty()
+                                  ? QString()
+                                  : QDir(QFileInfo(settingsFile_).absolutePath()).filePath("installer-results");
+    const auto target = QCoreApplication::applicationDirPath();
+    if (UpdateChecker::installationInProgress(target, isolatedRoot)) {
+        if (retries < 60)
+            QTimer::singleShot(2000, this, [this, retries] { readInstallationReceipt(retries + 1); });
+        return;
+    }
+    const auto path = isolatedRoot.isEmpty() ? UpdateChecker::installationResultPath()
+                                            : QDir(isolatedRoot).filePath("last.json");
     QFile file(path);
     if (path.isEmpty() || !file.open(QIODevice::ReadOnly) || file.size() > 65536)
         return;
@@ -671,8 +683,7 @@ void Controller::readInstallationReceipt() {
     if (!document.isObject())
         return;
     const auto receipt = document.object();
-    if (UpdateChecker::installationResultMessage(receipt, QCoreApplication::applicationDirPath(),
-                                                  QCoreApplication::applicationVersion()).isEmpty())
+    if (UpdateChecker::installationResultMessage(receipt, target, QCoreApplication::applicationVersion()).isEmpty())
         return;
     const auto settingsPath = settingsFile_.isEmpty()
                                   ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))

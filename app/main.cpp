@@ -9,7 +9,6 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QIcon>
@@ -110,15 +109,11 @@ int main(int argc, char **argv) {
     lock.setStaleLockTime(0);
     const QString serverName = desktopForwardServerName();
     const QString legacyName = legacyDesktopServerName();
-    const QString elevatedFlagPath = QDir(state).filePath("elevated.flag");
     const auto connectToDesktop = [&](QLocalSocket &socket, QByteArray &token) {
         QElapsedTimer elapsed;
         elapsed.start();
         QString error;
         do {
-            if (QFileInfo::exists(elevatedFlagPath))
-                return QCoreApplication::translate("h2d",
-                    "当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。");
             error = readIpcCredentials(token);
             if (error.isEmpty()) {
                 auto active = connectAgentSocket(socket, serverName, 150);
@@ -139,7 +134,8 @@ int main(int argc, char **argv) {
     };
     const QStringList args = app.arguments();
     const bool agentStart = args.contains("--agent-start");
-    const bool background = args.contains("--autostart") || agentStart;
+    const bool openWindow = args.contains("--open-window");
+    const bool background = !openWindow && (args.contains("--autostart") || agentStart);
     QJsonArray screens;
     for (auto screen : QGuiApplication::screens())
         screens.append(QJsonObject{{"width", screen->geometry().width()}, {"height", screen->geometry().height()},
@@ -209,7 +205,7 @@ int main(int argc, char **argv) {
             QMessageBox::critical(nullptr, "EditHere", QCoreApplication::translate("h2d", "无法创建程序锁，请检查程序数据目录的权限。"));
             return 2;
         }
-        if ((background || wasLaunchedAtLogin()) && path.isEmpty())
+        if (path.isEmpty() && (openWindow || background || wasLaunchedAtLogin()))
             return 0;
         QLocalSocket socket;
         QByteArray token;
@@ -226,47 +222,25 @@ int main(int argc, char **argv) {
         return 0;
     }
     QByteArray ipcToken;
-    const auto policyError = ipcServerPolicyError();
-    const bool ipcEnabled = policyError.isEmpty();
-    struct ElevatedFlagLifetime {
-        QString path;
-        ~ElevatedFlagLifetime() { if (!path.isEmpty()) QFile::remove(path); }
-    } elevatedFlag;
-    // We own native.lock, so an existing flag can only be from a past run.
-    QFile::remove(elevatedFlagPath);
-    if (ipcEnabled) {
-        if (const auto error = createIpcCredentials(ipcToken); !error.isEmpty()) {
-            diagnostics::write(diagnostics::Level::Error, "startup.ipc_auth", error);
-            QMessageBox::critical(nullptr, "EditHere", error);
-            return 2;
-        }
-    } else {
-        // A manually launched elevated GUI remains usable, without accepting
-        // requests from less privileged processes of the same Windows account.
-        diagnostics::write(diagnostics::Level::Warning, "startup.ipc_disabled", policyError);
-        QFile flag(elevatedFlagPath);
-        if (flag.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-            flag.close();
-            elevatedFlag.path = elevatedFlagPath;
-        } else {
-            diagnostics::write(diagnostics::Level::Warning, "startup.elevated_flag", flag.errorString());
-        }
-        QMessageBox::warning(nullptr, "EditHere", policyError);
+    if (const auto error = createIpcCredentials(ipcToken); !error.isEmpty()) {
+        diagnostics::write(diagnostics::Level::Error, "startup.ipc_auth", error);
+        QMessageBox::critical(nullptr, "EditHere", error);
+        return 2;
     }
     struct IpcLifetime {
         QByteArray token;
         ~IpcLifetime() { removeIpcCredentials(token); }
     } ipcLifetime{ipcToken};
     QLocalServer server;
-    if (ipcEnabled) QLocalServer::removeServer(serverName);
+    QLocalServer::removeServer(serverName);
     server.setSocketOptions(QLocalServer::UserAccessOption);
-    if (ipcEnabled && !server.listen(serverName)) {
+    if (!server.listen(serverName)) {
         diagnostics::write(diagnostics::Level::Error, "startup.desktop_server", server.errorString());
         QMessageBox::critical(nullptr, "EditHere", QCoreApplication::translate("h2d", "无法启动程序通信服务，请退出其他 EditHere 实例后重试。"));
         return 2;
     }
     QLocalServer legacyServer;
-    if (ipcEnabled && legacyName != serverName) {
+    if (legacyName != serverName) {
         QLocalServer::removeServer(legacyName);
         legacyServer.setSocketOptions(QLocalServer::UserAccessOption);
         if (!legacyServer.listen(legacyName))
@@ -274,7 +248,7 @@ int main(int argc, char **argv) {
     }
     Controller controller;
     AgentServer agentServer(controller, ipcToken, &app);
-    if (ipcEnabled && !agentServer.start())
+    if (!agentServer.start())
         diagnostics::write(diagnostics::Level::Error, "startup.agent_server", agentServer.errorString());
     app.openProject=[&controller](const QString &path) {controller.start(false,path);};
     const auto receive = [&](QLocalServer &listener) {
@@ -289,7 +263,8 @@ int main(int argc, char **argv) {
     QObject::connect(&server, &QLocalServer::newConnection, &app, [&] { receive(server); });
     QObject::connect(&legacyServer, &QLocalServer::newConnection, &app, [&] { receive(legacyServer); });
     QTimer::singleShot(0, &app, [&] {
-        controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide());
+        controller.start(args.contains("--demo"), path, background || (!openWindow && wasLaunchedAtLogin()),
+                         !agentStart && !hasSeenGuide(), openWindow);
         if (args.contains("--capture")) controller.capture();
     });
     const int exitCode = app.exec();

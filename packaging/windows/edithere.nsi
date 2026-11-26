@@ -383,7 +383,7 @@ Section -Maintain
     ${If} $PortableMode == 1
     ${OrIf} $AutomaticUpdate == 1
 !ifndef EDITHERE_TEST_SCOPE_ROOT
-        Exec '"$INSTDIR\EditHere.exe" --autostart'
+        Exec '"$INSTDIR\EditHere.exe" --open-window'
 !endif
         SetErrorLevel 0
         Quit

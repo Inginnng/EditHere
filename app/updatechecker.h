@@ -79,6 +79,7 @@ class UpdateChecker final : public QObject {
                             const QString &expectedVersion = {});
     void cancelDownload();
     static QString installationResultPath();
+    static bool installationInProgress(const QString &target, const QString &installerDataRoot = {});
     static QString installationResultMessage(const QJsonObject &receipt, const QString &target,
                                              const QString &currentVersion);
   signals:

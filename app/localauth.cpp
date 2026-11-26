@@ -5,7 +5,6 @@
 #include <QFile>
 #include <QLocalSocket>
 #include <QRandomGenerator>
-#include <cstring>
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -28,8 +27,7 @@ struct Handle {
     explicit Handle(HANDLE handle) : value(handle) {}
     ~Handle() { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); }
 };
-// TokenUser and TokenIntegrityLevel both contain a SID_AND_ATTRIBUTES followed
-// by the SID. Keep that self-referencing result in one aligned, immovable buffer.
+// Keep the self-referencing TokenUser result in one aligned, immovable buffer.
 struct TokenSid {
     alignas(SID_AND_ATTRIBUTES) BYTE bytes[sizeof(SID_AND_ATTRIBUTES) + SECURITY_MAX_SID_SIZE]{};
     DWORD length = 0;
@@ -50,24 +48,14 @@ struct TokenSid {
             || !IsValidSid(value)) return nullptr;
         return value;
     }
-    bool read(HANDLE token, TOKEN_INFORMATION_CLASS kind) {
+    bool read(HANDLE token) {
         DWORD written = 0;
         length = 0;
-        if (!GetTokenInformation(token, kind, bytes, DWORD(sizeof(bytes)), &written)) return false;
+        if (!GetTokenInformation(token, TokenUser, bytes, DWORD(sizeof(bytes)), &written)) return false;
         length = written;
         return sid() != nullptr;
     }
 };
-bool tokenIntegrityLevel(HANDLE token, DWORD &level) {
-    TokenSid information;
-    if (!information.read(token, TokenIntegrityLevel)) return false;
-    const auto sid = information.sid();
-    const SID_IDENTIFIER_AUTHORITY mandatory = SECURITY_MANDATORY_LABEL_AUTHORITY;
-    if (*GetSidSubAuthorityCount(sid) != 1
-        || std::memcmp(GetSidIdentifierAuthority(sid), &mandatory, sizeof(mandatory)) != 0) return false;
-    level = *GetSidSubAuthority(sid, 0);
-    return true;
-}
 struct Security {
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, FALSE};
@@ -76,7 +64,7 @@ struct Security {
         HANDLE raw = nullptr;
         if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw)) return;
         Handle token(raw);
-        if (!user.read(raw, TokenUser)) return;
+        if (!user.read(raw)) return;
         LPWSTR sid = nullptr;
         if (!ConvertSidToStringSidW(user.sid(), &sid)) return;
         // Protected DACL: only this user and the OS, with no inherited broad ACEs.
@@ -157,20 +145,6 @@ QByteArray randomIpcToken() {
     return QByteArray(reinterpret_cast<const char *>(words), sizeof(words)).toHex();
 }
 QString ipcServerPolicyError() {
-#ifdef Q_OS_WIN
-    HANDLE raw = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw))
-        return "Unable to verify the process privilege level. IPC is disabled.";
-    Handle token(raw);
-    TOKEN_ELEVATION elevation{}; DWORD size = 0;
-    if (!GetTokenInformation(raw, TokenElevation, &elevation, sizeof(elevation), &size))
-        return "Unable to verify the process privilege level. IPC is disabled.";
-    DWORD level = 0;
-    if (!tokenIntegrityLevel(raw, level))
-        return "Unable to verify the process integrity level. IPC is disabled.";
-    if (elevation.TokenIsElevated || level >= SECURITY_MANDATORY_HIGH_RID)
-        return "IPC is disabled when EditHere runs with elevated privileges. Start EditHere normally to use the CLI or desktop forwarding.";
-#endif
     return {};
 }
 QString validateIpcDirectory() {
@@ -185,7 +159,6 @@ QString validateIpcDirectory() {
 }
 QString createIpcCredentials(QByteArray &token) {
     token.clear();
-    if (const auto error = ipcServerPolicyError(); !error.isEmpty()) return error;
     const auto fresh = randomIpcToken();
 #ifdef Q_OS_WIN
     Security security;
@@ -285,7 +258,6 @@ void removeIpcCredentials(const QByteArray &token) {
 }
 QString ipcPeerError(const QLocalSocket &socket, bool serverSide) {
 #ifdef Q_OS_WIN
-    if (const auto error = ipcServerPolicyError(); !error.isEmpty()) return error;
     const auto pipe = reinterpret_cast<HANDLE>(socket.socketDescriptor());
     ULONG processId = 0;
     const bool identified = serverSide ? GetNamedPipeClientProcessId(pipe, &processId) : GetNamedPipeServerProcessId(pipe, &processId);
@@ -296,19 +268,10 @@ QString ipcPeerError(const QLocalSocket &socket, bool serverSide) {
         return "Unable to verify the IPC peer identity.";
     Handle peerToken(raw);
     TokenSid user;
-    if (!user.read(raw, TokenUser)) return "Unable to verify the IPC peer identity.";
+    if (!user.read(raw)) return "Unable to verify the IPC peer identity.";
     Security local;
     if (!local.sid() || !EqualSid(local.sid(), user.sid()))
         return "IPC requests from another OS user are not permitted.";
-    DWORD peerLevel = 0;
-    if (!tokenIntegrityLevel(raw, peerLevel)) return "Unable to verify the IPC peer integrity level.";
-    HANDLE localRaw = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &localRaw)) return "Unable to verify the IPC integrity level.";
-    Handle localToken(localRaw);
-    DWORD localLevel = 0;
-    if (!tokenIntegrityLevel(localRaw, localLevel)) return "Unable to verify the IPC integrity level.";
-    if (peerLevel != localLevel)
-        return "IPC between different process integrity levels is not permitted.";
     return {};
 #else
     Q_UNUSED(serverSide);

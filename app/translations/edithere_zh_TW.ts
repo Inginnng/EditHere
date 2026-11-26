@@ -2173,10 +2173,6 @@
         <source>待确认：%1</source>
         <translation>待確認：%1</translation>
     </message>
-    <message>
-        <source>当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。</source>
-        <translation>目前已有以系統管理員權限執行的 EditHere，請從系統匣結束後再試。</translation>
-    </message>
 </context>
 <context>
     <name>h2d::AiCredentials</name>
