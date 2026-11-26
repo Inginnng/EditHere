@@ -9,13 +9,13 @@
 把下面这段话交给能在你电脑上执行命令、读写文件的 AI Agent：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。先复用本机已有的程序；没有时再下载安装。不要打断我正在编辑的内容。完成后验证命令行与 skill，告诉我怎么开始使用。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。先复用本机已有的程序；没有时再下载安装。不要打断我正在编辑的内容。完成后验证命令行与 skill，告诉我怎么开始使用。
 ```
 
 希望免安装时，用这一段：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 为我配置 EditHere 免安装版和当前 AI 工具的 edithere skill。先找已有的解压目录；没有时下载官方完整免安装版压缩包。不要运行安装器、修改 PATH 或设置开机启动。保存 CLI 的完整路径，验证后告诉我怎么使用。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 为我配置 EditHere 免安装版和当前 AI 工具的 edithere skill。先找已有的解压目录；没有时下载官方完整免安装版压缩包。不要运行安装器、修改 PATH 或设置开机启动。保存 CLI 的完整路径，验证后告诉我怎么使用。
 ```
 
 网页聊天或远程云端 Agent 如果不能访问你的电脑，就只能提供指导，不能仅凭这段话完成本机安装。**源码与发布包已公开**：配置所需的仓库文件与 Releases 可公开访问，无需专门申请项目权限。
@@ -74,7 +74,7 @@ $EditHereCli = Join-Path $env:LOCALAPPDATA 'Programs\EditHere\edithere-cli.exe'
 
 ## 4. 安装或更新当前工具的 skill
 
-应用包内的 skill 可能早于路径定位修复。优先读取官方仓库 `codex/native` 分支当前版本：先将它解析为一次明确的 commit，再从该 commit 获取**整个 `skills/edithere` 目录**，包含 `SKILL.md`、引用文件及其他配套文件。不要把不同 commit 的文件混装。已有可信本地仓库时，也可使用已核对的同一版本文件。
+应用包内的 skill 可能早于路径定位修复。优先读取官方仓库默认分支（`HEAD`）当前版本：先将它解析为一次明确的 commit，再从该 commit 获取**整个 `skills/edithere` 目录**，包含 `SKILL.md`、引用文件及其他配套文件。不要把不同 commit 的文件混装。已有可信本地仓库时，也可使用已核对的同一版本文件。
 
 先识别当前工具实际发现的技能目录和现有 `edithere`，再选择位置：
 

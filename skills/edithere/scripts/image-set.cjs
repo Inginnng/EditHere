@@ -97,20 +97,48 @@ function writeManifest(file, value, {create = false} = {}) {
   }
   return value;
 }
-function upsertPage(file, {id, name, imagePath}) {
-  pageId(id);
-  const value = readManifest(file), index = value.pages.findIndex(page => page.id === id);
-  const image = path.resolve(imagePath), stat = fs.statSync(image);
-  if (!stat.isFile() || stat.size > 48 * 1024 * 1024) throw new Error('Invalid page image.');
-  if(!/\.(png|jpe?g|webp|gif|bmp)$/i.test(image))throw new Error('Unsupported page image type.');
-  const bytes=fs.readFileSync(image);imageSize(bytes);
-  const page = {id, name:name || value.pages[index]?.name || path.basename(image), path:path.relative(path.dirname(path.resolve(file)), image).split(path.sep).join('/'), sha256:hash(bytes)};
-  if (index < 0) value.pages.push(page); else value.pages[index] = page;
-  return writeManifest(file, value);
+function upsertPages(file, entries, {createName = null} = {}) {
+  if (!Array.isArray(entries) || entries.length === 0) throw new Error('At least one page entry is required.');
+  const output = path.resolve(file);
+  let value;
+  if (fs.existsSync(output)) {
+    value = readManifest(output);
+  } else if (typeof createName === 'string' && createName.trim()) {
+    value = {schemaVersion: VERSION, name: createName.trim(), pages: []};
+  } else {
+    throw new Error('Manifest does not exist; pass --name <project> or run create first.');
+  }
+  const batchIds = new Set();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') throw new Error('Invalid page entry.');
+    const {id, name, imagePath} = entry;
+    pageId(id);
+    if (batchIds.has(id)) throw new Error('Duplicate page id in batch: ' + id);
+    batchIds.add(id);
+    if (typeof imagePath !== 'string' || !imagePath) throw new Error('Page image path is required: ' + id);
+    const image = path.resolve(imagePath), stat = fs.statSync(image);
+    if (!stat.isFile() || stat.size > 48 * 1024 * 1024) throw new Error('Invalid page image.');
+    if (!/\.(png|jpe?g|webp|gif|bmp)$/i.test(image)) throw new Error('Unsupported page image type.');
+    const bytes = fs.readFileSync(image);
+    imageSize(bytes);
+    const index = value.pages.findIndex(page => page.id === id);
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const page = {
+      id,
+      name: trimmedName || value.pages[index]?.name || path.basename(image),
+      path: path.relative(path.dirname(output), image).split(path.sep).join('/'),
+      sha256: hash(bytes),
+    };
+    if (index < 0) value.pages.push(page); else value.pages[index] = page;
+  }
+  return writeManifest(output, value);
+}
+function upsertPage(file, entry) {
+  return upsertPages(file, [entry]);
 }
 function bundledProject(file) {
   const snapshot=snapshotManifest(file);
   const pages=snapshot.pages.map(page=>({...page,...imageSize(Buffer.from(page.image.split(',')[1],'base64')),timestampUs:null,notes:[],layout:null}));
   return {schemaVersion:'edithere-web-project-1',tool:'EditHere Web',savedAt:new Date().toISOString(),kind:'set',name:snapshot.name,width:pages[0].width,height:pages[0].height,pages,groupNotes:[]};
 }
-module.exports = {VERSION, MAX_PAGES, readManifest, snapshotManifest, writeManifest, upsertPage, bundledProject, imageSize};
+module.exports = {VERSION, MAX_PAGES, readManifest, snapshotManifest, writeManifest, upsertPage, upsertPages, bundledProject, imageSize};

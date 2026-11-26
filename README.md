@@ -2,7 +2,7 @@
   <img src="assets/icons/edithere-256.png" width="104" alt="EditHere 图标">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
-<p align="center"><b>改这里 —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
+<p align="center"><b>EditHere —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
 <p align="center">面向 Vibe Coding 与视觉创作的本地优先反馈工作台。<br>圈出问题、拖动布局、多页评审，把「改哪里、怎么改」交给 AI。<br><sub>网页前端 · 桌面软件 · 游戏 HUD · AI 生图 · 视频与动画</sub></p>
 
 <p align="center">
@@ -21,11 +21,10 @@
   <a href="#选择使用方式">桌面与 Web</a> ·
   <a href="#下载与安装">下载</a> ·
   <a href="#接入-ai">接入 AI</a> ·
-  <a href="docs/USER-GUIDE.md">使用指南</a> ·
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
-<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/qq_30293075/EditHere">AtomGit</a></p>
+<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/Inginnng/EditHere">AtomGit</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-zh.gif" width="960" alt="AI 发起标注，用户在 EditHere 中圈出位置并写下意见，完成后 AI 读取反馈继续修改">
@@ -62,7 +61,7 @@ AI 已经生成了能运行的界面，细节却还差一点：按钮的位置�
 **先配置一次。** 将下面这段话复制给能操作本机终端与文件的 AI 工具：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
 优先复用本机已有程序；没有时再安装。完成后验证 CLI 能运行、skill 能被发现，并告诉我如何开始标注。
 ```
 
@@ -148,7 +147,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 
 导出内容带时间戳、帧截图和该帧的批注，适合动画、游戏演示与交互流程走查。只有真正添加批注或布局变化的画面才进入反馈，单纯暂停不会产生空帧。
 
-支持的格式取决于平台解码能力，常见输入包括 MP4、MOV、WebM。EditHere 用于记录修改意见，不执行视频剪辑或渲染。详见[视频标注说明](docs/VIDEO-ANNOTATION.md)。
+支持的格式取决于平台解码能力，常见输入包括 MP4、MOV、WebM。EditHere 用于记录修改意见，不执行视频剪辑或渲染。
 
 <p align="center"><img src="assets/readme/video-zh.gif" width="760" alt="在视频不同时间点暂停批注，通过时间轴回看并导出带时间戳的反馈"></p>
 
@@ -186,7 +185,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 
 <p align="center"><img src="assets/readme/ocr-zh.gif" width="860" alt="OCR 逐行显示识别结果，并高亮原图对应文字"></p>
 
-**长截图**：框选滚动区域，边滚动边拼接，支持双向采集、裁剪和进入批注；自动滚动与采集方式因平台而异，详见[长截图说明](docs/LONG-CAPTURE.md)及 [Linux 说明](docs/LINUX.md)。
+**长截图**：框选滚动区域，边滚动边拼接，支持双向采集、裁剪和进入批注；自动滚动与采集方式因平台而异，详见 [Linux 说明](docs/LINUX.md)。
 
 <p align="center"><img src="assets/readme/scrolling-zh.gif" width="860" alt="长截图随着滚动持续拼接，并显示实时缩略预览"></p>
 
@@ -199,8 +198,6 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 - 置顶贴图支持缩放、旋转、翻转和透明度调整，可同时保留多张。
 - 浅色 / 深色主题，简体中文 / 繁體中文 / English 界面，22 项可配置快捷键与可定制底部工具栏。
 - 托盘常驻，可设置登录启动；Windows 可分别配置托盘单击与双击动作。
-
-完整操作见[使用指南](docs/USER-GUIDE.md)。
 
 </details>
 
@@ -243,6 +240,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 | Linux x86_64 · 预览 | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后运行，目标环境 Ubuntu 24.04 |
 | 离线 Web | [Web ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | 解压后双击 `EditHere.html`，无需安装桌面程序 |
 | Web Agent | [Web Agent ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web-agent.zip) | 用于 MCP Apps 与本机浏览器会话，见[安装指南](web/AI-SETUP.md) |
+| DeepSeek Harness | [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip) | 含组图批注服务、CLI 和 `edithere-dsh` Skill，见 [DSH 安装说明](dsh/README.md) |
 
 以上为最新正式版下载入口，版本与资产以 [Releases](https://github.com/Inginnng/EditHere/releases/latest) 和包内 `version.txt` 为准；校验文件见 [SHA256SUMS.txt](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 
@@ -267,7 +265,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **希望免安装使用桌面版时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
 优先复用已有解压目录；需要时下载官方完整 ZIP。使用 CLI 的绝对路径，不运行安装器，不修改 PATH 或开机启动。
 完成后验证 CLI 与当前 AI 工具的技能配置。
 ```
@@ -275,7 +273,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **使用 Web Agent 时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
 先检查已有安装，需要时下载官方 Web Agent ZIP、核对 SHA-256，并完整解压到长期保留的目录。
 配置当前宿主的 Web MCP 和 edithere-web skill，验证实际工具发现与内嵌界面。
 宿主不支持 MCP Apps 时使用普通浏览器兼容入口，保留现有 MCP 与技能配置。
@@ -340,7 +338,7 @@ edithere-cli annotate "<素材或项目清单的绝对路径>" --output "<新的
 }
 ```
 
-`source` 定位该移动组件的原始区域，`movement` 记录最终目标和位移，`annotations` 保留用户意见与编号。坐标以图像像素为单位，不能直接当作 CSS 像素；普通批注与子批注的坐标规则见[反馈 JSON 说明](docs/USER-GUIDE.md#反馈-json)。
+`source` 定位该移动组件的原始区域，`movement` 记录最终目标和位移，`annotations` 保留用户意见与编号。坐标以图像像素为单位，不能直接当作 CSS 像素；普通批注与子批注的坐标规则见[反馈说明](docs/FEEDBACK.md)。
 
 默认文件交付为 JSON + 同目录原图，也可以选择将原图内嵌。原图描述包含尺寸与 SHA-256，便于核对图片；视频使用 `video-feedback-1`，组图使用 `image-set-feedback-1`，页内复用图片反馈格式。新程序兼容读取旧反馈，旧程序不保证能读取新格式。
 
@@ -389,14 +387,12 @@ edithere-cli annotate "<素材或项目清单的绝对路径>" --output "<新的
 
 | 文档 | 内容 |
 | --- | --- |
-| [使用指南](docs/USER-GUIDE.md) | 完整操作、设置、快捷键与反馈字段 |
 | [项目组图与结果审批](docs/PROJECT-REVIEW.md) | 页面清单、增量换图与多轮评审 |
 | [AI 安装指南](docs/AI-SETUP.md) | 桌面程序与 skill 配置 |
 | [AI 与命令行](docs/AGENT-CLI.md) | CLI 命令、Agent 接入与远程开发 |
 | [AI 解析](docs/AI-INSTRUCTIONS.md) | API 配置、纯文本输出与使用边界 |
 | [网页版说明](web/README.md) / [Web 安装指南](web/AI-SETUP.md) | 离线 HTML、MCP Apps 与浏览器兼容入口 |
 | [DSH 组图批注](dsh/README.md) | 本机会话、截图导入、CLI 与技能 |
-| [视频标注](docs/VIDEO-ANNOTATION.md) / [长截图](docs/LONG-CAPTURE.md) | 时间点反馈与滚动采集 |
 | [Linux 说明](docs/LINUX.md) | AppImage、OCR 与 X11 / Wayland 差异 |
 | [构建与开发](docs/DEVELOPMENT.md) | C++20 + Qt 6.8+、构建、测试与打包 |
 | [平台与分发目录](docs/DISTRIBUTION.md) | 各平台产物与分发结构 |

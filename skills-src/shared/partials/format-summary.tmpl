@@ -1,0 +1,6 @@
+## Feedback Format & Version Quick Reference
+
+- **Image (`feedback-minimal-4`)**: `annotationSpace: "result"` (image pixels, origin top-left, not CSS pixels). Notes live in `objects[]` (`kind`: `region` | `point` | `global`), matched to visual pins by `annotations[].number`. Moved components carry one `movement` and single-level `children`; `ocrtext` is locator context only.
+- **Video (`video-feedback-1`)**: `frames[]` stores `timestampMs`, `imageFile`, and per-frame `feedback`; root `objects[]` references frames via `frameId` — read per frame once and never execute root index twice.
+- **Gallery (`image-set-feedback-1`)**: `pageIndex` summarizes all pages; `pages[]` holds only annotated/moved pages (map via `pages[].id`); `groupNotes` carries cross-page directives.
+- **Desktop CLI baseline**: Always check `--version` first (`0.9.8+` for images/projects; **Video annotation requires 0.10.0+**). Full schema rules and legacy compat live in [Feedback JSON Protocol & Compatibility Reference](references/feedback-format.md).

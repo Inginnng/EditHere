@@ -16,16 +16,20 @@ build/
 out/
 .cache/
 build-*/
+/web/tests/output/
 
 # Python bytecode caches left by the build and packaging scripts.
 __pycache__/
 
-# Private capture sources and a separately managed promotion-site checkout.
-/PixPin_*.mp4
+# Private screen recordings and a separately managed promotion-site checkout.
+/*.mp4
 /promotion-site/
 
 # WorkBuddy agent data (project memory, skills) - not part of the product.
 .workbuddy/
+
+# Maintainer incident log: kept in the working tree, never published.
+/docs/REGRESSIONS.md
 
 # Trae IDE workspace data.
 .trae/

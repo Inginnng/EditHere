@@ -52,7 +52,6 @@ class DistributionTest(unittest.TestCase):
         self.write("trae-plugin/package.json", '{"version":"0.8.22"}')
         self.write("trae-plugin/.trae-plugin/plugin.json", "hidden required metadata")
         self.write("skills/edithere/SKILL.md", "desktop fixture")
-        self.write("docs/VIDEO-ANNOTATION.md", "video instructions")
         self.write("docs/PROJECT-REVIEW.md", "image-set review instructions")
         self.write("scripts/image-set.mjs", "public image-set CLI fixture")
         self.addCleanup(patch.stopall)
@@ -83,6 +82,7 @@ class DistributionTest(unittest.TestCase):
         self.assertFalse(report["completeNativeSet"])
         self.assertFalse(report["published"])
         self.assertTrue((self.output() / "windows/0.10.5/README.md").is_file())
+        self.assertTrue((self.output() / "dsh/0.10.5-abc12345/EditHere-dsh.zip").is_file())
         archived = list((self.output() / "archive/windows/0.10.3").rglob("*.zip"))
         self.assertEqual(len(archived), 2)
         self.assertEqual({distribution.sha256(file) for file in archived}, {distribution.sha256(old), distribution.sha256(different)})
@@ -104,6 +104,8 @@ class DistributionTest(unittest.TestCase):
             self.assertIn("docs/PROJECT-REVIEW.md", names)
             self.assertIn("scripts/image-set.mjs", names)
             self.assertIn("web/skills/edithere-web/references/capture.md", names)
+            self.assertNotIn("web/EditHere.dsh.html", names)
+            self.assertFalse(any(name.startswith("dsh/") for name in names))
             self.assertFalse(any("tests/output" in name or "server-key" in name for name in names))
             self.assertFalse(any("node_modules" in name or name.endswith(".env") for name in names))
             self.assertFalse(any(b"PRIVATE-" in archive.read(name) for name in names))
@@ -157,6 +159,7 @@ class DistributionTest(unittest.TestCase):
         self.assertTrue((self.output("web-only") / "manifest.json").is_file())
         self.assertFalse((self.output("web-only") / "windows").exists())
         self.assertFalse((self.output("web-only") / "integrations").exists())
+        self.assertFalse((self.output("web-only") / "dsh").exists())
         offline = self.output("web-only") / next(item["path"] for item in report["packages"] if item["product"] == "web")
         with zipfile.ZipFile(offline) as archive:
             stamp = json.loads(archive.read("build-info.json"))
@@ -165,6 +168,31 @@ class DistributionTest(unittest.TestCase):
         preview = distribution.assemble_web(self.root, self.output("web-preview"))
         self.assertEqual([item["state"] for item in preview["packages"]],
                          ["assembled-local-preview", "assembled-local-preview"])
+
+    def test_dsh_archive_is_standalone_and_contains_only_public_files(self):
+        self.write("dsh/skill/edithere-dsh/LOCAL.md", "PRIVATE-LOCAL-PATH")
+        self.write("dsh/server-key", "PRIVATE-SESSION-SECRET")
+        self.write("dsh/sessions/feedback.json", "PRIVATE-FEEDBACK")
+        (self.root / "web/mcp/server.bundle.cjs").unlink()
+        output = self.output("dsh-only")
+        report = distribution.assemble_dsh(self.root, output, channel="release")
+        file = output / "EditHere-dsh.zip"
+        self.assertEqual(list(output.glob("*.zip")), [file])
+        self.assertEqual(report["packages"][0]["product"], "dsh")
+        self.assertEqual(file.with_suffix(".zip.sha256").read_text().split(),
+                         [distribution.sha256(file), file.name])
+        with zipfile.ZipFile(file) as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertIn(b"node dsh/cli.mjs install-skill", archive.read("README.md"))
+            self.assertEqual(json.loads(archive.read("build-info.json"))["channel"], "release")
+            self.assertEqual(set(archive.namelist()), set(distribution.PACKAGE_FILES["dsh"]) |
+                             set(distribution.LEGAL) | {"README.md", "build-info.json", "licenses/ui-icons/LICENSE"})
+
+    def test_missing_dsh_runtime_fails_before_creating_archive(self):
+        (self.root / "dsh/server.mjs").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing or unsafe package source"):
+            distribution.assemble_dsh(self.root, self.output())
+        self.assertFalse(self.output().exists())
 
     def test_strict_missing_platforms_fails_before_creating_catalog(self):
         with self.assertRaisesRegex(ValueError, "Current native packages missing"):

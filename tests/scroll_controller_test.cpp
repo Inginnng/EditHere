@@ -1,7 +1,7 @@
 #include "capturetoolbar.h"
 #include "controller.h"
 #include "platform.h"
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "scrollcapture.h"
 #include "ui.h"
 #include <QApplication>
@@ -359,6 +359,27 @@ class ScrollControllerTests final : public QObject {
         QCOMPARE(result.capture["source"].toString(), QString("screen"));
         QCOMPARE(result.capture["windowTitle"].toString(), QString("游戏主页面"));
         QCOMPARE(result.capture["appName"].toString(), QString("game.exe"));
+    }
+    void captureEditsReachTheAnnotationDocument() {
+        ScreenFrame frame;
+        frame.image = document(640, 480);
+        frame.logicalGeometry = frame.image.rect();
+        frame.nativeGeometry = frame.logicalGeometry;
+        frame.nativePixels = true;
+        const QRect selected(40, 60, 300, 220);
+        auto *source = overlay(selected, frame);
+        QTest::keyClick(source, Qt::Key_M);
+        QTest::mousePress(source, Qt::LeftButton, Qt::NoModifier, {90, 110});
+        QTest::mouseMove(source, {220, 150});
+        QTest::mouseRelease(source, Qt::LeftButton, Qt::NoModifier, {220, 150});
+        const QImage edited = source->selectionContent();
+        const QPoint changed = QPoint(120, 130) - selected.topLeft();
+        QVERIFY(edited.pixelColor(changed) != frame.image.pixelColor(changed + selected.topLeft()));
+        owner_->completeCapture(source, selected, {});
+        QVERIFY(owner_->editor_.hasDocument());
+        const QImage result = owner_->editor_.document().image;
+        QCOMPARE(result.size(), selected.size());
+        QCOMPARE(result.pixelColor(changed), edited.pixelColor(changed));
     }
     void manualCaptureFinishesWhileRunningAndRejectsLateFrames() {
         ScreenFrame frame;

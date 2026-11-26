@@ -1,4 +1,4 @@
-EditHere · 改这里（版本见同目录 version.txt）
+EditHere（版本见同目录 version.txt）
 
 Windows 安装版：先从托盘退出旧版，再运行安装器。默认安装到 %LOCALAPPDATA%\Programs\EditHere，仅为当前用户安装，无需管理员权限。
 安装器提供开始菜单、卸载入口和 .edithere 项目关联。组件页可选择登录启动、加入 PATH 和桌面快捷方式；新安装默认勾选登录启动与 PATH，升级根据已有启动登记保留启动选项。

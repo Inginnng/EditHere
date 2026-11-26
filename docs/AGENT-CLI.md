@@ -1,4 +1,4 @@
-# EditHere · 改这里：AI 与命令行
+# EditHere：AI 与命令行
 
 ## 0.12.0 兼容范围
 
@@ -9,7 +9,7 @@
 
 **简体中文** · [English](AGENT-CLI.en.md)
 
-[返回产品介绍](../README.md) · [让 AI 帮你安装](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md) · [使用指南](USER-GUIDE.md) · [配套 AI skill](../skills/edithere/SKILL.md)
+[返回产品介绍](../README.md) · [让 AI 帮你安装](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md) · [配套 AI skill](../skills/edithere/SKILL.md)
 
 EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可以写修改意见、移动或缩放组件，点击“完成并返回 AI”后，命令行才将本轮反馈交给 AI。图片、批注和导出均在本机处理；后续是否发送给某个 AI 服务，由使用该文件的工具决定。
 
@@ -22,12 +22,12 @@ EditHere 提供本地命令行入口，让 AI 打开截图供你标注。你可�
 复制下面这段话给能在本机执行命令的 AI，即可让它按指南完成配置：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 和 edithere skill。
 使用免安装模式，不运行 Windows 安装器，不修改 PATH 或开机启动；优先复用我已经解压的程序，否则下载并完整解压官方免安装版压缩包。
 记录实际 CLI 路径，验证 CLI 可运行以及当前 AI 工具能否发现 skill，并告诉我如何开始标注。
 ```
 
-源码与发布包已公开，可直接下载；网页聊天或无本机执行权限的 AI 无法仅凭这段话完成本机配置。需要常规安装时，见[AI 配置指南](https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md)。
+源码与发布包已公开，可直接下载；网页聊天或无本机执行权限的 AI 无法仅凭这段话完成本机配置。需要常规安装时，见[AI 配置指南](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md)。
 
 ## 找到 CLI
 
@@ -61,7 +61,7 @@ macOS 的命令名是 `edithere-cli`，随应用部署在 `EditHere.app/Contents
 /Applications/EditHere.app/Contents/MacOS/edithere-cli --help
 ```
 
-若应用放在 `~/Applications` 或其他稳定位置，请相应调整路径；也可自行将 CLI 加入 PATH。Mac 的屏幕录制、辅助功能授权与实机验收状态见[平台边界](USER-GUIDE.md#识别与平台边界)。
+若应用放在 `~/Applications` 或其他稳定位置，请相应调整路径；也可自行将 CLI 加入 PATH。Mac 的屏幕录制与辅助功能授权需在系统设置中开启。
 
 ## Windows Agent 的桌面访问
 

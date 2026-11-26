@@ -1,4 +1,4 @@
-# EditHere（改这里）商业授权与合作
+# EditHere 商业授权与合作
 
 > EditHere 采用 **PolyForm Noncommercial License 1.0.0**（见 [LICENSE](LICENSE)）。个人、教育、研究、慈善、政府等**非商业用途**可以免费使用、修改和分发。
 >

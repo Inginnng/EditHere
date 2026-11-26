@@ -28,6 +28,29 @@ jobs:
           python -m aqt install-qt windows desktop 6.8.3 win64_mingw --modules qtimageformats qtmultimedia --archives qtbase qtsvg qtimageformats qtmultimedia qttranslations --outputdir .tools/qt
           python -m aqt install-tool windows desktop tools_mingw1310 qt.tools.win64_mingw1310 --outputdir .tools/qt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build B2 frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          if ($LASTEXITCODE) { throw 'B2 frontend dependency installation failed.' }
+          npm run build
+
+      - name: Provision WebView2 loader
+        run: |
+          nuget install Microsoft.Web.WebView2 -Version 1.0.3537.50 -NonInteractive -OutputDirectory .tools/webview2
+          if ($LASTEXITCODE) { throw 'WebView2 SDK installation failed.' }
+          New-Item -ItemType Directory -Force build | Out-Null
+          $sdk = '.tools/webview2/Microsoft.Web.WebView2.1.0.3537.50'
+          Copy-Item "$sdk/build/native/x64/WebView2Loader.dll" build/
+          Copy-Item "$sdk/LICENSE.txt" build/WebView2-LICENSE.txt
+          Copy-Item "$sdk/NOTICE.txt" build/WebView2-NOTICE.txt
+
       - name: Build
         run: |
           $mingwBin = (Resolve-Path ".tools/qt/Tools/mingw1310_64/bin").Path
@@ -66,9 +89,9 @@ jobs:
           QTEST_FUNCTION_TIMEOUT: "60000"
         run: |
           # Run without Qt or MinGW on PATH so this also verifies CTest's runtime setup.
-          ctest --test-dir build --interactive-debug-mode 0 --output-on-failure --timeout 180 --output-junit build/test-results.xml -R '^(core|ui|image-set|ai-feedback|ai-instructions|agent-cli|windows-ipc-validation|video-ui|video-project|ocr|canvas-feedback|canvas-scaling-[0-9.]+|editor-scaling-[0-9.]+|capture|windows-capture-colors|windows-capture-fallback|scrollstitch|scroll-controller|diagnostics|settings|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
+          ctest --test-dir build --interactive-debug-mode 0 --output-on-failure --timeout 180 --output-junit build/test-results.xml -R '^(core|ui|image-set|ai-feedback|ai-instructions|agent-cli|windows-ipc-validation|video-ui|video-project|ocr|canvas-feedback|canvas-scaling-[0-9.]+|editor-scaling-[0-9.]+|capture|windows-capture-workbench|windows-capture-colors|windows-capture-fallback|scrollstitch|scroll-controller|diagnostics|settings|skill-sync|startup-flow|updates|update-signatures|update-certificate-policy|update-signer)$'
           if ($LASTEXITCODE) {
-            foreach ($testLog in @('build/agent-cli-test.log', 'build/windows-capture-colors-test.log')) {
+            foreach ($testLog in @('build/agent-cli-test.log', 'build/windows-capture-workbench-test.log', 'build/windows-capture-colors-test.log')) {
               if (Test-Path $testLog) { Get-Content $testLog }
             }
             throw 'Capture, annotation, startup or update tests failed.'
@@ -97,7 +120,9 @@ jobs:
         # Runs with NSIS installed and the portable ZIP already built, so the
         # installer is compiled for real (/WX) and the archive layout is checked
         # against the actual file. Guards the incidents in docs/REGRESSIONS.md.
-        run: python scripts/check-packaging.py
+        run: |
+          $version = (Get-Content build/version.txt -Raw).Trim()
+          python scripts/check-packaging.py --package "dist/EditHere-$version-win-x64.zip"
 
       - name: Package NSIS installer
         run: |
@@ -167,8 +192,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Package the offline and web-agent ZIPs
-        run: python3 scripts/prepare-distribution.py --web-only --channel release --output dist/web-dist
+      - name: Package Web, Web Agent and DSH
+        run: |
+          python3 scripts/prepare-distribution.py --web-only --channel release --output dist/web-dist
+          python3 scripts/prepare-distribution.py --dsh-only --channel release --output dist/web-dist/dsh
+          python3 tests/distribution_test.py
+          node --test dsh/tests/server.test.mjs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -210,10 +239,10 @@ jobs:
           for f in EditHere-*-win-x64-setup.exe; do mv -f "$f" EditHere-win-x64-setup.exe; done
           for f in EditHere-*-win-x64.zip; do mv -f "$f" EditHere-win-x64.zip; done
           for f in EditHere-*-macos-universal.dmg; do mv -f "$f" EditHere-macos-universal.dmg; done
-          # The web ZIPs arrive under web/<version>-<short>/; collect them by
-          # name instead of predicting that depth (REG-157).
+          # Collect the Web and DSH ZIPs by name regardless of artifact depth (REG-157).
           find . -mindepth 2 -type f -name 'EditHere-*-web-agent-*.zip' -exec mv -f {} . \;
           find . -mindepth 2 -type f -name 'EditHere-*-web-*.zip' -not -name '*-web-agent-*' -exec mv -f {} . \;
+          find . -mindepth 2 -type f -name 'EditHere-dsh.zip' -exec mv -f {} . \;
           for f in EditHere-*-web-agent-*.zip; do mv -f "$f" EditHere-web-agent.zip; done
           for f in EditHere-*-web-*.zip; do mv -f "$f" EditHere-web.zip; done
           rm -f *.sha256 SHA256SUMS.txt
@@ -370,6 +399,8 @@ jobs:
             artifacts/EditHere-web.zip.sha256
             artifacts/EditHere-web-agent.zip
             artifacts/EditHere-web-agent.zip.sha256
+            artifacts/EditHere-dsh.zip
+            artifacts/EditHere-dsh.zip.sha256
             artifacts/edithere-cli
             artifacts/SHA256SUMS.txt
           )
@@ -426,3 +457,52 @@ jobs:
           gh api "$release_api" > "$draft_json"
           node scripts/verify-release-assets.cjs "$draft_json" "$RELEASE_TAG" "${assets[@]}"
           gh api --method PATCH "$release_api" -F draft=false -f make_latest=legacy --jq '.html_url'
+
+  mirror-release:
+    # 镜像站点的发行版不是 git 对象，AtomGit 的镜像仓库只同步分支与标签，所以国内
+    # 两个站的 Release 必须单独发布一次。GitHub 仍是唯一上游：这里只下载刚发布的
+    # 同一批文件，不改内容、不改名。
+    needs: release
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.validate_only }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: mirror-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download the published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p mirror-assets
+          gh release download "$RELEASE_TAG" --dir mirror-assets --clobber
+          gh release view "$RELEASE_TAG" \
+            --json tagName,name,body,isPrerelease > mirror-release.json
+          ls -l mirror-assets
+
+      - name: Publish to AtomGit and Gitee
+        env:
+          ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 没有配置令牌的站点会被脚本跳过并打印一行说明，不影响另一个站点；
+          # 任一站点真正失败时脚本以非零码退出，让这次发版可见地失败。
+          python3 scripts/publish-mirror-release.py \
+            --assets mirror-assets \
+            --meta mirror-release.json

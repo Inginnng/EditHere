@@ -122,3 +122,50 @@ test('rejects a relative destination', t => {
   assert.equal(result.status, 1);
   assert.match(JSON.parse(result.stderr).error, /absolute/);
 });
+
+test('supports --update and --force with skillVersion checks and safe downgrade protection', t => {
+  const {root, web, target} = fixture(t);
+  fs.writeFileSync(path.join(web, 'skills', 'edithere-web', 'skill-version.json'), JSON.stringify({skillVersion:'1.2.0', minCompatibleSkillVersion:'1.0.0'}));
+
+  const first = run(web, ['--destination', target]);
+  assert.equal(first.status, 0, first.stderr);
+  const metaPath = path.join(target, '.edithere-skill.json');
+  assert.equal(JSON.parse(fs.readFileSync(metaPath, 'utf8')).skillVersion, '1.2.0');
+
+  // Same version & valid runtime path -> up-to-date no-op
+  const upToDate = run(web, ['--destination', target, '--update']);
+  assert.equal(upToDate.status, 0, upToDate.stderr);
+  assert.equal(JSON.parse(upToDate.stdout).state, 'up-to-date');
+
+  // Outdated version -> atomic replacement preserving no old files
+  fs.writeFileSync(path.join(target, 'old-junk.txt'), 'delete me');
+  fs.writeFileSync(metaPath, JSON.stringify({skillVersion:'1.0.0', cli:path.join(web, 'agent.cjs'), mcpServer:path.join(web, 'mcp', 'server.bundle.cjs')}));
+  const upgraded = run(web, ['--destination', target, '--update']);
+  assert.equal(upgraded.status, 0, upgraded.stderr);
+  assert.equal(JSON.parse(upgraded.stdout).state, 'updated');
+  assert.equal(fs.existsSync(path.join(target, 'old-junk.txt')), false);
+
+  // Moved runtime / stale path -> updated
+  fs.writeFileSync(metaPath, JSON.stringify({skillVersion:'1.2.0', cli:path.join(root, 'moved/agent.cjs'), mcpServer:path.join(web, 'mcp', 'server.bundle.cjs')}));
+  const pathFixed = run(web, ['--destination', target, '--update']);
+  assert.equal(pathFixed.status, 0, pathFixed.stderr);
+  assert.equal(JSON.parse(pathFixed.stdout).state, 'updated');
+
+  // Legacy (no .edithere-skill.json) -> updated
+  fs.unlinkSync(metaPath);
+  const legacyFixed = run(web, ['--destination', target, '--update']);
+  assert.equal(legacyFixed.status, 0, legacyFixed.stderr);
+  assert.equal(JSON.parse(legacyFixed.stdout).state, 'updated');
+
+  // Higher installed skillVersion -> skipped-newer unless --force
+  fs.writeFileSync(metaPath, JSON.stringify({skillVersion:'9.0.0', cli:path.join(web, 'agent.cjs'), mcpServer:path.join(web, 'mcp', 'server.bundle.cjs')}));
+  const skipped = run(web, ['--destination', target, '--update']);
+  assert.equal(skipped.status, 0, skipped.stderr);
+  assert.equal(JSON.parse(skipped.stdout).state, 'skipped-newer');
+  assert.equal(JSON.parse(fs.readFileSync(metaPath, 'utf8')).skillVersion, '9.0.0');
+
+  const forced = run(web, ['--destination', target, '--force']);
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.equal(JSON.parse(forced.stdout).state, 'updated');
+  assert.equal(JSON.parse(fs.readFileSync(metaPath, 'utf8')).skillVersion, '1.2.0');
+});

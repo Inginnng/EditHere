@@ -9,7 +9,7 @@ Checks performed:
    ``EditHere``, or ``h2d::<Class>`` for a class that declares ``Q_OBJECT``.
    A plain class or a named namespace inside a ``.cpp`` makes ``lupdate`` derive
    ``h2d::Scope`` while the runtime resolves the file-local ``tr()`` to ``h2d``;
-   the string then silently stays untranslated. See docs/i18n.md.
+   the string then silently stays untranslated.
 3. No message is translated to an empty string.
 4. ``app/translations/built/*.qm`` exists. Its content is compared message by message
    against the ``.ts`` by ``scripts/check-packaging.py``, which needs no Linguist

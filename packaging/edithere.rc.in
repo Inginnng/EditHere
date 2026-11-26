@@ -16,7 +16,7 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "FileDescription", "EditHere · 改这里"
+            VALUE "FileDescription", "EditHere"
             VALUE "FileVersion", "@PROJECT_VERSION@"
             VALUE "InternalName", "EditHere"
             VALUE "OriginalFilename", "EditHere.exe"

@@ -2,6 +2,7 @@
 
 #include <QImage>
 #include <QString>
+#include <functional>
 #include <memory>
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -39,10 +40,19 @@ class DesktopCapture {
 
   private:
     struct State;
-    explicit DesktopCapture(std::unique_ptr<State> state);
-    // One AcquireNextFrame attempt. A blank frame means "ask again", a null
-    // image means the duplication itself is unusable.
+    struct Worker;
+    explicit DesktopCapture(HMONITOR monitor);
+    DesktopCapture(const DesktopCapture &) = delete;
+    DesktopCapture &operator=(const DesktopCapture &) = delete;
     QImage readFrame(float sdrWhiteLevel, int timeoutMs, QString *error);
-    std::unique_ptr<State> state_;
+    std::shared_ptr<Worker> worker_;
+    // Remember blank outputs so scrolling does not pay for a retry every frame.
+    bool blank_ = false;
 };
+
+namespace testing {
+void setWatchdogTimeoutForTesting(int timeoutMs);
+void setAcquireFrameHookForTesting(std::function<void()> hook);
+void resetBypassedMonitorsForTesting();
+}
 } // namespace h2d::windowscapture

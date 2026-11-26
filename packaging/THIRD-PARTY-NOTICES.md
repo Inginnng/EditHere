@@ -57,7 +57,6 @@ Upstream source references:
 - https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
 
 System fonts are loaded from the operating system and are not bundled.
-No Snipaste, PixPin or Agentation source code or assets are included.
 
 The Linux preview additionally dynamically links Qt DBus, Qt Wayland and AT-SPI,
 and their runtime dependencies. Distribution copyright and license notices for

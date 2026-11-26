@@ -62,6 +62,31 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fr
 quintptr captureForegroundWindow();
 void restoreCaptureForegroundWindow(quintptr window);
 void captureScreens(CaptureCallback callback);
+
+struct HeadlessWindowInfo {
+    quint64 id = 0;
+    quint32 pid = 0;
+    QString title;
+    QString appName;
+    QRect bounds;
+    bool minimized = false;
+    bool visible = false;
+};
+
+struct HeadlessCaptureResult {
+    bool ok = false;
+    QString errorCode;
+    QString message;
+    QImage image;
+    QString windowTitle;
+    QString appName;
+    QRect screenBounds;
+    QVector<HeadlessWindowInfo> candidates;
+};
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows();
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex = -1);
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId = 0);
 #ifdef Q_OS_WIN
 // Windows' logical cursor API rounds away sub-DIP positions. Capture aiming uses
 // the exact per-monitor native pixel instead, including negative screen origins.
@@ -69,7 +94,9 @@ void moveCapturePointer(const ScreenFrame &frame, QPoint pixel);
 #endif
 QVector<Candidate> nativeElementsAt(QPoint nativePoint, qint64 excludedPid = 0);
 bool requestAccessibility();
-void configureNativeWindow(QWidget *window, bool overlay);
+void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCapture = true);
+void configureRoundedPopupWindow(QWidget *window);
+void orderWindowBelow(QWidget *window, const QWidget *above);
 // macOS draws close, minimize and zoom as traffic lights in the system title bar,
 // so the editor keeps that title bar and leaves the window controls to it. The
 // other desktops have no equivalent and use the editor's own buttons instead.
@@ -78,19 +105,6 @@ bool usesNativeWindowControls();
 // cannot. It never asks for permission itself, so a launch that cannot capture stays
 // quiet instead of raising a dialog the user has to dismiss.
 bool screenCaptureAllowed(QString *reason = nullptr);
-// Where the system draws its own window controls, in the window's own coordinates with
-// zero at the top-left of its client area. A row of editor controls can then share that
-// row instead of guessing an inset the platform may not use.
-struct NativeTitleBarRow {
-    bool available = false; // false where the platform draws no such controls
-    int centerY = 0;        // vertical center of the controls, from the client area's top
-    int controlsRight = 0;  // right edge of the last control, from the client area's left
-};
-NativeTitleBarRow nativeTitleBarRow(QWidget *window);
-// Re-asserts the title bar layout after the system has changed the window: a style
-// mask applied while the window is being ordered on screen can be dropped, which
-// would leave the editor's own bar pushed down by a titlebar it should cover.
-void ensureNativeTitleBar(QWidget *window);
 // Whether screen reads skip this window, so it can stay visible over a capture.
 bool excludedFromCapture(const QWidget *window);
 QString globalShortcutLabel();
@@ -117,6 +131,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
     void triggered();
 
   private:
+    friend class StartupFlowTestAccess;
     QKeySequence sequence_;
     QString lastError_;
     bool unavailable_ = false;

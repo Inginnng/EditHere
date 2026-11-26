@@ -14,7 +14,7 @@
         <translation>內容區域</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="937"/>
+        <location filename="../editor.cpp" line="897"/>
         <location filename="../layout.cpp" line="235"/>
         <source>整个图片</source>
         <translation>整個圖片</translation>
@@ -30,13 +30,14 @@
         <translation>手動標註</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="115"/>
-        <location filename="../overlay.cpp" line="173"/>
+        <location filename="../overlay.cpp" line="136"/>
+        <location filename="../overlay.cpp" line="194"/>
+        <location filename="../overlay.cpp" line="231"/>
         <source>整个屏幕</source>
         <translation>整個螢幕</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="504"/>
+        <location filename="../platform_win.cpp" line="588"/>
         <source>窗口</source>
         <translation>視窗</translation>
     </message>
@@ -69,6 +70,54 @@
 <context>
     <name>h2d</name>
     <message>
+        <source>请让AI工具自行更新skills或刷新路径</source>
+        <translation>請讓 AI 工具自行更新 skills 或重新整理路徑</translation>
+    </message>
+    <message>
+        <source>找不到 Skill 源目录：%1</source>
+        <translation>找不到 Skill 來源目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步临时目录：%1</source>
+        <translation>無法建立 Skill 同步暫存目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步子目录：%1</source>
+        <translation>無法建立 Skill 同步子目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法复制 Skill 文件：%1</source>
+        <translation>無法複製 Skill 檔案：%1</translation>
+    </message>
+    <message>
+        <source>无法打开 Skill 文件进行写入：%1</source>
+        <translation>無法開啟 Skill 檔案以進行寫入：%1</translation>
+    </message>
+    <message>
+        <source>未能完整写入 Skill 文件：%1</source>
+        <translation>未能完整寫入 Skill 檔案：%1</translation>
+    </message>
+    <message>
+        <source>找不到 EditHere 随附的 Skill 目录。</source>
+        <translation>找不到 EditHere 隨附的 Skill 目錄。</translation>
+    </message>
+    <message>
+        <source>无法创建 AI 工具的 skills 目录：%1</source>
+        <translation>無法建立 AI 工具的 skills 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法备份现有的 Skill 目录：%1</source>
+        <translation>無法備份現有的 Skill 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法替换现有的 Skill 目录：%1</source>
+        <translation>無法取代現有的 Skill 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法安装 Skill 到目标目录：%1</source>
+        <translation>無法將 Skill 安裝到目標目錄：%1</translation>
+    </message>
+    <message>
         <location filename="../autostart.cpp" line="46"/>
         <source>读取</source>
         <translation>讀取</translation>
@@ -100,36 +149,31 @@
     </message>
     <message>
         <location filename="../autostart.cpp" line="178"/>
-        <source>开机自启项指向其他位置或使用旧的启动参数。保持勾选并保存，即可更新为当前程序。</source>
-        <translation>開機自動啟動項目指向其他位置或使用舊的啟動參數。保持勾選並儲存，即可更新為目前程式。</translation>
-    </message>
-    <message>
-        <location filename="../autostart.cpp" line="180"/>
         <source>Windows 已禁用此启动项。请在 Windows 设置 → 应用 → 启动中启用 EditHere；仅在此处保存不会解除系统禁用。</source>
         <translation>Windows 已停用此啟動項目。請在「Windows 設定 → 應用程式 → 啟動」中啟用 EditHere；僅在此處儲存不會解除系統的停用設定。</translation>
     </message>
     <message>
-        <location filename="../autostart.cpp" line="182"/>
+        <location filename="../autostart.cpp" line="180"/>
         <source>无法确认 Windows 启动项的许可状态，请在 Windows 设置 → 应用 → 启动中检查 EditHere。</source>
         <translation>無法確認 Windows 啟動項目的許可狀態，請在「Windows 設定 → 應用程式 → 啟動」中檢查 EditHere。</translation>
     </message>
     <message>
-        <location filename="../autostart.cpp" line="198"/>
+        <location filename="../autostart.cpp" line="196"/>
         <source>无法设置开机自启：应用路径必须是有效的完整 Windows 可执行文件路径。</source>
         <translation>無法設定開機自動啟動：應用程式路徑必須是有效的完整 Windows 可執行檔案路徑。</translation>
     </message>
     <message>
-        <location filename="../autostart.cpp" line="204"/>
+        <location filename="../autostart.cpp" line="202"/>
         <source>无法设置开机自启：应用路径过长，包含启动参数的命令不能超过 260 个字符。请将应用移到较短的路径。</source>
         <translation>無法設定開機自動啟動：應用程式路徑過長，包含啟動參數的命令不能超過 260 個字元。請將應用程式移到較短的路徑。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="235"/>
+        <location filename="../editor.cpp" line="206"/>
         <source>复制完整 JSON</source>
         <translation>複製完整 JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="241"/>
+        <location filename="../editor.cpp" line="212"/>
         <source>全选</source>
         <translation>全選</translation>
     </message>
@@ -324,8 +368,8 @@
     </message>
     <message>
         <location filename="../main.cpp" line="77"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../model.cpp" line="60"/>
@@ -1051,64 +1095,64 @@
         <translation>未知原因</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2129"/>
+        <location filename="../model.cpp" line="2153"/>
         <source>探索     收藏     关于</source>
         <translation>探索     收藏     關於</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2131"/>
+        <location filename="../model.cpp" line="2155"/>
         <source>为日常，留一点空白。</source>
         <translation>為日常，留一點空白。</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2134"/>
+        <location filename="../model.cpp" line="2158"/>
         <source>点选这里，写下你希望改变的细节。</source>
         <translation>點選這裡，寫下你希望改變的細節。</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2139"/>
+        <location filename="../model.cpp" line="2163"/>
         <source>发现灵感  →</source>
         <translation>發現靈感  →</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2140"/>
+        <location filename="../model.cpp" line="2164"/>
         <source>林间的光</source>
         <translation>林間的光</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2140"/>
+        <location filename="../model.cpp" line="2164"/>
         <source>山的轮廓</source>
         <translation>山的輪廓</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2140"/>
+        <location filename="../model.cpp" line="2164"/>
         <source>慢一点的午后</source>
         <translation>慢一點的午後</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2163"/>
+        <location filename="../model.cpp" line="2187"/>
         <source>生活观察   /   VOL. 0%1</source>
         <translation>生活觀察   /   VOL. 0%1</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2166"/>
+        <location filename="../model.cpp" line="2190"/>
         <source>© FIELDNOTES · 示例图片，仅用于体验批注</source>
         <translation>© FIELDNOTES · 範例圖片，僅用於體驗批註</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2178"/>
-        <location filename="../model.cpp" line="2191"/>
-        <location filename="../model.cpp" line="2195"/>
+        <location filename="../model.cpp" line="2202"/>
+        <location filename="../model.cpp" line="2215"/>
+        <location filename="../model.cpp" line="2219"/>
         <source>预览图片过大，请保存项目</source>
         <translation>預覽圖片過大，請儲存專案</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2242"/>
+        <location filename="../model.cpp" line="2266"/>
         <source>批注 %1 条</source>
         <translation>批註 %1 條</translation>
     </message>
     <message>
-        <location filename="../model.cpp" line="2259"/>
+        <location filename="../model.cpp" line="2283"/>
         <source>整体意见</source>
         <translation>整體意見</translation>
     </message>
@@ -1118,64 +1162,64 @@
         <translation>請在「系統設定 → 隱私權與安全性 → 螢幕錄製」中允許 EditHere，然後重試。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="211"/>
-        <location filename="../platform_mac.mm" line="243"/>
-        <location filename="../platform_mac.mm" line="400"/>
-        <location filename="../platform_mac.mm" line="410"/>
-        <location filename="../platform_mac.mm" line="445"/>
-        <location filename="../platform_mac.mm" line="481"/>
-        <location filename="../platform_mac.mm" line="516"/>
-        <location filename="../platform_mac.mm" line="544"/>
+        <location filename="../platform_mac.mm" line="215"/>
+        <location filename="../platform_mac.mm" line="245"/>
+        <location filename="../platform_mac.mm" line="277"/>
+        <location filename="../platform_mac.mm" line="434"/>
+        <location filename="../platform_mac.mm" line="444"/>
+        <location filename="../platform_mac.mm" line="479"/>
+        <location filename="../platform_mac.mm" line="515"/>
+        <location filename="../platform_mac.mm" line="550"/>
         <source>长截图屏幕已断开或显示设置已改变，请重新截图。</source>
         <translation>長截圖螢幕已中斷或顯示設定已改變，請重新截圖。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="249"/>
-        <location filename="../platform_mac.mm" line="264"/>
-        <location filename="../platform_mac.mm" line="270"/>
-        <location filename="../platform_mac.mm" line="280"/>
-        <location filename="../platform_mac.mm" line="553"/>
+        <location filename="../platform_mac.mm" line="283"/>
+        <location filename="../platform_mac.mm" line="298"/>
+        <location filename="../platform_mac.mm" line="304"/>
+        <location filename="../platform_mac.mm" line="314"/>
+        <location filename="../platform_mac.mm" line="570"/>
         <source>无法读取长截图区域：%1</source>
         <translation>無法讀取長截圖區域：%1</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="366"/>
+        <location filename="../platform_mac.mm" line="400"/>
         <source>长截图需要在 macOS 桌面会话中运行。</source>
         <translation>長截圖需要在 macOS 桌面工作階段中執行。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="380"/>
+        <location filename="../platform_mac.mm" line="414"/>
         <source>自动滚动需要辅助功能权限。请在系统设置 → 隐私与安全性 → 辅助功能中允许 EditHere；也可继续手动滚动。</source>
         <translation>自動捲動需要「輔助使用」權限。請在「系統設定 → 隱私權與安全性 → 輔助使用」中允許 EditHere；也可以繼續手動捲動。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="459"/>
+        <location filename="../platform_mac.mm" line="493"/>
         <source>无法创建 macOS 滚动事件，请继续手动滚动。</source>
         <translation>無法建立 macOS 捲動事件，請繼續手動捲動。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="492"/>
-        <location filename="../platform_mac.mm" line="660"/>
+        <location filename="../platform_mac.mm" line="526"/>
+        <location filename="../platform_mac.mm" line="677"/>
         <source>macOS 屏幕采集超时，请检查屏幕录制权限后重试。</source>
         <translation>macOS 螢幕擷取逾時，請檢查螢幕錄製權限後重試。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="534"/>
-        <location filename="../platform_mac.mm" line="560"/>
-        <location filename="../platform_mac.mm" line="573"/>
-        <location filename="../platform_mac.mm" line="667"/>
+        <location filename="../platform_mac.mm" line="211"/>
+        <location filename="../platform_mac.mm" line="577"/>
+        <location filename="../platform_mac.mm" line="590"/>
+        <location filename="../platform_mac.mm" line="684"/>
         <source>无法获取屏幕，请检查屏幕录制权限</source>
         <translation>無法取得螢幕，請檢查螢幕錄製權限</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="618"/>
+        <location filename="../platform_mac.mm" line="635"/>
         <source>部分屏幕无法采集</source>
         <translation>部分螢幕無法擷取</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="654"/>
+        <location filename="../platform_mac.mm" line="671"/>
         <location filename="../platform_win.cpp" line="368"/>
-        <location filename="../platform_win.cpp" line="530"/>
+        <location filename="../platform_win.cpp" line="599"/>
         <source>无法读取屏幕画面</source>
         <translation>無法讀取螢幕畫面</translation>
     </message>
@@ -1502,13 +1546,13 @@
         <translation>無法確認捲動視窗所屬處理程序，請使用手動捲動。</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="496"/>
+        <location filename="../platform_linux.cpp" line="495"/>
         <location filename="../scroll_wayland.cpp" line="288"/>
         <source>无法读取屏幕图像。</source>
         <translation>無法讀取螢幕影像。</translation>
     </message>
     <message>
-        <location filename="../platform_linux.cpp" line="560"/>
+        <location filename="../platform_linux.cpp" line="559"/>
         <source>没有可截图的屏幕。</source>
         <translation>沒有可截圖的螢幕。</translation>
     </message>
@@ -1651,7 +1695,7 @@
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="412"/>
-        <location filename="../platform_mac.mm" line="450"/>
+        <location filename="../platform_mac.mm" line="484"/>
         <location filename="../platform_win.cpp" line="296"/>
         <location filename="../platform_win.cpp" line="311"/>
         <source>原滚动窗口已关闭或不可见，长截图已停止。</source>
@@ -1659,7 +1703,7 @@
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="429"/>
-        <location filename="../platform_mac.mm" line="454"/>
+        <location filename="../platform_mac.mm" line="488"/>
         <location filename="../platform_win.cpp" line="298"/>
         <source>滚动区域被其他窗口遮挡，长截图已停止。</source>
         <translation>捲動區域被其他視窗遮擋，長截圖已停止。</translation>
@@ -1670,13 +1714,13 @@
         <translation>捲動視窗暫時無法接收輸入，請先關閉它的跳出對話方塊。</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="531"/>
+        <location filename="../platform_win.cpp" line="600"/>
         <source>以下屏幕暂时无法读取：%1。其他屏幕仍可截图。</source>
         <translation>以下螢幕暫時無法讀取：%1。其他螢幕仍可擷取。</translation>
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="402"/>
-        <location filename="../platform_mac.mm" line="448"/>
+        <location filename="../platform_mac.mm" line="482"/>
         <location filename="../platform_win.cpp" line="306"/>
         <source>滚动步长或屏幕坐标无效。</source>
         <translation>捲動間距或螢幕座標無效。</translation>
@@ -1696,9 +1740,9 @@
         <location filename="../platform_linux.cpp" line="360"/>
         <location filename="../platform_linux.cpp" line="370"/>
         <location filename="../platform_linux.cpp" line="450"/>
-        <location filename="../platform_mac.mm" line="223"/>
-        <location filename="../platform_mac.mm" line="393"/>
-        <location filename="../platform_mac.mm" line="486"/>
+        <location filename="../platform_mac.mm" line="257"/>
+        <location filename="../platform_mac.mm" line="427"/>
+        <location filename="../platform_mac.mm" line="520"/>
         <location filename="../platform_win.cpp" line="330"/>
         <source>长截图区域无效或过大。</source>
         <translation>長截圖區域無效或過大。</translation>
@@ -1733,7 +1777,7 @@
     </message>
     <message>
         <location filename="../platform_linux.cpp" line="459"/>
-        <location filename="../platform_mac.mm" line="248"/>
+        <location filename="../platform_mac.mm" line="282"/>
         <location filename="../platform_win.cpp" line="390"/>
         <source>无法读取长截图区域，请检查屏幕采集权限。</source>
         <translation>無法讀取長截圖區域，請檢查螢幕擷取權限。</translation>
@@ -1965,11 +2009,6 @@
         <translation>無法建立程式鎖，請檢查程式資料目錄的權限。</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="202"/>
-        <source>无法连接正在运行的 EditHere，请退出后重试。</source>
-        <translation>無法連線正在執行的 EditHere，請結束後重試。</translation>
-    </message>
-    <message>
         <location filename="../main.cpp" line="231"/>
         <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
         <translation>無法啟動程式通訊服務，請結束其他 EditHere 實例後重試。</translation>
@@ -2133,6 +2172,10 @@
         <location filename="../../features/ai-text/src/aifeedbackformat.cpp" line="140"/>
         <source>待确认：%1</source>
         <translation>待確認：%1</translation>
+    </message>
+    <message>
+        <source>当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。</source>
+        <translation>目前已有以系統管理員權限執行的 EditHere，請從系統匣結束後再試。</translation>
     </message>
 </context>
 <context>
@@ -2810,6 +2853,306 @@
     </message>
 </context>
 <context>
+    <name>h2d::B2Window</name>
+    <message>
+        <location filename="../b2window.cpp" line="170"/>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="239"/>
+        <source>已取消测试连接。</source>
+        <translation>已取消測試連線。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="244"/>
+        <source>已取消 AI 解析。</source>
+        <translation>已取消 AI 解析。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="307"/>
+        <source>结束标注会话</source>
+        <translation>結束標註工作階段</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="308"/>
+        <source>当前正在等待提交批注返回给 AI。
+确定要取消本次会话并返回吗？</source>
+        <translation>目前正在等待提交批註返回給 AI。
+確定要取消本次工作階段並返回嗎？</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="336"/>
+        <source>屏幕截图 %1</source>
+        <translation>螢幕截圖 %1</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="338"/>
+        <source>桌面捕获</source>
+        <translation>桌面擷取</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="390"/>
+        <source>无法读取图片或项目文件</source>
+        <translation>無法讀取圖片或專案檔案</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="597"/>
+        <source>内置运行</source>
+        <translation>內建執行</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="618"/>
+        <source>原生截图 / HDR / 长截图核心</source>
+        <translation>原生截圖 / HDR / 長截圖核心</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="619"/>
+        <source>C++20 + Qt6 已就绪（Windows DXGI HDR 与零延迟遮罩已激活）</source>
+        <translation>C++20 + Qt6 已就緒（Windows DXGI HDR 與零延遲遮罩已啟用）</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="624"/>
+        <source>WebView2 系统容器桥接</source>
+        <translation>WebView2 系統容器橋接</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="625"/>
+        <source>Microsoft Edge WebView2 %1 已连接（%2）</source>
+        <translation>Microsoft Edge WebView2 %1 已連接（%2）</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="630"/>
+        <source>Windows 本机离线 OCR</source>
+        <translation>Windows 本機離線 OCR</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="631"/>
+        <source>Windows WinRT OCR 可用</source>
+        <translation>Windows WinRT OCR 可用</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="631"/>
+        <source>未检测到系统语言 OCR 引擎</source>
+        <translation>未偵測到系統語言 OCR 引擎</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="636"/>
+        <source>本地回环资产与媒体服务</source>
+        <translation>本機迴路資源與媒體服務</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="637"/>
+        <source>127.0.0.1:%1 · 零磁盘复制直传无损 PNG</source>
+        <translation>127.0.0.1:%1 · 零磁碟複製直傳無損 PNG</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="786"/>
+        <source>请先截图或导入图片后再贴图。</source>
+        <translation>請先截圖或匯入圖片後再貼圖。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="878"/>
+        <source>选择反馈临时目录</source>
+        <translation>選擇回饋暫存目錄</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="915"/>
+        <location filename="../b2window.cpp" line="927"/>
+        <source>无法打开浏览器，请访问：%1</source>
+        <translation>無法開啟瀏覽器，請造訪：%1</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="922"/>
+        <source>仅允许打开 HTTPS 链接。</source>
+        <translation>僅允許開啟 HTTPS 連結。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="975"/>
+        <source>打开截图或 EditHere 项目</source>
+        <translation>開啟截圖或 EditHere 專案</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="976"/>
+        <source>图片与项目 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.edithere);;所有文件 (*.*)</source>
+        <translation>圖片與專案 (*.png *.jpg *.jpeg *.webp *.bmp *.json *.edithere);;所有檔案 (*.*)</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1019"/>
+        <source>导出文本文件</source>
+        <translation>匯出文字檔案</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1019"/>
+        <source>全部文件 (*.*)</source>
+        <translation>全部檔案 (*.*)</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1177"/>
+        <source>EditHere 组图</source>
+        <translation>EditHere 組圖</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1204"/>
+        <source>当前没有可导出的桌面截图页面。</source>
+        <translation>目前沒有可匯出的桌面截圖頁面。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1228"/>
+        <source>无效的图像数据。</source>
+        <translation>無效的影像資料。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1250"/>
+        <source>未找到对应页面。</source>
+        <translation>找不到對應頁面。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1257"/>
+        <source>图像编码失败。</source>
+        <translation>影像編碼失敗。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1268"/>
+        <source>没有可保存的图片内容。</source>
+        <translation>沒有可儲存的圖片內容。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1272"/>
+        <source>保存批注图片</source>
+        <translation>儲存批註圖片</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1272"/>
+        <source>PNG 图片 (*.png);;所有文件 (*.*)</source>
+        <translation>PNG 圖片 (*.png);;所有檔案 (*.*)</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1287"/>
+        <source>请先截图或打开图片后再保存项目。</source>
+        <translation>請先截圖或開啟圖片後再儲存專案。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1292"/>
+        <source>保存 EditHere 项目</source>
+        <translation>儲存 EditHere 專案</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1293"/>
+        <source>EditHere 项目 (*.edithere);;JSON 文件 (*.json);;所有文件 (*.*)</source>
+        <translation>EditHere 專案 (*.edithere);;JSON 檔案 (*.json);;所有檔案 (*.*)</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1360"/>
+        <source>当前没有等待返回的 AI 会话。</source>
+        <translation>目前沒有等待返回的 AI 工作階段。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1452"/>
+        <source>请先填写或保存有效的 API Key。</source>
+        <translation>請先填寫或儲存有效的 API Key。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1456"/>
+        <source>当前已有 AI 请求正在运行，请等待完成或先取消。</source>
+        <translation>目前已有 AI 請求正在執行，請等待完成或先取消。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1466"/>
+        <source>当前为示例模式，请先「屏幕截图」或导入本地图片后再执行真实 AI 解析。</source>
+        <translation>目前為範例模式，請先「螢幕截圖」或匯入本機圖片後再執行真實 AI 解析。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1481"/>
+        <source>尚未配置「%1」的 API Key，请前往 设置 → 模型服务 填写并保存。</source>
+        <translation>尚未設定「%1」的 API Key，請前往 設定 → 模型服務 填寫並儲存。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1485"/>
+        <source>已有 AI 解析请求正在运行，请先等待或取消。</source>
+        <translation>已有 AI 解析請求正在執行，請先等待或取消。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1583"/>
+        <source>快捷键格式无效：%1</source>
+        <translation>快速鍵格式無效：%1</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1616"/>
+        <source>导出诊断日志</source>
+        <translation>匯出診斷記錄</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1618"/>
+        <source>文本文件 (*.txt);;所有文件 (*.*)</source>
+        <translation>文字檔案 (*.txt);;所有檔案 (*.*)</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1628"/>
+        <source>日志导出失败：%1</source>
+        <translation>記錄匯出失敗：%1</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1637"/>
+        <source>日志目录尚未初始化。</source>
+        <translation>記錄目錄尚未初始化。</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1643"/>
+        <source>无法打开日志目录：%1</source>
+        <translation>無法開啟記錄目錄：%1</translation>
+    </message>
+    <message>
+        <location filename="../b2window.cpp" line="1651"/>
+        <source>更新检查器尚未初始化。</source>
+        <translation>更新檢查器尚未初始化。</translation>
+    </message>
+    <message>
+        <source>保存项目失败</source>
+        <translation>無法儲存專案</translation>
+    </message>
+    <message>
+        <source>保留当前修改？</source>
+        <translation>保留目前的變更？</translation>
+    </message>
+    <message>
+        <source>工作台已切换，请重新保存。</source>
+        <translation>工作區已切換，請重新儲存。</translation>
+    </message>
+    <message>
+        <source>工作台页面尚未同步，请重新保存。</source>
+        <translation>工作區頁面尚未同步，請重新儲存。</translation>
+    </message>
+    <message>
+        <source>当前工作台有未保存的截图或批注。是否先保存项目？</source>
+        <translation>目前的工作區有尚未儲存的螢幕擷取畫面或註解。要先儲存專案嗎？</translation>
+    </message>
+    <message>
+        <source>当前无法自动安装更新，请检查更新或打开发布页。</source>
+        <translation>目前無法自動安裝更新，請檢查更新或開啟發行頁面。</translation>
+    </message>
+    <message>
+        <source>无法保存当前图片上的涂绘或马赛克，请重试。</source>
+        <translation>無法儲存目前圖片上的繪圖或馬賽克，請再試一次。</translation>
+    </message>
+    <message>
+        <source>无法取得当前批注，请重试保存。</source>
+        <translation>無法取得目前的註解，請重試儲存。</translation>
+    </message>
+    <message>
+        <source>更新操作正在进行，请稍候…</source>
+        <translation>更新作業正在進行，請稍候…</translation>
+    </message>
+    <message>
+        <source>更新源已更改，请重新检查。</source>
+        <translation>更新來源已變更，請重新檢查更新。</translation>
+    </message>
+    <message>
+        <source>正在处理当前项目的保存确认，请稍候。</source>
+        <translation>正在處理目前專案的儲存確認，請稍候。</translation>
+    </message>
+</context>
+<context>
     <name>h2d::Canvas</name>
     <message>
         <location filename="../canvas.cpp" line="287"/>
@@ -2817,17 +3160,17 @@
         <translation>像素 %1, %2 · 1格=1px</translation>
     </message>
     <message>
-        <location filename="../canvas.cpp" line="644"/>
+        <location filename="../canvas.cpp" line="654"/>
         <source>图片批注画布</source>
         <translation>圖片批註畫布</translation>
     </message>
     <message>
-        <location filename="../canvas.cpp" line="649"/>
+        <location filename="../canvas.cpp" line="659"/>
         <source>%1 · %2 / %3 · 滚轮切换大小</source>
         <translation>%1 · %2 / %3 · 滾輪切換大小</translation>
     </message>
     <message>
-        <location filename="../canvas.cpp" line="653"/>
+        <location filename="../canvas.cpp" line="663"/>
         <source>单击批注 · 拖动框选</source>
         <translation>點選批註 · 拖曳框選</translation>
     </message>
@@ -2835,39 +3178,39 @@
 <context>
     <name>h2d::CaptureSidebar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1613"/>
-        <location filename="../capturetoolbar.cpp" line="1632"/>
+        <location filename="../capturetoolbar.cpp" line="1868"/>
+        <location filename="../capturetoolbar.cpp" line="1888"/>
         <source>圆角</source>
         <translation>圓角</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1614"/>
-        <location filename="../capturetoolbar.cpp" line="1639"/>
+        <location filename="../capturetoolbar.cpp" line="1869"/>
+        <location filename="../capturetoolbar.cpp" line="1895"/>
         <source>阴影 / 边框</source>
         <translation>陰影 / 邊框</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1615"/>
+        <location filename="../capturetoolbar.cpp" line="1870"/>
         <source>重置圆角、边框与阴影</source>
         <translation>重設圓角、邊框與陰影</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1632"/>
+        <location filename="../capturetoolbar.cpp" line="1888"/>
         <source>圆角 %1 px</source>
         <translation>圓角 %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1635"/>
+        <location filename="../capturetoolbar.cpp" line="1891"/>
         <source>阴影 %1</source>
         <translation>陰影 %1</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1637"/>
+        <location filename="../capturetoolbar.cpp" line="1893"/>
         <source>边框 %1 px</source>
         <translation>邊框 %1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1638"/>
+        <location filename="../capturetoolbar.cpp" line="1894"/>
         <source>%1 · 边框 %2 px</source>
         <translation>%1 · 邊框 %2 px</translation>
     </message>
@@ -2875,577 +3218,695 @@
 <context>
     <name>h2d::CaptureToolbar</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="385"/>
+        <location filename="../capturetoolbar.cpp" line="542"/>
         <source>取消截图（Esc）</source>
         <translation>取消截圖（Esc）</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="300"/>
-        <location filename="../capturetoolbar.cpp" line="366"/>
-        <location filename="../capturetoolbar.cpp" line="1551"/>
+        <location filename="../capturetoolbar.cpp" line="428"/>
+        <location filename="../capturetoolbar.cpp" line="521"/>
+        <location filename="../capturetoolbar.cpp" line="1795"/>
         <source>复制图像</source>
         <translation>複製影像</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="299"/>
-        <location filename="../capturetoolbar.cpp" line="370"/>
-        <location filename="../capturetoolbar.cpp" line="1552"/>
+        <location filename="../capturetoolbar.cpp" line="427"/>
+        <location filename="../capturetoolbar.cpp" line="525"/>
+        <location filename="../capturetoolbar.cpp" line="1796"/>
         <source>保存图片</source>
         <translation>儲存圖片</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="296"/>
-        <location filename="../capturetoolbar.cpp" line="372"/>
-        <location filename="../capturetoolbar.cpp" line="1554"/>
+        <location filename="../capturetoolbar.cpp" line="420"/>
+        <location filename="../capturetoolbar.cpp" line="527"/>
+        <location filename="../capturetoolbar.cpp" line="1798"/>
         <source>文字识别</source>
         <translation>文字辨識</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="295"/>
-        <location filename="../capturetoolbar.cpp" line="374"/>
-        <location filename="../capturetoolbar.cpp" line="1476"/>
+        <location filename="../capturetoolbar.cpp" line="419"/>
+        <location filename="../capturetoolbar.cpp" line="529"/>
+        <location filename="../capturetoolbar.cpp" line="1720"/>
         <source>批注</source>
         <translation>批註</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="382"/>
-        <location filename="../capturetoolbar.cpp" line="383"/>
-        <location filename="../capturetoolbar.cpp" line="1557"/>
+        <location filename="../capturetoolbar.cpp" line="539"/>
+        <location filename="../capturetoolbar.cpp" line="540"/>
+        <location filename="../capturetoolbar.cpp" line="1801"/>
         <source>更多选项</source>
         <translation>更多選項</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="388"/>
+        <location filename="../capturetoolbar.cpp" line="545"/>
         <source>点击输入精确尺寸</source>
         <translation>點選輸入精確尺寸</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="389"/>
+        <location filename="../capturetoolbar.cpp" line="546"/>
         <source>点击选择固定比例</source>
         <translation>點選選擇固定比例</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1531"/>
+        <location filename="../capturetoolbar.cpp" line="1775"/>
         <source>%1 × %2</source>
         <translation>%1 × %2</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1423"/>
+        <location filename="../capturetoolbar.cpp" line="1667"/>
         <source>输入选区尺寸</source>
         <translation>輸入選區尺寸</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="298"/>
-        <location filename="../capturetoolbar.cpp" line="368"/>
-        <location filename="../capturetoolbar.cpp" line="1553"/>
+        <location filename="../capturetoolbar.cpp" line="426"/>
+        <location filename="../capturetoolbar.cpp" line="523"/>
+        <location filename="../capturetoolbar.cpp" line="1797"/>
         <source>贴图</source>
         <translation>貼圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1555"/>
+        <location filename="../capturetoolbar.cpp" line="1799"/>
         <source>取色</source>
         <translation>取色</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="400"/>
+        <location filename="../capturetoolbar.cpp" line="557"/>
         <source>%1 × %2 px</source>
         <translation>%1 × %2 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="297"/>
-        <location filename="../capturetoolbar.cpp" line="376"/>
+        <location filename="../capturetoolbar.cpp" line="421"/>
+        <location filename="../capturetoolbar.cpp" line="531"/>
         <source>长截图</source>
         <translation>長截圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="408"/>
+        <location filename="../capturetoolbar.cpp" line="565"/>
         <source>%1, %2 · %3 × %4 px</source>
         <translation>%1, %2 · %3 × %4 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1428"/>
-        <location filename="../capturetoolbar.cpp" line="1432"/>
+        <location filename="../capturetoolbar.cpp" line="1672"/>
+        <location filename="../capturetoolbar.cpp" line="1676"/>
         <source> 像素</source>
         <translation> 像素</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1433"/>
+        <location filename="../capturetoolbar.cpp" line="1677"/>
         <source>宽</source>
         <translation>寬</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1434"/>
+        <location filename="../capturetoolbar.cpp" line="1678"/>
         <source>高</source>
         <translation>高</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1479"/>
+        <location filename="../capturetoolbar.cpp" line="1723"/>
         <source>固定比例</source>
         <translation>固定比例</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1489"/>
+        <location filename="../capturetoolbar.cpp" line="1733"/>
         <source>自定义…</source>
         <translation>自訂…</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1495"/>
+        <location filename="../capturetoolbar.cpp" line="1739"/>
         <source>自定义比例</source>
         <translation>自訂比例</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1495"/>
+        <location filename="../capturetoolbar.cpp" line="1739"/>
         <source>宽:高，例如 21:9</source>
         <translation>寬:高，例如 21:9</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1558"/>
+        <location filename="../capturetoolbar.cpp" line="1802"/>
         <source>历史截图上一张 / 下一张</source>
         <translation>歷史截圖上一張 / 下一張</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1559"/>
+        <location filename="../capturetoolbar.cpp" line="1803"/>
         <source>从对角收缩 1 px</source>
         <translation>從對角收縮 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1560"/>
+        <location filename="../capturetoolbar.cpp" line="1804"/>
         <source>向外扩展 1 px</source>
         <translation>向外擴展 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1561"/>
+        <location filename="../capturetoolbar.cpp" line="1805"/>
         <source>移动选区 1 px</source>
         <translation>移動選區 1 px</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1511"/>
+        <location filename="../capturetoolbar.cpp" line="1755"/>
         <source>截图历史</source>
         <translation>截圖歷史</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1521"/>
+        <location filename="../capturetoolbar.cpp" line="1765"/>
         <source>上一张  &lt;</source>
         <translation>上一張  &lt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1524"/>
+        <location filename="../capturetoolbar.cpp" line="1768"/>
         <source>下一张  &gt;</source>
         <translation>下一張  &gt;</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1528"/>
+        <location filename="../capturetoolbar.cpp" line="1772"/>
         <source>最近的选区</source>
         <translation>最近的選區</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1535"/>
+        <location filename="../capturetoolbar.cpp" line="1779"/>
         <source>文字识别语言</source>
         <translation>文字辨識語言</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1549"/>
+        <location filename="../capturetoolbar.cpp" line="1793"/>
         <source>快捷键</source>
         <translation>快速鍵</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1556"/>
+        <location filename="../capturetoolbar.cpp" line="1800"/>
         <source>恢复上次选区</source>
         <translation>還原上次選區</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1562"/>
+        <location filename="../capturetoolbar.cpp" line="1806"/>
         <source>取消</source>
         <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="493"/>
+        <location filename="../capturetoolbar.cpp" line="605"/>
+        <source>画笔（B）</source>
+        <translation>畫筆（B）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="494"/>
+        <location filename="../capturetoolbar.cpp" line="607"/>
+        <source>马赛克（M）</source>
+        <translation>馬賽克（M）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="497"/>
+        <location filename="../capturetoolbar.cpp" line="609"/>
+        <source>绘制设置</source>
+        <translation>繪製設定</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="498"/>
+        <location filename="../capturetoolbar.cpp" line="611"/>
+        <source>撤销绘制（Ctrl+Z）</source>
+        <translation>復原繪製（Ctrl+Z）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="724"/>
+        <source>撤销绘制后可开始长截图</source>
+        <translation>復原繪製後即可開始長截圖</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1857"/>
+        <location filename="../capturetoolbar.cpp" line="1938"/>
+        <source>画笔</source>
+        <translation>畫筆</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1859"/>
+        <source>荧光笔</source>
+        <translation>螢光筆</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1861"/>
+        <source>颜色</source>
+        <translation>色彩</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1863"/>
+        <source>红色</source>
+        <translation>紅色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1863"/>
+        <source>黄色</source>
+        <translation>黃色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1864"/>
+        <source>绿色</source>
+        <translation>綠色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1864"/>
+        <source>蓝色</source>
+        <translation>藍色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1865"/>
+        <source>白色</source>
+        <translation>白色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1865"/>
+        <source>黑色</source>
+        <translation>黑色</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1869"/>
+        <source>线宽</source>
+        <translation>線寬</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1874"/>
+        <source>像素化</source>
+        <translation>像素化</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1875"/>
+        <source>模糊</source>
+        <translation>模糊</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1876"/>
+        <source>强度</source>
+        <translation>強度</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1939"/>
+        <source>马赛克</source>
+        <translation>馬賽克</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1940"/>
+        <source>撤销绘制</source>
+        <translation>復原繪製</translation>
     </message>
 </context>
 <context>
     <name>h2d::Controller</name>
     <message>
-        <location filename="../controller.cpp" line="300"/>
+        <location filename="../controller.cpp" line="479"/>
         <source>当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。</source>
         <translation>目前桌面不支援全域快捷鍵。設定仍可儲存；請使用系統匣選單，或在系統快捷鍵設定中綁定 EditHere --capture。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="81"/>
+        <location filename="../controller.cpp" line="90"/>
         <source>已启用系统元素识别</source>
         <translation>已啟用系統元素辨識</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="83"/>
+        <location filename="../controller.cpp" line="92"/>
         <source>请在系统设置中授予辅助功能权限，图片识别仍可直接使用。</source>
         <translation>請在系統設定中授予「輔助使用」權限；圖片辨識仍可直接使用。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="127"/>
+        <location filename="../controller.cpp" line="136"/>
         <source>无法记录引导状态，下次启动时可能再次显示。
 </source>
         <translation>無法記錄導覽狀態，下次啟動時可能再次顯示。
 </translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="139"/>
-        <location filename="../controller.cpp" line="150"/>
+        <location filename="../controller.cpp" line="148"/>
         <location filename="../controller.cpp" line="159"/>
-        <location filename="../controller.cpp" line="167"/>
+        <location filename="../controller.cpp" line="168"/>
+        <location filename="../controller.cpp" line="176"/>
         <source>设置未能保存：</source>
         <translation>設定未能儲存：</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="172"/>
+        <location filename="../controller.cpp" line="181"/>
         <source>截图快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>截圖快速鍵未能註冊，請在系統匣圖示上按右鍵開啟設定修改。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="226"/>
+        <location filename="../controller.cpp" line="391"/>
         <source>打开图片或项目</source>
         <translation>開啟圖片或專案</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="225"/>
-        <location filename="../controller.cpp" line="237"/>
-        <location filename="../controller.cpp" line="238"/>
+        <location filename="../controller.cpp" line="390"/>
+        <location filename="../controller.cpp" line="402"/>
+        <location filename="../controller.cpp" line="403"/>
         <source>新建批注（空窗口）</source>
         <translation>新增批註（空視窗）</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="227"/>
+        <location filename="../controller.cpp" line="392"/>
         <source>启用系统元素识别</source>
         <translation>啟用系統元素辨識</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="228"/>
+        <location filename="../controller.cpp" line="393"/>
         <source>设置…</source>
         <translation>設定…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="229"/>
+        <location filename="../controller.cpp" line="394"/>
         <source>检查更新…</source>
         <translation>檢查更新…</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="230"/>
+        <location filename="../controller.cpp" line="395"/>
         <source>退出</source>
         <translation>結束</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="224"/>
-        <location filename="../controller.cpp" line="235"/>
+        <location filename="../controller.cpp" line="389"/>
+        <location filename="../controller.cpp" line="400"/>
         <source>截图</source>
         <translation>截圖</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="239"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <location filename="../controller.cpp" line="404"/>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="330"/>
+        <location filename="../controller.cpp" line="214"/>
+        <location filename="../controller.cpp" line="509"/>
         <source>界面语言加载失败，请重新安装 EditHere。</source>
         <translation>介面語言載入失敗，請重新安裝 EditHere。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="350"/>
+        <location filename="../controller.cpp" line="236"/>
+        <location filename="../controller.cpp" line="529"/>
         <source>截图快捷键无法注册，请更换组合键。</source>
         <translation>截圖快速鍵無法註冊，請更換組合鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="343"/>
+        <location filename="../controller.cpp" line="226"/>
+        <location filename="../controller.cpp" line="522"/>
         <source>
 原快捷键未能恢复，请重新设置截图快捷键。</source>
         <translation>
 原快速鍵未能還原，請重新設定截圖快速鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="373"/>
+        <location filename="../controller.cpp" line="275"/>
+        <location filename="../controller.cpp" line="552"/>
         <source>
 开机自启未能恢复：</source>
         <translation>
 開機自動啟動未能還原：</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="395"/>
+        <location filename="../controller.cpp" line="574"/>
         <source>截图快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>截圖快速鍵未能還原，請在設定中更換組合鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="405"/>
+        <location filename="../controller.cpp" line="584"/>
         <source>EditHere 开机自启</source>
         <translation>EditHere 開機自動啟動</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="439"/>
+        <location filename="../controller.cpp" line="639"/>
+        <location filename="../controller.cpp" line="649"/>
         <source>示例产品页面</source>
         <translation>範例產品頁面</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="496"/>
+        <location filename="../controller.cpp" line="706"/>
         <source>EditHere 更新</source>
         <translation>EditHere 更新</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="499"/>
+        <location filename="../controller.cpp" line="709"/>
         <source>查看更新</source>
         <translation>查看更新</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="627"/>
-        <location filename="../controller.cpp" line="1751"/>
+        <location filename="../controller.cpp" line="849"/>
+        <location filename="../controller.cpp" line="1979"/>
         <source>截图未完成</source>
         <translation>截圖未完成</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="732"/>
+        <location filename="../controller.cpp" line="956"/>
         <source>只能对当前屏幕选区进行长截图，请重新截取屏幕。</source>
         <translation>只能對目前螢幕選區進行長截圖，請重新擷取螢幕。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="736"/>
+        <location filename="../controller.cpp" line="960"/>
         <source>长截图选区过小，请选择至少 64 × 120 px 的内容区域。</source>
         <translation>長截圖選區過小，請選擇至少 64 × 120 px 的內容區域。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1148"/>
+        <location filename="../controller.cpp" line="1372"/>
         <source>无法匹配相邻画面，采集已停止。可完成已有部分或返回选区重试。</source>
         <translation>無法比對相鄰畫面，擷取已停止。可完成已有部分或返回選區重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="863"/>
+        <location filename="../controller.cpp" line="1087"/>
         <source>找不到选区下可滚动的窗口，请重试。</source>
         <translation>找不到選區下可捲動的視窗，請重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="176"/>
+        <location filename="../controller.cpp" line="185"/>
         <source>新建批注快捷键未能注册，请右键托盘打开设置修改。</source>
         <translation>新增批註快速鍵未能註冊，請在系統匣圖示上按右鍵開啟設定修改。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="345"/>
+        <location filename="../controller.cpp" line="228"/>
+        <location filename="../controller.cpp" line="524"/>
         <source>
 原快捷键未能恢复，请重新设置新建批注快捷键。</source>
         <translation>
 原快速鍵未能還原，請重新設定新增批註快速鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="356"/>
+        <location filename="../controller.cpp" line="242"/>
+        <location filename="../controller.cpp" line="535"/>
         <source>新建批注快捷键无法注册，请更换组合键。</source>
         <translation>新增批註快速鍵無法註冊，請更換組合鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="357"/>
+        <location filename="../controller.cpp" line="243"/>
+        <location filename="../controller.cpp" line="536"/>
         <source>新建批注（空窗口）：</source>
         <translation>新增批註（空視窗）：</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="397"/>
+        <location filename="../controller.cpp" line="576"/>
         <source>新建批注快捷键未能恢复，请在设置中更换组合键。</source>
         <translation>新增批註快速鍵未能還原，請在設定中更換組合鍵。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="497"/>
+        <location filename="../controller.cpp" line="634"/>
+        <source>无法打开文件</source>
+        <translation>無法開啟檔案</translation>
+    </message>
+    <message>
+        <location filename="../controller.cpp" line="707"/>
         <source>发现新版本 %1。</source>
         <translation>發現新版本 %1。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="500"/>
+        <location filename="../controller.cpp" line="710"/>
         <source>跳过</source>
         <translation>跳過</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="543"/>
+        <location filename="../controller.cpp" line="753"/>
         <source>EditHere 安装结果</source>
         <translation>EditHere 安裝結果</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="547"/>
+        <location filename="../controller.cpp" line="757"/>
         <source>安装日志：%1</source>
         <translation>安裝記錄檔：%1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="549"/>
+        <location filename="../controller.cpp" line="759"/>
         <source>事务记录：%1</source>
         <translation>交易記錄：%1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="551"/>
+        <location filename="../controller.cpp" line="761"/>
         <source>恢复目录：%1</source>
         <translation>還原目錄：%1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="553"/>
+        <location filename="../controller.cpp" line="763"/>
         <source>暂存目录：%1</source>
         <translation>暫存目錄：%1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="632"/>
+        <location filename="../controller.cpp" line="854"/>
         <source>部分屏幕无法截图</source>
         <translation>部分螢幕無法擷取</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="870"/>
-        <location filename="../controller.cpp" line="965"/>
+        <location filename="../controller.cpp" line="1094"/>
+        <location filename="../controller.cpp" line="1189"/>
         <source>无法确认滚动窗口所属进程，请使用手动滚动。</source>
         <translation>無法確認捲動視窗所屬處理程序，請使用手動捲動。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="903"/>
-        <location filename="../controller.cpp" line="1084"/>
+        <location filename="../controller.cpp" line="1127"/>
+        <location filename="../controller.cpp" line="1308"/>
         <source>页面一直在变化，等待稳定画面超时。请暂停动画后重试。</source>
         <translation>頁面一直在變化，等待穩定畫面逾時。請暫停動畫後重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="904"/>
+        <location filename="../controller.cpp" line="1128"/>
         <source>画面采集超时，请返回选区重试。</source>
         <translation>畫面擷取逾時，請返回選區重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="944"/>
+        <location filename="../controller.cpp" line="1168"/>
         <source>目标窗口无法继续滚动。</source>
         <translation>目標視窗無法繼續捲動。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1056"/>
+        <location filename="../controller.cpp" line="1280"/>
         <source>原滚动窗口已关闭、移动或被遮挡，请返回选区重试。</source>
         <translation>原捲動視窗已關閉、移動或被遮擋，請返回選區重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1072"/>
+        <location filename="../controller.cpp" line="1296"/>
         <source>屏幕选区采集失败，请重新选择区域。</source>
         <translation>螢幕選區擷取失敗，請重新選擇區域。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1120"/>
+        <location filename="../controller.cpp" line="1344"/>
         <source>长截图选区超过图像上限，请缩小区域后重试。</source>
         <translation>長截圖選區超過影像上限，請縮小區域後重試。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1133"/>
-        <location filename="../controller.cpp" line="1147"/>
+        <location filename="../controller.cpp" line="1357"/>
+        <location filename="../controller.cpp" line="1371"/>
         <source>已达长截图上限，可以完成已拼接的部分。</source>
         <translation>已達長截圖上限，可以完成已拼接的部分。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1143"/>
+        <location filename="../controller.cpp" line="1367"/>
         <source>内容没有产生可拼接的滚动，请选择可滚动的内容区域。</source>
         <translation>內容沒有產生可拼接的捲動，請選擇可捲動的內容區域。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1156"/>
+        <location filename="../controller.cpp" line="1380"/>
         <source>滚动过快，新画面与已拼接部分没有重叠。
 请稍微往回滚动，对上后会继续拼接。</source>
         <translation>捲動過快，新畫面與已拼接部分沒有重疊。
 請稍微往回捲動，對上後會繼續拼接。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1225"/>
+        <location filename="../controller.cpp" line="1449"/>
         <source>已停止截图，可调整选区后重新开始。</source>
         <translation>已停止截圖，可調整選區後重新開始。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1276"/>
+        <location filename="../controller.cpp" line="1500"/>
         <source>已切换截图方向，从当前画面重新开始。</source>
         <translation>已切換截圖方向，從目前畫面重新開始。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1343"/>
-        <location filename="../controller.cpp" line="1372"/>
+        <location filename="../controller.cpp" line="1567"/>
+        <location filename="../controller.cpp" line="1596"/>
         <source>采集已暂停，正在保存长截图。</source>
         <translation>擷取已暫停，正在儲存長截圖。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1351"/>
+        <location filename="../controller.cpp" line="1575"/>
         <source>保存长截图</source>
         <translation>儲存長截圖</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1351"/>
+        <location filename="../controller.cpp" line="1575"/>
         <source>PNG 图像 (*.png)</source>
         <translation>PNG 影像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1360"/>
+        <location filename="../controller.cpp" line="1584"/>
         <source>无法创建保存目录。</source>
         <translation>無法建立儲存目錄。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1401"/>
+        <location filename="../controller.cpp" line="1625"/>
         <source>长截图</source>
         <translation>長截圖</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1477"/>
+        <location filename="../controller.cpp" line="1701"/>
         <source>第 %1 张 · 已不在缓存里</source>
         <translation>第 %1 張 · 已不在快取裡</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1478"/>
+        <location filename="../controller.cpp" line="1702"/>
         <source>第 %1 张 · %2 × %3</source>
         <translation>第 %1 張 · %2 × %3</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1499"/>
-        <location filename="../controller.cpp" line="1523"/>
+        <location filename="../controller.cpp" line="1723"/>
+        <location filename="../controller.cpp" line="1747"/>
         <source>这张截图已经不在缓存里了。</source>
         <translation>這張截圖已經不在快取裡了。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1518"/>
+        <location filename="../controller.cpp" line="1742"/>
         <source>已记住这个样式，以后每次截图都从这里开始。</source>
         <translation>已記住這個樣式，以後每次截圖都從這裡開始。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1528"/>
+        <location filename="../controller.cpp" line="1752"/>
         <source>历史截图</source>
         <translation>歷史截圖</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1532"/>
+        <location filename="../controller.cpp" line="1756"/>
         <source>无法打开历史截图</source>
         <translation>無法開啟歷史截圖</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1633"/>
+        <location filename="../controller.cpp" line="1857"/>
         <source>置顶图片</source>
         <translation>置頂圖片</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1637"/>
+        <location filename="../controller.cpp" line="1861"/>
         <source>无法打开这张图片</source>
         <translation>無法開啟這張圖片</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1652"/>
+        <location filename="../controller.cpp" line="1876"/>
         <source>保存图片</source>
         <translation>儲存圖片</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1653"/>
+        <location filename="../controller.cpp" line="1877"/>
         <source>PNG 图片 (*.png);;JPEG 图片 (*.jpg);;所有文件 (*)</source>
         <translation>PNG 圖片 (*.png);;JPEG 圖片 (*.jpg);;所有檔案 (*)</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1363"/>
-        <location filename="../controller.cpp" line="1657"/>
+        <location filename="../controller.cpp" line="1587"/>
+        <location filename="../controller.cpp" line="1881"/>
         <source>已保存 %1</source>
         <translation>已儲存 %1</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1322"/>
+        <location filename="../controller.cpp" line="1546"/>
         <source>选区尺寸已调整，点击开始从新选区采集。</source>
         <translation>選區尺寸已調整，點選開始從新選區擷取。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1662"/>
+        <location filename="../controller.cpp" line="1886"/>
         <source>保存失败</source>
         <translation>儲存失敗</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1662"/>
+        <location filename="../controller.cpp" line="1886"/>
         <source>无法写入 %1，请检查目录是否存在以及是否可写。</source>
         <translation>無法寫入 %1，請檢查目錄是否存在以及是否可寫。</translation>
     </message>
     <message>
-        <location filename="../controller.cpp" line="1724"/>
+        <location filename="../controller.cpp" line="1948"/>
         <source>屏幕截图</source>
         <translation>螢幕截圖</translation>
     </message>
@@ -3526,642 +3987,642 @@
 <context>
     <name>h2d::Editor</name>
     <message>
-        <location filename="../editor.cpp" line="1974"/>
+        <location filename="../editor.cpp" line="1921"/>
         <source>关闭区域文字识别（OCR）</source>
         <translation>關閉區域文字辨識（OCR）</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1974"/>
+        <location filename="../editor.cpp" line="1921"/>
         <source>开启区域文字识别（OCR）</source>
         <translation>開啟區域文字辨識（OCR）</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="332"/>
-        <location filename="../editor.cpp" line="739"/>
+        <location filename="../editor.cpp" line="278"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>关闭放大镜</source>
         <translation>關閉放大鏡</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="332"/>
-        <location filename="../editor.cpp" line="739"/>
+        <location filename="../editor.cpp" line="278"/>
+        <location filename="../editor.cpp" line="697"/>
         <source>开启放大镜</source>
         <translation>開啟放大鏡</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="309"/>
+        <location filename="../editor.cpp" line="255"/>
         <source>无法使用？</source>
         <translation>無法使用？</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="713"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <location filename="../editor.cpp" line="672"/>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="725"/>
+        <location filename="../editor.cpp" line="684"/>
         <source>重新截图</source>
         <translation>重新截圖</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="726"/>
+        <location filename="../editor.cpp" line="685"/>
         <source>使用引导</source>
         <translation>使用導覽</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="728"/>
+        <location filename="../editor.cpp" line="687"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="729"/>
+        <location filename="../editor.cpp" line="688"/>
         <source>最小化</source>
         <translation>最小化</translation>
     </message>
     <message>
+        <location filename="../editor.cpp" line="1248"/>
         <source>最大化</source>
         <translation>最大化</translation>
     </message>
     <message>
+        <location filename="../editor.cpp" line="1248"/>
         <source>还原窗口</source>
         <translation>還原視窗</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="730"/>
-        <location filename="../editor.cpp" line="1268"/>
+        <location filename="../editor.cpp" line="1259"/>
         <source>全屏</source>
         <translation>全螢幕</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="731"/>
-        <location filename="../editor.cpp" line="2976"/>
+        <location filename="../editor.cpp" line="689"/>
+        <location filename="../editor.cpp" line="2936"/>
         <source>关闭当前截图</source>
         <translation>關閉目前截圖</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="732"/>
+        <location filename="../editor.cpp" line="690"/>
         <source>添加全局批注</source>
         <translation>新增全域批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="733"/>
+        <location filename="../editor.cpp" line="691"/>
         <source>缩小</source>
         <translation>縮小</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="734"/>
+        <location filename="../editor.cpp" line="692"/>
         <source>放大</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="735"/>
+        <location filename="../editor.cpp" line="693"/>
         <source>更多操作</source>
         <translation>更多操作</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2067"/>
+        <location filename="../editor.cpp" line="2014"/>
         <source>隐藏画面批注</source>
         <translation>隱藏畫面批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2067"/>
+        <location filename="../editor.cpp" line="2014"/>
         <source>显示画面批注</source>
         <translation>顯示畫面批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="741"/>
+        <location filename="../editor.cpp" line="699"/>
         <source>AI 正在等待你的修改意见</source>
         <translation>AI 正在等待你的修改意見</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="743"/>
+        <location filename="../editor.cpp" line="701"/>
         <source>取消</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="745"/>
+        <location filename="../editor.cpp" line="703"/>
         <source>完成并返回 AI</source>
         <translation>完成並返回 AI</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="746"/>
+        <location filename="../editor.cpp" line="704"/>
         <source>圈出位置，或添加一条全局意见。</source>
         <translation>圈出位置，或新增一條全域意見。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="759"/>
+        <location filename="../editor.cpp" line="717"/>
         <source>撤销</source>
         <translation>復原</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="760"/>
+        <location filename="../editor.cpp" line="718"/>
         <source>重做</source>
         <translation>重做</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="762"/>
-        <location filename="../editor.cpp" line="854"/>
+        <location filename="../editor.cpp" line="720"/>
+        <location filename="../editor.cpp" line="814"/>
         <source>大爆炸</source>
         <translation>大爆炸</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="785"/>
-        <location filename="../editor.cpp" line="1552"/>
+        <location filename="../editor.cpp" line="743"/>
+        <location filename="../editor.cpp" line="1499"/>
         <source>批注 %1 条</source>
         <translation>批註 %1 條</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="819"/>
+        <location filename="../editor.cpp" line="777"/>
         <source>引导示例</source>
         <translation>導覽範例</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="846"/>
+        <location filename="../editor.cpp" line="806"/>
         <source>智能选块</source>
         <translation>智慧選塊</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="846"/>
+        <location filename="../editor.cpp" line="806"/>
         <source>点标注</source>
         <translation>點標註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="846"/>
+        <location filename="../editor.cpp" line="806"/>
         <source>框选</source>
         <translation>框選</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="846"/>
+        <location filename="../editor.cpp" line="806"/>
         <source>调整批注</source>
         <translation>調整批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1027"/>
+        <location filename="../editor.cpp" line="987"/>
         <source>视频文件不存在</source>
         <translation>影片檔案不存在</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1067"/>
+        <location filename="../editor.cpp" line="1027"/>
         <source>源视频未找到，可查看已保存的批注画面，或重新指定视频。</source>
         <translation>來源影片未找到，可檢視已儲存的批註畫面，或重新指定影片。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1165"/>
+        <location filename="../editor.cpp" line="1125"/>
         <source>视频画面 %1</source>
         <translation>影片畫面 %1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1134"/>
-        <location filename="../editor.cpp" line="1175"/>
-        <location filename="../editor.cpp" line="1194"/>
+        <location filename="../editor.cpp" line="1094"/>
+        <location filename="../editor.cpp" line="1135"/>
+        <location filename="../editor.cpp" line="1154"/>
         <source>%1 × %2 · %3</source>
         <translation>%1 × %2 · %3</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="505"/>
-        <location filename="../editor.cpp" line="992"/>
+        <location filename="../editor.cpp" line="464"/>
+        <location filename="../editor.cpp" line="952"/>
         <source>整组意见</source>
         <translation>整組意見</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="970"/>
+        <location filename="../editor.cpp" line="930"/>
         <source>只返回有批注的页面；AI 按页面 ID 维护组图</source>
         <translation>只傳回有批註的頁面；AI 依頁面 ID 維護組圖</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="994"/>
+        <location filename="../editor.cpp" line="954"/>
         <source>针对整个项目的要求会单独返回给 AI，无需给每一页重复批注。</source>
         <translation>針對整個專案的要求會單獨傳回給 AI，無需給每一頁重複批註。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1007"/>
+        <location filename="../editor.cpp" line="967"/>
         <source>整组意见不能超过 10000 字符</source>
         <translation>整組意見不能超過 10000 字元</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1268"/>
+        <location filename="../editor.cpp" line="1259"/>
         <source>退出全屏</source>
         <translation>結束全螢幕</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1436"/>
-        <location filename="../editor.cpp" line="1437"/>
-        <location filename="../editor.cpp" line="2224"/>
-        <location filename="../editor.cpp" line="2225"/>
-        <location filename="../editor.cpp" line="2959"/>
+        <location filename="../editor.cpp" line="1383"/>
+        <location filename="../editor.cpp" line="1384"/>
+        <location filename="../editor.cpp" line="2171"/>
+        <location filename="../editor.cpp" line="2172"/>
+        <location filename="../editor.cpp" line="2919"/>
         <source>复制 JSON 内容选项</source>
         <translation>複製 JSON 內容選項</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1445"/>
+        <location filename="../editor.cpp" line="1392"/>
         <source>直接复制文件（携带原图信息），适用于可以发送文件的 Agent。</source>
         <translation>直接複製檔案（附帶原圖資訊），適用於可以傳送檔案的 Agent。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1448"/>
-        <location filename="../editor.cpp" line="2878"/>
+        <location filename="../editor.cpp" line="1395"/>
+        <location filename="../editor.cpp" line="2838"/>
         <source>复制 JSON 文本（携带原图信息），适用于无法发送文件的 Agent。</source>
         <translation>複製 JSON 文字（附帶原圖資訊），適用於無法傳送檔案的 Agent。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1449"/>
-        <location filename="../editor.cpp" line="2879"/>
+        <location filename="../editor.cpp" line="1396"/>
+        <location filename="../editor.cpp" line="2839"/>
         <source>复制 JSON 文本（默认不携带原图信息），适用于无法发送文件的 Agent。</source>
         <translation>複製 JSON 文字（預設不附帶原圖資訊），適用於無法傳送檔案的 Agent。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2837"/>
+        <location filename="../editor.cpp" line="2797"/>
         <source>AI 解析（预览）：把画面与批注转成文字需求，结果请核对。</source>
         <translation>AI 解析（預覽）：把畫面與批註轉成文字需求，結果請核對。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1509"/>
+        <location filename="../editor.cpp" line="1456"/>
         <source>展开批注框</source>
         <translation>展開批註框</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1509"/>
+        <location filename="../editor.cpp" line="1456"/>
         <source>收起批注框</source>
         <translation>收合批註框</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1516"/>
+        <location filename="../editor.cpp" line="1463"/>
         <source>全局</source>
         <translation>全域</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1517"/>
+        <location filename="../editor.cpp" line="1464"/>
         <source>位置变化</source>
         <translation>位置變化</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1518"/>
+        <location filename="../editor.cpp" line="1465"/>
         <source>点 (%1,%2)</source>
         <translation>點 (%1,%2)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1519"/>
+        <location filename="../editor.cpp" line="1466"/>
         <source>框 (%1,%2)→(%3,%4)</source>
         <translation>框 (%1,%2)→(%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1577"/>
+        <location filename="../editor.cpp" line="1524"/>
         <source>编辑批注</source>
         <translation>編輯批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1577"/>
-        <location filename="../editor.cpp" line="1789"/>
+        <location filename="../editor.cpp" line="1524"/>
+        <location filename="../editor.cpp" line="1736"/>
         <source>删除批注</source>
         <translation>刪除批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1585"/>
+        <location filename="../editor.cpp" line="1532"/>
         <source>批注内容</source>
         <translation>批註內容</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1586"/>
+        <location filename="../editor.cpp" line="1533"/>
         <source>写下你的想法…</source>
         <translation>寫下你的想法…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1685"/>
+        <location filename="../editor.cpp" line="1632"/>
         <source>收起</source>
         <translation>收合</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1685"/>
+        <location filename="../editor.cpp" line="1632"/>
         <source>展开</source>
         <translation>展開</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1686"/>
+        <location filename="../editor.cpp" line="1633"/>
         <source>收起批注全文</source>
         <translation>收合批註全文</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1686"/>
+        <location filename="../editor.cpp" line="1633"/>
         <source>展开批注全文</source>
         <translation>展開批註全文</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1750"/>
+        <location filename="../editor.cpp" line="1697"/>
         <source>批注 %1 内容</source>
         <translation>批註 %1 內容</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1795"/>
+        <location filename="../editor.cpp" line="1742"/>
         <source>点击此处为这次移动添加文字…</source>
         <translation>點選此處為這次移動新增文字…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1810"/>
+        <location filename="../editor.cpp" line="1757"/>
         <source>移动 (%1,%2) → (%3,%4)</source>
         <translation>移動 (%1,%2) → (%3,%4)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1621"/>
-        <location filename="../editor.cpp" line="1916"/>
+        <location filename="../editor.cpp" line="1568"/>
+        <location filename="../editor.cpp" line="1863"/>
         <source>最多支持 1000 条批注</source>
         <translation>最多支援 1000 條批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2229"/>
-        <location filename="../editor.cpp" line="2238"/>
-        <location filename="../editor.cpp" line="2963"/>
+        <location filename="../editor.cpp" line="2176"/>
+        <location filename="../editor.cpp" line="2185"/>
+        <location filename="../editor.cpp" line="2923"/>
         <source>不携带原图信息</source>
         <translation>不附帶原圖資訊</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2230"/>
-        <location filename="../editor.cpp" line="2239"/>
-        <location filename="../editor.cpp" line="2964"/>
+        <location filename="../editor.cpp" line="2177"/>
+        <location filename="../editor.cpp" line="2186"/>
+        <location filename="../editor.cpp" line="2924"/>
         <source>携带原图信息（嵌入 JSON）</source>
         <translation>附帶原圖資訊（嵌入 JSON）</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2267"/>
-        <location filename="../editor.cpp" line="2889"/>
+        <location filename="../editor.cpp" line="2214"/>
+        <location filename="../editor.cpp" line="2849"/>
         <source>JSON 文本已复制（包含原图编码）</source>
         <translation>JSON 文字已複製（包含原圖編碼）</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2267"/>
-        <location filename="../editor.cpp" line="2889"/>
+        <location filename="../editor.cpp" line="2214"/>
+        <location filename="../editor.cpp" line="2849"/>
         <source>JSON 文本已复制（不含原图编码）</source>
         <translation>JSON 文字已複製（不含原圖編碼）</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2273"/>
+        <location filename="../editor.cpp" line="2220"/>
         <source>无法使用 JSON？</source>
         <translation>無法使用 JSON？</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2275"/>
+        <location filename="../editor.cpp" line="2222"/>
         <source>&lt;h3&gt;1. 发送 JSON 文本被截断，又无法发送 JSON 文件？&lt;/h3&gt;&lt;p&gt;在“复制 JSON 内容”按钮内的选项中选择“不携带原图信息”，再复制 JSON 内容，并向 Agent 一起上传原图。&lt;/p&gt;&lt;h3&gt;2. 都不支持上传，只支持对话怎么办？&lt;/h3&gt;&lt;p&gt;可以尝试发送不包含原图信息的 JSON 文本。但由于没有附带原图，暂时无法确认效果。&lt;/p&gt;&lt;h3&gt;3. AI 没认出来原图信息怎么办？&lt;/h3&gt;&lt;p&gt;可以在提示词中加一句：“参考 JSON 文件中的图片信息……”；如果仍失败，建议使用第一种方式。&lt;/p&gt;&lt;h3&gt;4. 粘贴文件时只有 JSON，没有图片？&lt;/h3&gt;&lt;p&gt;部分客户端只接收文件列表中的一个附件。先粘贴“复制 JSON 内容”，再用“复制带批注图片”（Ctrl+C）单独粘贴 PNG 图片。按钮若未显示，可从底部“更多”菜单进入。组图和视频按需逐页或逐帧复制，也可保存图片后拖入客户端。&lt;/p&gt;</source>
         <translation>&lt;h3&gt;1. 傳送 JSON 文字被截斷，又無法傳送 JSON 檔案？&lt;/h3&gt;&lt;p&gt;在「複製 JSON 內容」按鈕內的選項中選擇「不附帶原圖資訊」，再複製 JSON 內容，並向 Agent 一起上傳原圖。&lt;/p&gt;&lt;h3&gt;2. 都不支援上傳，只支援對話怎麼辦？&lt;/h3&gt;&lt;p&gt;可以嘗試傳送不包含原圖資訊的 JSON 文字。但由於沒有附帶原圖，暫時無法確認效果。&lt;/p&gt;&lt;h3&gt;3. AI 沒認出來原圖資訊怎麼辦？&lt;/h3&gt;&lt;p&gt;可以在提示詞中加一句：「參考 JSON 檔案中的圖片資訊……」；如果仍失敗，建議使用第一種方式。&lt;/p&gt;&lt;h3&gt;4. 貼上檔案時只有 JSON，沒有圖片？&lt;/h3&gt;&lt;p&gt;部分用戶端只接收檔案清單中的一個附件。先貼上「複製 JSON 內容」，再用「複製帶批註圖片」（Ctrl+C）單獨貼上 PNG 圖片。按鈕若未顯示，可從底部「更多」選單進入。組圖和影片按需逐頁或逐影格複製，也可儲存圖片後拖入用戶端。&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2751"/>
+        <location filename="../editor.cpp" line="2698"/>
         <source>打开图片、视频或项目</source>
         <translation>開啟圖片、影片或專案</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2752"/>
+        <location filename="../editor.cpp" line="2699"/>
         <source>图片、视频或项目 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有文件 (*)</source>
         <translation>圖片、影片或專案 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.json *.edithere);;所有檔案 (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2843"/>
+        <location filename="../editor.cpp" line="2803"/>
         <source>复制 JSON 内容</source>
         <translation>複製 JSON 內容</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2860"/>
+        <location filename="../editor.cpp" line="2820"/>
         <source>,[图片编码已折叠]</source>
         <translation>,[圖片編碼已摺疊]</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2356"/>
+        <location filename="../editor.cpp" line="2303"/>
         <source>在调整后的画面批注 · 滚轮切换范围 · 单击或拖动框选</source>
         <translation>在調整後的畫面批註 · 滾輪切換範圍 · 點選或拖曳框選</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="540"/>
+        <location filename="../editor.cpp" line="499"/>
         <source>重新指定视频</source>
         <translation>重新指定影片</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="541"/>
+        <location filename="../editor.cpp" line="500"/>
         <source>视频 (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;所有文件 (*)</source>
         <translation>影片 (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;所有檔案 (*)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="727"/>
-        <location filename="../editor.cpp" line="750"/>
-        <location filename="../editor.cpp" line="2975"/>
+        <location filename="../editor.cpp" line="686"/>
+        <location filename="../editor.cpp" line="708"/>
+        <location filename="../editor.cpp" line="2935"/>
         <source>导入图片、视频或项目</source>
         <translation>匯入圖片、影片或專案</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="748"/>
+        <location filename="../editor.cpp" line="706"/>
         <source>可拖入图片或视频，也可粘贴图片</source>
         <translation>可拖入圖片或影片，也可貼上圖片</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1598"/>
-        <location filename="../editor.cpp" line="2084"/>
+        <location filename="../editor.cpp" line="1545"/>
+        <location filename="../editor.cpp" line="2031"/>
         <source>归属待确认</source>
         <translation>歸屬待確認</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1604"/>
+        <location filename="../editor.cpp" line="1551"/>
         <source>是，作为子批注</source>
         <translation>是，作為子批註</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1607"/>
+        <location filename="../editor.cpp" line="1554"/>
         <source>否，独立对象</source>
         <translation>否，獨立物件</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1644"/>
+        <location filename="../editor.cpp" line="1591"/>
         <source>区域文字</source>
         <translation>區域文字</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1646"/>
+        <location filename="../editor.cpp" line="1593"/>
         <source>删除识别文字</source>
         <translation>刪除辨識文字</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1651"/>
+        <location filename="../editor.cpp" line="1598"/>
         <source>识别的区域文字</source>
         <translation>辨識的區域文字</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="1746"/>
+        <location filename="../editor.cpp" line="1693"/>
         <source>属于上级 · %1</source>
         <translation>屬於上級 · %1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2083"/>
+        <location filename="../editor.cpp" line="2030"/>
         <source>这个框是指大爆炸移动后的内容吗？</source>
         <translation>這個框是指大爆炸移動後的內容嗎？</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2300"/>
-        <location filename="../editor.cpp" line="2905"/>
+        <location filename="../editor.cpp" line="2247"/>
+        <location filename="../editor.cpp" line="2865"/>
         <source>JSON 与配套图片文件已复制</source>
         <translation>JSON 與隨附圖片檔案已複製</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2357"/>
+        <location filename="../editor.cpp" line="2304"/>
         <source>滚轮切换范围 · 单击批注 · 拖动框选</source>
         <translation>滾輪切換範圍 · 點選批註 · 拖曳框選</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2372"/>
+        <location filename="../editor.cpp" line="2319"/>
         <source>悬停滚轮选范围 · 拖边改宽高 · 拖角等比 · 点标注或框选可添加意见</source>
         <translation>懸停滾輪選範圍 · 拖曳邊緣改寬高 · 拖曳角落等比 · 點標註或框選可新增意見</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2560"/>
+        <location filename="../editor.cpp" line="2507"/>
         <source>带批注图片已复制</source>
         <translation>帶批註圖片已複製</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2581"/>
+        <location filename="../editor.cpp" line="2528"/>
         <source>保存 EditHere 项目</source>
         <translation>儲存 EditHere 專案</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2580"/>
+        <location filename="../editor.cpp" line="2527"/>
         <source>设计反馈.edithere</source>
         <translation>設計回饋.edithere</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="753"/>
+        <location filename="../editor.cpp" line="711"/>
         <source>切换适应窗口 / 原始像素 1:1</source>
         <translation>切換適應視窗 / 原始像素 1:1</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2583"/>
+        <location filename="../editor.cpp" line="2530"/>
         <source>EditHere 项目 (*.edithere)</source>
         <translation>EditHere 專案 (*.edithere)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2602"/>
+        <location filename="../editor.cpp" line="2549"/>
         <source>项目已保存，可双击继续编辑</source>
         <translation>專案已儲存，可雙擊繼續編輯</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2602"/>
+        <location filename="../editor.cpp" line="2549"/>
         <source>项目已保存，可从 EditHere 导入继续编辑</source>
         <translation>專案已儲存，可從 EditHere 匯入繼續編輯</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2651"/>
-        <location filename="../editor.cpp" line="2666"/>
-        <location filename="../editor.cpp" line="3014"/>
+        <location filename="../editor.cpp" line="2598"/>
+        <location filename="../editor.cpp" line="2620"/>
+        <location filename="../editor.cpp" line="2974"/>
         <source>请先完成或取消当前 AI 批注任务</source>
         <translation>請先完成或取消目前 AI 批註任務</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2658"/>
-        <location filename="../editor.cpp" line="2732"/>
+        <location filename="../editor.cpp" line="2605"/>
+        <location filename="../editor.cpp" line="2680"/>
         <source>保留当前修改？</source>
         <translation>保留目前修改？</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2658"/>
-        <location filename="../editor.cpp" line="2733"/>
+        <location filename="../editor.cpp" line="2605"/>
+        <location filename="../editor.cpp" line="2681"/>
         <source>当前批注或布局修改尚未保存。是否先保存项目？</source>
         <translation>目前批註或佈局修改尚未儲存。是否先儲存專案？</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2737"/>
+        <location filename="../editor.cpp" line="2685"/>
         <source>不再提醒，可在设置中修改</source>
         <translation>不再提醒，可在設定中修改</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2756"/>
-        <location filename="../editor.cpp" line="3033"/>
+        <location filename="../editor.cpp" line="2711"/>
         <source>项目组图</source>
         <translation>專案組圖</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2779"/>
+        <location filename="../editor.cpp" line="2739"/>
         <source>剪贴板图片</source>
         <translation>剪貼簿圖片</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2800"/>
+        <location filename="../editor.cpp" line="2760"/>
         <source>保存带批注图片</source>
         <translation>儲存帶批註圖片</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2801"/>
+        <location filename="../editor.cpp" line="2761"/>
         <source>保存调整效果</source>
         <translation>儲存調整效果</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2802"/>
+        <location filename="../editor.cpp" line="2762"/>
         <source>保存原图</source>
         <translation>儲存原圖</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2804"/>
+        <location filename="../editor.cpp" line="2764"/>
         <source>PNG 图片 (*.png)</source>
         <translation>PNG 圖片 (*.png)</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2813"/>
+        <location filename="../editor.cpp" line="2773"/>
         <source>图片已保存</source>
         <translation>圖片已儲存</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2822"/>
+        <location filename="../editor.cpp" line="2782"/>
         <source>查看 JSON</source>
         <translation>檢視 JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2824"/>
+        <location filename="../editor.cpp" line="2784"/>
         <source>查看 JSON  ·  批注 %1 条</source>
         <translation>檢視 JSON  ·  批註 %1 條</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2826"/>
+        <location filename="../editor.cpp" line="2786"/>
         <source>原图嵌入 JSON</source>
         <translation>原圖嵌入 JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2829"/>
+        <location filename="../editor.cpp" line="2789"/>
         <source>未勾选时将 JSON 与原图作为独立文件复制。</source>
         <translation>未勾選時將 JSON 與原圖作為獨立檔案複製。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2834"/>
+        <location filename="../editor.cpp" line="2794"/>
         <source>AI解析</source>
         <translation>AI 解析</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2843"/>
+        <location filename="../editor.cpp" line="2803"/>
         <source>复制 JSON 与图片</source>
         <translation>複製 JSON 與圖片</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2871"/>
+        <location filename="../editor.cpp" line="2831"/>
         <source>原图作为配套文件保存；请将 JSON 与图片一起交给 Agent。</source>
         <translation>原圖作為隨附檔案儲存；請將 JSON 與圖片一起交給 Agent。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2872"/>
+        <location filename="../editor.cpp" line="2832"/>
         <source>图片编码仅在预览中折叠，复制文件包含完整原图。</source>
         <translation>圖片編碼僅在預覽中摺疊，複製檔案包含完整原圖。</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2831"/>
+        <location filename="../editor.cpp" line="2791"/>
         <source>标准化 JSON</source>
         <translation>標準化 JSON</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2842"/>
+        <location filename="../editor.cpp" line="2802"/>
         <source>关闭</source>
         <translation>關閉</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2947"/>
+        <location filename="../editor.cpp" line="2907"/>
         <source>设置…</source>
         <translation>設定…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="2949"/>
+        <location filename="../editor.cpp" line="2909"/>
         <source>自定义工具栏…</source>
         <translation>自訂工具列…</translation>
     </message>
     <message>
-        <location filename="../editor.cpp" line="3021"/>
+        <location filename="../editor.cpp" line="2981"/>
         <source>拖入的图片</source>
         <translation>拖入的圖片</translation>
     </message>
@@ -4169,43 +4630,43 @@
 <context>
     <name>h2d::GlobalShortcut</name>
     <message>
-        <location filename="../platform_mac.mm" line="938"/>
-        <location filename="../platform_win.cpp" line="704"/>
+        <location filename="../platform_mac.mm" line="852"/>
+        <location filename="../platform_win.cpp" line="790"/>
         <source>全局快捷键只支持一组按键，不能使用连续组合。</source>
         <translation>全域快速鍵只支援一組按鍵，不能使用連續組合。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="946"/>
+        <location filename="../platform_mac.mm" line="860"/>
         <source>不支持此按键，请使用字母、数字、F1–F20 或方向与导航键。</source>
         <translation>不支援此按鍵，請使用字母、數字、F1–F20 或方向與導覽鍵。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="982"/>
+        <location filename="../platform_mac.mm" line="896"/>
         <source>无法监听系统快捷键（错误 %1）。</source>
         <translation>無法監聽系統快速鍵（錯誤 %1）。</translation>
     </message>
     <message>
-        <location filename="../platform_mac.mm" line="994"/>
+        <location filename="../platform_mac.mm" line="908"/>
         <source>此快捷键已被占用或系统无法注册（错误 %1），请更换一组按键。</source>
         <translation>此快速鍵已被佔用或系統無法註冊（錯誤 %1），請更換一組按鍵。</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="712"/>
+        <location filename="../platform_win.cpp" line="798"/>
         <source>不支持此按键，请使用字母、数字、F1–F24、PrintScreen 或方向与导航键。</source>
         <translation>不支援此按鍵，請使用字母、數字、F1–F24、PrintScreen 或方向與導覽鍵。</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="726"/>
+        <location filename="../platform_win.cpp" line="812"/>
         <source>无法创建快捷键注册，请稍后重试。</source>
         <translation>無法建立快速鍵註冊，請稍後重試。</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="733"/>
+        <location filename="../platform_win.cpp" line="819"/>
         <source>这个快捷键已被其他应用或系统占用，请更换一组按键。</source>
         <translation>這個快速鍵已被其他應用程式或系統佔用，請更換一組按鍵。</translation>
     </message>
     <message>
-        <location filename="../platform_win.cpp" line="734"/>
+        <location filename="../platform_win.cpp" line="820"/>
         <source>系统无法注册此快捷键（错误 %1），请更换一组按键。</source>
         <translation>系統無法註冊此快速鍵（錯誤 %1），請更換一組按鍵。</translation>
     </message>
@@ -4384,7 +4845,7 @@
     <message>
         <location filename="../explosion.cpp" line="282"/>
         <location filename="../explosion.cpp" line="296"/>
-        <location filename="../explosion.cpp" line="640"/>
+        <location filename="../explosion.cpp" line="642"/>
         <source>%1 · %2 / %3 · 滚轮切换范围，单击确认</source>
         <translation>%1 · %2 / %3 · 滾輪切換範圍，點選確認</translation>
     </message>
@@ -4402,43 +4863,43 @@
 <context>
     <name>h2d::LayoutInspector</name>
     <message>
-        <location filename="../explosion.cpp" line="800"/>
+        <location filename="../explosion.cpp" line="802"/>
         <source>组件调整</source>
         <translation>元件調整</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="802"/>
-        <location filename="../explosion.cpp" line="803"/>
+        <location filename="../explosion.cpp" line="804"/>
+        <location filename="../explosion.cpp" line="805"/>
         <source>显示分解框</source>
         <translation>顯示分解框</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="805"/>
+        <location filename="../explosion.cpp" line="807"/>
         <source>宽</source>
         <translation>寬</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="805"/>
+        <location filename="../explosion.cpp" line="807"/>
         <source>高</source>
         <translation>高</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="805"/>
+        <location filename="../explosion.cpp" line="807"/>
         <source>缩放</source>
         <translation>縮放</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="811"/>
+        <location filename="../explosion.cpp" line="813"/>
         <source>为当前组件添加批注</source>
         <translation>為目前元件新增批註</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="811"/>
+        <location filename="../explosion.cpp" line="813"/>
         <source>取消选择</source>
         <translation>取消選擇</translation>
     </message>
     <message>
-        <location filename="../explosion.cpp" line="843"/>
+        <location filename="../explosion.cpp" line="845"/>
         <source>单击选择一个区域</source>
         <translation>點選選擇一個區域</translation>
     </message>
@@ -4446,51 +4907,51 @@
 <context>
     <name>h2d::OcrDialog</name>
     <message>
-        <location filename="../ocrdialog.cpp" line="67"/>
+        <location filename="../ocrdialog.cpp" line="70"/>
         <source>识别语言</source>
         <translation>辨識語言</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="91"/>
-        <location filename="../ocrdialog.cpp" line="120"/>
+        <location filename="../ocrdialog.cpp" line="94"/>
+        <location filename="../ocrdialog.cpp" line="127"/>
         <source>复制全部</source>
         <translation>複製全部</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="92"/>
-        <location filename="../ocrdialog.cpp" line="121"/>
+        <location filename="../ocrdialog.cpp" line="96"/>
+        <location filename="../ocrdialog.cpp" line="128"/>
         <source>复制选中行</source>
         <translation>複製選取的行</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="93"/>
-        <location filename="../ocrdialog.cpp" line="122"/>
+        <location filename="../ocrdialog.cpp" line="98"/>
+        <location filename="../ocrdialog.cpp" line="129"/>
         <source>重新识别</source>
         <translation>重新辨識</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="94"/>
-        <location filename="../ocrdialog.cpp" line="123"/>
+        <location filename="../ocrdialog.cpp" line="100"/>
+        <location filename="../ocrdialog.cpp" line="130"/>
         <source>关闭</source>
         <translation>關閉</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="119"/>
+        <location filename="../ocrdialog.cpp" line="126"/>
         <source>文字识别</source>
         <translation>文字辨識</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="162"/>
+        <location filename="../ocrdialog.cpp" line="169"/>
         <source>正在识别…</source>
         <translation>正在辨識…</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="180"/>
+        <location filename="../ocrdialog.cpp" line="187"/>
         <source>没有识别到文字。</source>
         <translation>沒有辨識到文字。</translation>
     </message>
     <message>
-        <location filename="../ocrdialog.cpp" line="183"/>
+        <location filename="../ocrdialog.cpp" line="190"/>
         <source>识别到 %1 行 · %2</source>
         <translation>辨識到 %1 行 · %2</translation>
     </message>
@@ -4598,135 +5059,155 @@
 <context>
     <name>h2d::Overlay</name>
     <message>
-        <location filename="../overlay.cpp" line="38"/>
+        <location filename="../overlay.cpp" line="54"/>
         <source>EditHere · 选择截图区域</source>
         <translation>EditHere · 選擇截圖區域</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="299"/>
+        <location filename="../overlay.cpp" line="354"/>
+        <source>窗口</source>
+        <translation>視窗</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="445"/>
         <source>已复制颜色值 %1</source>
         <translation>已複製顏色值 %1</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="301"/>
-        <source>移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色</source>
-        <translation>移動到要取色的位置 · C 複製顏色值 · Shift 切換顏色格式 · Esc 結束取色</translation>
+        <location filename="../overlay.cpp" line="447"/>
+        <source>移动到要取色的位置 · C 复制颜色值 · Shift 切换格式 · Esc 结束取色</source>
+        <translation>移動至取色位置 · C 複製顏色值 · Shift 切換格式 · Esc 結束取色</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="311"/>
-        <source>拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消</source>
-        <translation>拖曳選區可移動 · 角點可縮放 · 雙擊或 Ctrl+C 複製 · Enter 批註 · C 取色 · Esc 取消</translation>
+        <location filename="../overlay.cpp" line="450"/>
+        <source>拖动移动选区 · 8 锚点缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消</source>
+        <translation>拖曳移動選區 · 8 錨點縮放 · 連按兩下或 Ctrl+C 複製 · Enter 批註 · C 取色 · Esc 取消</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="328"/>
-        <source>拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消</source>
-        <translation>拖曳截圖 · 點選選塊 · 鬆手後可批註、貼圖或取色 · Esc 取消</translation>
+        <location filename="../overlay.cpp" line="458"/>
+        <source>拖动截图 · 单击智能吸附窗口 · 松手后可批注、贴图或取色 · Esc 取消</source>
+        <translation>拖曳截圖 · 單擊智慧吸附視窗 · 放開後可批註、貼圖或取色 · Esc 取消</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="397"/>
-        <source>像素 ( %1 , %2 )</source>
-        <translation>像素 ( %1 , %2 )</translation>
+        <location filename="../overlay.cpp" line="531"/>
+        <source>像素 %1, %2</source>
+        <translation>像素 %1, %2</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="419"/>
-        <source>C 复制颜色值 · Shift 切换格式</source>
-        <translation>C 複製顏色值 · Shift 切換格式</translation>
+        <location filename="../overlay.cpp" line="556"/>
+        <source>C 复制 · Shift 切换</source>
+        <translation>C 複製 · Shift 切換</translation>
     </message>
     <message>
-        <location filename="../overlay.cpp" line="324"/>
+        <location filename="../overlay.cpp" line="454"/>
         <source>%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小</source>
         <translation>%1  ·  %2 / %3  ·  滾輪 ↑ 更大 ↓ 更小</translation>
     </message>
+    <message>
+        <location filename="../overlay.cpp" line="482"/>
+        <source>在选区内拖动画笔 · Ctrl+Z 撤销 · Esc 退出画笔</source>
+        <translation>在選區內拖動畫筆 · Ctrl+Z 復原 · Esc 退出畫筆</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="484"/>
+        <source>在选区内拖出马赛克区域 · Ctrl+Z 撤销 · Esc 退出马赛克</source>
+        <translation>在選區內拖出馬賽克區域 · Ctrl+Z 復原 · Esc 退出馬賽克</translation>
+    </message>
+    <message>
+        <location filename="../overlay.cpp" line="488"/>
+        <source>松开鼠标完成选区 · Esc 取消</source>
+        <translation>放開滑鼠完成選區 · Esc 取消</translation>
+    </message>
 </context>
 <context>
-    <name>h2d::PinWindow</name>
+    <name>h2d::PinnedImageWindow</name>
     <message>
-        <location filename="../pinwindow.cpp" line="60"/>
+        <location filename="../pinnedimagewindow.cpp" line="60"/>
         <source>置顶图片 %1 × %2</source>
         <translation>置頂圖片 %1 × %2</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="433"/>
+        <location filename="../pinnedimagewindow.cpp" line="433"/>
         <source>批注</source>
         <translation>批註</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="435"/>
+        <location filename="../pinnedimagewindow.cpp" line="436"/>
         <source>复制图像</source>
         <translation>複製影像</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="436"/>
+        <location filename="../pinnedimagewindow.cpp" line="438"/>
         <source>保存图片</source>
         <translation>儲存圖片</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="437"/>
+        <location filename="../pinnedimagewindow.cpp" line="440"/>
         <source>文字识别</source>
         <translation>文字辨識</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="439"/>
+        <location filename="../pinnedimagewindow.cpp" line="443"/>
         <source>旋转</source>
         <translation>旋轉</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="440"/>
+        <location filename="../pinnedimagewindow.cpp" line="444"/>
         <source>向左旋转 90°</source>
         <translation>向左旋轉 90°</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="441"/>
+        <location filename="../pinnedimagewindow.cpp" line="445"/>
         <source>向右旋转 90°</source>
         <translation>向右旋轉 90°</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="445"/>
+        <location filename="../pinnedimagewindow.cpp" line="449"/>
         <source>水平翻转</source>
         <translation>水平翻轉</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="446"/>
+        <location filename="../pinnedimagewindow.cpp" line="450"/>
         <source>垂直翻转</source>
         <translation>垂直翻轉</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="454"/>
+        <location filename="../pinnedimagewindow.cpp" line="458"/>
         <source>阴影</source>
         <translation>陰影</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="462"/>
+        <location filename="../pinnedimagewindow.cpp" line="466"/>
         <source>缩放</source>
         <translation>縮放</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="463"/>
+        <location filename="../pinnedimagewindow.cpp" line="467"/>
         <source>适应屏幕</source>
         <translation>適應螢幕</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="464"/>
+        <location filename="../pinnedimagewindow.cpp" line="468"/>
         <source>原始大小</source>
         <translation>原始大小</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="468"/>
+        <location filename="../pinnedimagewindow.cpp" line="472"/>
         <source>回到截图位置</source>
         <translation>回到截圖位置</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="447"/>
+        <location filename="../pinnedimagewindow.cpp" line="451"/>
         <source>透明度</source>
         <translation>透明度</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="61"/>
+        <location filename="../pinnedimagewindow.cpp" line="61"/>
         <source>拖动移动 · 拖边缘缩放 · 滚轮缩放 · 双击关闭 · Ctrl+C 复制 · 右键更多选项 · Esc 关闭</source>
         <translation>拖曳移動 · 拖曳邊緣縮放 · 滾輪縮放 · 雙擊關閉 · Ctrl+C 複製 · 右鍵更多選項 · Esc 關閉</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="474"/>
+        <location filename="../pinnedimagewindow.cpp" line="478"/>
         <source>关闭</source>
         <translation>關閉</translation>
     </message>
@@ -4763,228 +5244,199 @@
 <context>
     <name>h2d::ScrollCaptureProgress</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="923"/>
+        <location filename="../capturetoolbar.cpp" line="1102"/>
         <source>EditHere · 长截图</source>
         <translation>EditHere · 長截圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1022"/>
+        <location filename="../capturetoolbar.cpp" line="1123"/>
+        <source>当前长图尺寸（像素）</source>
+        <translation>目前長圖尺寸（像素）</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1137"/>
+        <location filename="../capturetoolbar.cpp" line="1138"/>
+        <source>切换滚动方向</source>
+        <translation>切換捲動方向</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1157"/>
+        <source>自动滚动</source>
+        <translation>自動捲動</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1184"/>
+        <location filename="../capturetoolbar.cpp" line="1185"/>
+        <location filename="../capturetoolbar.cpp" line="1567"/>
+        <location filename="../capturetoolbar.cpp" line="1568"/>
+        <source>停止长截图</source>
+        <translation>停止長截圖</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1197"/>
+        <location filename="../capturetoolbar.cpp" line="1198"/>
+        <location filename="../capturetoolbar.cpp" line="1499"/>
+        <source>批注</source>
+        <translation>批註</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1204"/>
+        <location filename="../capturetoolbar.cpp" line="1205"/>
+        <location filename="../capturetoolbar.cpp" line="1500"/>
         <source>贴图</source>
         <translation>貼圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1022"/>
-        <source>保存</source>
-        <translation>儲存</translation>
+        <location filename="../capturetoolbar.cpp" line="1204"/>
+        <location filename="../capturetoolbar.cpp" line="1205"/>
+        <source>保存图片</source>
+        <translation>儲存圖片</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="933"/>
-        <source>拖动工具栏</source>
-        <translation>拖曳工具列</translation>
+        <location filename="../capturetoolbar.cpp" line="1204"/>
+        <location filename="../capturetoolbar.cpp" line="1205"/>
+        <location filename="../capturetoolbar.cpp" line="1501"/>
+        <source>复制图像</source>
+        <translation>複製影像</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="953"/>
-        <source>已拼接长图的宽度和高度，单位为像素</source>
-        <translation>已拼接長圖的寬度和高度，單位為像素</translation>
+        <location filename="../capturetoolbar.cpp" line="1227"/>
+        <source>取消截图（Esc）</source>
+        <translation>取消截圖（Esc）</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="966"/>
-        <source>切换垂直或水平截图；切换方向会重新开始拼接</source>
-        <translation>切換垂直或水平截圖；切換方向會重新開始拼接</translation>
+        <location filename="../capturetoolbar.cpp" line="1228"/>
+        <source>取消截图</source>
+        <translation>取消截圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="967"/>
-        <source>切换截图方向</source>
-        <translation>切換截圖方向</translation>
+        <location filename="../capturetoolbar.cpp" line="1273"/>
+        <source>反向滚动时自动裁剪超出区域的内容</source>
+        <translation>反向捲動時自動裁剪超出區域的內容</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="973"/>
-        <location filename="../capturetoolbar.cpp" line="1328"/>
+        <location filename="../capturetoolbar.cpp" line="1552"/>
+        <location filename="../capturetoolbar.cpp" line="1592"/>
+        <source>重新开始长截图后可启用自动滚动</source>
+        <translation>重新開始長截圖後可啟用自動捲動</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1555"/>
+        <source>重新开始长截图</source>
+        <translation>重新開始長截圖</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1556"/>
+        <source>开始长截图</source>
+        <translation>開始長截圖</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1584"/>
+        <source>裁去上方内容，保留当前区域及下方</source>
+        <translation>裁去上方內容，保留目前區域及下方</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1585"/>
+        <source>裁去左侧内容，保留当前区域及右侧</source>
+        <translation>裁去左側內容，保留目前區域及右側</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1586"/>
+        <source>裁去下方内容，保留当前区域及上方</source>
+        <translation>裁去下方內容，保留目前區域及上方</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1587"/>
+        <source>裁去右侧内容，保留当前区域及左侧</source>
+        <translation>裁去右側內容，保留目前區域及左側</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1594"/>
+        <source>自动向下滚动并拼接</source>
+        <translation>自動向下捲動並拼接</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1595"/>
+        <source>水平截图请手动滚动或拖动滚动条</source>
+        <translation>水平截圖請手動捲動或拖曳捲軸</translation>
+    </message>
+    <message>
+        <location filename="../capturetoolbar.cpp" line="1145"/>
+        <location filename="../capturetoolbar.cpp" line="1577"/>
         <source>垂直</source>
         <translation>垂直</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="973"/>
-        <location filename="../capturetoolbar.cpp" line="1328"/>
+        <location filename="../capturetoolbar.cpp" line="1145"/>
+        <location filename="../capturetoolbar.cpp" line="1577"/>
         <source>水平</source>
         <translation>水平</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="985"/>
-        <location filename="../capturetoolbar.cpp" line="1345"/>
-        <source>自动向下滚动并拼接；再次点击切换为手动滚动</source>
-        <translation>自動向下捲動並拼接；再次點選切換為手動捲動</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="992"/>
+        <location filename="../capturetoolbar.cpp" line="1164"/>
         <source>自动滚动（默认手动滚动）</source>
         <translation>自動捲動（預設手動捲動）</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1000"/>
-        <source>裁剪当前可见区域之前或之后的内容，裁剪后可继续截图</source>
-        <translation>裁切目前可見區域之前或之後的內容，裁切後可繼續截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1001"/>
+        <location filename="../capturetoolbar.cpp" line="1176"/>
+        <location filename="../capturetoolbar.cpp" line="1177"/>
         <source>裁剪长截图</source>
         <translation>裁切長截圖</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1007"/>
-        <location filename="../capturetoolbar.cpp" line="1316"/>
-        <source>停止截图并清空本次结果；可调整选区后重新开始</source>
-        <translation>停止截圖並清空本次結果；可調整選區後重新開始</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1008"/>
-        <location filename="../capturetoolbar.cpp" line="1317"/>
-        <source>停止截图</source>
-        <translation>停止截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1014"/>
-        <location filename="../capturetoolbar.cpp" line="1246"/>
-        <source>完成长截图并进入编辑器（Enter）</source>
-        <translation>完成長截圖並進入編輯器（Enter）</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1015"/>
-        <source>完成并进入编辑器</source>
-        <translation>完成並進入編輯器</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1020"/>
-        <location filename="../capturetoolbar.cpp" line="1247"/>
-        <source>将完整长图贴在桌面上</source>
-        <translation>將完整長圖貼在桌面上</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1020"/>
-        <source>选择位置和格式，保存完整长图</source>
-        <translation>選擇位置和格式，儲存完整長圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1021"/>
-        <location filename="../capturetoolbar.cpp" line="1248"/>
-        <source>复制完整长图到剪贴板并关闭长截图</source>
-        <translation>複製完整長圖到剪貼簿並關閉長截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1022"/>
-        <source>复制并关闭</source>
-        <translation>複製並關閉</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1039"/>
-        <source>关闭长截图并放弃本次结果（Esc）</source>
-        <translation>關閉長截圖並放棄本次結果（Esc）</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1040"/>
-        <source>关闭长截图</source>
-        <translation>關閉長截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1085"/>
-        <location filename="../capturetoolbar.cpp" line="1088"/>
+        <location filename="../capturetoolbar.cpp" line="1271"/>
+        <location filename="../capturetoolbar.cpp" line="1274"/>
         <source>自动裁剪</source>
         <translation>自動裁切</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1087"/>
-        <source>反向滚动时，自动裁去当前可见区域之外的长图内容</source>
-        <translation>反向捲動時，自動裁掉目前可見區域之外的長圖內容</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1245"/>
+        <location filename="../capturetoolbar.cpp" line="1498"/>
         <source>超大长图请使用 PNG 保存；当前尺寸超过复制、贴图和编辑的图像上限。</source>
         <translation>超大長圖請使用 PNG 儲存；目前尺寸超過複製、貼圖和編輯的影像上限。</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1269"/>
+        <location filename="../capturetoolbar.cpp" line="1520"/>
         <source>正在自动滚动 · %1 × %2 px
 已追加 %3 帧，随时可停止</source>
         <translation>正在自動捲動 · %1 × %2 px
 已追加 %3 影格，隨時可停止</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1271"/>
+        <location filename="../capturetoolbar.cpp" line="1522"/>
         <source>请在选区内上下滚动页面
 %1 × %2 px · 已追加 %3 帧</source>
         <translation>請在選區內上下捲動頁面
 %1 × %2 px · 已追加 %3 影格</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1272"/>
+        <location filename="../capturetoolbar.cpp" line="1523"/>
         <source>请在选区内左右滚动或拖动水平滚动条
 %1 × %2 px · 已追加 %3 帧</source>
         <translation>請在選區內左右捲動或拖曳水平捲軸
 %1 × %2 px · 已追加 %3 影格</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1301"/>
-        <location filename="../capturetoolbar.cpp" line="1343"/>
-        <source>重新开始截图后可启用自动滚动</source>
-        <translation>重新開始截圖後可啟用自動捲動</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1304"/>
-        <source>按当前选区开始新的长截图</source>
-        <translation>按目前選區開始新的長截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1305"/>
-        <source>开始截图</source>
-        <translation>開始截圖</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1335"/>
-        <source>裁去当前可见区域上方的内容，保留当前区域及其下方</source>
-        <translation>裁掉目前可見區域上方的內容，保留目前區域及其下方</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1336"/>
-        <source>裁去当前可见区域左侧的内容，保留当前区域及其右侧</source>
-        <translation>裁掉目前可見區域左側的內容，保留目前區域及其右側</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1337"/>
-        <source>裁去当前可见区域下方的内容，保留当前区域及其上方</source>
-        <translation>裁掉目前可見區域下方的內容，保留目前區域及其上方</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1338"/>
-        <source>裁去当前可见区域右侧的内容，保留当前区域及其左侧</source>
-        <translation>裁掉目前可見區域右側的內容，保留目前區域及其左側</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1339"/>
+        <location filename="../capturetoolbar.cpp" line="1588"/>
         <source>上裁剪</source>
         <translation>上裁切</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1339"/>
+        <location filename="../capturetoolbar.cpp" line="1588"/>
         <source>左裁剪</source>
         <translation>左裁切</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1340"/>
+        <location filename="../capturetoolbar.cpp" line="1589"/>
         <source>下裁剪</source>
         <translation>下裁切</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1340"/>
+        <location filename="../capturetoolbar.cpp" line="1589"/>
         <source>右裁剪</source>
         <translation>右裁切</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="1346"/>
-        <source>水平截图请手动滚动或拖动水平滚动条</source>
-        <translation>水平截圖請手動捲動或拖曳水平捲軸</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1370"/>
+        <location filename="../capturetoolbar.cpp" line="1619"/>
         <source>在预览中点击并拖动，调整蓝色裁剪线。
 点击另一端裁剪按钮可切换边界。</source>
         <translation>在預覽中點選並拖曳，調整藍色裁切線。
@@ -4994,14 +5446,14 @@
 <context>
     <name>h2d::ScrollCaptureRegion</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="582"/>
-        <source>拖动移动选区；拖动蓝框边缘调整大小</source>
-        <translation>拖曳移動選區；拖曳藍框邊緣調整大小</translation>
+        <location filename="../capturetoolbar.cpp" line="759"/>
+        <source>拖动沿方向微调选区</source>
+        <translation>拖曳沿方向微調選區</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="582"/>
-        <source>拖动沿截图方向移动选区，保留已截取内容并继续追加</source>
-        <translation>拖曳沿截圖方向移動選區，保留已擷取內容並繼續追加</translation>
+        <location filename="../capturetoolbar.cpp" line="759"/>
+        <source>拖动移动选区 · 拖边缘调整大小</source>
+        <translation>拖曳移動選區 · 拖曳邊緣調整大小</translation>
     </message>
 </context>
 <context>
@@ -5363,8 +5815,8 @@
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="831"/>
-        <source>EditHere · 改这里</source>
-        <translation>EditHere · 改這裡</translation>
+        <source>EditHere</source>
+        <translation>EditHere</translation>
     </message>
     <message>
         <location filename="../settingsdialog.cpp" line="833"/>
@@ -5545,53 +5997,53 @@
 <context>
     <name>h2d::StylePanel</name>
     <message>
-        <location filename="../capturetoolbar.cpp" line="139"/>
+        <location filename="../capturetoolbar.cpp" line="276"/>
         <source>圆角</source>
         <translation>圓角</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="140"/>
+        <location filename="../capturetoolbar.cpp" line="277"/>
         <source>圆角半径</source>
         <translation>圓角半徑</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="142"/>
+        <location filename="../capturetoolbar.cpp" line="279"/>
         <source>阴影 / 边框</source>
         <translation>陰影 / 邊框</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="143"/>
+        <location filename="../capturetoolbar.cpp" line="280"/>
         <source>阴影</source>
         <translation>陰影</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="144"/>
+        <location filename="../capturetoolbar.cpp" line="281"/>
         <source>边框</source>
         <translation>邊框</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="145"/>
+        <location filename="../capturetoolbar.cpp" line="282"/>
         <source>图片外圈的柔和投影</source>
         <translation>圖片外圈的柔和投影</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="146"/>
+        <location filename="../capturetoolbar.cpp" line="283"/>
         <source>图片内沿的一条描边</source>
         <translation>圖片內沿的一條描邊</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="148"/>
+        <location filename="../capturetoolbar.cpp" line="285"/>
         <source>每次截图都设置</source>
         <translation>每次截圖都設定</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="149"/>
+        <location filename="../capturetoolbar.cpp" line="286"/>
         <source>以后每次截图都从这个样式开始</source>
         <translation>以後每次截圖都從這個樣式開始</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="182"/>
-        <location filename="../capturetoolbar.cpp" line="218"/>
+        <location filename="../capturetoolbar.cpp" line="324"/>
+        <location filename="../capturetoolbar.cpp" line="360"/>
         <source>%1 px</source>
         <translation>%1 px</translation>
     </message>
@@ -5810,6 +6262,10 @@
         <location filename="../updatechecker.cpp" line="892"/>
         <source>无法读取并锁定已下载的安装包，已停止更新。</source>
         <translation>無法讀取並鎖定已下載的安裝套件，已停止更新。</translation>
+    </message>
+    <message>
+        <source>检测到新的修改或正在进行的操作，更新已取消。</source>
+        <translation>偵測到新的變更或正在進行的作業，更新已取消。</translation>
     </message>
 </context>
 <context>

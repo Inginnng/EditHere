@@ -1,0 +1,34 @@
+---
+name: edithere-web
+description: Review screenshots and multi-page project galleries in EditHere Web (MCP Apps or local browser). Use after UI work to capture accessible pages, maintain a gallery manifest, apply scoped code edits from submitted feedback, and refresh code-affected screenshots.
+---
+
+# EditHere Web
+
+Deliver live screenshots or gallery manifests to EditHere Web, read submitted feedback from the same session, and apply code changes. Prefer connected EditHere Web MCP tools unless the user requests the Desktop app.
+
+{{PARTIAL:workflow-core}}
+
+## Option 1: Connected EditHere Web MCP (MCP Apps)
+
+Check actually exposed tools (`edithere_web_open`, `edithere_web_read`, possibly host-prefixed):
+
+1. **Start session**: Call `edithere_web_open` with absolute `imagePath` (single) or `projectPath` (gallery), plus `pageContext` when known and optional unique `outputPath`.
+2. **Check `uiSupport/state`**: If `unsupported`, switch to Option 2 below instead of spawning empty sessions. Otherwise record `sessionId`, `outputPath`, and `expiresAt`.
+3. **Track 3 distinct states**: Submitting persists feedback first, then asks the host to message the chat. **Saved**, **host accepted message**, and **AI implemented edits** are separate states — only claim auto-resume if the host wakes up; otherwise tell the user to reply "continue".
+4. **Read & resume**: When resumed or told "continue", call `edithere_web_read({ sessionId })` and act only when `state === "completed"` and `sessionId`/`outputPath`/`sha256` match. Reopen interrupted drafts via `edithere_web_open({ sessionId })` (never reopen after cancel/expiry).
+
+## Option 2: Browser Compatibility CLI (No MCP / No MCP Apps UI)
+
+Read [Local Web Entry](references/local-installation.md) for local `agent.cjs` and Node.js (`18+`) paths (installing this skill does not configure host MCP):
+
+```powershell
+node "<abs-agent.cjs>" start --image "<abs-image>" --output "<new-feedback.json>" --timeout 86400
+node "<abs-agent.cjs>" start --project "<abs-manifest.json>" --output "<new-feedback.json>" --timeout 86400
+node "<abs-agent.cjs>" poll --session "<sessionId>"
+```
+
+- Open the session URL returned by `start` (never the plain preview URL). Default port is `127.0.0.1:7330`; on conflict set matching `EDITHERE_WEB_PORT` (`1`–`65535`) on `preview.cjs` and `agent.cjs` without killing other workspace servers.
+- Record state under `.edithere/sessions/<sessionId>.json` (mark `processing` only when actually editing code). See [Browser Follow-Up & Handoff](references/follow-up.md) and [Exit Codes, Version Baselines & Troubleshooting](references/troubleshooting.md).
+
+{{PARTIAL:format-summary}}

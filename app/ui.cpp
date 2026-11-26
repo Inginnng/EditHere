@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "fonts.h"
 #include "i18n.h"
+#include "platform.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -13,6 +14,7 @@
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QMap>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
@@ -20,6 +22,7 @@
 #include <QStyleHints>
 #include <QSvgRenderer>
 #include <QToolButton>
+#include <QWheelEvent>
 #include <QWindow>
 
 // Reference the resource from the static library, including in test executables.
@@ -29,6 +32,19 @@ static void initializeUiIcons() {
 }
 
 namespace h2d {
+double wheelZoomFactor(const QWheelEvent &event) {
+    const int pixels = event.pixelDelta().y();
+    const int angle = event.angleDelta().y();
+#ifdef Q_OS_MACOS
+    // Cocoa can emit many tiny wheel events for a single trackpad gesture.
+    if (event.phase() == Qt::ScrollMomentum) return 1.0;
+    const double steps = pixels != 0 ? pixels / 40.0 : angle / 120.0;
+    return std::pow(1.06, std::clamp(steps, -1.0, 1.0));
+#else
+    const int delta = angle != 0 ? angle : pixels;
+    return delta > 0 ? 1.12 : delta < 0 ? 1 / 1.12 : 1.0;
+#endif
+}
 void paintTransparency(QPainter &painter, const QRect &area) {
     QRect visible = area;
     if (painter.hasClipping())
@@ -53,13 +69,68 @@ bool darkTheme = false;
 bool applyingTheme = false;
 bool themeInitialized = false;
 
+QString rgbaCss(const QColor &c) {
+    return QStringLiteral("rgba(%1, %2, %3, %4)").arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha());
+}
+
+bool isRoundedPopup(const QWidget *widget) {
+    if (!widget)
+        return false;
+    return qobject_cast<const QMenu *>(widget) != nullptr || widget->inherits("QTipLabel") ||
+           ((widget->windowFlags() & Qt::WindowType_Mask) == Qt::ToolTip);
+}
+
+void prepareTranslucentPopup(QWidget *widget) {
+    if (!isRoundedPopup(widget))
+        return;
+    if (!widget->isVisible()) {
+        const Qt::WindowFlags needed = Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
+        if ((widget->windowFlags() & needed) != needed)
+            widget->setWindowFlags(widget->windowFlags() | needed);
+    }
+    if (!widget->testAttribute(Qt::WA_TranslucentBackground))
+        widget->setAttribute(Qt::WA_TranslucentBackground, true);
+    widget->setAttribute(Qt::WA_OpaquePaintEvent, false);
+    widget->setAutoFillBackground(false);
+    if (auto *label = qobject_cast<QLabel *>(widget)) {
+        label->setFrameShape(QFrame::NoFrame);
+        label->setMargin(0);
+    }
+}
+
+class RoundedPopupFilter final : public QObject {
+  public:
+    explicit RoundedPopupFilter(QObject *parent = nullptr) : QObject(parent) {}
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        const auto type = event->type();
+        if (type == QEvent::Polish || type == QEvent::Show || type == QEvent::WinIdChange) {
+            if (auto *widget = qobject_cast<QWidget *>(watched); isRoundedPopup(widget)) {
+                if (type == QEvent::Polish) {
+                    prepareTranslucentPopup(widget);
+                } else {
+                    widget->setAutoFillBackground(false);
+                    widget->setAttribute(Qt::WA_OpaquePaintEvent, false);
+                    if (type == QEvent::WinIdChange || widget->testAttribute(Qt::WA_WState_Created))
+                        configureRoundedPopupWindow(widget);
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
 void refreshTheme() {
     if (applyingTheme)
         return;
     applyingTheme = true;
+    if (qApp && !qApp->property("_editherePopupFilterInstalled").toBool()) {
+        qApp->setProperty("_editherePopupFilterInstalled", true);
+        qApp->installEventFilter(new RoundedPopupFilter(qApp));
+    }
     darkTheme =
         currentTheme == ThemeMode::Dark ||
         (currentTheme == ThemeMode::System && qApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark);
+    const auto chrome = captureChromeTokens();
     const auto tone = [](const char *light, const char *dark) { return QColor(darkTheme ? dark : light); };
     QPalette palette;
     palette.setColor(QPalette::Window, tone("#fbfbfd", "#202126"));
@@ -81,8 +152,8 @@ void refreshTheme() {
     palette.setColor(QPalette::Link, accent());
     palette.setColor(QPalette::LinkVisited, tone("#7656d9", "#b79aff"));
     palette.setColor(QPalette::PlaceholderText, tone("#898990", "#a0a2ae"));
-    palette.setColor(QPalette::ToolTipBase, tone("#292930", "#e9e9ef"));
-    palette.setColor(QPalette::ToolTipText, tone("#ffffff", "#232326"));
+    palette.setColor(QPalette::ToolTipBase, QColor(chrome.tooltipBg.rgb()));
+    palette.setColor(QPalette::ToolTipText, chrome.tooltipText);
     for (auto role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText, QPalette::PlaceholderText})
         palette.setColor(QPalette::Disabled, role, tone("#a0a0aa", "#7b7e8a"));
     palette.setColor(QPalette::Disabled, QPalette::Base, tone("#f5f5f7", "#24262c"));
@@ -151,18 +222,6 @@ QWidget#parentPrompt QPushButton { border:1px solid @border@; border-radius:6px;
 QWidget#parentPrompt QPushButton:hover { background:@hover@; }
 QLabel#noteBadge { background:@accent@; color:white; border-radius:11px; font-weight:600; font-size:11px; }
 QWidget#toolbarSeparator,QWidget#inspectorSeparator { background:@border@; border:0; }
-QWidget#scrollCaptureProgress QPushButton,QWidget#scrollCropMenu QPushButton,QPushButton#scrollRegionHandle { background:transparent; border:1px solid transparent; border-radius:8px; padding:0; min-width:0; min-height:0; }
-QWidget#scrollCaptureProgress QPushButton:hover,QWidget#scrollCropMenu QPushButton:hover,QPushButton#scrollRegionHandle:hover { background:@hover@; }
-QWidget#scrollCaptureProgress QPushButton:pressed,QWidget#scrollCropMenu QPushButton:pressed,QPushButton#scrollRegionHandle:pressed { background:@pressed@; }
-QWidget#scrollCaptureProgress QPushButton:checked { background:@selected@; color:@accent@; }
-QWidget#scrollCaptureProgress QPushButton:disabled,QWidget#scrollCropMenu QPushButton:disabled,QPushButton#scrollRegionHandle:disabled { background:transparent; color:@disabled@; }
-QWidget#scrollCaptureProgress QPushButton:focus,QWidget#scrollCropMenu QPushButton:focus { border-color:@focus@; }
-QWidget#scrollCaptureProgress QPushButton#scrollDirection { background:@button@; font-size:14px; padding:0 12px; }
-QWidget#scrollCaptureProgress QPushButton#scrollDirection:hover { background:@hover@; }
-QWidget#scrollCaptureProgress QPushButton#scrollDirection::menu-indicator { subcontrol-origin:padding; subcontrol-position:center right; right:8px; width:9px; height:9px; }
-QPushButton#scrollRegionHandle { background:@window@; }
-QWidget#scrollCropMenu QCheckBox { font-size:14px; spacing:6px; }
-QWidget#scrollCropMenu QCheckBox::indicator { width:18px; height:18px; }
 QPushButton#foldNote { color:@accent@; background:transparent; border:0; padding:0 3px; min-height:16px; font-size:11px; }
 QPushButton#foldNote:hover { background:@selected@; }
 QLabel#noteCoordinates { font-size:10px; color:@muted@; }
@@ -178,12 +237,12 @@ QScrollBar::handle:vertical:hover,QScrollBar::handle:horizontal:hover { backgrou
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height:0; }
 QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal { width:0; }
 QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical,QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal { background:transparent; }
-QMenu { background:@window@; color:@text@; padding:6px; border:1px solid @border@; }
-QMenu::item { padding:8px 24px; border-radius:5px; }
+QMenu { background:@menuBg@; color:@text@; padding:6px; border:1px solid @menuBorder@; border-radius:10px; }
+QMenu::item { padding:6px 18px 6px 10px; border-radius:6px; }
 QMenu::item:selected { background:@accent@; color:white; }
 QMenu::item:disabled { color:@disabled@; }
 QMenu::separator { height:1px; margin:5px 8px; background:@border@; }
-QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0; }
+QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 10px; border:1px solid @tooltipBorder@; border-radius:8px; font-size:12px; }
 )");
 #ifdef Q_OS_MAC
     // macOS draws the window frame itself, and the traffic lights live in its title
@@ -191,44 +250,53 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
     // inside the real one, so a later rule of the same specificity removes it.
     css += QStringLiteral("QWidget#editorShell { border:0; border-radius:0; }\n");
 #endif
-    const QList<std::pair<QString, QColor>> colors{
-        {"text", palette.color(QPalette::WindowText)},
-        {"window", palette.color(QPalette::Window)},
-        {"surface", palette.color(QPalette::Base)},
-        {"alternate", palette.color(QPalette::AlternateBase)},
-        {"border", tone("#dddde5", "#41434d")},
-        {"well", tone("#efeff2", "#18191e")},
-        {"button", palette.color(QPalette::Button)},
-        {"hover", tone("#e3e3e9", "#41444e")},
-        {"pressed", tone("#d6d6df", "#4a4e5a")},
-        {"selected", tone("#e5efff", "#243d5e")},
-        {"cardSelected", tone("#f3f7ff", "#27364c")},
-        {"disabledBg", palette.color(QPalette::Disabled, QPalette::Button)},
-        {"disabled", palette.color(QPalette::Disabled, QPalette::Text)},
-        {"muted", palette.color(QPalette::PlaceholderText)},
-        {"accent", accent()},
-        {"error", tone("#bd252f", "#ff8991")},
-        {"accentHover", tone("#0870df", "#3297ff")},
-        {"accentPressed", tone("#005fc7", "#0070de")},
-        {"focus", tone("#9cc9ff", "#4c83bd")},
-        {"purple", tone("#7656d9", "#8061df")},
-        {"purpleHover", tone("#6947ce", "#9172ed")},
-        {"scroll", tone("#c8c8d0", "#595c68")},
-        {"tooltip", palette.color(QPalette::ToolTipBase)},
-        {"tooltipText", palette.color(QPalette::ToolTipText)}};
-    for (const auto &[name, color] : colors)
-        css.replace("@" + name + "@", color.name());
+    const QList<std::pair<QString, QString>> colors{
+        {"text", palette.color(QPalette::WindowText).name()},
+        {"window", palette.color(QPalette::Window).name()},
+        {"surface", palette.color(QPalette::Base).name()},
+        {"alternate", palette.color(QPalette::AlternateBase).name()},
+        {"border", tone("#dddde5", "#41434d").name()},
+        {"well", tone("#efeff2", "#18191e").name()},
+        {"button", palette.color(QPalette::Button).name()},
+        {"hover", tone("#e3e3e9", "#41444e").name()},
+        {"pressed", tone("#d6d6df", "#4a4e5a").name()},
+        {"selected", tone("#e5efff", "#243d5e").name()},
+        {"cardSelected", tone("#f3f7ff", "#27364c").name()},
+        {"disabledBg", palette.color(QPalette::Disabled, QPalette::Button).name()},
+        {"disabled", palette.color(QPalette::Disabled, QPalette::Text).name()},
+        {"muted", palette.color(QPalette::PlaceholderText).name()},
+        {"accent", accent().name()},
+        {"error", tone("#bd252f", "#ff8991").name()},
+        {"accentHover", tone("#0870df", "#3297ff").name()},
+        {"accentPressed", tone("#005fc7", "#0070de").name()},
+        {"focus", tone("#9cc9ff", "#4c83bd").name()},
+        {"purple", tone("#7656d9", "#8061df").name()},
+        {"purpleHover", tone("#6947ce", "#9172ed").name()},
+        {"scroll", tone("#c8c8d0", "#595c68").name()},
+        {"menuBg", rgbaCss(QColor(chrome.panelBg.red(), chrome.panelBg.green(), chrome.panelBg.blue(), 248))},
+        {"menuBorder", rgbaCss(chrome.panelBorder)},
+        {"tooltip", rgbaCss(chrome.tooltipBg)},
+        {"tooltipText", chrome.tooltipText.name()},
+        {"tooltipBorder", rgbaCss(chrome.tooltipBorder)}};
+    for (const auto &[name, value] : colors)
+        css.replace("@" + name + "@", value);
     qApp->setStyleSheet(css);
     for (auto widget : QApplication::allWidgets()) {
+        prepareTranslucentPopup(widget);
         if (auto button = qobject_cast<QPushButton *>(widget)) {
             const auto name = button->property("glyphName").toString();
             if (!name.isEmpty()) {
-                QColor color = button->property("glyphColor").value<QColor>();
-                if (button->objectName() == "scrollStop")
-                    color = tone("#bd252f", "#ff8991");
+                QColor color = button->property("captureChrome").toBool()
+                                   ? chrome.glyph
+                                   : button->property("glyphColor").value<QColor>();
+                if (button->objectName() == "scrollStop" && name == QLatin1String("scroll-stop"))
+                    color = chrome.danger;
                 else if (button->property("primary").toBool() ||
                          (button->objectName() == "explodeButton" && button->isChecked()))
                     color = Qt::white;
+                else if (button->property("captureChrome").toBool() &&
+                         (button->property("active").toBool() || button->isChecked()))
+                    color = chrome.accent;
                 button->setIcon(glyph(name, color));
             }
         }
@@ -249,57 +317,137 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 8px; border:0;
 bool isDarkTheme() {
     return darkTheme;
 }
+CaptureChromeTokens captureChromeTokens() {
+    CaptureChromeTokens t;
+    // Match the workspace dock, stage and status colors in frontend/src/styles/tokens.css.
+    t.scrim = QColor(11, 12, 15, 122);
+    if (darkTheme) {
+        t.panelBg = QColor("#202228");
+        t.panelBorder = QColor(255, 255, 255, 33);
+        t.panelHighlight = QColor(255, 255, 255, 23);
+        t.stage = QColor("#13151a");
+        t.text = QColor("#f5f5f7");
+        t.textSecondary = QColor("#d1d1d6");
+        t.textMuted = QColor("#8e8e93");
+        t.glyph = t.textSecondary;
+        t.hoverBg = QColor(120, 120, 128, 56);
+        t.pressedBg = QColor(120, 120, 128, 77);
+        t.activeBg = QColor(10, 132, 255, 46);
+        t.divider = QColor(255, 255, 255, 38);
+        t.accent = QColor("#0a84ff");
+        t.accentHover = QColor("#409cff");
+        t.success = QColor("#30d158");
+        t.successSoft = QColor(48, 209, 88, 46);
+        t.warning = QColor("#ff9f0a");
+        t.warningSoft = QColor(255, 159, 10, 46);
+        t.danger = QColor("#ff453a");
+    } else {
+        t.panelBg = Qt::white;
+        t.panelBorder = QColor(15, 23, 42, 31);
+        t.panelHighlight = QColor(255, 255, 255, 217);
+        t.stage = QColor("#f4f5f8");
+        t.text = QColor("#1d1d1f");
+        t.textSecondary = QColor("#48484a");
+        t.textMuted = QColor("#86868b");
+        t.glyph = t.textSecondary;
+        t.hoverBg = QColor(120, 120, 128, 26);
+        t.pressedBg = QColor(120, 120, 128, 41);
+        t.activeBg = QColor(0, 122, 255, 28);
+        t.divider = QColor(15, 23, 42, 36);
+        t.accent = QColor("#007aff");
+        t.accentHover = QColor("#0066d6");
+        t.success = QColor("#34c759");
+        t.successSoft = QColor(52, 199, 89, 36);
+        t.warning = QColor("#ff9500");
+        t.warningSoft = QColor(255, 149, 0, 36);
+        t.danger = QColor("#ff3b30");
+    }
+    t.tooltipBg = QColor(18, 20, 26, 235);
+    t.tooltipText = QColor("#f5f5f7");
+    t.tooltipBorder = QColor(255, 255, 255, 36);
+    return t;
+}
+void paintFloatingPanel(QPainter &painter, const QRectF &rect, int radius) {
+    const auto tokens = captureChromeTokens();
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QRectF r = rect.adjusted(0.5, 0.5, -0.5, -0.5);
+    painter.setPen(QPen(tokens.panelBorder, 1));
+    painter.setBrush(tokens.panelBg);
+    painter.drawRoundedRect(r, radius, radius);
+    if (r.width() > radius * 2) {
+        painter.setPen(QPen(tokens.panelHighlight, 1));
+        painter.drawLine(QPointF(r.left() + radius, r.top() + 1.0),
+                         QPointF(r.right() - radius, r.top() + 1.0));
+    }
+    painter.restore();
+}
+void paintCaptureHandles(QPainter &painter, const QRectF &selection) {
+    painter.save();
+    painter.setPen(QPen(accent(), 1.5));
+    painter.setBrush(Qt::white);
+    const auto center = selection.center();
+    for (const auto &point : {selection.topLeft(), QPointF(center.x(), selection.top()),
+                              selection.topRight(), QPointF(selection.left(), center.y()),
+                              QPointF(selection.right(), center.y()), selection.bottomLeft(),
+                              QPointF(center.x(), selection.bottom()), selection.bottomRight()}) {
+        painter.drawRoundedRect(QRectF(point - QPointF(3.5, 3.5), QSizeF(7, 7)), 2, 2);
+    }
+    painter.restore();
+}
 QColor accent() {
     return QColor(darkTheme ? "#0a84ff" : "#007aff");
 }
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools) {
-    const QSizeF panel(magnifierPanelWidth, magnifierPanelHeight);
     constexpr double gap = 24, margin = 8;
-    // Anywhere the panel is put is confined to the window; that is what keeps a flip
-    // from turning into a panel half off the screen.
-    const auto settle = [&](double x, double y) {
-        return QPointF(std::clamp(x, margin, std::max(margin, window.width() - panel.width() - margin)),
-                       std::clamp(y, margin, std::max(margin, window.height() - panel.height() - margin)));
-    };
-    const auto clear = [&](QPointF topLeft) {
-        const QRectF here(topLeft, panel);
-        for (const QRectF &tool : tools)
-            if (here.intersects(tool))
-                return false;
-        return true;
-    };
-    // Beside the pointer, and on the other side of it when there is no room there.
-    double x = at.x() + gap;
-    if (x + panel.width() > window.width() - margin)
-        x = at.x() - gap - panel.width();
-    double y = at.y() + gap;
-    if (y + panel.height() > window.height() - margin)
-        y = at.y() - gap - panel.height();
-    QPointF placed = settle(x, y);
-    if (clear(placed))
-        return {placed, panel};
-    // It has landed on a tool. Step out along whichever side is nearest, which keeps
-    // the panel as close to the pointer as it can be; a way that is still on a tool or
-    // would leave the window is not a way out at all.
-    double nearest = std::numeric_limits<double>::max();
-    for (const QRectF &tool : tools) {
-        if (!QRectF(placed, panel).intersects(tool))
+    for (const double height : {magnifierPanelHeight, magnifierCompactPanelHeight}) {
+        const QSizeF panel(magnifierPanelWidth, height);
+        if (panel.width() + 2 * margin > window.width() || height + 2 * margin > window.height())
             continue;
-        const QVector<QPointF> ways{settle(placed.x(), tool.top() - panel.height() - margin),
-                                    settle(placed.x(), tool.bottom() + margin),
-                                    settle(tool.left() - panel.width() - margin, placed.y()),
-                                    settle(tool.right() + margin, placed.y())};
-        for (const QPointF &way : ways) {
-            if (!clear(way))
-                continue;
-            const double distance = std::abs(way.x() - placed.x()) + std::abs(way.y() - placed.y());
-            if (distance < nearest) {
-                nearest = distance;
-                placed = way;
+        const auto settle = [&](double x, double y) {
+            return QPointF(std::clamp(x, margin, window.width() - panel.width() - margin),
+                           std::clamp(y, margin, window.height() - height - margin));
+        };
+        const auto clear = [&](const QRectF &here) {
+            return std::none_of(tools.cbegin(), tools.cend(), [&here](const QRectF &tool) {
+                return here.intersects(tool);
+            });
+        };
+        // Flip to the other side of the pointer at the window edge.
+        const double x = at.x() + gap + panel.width() <= window.width() - margin
+                             ? at.x() + gap : at.x() - gap - panel.width();
+        const double y = at.y() + gap + height <= window.height() - margin
+                             ? at.y() + gap : at.y() - gap - height;
+        const QPointF preferred = settle(x, y);
+        if (clear(QRectF(preferred, panel)))
+            return {preferred, panel};
+
+        // Combining the edges also lets the panel slip past two adjacent tools.
+        QVector<double> columns{preferred.x()};
+        QVector<double> rows{preferred.y()};
+        for (const QRectF &tool : tools) {
+            columns.append(tool.left() - panel.width() - margin);
+            columns.append(tool.right() + margin);
+            rows.append(tool.top() - height - margin);
+            rows.append(tool.bottom() + margin);
+        }
+        QRectF placed;
+        double nearest = std::numeric_limits<double>::max();
+        for (const double column : columns) {
+            for (const double row : rows) {
+                const auto candidate = settle(column, row);
+                const QRectF area(candidate, panel);
+                const double distance = std::abs(candidate.x() - preferred.x()) + std::abs(candidate.y() - preferred.y());
+                if (distance < nearest && clear(area)) {
+                    nearest = distance;
+                    placed = area;
+                }
             }
         }
+        if (!placed.isEmpty())
+            return placed;
     }
-    return {placed, panel};
+    return {};
 }
 void applyTheme(ThemeMode mode) {
     currentTheme = mode;
@@ -560,10 +708,7 @@ void DragBar::mouseDoubleClickEvent(QMouseEvent *e) {
     dragging_ = false;
     setCursor(Qt::OpenHandCursor);
     if (canMaximize_ && e->button() == Qt::LeftButton && !window()->isFullScreen()) {
-        if (window()->isMaximized())
-            window()->showNormal();
-        else
-            window()->showMaximized();
+        emit maximizeRequested();
         e->accept();
         return;
     }

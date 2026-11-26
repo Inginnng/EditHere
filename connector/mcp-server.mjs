@@ -4,8 +4,9 @@
 // 把本地 edithere-cli 的 Agent 接口封装为 MCP 工具，供 WorkBuddy 等
 // MCP 客户端调用：
 //   edithere_status           查询 EditHere 运行与文档状态
+//   edithere_windows          只读枚举桌面可见窗口列表（排除 EditHere 自身）
 //   edithere_open             打开图片、视频或 .edithere 项目（仅请求受理）
-//   edithere_capture          唤起截图（仅请求受理）
+//   edithere_capture          触发交互截图、后台抓拍屏幕/窗口，或截取后直接发起标注会话
 //   edithere_annotate_start   发起标注会话后立即返回会话 ID（推荐）
 //   edithere_annotate_poll    查询会话是否完成，完成时返回反馈摘要
 //   edithere_annotate         发起标注会话并阻塞等待用户点击"完成并返回 AI"
@@ -29,7 +30,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const SERVER_NAME = 'edithere';
-const SERVER_VERSION = '0.2.1';
+const SERVER_VERSION = '0.2.2';
 const PROTOCOL_VERSION = '2025-06-18';
 
 // ---------------------------------------------------------------- CLI 定位
@@ -185,7 +186,7 @@ function parseCliJson(stdout) {
 }
 
 const EXIT_CODE_HINTS = {
-  2: '参数或通信协议错误',
+  2: '参数、通信协议错误或窗口匹配存在歧义',
   3: 'EditHere 应用或连接不可用（可能未运行，或 Agent 接口未就绪）',
   4: '当前状态忙（已有未保存文档、截图或进行中的标注会话）',
   5: '文件或 I/O 错误（输入不存在、输出已存在或写入失败）',
@@ -200,6 +201,14 @@ function defaultOutputDir() {
   const dir = path.join(os.tmpdir(), 'edithere-feedback');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function makeCapturePngPath(outputDir) {
+  const dir = outputDir ? path.resolve(outputDir) : path.join(os.tmpdir(), 'edithere-captures');
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return path.join(dir, `capture-${stamp}-${rand}.png`);
 }
 
 function makeOutputPath(outputDir, tag) {
@@ -1064,12 +1073,8 @@ function runningSession() {
   return null;
 }
 
-function startAnnotateSession(p) {
+function startSessionWithCli(cliArgs, outputPath, p) {
   const timeoutSeconds = clampTimeout(p.timeoutSeconds);
-  const outputPath = makeOutputPath(p.outputDir, 'annotate');
-  const cliArgs = ['annotate', p.imagePath, '--output', outputPath, '--timeout', String(timeoutSeconds)];
-  cliArgs.push(...feedbackImageCliArgs(p));
-  cliArgs.push(...pageContextCliArgs(p));
   let child;
   try {
     child = trackCliChild(spawn(CLI.path, cliArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }));
@@ -1114,6 +1119,46 @@ function startAnnotateSession(p) {
   SESSIONS.set(id, session);
   activeSessionId = id;
   return { session };
+}
+
+function startAnnotateSession(p) {
+  const timeoutSeconds = clampTimeout(p.timeoutSeconds);
+  const outputPath = makeOutputPath(p.outputDir, 'annotate');
+  const cliArgs = ['annotate', p.imagePath, '--output', outputPath, '--timeout', String(timeoutSeconds)];
+  cliArgs.push(...feedbackImageCliArgs(p));
+  cliArgs.push(...pageContextCliArgs(p));
+  return startSessionWithCli(cliArgs, outputPath, p);
+}
+
+function captureTargetArgs(p) {
+  const source = p.source ?? (p.window !== undefined || p.windowId !== undefined ? 'window' : 'interactive');
+  if (!['interactive', 'screen', 'window'].includes(source)) {
+    throw new McpError(-32602, `source 必须是 interactive、screen 或 window：收到 ${String(source)}。`);
+  }
+  if (p.window !== undefined && (typeof p.window !== 'string' || !p.window.trim())) {
+    throw new McpError(-32602, 'window 必须是非空窗口标题或进程查询字符串。');
+  }
+  if (p.windowId !== undefined && (!/^\d+$/.test(String(p.windowId).trim()) || BigInt(String(p.windowId).trim()) <= 0n)) {
+    throw new McpError(-32602, 'windowId 必须是正整数窗口句柄。');
+  }
+  if (p.window !== undefined && p.windowId !== undefined) {
+    throw new McpError(-32602, 'window 与 windowId 不能同时指定。');
+  }
+  if (source === 'interactive' && (p.window !== undefined || p.windowId !== undefined)) {
+    throw new McpError(-32602, 'source="interactive" 不能与 window 或 windowId 混用。');
+  }
+  if (source === 'window' && p.window === undefined && p.windowId === undefined) {
+    throw new McpError(-32602, 'source="window" 时必须提供 window 或 windowId。');
+  }
+  if (p.annotate !== undefined && typeof p.annotate !== 'boolean') {
+    throw new McpError(-32602, 'annotate 必须是布尔值。');
+  }
+  const sourceArgs = source === 'screen'
+    ? ['--screen']
+    : source === 'window'
+      ? (p.windowId !== undefined ? ['--window-id', String(p.windowId).trim()] : ['--window', p.window.trim()])
+      : [];
+  return { source, annotate: Boolean(p.annotate), sourceArgs };
 }
 
 function pendingSessionContent(session) {
@@ -1178,7 +1223,7 @@ function feedbackImageCliArgs(p) {
 const TOOLS = [
   {
     name: 'edithere_status',
-    description: '查询本机 EditHere（改这里）桌面程序的运行与文档状态，不启动 GUI。用于发起标注前确认程序可用。',
+    description: '查询本机 EditHere 桌面程序的运行与文档状态，不启动 GUI。用于发起标注前确认程序可用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -1196,7 +1241,26 @@ const TOOLS = [
   },
   {
     name: 'edithere_capture',
-    description: '唤起 EditHere 的截图功能（仅请求受理，不等待反馈）。用户随后可用全局快捷键或界面完成截图。',
+    description: '触发 EditHere 截图或直接后台抓拍屏幕/窗口。无参数时保持原有行为（仅唤起交互式截图）；设 source="screen"|"window" 可后台保存无损 PNG；设 annotate=true 可截取后直接发起非阻塞标注会话并返回 sessionId 供 edithere_annotate_poll 查询。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', enum: ['interactive', 'screen', 'window'], default: 'interactive', description: '截图模式：interactive 交互框选（默认）、screen 整屏无交互抓拍、window 按标题或 ID 抓拍窗口' },
+        window: { type: 'string', description: 'source="window" 时按标题或进程名不区分大小写匹配目标窗口' },
+        windowId: { type: 'string', description: 'source="window" 时指定窗口句柄/ID（与 window 互斥）' },
+        annotate: { type: 'boolean', default: false, description: '为 true 时截屏后直接进入标注会话并返回 sessionId，需用 edithere_annotate_poll 查询反馈' },
+        timeoutSeconds: { type: 'number', description: 'annotate=true 时等待用户提交的最长秒数，1–86400，默认 1800' },
+        pageContext: PAGE_CONTEXT_PROPERTY,
+        ...FEEDBACK_IMAGE_PROPERTIES,
+        includeImage: { type: 'boolean', description: '为 true 时在结果中附带 PNG 原图' },
+        outputDir: { type: 'string', description: '输出目录（默认为系统临时目录下 edithere-feedback / edithere-captures）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'edithere_windows',
+    description: '只读获取当前桌面可见窗口列表（id、pid、title、appName、bounds、minimized），自动排除 EditHere 自身，用于多窗口消歧或传 windowId 精准抓拍。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -1312,9 +1376,67 @@ async function toolCall(name, args, notifyProgress) {
       const r = await runCli(['open', p.imagePath, ...pageContextCliArgs(p)]);
       return cliResultToContent(r);
     }
-    case 'edithere_capture': {
-      const r = await runCli(['capture']);
+    case 'edithere_windows': {
+      const r = await runCli(['windows']);
       return cliResultToContent(r);
+    }
+    case 'edithere_capture': {
+      const { source, annotate, sourceArgs } = captureTargetArgs(p);
+      if (!annotate) {
+        if (p.pageContext !== undefined || p.timeoutSeconds !== undefined || p.imageMode !== undefined || p.noImage !== undefined || p.preview !== undefined) {
+          throw new McpError(-32602, 'pageContext、timeoutSeconds、imageMode、noImage 和 preview 仅在 annotate=true 时有效。');
+        }
+        if (source === 'interactive') {
+          const r = await runCli(['capture']);
+          return cliResultToContent(r);
+        }
+        const pngPath = makeCapturePngPath(p.outputDir);
+        const r = await runCli(['capture', '--output', pngPath, ...sourceArgs]);
+        if (!cliSucceeded(r)) return cliResultToContent(r);
+        const result = cliResultToContent(r);
+        const actualPath = typeof r.json?.output === 'string' ? r.json.output : pngPath;
+        if (p.includeImage && fs.existsSync(actualPath)) {
+          try {
+            const stat = fs.statSync(actualPath);
+            if (stat.isFile() && stat.size <= 20 * 1024 * 1024) {
+              const bytes = fs.readFileSync(actualPath);
+              result.content.push({ type: 'image', data: bytes.toString('base64'), mimeType: 'image/png' });
+            }
+          } catch {
+            /* ignore attachment read error */
+          }
+        }
+        return result;
+      }
+
+      const timeoutSeconds = clampTimeout(p.timeoutSeconds);
+      const imageArgs = feedbackImageCliArgs(p);
+      const contextArgs = pageContextCliArgs(p);
+      const existing = runningSession();
+      if (existing) {
+        return {
+          content: [{
+            type: 'text',
+            text: `已有一个标注会话在进行中，未重复发起。\n会话 ID: ${existing.id}\n请先用 edithere_annotate_poll（sessionId 传 ${existing.id}）查询结果；若用户已放弃这一轮，请让其先处理完 EditHere 中的窗口再重新发起。`,
+          }],
+          isError: false,
+        };
+      }
+      reapSessions();
+      const outputPath = makeOutputPath(p.outputDir, 'capture-annotate');
+      const cliArgs = ['capture', '--annotate', '--output', outputPath, '--timeout', String(timeoutSeconds), ...sourceArgs, ...imageArgs, ...contextArgs];
+      const started = startSessionWithCli(cliArgs, outputPath, p);
+      if (started.error) {
+        return { content: [{ type: 'text', text: started.error }], isError: true };
+      }
+      const s = started.session;
+      return {
+        content: [{
+          type: 'text',
+          text: `截屏标注会话已发起（来源: ${source}）。\n会话 ID: ${s.id}\n请让用户在 EditHere 中完成批注或调整，点击顶部"完成并返回 AI"，然后用 edithere_annotate_poll 带上 sessionId="${s.id}" 查询结果。\n反馈文件: ${s.outputPath}\n等待上限: ${s.timeoutSeconds} 秒`,
+        }],
+        isError: false,
+      };
     }
     case 'edithere_annotate': {
       const invalid = requirePathArg(p);
@@ -1657,7 +1779,7 @@ async function main() {
 
 // Keep the transport entry point separate from the helpers so their real child
 // processes can be covered by Node's built-in test runner.
-export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, feedbackImageCliArgs, pageContextCliArgs, TOOLS, main };
+export { runCli, cliResultToContent, statusContent, annotateResultToContent, summarizeFeedback, feedbackImageCliArgs, pageContextCliArgs, captureTargetArgs, TOOLS, toolCall, main };
 
 if (process.argv[1]
     && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {

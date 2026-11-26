@@ -18,9 +18,10 @@
 #include "editor.h"
 #include "explosion.h"
 #include "i18n.h"
+#include "localauth.h"
 #include "ocrdialog.h"
 #include "overlay.h"
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "settings.h"
 #include "ui.h"
 #include "videoplayback.h"
@@ -344,7 +345,7 @@ class ReadmeRecorder {
         if (w == terminal_) return terminalRank_;
         if (qobject_cast<Editor *>(w)) return 10;
         if (qobject_cast<QDialog *>(w)) return 30;
-        if (qobject_cast<PinWindow *>(w)) return 40;
+        if (qobject_cast<PinnedImageWindow *>(w)) return 40;
         if (qobject_cast<Overlay *>(w)) return 50;
         const QString name = w->objectName();
         if (name == "scrollCaptureShade") return 60;
@@ -831,7 +832,7 @@ class ReadmeRecorder {
         waitFor([this] { return !owner_->pins_.isEmpty(); }, 2000, "the pin");
         snap(1400);
         say("cap.pinmove");
-        PinWindow *pin = owner_->pins_.first();
+        PinnedImageWindow *pin = owner_->pins_.first();
         const QPointF centre = pin->geometry().center();
         drag(centre, centre + QPointF(-540, 190), 1300);
         moveTo(centre + QPointF(-420, 120), 600);
@@ -1138,7 +1139,8 @@ class ReadmeRecorder {
         snap(900);
 
         // A real annotate request over a private socket, exactly as the CLI sends it.
-        AgentServer server(*owner_);
+        const auto token = randomIpcToken();
+        AgentServer server(*owner_, token);
         const QString socketName = "EditHere-readme-" + uniqueId();
         require(server.listen(socketName), "cannot listen on " + socketName);
         const QString input = QDir(state_->path()).filePath("dashboard.png");
@@ -1147,8 +1149,9 @@ class ReadmeRecorder {
         QLocalSocket client;
         client.connectToServer(socketName);
         require(client.waitForConnected(2000), "cannot connect to the agent server");
-        client.write(encodeAgentMessage({{"protocol", 1}, {"command", "annotate"}, {"input", input},
-                                         {"output", output}, {"timeout", 600}, {"embed", true}}));
+        client.write(encodeAgentMessage({{"protocol", 1}, {"token", QString::fromLatin1(token)},
+                                        {"command", "annotate"}, {"input", input}, {"output", output},
+                                        {"timeout", 600}, {"embed", true}}));
         client.flush();
         waitFor([this] { return editor().isVisible() && editor().hasDocument(); }, 4000, "the agent session");
         placeEditor(QRect(150, 30, 1010, 640));
@@ -1263,20 +1266,34 @@ int main(int argc, char **argv) {
     // One 1200 x 750 screen drawn at twice the size, so the GIFs stay crisp.
     const QString config = QDir(output).filePath("screen.json");
     QFile file(config);
-    if (!file.open(QIODevice::WriteOnly))
+    if (!file.open(QIODevice::WriteOnly)) {
+        std::fprintf(stderr, "readme_recorder: cannot write %s: %s\n",
+                     qPrintable(config), qPrintable(file.errorString()));
         return 2;
+    }
     file.write(R"({"synchronousWindowSystemEvents": false, "windowFrameMargins": false,
         "screens": [{"name": "stage", "x": 0, "y": 0, "width": 2400, "height": 1500,
                      "logicalDpi": 96, "logicalBaseDpi": 96}]})");
     file.close();
     // EDITHERE_RECORDER_OFFSCREEN renders without a display; by default the windows
     // appear on the real desktop, which needs it left alone while recording.
-    if (qEnvironmentVariableIsSet("EDITHERE_RECORDER_OFFSCREEN")) {
-        qputenv("QT_QPA_PLATFORM", ("offscreen:configfile=" + config).toLocal8Bit());
+    const bool offscreen = qEnvironmentVariableIsSet("EDITHERE_RECORDER_OFFSCREEN");
+    const QString originalDirectory = QDir::currentPath();
+    if (offscreen) {
+        // Qt separates platform options with colons, including a Windows drive colon.
+        if (!QDir::setCurrent(output)) {
+            std::fprintf(stderr, "readme_recorder: cannot enter %s\n", qPrintable(output));
+            return 2;
+        }
+        qputenv("QT_QPA_PLATFORM", "offscreen:configfile=screen.json");
         qputenv("QT_SCALE_FACTOR", "2");
     }
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
+    if (offscreen && !QDir::setCurrent(originalDirectory)) {
+        std::fprintf(stderr, "readme_recorder: cannot return to %s\n", qPrintable(originalDirectory));
+        return 2;
+    }
     h2d::trace("application");
     app.setApplicationName("EditHere README Recorder");
     app.setQuitOnLastWindowClosed(false);

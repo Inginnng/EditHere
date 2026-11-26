@@ -2,7 +2,7 @@
 
 [简体中文](DEVELOPMENT.md) · **English**
 
-[Back to the product overview](../README.en.md) · [User guide](USER-GUIDE.en.md) · [AI integration and CLI](AGENT-CLI.en.md) · [Changelog (Chinese)](../CHANGELOG.md)
+[Back to the product overview](../README.en.md) · [AI integration and CLI](AGENT-CLI.en.md) · [Changelog (Chinese)](../CHANGELOG.md)
 
 Run all the commands below from the repository root; file paths are also relative to the repository root.
 
@@ -14,28 +14,85 @@ The current branch is `codex/native`, built with C++20 + Qt 6 Widgets. The retai
 
 Routine fixes and small improvements only increase the last patch number, for example `0.8.0 → 0.8.1 → 0.8.2`. The middle number increases only when a larger feature stage is completed in one go and the release is explicit; it is no longer incremented for every round of development. The first number is reserved for explicit major releases, and existing version numbers and historical packages stay unchanged. A rollback applies only to the current implementation and does not freeze later versions; withdrawn numbers are not reused.
 
-The single source of truth for the product version is `project(... VERSION ...)` in `CMakeLists.txt`, **0.13.6** on this feature branch. The runtime version and the Mac app information use that value automatically; after a successful link, `build/version.txt` is generated (on Mac, `build-macos/version.txt`), and the packaging scripts for both platforms name packages from it and ship `version.txt` with the package. After changing the version you must rebuild, so that an old binary is not labelled as a new version. The product version and the JSON formats are managed independently: the current minimal image feedback format is `feedback-minimal-4`, defined by `feedback-minimal-v4.schema.json`; the compatibility entry point also reads v3, v2, unversioned objects, and legacy parallel arrays; `feedback-minimal.schema.json` is the compatibility entry point (an `objects` object structure since `0.9.0`; the parallel `annotations` / `changes` arrays of `0.8.21` are in `feedback-v0.7.schema.json` and can still be imported); `feedback-v1` / `v1.1` / `v2` describe the early **project document** formats, while a full image project uses `project-v3.schema.json`. Video feedback and video projects use `video-feedback-v1.schema.json` (`video-feedback-1`) and `video-project-v1.schema.json` (`video-project-1`) respectively. The file name represents the data format, not the app version.
+The single source of truth for the product version is `project(... VERSION ...)` in `CMakeLists.txt`, **0.14.4** on this feature branch. The runtime version and the Mac app information use that value automatically; after a successful link, `build/version.txt` is generated (on Mac, `build-macos/version.txt`), and the packaging scripts for both platforms name packages from it and ship `version.txt` with the package. After changing the version you must rebuild, so that an old binary is not labelled as a new version. The product version and the JSON formats are managed independently: the current minimal image feedback format is `feedback-minimal-4`, defined by `feedback-minimal-v4.schema.json`; the compatibility entry point also reads v3, v2, unversioned objects, and legacy parallel arrays; `feedback-minimal.schema.json` is the compatibility entry point (an `objects` object structure since `0.9.0`; the parallel `annotations` / `changes` arrays of `0.8.21` are in `feedback-v0.7.schema.json` and can still be imported); `feedback-v1` / `v1.1` / `v2` describe the early **project document** formats, while a full image project uses `project-v3.schema.json`. Video feedback and video projects use `video-feedback-v1.schema.json` (`video-feedback-1`) and `video-project-v1.schema.json` (`video-project-1`) respectively. The file name represents the data format, not the app version.
 
 ## Release process
 
 Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`: the Windows, macOS and Linux build jobs each produce a package, the `build-web` job packages the two web ZIPs, and the release job aggregates them and creates a GitHub Release. Updating the source version or building a local package does not mean the public latest release has been updated; GitHub's `/releases/latest` is decided by its stable Release metadata. In-app updates check stable releases on both GitHub `Inginnng/EditHere` and [Gitee `InnGing/EditHere`](https://gitee.com/InnGing/EditHere) and select the highest version. For the same version, a source with a compatible package, its SHA-256 file and detached update signature is preferred. If one source fails, the other source's result is kept and the app reports an incomplete check; if both fail, it reports both errors. Packages, checksums and signatures stay with the same source; the existing GitHub release workflow does not publish to Gitee automatically.The in-app updater supports GitHub, AtomGit and Gitee. Automatic uses the system region (not interface language or IP geolocation) to prefer AtomGit in mainland China and GitHub elsewhere, then compares stable versions and complete signed package sets. A manual choice checks only that source and is saved immediately without applying other settings drafts, even if the dialog is cancelled. Switching cancels old checks and clears their results. Packages, checksums and signatures remain bound to one source and version. GitHub release automation does not publish other mirrors automatically.
 
-- **A release must ship complete packages.** Before publishing, the release job checks that `EditHere-win-x64-setup.exe`, `EditHere-win-x64.zip`, `EditHere-macos-universal.dmg`, `EditHere-linux-x86_64.AppImage` and both web ZIPs (`EditHere-web.zip`, `EditHere-web-agent.zip`) all exist and are non-empty; if any is missing, the workflow fails. A failed build job never produces a source-only release. The web ZIPs come from the `build-web` job running `python scripts/prepare-distribution.py --web-only --channel release`; the line endings of embedded assets and of the shipped legal texts are pinned in `.gitattributes`, so every platform and CI rebuild the same `web/EditHere.html` and the same two ZIPs. Before publishing, check both web ZIPs against the bytes that will be handed to users: `node scripts/web-package-check.cjs <ZIP path>`.
-- Asset names contain no version number (the docs and the update check use `/releases/latest/download/<stable name>`), and each package ships with `SHA256SUMS.txt` and a per-file `.sha256`. The Windows installer additionally ships `EditHere-win-x64-setup.exe.sig`; the web ZIPs follow the same rule as `EditHere-web.zip` and `EditHere-web-agent.zip`.
+- **A release must ship complete packages.** The release job checks for the Windows installer and portable ZIP, the macOS DMG, the Linux AppImage, and three non-empty archives named `EditHere-web.zip`, `EditHere-web-agent.zip`, and `EditHere-dsh.zip`. The `build-web` job runs `scripts/prepare-distribution.py` with `--web-only` and `--dsh-only`, both with `--channel release`. The embedded assets and packaged text use line endings pinned in `.gitattributes`. Run `node scripts/web-package-check.cjs <ZIP path>` to verify either web archive.
+- The docs and update checks use `/releases/latest/download/<stable name>`. Release assets include `SHA256SUMS.txt` and per-file `.sha256` files. The Windows installer also ships with `EditHere-win-x64-setup.exe.sig`.
 - Where the packages land after the release job downloads them is decided by `upload-artifact`, so do not predict it: only the path after the fixed prefix preceding the first wildcard survives, which puts `dist/linux-*/<file>` under `linux-<version>/` rather than `dist/linux-<version>/`, and the web ZIPs under `web/<version>-<short-hash>/`. The release job moves the native and web packages to the archive root by name, at any depth; do not go back to moving them by directory (REG-157).
 - Release notes are taken first from `docs/releases/<version>.md` (a hand-written, user-facing description); when that file is missing, it falls back to the matching section of `CHANGELOG.md`. When preparing the notes, write a draft for the user to confirm before tagging.
 - The notes are maintained in both languages, `docs/releases/<version>.md` and `docs/releases/<version>.en.md`, and release.yml assembles them into one body: a language switcher at the top, the Chinese notes, then the English notes under `## English`. A release page is a single field with no language switch, and the English half is a real heading rather than a collapsed block, because an anchor pointing into a closed block lands on nothing. `check-packaging.py` fails when only the Chinese page exists.
 
+## Mirror pushes
+
+GitHub is the only upstream. Gitee and AtomGit are mirrors, but they work in different ways:
+
+| Remote | URL | How it syncs |
+| --- | --- | --- |
+| `origin` | `github.com/Inginnng/EditHere` | HTTPS, credentials provided by `gh`, the only upstream |
+| `gitee` | `gitee.com/InnGing/EditHere` | SSH, host alias `gitee-edithere`, repository **deploy key** (push access must be enabled), pushed manually from here |
+| `atomgit` | `atomgit.com/Inginnng/EditHere` | **Read-only mirror repository**, pulled by AtomGit from GitHub; local pushes are rejected |
+
+The AtomGit repository is an "image repository": `git push` is refused with `This operation is not allowed because the repository is an image repository`. It follows GitHub, so it catches up on its own once `origin` moves. Local pushes are neither needed nor possible, and the script targets `gitee` only by default.
+
+Gitee pushes use a dedicated key, `~/.ssh/id_ed25519_edithere`, bound to Gitee by the `gitee-edithere` alias in `~/.ssh/config`, leaving existing GitHub/Gitee personal keys untouched. A deploy key and an account key can each be registered only once, so do not reuse this key for other repositories.
+
+```bash
+# Current branch plus tags
+scripts/push-mirrors.sh
+# All branches plus tags (use this to catch the mirror up after switching branches)
+ALL_BRANCHES=1 scripts/push-mirrors.sh
+# Dry run
+DRY_RUN=1 scripts/push-mirrors.sh
+# Overwrite tags that exist remotely but point elsewhere (v0.8.22 once did)
+FORCE_TAGS=1 scripts/push-mirrors.sh
+```
+
+On Windows use `powershell -File scripts/push-mirrors.ps1` with `-AllBranches`, `-DryRun`, `-ForceTags`, `-Branch <name>`, and `-Targets gitee`.
+
+Branches and tags are pushed separately: the script compares `git ls-remote --tags` with local tags, pushes only the missing ones, and skips tags that exist remotely but point to a different object, reporting them instead of overwriting (such a conflict usually means one side moved the tag, so decide which side is right first). Any failing remote makes the script exit non-zero with the failing remotes listed.
+
+Three failures are worth separating: `Permission denied (publickey)` means the key is not registered or the wrong key was used; Gitee answering `Auth error: Access denied` means the key authenticated but the account has no write access (push access not enabled on the deploy key, or the key belongs to another account); `image repository` means the target is a read-only mirror that only the platform can pull into.
+
+### Automatic release sync
+
+Repository mirrors only carry branches and tags. A Release page is not a git object, so it is never mirrored. After GitHub finishes publishing, `release.yml` runs a `mirror-release` job that calls `scripts/publish-mirror-release.py` to publish the same files (downloaded verbatim from the GitHub release with `gh release download`, never renamed or modified) and the same notes to Gitee and AtomGit.
+
+Two repository secrets are required (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose | Where to create it |
+| --- | --- | --- |
+| `ATOMGIT_TOKEN` | Create the AtomGit release and upload its assets | atomgit.com → avatar → security settings → access tokens, with repository write scope (repo / projects) |
+| `GITEE_TOKEN` | Create the Gitee release and upload its assets | gitee.com → settings → security settings → personal access tokens, scope `projects` |
+
+A missing secret skips that site with one line of output and leaves the other alone; a site that actually fails makes the job exit non-zero so the broken release is visible.
+
+Three platform differences are documented in the script and matter before editing it: the AtomGit release object has no numeric id (locate it by tag) and no `attach_files` endpoint (call `GET .../releases/<tag>/upload_url` for a signed URL, then `PUT` the file), and a newly created release needs one more `PATCH` with `release_status` set to `latest` or the page will not show it as the newest; Gitee works the other way around, with a numeric id and a multipart form upload.
+
+To backfill a version without re-running CI, run the same command by hand:
+
+```bash
+gh release download v0.13.6 --dir mirror-assets --clobber
+gh release view v0.13.6 --json tagName,name,body,isPrerelease > mirror-release.json
+ATOMGIT_TOKEN=... GITEE_TOKEN=... python3 scripts/publish-mirror-release.py \
+  --assets mirror-assets --meta mirror-release.json
+```
+
+The script is idempotent against existing releases: it does not recreate them and does not overwrite assets that are already uploaded, only the missing ones are pushed.
+
 ## Documentation languages
 
-Interface text goes through Qt translations (see [Internationalisation and translations](i18n.md)); **the repository documentation does not**. It keeps one file per language, with `.en` on the English copy:
+Interface text goes through Qt translations; **the repository documentation does not**. It keeps one file per language, with `.en` on the English copy:
 
-- Eight user-facing documents have an English version: `USER-GUIDE`, `LONG-CAPTURE`, `VIDEO-ANNOTATION`, `AGENT-CLI`, `AI-SETUP`, `LINUX`, `DEVELOPMENT` and `AI-INSTRUCTIONS`. Each pair carries a language switcher under its title pointing at the other half, and `README.en.md` links every English page. All three rules are checked by `check-packaging.py`'s `translated_docs`, so a new page has to be registered in `TRANSLATED_DOCS`.
+- Six user-facing documents have an English version: `AGENT-CLI`, `AI-INSTRUCTIONS`, `AI-SETUP`, `LINUX`, `DEVELOPMENT` and `DISTRIBUTION`. Each pair carries a language switcher under its title pointing at the other half, and `README.en.md` links every English page. All three rules are checked by `check-packaging.py`'s `translated_docs`, so a new page has to be registered in `TRANSLATED_DOCS`.
 - `CHANGELOG.md` stays Chinese-only: it is the single source of history, and keeping one history twice guarantees drift. What users see for a given version is the release page instead — the bilingual release notes above.
 - `docs/releases/*.md` are release-page body fragments with no title and no switcher line: a relative link inside them resolves against the release URL, so the two languages are joined by release.yml, and `translated_docs` only guarantees that both halves exist.
 - In the English pages, JSON field names, commands, file paths and platform identifiers stay as they are. Chinese text that is genuinely on screen — the subtitles in the demo animation, for instance — stays Chinese too and is not translated.
-- Chinese only: `i18n.md`, `REGRESSIONS.md`, `PRERELEASE-0.9.9.md` and other maintainer records, plus historical release pages such as `docs/releases/0.9.x.md`.
-- The Windows portable package ships Chinese `AGENT-CLI.md` and `VIDEO-ANNOTATION.md`, Chinese and English `AI-INSTRUCTIONS`, and provider source notes; `package-windows.ps1` rewrites their relative links to repository URLs, the switcher line included.
+- Chinese only: maintainer records and historical release pages, which are not shipped with the product.
+- The Windows portable package ships Chinese `AGENT-CLI.md`, Chinese and English `AI-INSTRUCTIONS`, and provider source notes; `package-windows.ps1` rewrites their relative links to repository URLs.
 ## Build and verification
 
 For the Linux preview's system dependencies, build, AppImage packaging and X11/Wayland behaviour, see the [Linux guide](LINUX.en.md).
@@ -46,6 +103,8 @@ The 0.13.0 desktop API feature uses CMake FetchContent to fetch and verify pinne
 
 Windows PowerShell 7, with CMake on PATH:
 
+Run npm ci and npm run build in frontend before configuring CMake. Before packaging, copy the x64 WebView2Loader.dll, LICENSE.txt, and NOTICE.txt from Microsoft.Web.WebView2 1.0.3537.50 into your build folder. Name the license files WebView2-LICENSE.txt and WebView2-NOTICE.txt.
+
 ```powershell
 ./scripts/build-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -Compiler C:/Qt/Tools/mingw1310_64/bin/g++.exe -Ninja C:/Tools/ninja.exe
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
@@ -53,13 +112,13 @@ Windows PowerShell 7, with CMake on PATH:
 
 After building on Windows, run `ctest --test-dir build --interactive-debug-mode 0 --output-on-failure`, optionally with `-R` to select tests. CTest stages the matching Qt DLLs and platform plugins and creates a temporary directory for tests inside the build directory. If a required file is missing, setup reports its path and skips the tests that depend on it.
 
-The build script runs tests covering detection, core data, layout, interface, inline text, canvas interaction, settings, localisation, the guide, autostart, the startup flow, updates, text recognition, capture sessions and the CLI; Windows additionally includes platform tests, and the current CTest output is authoritative. Export samples and window rendering screenshots are stored in `artifacts/native-ui/`. After installing `jsonschema==4.26.0`, run `python scripts/validate-exports.py` to validate exports independently; the macOS build (`.github/workflows/native-macos.yml`) runs it automatically on the same artifacts, and the build fails when a schema does not match a real export. After changing interface text, also run `python scripts/check-translations.py --qt <Qt installation directory>`; see [internationalisation and translation (Chinese)](i18n.md) for details. Packaging only writes to a new directory; to package again, pass a new `-OutputDirectory`.
+The build script runs tests covering detection, core data, layout, interface, inline text, canvas interaction, settings, localisation, the guide, autostart, the startup flow, updates, text recognition, capture sessions and the CLI; Windows additionally includes platform tests, and the current CTest output is authoritative. Export samples and window rendering screenshots are stored in `artifacts/native-ui/`. After installing `jsonschema==4.26.0`, run `python scripts/validate-exports.py` to validate exports independently; the macOS build (`.github/workflows/native-macos.yml`) runs it automatically on the same artifacts, and the build fails when a schema does not match a real export. After changing interface text, also run `python scripts/check-translations.py --qt <Qt installation directory>`. Packaging only writes to a new directory; to package again, pass a new `-OutputDirectory`.
 
-Besides the Qt tests, CTest registers two toolchain-independent checks: `packaging` (`python scripts/check-packaging.py`) verifies the installer script encoding, the NSIS macros and an actual compile, the portable archive structure, the release asset names and checksum files, the single version source, the Qt translation deployment, the encoding and placeholders of the text recognition bridge script, the one-to-one correspondence between `.ts` files and the precompiled `.qm` files, and the consistency of the feedback structure and export fields in the AI and command-line documentation and in the skill; `translations` (`scripts/check-translations.py`) is registered only when Qt Linguist can be found. For how these checks map to the project's past issues, see the [issue archive and regression tests (Chinese)](REGRESSIONS.md); **when you fix a new problem, record it on that page and add a check that will catch a recurrence**.
+Besides the Qt tests, CTest registers two toolchain-independent checks: `packaging` (`python scripts/check-packaging.py`) verifies the installer script encoding, the NSIS macros and an actual compile, the portable archive structure, the release asset names and checksum files, the single version source, the Qt translation deployment, the encoding and placeholders of the text recognition bridge script, the one-to-one correspondence between `.ts` files and the precompiled `.qm` files, and the consistency of the feedback structure and export fields in the AI and command-line documentation and in the skill; `translations` (`scripts/check-translations.py`) is registered only when Qt Linguist can be found. For how these checks map to the project's past issues, see the locally maintained `docs/REGRESSIONS.md` (not published with the repository); **when you fix a new problem, record it on that page and add a check that will catch a recurrence**.
 
 Contributor consent is verified by `.github/workflows/cla.yml`, implemented in `scripts/cla-check.cjs` with configuration in `.github/cla/config.json`: the workflow checks out only the trusted base and never runs code from the pull request, requires the confirming account to be the contributor's own, and records the agreement version and the SHA-256 digest of `cla/v2.md` on a separate `cla-signatures` branch. After changing any CLA-related file, run `node --test tests/cla_check_test.cjs` locally; the read-only `.github/workflows/cla-tests.yml` runs the same test on pull requests. See the [contributor licence agreement (Chinese)](../CLA.md) for the agreement and the enablement steps.
 
-Action icon geometry lives only in `assets/ui-icons/icons/*.svg`. The manifest records semantics and provenance; [the visual specification](icon-visual-spec.md) defines the shared style. Qt embeds the SVGs and the Web build inlines the same geometry. Run `node tools/icon-review/build.cjs` to regenerate the standalone review HTML. Rebuild both clients after changing a shared SVG; retain the existing brand assets separately.
+Action icon geometry lives only in `assets/ui-icons/icons/*.svg`. The manifest records semantics and provenance, and these SVGs define the shared style. Qt embeds the SVGs and the Web build inlines the same geometry. Run `node tools/icon-review/build.cjs` to regenerate the standalone review HTML. Rebuild both clients after changing a shared SVG; retain the existing brand assets separately.
 
 ## Capture flow and text recognition
 
@@ -70,7 +129,7 @@ A screenshot is no longer “release to annotate”. `Overlay` (one borderless, 
 | `app/overlay.{h,cpp}` | Selection drawing and adjustment, candidate blocks, colour picking, and the host of the toolbar; it only emits signals and performs no actions |
 | `app/capturetoolbar.{h,cpp}` | The toolbar controls and the “More” menu (fixed ratio, corners/border/shadow, recognition language, history and selection) |
 | `app/capturesession.{h,cpp}` | Ratio and size conversion, style compositing in `composeCapture()`, and the cross-session `CaptureHistory` |
-| `app/pinwindow.{h,cpp}` | The pinned image window: dragging, zooming, transparency and the context menu |
+| `app/pinnedimagewindow.{h,cpp}` | The pinned image window: dragging, zooming, transparency and the context menu |
 | `app/ocr.{h,cpp}` + `app/ocr_mac.mm` | The recognition engine wrapper: banding, coordinate restoration and result parsing; macOS uses Vision |
 | `app/ocrdialog.{h,cpp}` | The recognition result window: a line-by-line list linked to highlighting on the source image |
 | `app/ocrbridge.ps1` | The Windows-side system OCR bridge script, embedded as a Qt resource |
@@ -91,7 +150,7 @@ The Windows installer additionally depends on NSIS 3.x. You can extract the offi
 
 Replace the NSIS path in the example with the real location. The 0.8.21 installer output is `dist/EditHere-0.8.21-win-x64-setup.exe`. The installer installs for the current user into `%LOCALAPPDATA%\Programs\EditHere`, using the current user's Start menu, uninstall registration and file associations, without requesting administrator privileges. Launch at login and PATH are selected by default on a new installation, and the desktop shortcut is optional; upgrades preserve the startup option based on the existing current-user Run entry. Uninstalling removes the packaged files according to the installed-file list and keeps the user's settings and projects.
 
-In-app Windows updates and manual installation share NSIS and the `maintain.ps1` transaction, retaining locks, SHA-256, confirmation, READY/ACK, rollback and receipts. Portable updates skip system integration; see [Windows installation and maintenance (Chinese)](INSTALLATION.md). Without a certificate pin, the P-256 public key compiled from `app/updatekey.h` authenticates project signatures through native Windows CNG. A nonempty `EDITHERE_UPDATE_PUBLISHER_CERT_SHA256` strictly requires Authenticode and the pinned certificate, with no fallback. Builds without either root offer manual downloads. Versions 0.12.7 and earlier need one manual upgrade; project signatures do not remove Windows security warnings. macOS currently offers manual downloads only.
+In-app Windows updates and manual installation share NSIS and the `maintain.ps1` transaction, retaining locks, SHA-256, confirmation, READY/ACK, rollback and receipts. Portable updates skip system integration; the installer protocol lives in `scripts/package-installer.ps1` and the NSIS script. Without a certificate pin, the P-256 public key compiled from `app/updatekey.h` authenticates project signatures through native Windows CNG. A nonempty `EDITHERE_UPDATE_PUBLISHER_CERT_SHA256` strictly requires Authenticode and the pinned certificate, with no fallback. Builds without either root offer manual downloads. Versions 0.12.7 and earlier need one manual upgrade; project signatures do not remove Windows security warnings. macOS currently offers manual downloads only.
 
 The `.sig` metadata uses ASCII and LF: `EditHere Windows Update Signature v1`, canonical full `X.Y.Z` version, exact installer name and lowercase SHA-256, each followed by LF; append the canonical Base64 of a 64-byte P1363 `r||s` signature plus LF. CNG verifies SHA-256 of the first four lines. Limits are 1024 bytes for signatures and 4096 for checksums. Only the compiled key is trusted; runtime metadata/settings/environment cannot supply one. Install versions must be newer than the running client. The release job signs the final stable-name installer after all byte changes and checksum generation, checks tag/source version and key identity, then verifies again without the private key. Only that signing step receives the `EDITHERE_UPDATE_SIGNING_KEY` repository Actions Secret (P-256 PKCS#8 PEM with LF); never supply it on a command line or to PR/platform builds. A missing/mismatched key or invalid signature fails publication. Production provisioning and backup require separate authorization. Test fixtures use a different key and never enter distributables. See [security boundaries (Chinese)](SECURITY.md).
 

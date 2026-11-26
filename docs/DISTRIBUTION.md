@@ -36,7 +36,8 @@ python scripts/prepare-distribution.py --output ../分发 --include-history
 - `--include-history`：额外整理已存在的历史压缩包、安装器和 AppImage；仅扫描规定的打包来源，不复制测试解压目录、开发缓存或整个仓库。
 - `--native-dir <目录>`：可重复指定其他原生打包来源。Windows/macOS 应使用构建阶段带版本名的原始产物；Linux 应保留相邻 `version.txt` 或 `linux-<版本>` 目录。最终 Release 的无版本稳定文件名不能直接归入当前版本，不从文件名猜测或补写版本。
 - `--require-all`：要求当前版本的 Windows 便携包、Windows 安装器、macOS DMG、Linux AppImage 全部齐备；任一缺失时预先报错。默认允许生成不完整汇总，并在对应目录和清单中明确标为待构建。
-- `--web-only`：只整理离线网页包与 Web Agent 包，不扫描原生程序包，供本地核对与发布工作流使用；`--channel release` 把包内说明与构建标记标为发布渠道，只能与该参数同用。
+- `--web-only` 只整理离线网页包与 Web Agent 包。
+- `--dsh-only` 在输出目录生成独立的 `EditHere-dsh.zip` 和 SHA-256 文件。两种模式均可加上 `--channel release`，将构建标记设为发布渠道。
 
 生成结果的结构为：
 
@@ -48,6 +49,8 @@ python scripts/prepare-distribution.py --output ../分发 --include-history
   web/<产品版本>-<Git短哈希>/
     ...-web.zip
     ...-web-agent.zip
+  dsh/<版本>-<提交短哈希>/
+    EditHere-dsh.zip
   windows/<产品版本>/
   macos/<产品版本>/
   linux/<产品版本>/
@@ -74,6 +77,7 @@ python scripts/prepare-distribution.py --output ../分发 --include-history
 | macOS Universal | `scripts/build-macos.sh`，含测试和 DMG 打包 | `dist/EditHere-<版本>-macos-universal.dmg` | `EditHere-macos-universal.dmg` |
 | Linux x86_64 | `scripts/build-linux.sh` → `scripts/package-linux.sh` | `dist/linux-<版本>/EditHere-linux-x86_64.AppImage`、同名 `.sha256`、`edithere-cli` | `EditHere-linux-x86_64.AppImage`、`edithere-cli` |
 | Web | `node web/build.cjs`；MCP 用 `node web/mcp/build.mjs`；统一脚本整理两种包（`--web-only` 可单独整理） | `web/EditHere.html`、`web/EditHere.mcp.html`、`web/mcp/server.bundle.cjs` 及分发 ZIP | `EditHere-web.zip`（离线网页版）、`EditHere-web-agent.zip`（Agent 包） |
+| DeepSeek Harness | `python scripts/prepare-distribution.py --dsh-only` | DSH 组图编辑器、本机服务、CLI 与 Skill | `EditHere-dsh.zip` |
 
 Windows ZIP 内直接放程序、DLL 和插件目录，不能再套一层平台目录：桌面更新器会将 ZIP 直接解压到安装目录。macOS 的 CLI 位于 `EditHere.app/Contents/MacOS/edithere-cli`；Linux 的独立 `edithere-cli` 是与 AppImage 配套使用的包装脚本，不应混搭另一版本。
 
@@ -83,6 +87,6 @@ Windows ZIP 内直接放程序、DLL 和插件目录，不能再套一层平台�
 
 统一脚本只准备本地文件。它不会打标签、推送仓库、创建 GitHub / Gitee Release、注册开机启动，或更新当前机器上的程序。
 
-现有 `.github/workflows/release.yml` 在版本标签触发后构建并汇总四类原生程序包与两种 Web 包，再使用表中的稳定下载名发布（Web 包由 `build-web` 作业调用 `--web-only --channel release` 生成；内嵌素材与随包法律文本的行尾由 `.gitattributes` 固定，避免同一源码在不同平台产出不同字节）。文档和 Windows 更新器依赖这些名字，本次目录整理不更改它们。正式发布还应核对标签与构建版本、全部平台产物、测试结果、许可及相应源码材料；历史失败的发布记录、试验包或同版本名文件都不能代替这些检查。
+版本标签触发 `.github/workflows/release.yml`，构建四类原生程序包、两个 Web 包和独立 DSH 包，再以表中的稳定下载名发布。`build-web` 作业分别调用 `--web-only` 和 `--dsh-only`，均加上 `--channel release`。内嵌素材与随包文本的行尾由 `.gitattributes` 固定。正式发布还应核对标签与构建版本、全部平台产物、测试结果、许可及相应源码材料。
 
 Windows 与 macOS 的签名状态、macOS 公证及实机验收、Linux 预览状态仍以当前[产品说明](../README.md)和构建记录为准。Qt、FFmpeg 等许可和对应源码要求见[第三方说明](../packaging/THIRD-PARTY-NOTICES.md)；汇总脚本不代表已完成公开分发验收。

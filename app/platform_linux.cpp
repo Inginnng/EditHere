@@ -2,6 +2,7 @@
 #include "linuxportal.h"
 #include "scroll_wayland.h"
 #include <QApplication>
+#include <QColorSpace>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -480,11 +481,11 @@ void restoreCaptureForegroundWindow(quintptr window) {
 QVector<Candidate> linuxAccessibleElements(QPoint, qint64);
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excluded) { return linuxAccessibleElements(point, excluded); }
 bool requestAccessibility() { return false; }
-void configureNativeWindow(QWidget *, bool) {}
+void configureNativeWindow(QWidget *, bool, bool) {}
+void configureRoundedPopupWindow(QWidget *) {}
+void orderWindowBelow(QWidget *, const QWidget *) {}
 bool usesNativeWindowControls() { return false; }
 bool screenCaptureAllowed(QString *) { return true; }
-void ensureNativeTitleBar(QWidget *) {}
-NativeTitleBarRow nativeTitleBarRow(QWidget *) { return {}; }
 bool excludedFromCapture(const QWidget *) { return false; }
 void captureScreens(CaptureCallback callback) {
     if (!wayland()) {
@@ -561,6 +562,188 @@ void captureScreens(CaptureCallback callback) {
         return;
     }
     waylandCaptureScreens(std::move(callback));
+}
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows() {
+    QVector<HeadlessWindowInfo> out;
+    if (wayland()) return out;
+    auto display = openXDisplay();
+    if (!display) return out;
+    XErrorScope errors(display.get());
+    const quint32 ownPid = quint32(QCoreApplication::applicationPid());
+    const Window root = DefaultRootWindow(display.get());
+    Atom actual = 0;
+    int format = 0;
+    unsigned long count = 0, remaining = 0;
+    unsigned char *data = nullptr;
+    const Atom stacking = XInternAtom(display.get(), "_NET_CLIENT_LIST_STACKING", True);
+    QVector<Window> windows;
+    if (stacking && XGetWindowProperty(display.get(), root, stacking, 0, 65536, False, XA_WINDOW,
+                                       &actual, &format, &count, &remaining, &data) == Success &&
+        actual == XA_WINDOW && format == 32 && data) {
+        const auto *list = reinterpret_cast<unsigned long *>(data);
+        for (unsigned long index = count; index > 0; --index)
+            windows.append(Window(list[index - 1]));
+    }
+    if (data) XFree(data);
+    const Atom wmName = XInternAtom(display.get(), "_NET_WM_NAME", True);
+    const Atom utf8 = XInternAtom(display.get(), "UTF8_STRING", True);
+    const Atom wmState = XInternAtom(display.get(), "_NET_WM_STATE", True);
+    const Atom wmHidden = XInternAtom(display.get(), "_NET_WM_STATE_HIDDEN", True);
+    for (Window w : windows) {
+        if (out.size() >= 80) break;
+        const quint32 pid = windowPid(display.get(), w);
+        if (pid != 0 && pid == ownPid) continue;
+        XWindowAttributes attr{};
+        if (!XGetWindowAttributes(display.get(), w, &attr) || attr.c_class == InputOnly) continue;
+        bool minimized = attr.map_state != IsViewable;
+        if (!minimized && wmState && wmHidden) {
+            unsigned char *stData = nullptr;
+            unsigned long stCount = 0;
+            if (XGetWindowProperty(display.get(), w, wmState, 0, 64, False, XA_ATOM,
+                                   &actual, &format, &stCount, &remaining, &stData) == Success &&
+                actual == XA_ATOM && format == 32 && stData) {
+                const auto *atoms = reinterpret_cast<Atom *>(stData);
+                for (unsigned long i = 0; i < stCount; ++i)
+                    if (atoms[i] == wmHidden) { minimized = true; break; }
+            }
+            if (stData) XFree(stData);
+        }
+        int x = 0, y = 0;
+        Window child = 0;
+        QRect bounds;
+        if (!minimized && XTranslateCoordinates(display.get(), w, root, 0, 0, &x, &y, &child)) {
+            bounds = QRect(x, y, attr.width, attr.height);
+            if (bounds.width() < 24 || bounds.height() < 24) continue;
+        }
+        QString title, appName;
+        data = nullptr; count = 0;
+        if (wmName && utf8 && XGetWindowProperty(display.get(), w, wmName, 0, 1024, False, utf8,
+                                                 &actual, &format, &count, &remaining, &data) == Success &&
+            actual == utf8 && format == 8 && data)
+            title = QString::fromUtf8(reinterpret_cast<const char *>(data), int(count)).left(160);
+        if (data) XFree(data);
+        if (title.isEmpty()) {
+            char *legacy = nullptr;
+            if (XFetchName(display.get(), w, &legacy) && legacy)
+                title = QString::fromLocal8Bit(legacy).left(160);
+            if (legacy) XFree(legacy);
+        }
+        title.remove(QChar::Null);
+        title = title.trimmed();
+        if (title.isEmpty()) continue;
+        XClassHint hint{};
+        if (XGetClassHint(display.get(), w, &hint)) {
+            if (hint.res_class) appName = QString::fromLocal8Bit(hint.res_class).left(80);
+            if (hint.res_name) XFree(hint.res_name);
+            if (hint.res_class) XFree(hint.res_class);
+        }
+        out.append({quint64(w), pid, title, appName, bounds, minimized, !minimized});
+    }
+    return errors.failed() ? QVector<HeadlessWindowInfo>{} : out;
+}
+
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
+    HeadlessCaptureResult res;
+    if (wayland()) {
+        res.errorCode = "desktop_access_required";
+        res.message = "Headless screen capture is not supported under Wayland.";
+        return res;
+    }
+    const auto screens = QGuiApplication::screens();
+    if (screens.isEmpty()) {
+        res.errorCode = "capture_failed";
+        res.message = "No active display screen found.";
+        return res;
+    }
+    if (screenIndex >= screens.size() || screenIndex < -1) {
+        res.errorCode = "invalid_arguments";
+        res.message = QString("Screen index %1 out of range.").arg(screenIndex);
+        return res;
+    }
+    QScreen *screen = screenIndex < 0 ? QGuiApplication::primaryScreen() : screens.at(screenIndex);
+    if (!screen) screen = screens.first();
+    QImage img = screen->grabWindow(0).toImage();
+    img.setDevicePixelRatio(1);
+    img.setColorSpace(QColorSpace::SRgb);
+    if (img.isNull()) {
+        res.errorCode = "capture_failed";
+        res.message = "Screen capture failed.";
+        return res;
+    }
+    res.ok = true;
+    res.image = std::move(img);
+    res.screenBounds = QRect(screen->geometry().topLeft(), res.image.size());
+    return res;
+}
+
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId) {
+    HeadlessCaptureResult res;
+    if (wayland()) {
+        res.errorCode = "desktop_access_required";
+        res.message = "Headless window capture is not supported under Wayland.";
+        return res;
+    }
+    const auto windows = listHeadlessCaptureWindows();
+    HeadlessWindowInfo chosen;
+    bool found = false;
+    if (windowId != 0) {
+        for (const auto &w : windows) {
+            if (w.id == windowId) { chosen = w; found = true; break; }
+        }
+        if (!found) {
+            res.errorCode = "window_not_found";
+            res.message = QString("Window ID %1 not found.").arg(windowId);
+            return res;
+        }
+    } else {
+        const QString query = titleQuery.trimmed();
+        if (query.isEmpty()) {
+            res.errorCode = "invalid_arguments";
+            res.message = "Window selector query cannot be empty.";
+            return res;
+        }
+        QVector<HeadlessWindowInfo> exactMatches, titleMatches, appMatches;
+        for (const auto &w : windows) {
+            if (w.title.compare(query, Qt::CaseInsensitive) == 0) exactMatches.append(w);
+            else if (w.title.contains(query, Qt::CaseInsensitive)) titleMatches.append(w);
+            else if (w.appName.contains(query, Qt::CaseInsensitive)) appMatches.append(w);
+        }
+        const auto &bucket = !exactMatches.isEmpty() ? exactMatches
+                           : !titleMatches.isEmpty() ? titleMatches : appMatches;
+        if (bucket.isEmpty()) {
+            res.errorCode = "window_not_found";
+            res.message = QString("No capturable window matched \"%1\".").arg(query);
+            return res;
+        }
+        if (bucket.size() > 1) {
+            res.errorCode = "ambiguous_window";
+            res.message = QString("Multiple windows (%1) matched \"%2\"; pass --window-id.").arg(bucket.size()).arg(query);
+            res.candidates = bucket;
+            return res;
+        }
+        chosen = bucket.first();
+    }
+    if (chosen.minimized) {
+        res.errorCode = "window_minimized";
+        res.message = QString("Window \"%1\" is minimized.").arg(chosen.title);
+        return res;
+    }
+    QScreen *screen = QGuiApplication::primaryScreen();
+    QImage img = screen ? screen->grabWindow(WId(chosen.id)).toImage() : QImage();
+    img.setDevicePixelRatio(1);
+    img.setColorSpace(QColorSpace::SRgb);
+    if (img.isNull()) {
+        res.errorCode = "capture_failed";
+        res.message = QString("Failed to capture window \"%1\".").arg(chosen.title);
+        return res;
+    }
+    res.ok = true;
+    res.image = std::move(img);
+    res.windowTitle = chosen.title;
+    res.appName = chosen.appName;
+    res.screenBounds = chosen.bounds;
+    return res;
 }
 }
 #include "platform_linux.moc"

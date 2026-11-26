@@ -84,6 +84,19 @@ class SettingsTests : public QObject {
         widget.grab().save(QDir(folder).filePath(name));
     }
   private slots:
+    void skillFilterPreferencePersists() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("settings.ini");
+        QVERIFY(!loadSettings(path).showInstalledSkillsOnly);
+        auto settings = defaultSettings();
+        settings.showInstalledSkillsOnly = true;
+        QVERIFY(saveSettings(settings, nullptr, path));
+        QVERIFY(loadSettings(path).showInstalledSkillsOnly);
+        QVERIFY(saveSettings(defaultSettings(), nullptr, path));
+        QVERIFY(!loadSettings(path).showInstalledSkillsOnly);
+    }
+
     void updateSourcePreferencePersistsAndRejectsInvalidValues() {
         QTemporaryDir directory;
         const auto path = directory.filePath("settings.ini");

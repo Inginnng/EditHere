@@ -28,8 +28,23 @@ constexpr int kMoving = -2;
 constexpr double kRowHeight = 18;
 // The four colour rows, the pixel the pointer is on, and the two lines that say what
 // the keyboard can do. Each one is a slot the panel paints into.
-enum Slot { kPixelSlot, kRgbSlot, kHexSlot, kHsvSlot, kHslSlot };
-constexpr int kSlotCount = 5;
+enum Slot { kPixelSlot, kRgbSlot };
+double rectOverlapRatio(QRect a, QRect b) {
+    const QRect inter = a.intersected(b);
+    if (inter.isEmpty())
+        return 0.0;
+    const qint64 interArea = qint64(inter.width()) * inter.height();
+    const qint64 unionArea = qint64(a.width()) * a.height() + qint64(b.width()) * b.height() - interArea;
+    return unionArea > 0 ? double(interArea) / unionArea : 0.0;
+}
+double rectContainedRatio(QRect inner, QRect outer) {
+    const qint64 innerArea = qint64(inner.width()) * inner.height();
+    if (innerArea <= 0)
+        return 0.0;
+    const QRect inter = inner.intersected(outer);
+    const qint64 interArea = qint64(inter.width()) * inter.height();
+    return double(interArea) / innerArea;
+}
 } // namespace
 
 Overlay::Overlay(ScreenFrame frame, QWidget *parent)
@@ -72,8 +87,15 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         emit ocrRequested(selected_, ocrLanguage_);
     });
     connect(bar_, &CaptureToolbar::annotateRequested, this,
-            [this] { emit accepted(selected_, candidates()); });
+            [this] { emit accepted(selected_, documentCandidates()); });
     connect(bar_, &CaptureToolbar::scrollRequested, this, [this] { emit scrollRequested(selected_); });
+    connect(bar_, &CaptureToolbar::markupToolChanged, this, [this] {
+        draftMarkup_.reset();
+        setFocus();
+        updateCursor();
+        update();
+    });
+    connect(bar_, &CaptureToolbar::undoMarkupRequested, this, &Overlay::undoMarkup);
     connect(bar_, &CaptureToolbar::dismissed, this, [this] { emit cancelled(); });
     connect(bar_, &CaptureToolbar::historyRequested, this, &Overlay::historyRequested);
     connect(bar_, &CaptureToolbar::historyStepRequested, this, &Overlay::historyStepRequested);
@@ -115,7 +137,7 @@ void Overlay::requestDetection() {
             full["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
             visual_.append({QRect(QPoint(0, 0), frame_.image.size()), full});
             if (selected_.isEmpty()) {
-                picker_.update(candidates(), cursor_);
+                picker_.update(candidates(), cursor_, false, shouldPreferWindow());
                 update();
             }
         }
@@ -170,18 +192,116 @@ QVector<Candidate> Overlay::candidates() const {
     for(const auto &window:frame_.frontWindows)
         if(window.bounds.contains(cursor_)) { front=&window; break; }
     if(frame_.windowScopeAvailable) {
-        if(!front) { auto target=manualTarget(); target["label"]=QT_TRANSLATE_NOOP("EditHere", "整个屏幕"); return {{frame_.image.rect(),target}}; }
+        if(!front) {
+            QVector<Candidate> result;
+            for(auto candidate:visual_) {
+                const QRect clipped = candidate.bounds.intersected(frame_.image.rect());
+                if(clipped.width() < 12 || clipped.height() < 10 ||
+                   rectOverlapRatio(clipped, frame_.image.rect()) >= 0.82)
+                    continue;
+                candidate.bounds = clipped;
+                result.append(candidate);
+            }
+            auto target=manualTarget(); target["label"]=QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
+            result.append({frame_.image.rect(),target});
+            return result;
+        }
         QVector<Candidate> result;
-        for(const auto &candidate:native_)
-            if(front->bounds.contains(candidate.bounds)) result.append(candidate);
-        for(const auto &candidate:visual_)
-            if(front->bounds.contains(candidate.bounds) && candidate.bounds!=front->bounds) result.append(candidate);
+        for(auto candidate:native_) {
+            if(rectContainedRatio(candidate.bounds, front->bounds) < 0.85)
+                continue;
+            const QRect clipped = candidate.bounds.intersected(front->bounds);
+            if(clipped.width() < 12 || clipped.height() < 10 || clipped == front->bounds ||
+               rectOverlapRatio(clipped, front->bounds) >= 0.92)
+                continue;
+            candidate.target["clipped"] = candidate.target["clipped"].toBool() || clipped != candidate.bounds;
+            candidate.bounds = clipped;
+            result.append(candidate);
+        }
+        const int nativeCount = result.size();
+        for(auto candidate:visual_) {
+            if(rectContainedRatio(candidate.bounds, front->bounds) < 0.88)
+                continue;
+            const QRect clipped = candidate.bounds.intersected(front->bounds);
+            if(clipped.width() < 12 || clipped.height() < 10 || clipped == front->bounds ||
+               rectOverlapRatio(clipped, front->bounds) >= 0.82)
+                continue;
+            bool shadowedByNative = false;
+            for(int i = 0; i < nativeCount; ++i) {
+                if(rectOverlapRatio(clipped, result.at(i).bounds) >= 0.85) {
+                    shadowedByNative = true;
+                    break;
+                }
+            }
+            if(shadowedByNative)
+                continue;
+            candidate.bounds = clipped;
+            result.append(candidate);
+        }
         result.append(*front);
+        if(front->bounds != frame_.image.rect() &&
+           rectOverlapRatio(front->bounds, frame_.image.rect()) < 0.95) {
+            auto screenTarget = manualTarget();
+            screenTarget["label"] = QT_TRANSLATE_NOOP("EditHere", "整个屏幕");
+            result.append({frame_.image.rect(), screenTarget});
+        }
         return result;
     }
     auto result = native_;
     result += visual_;
     return result;
+}
+QVector<Candidate> Overlay::documentCandidates() const {
+    auto result = candidates();
+    for (const auto &edit : markup_) {
+        if (!edit.mosaic.isNull())
+            result.removeIf([&edit](const Candidate &candidate) { return candidate.bounds.intersects(edit.area); });
+    }
+    return result;
+}
+
+bool Overlay::shouldPreferWindow() const {
+    if (!frame_.windowScopeAvailable)
+        return false;
+    const Candidate *front = nullptr;
+    for (const auto &window : frame_.frontWindows) {
+        if (window.bounds.contains(cursor_)) {
+            front = &window;
+            break;
+        }
+    }
+    if (!front || front->target.value("source").toString() != QLatin1String("window"))
+        return false;
+    const QRect fb = front->bounds;
+    if (cursor_.y() - fb.top() <= 48 || cursor_.x() - fb.left() <= 14 ||
+        fb.right() - cursor_.x() <= 14 || fb.bottom() - cursor_.y() <= 14)
+        return true;
+    const qint64 winArea = std::max<qint64>(1, qint64(fb.width()) * fb.height());
+    qint64 smallestSubArea = std::numeric_limits<qint64>::max();
+    bool hasSubElement = false;
+    for (const auto &cand : native_) {
+        if (!cand.bounds.contains(cursor_) || rectContainedRatio(cand.bounds, fb) < 0.85)
+            continue;
+        const QRect clipped = cand.bounds.intersected(fb);
+        if (clipped.width() < 12 || clipped.height() < 10 || clipped == fb ||
+            rectOverlapRatio(clipped, fb) >= 0.92)
+            continue;
+        hasSubElement = true;
+        smallestSubArea = std::min(smallestSubArea, qint64(clipped.width()) * clipped.height());
+    }
+    for (const auto &cand : visual_) {
+        if (!cand.bounds.contains(cursor_) || rectContainedRatio(cand.bounds, fb) < 0.88)
+            continue;
+        const QRect clipped = cand.bounds.intersected(fb);
+        if (clipped.width() < 12 || clipped.height() < 10 || clipped == fb ||
+            rectOverlapRatio(clipped, fb) >= 0.82)
+            continue;
+        hasSubElement = true;
+        smallestSubArea = std::min(smallestSubArea, qint64(clipped.width()) * clipped.height());
+    }
+    if (!hasSubElement)
+        return true;
+    return double(smallestSubArea) / winArea > 0.65;
 }
 void Overlay::resetSelection() {
     selected_ = {};
@@ -195,6 +315,7 @@ void Overlay::resetSelection() {
     // being kept: wanting the row rather than the cell is a wish about this look, not
     // a setting for the next one.
     picker_.forget();
+    clearMarkup();
     hideTools();
     update();
 }
@@ -231,11 +352,18 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
         if (!active.isEmpty())
             mask.addRect(localRect(active));
         mask.setFillRule(Qt::OddEvenFill);
-        p.fillPath(mask, QColor(16, 18, 24, 105));
+        p.fillPath(mask, captureChromeTokens().scrim);
     }
     if (active.isEmpty() || picking_)
         return;
     QRectF outline = localRect(active);
+    if (ready_ && (!markup_.isEmpty() || draftMarkup_)) {
+        p.save();
+        p.setClipRect(outline);
+        p.scale(1.0 / sx, 1.0 / sy);
+        drawMarkup(p, true);
+        p.restore();
+    }
     const double scale = double(width()) / frame_.image.width();
     const double radius = style_.cornerRadius * scale;
     p.setBrush(Qt::NoBrush);
@@ -246,24 +374,52 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
         p.drawRoundedRect(outline.adjusted(1, 1, -1, -1), std::max(0.0, radius - 1),
                           std::max(0.0, radius - 1));
     }
-    p.setPen(QPen(accent(), 2));
+    p.setPen(QPen(accent(), 1.5));
     p.drawRoundedRect(outline, radius, radius);
-    // The corners are where the region is resized, so they are shown, and
-    // they are round because a round handle reads as a handle rather than as a
-    // speck of dirt on the picture.
-    if (ready_) {
-        // The corners are where the region can be resized, so they are shown, and
-        // they are round because a round handle reads as a handle rather than as a
-        // speck of dirt on the picture.
-        p.setPen(QPen(Qt::white, 1));
-        p.setBrush(accent());
-        for (const auto &corner : {active.topLeft(), active.topRight(), active.bottomLeft(),
-                                   active.bottomRight()}) {
-            const QPointF centre = QPointF(double(corner.x()) * width() / frame_.image.width(),
-                                           double(corner.y()) * height() / frame_.image.height());
-            p.drawEllipse(centre, 4.0, 4.0);
+    // Compact dimension readout while dragging or hovering a candidate/window.
+    if (!ready_) {
+        QString dimText = QStringLiteral("%1 × %2").arg(active.width()).arg(active.height());
+        if (!drawing_ && selected_.isEmpty()) {
+            if (const auto current = picker_.current()) {
+                if (current->target.value("source").toString() == QLatin1String("window")) {
+                    QString winHint;
+                    for (const auto &cw : frame_.captureWindows) {
+                        if (cw.bounds == current->bounds) {
+                            winHint = !cw.windowTitle.isEmpty() ? cw.windowTitle : cw.appName;
+                            break;
+                        }
+                    }
+                    if (winHint.isEmpty())
+                        winHint = tr("窗口");
+                    if (winHint.size() > 22)
+                        winHint = winHint.left(21) + QStringLiteral("…");
+                    dimText += QStringLiteral(" · %1").arg(winHint);
+                }
+            }
+        }
+        QFont dimFont(QStringLiteral("Consolas"));
+        dimFont.setStyleHint(QFont::Monospace);
+        dimFont.setPointSizeF(9.0);
+        dimFont.setWeight(QFont::DemiBold);
+        p.setFont(dimFont);
+        const int badgeW = p.fontMetrics().horizontalAdvance(dimText) + 14;
+        const int badgeH = 22;
+        const qreal bx = std::clamp(outline.left(), 8.0, std::max(8.0, double(width()) - badgeW - 8.0));
+        const qreal minY = captureInstructionHeight + 4;
+        const qreal by = std::clamp(outline.top() - badgeH - 6.0, minY,
+                                    std::max(minY, double(height()) - badgeH - 8.0));
+        const QRectF dimRect(bx, by, badgeW, badgeH);
+        const bool overlapsBar = bar_ != nullptr && bar_->isVisible() &&
+                                 dimRect.intersects(QRectF(bar_->geometry()).adjusted(-6, -6, 6, 6));
+        if (!overlapsBar) {
+            const auto t = captureChromeTokens();
+            paintFloatingPanel(p, dimRect, t.controlRadius);
+            p.setPen(t.text);
+            p.drawText(dimRect, Qt::AlignCenter, dimText);
         }
     }
+    if (ready_ && bar_->markupTool() == CaptureMarkupTool::None)
+        paintCaptureHandles(p, outline);
 }
 
 void Overlay::paintEvent(QPaintEvent *) {
@@ -276,95 +432,96 @@ void Overlay::paintEvent(QPaintEvent *) {
     // should not cost a keystroke. C still turns it into a mode that copies on click.
     const bool overSettledRegion =
         ready_ && !selected_.isEmpty() && selected_.contains(cursor_);
-    if (!finished_ && (!ready_ || picking_ || overSettledRegion)) {
+    if (!finished_ && (!ready_ || picking_ ||
+        (overSettledRegion && bar_->markupTool() == CaptureMarkupTool::None))) {
         QPointF at(double(cursor_.x()) * width() / frame_.image.width(),
                    double(cursor_.y()) * height() / frame_.image.height());
         const Qt::CursorShape shape = cursor().shape();
         const bool adjusting = shape == Qt::SizeFDiagCursor || shape == Qt::SizeBDiagCursor ||
+                               shape == Qt::SizeVerCursor || shape == Qt::SizeHorCursor ||
                                shape == Qt::SizeAllCursor;
         // The native resize/move cursor is the aim during a selection adjustment.
         // Painting our crosshair beneath it would still make a handle look like a
         // place to draw a new selection.
         if (!adjusting) {
-            const QPen pen(Qt::white, 0);
+            const QPen pen(QColor(255, 255, 255, 210), 1);
             p.setPen(pen);
-            p.drawLine(at + QPointF(-9,0), at + QPointF(9,0));
-            p.drawLine(at + QPointF(0,-9), at + QPointF(0,9));
+            p.drawLine(at + QPointF(-9, 0), at + QPointF(9, 0));
+            p.drawLine(at + QPointF(0, -9), at + QPointF(0, 9));
         }
         drawMagnifier(p, at);
     }
+    const auto t = captureChromeTokens();
+    QFont hintFont(h2d::cjkFontFamily());
+    hintFont.setPointSizeF(9.5);
+    p.setFont(hintFont);
+    const int maxTextWidth = std::max(1, width() - 60);
+    const QString text = p.fontMetrics().elidedText(captureHint(), Qt::ElideRight, maxTextWidth);
+    const int w = p.fontMetrics().horizontalAdvance(text) + 28;
+    const QRectF hint((width() - w) / 2.0, 8, w, 32);
+    paintFloatingPanel(p, hint, t.cardRadius);
+    p.setPen(t.text);
+    p.drawText(hint, Qt::AlignCenter, text);
+}
+
+QString Overlay::captureHint() const {
     if (picking_) {
-        // The panel carries the instructions, so the only thing left to say up here is
-        // how to get out.
-        const QString text = colourCopied_ ? tr("已复制颜色值 %1")
-                                                 .arg(captureColourText(colourAt(cursor_), colourFormat_))
-                                           : tr("移动到要取色的位置 · C 复制颜色值 · Shift 切换颜色格式 · Esc 结束取色");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        const QRectF hint((width() - w) / 2, 24, w, 36);
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 235));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
-    } else if (ready_ && !selected_.isEmpty()) {
-        const QString text = tr("拖动选区可移动 · 角点可缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        const int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        // The bar sits above the region, so the hint takes the other side when there
-        // is room for it.
-        const QRectF hint(bar_ != nullptr && bar_->y() < height() / 2 ? QRectF((width() - w) / 2, height() - 60, w, 36)
-                                                                     : QRectF((width() - w) / 2, 24, w, 36));
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 225));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
-    } else if (selected_.isEmpty() && !drawing_) {
-        QString text = picker_.current() ? tr("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
-                                               .arg(localizedLabel(picker_.current()->target["label"].toString()).left(30))
-                                               .arg(picker_.level())
-                                               .arg(picker_.count())
-                                         : tr("拖动截图 · 单击选块 · 松手后可批注、贴图或取色 · Esc 取消");
-        p.setFont(QFont(h2d::cjkFontFamily(), 10));
-        int w = std::min(width() - 32, p.fontMetrics().horizontalAdvance(text) + 32);
-        QRectF hint((width() - w) / 2, 24, w, 36);
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 31, 37, 225));
-        p.drawRoundedRect(hint, 10, 10);
-        p.setPen(Qt::white);
-        p.drawText(hint, Qt::AlignCenter, text);
+        return colourCopied_ ? tr("已复制颜色值 %1").arg(captureColourText(colourAt(cursor_), colourFormat_))
+                             : tr("移动到要取色的位置 · C 复制颜色值 · Shift 切换格式 · Esc 结束取色");
     }
+    if (ready_ && !selected_.isEmpty()) {
+        if (bar_->markupTool() == CaptureMarkupTool::Brush)
+            return tr("在选区内拖动画笔 · Ctrl+Z 撤销 · Esc 退出画笔");
+        if (bar_->markupTool() == CaptureMarkupTool::Mosaic)
+            return tr("在选区内拖出马赛克区域 · Ctrl+Z 撤销 · Esc 退出马赛克");
+        return tr("拖动移动选区 · 8 锚点缩放 · 双击或 Ctrl+C 复制 · 回车批注 · C 取色 · Esc 取消");
+    }
+    if (drawing_)
+        return tr("松开鼠标完成选区 · Esc 取消");
+    if (const auto current = picker_.current())
+        return tr("%1  ·  %2 / %3  ·  滚轮 ↑ 更大 ↓ 更小")
+            .arg(localizedLabel(current->target["label"].toString()).left(30))
+            .arg(picker_.level())
+            .arg(picker_.count());
+    return tr("拖动截图 · 单击智能吸附窗口 · 松手后可批注、贴图或取色 · Esc 取消");
+}
+
+QRect Overlay::captureToolBounds() const {
+    return rect().adjusted(0, captureInstructionHeight, 0, 0);
 }
 
 void Overlay::drawMagnifier(QPainter &p, QPointF at) {
-    const QSizeF panelSize(magnifierPanelWidth, magnifierPanelHeight);
     // The bar and the column of tools are children of this window, so they are painted
     // over the panel; the panel is placed to keep clear of them.
-    QVector<QRectF> tools;
+    QVector<QRectF> tools{QRectF(0, 0, width(), captureInstructionHeight)};
     if (bar_ != nullptr && bar_->isVisible())
         tools.append(bar_->geometry());
     if (sidebar_ != nullptr && sidebar_->isVisible())
         tools.append(sidebar_->geometry());
+    if (captureNotice_ && captureNotice_->isVisible())
+        tools.append(captureNotice_->geometry());
     const QRectF panel = magnifierPlacement(at, QSizeF(width(), height()), tools);
+    if (panel.isEmpty())
+        return;
     const double x = panel.left(), y = panel.top();
-    const double inner = panelSize.width() - magnifierPanelPadding * 2;
+    const double inner = panel.width() - magnifierPanelPadding * 2;
     const QRectF area(QPointF(x + magnifierPanelPadding, y + magnifierPanelPadding),
                       QSizeF(inner, magnifierZoomHeight));
-    p.setPen(QPen(QColor(255,255,255,90),1));
-    p.setBrush(QColor(25,28,34,245));
-    p.drawRoundedRect(panel,10,10);
-    const QPoint sample(std::clamp(cursor_.x(),0,frame_.image.width()-1),
-                        std::clamp(cursor_.y(),0,frame_.image.height()-1));
+    const auto t = captureChromeTokens();
+    paintFloatingPanel(p, panel);
+    const QPoint sample(std::clamp(cursor_.x(), 0, frame_.image.width() - 1),
+                        std::clamp(cursor_.y(), 0, frame_.image.height() - 1));
     // The panel follows the pointer: the pixel shown is always the one under the
     // cursor, so aiming and reading are the same gesture.
     const QColor colour = colourAt(sample);
+    QPainterPath areaClip;
+    areaClip.addRoundedRect(area, t.controlRadius, t.controlRadius);
     p.save();
-    p.setClipRect(area);
-    p.fillRect(area,QColor(45,48,55));
-    p.setRenderHint(QPainter::SmoothPixmapTransform,false);
-    const double cell=magnifierZoomCell;
-    const QPointF center=area.center();
+    p.setClipPath(areaClip);
+    p.fillRect(area, t.stage);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    const double cell = magnifierZoomCell;
+    const QPointF center = area.center();
     // Only the strip of the screen the panel shows is handed to the painter. Giving it
     // the whole grab under a scale made it resample the entire screen a second time on
     // every repaint, which on a scaled display is ten milliseconds a frame.
@@ -372,51 +529,64 @@ void Overlay::drawMagnifier(QPainter &p, QPointF at) {
                         sample.y() + 0.5 - (center.y() - area.top()) / cell,
                         area.width() / cell, area.height() / cell);
     p.drawImage(area, frame_.image, source);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(QPen(QColor(255, 255, 255, 28), 0));
+    for (double gx = center.x() - cell / 2; gx >= area.left(); gx -= cell)
+        p.drawLine(QPointF(gx, area.top()), QPointF(gx, area.bottom()));
+    for (double gx = center.x() + cell / 2; gx <= area.right(); gx += cell)
+        p.drawLine(QPointF(gx, area.top()), QPointF(gx, area.bottom()));
+    for (double gy = center.y() - cell / 2; gy >= area.top(); gy -= cell)
+        p.drawLine(QPointF(area.left(), gy), QPointF(area.right(), gy));
+    for (double gy = center.y() + cell / 2; gy <= area.bottom(); gy += cell)
+        p.drawLine(QPointF(area.left(), gy), QPointF(area.right(), gy));
+    // Neutral dark outer contrast frame + white inner reticle so zoom pixels stay pure
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(0, 0, 0, 145), 1));
+    p.drawRect(QRectF(center - QPointF(cell / 2 + 1, cell / 2 + 1), QSizeF(cell + 2, cell + 2)));
+    p.setPen(QPen(Qt::white, 1));
+    p.drawRect(QRectF(center - QPointF(cell / 2, cell / 2), QSizeF(cell, cell)));
     p.restore();
-    p.save();
-    p.setClipRect(area);
-    p.setRenderHint(QPainter::Antialiasing,false);
-    p.setPen(QPen(QColor(255,255,255,70),0));
-    for(double gx=center.x()-cell/2; gx>=area.left(); gx-=cell) p.drawLine(QPointF(gx,area.top()),QPointF(gx,area.bottom()));
-    for(double gx=center.x()+cell/2; gx<=area.right(); gx+=cell) p.drawLine(QPointF(gx,area.top()),QPointF(gx,area.bottom()));
-    for(double gy=center.y()-cell/2; gy>=area.top(); gy-=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
-    for(double gy=center.y()+cell/2; gy<=area.bottom(); gy+=cell) p.drawLine(QPointF(area.left(),gy),QPointF(area.right(),gy));
-    // The one pixel the readout is about is boxed, not left to the grid to imply. The
-    // box is one enlarged pixel wide, which is what the grid counts in.
-    p.setBrush(Qt::NoBrush); p.setPen(QPen(Qt::white,0));
-    p.drawRect(QRectF(center-QPointF(cell/2,cell/2),QSizeF(cell,cell)));
-    p.restore();
-    const double firstRow = y + magnifierPanelPadding + magnifierZoomHeight + 4;
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(t.panelBorder, 1));
+    p.drawRoundedRect(area, t.controlRadius, t.controlRadius);
+
+    const double firstRow = y + magnifierPanelPadding + magnifierZoomHeight + 5;
     const auto slotRect = [&](int slot) {
         return QRectF(x + magnifierPanelPadding, firstRow + slot * kRowHeight, inner, kRowHeight);
     };
-    p.setFont(QFont(h2d::cjkFontFamily(), 9));
-    // The pixel the colour came from, written the way a colour tool writes it.
-    p.setPen(QColor(0xc9, 0xcb, 0xd4));
+    QFont monoFont(QStringLiteral("Consolas"));
+    monoFont.setStyleHint(QFont::Monospace);
+    monoFont.setPointSizeF(8.0);
+    p.setFont(monoFont);
+    p.setPen(t.textSecondary);
     p.drawText(slotRect(kPixelSlot), Qt::AlignVCenter,
-               tr("像素 ( %1 , %2 )").arg(sample.x()).arg(sample.y()));
-    // All four ways of writing the colour are on show and the one that a copy would
-    // put on the clipboard is the bright one, which is what makes Shift discoverable.
-    const QVector<ColourFormat> formats{ColourFormat::Rgb, ColourFormat::Hex, ColourFormat::Hsv,
-                                        ColourFormat::Hsl};
+               tr("像素 %1, %2").arg(sample.x()).arg(sample.y()));
+    const QVector<ColourFormat> formats = panel.height() == magnifierCompactPanelHeight
+        ? QVector<ColourFormat>{colourFormat_}
+        : QVector<ColourFormat>{ColourFormat::Rgb, ColourFormat::Hex, ColourFormat::Hsv, ColourFormat::Hsl};
     for (int index = 0; index < formats.size(); ++index) {
         const ColourFormat format = formats.at(index);
         const bool current = format == colourFormat_;
         const QRectF row = slotRect(kRgbSlot + index);
         if (current) {
-            // A swatch of the colour itself sits in the row that is being copied.
-            const QRectF swatch(row.left(), row.top() + 3, 12, 12);
+            p.setPen(Qt::NoPen);
+            p.setBrush(t.activeBg);
+            p.drawRoundedRect(row.adjusted(0, 1, 0, -1), 4, 4);
+            const QRectF swatch(row.left() + 3, row.top() + 3.5, 11, 11);
             p.setBrush(colour);
-            p.setPen(QPen(QColor(255, 255, 255, 140), 1));
-            p.drawRect(swatch);
+            p.setPen(QPen(t.divider, 1));
+            p.drawRoundedRect(swatch, 3, 3);
         }
-        p.setPen(current ? QColor(0xf2, 0xf2, 0xf5) : QColor(0x8d, 0x90, 0x9c));
-        p.drawText(row.adjusted(18, 0, 0, 0), Qt::AlignVCenter,
+        p.setPen(current ? t.text : t.textSecondary);
+        p.drawText(row.adjusted(18, 0, -2, 0), Qt::AlignVCenter,
                    captureColourText(colour, format));
     }
-    p.setPen(QColor(0x8d, 0x90, 0x9c));
-    const QRectF note(x + magnifierPanelPadding, firstRow + kSlotCount * kRowHeight + 2, inner, 16);
-    p.drawText(note, Qt::AlignVCenter, tr("C 复制颜色值 · Shift 切换格式"));
+    QFont hintFont(h2d::cjkFontFamily());
+    hintFont.setPointSizeF(8.0);
+    p.setFont(hintFont);
+    p.setPen(t.textSecondary);
+    const QRectF note(x + magnifierPanelPadding, firstRow + (kRgbSlot + formats.size()) * kRowHeight + 3, inner, 16);
+    p.drawText(note, Qt::AlignVCenter, tr("C 复制 · Shift 切换"));
 }
 
 void Overlay::mousePressEvent(QMouseEvent *e) {
@@ -425,6 +595,10 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::RightButton) {
         if (picking_) {
             leavePicking();
+            return;
+        }
+        if (bar_->markupTool() != CaptureMarkupTool::None) {
+            bar_->setMarkupTool(CaptureMarkupTool::None);
             return;
         }
         if (selected_.isEmpty())
@@ -443,6 +617,12 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
         // the region is left exactly where it was.
         copyColour();
         leavePicking();
+        return;
+    }
+    if (ready_ && bar_->markupTool() != CaptureMarkupTool::None) {
+        if (selected_.contains(pixel))
+            beginMarkup(pixel);
+        e->accept();
         return;
     }
     if (ready_) {
@@ -468,6 +648,7 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
         hideTools();
     }
     emit selectionBegan();
+    clearMarkup();
     start_ = cursor_ = pixel;
     keyboardOffset_ = {};
     hoverTimer_.stop();
@@ -475,7 +656,7 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     nudged_ = false;
     setCursor(Qt::BlankCursor);
     setFocus();
-    picker_.update(candidates(), start_);
+    picker_.update(candidates(), start_, false, shouldPreferWindow());
     drawing_ = true;
     selected_ = {};
     update();
@@ -486,7 +667,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     const QPointF local = e->position();
     // Ignore the short-lived cursor-warp echo, which can be rounded by the
     // platform. Ordinary mouse movement must retain sub-DIP precision as well.
-    const bool dragging = drawing_ || handle_ != -1;
+    const bool dragging = drawing_ || handle_ != -1 || draftMarkup_.has_value();
     const bool echo = pointerWarpAge_.isValid() && pointerWarpAge_.elapsed() < 200 &&
                       std::abs(local.x() - pointer_.x()) < 1.0 &&
                       std::abs(local.y() - pointer_.y()) < 1.0;
@@ -497,6 +678,11 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (!adopted)
         return;
     const QPoint pixel = pixelPoint(local);
+    if (draftMarkup_) {
+        cursor_ = pixel;
+        updateMarkup(pixel);
+        return;
+    }
     if (handle_ == kMoving) {
         cursor_ = pixel;
         const QPoint shift = pixel - dragStart_;
@@ -509,16 +695,26 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     }
     if (handle_ >= 0) {
         cursor_ = pixel;
-        // The opposite corner is what stays put while a corner is dragged.
+        // The opposite corner/edge stays put while a handle is dragged.
         QRect resized = dragOrigin_;
-        if (handle_ == 0 || handle_ == 2)
-            resized.setLeft(pixel.x());
-        else
-            resized.setRight(pixel.x());
-        if (handle_ == 0 || handle_ == 1)
+        if (handle_ <= 3) {
+            if (handle_ == 0 || handle_ == 2)
+                resized.setLeft(pixel.x());
+            else
+                resized.setRight(pixel.x());
+            if (handle_ == 0 || handle_ == 1)
+                resized.setTop(pixel.y());
+            else
+                resized.setBottom(pixel.y());
+        } else if (handle_ == 4) {
             resized.setTop(pixel.y());
-        else
+        } else if (handle_ == 5) {
             resized.setBottom(pixel.y());
+        } else if (handle_ == 6) {
+            resized.setLeft(pixel.x());
+        } else if (handle_ == 7) {
+            resized.setRight(pixel.x());
+        }
         applySelection(resized.normalized(), false);
         return;
     }
@@ -532,7 +728,7 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
     if (drawing_)
         selected_ = captureRectFromDrag(start_, cursor_, ratio_, bar_->customWidth(), bar_->customHeight());
     else if (!ready_ && selected_.isEmpty()) {
-        picker_.update(candidates(), cursor_);
+        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
         debounce_.start();
     }
     updateCursor();
@@ -541,6 +737,10 @@ void Overlay::mouseMoveEvent(QMouseEvent *e) {
 void Overlay::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton)
         return;
+    if (draftMarkup_) {
+        finishMarkup(pixelPoint(e->position()));
+        return;
+    }
     if (handle_ != -1) {
         handle_ = -1;
         pointer_ = e->position();
@@ -571,6 +771,10 @@ void Overlay::mouseReleaseEvent(QMouseEvent *e) {
 void Overlay::mouseDoubleClickEvent(QMouseEvent *e) {
     if (busy_ || e->button() != Qt::LeftButton)
         return;
+    if (bar_->markupTool() != CaptureMarkupTool::None) {
+        mousePressEvent(e);
+        return;
+    }
     // A double click on the region copies it, which is the gesture a capture tool
     // teaches before anything else.
     if (ready_ && !selected_.isEmpty()) {
@@ -583,7 +787,7 @@ void Overlay::wheelEvent(QWheelEvent *e) {
         return;
     pointer_ = e->position();
     cursor_ = pixelPoint(e->position());
-    picker_.update(candidates(), cursor_);
+    picker_.update(candidates(), cursor_, false, shouldPreferWindow());
     if (e->angleDelta().y() != 0)
         picker_.step(e->angleDelta().y() > 0 ? 1 : -1);
     update();
@@ -593,6 +797,29 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
     if (busy_) {
         e->ignore();
         return;
+    }
+    if (ready_ && !picking_) {
+        if (e->matches(QKeySequence::Undo)) {
+            undoMarkup();
+            e->accept();
+            return;
+        }
+        const auto tool = bar_->markupTool();
+        if (e->key() == Qt::Key_Escape && tool != CaptureMarkupTool::None) {
+            bar_->setMarkupTool(CaptureMarkupTool::None);
+            e->accept();
+            return;
+        }
+        if (draftMarkup_) {
+            e->accept();
+            return;
+        }
+        if (e->modifiers() == Qt::NoModifier && (e->key() == Qt::Key_B || e->key() == Qt::Key_M)) {
+            const auto requested = e->key() == Qt::Key_B ? CaptureMarkupTool::Brush : CaptureMarkupTool::Mosaic;
+            bar_->setMarkupTool(tool == requested ? CaptureMarkupTool::None : requested);
+            e->accept();
+            return;
+        }
     }
     const bool ctrl = e->modifiers().testFlag(Qt::ControlModifier);
     const bool shift = e->modifiers().testFlag(Qt::ShiftModifier);
@@ -701,7 +928,7 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
             return;
         }
         if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
-            emit accepted(selected_, candidates());
+            emit accepted(selected_, documentCandidates());
             e->accept();
             return;
         }
@@ -721,8 +948,15 @@ void Overlay::keyPressEvent(QKeyEvent *e) {
         // offer is kept while the pointer is still inside it. A mouse that travels is
         // not fine-tuning: there the block follows the pointer, which is the whole
         // point of finding blocks by hovering.
-        picker_.update(candidates(), cursor_, true);
+        picker_.update(candidates(), cursor_, true, shouldPreferWindow());
         debounce_.start();
+        update();
+        e->accept();
+        return;
+    }
+    if (e->key() == Qt::Key_Tab && selected_.isEmpty() && !drawing_ && !picking_) {
+        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
+        picker_.toggleWindow();
         update();
         e->accept();
         return;
@@ -763,7 +997,7 @@ void Overlay::finish(bool copy) {
     if (copy)
         emit copyRequested(area);
     else
-        emit accepted(area, candidates());
+        emit accepted(area, documentCandidates());
 }
 
 QImage Overlay::selectionPixels() const {
@@ -776,10 +1010,121 @@ QImage Overlay::selectionPixels() const {
 }
 
 QImage Overlay::selectionImage() const {
-    const QImage region = selectionPixels();
+    const QImage region = selectionContent();
     if (region.isNull())
         return {};
     return composeCapture(region, style_);
+}
+
+QImage Overlay::selectionContent() const {
+    QImage region = selectionPixels();
+    if (region.isNull() || markup_.isEmpty())
+        return region;
+    region = region.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const qreal ratio = region.devicePixelRatio();
+    QPainter painter(&region);
+    painter.scale(1 / ratio, 1 / ratio);
+    painter.translate(-selected_.topLeft());
+    drawMarkup(painter, false);
+    painter.end();
+    return region;
+}
+
+void Overlay::beginMarkup(QPoint pixel) {
+    auto &edit = draftMarkup_.emplace();
+    edit.start = pixel;
+    const auto &options = bar_->markupOptions();
+    if (bar_->markupTool() == CaptureMarkupTool::Brush) {
+        edit.ink = options.brushColor;
+        edit.width = options.brushWidth;
+        if (options.highlighter) {
+            edit.width *= 2.6;
+            edit.ink.setAlphaF(0.38);
+        }
+        edit.stroke.moveTo(QPointF(pixel) + QPointF(0.5, 0.5));
+    } else {
+        edit.strength = options.mosaicStrength;
+        edit.blur = options.blur;
+    }
+    update();
+}
+
+void Overlay::updateMarkup(QPoint pixel) {
+    auto &edit = *draftMarkup_;
+    pixel.setX(std::clamp(pixel.x(), selected_.left(), selected_.right()));
+    pixel.setY(std::clamp(pixel.y(), selected_.top(), selected_.bottom()));
+    if (edit.width > 0) {
+        const QPointF at = QPointF(pixel) + QPointF(0.5, 0.5);
+        if (edit.stroke.currentPosition() != at)
+            edit.stroke.lineTo(at);
+    } else {
+        edit.area = QRect(edit.start, pixel).normalized();
+    }
+    update();
+}
+
+void Overlay::finishMarkup(QPoint pixel) {
+    updateMarkup(pixel);
+    auto edit = std::move(*draftMarkup_);
+    draftMarkup_.reset();
+    if (edit.width <= 0) {
+        if (edit.area.width() < 2 || edit.area.height() < 2)
+            return;
+        const QSize cells(std::max(1, qRound(double(edit.area.width()) / edit.strength)),
+                          std::max(1, qRound(double(edit.area.height()) / edit.strength)));
+        edit.mosaic = frame_.image.copy(edit.area).scaled(cells, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if (edit.mosaic.isNull())
+            return;
+    }
+    markup_.append(std::move(edit));
+    bar_->setHasMarkup(true);
+}
+
+void Overlay::undoMarkup() {
+    if (draftMarkup_)
+        draftMarkup_.reset();
+    else if (!markup_.isEmpty())
+        markup_.removeLast();
+    bar_->setHasMarkup(!markup_.isEmpty());
+    update();
+}
+
+void Overlay::clearMarkup() {
+    draftMarkup_.reset();
+    markup_.clear();
+    bar_->setMarkupTool(CaptureMarkupTool::None);
+    bar_->setHasMarkup(false);
+}
+
+void Overlay::drawMarkup(QPainter &painter, bool includeDraft) const {
+    painter.setRenderHint(QPainter::Antialiasing);
+    const auto paint = [&painter](const Markup &edit) {
+        if (!edit.mosaic.isNull()) {
+            painter.save();
+            painter.setCompositionMode(QPainter::CompositionMode_Source);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform, edit.blur);
+            painter.drawImage(QRectF(edit.area), edit.mosaic, QRectF(edit.mosaic.rect()));
+            painter.restore();
+        } else if (edit.width > 0) {
+            const QPen pen(edit.ink, edit.width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+            if (edit.stroke.elementCount() == 1)
+                painter.drawPoint(edit.stroke.currentPosition());
+            else
+                painter.drawPath(edit.stroke);
+        } else if (!edit.area.isEmpty()) {
+            QPen pen(accent(), 1, Qt::DashLine);
+            pen.setCosmetic(true);
+            painter.setPen(pen);
+            painter.setBrush(captureChromeTokens().activeBg);
+            painter.drawRect(QRectF(edit.area));
+        }
+    };
+    for (const auto &edit : markup_)
+        paint(edit);
+    if (includeDraft && draftMarkup_)
+        paint(*draftMarkup_);
 }
 
 QRect Overlay::placementFor(QSize picture) const {
@@ -825,10 +1170,15 @@ void Overlay::setCaptureNotice(const QString &message) {
         captureNotice_->setObjectName(QStringLiteral("captureStatus"));
         captureNotice_->setWordWrap(true);
         captureNotice_->setAttribute(Qt::WA_TransparentForMouseEvents);
-        captureNotice_->setStyleSheet(QStringLiteral(
-            "QLabel { color: #e8e9ee; background: rgba(28, 30, 36, 240);"
-            " border: 1px solid rgba(255, 255, 255, 40); border-radius: 8px; padding: 10px; }"));
     }
+    const auto t = captureChromeTokens();
+    captureNotice_->setStyleSheet(QStringLiteral(
+        "QLabel#captureStatus { color: %1; background: rgba(%2, %3, %4, %5);"
+        " border: 1px solid rgba(%6, %7, %8, %9); border-radius: %10px; padding: 10px 12px; }")
+        .arg(t.text.name())
+        .arg(t.panelBg.red()).arg(t.panelBg.green()).arg(t.panelBg.blue()).arg(t.panelBg.alpha())
+        .arg(t.panelBorder.red()).arg(t.panelBorder.green()).arg(t.panelBorder.blue()).arg(t.panelBorder.alpha())
+        .arg(t.panelRadius));
     captureNotice_->setText(message);
     placeCaptureNotice();
     captureNotice_->show();
@@ -846,21 +1196,22 @@ void Overlay::placeCaptureNotice() {
     const int x = std::clamp(bar_->x(), gap, std::max(gap, width() - captureNotice_->width() - gap));
     const QRect selection = localRect(selected_).toRect();
     const QRect side = sidebar_ && sidebar_->isVisible() ? sidebar_->geometry() : QRect();
+    const QRect bounds = captureToolBounds();
     const QVector<int> positions = {
         std::max({bar_->geometry().bottom(), selection.bottom(), side.bottom()}) + gap,
         std::min(bar_->y(), selection.y()) - captureNotice_->height() - gap,
         bar_->geometry().bottom() + gap,
         bar_->y() - captureNotice_->height() - gap,
         height() - captureNotice_->height() - gap,
-        gap};
+        bounds.top() + gap};
     for (int y : positions) {
         const QRect area(QPoint(x, y), captureNotice_->size());
-        if (rect().contains(area) && !area.intersects(bar_->geometry()) && !area.intersects(side)) {
+        if (bounds.contains(area) && !area.intersects(bar_->geometry()) && !area.intersects(side)) {
             captureNotice_->move(x, y);
             return;
         }
     }
-    captureNotice_->move(x, gap);
+    captureNotice_->move(x, bounds.top() + gap);
 }
 
 void Overlay::setOcrLanguage(OcrLanguageMode language) {
@@ -955,21 +1306,22 @@ void Overlay::showBar() {
     if (bar_ == nullptr || selected_.isEmpty())
         return;
     const QRect local = localRect(selected_).toRect();
+    bar_->show();
     bar_->setSelectionSize(selected_.size());
     // The corner is written down in the pixels of the screen, which is what a capture
     // tool shows and what a bug report asks for.
     bar_->setSelectionOrigin(selected_.topLeft());
-    bar_->placeNear(local, rect());
-    bar_->show();
+    const QRect bounds = captureToolBounds();
+    bar_->placeNear(local, bounds);
     bar_->raise();
+    if (sidebar_ != nullptr) {
+        sidebar_->placeBeside(local, bounds);
+        sidebar_->show();
+        sidebar_->raise();
+    }
     if (captureNotice_ && captureNotice_->isVisible()) {
         placeCaptureNotice();
         captureNotice_->raise();
-    }
-    if (sidebar_ != nullptr) {
-        sidebar_->placeBeside(local, rect());
-        sidebar_->show();
-        sidebar_->raise();
     }
 }
 
@@ -1080,12 +1432,18 @@ void Overlay::updateCursor() {
     if (!busy_ && !finished_ && !picking_) {
         if (drawing_)
             shape = Qt::BlankCursor;
+        else if (bar_->markupTool() != CaptureMarkupTool::None)
+            shape = Qt::CrossCursor;
         else if (handle_ == kMoving)
             shape = Qt::SizeAllCursor;
         else {
             const int handle = handle_ >= 0 ? handle_ : handleAt(cursor_);
-            if (handle >= 0)
-                shape = handle == 0 || handle == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+            if (handle >= 0) {
+                if (handle <= 3)
+                    shape = handle == 0 || handle == 3 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+                else
+                    shape = (handle == 4 || handle == 5) ? Qt::SizeVerCursor : Qt::SizeHorCursor;
+            }
         }
     }
     setCursor(shape);
@@ -1095,12 +1453,16 @@ int Overlay::handleAt(QPoint pixel) const {
     if (!ready_ || selected_.isEmpty())
         return -1;
     // A handle only a couple of pixels across is a handle nobody can hit, so the
-    // corners are given a reach in screen pixels and converted to picture pixels.
+    // corners and edge midpoints are given a reach in screen pixels converted to image pixels.
     const int reach = std::max(3, int(std::lround(7.0 * frame_.image.width() / std::max(1, width()))));
-    const QVector<QPoint> corners{selected_.topLeft(), selected_.topRight(), selected_.bottomLeft(),
-                                  selected_.bottomRight()};
-    for (int index = 0; index < corners.size(); ++index) {
-        const QPoint gap = corners.at(index) - pixel;
+    const QVector<QPoint> anchors{
+        selected_.topLeft(), selected_.topRight(), selected_.bottomLeft(), selected_.bottomRight(),
+        QPoint(selected_.center().x(), selected_.top()),
+        QPoint(selected_.center().x(), selected_.bottom()),
+        QPoint(selected_.left(), selected_.center().y()),
+        QPoint(selected_.right(), selected_.center().y())};
+    for (int index = 0; index < anchors.size(); ++index) {
+        const QPoint gap = anchors.at(index) - pixel;
         if (std::abs(gap.x()) <= reach && std::abs(gap.y()) <= reach)
             return index;
     }
@@ -1165,7 +1527,7 @@ void Overlay::requestProbe() {
                         }
                     }
                     if (selected_.isEmpty() && !drawing_) {
-                        picker_.update(candidates(), cursor_);
+                        picker_.update(candidates(), cursor_, false, shouldPreferWindow());
                         update();
                     }
                 }

@@ -58,8 +58,11 @@ class UpdateChecker final : public QObject {
     // check with "安装包已损坏或不完整".
     static QString prepareDownloadTarget(const QString &directory, const QString &packageName);
     static bool verifyPackage(const QString &filePath, const QString &expectedHash, QString *error);
+    static bool installedCopy();
     static bool canAutoInstall(const Result &result, bool installed, bool windows);
     void setInstallConfirmation(std::function<bool()> confirmation) { confirmInstall_ = std::move(confirmation); }
+    // Called after READY. This check must not open dialogs or pump the event loop.
+    void setExitConfirmation(std::function<bool()> confirmation) { confirmExit_ = std::move(confirmation); }
     void check();
     bool busy() const {
         return busy_;
@@ -87,8 +90,6 @@ class UpdateChecker final : public QObject {
 
   private:
     friend class UpdateCheckerTestAccess;
-    void requestPublic();
-    void requestGitee();
     void requestSource(Source source);
     void collectSource(Source source, Result result);
     void completeCheck();
@@ -111,9 +112,7 @@ class UpdateChecker final : public QObject {
     QPointer<QNetworkReply> atomgitReply_;
     QPointer<QNetworkReply> downloadReply_;
     QPointer<QNetworkReply> hashReply_;
-    QProcess process_;
     QTimer timeout_;
-    QTimer cliTimeout_;
     QTimer handoffTimer_;
     QElapsedTimer handoffDeadline_;
     int handoffTimeoutMs_ = 120000;
@@ -124,8 +123,6 @@ class UpdateChecker final : public QObject {
     QByteArray atomgitOutput_;
     std::optional<Result> githubResult_, giteeResult_;
     std::optional<Result> atomgitResult_;
-    std::optional<Result> giteeCandidate_;
-    std::optional<Result> atomgitCandidate_;
     int giteePage_ = 1;
     int atomgitPage_ = 1;
     QString sourcePreference_ = "auto";
@@ -142,10 +139,10 @@ class UpdateChecker final : public QObject {
     bool busy_ = false;
     bool isInstallerUpdate_ = false;
     bool installing_ = false;
-    bool publicRequested_ = false;
     std::shared_ptr<QTemporaryDir> downloadDirectory_;
     std::unique_ptr<QSaveFile> downloadFile_;
     std::function<bool()> confirmInstall_;
+    std::function<bool()> confirmExit_;
     std::function<bool(QProcess &)> launchInstaller_;
     Result lastResult_;
 };

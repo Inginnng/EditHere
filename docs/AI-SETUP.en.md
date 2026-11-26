@@ -9,13 +9,13 @@
 Give the passage below to an AI agent that can run commands and read and write files on your computer:
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for my current AI tool. Reuse an existing installation on this machine first; only download and install if there is none. Do not interrupt what I am editing. When you are done, verify the command line and the skill, and tell me how to start using it.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for my current AI tool. Reuse an existing installation on this machine first; only download and install if there is none. Do not interrupt what I am editing. When you are done, verify the command line and the skill, and tell me how to start using it.
 ```
 
 If you prefer the portable version, use this passage:
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up the portable EditHere and the edithere skill for my current AI tool. Look for an existing extracted folder first; if there is none, download the official complete portable ZIP. Do not run the installer, change PATH or set launch at login. Save the full path to the CLI, and tell me how to use it once you have verified it.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md to set up the portable EditHere and the edithere skill for my current AI tool. Look for an existing extracted folder first; if there is none, download the official complete portable ZIP. Do not run the installer, change PATH or set launch at login. Save the full path to the CLI, and tell me how to use it once you have verified it.
 ```
 
 If a web chat or a remote cloud agent cannot access your computer, it can only offer guidance and cannot complete a local installation from this passage alone. **The source code and release packages are public**: the repository files and releases needed for setup are publicly accessible, and you do not need to request project access separately.
@@ -74,7 +74,7 @@ Download the official DMG for the matching platform, mount it, and copy the comp
 
 ## 4. Install or update the skill for the current tool
 
-The skill bundled in the app package may predate the path-location fix. Prefer to read the current version from the official repository's `codex/native` branch: first resolve it to a single explicit commit, then fetch the **entire `skills/edithere` directory** from that commit, including `SKILL.md`, reference files and other companion files. Do not mix files from different commits. If a trusted local clone exists, you may also use the same verified version of the files.
+The skill bundled in the app package may predate the path-location fix. Prefer to read the current version from the official repository's default branch (`HEAD`): first resolve it to a single explicit commit, then fetch the **entire `skills/edithere` directory** from that commit, including `SKILL.md`, reference files and other companion files. Do not mix files from different commits. If a trusted local clone exists, you may also use the same verified version of the files.
 
 First identify the skills directory your tool actually discovers and any existing `edithere`, then choose a location:
 

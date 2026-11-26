@@ -2049,7 +2049,7 @@ void CandidatePicker::forget() {
 std::optional<Candidate> CandidatePicker::current() const {
     return levels_.isEmpty() ? std::nullopt : std::optional<Candidate>(levels_[index_]);
 }
-void CandidatePicker::update(const QVector<Candidate> &all, QPoint p, bool keep) {
+void CandidatePicker::update(const QVector<Candidate> &all, QPoint p, bool keep, bool preferWindow) {
     const auto previous = current();
     const bool nearby = anchor_ && (p - *anchor_).manhattanLength() <= 8;
     QVector<Candidate> candidates;
@@ -2068,11 +2068,20 @@ void CandidatePicker::update(const QVector<Candidate> &all, QPoint p, bool keep)
     std::stable_sort(candidates.begin(), candidates.end(),
                      [&](const Candidate &a, const Candidate &b) { return area(a.bounds) < area(b.bounds); });
     levels_ = std::move(candidates);
-    // The level the wheel left it at, when it left it at one; otherwise the smallest
-    // block under the pointer, which is what a block found by hovering has always been.
+    // The level the wheel left it at, when it left it at one; otherwise prefer the OS window
+    // container when hovering window chrome/unprobed surfaces, or the smallest block under pointer.
+    int initialIndex = 0;
+    if (preferWindow && !levels_.isEmpty()) {
+        for (int i = 0; i < levels_.size(); ++i) {
+            if (levels_.at(i).target.value("source").toString() == QLatin1String("window")) {
+                initialIndex = i;
+                break;
+            }
+        }
+    }
     index_ = chosen_ && !levels_.isEmpty()
                  ? std::clamp(*chosen_, 0, int(levels_.size()) - 1)
-                 : 0;
+                 : initialIndex;
     // Staying with the block: the pointer is still inside the one on offer, so a
     // smaller one turning up underneath it is not a request to have that instead.
     // Nearby covers a hand that trembles; `keep` covers the arrow keys, which are how
@@ -2093,6 +2102,21 @@ void CandidatePicker::step(int d) {
     index_ = std::clamp(index_ + (d > 0 ? 1 : -1), 0, int(levels_.size()) - 1);
     // Asked for once is asked for everywhere after: the pointer moving to another part
     // of the screen is not a request for a different level.
+    chosen_ = index_;
+}
+void CandidatePicker::toggleWindow() {
+    if (levels_.size() < 2)
+        return;
+    int winIdx = -1;
+    for (int i = 0; i < levels_.size(); ++i) {
+        if (levels_.at(i).target.value("source").toString() == QLatin1String("window")) {
+            winIdx = i;
+            break;
+        }
+    }
+    if (winIdx < 0)
+        return;
+    index_ = (index_ == winIdx) ? 0 : winIdx;
     chosen_ = index_;
 }
 void History::push(const QVector<Note> &n) {

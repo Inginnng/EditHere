@@ -1339,6 +1339,77 @@ class AgentCliTests : public QObject {
         }
         editor->hide();
     }
+    void fastCaptureProtocolAndControllerFlows() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        // validateNewCapturePath & writeNewCapturePng enforce new .png targets and atomic creation
+        const QString jpgPath = directory.filePath("bad.jpg");
+        QVERIFY(!validateNewCapturePath(jpgPath).isEmpty());
+        QVERIFY(!validateNewCapturePath("relative.png").isEmpty());
+        QVERIFY(!validateNewCapturePath(directory.filePath("missing/shot.png")).isEmpty());
+
+        const QString pngPath = directory.filePath("shot.png");
+        QVERIFY(validateNewCapturePath(pngPath).isEmpty());
+        writeNewCapturePng(pngPath, "PNG-A");
+        QCOMPARE(readFile(pngPath), QByteArray("PNG-A"));
+        QVERIFY_EXCEPTION_THROWN(writeNewCapturePng(pngPath, "PNG-B"), std::runtime_error);
+        QCOMPARE(readFile(pngPath), QByteArray("PNG-A"));
+
+        // Exit code mapping for new fast-capture errors
+        QCOMPARE(agentExitCode(agentError("ambiguous_window", "Multiple matches")), 2);
+        QCOMPARE(agentExitCode(agentError("window_not_found", "Missing")), 3);
+        QCOMPARE(agentExitCode(agentError("window_minimized", "Minimized")), 3);
+        QCOMPARE(agentExitCode(agentError("capture_failed", "Blank")), 3);
+
+        // Synchronous CLI option validation without starting GUI
+        auto runCliSync = [&](const QStringList &arguments) {
+            QProcess cli;
+            cli.start(cliExecutable(), arguments);
+            if (!cli.waitForFinished(15000)) return -1;
+            return cli.exitCode();
+        };
+        QCOMPARE(runCliSync({"--version"}), 0);
+        QCOMPARE(runCliSync({"windows", "--unexpected"}), 2);
+        QCOMPARE(runCliSync({"capture", "--screen", "--window", "App", "--output", directory.filePath("x.png")}), 2);
+        QCOMPARE(runCliSync({"capture", "--annotate"}), 2);
+        QCOMPARE(runCliSync({"capture", "--screen"}), 2);
+        QCOMPARE(runCliSync({"capture", "--page-context", "Login"}), 2);
+        QCOMPARE(runCliSync({"capture", "--screen", "--output", directory.filePath("bad.jpg")}), 5);
+
+        // Controller handleAgentRequest contract for windows & capture flags
+        const auto input = inputProject(directory);
+        Controller controller(nullptr, quietSettings(), directory.filePath("settings.ini"));
+        auto editor = editorOf(controller);
+        auto dirtyDoc = loadDocument(input);
+        dirtyDoc.dirty = true;
+        editor->setDocument(dirtyDoc);
+
+        // windows must remain readable even when editor has unsaved changes
+        const auto winResp = controller.handleAgentRequest({{"command", "windows"}});
+        QVERIFY(winResp["ok"].toBool());
+        QCOMPARE(winResp["command"].toString(), QString("windows"));
+        QVERIFY(winResp["windows"].isArray());
+
+        // capture validation & busy guards
+        QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", "capture"}, {"screen", true}, {"window", "X"}, {"output", directory.filePath("a.png")}})), 2);
+        QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", "capture"}, {"windowId", "0"}, {"output", directory.filePath("b.png")}})), 2);
+        QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", "capture"}, {"annotate", true}})), 2);
+        QCOMPARE(agentExitCode(controller.handleAgentRequest({{"command", "capture"}, {"annotate", true}, {"output", directory.filePath("c.json")}})), 4);
+
+        // Headless capture --output is read-only and must never reject as busy (exit code 4) on dirty editor
+        const auto headlessAttempt = controller.handleAgentRequest({
+            {"command", "capture"},
+            {"window", "__edit_here_unlikely_nonexistent_window_title_9988__"},
+            {"output", directory.filePath("headless.png")},
+        });
+        QVERIFY(!headlessAttempt["ok"].toBool());
+        QCOMPARE(headlessAttempt["error"].toObject()["code"].toString(), QString("window_not_found"));
+
+        dirtyDoc.dirty = false;
+        editor->setDocument(dirtyDoc);
+        editor->hide();
+    }
 };
 QTEST_MAIN(AgentCliTests)
 #include "agent_cli_test.moc"

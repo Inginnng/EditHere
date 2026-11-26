@@ -43,10 +43,10 @@ InstallDir "$LOCALAPPDATA\Programs\EditHere"
 InstallDirRegKey HKCU "${INSTALLER_REGISTRY}" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID zlib
-BrandingText "EditHere · 改这里"
+BrandingText "EditHere"
 VIProductVersion "${APP_VERSION}.0"
 VIAddVersionKey /LANG=2052 "ProductName" "EditHere"
-VIAddVersionKey /LANG=2052 "FileDescription" "EditHere · 改这里 安装程序"
+VIAddVersionKey /LANG=2052 "FileDescription" "EditHere 安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "Inginnng"
 !define MUI_ICON "${PROJECT_ROOT}\assets\icons\edithere.ico"

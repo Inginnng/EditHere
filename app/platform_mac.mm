@@ -4,7 +4,9 @@
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #include <QApplication>
+#include <QColorSpace>
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QScreen>
 #include <QTimer>
 #include <QWidget>
@@ -717,6 +719,234 @@ void captureScreens(CaptureCallback callback) {
                                              onScreenWindowsOnly:YES
                                                completionHandler:onContent];
 }
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows() {
+    QVector<HeadlessWindowInfo> out;
+    const pid_t ownPid = NSProcessInfo.processInfo.processIdentifier;
+    CFArrayRef list = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    for (NSDictionary *info in (__bridge NSArray *)list) {
+        if (out.size() >= 80) break;
+        const pid_t pid = [info[(__bridge NSString *)kCGWindowOwnerPID] intValue];
+        if (pid <= 0 || pid == ownPid) continue;
+        if ([info[(__bridge NSString *)kCGWindowLayer] intValue] != 0) continue;
+        if ([info[(__bridge NSString *)kCGWindowAlpha] doubleValue] <= 0) continue;
+        NSString *nameObj = info[(__bridge NSString *)kCGWindowName];
+        QString title = nameObj ? QString::fromUtf8(nameObj.UTF8String).trimmed().left(160) : QString();
+        if (title.isEmpty()) continue;
+        CGRect bounds{};
+        if (!CGRectMakeWithDictionaryRepresentation(
+                (__bridge CFDictionaryRef)info[(__bridge NSString *)kCGWindowBounds], &bounds))
+            continue;
+        if (bounds.size.width < 24 || bounds.size.height < 24) continue;
+        const bool onscreen = [info[(__bridge NSString *)kCGWindowIsOnscreen] boolValue];
+        NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        QString appName = app.localizedName ? QString::fromUtf8(app.localizedName.UTF8String).left(80) : QString();
+        out.append({quint64([info[(__bridge NSString *)kCGWindowNumber] unsignedIntValue]),
+                    quint32(pid), title, appName,
+                    QRect(qRound(bounds.origin.x), qRound(bounds.origin.y),
+                          qRound(bounds.size.width), qRound(bounds.size.height)),
+                    !onscreen, onscreen});
+    }
+    if (list) CFRelease(list);
+    return out;
+}
+
+namespace {
+// Only the synchronous caller owns the request. Native callbacks carry a weak
+// reference and access the request only after returning to the Qt GUI thread.
+struct HeadlessCaptureRequest {
+    QEventLoop loop;
+    HeadlessCaptureResult result;
+    bool completed = false;
+
+    void finish() {
+        completed = true;
+        loop.quit();
+    }
+
+    void fail(const QString &code, const QString &message) {
+        result.errorCode = code;
+        result.message = message;
+        finish();
+    }
+
+    HeadlessCaptureResult wait(const QString &timeoutMessage) {
+        QTimer::singleShot(8000, &loop, [this, timeoutMessage] {
+            if (!completed)
+                fail("capture_failed", timeoutMessage);
+        });
+        loop.exec();
+        return std::move(result);
+    }
+};
+} // namespace
+
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
+    HeadlessCaptureResult res;
+    QString permissionError;
+    if (!screenRecordingAllowed(&permissionError, false)) {
+        res.errorCode = "desktop_access_required";
+        res.message = permissionError;
+        return res;
+    }
+    const auto request = std::make_shared<HeadlessCaptureRequest>();
+    const std::weak_ptr<HeadlessCaptureRequest> pending = request;
+    [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                             onScreenWindowsOnly:YES
+                                               completionHandler:^(SCShareableContent *content, NSError *error) {
+        QMetaObject::invokeMethod(qApp, [pending, content, error, screenIndex] {
+            const auto active = pending.lock();
+            if (!active || active->completed)
+                return;
+            if (error || !content.displays.count) {
+                active->fail("capture_failed", "Unable to enumerate displays.");
+                return;
+            }
+            const NSInteger idx = screenIndex < 0 ? 0 : screenIndex;
+            if (idx >= NSInteger(content.displays.count)) {
+                active->fail("invalid_arguments", QString("Screen index %1 out of range.").arg(screenIndex));
+                return;
+            }
+            SCDisplay *display = content.displays[idx];
+            const CGRect bounds = CGDisplayBounds(display.displayID);
+            const QRect logical = logicalDisplayGeometry(bounds);
+            SCContentFilter *filter = displayFilter(content, display, nullptr);
+            const QSize size = nativeDisplaySize(filter, bounds);
+            SCStreamConfiguration *cfg = [SCStreamConfiguration new];
+            cfg.width = size.width();
+            cfg.height = size.height();
+            cfg.showsCursor = NO;
+            cfg.colorSpaceName = kCGColorSpaceSRGB;
+            [SCScreenshotManager captureImageWithFilter:filter
+                                         configuration:cfg
+                                     completionHandler:^(CGImageRef image, NSError *capErr) {
+                QImage pixels = capErr ? QImage() : fromCGImage(image);
+                QMetaObject::invokeMethod(qApp, [pending, pixels, logical] {
+                    const auto active = pending.lock();
+                    if (!active || active->completed)
+                        return;
+                    if (pixels.isNull()) {
+                        active->fail("capture_failed", "Screen capture failed.");
+                        return;
+                    }
+                    auto &result = active->result;
+                    result.ok = true;
+                    result.image = pixels;
+                    result.image.setDevicePixelRatio(1);
+                    result.image.setColorSpace(QColorSpace::SRgb);
+                    result.screenBounds = QRect(logical.topLeft(), pixels.size());
+                    active->finish();
+                }, Qt::QueuedConnection);
+            }];
+        }, Qt::QueuedConnection);
+    }];
+    return request->wait("macOS screen capture timed out.");
+}
+
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId) {
+    HeadlessCaptureResult res;
+    QString permissionError;
+    if (!screenRecordingAllowed(&permissionError, false)) {
+        res.errorCode = "desktop_access_required";
+        res.message = permissionError;
+        return res;
+    }
+    const auto windows = listHeadlessCaptureWindows();
+    HeadlessWindowInfo chosen;
+    bool found = false;
+    if (windowId != 0) {
+        for (const auto &w : windows) {
+            if (w.id == windowId) { chosen = w; found = true; break; }
+        }
+        if (!found) {
+            res.errorCode = "window_not_found";
+            res.message = QString("Window ID %1 not found.").arg(windowId);
+            return res;
+        }
+    } else {
+        const QString query = titleQuery.trimmed();
+        if (query.isEmpty()) {
+            res.errorCode = "invalid_arguments";
+            res.message = "Window selector query cannot be empty.";
+            return res;
+        }
+        QVector<HeadlessWindowInfo> exactMatches, titleMatches, appMatches;
+        for (const auto &w : windows) {
+            if (w.title.compare(query, Qt::CaseInsensitive) == 0) exactMatches.append(w);
+            else if (w.title.contains(query, Qt::CaseInsensitive)) titleMatches.append(w);
+            else if (w.appName.contains(query, Qt::CaseInsensitive)) appMatches.append(w);
+        }
+        const auto &bucket = !exactMatches.isEmpty() ? exactMatches
+                           : !titleMatches.isEmpty() ? titleMatches : appMatches;
+        if (bucket.isEmpty()) {
+            res.errorCode = "window_not_found";
+            res.message = QString("No capturable window matched \"%1\".").arg(query);
+            return res;
+        }
+        if (bucket.size() > 1) {
+            res.errorCode = "ambiguous_window";
+            res.message = QString("Multiple windows (%1) matched \"%2\"; pass --window-id.").arg(bucket.size()).arg(query);
+            res.candidates = bucket;
+            return res;
+        }
+        chosen = bucket.first();
+    }
+    if (chosen.minimized) {
+        res.errorCode = "window_minimized";
+        res.message = QString("Window \"%1\" is minimized.").arg(chosen.title);
+        return res;
+    }
+    const auto request = std::make_shared<HeadlessCaptureRequest>();
+    const std::weak_ptr<HeadlessCaptureRequest> pending = request;
+    [SCShareableContent getShareableContentExcludingDesktopWindows:YES
+                                             onScreenWindowsOnly:YES
+                                               completionHandler:^(SCShareableContent *content, NSError *error) {
+        QMetaObject::invokeMethod(qApp, [pending, content, error, chosen] {
+            const auto active = pending.lock();
+            if (!active || active->completed)
+                return;
+            SCWindow *targetWin = nil;
+            if (!error) {
+                for (SCWindow *w in content.windows) {
+                    if (quint64(w.windowID) == chosen.id) { targetWin = w; break; }
+                }
+            }
+            if (!targetWin) {
+                active->fail("window_not_found", "Target window could not be shared via ScreenCaptureKit.");
+                return;
+            }
+            SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:targetWin];
+            SCStreamConfiguration *cfg = [SCStreamConfiguration new];
+            cfg.showsCursor = NO;
+            cfg.colorSpaceName = kCGColorSpaceSRGB;
+            [SCScreenshotManager captureImageWithFilter:filter
+                                         configuration:cfg
+                                     completionHandler:^(CGImageRef image, NSError *capErr) {
+                QImage pixels = capErr ? QImage() : fromCGImage(image);
+                QMetaObject::invokeMethod(qApp, [pending, pixels, chosen] {
+                    const auto active = pending.lock();
+                    if (!active || active->completed)
+                        return;
+                    if (pixels.isNull()) {
+                        active->fail("capture_failed", QString("Failed to capture window \"%1\".").arg(chosen.title));
+                        return;
+                    }
+                    auto &result = active->result;
+                    result.ok = true;
+                    result.image = pixels;
+                    result.image.setDevicePixelRatio(1);
+                    result.image.setColorSpace(QColorSpace::SRgb);
+                    result.windowTitle = chosen.title;
+                    result.appName = chosen.appName;
+                    result.screenBounds = chosen.bounds;
+                    active->finish();
+                }, Qt::QueuedConnection);
+            }];
+        }, Qt::QueuedConnection);
+    }];
+    return request->wait("macOS window capture timed out.");
+}
 QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
     QVector<Candidate> output;
     if (!AXIsProcessTrusted())
@@ -802,106 +1032,7 @@ bool screenCaptureAllowed(QString *reason) {
     // has not been asked to capture yet.
     return screenRecordingAllowed(reason, false);
 }
-namespace {
-// The editor keeps the standard title bar for the traffic lights, hides its title and
-// lets the client area cover it, so the editor's own bar reaches the window's top edge
-// and only the buttons stay on top of it. AppKit keeps the rest of that strip
-// click-through: only the buttons take the click.
-bool nativeTitleBarIsApplied(NSWindow *window) {
-    return (window.styleMask & NSWindowStyleMaskFullSizeContentView) != 0 &&
-           std::abs(window.contentView.frame.size.height - window.frame.size.height) < 1;
-}
-void applyNativeTitleBar(NSWindow *window) {
-    window.titleVisibility = NSWindowTitleHidden;
-    window.titlebarAppearsTransparent = YES;
-    // The separator would be drawn across the editor's own bar.
-    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
-    window.styleMask |= NSWindowStyleMaskFullSizeContentView;
-}
-// The client area's top edge, counted down from the window's top edge: 0 while it covers
-// the title bar, one titlebar high once the system has dropped that.
-CGFloat clientTopInset(NSWindow *window) {
-    const NSRect content = window.contentView.frame;
-    return window.frame.size.height - (content.origin.y + content.size.height);
-}
-} // namespace
-NativeTitleBarRow nativeTitleBarRow(QWidget *widget) {
-    NativeTitleBarRow row;
-    if (!widget || QGuiApplication::platformName() != "cocoa")
-        return row;
-    NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
-    NSWindow *window = view.window;
-    // Full screen hides the title bar and its buttons, and a window without a titled
-    // frame has none to align with either.
-    if (!window || !(window.styleMask & NSWindowStyleMaskTitled) ||
-        (window.styleMask & NSWindowStyleMaskFullScreen))
-        return row;
-    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
-    NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
-    if (!close || !zoom || close.hidden)
-        return row;
-    // Window coordinates grow upwards from the bottom-left corner, so the buttons' row is
-    // counted from the top edge and then moved into the client area's own coordinates.
-    const CGFloat top = clientTopInset(window);
-    const NSRect closeInWindow = [close convertRect:close.bounds toView:nil];
-    const NSRect zoomInWindow = [zoom convertRect:zoom.bounds toView:nil];
-    row.available = true;
-    row.centerY = qRound(window.frame.size.height - NSMidY(closeInWindow) - top);
-    row.controlsRight = qRound(NSMaxX(zoomInWindow));
-    return row;
-}
-void ensureNativeTitleBar(QWidget *widget) {
-    if (!widget || QGuiApplication::platformName() != "cocoa")
-        return;
-    NSView *view = (__bridge NSView *)reinterpret_cast<void *>(widget->winId());
-    NSWindow *window = view.window;
-    if (!window)
-        return;
-    // The state as found: a dropped full-height client area, or a bar that is not on the
-    // traffic lights' row, is what the diagnostic log has to show, so it is recorded
-    // before any repair.
-    if (qEnvironmentVariableIsSet("EDITHERE_WINDOW_DEBUG")) {
-        QWidget *bar = widget->findChild<QWidget *>("editorTitleBar");
-        QJsonObject fields;
-        fields["styleMask"] = qint64(window.styleMask);
-        fields["frameY"] = window.frame.origin.y;
-        fields["frameHeight"] = window.frame.size.height;
-        fields["contentY"] = window.contentView.frame.origin.y;
-        fields["contentHeight"] = window.contentView.frame.size.height;
-        fields["contentClass"] = QString::fromUtf8(NSStringFromClass(window.contentView.class).UTF8String);
-        fields["viewY"] = view.frame.origin.y;
-        fields["viewHeight"] = view.frame.size.height;
-        fields["viewSuper"] = QString::fromUtf8(NSStringFromClass(view.superview.class).UTF8String);
-        fields["widgetHeight"] = widget->height();
-        fields["clientTop"] = double(clientTopInset(window));
-        // Qt reserves this strip as a content margin on every widget in it, which is why
-        // the editor places its bar by hand; the value itself is worth logging.
-        const QMargins margins = widget->contentsMargins();
-        fields["widgetMargins"] = QString("%1,%2,%3,%4").arg(margins.left()).arg(margins.top())
-                                      .arg(margins.right()).arg(margins.bottom());
-        // The two rows the window has to keep on one line: the system's traffic lights
-        // and the editor's own bar.
-        const NativeTitleBarRow row = nativeTitleBarRow(widget);
-        fields["rowCenterY"] = row.centerY;
-        fields["rowControlsRight"] = row.controlsRight;
-        if (bar) {
-            fields["barPos"] = QString("%1,%2").arg(bar->x()).arg(bar->y());
-            fields["barSize"] = QString("%1x%2").arg(bar->width()).arg(bar->height());
-            if (auto tool = bar->findChild<QWidget *>("captureImage"))
-                fields["toolRow"] = QString("%1..%2").arg(tool->y() + bar->y())
-                                        .arg(tool->y() + bar->y() + tool->height());
-        }
-        fields["inFullScreen"] = bool(window.styleMask & NSWindowStyleMaskFullScreen);
-        diagnostics::write(diagnostics::Level::Info, "window.debug", "state", fields);
-    }
-    // A window that is still being ordered on screen, or one the system reconfigures
-    // later, can drop the full-height client area, which leaves the title hidden but
-    // the editor's bar pushed down by a titlebar it should have covered. Re-assert
-    // instead of trusting the one call.
-    if (!nativeTitleBarIsApplied(window))
-        applyNativeTitleBar(window);
-}
-void configureNativeWindow(QWidget *widget, bool overlay) {
+void configureNativeWindow(QWidget *widget, bool overlay, bool) {
     // Offscreen test windows do not have an NSView-backed native handle.
     if (QGuiApplication::platformName() != "cocoa")
         return;
@@ -918,13 +1049,10 @@ void configureNativeWindow(QWidget *widget, bool overlay) {
         window.collectionBehavior = NSWindowCollectionBehaviorDefault;
         window.level = NSNormalWindowLevel;
         window.sharingType = NSWindowSharingReadWrite;
-        applyNativeTitleBar(window);
-        // The window is usually configured in the same event that shows it, where the
-        // style mask can be lost; ask again once the window has settled.
-        for (int delay : {0, 120, 400})
-            QTimer::singleShot(delay, widget, [widget] { ensureNativeTitleBar(widget); });
     }
 }
+void configureRoundedPopupWindow(QWidget *) {}
+void orderWindowBelow(QWidget *, const QWidget *) {}
 QString globalShortcutLabel() {
     return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
 }

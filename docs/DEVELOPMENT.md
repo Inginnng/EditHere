@@ -1,8 +1,8 @@
-# EditHere · 改这里：开发说明
+# EditHere：开发说明
 
 **简体中文** · [English](DEVELOPMENT.en.md)
 
-[返回产品介绍](../README.md) · [使用指南](USER-GUIDE.md) · [AI 与命令行](AGENT-CLI.md) · [更新记录](../CHANGELOG.md)
+[返回产品介绍](../README.md) · [AI 与命令行](AGENT-CLI.md) · [更新记录](../CHANGELOG.md)
 
 以下命令均在仓库根目录执行，文件路径也相对于仓库根目录。
 
@@ -14,28 +14,84 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前版本为 **0.13.6**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前版本为 **0.14.4**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
 打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，`build-web` 作业打包两种 Web 包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新支持 GitHub、[AtomGit](https://atomgit.com/Inginnng/EditHere) 与 [Gitee](https://gitee.com/InnGing/EditHere)。自动模式按系统地区（非界面语言或 IP 定位）优先使用中国大陆的 AtomGit 或其他地区的 GitHub，再比较三处的正式版本号，同版本优先完整的安装包、SHA-256 和独立更新签名。手动模式仅检查指定来源；“关于与更新”中的选择立即保存，取消窗口不撤销来源选择，也不写入其他设置草稿。程序包、校验文件和签名必须属于同一来源和版本，切换来源先取消旧查询并清除旧结果。GitHub 发布工作流不会自动向其他站点发布，国内镜像的程序包仍需同步。
 
-- **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 与两种 Web 包（`EditHere-web.zip`、`EditHere-web-agent.zip`）均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。Web 包由 `build-web` 作业调用 `python scripts/prepare-distribution.py --web-only --channel release` 生成；内嵌素材与随包法律文本的行尾由 `.gitattributes` 固定，各平台与 CI 重建出同样的 `web/EditHere.html` 与同样的两种 ZIP。发布前按下发给用户的字节复核两种 Web 包：`node scripts/web-package-check.cjs <ZIP 路径>`。
-- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`，Windows 安装器另附 `EditHere-win-x64-setup.exe.sig`；Web 包同样按无版本名发布为 `EditHere-web.zip` 与 `EditHere-web-agent.zip`。
+- **发布必须带完整程序包**。release 任务检查 Windows 安装器和免安装包、macOS DMG、Linux AppImage，以及 `EditHere-web.zip`、`EditHere-web-agent.zip` 和 `EditHere-dsh.zip` 均存在且非空。`build-web` 分别调用 `scripts/prepare-distribution.py --web-only` 与 `--dsh-only`，两者均使用 `--channel release`。内嵌素材与随包文本的行尾由 `.gitattributes` 固定。用 `node scripts/web-package-check.cjs <ZIP 路径>` 可复核两个 Web 包。
+- 资产名不含版本号，文档与更新检查使用 `/releases/latest/download/<固定名>`。随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`，Windows 安装器另附 `EditHere-win-x64-setup.exe.sig`。
 - 包下载到 release 任务后所在目录由 `upload-artifact` 决定，不要预测：它只保留第一个通配符之前那段固定前缀之后的路径，`dist/linux-*/<文件>` 因此落在 `linux-<版本>/` 下而不是 `dist/linux-<版本>/`，Web 包落在 `web/<版本>-<短哈希>/` 下。release 任务按文件名在任意深度把原生包与 Web 包搬到归档根目录，改收集方式时不要退回"按目录搬"（REG-157）。
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
 - 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」（发布页是单字段，没有语言切换；英文用真正的标题而不是折叠块，否则指向它的锚点点不开）。只写中文时 `check-packaging.py` 的检查会失败。
 
+## 镜像推送
+
+GitHub 是唯一的上游，Gitee 与 AtomGit 只是镜像，但两者的机制不同：
+
+| 远程名 | 地址 | 同步方式 |
+| --- | --- | --- |
+| `origin` | `github.com/Inginnng/EditHere` | HTTPS，凭据由 `gh` 提供，唯一上游 |
+| `gitee` | `gitee.com/InnGing/EditHere` | SSH，别名 `gitee-edithere`，仓库**部署公钥**（需勾选推送权限），需本地手动推 |
+| `atomgit` | `atomgit.com/Inginnng/EditHere` | **只读镜像仓库**，由 AtomGit 自己从 GitHub 拉取，本地推不进去 |
+
+AtomGit 那个仓库是「镜像仓库」，`git push` 会被服务端拒绝并返回 `This operation is not allowed because the repository is an image repository`。它跟随 GitHub，所以 `origin` 更新后它会自己同步，本地无需也不该向它推送；脚本默认只推 `gitee`。
+
+Gitee 推送走一把专用密钥 `~/.ssh/id_ed25519_edithere`，`~/.ssh/config` 里的 `gitee-edithere` 别名把它绑定到 Gitee，不影响原有的 GitHub/Gitee 个人密钥。部署公钥与账号公钥各自只能登记一处，这把密钥不要在其他仓库复用。
+
+```bash
+# 当前分支 + 标签
+scripts/push-mirrors.sh
+# 全部分支 + 标签（换分支前用这个补齐镜像）
+ALL_BRANCHES=1 scripts/push-mirrors.sh
+# 只演练
+DRY_RUN=1 scripts/push-mirrors.sh
+# 覆盖远端已存在但指向不同的标签（例如 v0.8.22 曾指向错误的提交）
+FORCE_TAGS=1 scripts/push-mirrors.sh
+```
+
+Windows 上用 `powershell -File scripts/push-mirrors.ps1`，参数为 `-AllBranches`、`-DryRun`、`-ForceTags`、`-Branch <名字>`、`-Targets gitee`。
+
+标签与分支分开推：脚本先比对 `git ls-remote --tags` 与本地标签，只推送缺失的，对同名但指向不同的标签默认跳过并提示（这类冲突通常意味着某一侧曾经挪过标签，需要先确认哪边正确再决定是否覆盖）。任何一个远程失败，脚本都会以非零码退出并列出失败的远程。
+
+权限报错时先分清三类：`Permission denied (publickey)` 表示公钥没登记或密钥不对；Gitee 返回 `Auth error: Access denied` 表示公钥认证成功但该账号对仓库没有写权限（部署公钥没勾推送权限，或公钥属于别的账号）；`image repository` 表示目标是只读镜像仓库，只能由平台侧拉取。
+
+### 发行版的自动同步
+
+镜像仓库只同步分支与标签；Release 页面不是 git 对象，所以永远不会被镜像同步。`release.yml` 在 GitHub 发布完成后再跑 `mirror-release` 作业，调用 `scripts/publish-mirror-release.py`，把刚发布的同一批文件（用 `gh release download` 原样取回，不改名、不改内容）和同一份说明发到 Gitee 与 AtomGit。
+
+需要在仓库里配置两个 secret（Settings → Secrets and variables → Actions）：
+
+| Secret | 用途 | 申请位置 |
+| --- | --- | --- |
+| `ATOMGIT_TOKEN` | 创建 AtomGit 发行版并上传附件 | atomgit.com → 头像 → 安全设置 → 访问令牌，勾选仓库写权限（repo / projects） |
+| `GITEE_TOKEN` | 创建 Gitee 发行版并上传附件 | gitee.com → 设置 → 安全设置 → 私人令牌，勾选 `projects` |
+
+缺哪个 secret 就跳过哪个站点并打印一行说明，不影响另一个；站点真的失败时作业以非零码退出，让这次发版可见地失败。
+
+三个平台差异写在脚本注释里，改脚本前先看：AtomGit 的 release 对象没有数字 id（只能按 tag 定位）、没有 `attach_files` 接口（先 `GET .../releases/<tag>/upload_url` 拿签名地址，再 `PUT` 文件）、新建后还要 `PATCH` 一次把 `release_status` 标成 `latest`，否则页面不显示为最新版本；Gitee 反过来用数字 id 加 multipart 表单传附件。
+
+补发漏掉的版本时不必重跑 CI，按同一条命令手动打一次即可：
+
+```bash
+gh release download v0.13.6 --dir mirror-assets --clobber
+gh release view v0.13.6 --json tagName,name,body,isPrerelease > mirror-release.json
+ATOMGIT_TOKEN=... GITEE_TOKEN=... python3 scripts/publish-mirror-release.py \
+  --assets mirror-assets --meta mirror-release.json
+```
+
+脚本对已存在的发行版是幂等的：已建好的不重建，已上传的同名附件不覆盖，只补缺失的。
+
 ## 文档语言
 
-界面文案走 Qt 翻译（见[多语言与翻译](i18n.md)）；**仓库里的说明文档不走翻译，中英各存一份文件**，文件名加 `.en` 后缀：
+界面文案走 Qt 翻译；**仓库里的说明文档不走翻译，中英各存一份文件**，文件名加 `.en` 后缀：
 
-- 面向使用者的八份文档各有英文版：`USER-GUIDE`、`LONG-CAPTURE`、`VIDEO-ANNOTATION`、`AGENT-CLI`、`AI-SETUP`、`LINUX`、`DEVELOPMENT`、`AI-INSTRUCTIONS`。两份文件各自在标题下放一行语言切换互相指向，`README.en.md` 也要链接到每一份英文页；这三件事都由 `check-packaging.py` 的 `translated_docs` 检查，新增中文文档时要在 `TRANSLATED_DOCS` 里登记。
+- 面向使用者的六份文档各有英文版：`AGENT-CLI`、`AI-INSTRUCTIONS`、`AI-SETUP`、`LINUX`、`DEVELOPMENT`、`DISTRIBUTION`。两份文件各自在标题下放一行语言切换互相指向，`README.en.md` 也要链接到每一份英文页；这三件事都由 `check-packaging.py` 的 `translated_docs` 检查，新增中文文档时要在 `TRANSLATED_DOCS` 里登记。
 - `CHANGELOG.md` 保持中文单语，它是历史的唯一来源——同一段历史维护两份必然漂移。对外可见的「本版变了什么」由发布页承担，即上一条的双语发布说明。
 - `docs/releases/*.md` 只是发布页正文片段，没有标题也没有语言切换行：相对链接在发布页上会按发布地址解析，所以语言切换靠 release.yml 拼接完成，`translated_docs` 负责两侧都在。
 - 英文文档里的 JSON 字段名、命令、路径与平台标识保持原样；源视频或截图里实际显示的中文（例如演示动画的字幕）也保持中文，不译。
-- 只维护中文：`i18n.md`、`REGRESSIONS.md`、`PRERELEASE-0.9.9.md` 这类维护者记录，以及 `docs/releases/0.9.x.md` 等历史发布页。
-- Windows 免安装包附带中文版 `AGENT-CLI.md` 与 `VIDEO-ANNOTATION.md`，以及中英文 `AI-INSTRUCTIONS` 和提供商来源说明；`package-windows.ps1` 会把它们里面的相对链接改写成仓库地址，语言切换行也在改写范围内。
+- Windows 免安装包附带中文版 `AGENT-CLI.md`、中英文 `AI-INSTRUCTIONS` 和提供商来源说明；`package-windows.ps1` 会把它们里面的相对链接改写成仓库地址。
 
 ## 构建与验证
 
@@ -47,6 +103,8 @@ Linux 预览版的系统依赖、构建、AppImage 打包与 X11/Wayland 行为�
 
 Windows PowerShell 7，CMake 在 PATH 中：
 
+先在 frontend 目录运行 npm ci 和 npm run build，再配置 CMake。打包前，将 Microsoft.Web.WebView2 1.0.3537.50 NuGet 包里的 x64 WebView2Loader.dll，以及对应的 LICENSE.txt、NOTICE.txt 复制到构建目录。许可证文件分别命名为 WebView2-LICENSE.txt 和 WebView2-NOTICE.txt。
+
 ```powershell
 ./scripts/build-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -Compiler C:/Qt/Tools/mingw1310_64/bin/g++.exe -Ninja C:/Tools/ninja.exe
 ./scripts/package-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -CompilerBin C:/Qt/Tools/mingw1310_64/bin
@@ -56,13 +114,13 @@ Windows 已构建后可直接运行 `ctest --test-dir build --interactive-debug-
 
 工程路径较深时，可在重新运行 CMake 前设置 `EDITHERE_TEST_TEMP` 为短的绝对目录；运行 CTest 时也将 `TEMP`、`TMP` 指向该目录，让原生、Node 和安装器检查使用同一条路径。Windows 的 NSIS 与 PowerShell 子进程对过深临时路径的处理可能不同；该选项只配置测试目录，不改系统环境变量。
 
-构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出；macOS 构建（`.github/workflows/native-macos.yml`）会为同一批产物自动运行它，schema 与真实导出不符时构建即失败。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`，详见 [多语言与翻译](i18n.md)。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
+构建脚本运行检测、核心数据、布局、界面、行内文本、画布交互、设置、多语言、引导、自启、启动流程、更新、文字识别、截图会话和 CLI 等测试；Windows 另含平台测试，以当前 CTest 输出为准。导出样本及窗口渲染截图存于 `artifacts/native-ui/`。安装 `jsonschema==4.26.0` 后，可运行 `python scripts/validate-exports.py` 独立校验导出；macOS 构建（`.github/workflows/native-macos.yml`）会为同一批产物自动运行它，schema 与真实导出不符时构建即失败。改动界面文案后另跑 `python scripts/check-translations.py --qt <Qt 安装目录>`。打包只写新目录；重复打包请传入新的 `-OutputDirectory`。
 
-除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符、`.ts` 与预编译 `.qm` 的逐条对应，以及 AI 与命令行文档、skill 里的反馈结构与导出字段的一致性；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见[问题归档与回归测试](REGRESSIONS.md)，**新增问题修复时要在该页登记并补一条会复发的检查**。
+除 Qt 测试外，CTest 还注册两条与工具链解耦的检查：`packaging`（`python scripts/check-packaging.py`）校验安装器脚本编码、NSIS 宏与实编译、便携压缩包结构、发布资产命名与校验文件、版本号唯一来源、Qt 翻译部署、文字识别桥接脚本的编码与占位符、`.ts` 与预编译 `.qm` 的逐条对应，以及 AI 与命令行文档、skill 里的反馈结构与导出字段的一致性；`translations`（`scripts/check-translations.py`）在能找到 Qt Linguist 时才注册。这些检查与项目历史问题的对应关系见本地维护的 `docs/REGRESSIONS.md`（该页不随仓库发布），**新增问题修复时要在该页登记并补一条会复发的检查**。
 
 贡献者授权由 `.github/workflows/cla.yml` 核验，实现见 `scripts/cla-check.cjs`、配置见 `.github/cla/config.json`：工作流只检出可信基线、绝不执行 PR 中的代码，确认账号必须是贡献者本人，记录协议版本与 `cla/v2.md` 的 SHA-256 摘要到独立的 `cla-signatures` 分支。改动 CLA 相关文件后本地跑 `node --test tests/cla_check_test.cjs`；只读的 `.github/workflows/cla-tests.yml` 在 PR 中自动运行同一测试。协议内容与启用步骤见[贡献者许可协议](../CLA.md)。
 
-操作图标的唯一几何源为 `assets/ui-icons/icons/*.svg`，语义与来源见 `manifest.json`，视觉规则见[图标视觉规范](icon-visual-spec.md)。Qt 将 SVG 嵌入资源，Web 构建内联同一图形；运行 `node tools/icon-review/build.cjs` 生成独立 HTML 方案页。替换共享 SVG 后重新构建两端，不在各端手绘另一份图标。原有品牌素材独立保留。
+操作图标的唯一几何源为 `assets/ui-icons/icons/*.svg`，语义与来源见 `manifest.json`。Qt 将 SVG 嵌入资源，Web 构建内联同一图形；运行 `node tools/icon-review/build.cjs` 生成独立 HTML 方案页。替换共享 SVG 后重新构建两端，不在各端手绘另一份图标。原有品牌素材独立保留。
 
 ## 截图流程与文字识别
 
@@ -73,7 +131,7 @@ Windows 已构建后可直接运行 `ctest --test-dir build --interactive-debug-
 | `app/overlay.{h,cpp}` | 选区绘制与调整、候选块、取色、工具条的宿主；只发信号，不做动作 |
 | `app/capturetoolbar.{h,cpp}` | 工具条控件与「更多」菜单（固定比例、圆角/边框/阴影、识别语言、历史与选区） |
 | `app/capturesession.{h,cpp}` | 比例与尺寸换算、样式合成 `composeCapture()`、跨会话的 `CaptureHistory` |
-| `app/pinwindow.{h,cpp}` | 置顶看图窗口：拖动、缩放、透明度、右键菜单 |
+| `app/pinnedimagewindow.{h,cpp}` | 置顶看图窗口：拖动、缩放、透明度、右键菜单 |
 | `app/ocr.{h,cpp}` + `app/ocr_mac.mm` | 识别引擎封装：分条带、坐标还原、结果解析；macOS 走 Vision |
 | `app/ocrdialog.{h,cpp}` | 识别结果窗口：逐行列表与原图高亮联动 |
 | `app/ocrbridge.ps1` | Windows 侧的系统 OCR 桥接脚本，作为 Qt 资源嵌入 |
@@ -94,7 +152,7 @@ Windows 安装器另依赖 NSIS 3.x。可解压 NSIS 官方 ZIP 后直接指定 
 
 请将示例中的 NSIS 路径换为实际位置。0.8.21 的安装器输出为 `dist/EditHere-0.8.21-win-x64-setup.exe`。安装器按当前用户安装到 `%LOCALAPPDATA%\Programs\EditHere`，使用当前用户的开始菜单、卸载登记与文件关联，不请求管理员权限。登录启动和 PATH 在新安装时默认选中，桌面快捷方式可选；升级依据既有当前用户 Run 登记保留启动选项。卸载按安装文件清单移除包内文件，保留用户设置与项目。
 
-应用内 Windows 更新与手动安装共用 NSIS 载荷及 `maintain.ps1` 事务，保留目录锁、SHA-256、包锁定、编辑确认、READY/ACK 交接、文件备份/回滚和结果回执。便携更新跳过系统集成；协议见 [Windows 安装与维护](INSTALLATION.md)。无证书指纹时使用 `app/updatekey.h` 编译的 P-256 公钥，经 Windows CNG 验证独立项目更新签名；配置 `EDITHERE_UPDATE_PUBLISHER_CERT_SHA256` 时严格执行 Authenticode，无回退。两个信任根均未配置则只提供手动下载。详细签名字节、版本/资产绑定、信任选择及凭据约束见 [安全边界](SECURITY.md)。0.12.7 及以前需手动升级一次，项目签名不会消除 Windows 安全提示。macOS 当前仅提供手动下载入口。
+应用内 Windows 更新与手动安装共用 NSIS 载荷及 `maintain.ps1` 事务，保留目录锁、SHA-256、包锁定、编辑确认、READY/ACK 交接、文件备份/回滚和结果回执。便携更新跳过系统集成；安装器协议见 `scripts/package-installer.ps1` 与 NSIS 脚本。无证书指纹时使用 `app/updatekey.h` 编译的 P-256 公钥，经 Windows CNG 验证独立项目更新签名；配置 `EDITHERE_UPDATE_PUBLISHER_CERT_SHA256` 时严格执行 Authenticode，无回退。两个信任根均未配置则只提供手动下载。详细签名字节、版本/资产绑定、信任选择及凭据约束见 [安全边界](SECURITY.md)。0.12.7 及以前需手动升级一次，项目签名不会消除 Windows 安全提示。macOS 当前仅提供手动下载入口。
 
 保留 Qt 与 NSIS，并将文件及登记变更收敛到一个维护进程。`tests/installer_transaction_test.py` 验证真实 NSIS 的原地执行、目录、参数及隔离 HKCU 系统集成，需要 `NSIS_MAKENSIS` 与 `EDITHERE_UPDATE_STUB`；`tests/maintenance_test.py` 使用真实文件操作及 JSON 系统集成替身验证恢复、并发和卸载。`tests/installer_ui_flow_test.py` 在独立隐藏 Windows 桌面上操作真实安装页，验证首次安装与重复安装的页面顺序和标题。`tests/installer_shell_notification_test.py` 在含原生 NSIS System.dll 的工作目录执行生产通知逻辑，验证 .NET 引用解析及非致命警告。无害程序桩显式跳过运行版本检查。测试作用域必须有隔离标记，不能改写开发者真实 PATH、关联或快捷方式。以上检查在 Windows 发行工作流中执行。`tests/installer_package_acceptance.py` 通过 `EDITHERE_ACCEPT_PACKAGE` 和 `EDITHERE_ACCEPT_OLD_PACKAGE` 接收完整的新旧 Windows 包，在真实 NSIS/隔离 HKCU 下验收，并启用实际 CLI 运行版本检查；隔离验收与干净系统成品验收分别记录。
 

@@ -6,12 +6,15 @@
 class QPushButton;
 class QLabel;
 class QPainter;
+class QWheelEvent;
 namespace h2d {
+constexpr int captureInstructionHeight = 48;
 // The magnifier panel. It is laid out from these rather than from a layout class,
 // because it is painted rather than assembled and the two have to agree exactly, and
 // they live here because the tests locate the panel by the same numbers.
 constexpr double magnifierPanelWidth = 162;
 constexpr double magnifierPanelHeight = 236;
+constexpr double magnifierCompactPanelHeight = 170;
 constexpr double magnifierPanelPadding = 8;
 constexpr double magnifierZoomHeight = 94;
 // One pixel of the screen is this many pixels wide inside the enlargement.
@@ -24,6 +27,39 @@ constexpr double magnifierZoomCell = 15;
 // pointer. The window and the tests ask for the same rectangle from here, so the two
 // cannot drift apart.
 QRectF magnifierPlacement(QPointF at, QSizeF window, const QVector<QRectF> &tools = {});
+struct CaptureChromeTokens {
+    static constexpr int panelRadius = 12;
+    static constexpr int cardRadius = 8;
+    static constexpr int controlRadius = 6;
+
+    QColor panelBg;
+    QColor panelBorder;
+    QColor panelHighlight;
+    QColor stage;
+    QColor scrim;
+    QColor text;
+    QColor textSecondary;
+    QColor textMuted;
+    QColor glyph;
+    QColor hoverBg;
+    QColor pressedBg;
+    QColor activeBg;
+    QColor divider;
+    QColor accent;
+    QColor accentHover;
+    QColor success;
+    QColor successSoft;
+    QColor warning;
+    QColor warningSoft;
+    QColor danger;
+    QColor tooltipBg;
+    QColor tooltipText;
+    QColor tooltipBorder;
+};
+CaptureChromeTokens captureChromeTokens();
+void paintFloatingPanel(QPainter &painter, const QRectF &rect,
+                        int radius = CaptureChromeTokens::panelRadius);
+void paintCaptureHandles(QPainter &painter, const QRectF &selection);
 QColor accent();
 void applyTheme(ThemeMode mode = ThemeMode::Light);
 // The interface face follows the language: the Chinese face has wider Latin
@@ -31,6 +67,7 @@ void applyTheme(ThemeMode mode = ThemeMode::Light);
 // from fonts.h, which resolves them against what the machine actually has.
 void applyInterfaceFont();
 bool isDarkTheme();
+double wheelZoomFactor(const QWheelEvent &event);
 void paintTransparency(QPainter &painter, const QRect &area);
 QIcon glyph(const QString &name, QColor color = QColor());
 QStringList glyphNames();
@@ -46,8 +83,12 @@ QPushButton *textButton(const QString &text, bool primary = false, QWidget *pare
 void styleControl(QWidget *widget, const QString &declarations);
 QLabel *mutedLabel(const QString &text, QWidget *parent = nullptr);
 class DragBar : public QWidget {
+    Q_OBJECT
   public:
     explicit DragBar(QWidget *parent = nullptr, bool canMaximize = false);
+
+  signals:
+    void maximizeRequested();
 
   protected:
     void mousePressEvent(QMouseEvent *) override;

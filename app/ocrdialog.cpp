@@ -32,7 +32,7 @@ class OcrPreview final : public QWidget {
   protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
-        painter.fillRect(rect(), QColor(18, 19, 24));
+        painter.fillRect(rect(), isDarkTheme() ? QColor("#14151a") : QColor("#efeff2"));
         if (picture_.isNull())
             return;
         // The picture is fitted rather than cropped, so every box stays on screen
@@ -47,8 +47,11 @@ class OcrPreview final : public QWidget {
         // picture ended up in rather than by the picture's own size.
         const QRectF target(area.left() + box_.x() * area.width(), area.top() + box_.y() * area.height(),
                             box_.width() * area.width(), box_.height() * area.height());
-        painter.setPen(QPen(QColor(255, 138, 76), 2));
-        painter.setBrush(QColor(255, 138, 76, 70));
+        const QColor mark = accent();
+        QColor fill = mark;
+        fill.setAlpha(48);
+        painter.setPen(QPen(mark, 2));
+        painter.setBrush(fill);
         painter.drawRect(target);
     }
 
@@ -89,9 +92,13 @@ OcrDialog::OcrDialog(QImage image, OcrLanguageMode language, QWidget *parent)
     layout->addLayout(body, 1);
     auto *buttons = new QHBoxLayout;
     copyAll_ = textButton(tr("复制全部"), true, this);
+    copyAll_->setIcon(glyph(QStringLiteral("copy"), Qt::white));
     copyLine_ = textButton(tr("复制选中行"), false, this);
+    copyLine_->setIcon(glyph(QStringLiteral("copy")));
     retry_ = textButton(tr("重新识别"), false, this);
+    retry_->setIcon(glyph(QStringLiteral("reset")));
     close_ = textButton(tr("关闭"), false, this);
+    close_->setIcon(glyph(QStringLiteral("close")));
     buttons->addStretch(1);
     for (auto *button : {copyLine_, copyAll_, retry_, close_})
         buttons->addWidget(button);

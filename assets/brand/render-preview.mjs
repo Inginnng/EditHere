@@ -24,8 +24,8 @@ for(const [light,y] of [[false,0],[true,520]]){
  const wm=assets['edithere-wordmark'+(light?'-light':'')],lock=assets['edithere-lockup'+(light?'-light':'')];
  draw(wm,345,86+y,910);draw(lock,100,330+y,560);
  for(const [x,w] of [[820,265],[1130,210],[1390,130]])draw(wm,x,370+y,w);
- c.fillStyle=light?'#91a4c0':'#74849b';c.font='18px "Segoe UI"';c.fillText('EDITHERE / A1 AMBER CAP',105,54+y);
- c.font='15px "Segoe UI"';c.fillText('ICON + WORDMARK',105,473+y);c.fillText('BLUE #246BD9 / AMBER #FFB352',820,473+y);
+  c.fillStyle=light?'#91a4c0':'#687385';c.font='18px "Segoe UI"';c.fillText('EDITHERE / PRECISION VIEWFINDER',105,54+y);
+  c.font='15px "Segoe UI"';c.fillText('OBSIDIAN SQUIRCLE + WORDMARK',105,473+y);c.fillText('INK #111318 / COBALT #007AFF',820,473+y);
 }
 fs.writeFileSync(path.join(out,'wordmark-preview.png'),cv.toBuffer('image/png'));
 console.log(JSON.stringify({wordmark:{viewBox:'0 0 572 128',ratio:572/128},lockup:{viewBox:'0 0 722 128',ratio:722/128},preview:path.join(out,'wordmark-preview.png')}));
