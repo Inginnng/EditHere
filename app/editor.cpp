@@ -501,6 +501,7 @@ Editor::Editor(QWidget *parent) : QWidget(parent) {
         if (path.isEmpty()) return;
         finishNoteEdit(); commitVideoFrame();
         video_->source = QFileInfo(path).absoluteFilePath(); video_->dirty = true;
+        emit projectEdited();
         videoPlayback_->open(video_->source, videoFrameUs_ >= 0 ? videoFrameUs_ / 1000 : video_->positionMs);
     });
     qApp->installEventFilter(this);
@@ -770,6 +771,7 @@ void Editor::setPageContext(const QString &page) {
         video_->dirty = true;
     }
     if (hasDocument()) { apply(doc_.capture, doc_.source, doc_.createdAt); doc_.dirty = true; commitVideoFrame(); }
+    if (video_ || hasDocument()) emit projectEdited();
     updatePageContextLabel();
 }
 void Editor::showGuide() {
@@ -828,6 +830,9 @@ void Editor::setDocument(Document document, const QString &projectPath) {
     resetLayoutTools();
     cancelRegionRecognition();
     doc_ = std::move(document);
+    if (!switchingVideoFrame_ && !switchingSetPage_ &&
+        (doc_.dirty || (projectPath.isEmpty() && (doc_.source == "screen" || doc_.source == "clipboard"))))
+        emit projectEdited();
     normalizeNoteParents(doc_);
     for (const auto &note : doc_.notes) recognizedRegions_.insert(note.id, recognitionKey(note));
     videoPreview_ = false;
@@ -968,6 +973,7 @@ void Editor::editGroupNotes() {
     imageSet_->groupNotes = {};
     if (!value.isEmpty()) imageSet_->groupNotes.append(QJsonObject{{"number", 1}, {"text", value}});
     imageSet_->dirty = true; updateSetPages();
+    emit projectEdited();
 }
 void Editor::markFeedbackSubmitted() {
     doc_.dirty = false;
@@ -1614,6 +1620,7 @@ void Editor::renderNotes() {
                     break;
                 }
                 doc_.dirty = true;
+                emit projectEdited();
             });
             connect(clearRecognition, &QPushButton::clicked, this, [this,id=n.id] {
                 finishNoteEdit(); remember();
@@ -1656,6 +1663,7 @@ void Editor::renderNotes() {
                     break;
                 }
                 doc_.dirty = true;
+                emit projectEdited();
                 canvas_->refresh();
                 if (layoutCanvas_) layoutCanvas_->setAnnotations(doc_.notes);
                 revealNote(id);
@@ -2249,8 +2257,10 @@ void Editor::copyJson() {
 }
 void Editor::changed(bool contentChanged) {
     normalizeNoteParents(doc_);
-    if (contentChanged)
+    if (contentChanged) {
         doc_.dirty = true;
+        emit projectEdited();
+    }
     if (video_) { if (contentChanged) video_->dirty = true; commitVideoFrame(); }
     if (imageSet_) { if (contentChanged) imageSet_->dirty = true; commitSetPage(); updateSetPages(); }
     canvas_->refresh();

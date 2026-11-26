@@ -4,6 +4,7 @@ import {
   CheckIcon,
   CloseIcon,
   MoonIcon,
+  OpenFolderIcon,
   SendIcon,
   SettingsIcon,
   ShieldOkIcon,
@@ -37,6 +38,8 @@ import type {
   SkillSyncActionResult,
   SkillSyncState,
   ThemeMode,
+  UpdateCheckResult,
+  UpdateProgress,
   ViewId,
 } from './bridge/types';
 import { attachRedactedPagesToPayload } from './utils/canvasCompose';
@@ -69,9 +72,41 @@ export default function App() {
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
   const isDark = theme === 'dark' || (theme === 'system' && systemDark);
 
-  const [pages, setPages] = useState<GalleryPage[]>(() => createInitialPages());
-  const [activePageId, setActivePageId] = useState<string>('home');
-  const [groupNotes, setGroupNotes] = useState<GroupNote[]>(() => INITIAL_GROUP_NOTES);
+  const [workspaceState, setWorkspaceState] = useState(() => ({
+    pages: isDesktopWebView() ? [] : createInitialPages(),
+    groupNotes: isDesktopWebView() ? [] : INITIAL_GROUP_NOTES,
+  }));
+  const { pages, groupNotes } = workspaceState;
+  const [activePageId, setActivePageId] = useState(() => isDesktopWebView() ? '' : 'home');
+  const workspaceGeneration = useRef(-1);
+  const workspaceDirty = useRef(false);
+  const workspace = useRef(workspaceState);
+  const updateWorkspace = (update: (current: typeof workspaceState) => typeof workspaceState) => {
+    workspace.current = update(workspace.current);
+    setWorkspaceState(workspace.current);
+  };
+  const setPages = (update: (current: GalleryPage[]) => GalleryPage[]) =>
+    updateWorkspace((current) => ({ ...current, pages: update(current.pages) }));
+  const setGroupNotes = (update: (current: GroupNote[]) => GroupNote[]) =>
+    updateWorkspace((current) => ({ ...current, groupNotes: update(current.groupNotes) }));
+
+  const reportWorkspaceChange = () => {
+    if (isDesktopWebView() && !workspaceDirty.current) {
+      workspaceDirty.current = true;
+      void desktopRpc('workspace.changed', { generation: workspaceGeneration.current }).catch(() => {});
+    }
+  };
+
+  const prepareWorkspaceSnapshot = async (media?: HTMLElement | null) => {
+    const generation = workspaceGeneration.current;
+    const snapshot = workspace.current;
+    workspaceDirty.current = false;
+    const payload = await attachRedactedPagesToPayload(snapshot.pages, snapshot.groupNotes, media);
+    return { ...payload, generation, changedSinceSnapshot: workspaceDirty.current };
+  };
+
+  const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress>({ phase: 'idle' });
   const [doctor, setDoctor] = useState<DoctorSnapshot>(INITIAL_DOCTOR_SNAPSHOT);
   const [skillsState, setSkillsState] = useState<SkillSyncState>(INITIAL_SKILLS_STATE);
   const [syncingSkills, setSyncingSkills] = useState(false);
@@ -88,10 +123,10 @@ export default function App() {
     shortcuts: { ...INITIAL_PREFERENCES.shortcuts },
   }));
 
-  const notify = (msg: string) => {
+  const notify = (msg: string, duration = 3200) => {
     clearTimeout(toastTimer.current);
     setToast(msg);
-    toastTimer.current = setTimeout(() => setToast(''), 3200);
+    toastTimer.current = setTimeout(() => setToast(''), duration);
   };
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
@@ -183,6 +218,8 @@ export default function App() {
             : prev.checkUpdatesOnStartup,
         autoSyncSkills:
           typeof p.autoSyncSkills === 'boolean' ? p.autoSyncSkills : prev.autoSyncSkills,
+        showInstalledSkillsOnly:
+          typeof p.showInstalledSkillsOnly === 'boolean' ? p.showInstalledSkillsOnly : prev.showInstalledSkillsOnly,
         updateSource:
           p.updateSource === 'auto' ||
           p.updateSource === 'atomgit' ||
@@ -198,6 +235,15 @@ export default function App() {
           ? (p.shortcutDefinitions as GeneralPreferences['shortcutDefinitions'])
           : prev.shortcutDefinitions,
       }));
+    };
+
+    const navigateFromDesktop = (v: unknown) => {
+      if (v === 'workspace' || v === 'analysis' || v === 'settings') {
+        setView(v);
+      } else if (v === 'providers' || v === 'diagnostics' || v === 'about' || v === 'shortcuts') {
+        setSettingsTab(v === 'about' ? 'diagnostics' : v);
+        setView('settings');
+      }
     };
 
     const applyDesktopState = (state: Record<string, unknown>) => {
@@ -222,16 +268,30 @@ export default function App() {
       if (typeof state.hasDesktopPages === 'boolean') {
         setHasDesktopPages(state.hasDesktopPages);
       }
-      if (Array.isArray(state.pages) && state.pages.length > 0) {
+      if (Array.isArray(state.pages) && typeof state.workspaceGeneration === 'number') {
+        const reset = workspaceGeneration.current !== state.workspaceGeneration;
+        workspaceGeneration.current = state.workspaceGeneration;
+        if (reset) workspaceDirty.current = false;
         const nextPages = state.pages as GalleryPage[];
-        setPages(nextPages);
         const requestedActive = typeof state.activePageId === 'string' ? state.activePageId : '';
-        setActivePageId(requestedActive || nextPages[0].id);
-        setHasDesktopPages(true);
+        setPages((current) => {
+          if (reset) return nextPages;
+          const previous = new Map(current.map((page) => [page.id, page]));
+          return nextPages.map((page) => {
+            const edited = previous.get(page.id);
+            return edited ? { ...page, ...edited, routeHint: page.routeHint,
+              blocks: edited.blocks.length > 0 ? edited.blocks : page.blocks } : page;
+          });
+        });
+        setActivePageId(requestedActive || nextPages[0]?.id || '');
+        if (reset && Array.isArray(state.groupNotes)) {
+          setGroupNotes(() => state.groupNotes as GroupNote[]);
+        }
       }
-      if (Array.isArray(state.groupNotes)) {
-        setGroupNotes(state.groupNotes as GroupNote[]);
+      if (state.update && typeof state.update === 'object' && 'status' in state.update) {
+        setUpdateStatus(state.update as UpdateCheckResult);
       }
+      navigateFromDesktop(state.view);
     };
 
     const unsub = subscribeDesktopEvents((eventName, data) => {
@@ -257,20 +317,21 @@ export default function App() {
         if (names) {
           notify(`已自动同步 ${names} 的 Skill${ver ? ` 至 v${ver}` : ''}`);
         }
+      } else if (eventName === 'workspace.trackChanges') {
+        if (data.generation === workspaceGeneration.current) workspaceDirty.current = false;
+      } else if (eventName === 'workspace.requestSnapshot') {
+        if (typeof data.request !== 'string') return;
+        void prepareWorkspaceSnapshot()
+          .then((payload) => desktopRpc('workspace.snapshot', { request: data.request, payload }))
+          .catch(() => desktopRpc('workspace.snapshot', { request: data.request }).catch(() => {}));
+      } else if (eventName === 'updates.result') {
+        setUpdateStatus(data as unknown as UpdateCheckResult);
+        if (typeof data.message === 'string') notify(data.message);
+      } else if (eventName === 'updates.progress') {
+        setUpdateProgress(data as unknown as UpdateProgress);
+        if (typeof data.message === 'string') notify(data.message);
       } else if (eventName === 'view.navigate') {
-        const v = data.view;
-        if (v === 'workspace' || v === 'analysis' || v === 'settings') {
-          setView(v);
-        } else if (v === 'providers') {
-          setSettingsTab('providers');
-          setView('settings');
-        } else if (v === 'diagnostics' || v === 'about') {
-          setSettingsTab('diagnostics');
-          setView('settings');
-        } else if (v === 'shortcuts') {
-          setSettingsTab('shortcuts');
-          setView('settings');
-        }
+        navigateFromDesktop(data.view);
       }
     });
 
@@ -430,6 +491,10 @@ export default function App() {
           typeof updated.autoSyncSkills === 'boolean'
             ? updated.autoSyncSkills
             : prev.autoSyncSkills,
+        showInstalledSkillsOnly:
+          typeof updated.showInstalledSkillsOnly === 'boolean'
+            ? updated.showInstalledSkillsOnly
+            : prev.showInstalledSkillsOnly,
         updateSource:
           updated.updateSource === 'auto' ||
           updated.updateSource === 'atomgit' ||
@@ -553,6 +618,10 @@ export default function App() {
           typeof updated.autoSyncSkills === 'boolean'
             ? updated.autoSyncSkills
             : prev.autoSyncSkills,
+        showInstalledSkillsOnly:
+          typeof updated.showInstalledSkillsOnly === 'boolean'
+            ? updated.showInstalledSkillsOnly
+            : prev.showInstalledSkillsOnly,
         updateSource:
           updated.updateSource === 'auto' ||
           updated.updateSource === 'atomgit' ||
@@ -693,7 +762,8 @@ export default function App() {
         setSkillsState(res);
       }
     } catch (err) {
-      notify(err instanceof Error ? err.message : '读取 Skill 状态失败');
+      console.warn('Failed to read Skill status', err);
+      notify('无法读取 Skill 状态，请重试。');
     }
   };
 
@@ -737,7 +807,7 @@ export default function App() {
       const changed = list.filter((r) => r.state === 'updated' || r.state === 'installed');
       const failed = list.filter((r) => r.state === 'failed');
       if (failed.length > 0) {
-        notify(failed[0].error || `${failed[0].name} Skill 同步失败`);
+        notify(failed[0].error || `${failed[0].name} Skill 同步失败`, 7000);
       } else if (changed.length > 0) {
         const names = changed.map((r) => r.name).join('、');
         const ver = res?.skills?.bundledSkillVersion ?? skillsState.bundledSkillVersion;
@@ -748,7 +818,8 @@ export default function App() {
         notify('AI 助手 Skill 已是最新且路径有效');
       }
     } catch (err) {
-      notify(err instanceof Error ? err.message : '同步 Skill 失败');
+      console.warn('Failed to get Skill sync results', err);
+      notify('无法获取 Skill 同步结果，请刷新状态后重试。', 7000);
     } finally {
       setSyncingSkills(false);
     }
@@ -877,8 +948,22 @@ export default function App() {
             </div>
           </div>
         )}
-        {view === 'workspace' && (
+        {view === 'workspace' && pages.length === 0 && (
+          <section className="canvas-surface workspace-empty" aria-label="空白批注工作台">
+            <div>
+              <button className="button primary" onClick={() => void handleCaptureStart()}>
+                <CaptureIcon size={16} /> 截图
+              </button>
+              <button className="button secondary" onClick={() => void handleRequestOpenFiles()}>
+                <OpenFolderIcon size={16} /> 打开图片或项目
+              </button>
+            </div>
+          </section>
+        )}
+        {view === 'workspace' && pages.length > 0 && (
           <WorkspaceView
+            key={workspaceGeneration.current}
+            prepareWorkspaceSnapshot={prepareWorkspaceSnapshot}
             pages={pages}
             activePageId={activePageId}
             groupNotes={groupNotes}
@@ -888,8 +973,14 @@ export default function App() {
             }
             onCapture={handleCaptureStart}
             onSelectPage={setActivePageId}
-            onUpdatePages={setPages}
-            onUpdateGroupNotes={setGroupNotes}
+            onUpdatePages={(update) => {
+              reportWorkspaceChange();
+              setPages(update);
+            }}
+            onUpdateGroupNotes={(update) => {
+              reportWorkspaceChange();
+              setGroupNotes(update);
+            }}
             onImportImage={handleImportImage}
             onRequestImport={handleRequestOpenFiles}
             onAnalyze={() => setView('analysis')}
@@ -925,6 +1016,9 @@ export default function App() {
                 onSavePatch={handleSaveSettingsPatch}
                 onResetShortcuts={handleResetShortcuts}
                 onResetDefaults={handleResetDefaults}
+                updateStatus={updateStatus}
+                onUpdateStatus={setUpdateStatus}
+                updateProgress={updateProgress}
                 diagnosticsInfo={diagnosticsInfo}
                 onUpdateDiagnosticsInfo={setDiagnosticsInfo}
                 doctor={doctor}

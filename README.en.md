@@ -206,10 +206,12 @@ See [AI and CLI · VS Code Remote SSH](docs/AGENT-CLI.en.md#vs-code-remote-ssh-r
 ## Download and install
 
 | Platform | Download | Notes |
+| --- | --- | --- |
 | **Windows x64 · Portable** | [ZIP archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the whole archive and run `EditHere.exe`; keep the DLLs and plugin folders beside it. |
 | **macOS · Apple Silicon / Intel** | [Universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Drag `EditHere.app` into Applications; grant Screen Recording before the first capture. |
 | **Linux x86_64 · Preview** | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it; targets Ubuntu 24.04. See the [Linux guide](docs/LINUX.en.md). |
 | **Web · No install** | [Web archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | Unzip and open `EditHere.html`, or host it on a static site; see the [web edition guide](web/README.en.md). |
+| **DeepSeek Harness** | [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip) | Image-set annotation service, CLI, and `edithere-dsh` skill. See the [DSH guide](dsh/README.md). |
 
 These links always point to the latest public release; check the [Releases](https://github.com/Inginnng/EditHere/releases) page and the package's `version.txt` for its version.
 <details>

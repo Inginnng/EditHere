@@ -1,3 +1,4 @@
+import { version as productVersion } from '../../package.json';
 import type {
   DiagnosticsInfo,
   DoctorSnapshot,
@@ -210,6 +211,7 @@ export const INITIAL_PREFERENCES: GeneralPreferences = {
   scrollUltraLong: false,
   checkUpdatesOnStartup: true,
   autoSyncSkills: false,
+  showInstalledSkillsOnly: false,
   updateSource: 'auto',
   shortcuts: Object.fromEntries(DEFAULT_SHORTCUT_DEFINITIONS.map((d) => [d.id, d.defaultKey])),
   shortcutDefinitions: DEFAULT_SHORTCUT_DEFINITIONS,
@@ -223,7 +225,7 @@ export const INITIAL_DIAGNOSTICS_INFO: DiagnosticsInfo = {
 
 export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
   activeRoute: 'desktop',
-  desktopVersion: '0.14.1 (Qt6 Native Core)',
+  desktopVersion: `${productVersion} (Qt6 Native Core)`,
   nodeVersion: 'v23.9.0',
   unifiedMcpSnippet: JSON.stringify(
     {
@@ -247,7 +249,7 @@ export const INITIAL_DOCTOR_SNAPSHOT: DoctorSnapshot = {
 export const INITIAL_SKILLS_STATE: SkillSyncState = {
   bundledSkillVersion: '1.0.0',
   minCompatibleSkillVersion: '1.0.0',
-  appVersion: '0.14.1',
+  appVersion: productVersion,
   sourceAvailable: true,
   sourceSkillDir: 'skills/edithere',
   cliPath: 'edithere-cli.exe',
@@ -303,7 +305,7 @@ export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote
 
   return {
     schemaVersion: 'image-set-feedback-1',
-    tool: { name: 'EditHere', version: '0.14.1' },
+    tool: { name: 'EditHere', version: productVersion },
     annotationSpace: 'result',
     set: {
       name: '示例项目组图',
@@ -326,7 +328,7 @@ export function buildFeedbackPayload(pages: GalleryPage[], groupNotes: GroupNote
       height: p.height,
       feedback: {
         schemaVersion: 'feedback-minimal-4',
-        tool: { name: 'EditHere', version: '0.14.1' },
+        tool: { name: 'EditHere', version: productVersion },
         annotationSpace: 'result',
         image: {
           mode: 'none',

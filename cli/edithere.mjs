@@ -5,6 +5,7 @@
  * one-command skill setup (`init`), diagnostics (`doctor`), project conversion,
  * and unified stdio MCP (`mcp`).
  */
+import { APP_VERSION } from './version.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,11 +15,10 @@ import { manifestToUnifiedProject, unifiedProjectToManifest } from './project-fo
 import { closeWarmBrowser, listDesktopWindows, queryStatus, runBlockingAnnotate, runFastCapture } from './router.mjs';
 import { runStdioServer } from './unified-mcp.mjs';
 
-const CLI_VERSION = '0.14.1';
 
 export function usageText() {
   return [
-    `EditHere Unified CLI v${CLI_VERSION}`,
+    `EditHere Unified CLI v${APP_VERSION}`,
     '',
     'Commands:',
     '  doctor [--json]                                       Diagnose Desktop CLI, Node, Web runtime, Playwright & AI hosts',
@@ -66,7 +66,7 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   if (argv[0] === '--version' || argv[0] === '-v') {
-    console.log(`EditHere Unified CLI ${CLI_VERSION}`);
+    console.log(`EditHere Unified CLI ${APP_VERSION}`);
     return 0;
   }
 

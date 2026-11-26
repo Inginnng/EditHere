@@ -10,6 +10,7 @@
 #include <QRandomGenerator>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 
 #include <cstring>
 
@@ -114,6 +115,10 @@ void B2AssetServer::handleConnection() {
         socket->setProperty("reqBuffer", QByteArray());
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() { processSocket(socket); });
         connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
+        QTimer::singleShot(10000, socket, [socket] {
+            if (!socket->property("requestComplete").toBool())
+                socket->abort();
+        });
     }
 }
 
@@ -129,6 +134,7 @@ void B2AssetServer::processSocket(QTcpSocket *socket) {
         socket->setProperty("reqBuffer", buf);
         return;
     }
+    socket->setProperty("requestComplete", true);
     const QByteArray head = buf.left(headerEnd);
     const int lineEnd = head.indexOf("\r\n");
     const QList<QByteArray> parts = (lineEnd >= 0 ? head.left(lineEnd) : head).split(' ');
@@ -231,7 +237,6 @@ void B2AssetServer::sendResponse(QTcpSocket *socket, int status, const QByteArra
     resp.append("\r\nContent-Length: ");
     resp.append(QByteArray::number(body.size()));
     resp.append("\r\nCache-Control: no-store");
-    resp.append("\r\nAccess-Control-Allow-Origin: *");
     resp.append("\r\nConnection: close\r\n\r\n");
     if (!headOnly && !body.isEmpty()) resp.append(body);
     socket->write(resp);

@@ -34,7 +34,13 @@ const IID kIidWebMessageReceivedHandler = {
     0x57213f19, 0x00e6, 0x49fa, {0x8e, 0x07, 0x89, 0x8e, 0xa0, 0x1e, 0xcb, 0xd2}};
 const IID kIidNavigationCompletedHandler = {
     0xd33a35bf, 0x1c49, 0x4f98, {0x93, 0xab, 0x00, 0x6e, 0x05, 0x33, 0xfe, 0x1c}};
+const IID kIidProcessFailedHandler = {
+    0x79e0aea4, 0x990b, 0x42d9, {0xaa, 0x1d, 0x0f, 0xcc, 0x2e, 0x5b, 0xc7, 0xf1}};
 
+} // namespace
+
+// WebView2 implements these COM interfaces in another module. Give the types
+// external linkage so an optimized build keeps calls dispatched through the COM vtable.
 struct ICoreWebView2Settings;
 struct ICoreWebView2;
 struct ICoreWebView2Controller;
@@ -44,6 +50,16 @@ struct ICoreWebView2WebMessageReceivedEventArgs : public IUnknown {
     virtual HRESULT STDMETHODCALLTYPE get_Source(LPWSTR *source) = 0;
     virtual HRESULT STDMETHODCALLTYPE get_WebMessageAsJson(LPWSTR *webMessageAsJson) = 0;
     virtual HRESULT STDMETHODCALLTYPE TryGetWebMessageAsString(LPWSTR *webMessageAsString) = 0;
+};
+
+enum class ProcessFailedKind : int {
+    Unknown = -1,
+    BrowserProcessExited = 0,
+    RenderProcessExited = 1,
+};
+
+struct ICoreWebView2ProcessFailedEventArgs : public IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE get_ProcessFailedKind(ProcessFailedKind *kind) = 0;
 };
 
 struct ICoreWebView2Settings : public IUnknown {
@@ -137,6 +153,8 @@ struct ICoreWebView2Environment : public IUnknown {
     virtual HRESULT STDMETHODCALLTYPE add_NewBrowserVersionAvailable(void *handler, std::int64_t *token) = 0;
     virtual HRESULT STDMETHODCALLTYPE remove_NewBrowserVersionAvailable(std::int64_t token) = 0;
 };
+
+namespace {
 
 template <typename Fn>
 class ComCallback final : public IUnknown {
@@ -235,16 +253,22 @@ class WebView2Host::Impl {
     ICoreWebView2 *webview = nullptr;
     std::int64_t webMessageToken = 0;
     std::int64_t navCompletedToken = 0;
+    std::int64_t processFailedToken = 0;
     bool initialized = false;
+    bool comInitialized = false;
     QUrl pendingUrl;
     QList<QJsonObject> outboundQueue;
 
-    ~Impl() { releaseCom(); }
+    ~Impl() {
+        releaseCom();
+        if (comInitialized) CoUninitialize();
+    }
 
     void releaseCom() {
         if (webview) {
             if (webMessageToken) webview->remove_WebMessageReceived(webMessageToken);
             if (navCompletedToken) webview->remove_NavigationCompleted(navCompletedToken);
+            if (processFailedToken) webview->remove_ProcessFailed(processFailedToken);
             webview->Release();
             webview = nullptr;
         }
@@ -291,8 +315,7 @@ void WebView2Host::initialize() {
     diagnostics::write(diagnostics::Level::Info, "b2.webview2_init",
                        "Initializing WebView2 host", {{"runtimeVersion", pv}});
 
-    const HRESULT coHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    Q_UNUSED(coHr);
+    impl_->comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED));
 
     const QString userDataDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
                                     .filePath("webview2");
@@ -347,6 +370,36 @@ void WebView2Host::initialize() {
                         return S_OK;
                     }
                     self->impl_->webview = wv;
+
+                    auto *processHandler = new ComCallback(
+                        kIidProcessFailedHandler,
+                        [self](std::uintptr_t, void *argsPtr) -> HRESULT {
+                            if (!self || !self->ready_) return S_OK;
+                            auto kind = ProcessFailedKind::Unknown;
+                            if (auto *args = static_cast<ICoreWebView2ProcessFailedEventArgs *>(argsPtr))
+                                args->get_ProcessFailedKind(&kind);
+                            const QString msg = QStringLiteral("WebView2 process failed (kind %1)").arg(int(kind));
+                            diagnostics::write(diagnostics::Level::Warning, "b2.webview2_process_failed", msg);
+                            if (kind == ProcessFailedKind::BrowserProcessExited ||
+                                kind == ProcessFailedKind::RenderProcessExited ||
+                                kind == ProcessFailedKind::Unknown) {
+                                self->ready_ = false;
+                                // Let the COM callback return before the controller switches editors.
+                                QTimer::singleShot(0, self.data(), [self, msg]() {
+                                    if (self) emit self->failed(msg);
+                                });
+                            }
+                            return S_OK;
+                        });
+                    const HRESULT processHr = wv->add_ProcessFailed(processHandler, &self->impl_->processFailedToken);
+                    processHandler->Release();
+                    if (FAILED(processHr)) {
+                        const QString msg = QStringLiteral("WebView2 ProcessFailed registration failed (0x%1)")
+                                                .arg(quint32(processHr), 8, 16, QChar('0'));
+                        diagnostics::write(diagnostics::Level::Error, "b2.webview2_process_failed_registration", msg);
+                        emit self->failed(msg);
+                        return S_OK;
+                    }
 
                     ICoreWebView2Settings *settings = nullptr;
                     if (SUCCEEDED(wv->get_Settings(&settings)) && settings) {

@@ -25,11 +25,13 @@ DSH 的 MCP 客户端只桥接工具，不消费 MCP Apps 的 UI 资源，因此
 
 ## 快速开始
 
-先构建网页产物（需要 Node.js 20+）：
+下载 [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip)，完整解压到长期保留的目录。使用 Node.js 20 或更新版本，在解压目录安装 Skill：
 
 ```powershell
-node web/build.cjs
+node dsh/cli.mjs install-skill
 ```
+
+直接使用源码时，先在仓库根目录运行 `node web/build.cjs` 生成批注页面。
 
 发起一个组图会话（示例使用两张截图）：
 

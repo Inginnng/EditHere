@@ -11,7 +11,10 @@ real; otherwise only the source-level assertions run and the skip is reported.
 
 Usage::
 
-    python scripts/check-packaging.py [-v]
+    python scripts/check-packaging.py [-v] [--package PATH]
+
+Pass a portable ZIP or the installed data directory (the parent of cli/ and
+shared/) to verify the packaged host catalog against the source file.
 
 Exit code 0 means every check passed.
 """
@@ -48,7 +51,7 @@ def read(path: Path) -> str:
 
 def project_version() -> str:
     match = re.search(
-        r"project\(\s*EditHere\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", read(ROOT / "CMakeLists.txt")
+        r"project\(\s*EditHere\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)(?=[\s)])", read(ROOT / "CMakeLists.txt")
     )
     if not match:
         raise SystemExit("error: CMakeLists.txt does not declare project(EditHere VERSION x.y.z)")
@@ -406,6 +409,12 @@ def check_release_notes() -> list[Problem]:
 def check_version_consistency(version: str) -> list[Problem]:
     """REG-056/057  One version source, and every restatement agrees with it."""
     problems = []
+    try:
+        frontend_version = json.loads(read(ROOT / "frontend/package.json"))["version"]
+        if frontend_version != version:
+            problems.append(f"frontend/package.json: declares {frontend_version!r}, expected {version}.")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        problems.append(f"frontend/package.json: cannot read the version: {error}")
     changelog = read(ROOT / "CHANGELOG.md")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     if not any(re.match(rf"^##\s+v?{re.escape(version)}(\s|$)", line) for line in headings):
@@ -1208,6 +1217,49 @@ def check_skills_sync() -> list[Problem]:
     return []
 
 
+def check_ai_hosts(packages: list[Path]) -> list[Problem]:
+    relative = "shared/ai-hosts.json"
+    try:
+        source = (ROOT / relative).read_bytes()
+        hosts = json.loads(source)
+    except (OSError, ValueError) as error:
+        return [f"{relative}: {error}"]
+    if not isinstance(hosts, list) or not hosts:
+        return [f"{relative}: expected a nonempty array of host definitions."]
+    problems = []
+    ids = set()
+    for host in hosts:
+        if not isinstance(host, dict) or host.keys() - {"id", "name", "envVar", "paths"}:
+            problems.append(f"{relative}: invalid host definition {host!r}.")
+            continue
+        host_id, name, paths = (host.get(key) for key in ("id", "name", "paths"))
+        env_var = host.get("envVar", "UNSET")
+        if (not isinstance(host_id, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", host_id)
+                or host_id in ids or not isinstance(name, str) or not name.strip()
+                or not isinstance(env_var, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", env_var)
+                or not isinstance(paths, list) or not 1 <= len(paths) <= 2
+                or any(not isinstance(path, str) or not re.fullmatch(r"\.[a-z0-9_-]+(?:/[a-z0-9._-]+)*", path)
+                       or {".", ".."}.intersection(path.split("/")) for path in paths)):
+            problems.append(f"{relative}: invalid or duplicate host definition {host!r}.")
+            continue
+        ids.add(host_id)
+    if "codex" not in ids:
+        problems.append(f"{relative}: missing the default codex host.")
+
+    for package in packages:
+        try:
+            if package.is_dir():
+                packaged = (package / relative).read_bytes()
+            else:
+                with zipfile.ZipFile(package) as archive:
+                    packaged = archive.read(relative)
+            if packaged != source:
+                problems.append(f"{package}: {relative} differs from the source file.")
+        except (OSError, KeyError, zipfile.BadZipFile) as error:
+            problems.append(f"{package}: cannot read {relative}: {error}")
+    return problems
+
+
 CHECKS = [
     ("ps1_utf8_bom", check_ps1_utf8_bom),
     ("nsi_source", check_nsi_source),
@@ -1239,6 +1291,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-v", "--verbose", action="store_true", help="print every command that runs")
     parser.add_argument("--no-compile", action="store_true", help="skip the makensis compile")
+    parser.add_argument("--package", action="append", type=Path, default=[],
+                        help="check a portable ZIP or installed data directory (repeatable)")
     args = parser.parse_args()
 
     try:
@@ -1260,6 +1314,7 @@ def main() -> int:
     # driven here instead of through the uniform signature above.
     for name, found in (
         ("version_consistency", check_version_consistency(version)),
+        ("ai_hosts", check_ai_hosts(args.package)),
         ("quit_capability_pair", check_quit_capability_pair(version)),
         ("translated_docs", check_translated_docs(version)),
     ):
@@ -1281,7 +1336,7 @@ def main() -> int:
         for problem in problems:
             print(f"  - {problem}")
         return 1
-    print(f"packaging OK: {len(CHECKS) + 3} check(s) passed for version {version}")
+    print(f"packaging OK: {len(CHECKS) + 4} check(s) passed for version {version}")
     return 0
 
 

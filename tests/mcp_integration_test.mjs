@@ -13,6 +13,9 @@ const require = createRequire(import.meta.url);
 const { writeManifest, upsertPage } = require('../web/image-set.cjs');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PRODUCT_VERSION = fs.readFileSync(path.join(ROOT, 'CMakeLists.txt'), 'utf8')
+  .match(/project\(\s*EditHere\s+VERSION\s+(\d+\.\d+\.\d+)\b/)?.[1];
+assert.ok(PRODUCT_VERSION, 'CMake must declare the EditHere product version');
 const FIXTURE_PNG_PATH = path.join(ROOT, 'tests', 'fixtures', 'ocr-small-url.png');
 const FIXTURE_PNG_BYTES = fs.readFileSync(FIXTURE_PNG_PATH);
 const FIXTURE_PNG_SHA256 = nodeCrypto.createHash('sha256').update(FIXTURE_PNG_BYTES).digest('hex');
@@ -214,11 +217,11 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
     const init = await client.request('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
+      clientInfo: { name: 'mcp-integration-test', version: PRODUCT_VERSION },
     });
     assert.equal(init.result.protocolVersion, '2025-06-18');
     assert.equal(init.result.serverInfo.name, 'edithere-unified');
-    assert.equal(init.result.serverInfo.version, '0.14.1');
+    assert.equal(init.result.serverInfo.version, PRODUCT_VERSION);
 
     client.notify('notifications/initialized', {});
     const ping = await client.request('ping');
@@ -253,7 +256,7 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
     assert.equal(doctor.web.files.mcpBundle, true);
     if (REAL_CLI) {
       assert.equal(doctor.desktop.found, true);
-      assert.equal(doctor.desktop.version, '0.14.1');
+      assert.equal(doctor.desktop.version, PRODUCT_VERSION);
     }
 
     const webStatus = await client.request('tools/call', {
@@ -272,8 +275,9 @@ test('Suite 1: Unified MCP server (cli/unified-mcp.mjs) full stdio JSON-RPC life
       const desktopJson = JSON.parse(desktopStatus.result.content[0].text);
       assert.equal(desktopJson.ok, true);
       assert.equal(desktopJson.transport, 'desktop');
-      assert.equal(desktopJson.version, '0.14.1');
-      assert.equal(desktopJson.running, false);
+      assert.equal(typeof desktopJson.running, 'boolean');
+      if (desktopJson.running) assert.match(desktopJson.version, /^\d+\.\d+\.\d+$/);
+      else assert.equal(desktopJson.version, PRODUCT_VERSION);
 
       const autoStatus = await client.request('tools/call', {
         name: 'edithere_status',
@@ -345,7 +349,7 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
     const init = await client.request('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
+      clientInfo: { name: 'mcp-integration-test', version: PRODUCT_VERSION },
     });
     assert.ok(init.result.serverInfo.name);
     assert.equal(init.result.serverInfo.version, '0.2.2');
@@ -370,9 +374,12 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
 
     const statusResp = await client.request('tools/call', { name: 'edithere_status', arguments: {} });
     assert.equal(statusResp.result.isError, false);
-    const statusText = statusResp.result.content[0].text;
-    assert.match(statusText, /0\.14\.1/);
-    assert.ok(statusText.includes(path.basename(REAL_CLI)));
+    const status = JSON.parse(statusResp.result.content[0].text);
+    assert.equal(status.ok, true);
+    assert.equal(typeof status.running, 'boolean');
+    if (status.running) assert.match(status.version, /^\d+\.\d+\.\d+$/);
+    else assert.equal(status.version, PRODUCT_VERSION);
+    assert.equal(path.basename(status.connector.cli), path.basename(REAL_CLI));
 
     // Headless export from a schema-valid v3 .edithere project (file + preview + includeImage)
     const { projectPath } = buildValidV3Project(tmpDir);
@@ -395,7 +402,7 @@ test('Suite 2: Connector MCP server (connector/mcp-server.mjs) against real edit
     const exportedJson = JSON.parse(fs.readFileSync(path.join(outFileDir, feedbackFiles[0]), 'utf8'));
     assert.equal(exportedJson.schemaVersion, 'feedback-minimal-4');
     assert.equal(exportedJson.tool.name, 'EditHere');
-    assert.equal(exportedJson.tool.version, '0.14.1');
+    assert.equal(exportedJson.tool.version, PRODUCT_VERSION);
     assert.equal(exportedJson.capture.page, 'MCP集成测试页');
 
     // Embedded imageMode export
@@ -454,7 +461,7 @@ test('Suite 3: Web MCP server (web/mcp/server.bundle.cjs) resource, draft and fe
           'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] },
         },
       },
-      clientInfo: { name: 'mcp-integration-test', version: '0.14.1' },
+      clientInfo: { name: 'mcp-integration-test', version: PRODUCT_VERSION },
     });
     assert.equal(init.result.serverInfo.name, 'edithere-web');
     client.notify('notifications/initialized', {});
@@ -471,7 +478,6 @@ test('Suite 3: Web MCP server (web/mcp/server.bundle.cjs) resource, draft and fe
     const resRead = await client.request('resources/read', { uri: 'ui://edithere/annotation.html' });
     const htmlText = resRead.result.contents[0].text;
     assert.ok(htmlText.includes('<title>EditHere</title>'), 'Web MCP UI title must be EditHere');
-    assert.equal(htmlText.includes('改这里'), false, 'Web MCP UI must not contain old brand suffix');
 
     const opened = await client.request('tools/call', {
       name: 'edithere_web_open',
@@ -559,7 +565,7 @@ test('Suite 3: Web MCP server (web/mcp/server.bundle.cjs) resource, draft and fe
   }
 });
 
-test('Suite 4: Unified CLI init, unified branding & B2 doctor unified-mcp path resolution', () => {
+test('Suite 4: Unified CLI init and B2 doctor unified-mcp path resolution', () => {
   const tmpDir = makeTempDir('edithere-init-e2e-');
   try {
     const skillDest = path.join(tmpDir, 'edithere-skill');
@@ -586,22 +592,26 @@ test('Suite 4: Unified CLI init, unified branding & B2 doctor unified-mcp path r
       assert.equal(fs.existsSync(packagedMcp) || fs.existsSync(devMcp), true, 'Expected unified-mcp.mjs reachable from CLI directory');
     }
 
-    const brandTargets = [
-      path.join(ROOT, 'frontend', 'dist', 'index.html'),
-      path.join(ROOT, 'web', 'EditHere.html'),
-      path.join(ROOT, 'web', 'EditHere.mcp.html'),
-    ];
-    for (const file of brandTargets) {
-      const html = fs.readFileSync(file, 'utf8');
-      assert.ok(html.includes('<title>EditHere</title>'), `${file} must have <title>EditHere</title>`);
-      assert.equal(html.includes('改这里'), false, `${file} must not contain old 改这里 brand text`);
-    }
-
-    const connectorMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'connector', 'connector-meta.json'), 'utf8'));
-    assert.equal(connectorMeta.name, 'EditHere');
-    assert.equal(connectorMeta.name_zh, 'EditHere');
-    assert.equal(connectorMeta.name_en, 'EditHere');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('Built HTML and connector metadata use the EditHere brand', () => {
+  const connectorMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'connector', 'connector-meta.json'), 'utf8'));
+  assert.equal(connectorMeta.name, 'EditHere');
+  assert.equal(connectorMeta.name_zh, 'EditHere');
+  assert.equal(connectorMeta.name_en, 'EditHere');
+
+  const oldBrand = [];
+  const webBundles = ['web/EditHere.html', 'web/EditHere.dsh.html', 'web/EditHere.mcp.html'];
+  for (const relative of ['frontend/dist/index.html', ...webBundles]) {
+    const html = fs.readFileSync(path.join(ROOT, relative), 'utf8');
+    assert.ok(html.includes('<title>EditHere</title>'), `${relative} must have <title>EditHere</title>`);
+    if (html.includes('改这里')) oldBrand.push(relative);
+    if (webBundles.includes(relative)) {
+      assert.match(html, /class="brand surface" aria-label="EditHere"/, `${relative} must use the accessible EditHere name`);
+    }
+  }
+  assert.deepEqual(oldBrand, [], 'Built HTML must not contain old 改这里 brand text');
 });

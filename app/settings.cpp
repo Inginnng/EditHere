@@ -305,6 +305,7 @@ AppSettings loadSettings(const QString &filePath) {
     result.confirmBeforeDiscard = boolean("defaults/confirmBeforeDiscard", true);
     result.checkUpdatesOnStartup = boolean("updates/checkOnStartup", true);
     result.autoSyncSkills = boolean("skills/autoSync", false);
+    result.showInstalledSkillsOnly = boolean("skills/showInstalledOnly", false);
     const auto updateSource = source.value("updates/source", "auto").toString();
     if (QStringList{"auto", "atomgit", "github", "gitee"}.contains(updateSource))
         result.updateSource = updateSource;
@@ -434,6 +435,7 @@ bool saveSettings(const AppSettings &settings, QString *error, const QString &fi
     target.setValue("defaults/tool", settings.defaultTool);
     target.setValue("updates/checkOnStartup", settings.checkUpdatesOnStartup);
     target.setValue("skills/autoSync", settings.autoSyncSkills);
+    target.setValue("skills/showInstalledOnly", settings.showInstalledSkillsOnly);
     target.setValue("updates/source", settings.updateSource);
     target.setValue("ai/provider", settings.aiProviderId);
     target.setValue("ai/systemPrompt", settings.aiSystemPrompt);

@@ -1,14 +1,24 @@
 #include "windowscapture.h"
 #include "platform.h"
+#include "webview2host.h"
 #include <QApplication>
 #include <QColorSpace>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QFile>
 #include <QPainter>
 #include <QScreen>
+#include <QScopeGuard>
+#include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <qfloat16.h>
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
 #include <limits>
+#include <mutex>
 
 using namespace h2d;
 using namespace h2d::windowscapture;
@@ -20,6 +30,22 @@ float linear(int srgb) {
 void setHalf(QByteArray &bytes, qsizetype offset, float value) {
     const qfloat16 half(value);
     std::memcpy(bytes.data() + offset, &half, sizeof(half));
+}
+bool runningOnInputDesktop() {
+    auto desktopName = [](HDESK desktop) -> QString {
+        if (!desktop) return {};
+        wchar_t name[256]{};
+        DWORD needed = 0;
+        if (!GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &needed))
+            return {};
+        return QString::fromWCharArray(name);
+    };
+    const QString current = desktopName(GetThreadDesktop(GetCurrentThreadId()));
+    const HDESK input = OpenInputDesktop(0, FALSE, GENERIC_READ);
+    if (!input) return true;
+    const QString active = desktopName(input);
+    CloseDesktop(input);
+    return current.isEmpty() || active.isEmpty() || current.compare(active, Qt::CaseInsensitive) == 0;
 }
 class ColorBars final : public QWidget {
   public:
@@ -35,6 +61,41 @@ class ColorBars final : public QWidget {
 class WindowsCaptureTests final : public QObject {
     Q_OBJECT
   private slots:
+    void webView2StartsAndReceivesPageMessages() {
+        if (!WebView2Host::runtimeAvailable()) QSKIP("Requires the WebView2 Runtime");
+
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        QFile page(fixture.filePath("bridge.html"));
+        QVERIFY(page.open(QIODevice::WriteOnly));
+        const QByteArray html = R"(<script>chrome.webview.postMessage({kind: "ready"});</script>)";
+        QCOMPARE(page.write(html), html.size());
+        page.close();
+
+        const char profileSetting[] = "WEBVIEW2_USER_DATA_FOLDER";
+        const auto originalProfile = qgetenv(profileSetting);
+        QVERIFY(qputenv(profileSetting, fixture.filePath("profile").toUtf8()));
+        const auto restoreProfile = qScopeGuard([&] {
+            if (originalProfile.isNull()) qunsetenv(profileSetting);
+            else qputenv(profileSetting, originalProfile);
+        });
+
+        WebView2Host host;
+        QSignalSpy failed(&host, &WebView2Host::failed);
+        QSignalSpy messages(&host, &WebView2Host::messageReceived);
+        QEventLoop loop;
+        connect(&host, &WebView2Host::failed, &loop, &QEventLoop::quit);
+        connect(&host, &WebView2Host::messageReceived, &loop, &QEventLoop::quit);
+        QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+        host.navigate(QUrl::fromLocalFile(page.fileName()));
+        host.initialize();
+        if (messages.isEmpty() && failed.isEmpty()) loop.exec();
+        QVERIFY2(failed.isEmpty(), failed.isEmpty() ? "" : qPrintable(failed.first().first().toString()));
+        QVERIFY(host.isReady());
+        QVERIFY(!messages.isEmpty());
+        QCOMPARE(messages.first().first().toJsonObject().value("kind").toString(), QStringLiteral("ready"));
+    }
+
     void sdrUiSurvivesHdrWhiteLevels_data() {
         QTest::addColumn<float>("white");
         QTest::newRow("80-nits") << 1.0f;
@@ -172,6 +233,15 @@ class WindowsCaptureTests final : public QObject {
         if (!capture && (error.endsWith("0x887a0004") || error.endsWith("0x80004001")))
             QSKIP(qPrintable("This graphics driver does not support desktop duplication: " + error));
         QVERIFY2(capture, qPrintable(error));
+        if (!runningOnInputDesktop()) {
+            const auto image = capture->read(color.sdrWhiteLevel, &error);
+            QVERIFY2(!image.isNull(), qPrintable(error));
+            QCOMPARE(image.size(), capture->geometry().size());
+            capture.reset();
+            capture = DesktopCapture::open(monitor, &error);
+            QVERIFY2(capture, qPrintable(error));
+            QSKIP("Test window is on a non-active desktop; verified real GPU open/read/reopen without window pixel match.");
+        }
         RECT rect{};
         QVERIFY(GetWindowRect(hwnd, &rect));
         const QPoint origin(rect.left - capture->geometry().x(), rect.top - capture->geometry().y());
@@ -204,6 +274,68 @@ class WindowsCaptureTests final : public QObject {
         capture = DesktopCapture::open(monitor, &error);
         QVERIFY2(capture, qPrintable(error));
         QTRY_VERIFY_WITH_TIMEOUT(check(), 4000);
+    }
+    void hungDriverTimesOutAndTripsMonitorCircuitBreaker() {
+        const auto monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+        QVERIFY(monitor);
+        QString error;
+        std::unique_ptr<DesktopCapture> capture;
+        struct AcquireGate {
+            std::mutex mutex;
+            std::condition_variable cv;
+            bool entered = false;
+            bool released = false;
+        };
+        const auto gate = std::make_shared<AcquireGate>();
+        const auto unblockAndReset = [&] {
+            {
+                std::lock_guard lock(gate->mutex);
+                gate->released = true;
+            }
+            gate->cv.notify_one();
+            testing::setAcquireFrameHookForTesting({});
+            testing::setWatchdogTimeoutForTesting(0);
+            testing::resetBypassedMonitorsForTesting();
+        };
+        auto cleanup = qScopeGuard(unblockAndReset);
+        capture = DesktopCapture::open(monitor, &error);
+        if (!capture && (error.endsWith("0x887a0004") || error.endsWith("0x80004001")))
+            QSKIP(qPrintable("This graphics driver does not support desktop duplication: " + error));
+        QVERIFY2(capture, qPrintable(error));
+
+        testing::setWatchdogTimeoutForTesting(100);
+        testing::setAcquireFrameHookForTesting([gate] {
+            std::unique_lock lock(gate->mutex);
+            gate->entered = true;
+            gate->cv.wait(lock, [&] { return gate->released; });
+        });
+
+        QElapsedTimer timer;
+        timer.start();
+        QVERIFY(capture->read(1, &error).isNull());
+        QVERIFY(timer.elapsed() < 1000);
+        QVERIFY2(error.contains("timed out"), qPrintable(error));
+        {
+            std::lock_guard lock(gate->mutex);
+            QVERIFY(gate->entered);
+        }
+
+        timer.restart();
+        capture.reset();
+        QVERIFY(timer.elapsed() < 1000);
+
+        timer.restart();
+        QVERIFY(!DesktopCapture::open(monitor, &error));
+        QVERIFY(timer.elapsed() < 1000);
+        QVERIFY2(error.contains("bypassed"), qPrintable(error));
+
+        unblockAndReset();
+        // The detached worker may still be releasing the old duplication.
+        const auto reopen = [&] {
+            if (!capture) capture = DesktopCapture::open(monitor, &error);
+            return bool(capture);
+        };
+        QTRY_VERIFY2_WITH_TIMEOUT(reopen(), qPrintable(error), 2000);
     }
 };
 QTEST_MAIN(WindowsCaptureTests)

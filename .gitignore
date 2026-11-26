@@ -16,6 +16,7 @@ build/
 out/
 .cache/
 build-*/
+/web/tests/output/
 
 # Python bytecode caches left by the build and packaging scripts.
 __pycache__/

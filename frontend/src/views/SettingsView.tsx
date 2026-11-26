@@ -1,3 +1,4 @@
+import { version as productVersion } from '../../package.json';
 import { useState, type KeyboardEvent } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Switch from '@radix-ui/react-switch';
@@ -47,11 +48,15 @@ import type {
   SkillSyncStatus,
   ThemeMode,
   UpdateCheckResult,
+  UpdateProgress,
   UpdateSourceId,
 } from '../bridge/types';
 import ProvidersView from './ProvidersView';
 
 interface SettingsViewProps {
+  updateStatus: UpdateCheckResult | null;
+  onUpdateStatus: (result: UpdateCheckResult | null) => void;
+  updateProgress: UpdateProgress;
   activeTab: SettingsTabId;
   onChangeTab: (tab: SettingsTabId) => void;
   onBack: () => void;
@@ -166,13 +171,18 @@ export default function SettingsView({
   onSaveProviders,
   onTestProvider,
   onToast,
+  updateStatus,
+  onUpdateStatus,
+  updateProgress,
 }: SettingsViewProps) {
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [shortcutError, setShortcutError] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null);
+  const applyingUpdate = updateProgress.phase !== 'idle';
+  const updatePercent = updateProgress.total && updateProgress.total > 0
+    ? Math.min(100, Math.round(100 * (updateProgress.received ?? 0) / updateProgress.total))
+    : undefined;
   const [exportingDiag, setExportingDiag] = useState(false);
-  const [skillFilter, setSkillFilter] = useState<'detected' | 'installed'>('detected');
 
   const openExternalUrl = (url: string) => {
     if (isDesktopWebView()) {
@@ -252,18 +262,26 @@ export default function SettingsView({
 
   const handleCheckUpdates = async () => {
     if (!isDesktopWebView()) {
-      setUpdateStatus({ status: 'upToDate', message: '预览环境已是最新前端资源。' });
+      onUpdateStatus({ status: 'upToDate', message: '预览环境已是最新前端资源。' });
       return;
     }
     setCheckingUpdate(true);
     try {
       const res = await desktopRpc<UpdateCheckResult>('updates.check', {}, 35000);
-      setUpdateStatus(res);
+      onUpdateStatus(res);
       if (res.message) onToast(res.message);
     } catch (err) {
       onToast(err instanceof Error ? err.message : '检查更新失败');
     } finally {
       setCheckingUpdate(false);
+    }
+  };
+
+  const runUpdateAction = async (method: 'updates.downloadAndInstall' | 'updates.cancel') => {
+    try {
+      await desktopRpc(method);
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '更新操作失败');
     }
   };
 
@@ -297,7 +315,8 @@ export default function SettingsView({
 
   const detectedSkills = skillsState.hosts.filter((h) => h.hostPresent || h.installed);
   const installedSkills = detectedSkills.filter((h) => h.installed);
-  const visibleSkills = skillFilter === 'installed' ? installedSkills : detectedSkills;
+  const { showInstalledSkillsOnly } = preferences;
+  const visibleSkills = showInstalledSkillsOnly ? installedSkills : detectedSkills;
 
   const actionableSkills = skillsState.hosts.filter(
     (h) => h.status === 'outdated' || h.status === 'legacy' || h.status === 'path-stale'
@@ -912,6 +931,13 @@ export default function SettingsView({
                 <div className="settings-row-label">
                   <strong>启动时自动检查更新</strong>
                   {updateStatus?.message && <p>{updateStatus.message}</p>}
+                  {applyingUpdate && (
+                    <p role="status">
+                      {updateProgress.phase === 'preparing' ? '安装器正在预检…'
+                        : updatePercent === undefined ? '正在下载安装器…' : `正在下载安装器… ${updatePercent}%`}
+                    </p>
+                  )}
+                  {!applyingUpdate && updateProgress.message && <p role="status">{updateProgress.message}</p>}
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -930,7 +956,7 @@ export default function SettingsView({
                 <div className="settings-inline-controls">
                   <DropdownMenu.Root>
                     <DropdownMenu.Trigger asChild>
-                      <button className="button secondary sm">
+                      <button className="button secondary sm" disabled={checkingUpdate || applyingUpdate}>
                         <span>{UPDATE_SOURCE_LABELS[preferences.updateSource]}</span>
                         <ChevronDownIcon size={14} />
                       </button>
@@ -941,7 +967,10 @@ export default function SettingsView({
                           <DropdownMenu.Item
                             key={src}
                             className="dropdown-item"
-                            onSelect={() => void commitPatch({ updateSource: src })}
+                            onSelect={() => {
+                              onUpdateStatus(null);
+                              void commitPatch({ updateSource: src });
+                            }}
                           >
                             {UPDATE_SOURCE_LABELS[src]}
                           </DropdownMenu.Item>
@@ -951,12 +980,22 @@ export default function SettingsView({
                   </DropdownMenu.Root>
                   <button
                     className="button secondary sm"
-                    disabled={checkingUpdate}
+                    disabled={checkingUpdate || applyingUpdate}
                     onClick={() => void handleCheckUpdates()}
                   >
                     {checkingUpdate && <SpinnerIcon size={14} className="spin" />}
                     检查更新
                   </button>
+                  {applyingUpdate ? (
+                    <button className="button secondary sm" onClick={() => void runUpdateAction('updates.cancel')}>
+                      取消更新
+                    </button>
+                  ) : updateStatus?.canInstall && (
+                    <button className="button primary sm" disabled={checkingUpdate}
+                      onClick={() => void runUpdateAction('updates.downloadAndInstall')}>
+                      立即更新
+                    </button>
+                  )}
                   <button className="button ghost sm" onClick={() => void handleOpenReleases()}>
                     打开发布页 <ExternalLinkIcon size={14} />
                   </button>
@@ -1012,14 +1051,16 @@ export default function SettingsView({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <div className="segmented-control" aria-label="Agent 筛选">
                   <button
-                    className={skillFilter === 'detected' ? 'selected' : ''}
-                    onClick={() => setSkillFilter('detected')}
+                    className={showInstalledSkillsOnly ? '' : 'selected'}
+                    aria-pressed={!showInstalledSkillsOnly}
+                    onClick={() => void commitPatch({ showInstalledSkillsOnly: false })}
                   >
                     已检测到 ({detectedSkills.length})
                   </button>
                   <button
-                    className={skillFilter === 'installed' ? 'selected' : ''}
-                    onClick={() => setSkillFilter('installed')}
+                    className={showInstalledSkillsOnly ? 'selected' : ''}
+                    aria-pressed={showInstalledSkillsOnly}
+                    onClick={() => void commitPatch({ showInstalledSkillsOnly: true })}
                   >
                     仅已安装 ({installedSkills.length})
                   </button>
@@ -1072,18 +1113,18 @@ export default function SettingsView({
                   <span className="settings-row-icon"><TerminalIcon size={18} /></span>
                   <div className="settings-row-label">
                     <strong>
-                      {skillFilter === 'installed'
+                      {showInstalledSkillsOnly
                         ? '尚未在已检测到的 Agent 中安装 EditHere Skill'
                         : '当前用户目录下未检测到受支持的 AI 助手'}
                     </strong>
                     <p>
-                      {skillFilter === 'installed' && detectedSkills.length > 0
+                      {showInstalledSkillsOnly && detectedSkills.length > 0
                         ? `已检测到 ${detectedSkills.length} 个 Agent 目录，可切回“已检测到”列表按需点击安装。`
                         : '支持 Codex、Claude Code、Cursor、Antigravity、Windsurf、Kiro、Trae / Trae CN、WorkBuddy、CodeBuddy、Qoder / QoderWork、DSH、Grok、ZCode、OpenCode、Cline 等；安装后点击“刷新状态”即可识别。'}
                     </p>
                   </div>
-                  {skillFilter === 'installed' && detectedSkills.length > 0 && (
-                    <button className="button secondary sm" onClick={() => setSkillFilter('detected')}>
+                  {showInstalledSkillsOnly && detectedSkills.length > 0 && (
+                    <button className="button secondary sm" onClick={() => void commitPatch({ showInstalledSkillsOnly: false })}>
                       查看已检测 Agent
                     </button>
                   )}
@@ -1157,7 +1198,7 @@ export default function SettingsView({
                   style={{ height: 30, width: 'auto' }}
                 />
                 <span className="badge accent">
-                  {desktopConnected ? doctor.desktopVersion : '0.14.1'}
+                  {desktopConnected ? doctor.desktopVersion : productVersion}
                 </span>
               </div>
 

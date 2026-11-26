@@ -48,6 +48,8 @@ class Controller final : public QObject {
     void showCurrentWindow();
     B2Window *ensureB2Window();
     bool useB2Ui_ = false;
+    bool exitCheckInProgress_ = false;
+    bool updateExitConfirmed_ = false;
     std::unique_ptr<B2Window> b2Window_;
     QTimer trayClickTimer_;
     bool trayActionRunning_ = false;
@@ -65,6 +67,9 @@ class Controller final : public QObject {
     void cancelCapture();
     void raiseEditor();
     bool hasAnyUnsavedChanges();
+    bool confirmUpdateExit();
+    bool canExitForUpdate(const QWidget *updateDialog = nullptr) const;
+    void exitForUpdate();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
     void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates,
                          QImage picture = {});
@@ -75,6 +80,7 @@ class Controller final : public QObject {
     void readInstallationReceipt();
     void presentInstallationReceipt();
     void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr, bool ai = false);
+    QString applySettingsTransaction(const AppSettings &next, bool *shortcutsUnavailableOut = nullptr);
     // What the toolbar beside a finished region can do with it.
     void copyRegion(Overlay *source);
     void pinRegion(Overlay *source);
@@ -189,7 +195,8 @@ class Controller final : public QObject {
     std::optional<UpdateChecker::Result> pendingStartupUpdate_;
     bool installationReceiptChecked_ = false;
     QJsonObject pendingInstallationReceipt_;
-    bool capturing_ = false, wasVisible_ = false;
+    bool capturing_ = false;
+    bool editorWasVisible_ = false, b2WasVisible_ = false;
     CaptureHistory history_;
     // Which earlier capture the capture windows are showing, or -1 for the screen.
     int historyIndex_ = -1;

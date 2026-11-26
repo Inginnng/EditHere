@@ -62,6 +62,7 @@ Controller::Controller(QObject *parent, const AppSettings &settings, const QStri
     shortcut_.setObjectName("captureShortcut");
     annotateShortcut_.setObjectName("annotateShortcut");
     connect(&editor_, &Editor::agentFinishRequested, this, &Controller::finishAgentSession);
+    connect(&editor_, &Editor::projectEdited, this, [this] { updateExitConfirmed_ = false; });
     connect(&editor_, &Editor::agentCancelRequested, this, [this] {
         cancelAgentSession(agentSessionId_, "cancelled", "User cancelled. Edits remain in EditHere.");
     });
@@ -191,6 +192,12 @@ Controller::~Controller() = default;
 B2Window *Controller::ensureB2Window() {
     if (!b2Window_) {
         b2Window_ = std::make_unique<B2Window>(settings_, settingsFile_);
+        b2Window_->setUpdatePreparationHandler([this] {
+            return !QApplication::activeModalWidget() && confirmUpdateExit();
+        });
+        b2Window_->setUpdateExitConfirmation([this] { return canExitForUpdate(); });
+        connect(b2Window_.get(), &B2Window::workspaceChanged, this, [this] { updateExitConfirmed_ = false; });
+        connect(b2Window_.get(), &B2Window::updateInstallStarted, this, &Controller::exitForUpdate);
         connect(b2Window_.get(), &B2Window::captureRequested, this, &Controller::capture);
         connect(b2Window_.get(), &B2Window::pinImageRequested, this, [this](const QImage &img) {
             pinImage(img);
@@ -208,89 +215,8 @@ B2Window *Controller::ensureB2Window() {
                 updateTrayShortcut();
             }
         });
-        b2Window_->setSettingsApplyHandler([this](const AppSettings &next) -> QString {
-            if (auto error = validateSettings(next); !error.isEmpty())
-                return error;
-            const auto previousLanguage = settings_.language;
-            if (!installLanguage(next.language))
-                return tr("界面语言加载失败，请重新安装 EditHere。");
-
-            const bool globalShortcutsChanged =
-                next.shortcuts.value("capture") != settings_.shortcuts.value("capture") ||
-                next.shortcuts.value("annotate") != settings_.shortcuts.value("annotate");
-            const auto oldShortcut = shortcut_.sequence();
-            const auto oldAnnotateShortcut = annotateShortcut_.sequence();
-            auto restoreShortcuts = [&] {
-                shortcut_.stop();
-                annotateShortcut_.stop();
-                QString err;
-                if (!shortcut_.start(oldShortcut))
-                    err += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
-                if (!annotateShortcut_.start(oldAnnotateShortcut))
-                    err += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
-                return err;
-            };
-            if (globalShortcutsChanged) {
-                shortcut_.stop();
-                annotateShortcut_.stop();
-                if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable()) {
-                    const auto err = shortcut_.lastError().isEmpty()
-                                         ? tr("截图快捷键无法注册，请更换组合键。")
-                                         : shortcut_.lastError();
-                    return err + restoreShortcuts();
-                }
-                if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable()) {
-                    const auto err = annotateShortcut_.lastError().isEmpty()
-                                         ? tr("新建批注快捷键无法注册，请更换组合键。")
-                                         : tr("新建批注（空窗口）：") + annotateShortcut_.lastError();
-                    return err + restoreShortcuts();
-                }
-            }
-
-            QString startupError;
-            const bool wasRegistered = launchAtLoginEnabled(&startupError);
-            const bool loginRequestedChange = next.launchAtLogin != settings_.launchAtLogin;
-            bool startupChanged = false;
-            if (startupError.isEmpty()) {
-                startupChanged = wasRegistered != next.launchAtLogin;
-                if (startupChanged) {
-                    QString loginErr;
-                    if (!setLaunchAtLoginEnabled(next.launchAtLogin, &loginErr)) {
-                        if (globalShortcutsChanged)
-                            loginErr += restoreShortcuts();
-                        return loginErr;
-                    }
-                }
-            } else if (loginRequestedChange) {
-                if (globalShortcutsChanged)
-                    startupError += restoreShortcuts();
-                return startupError;
-            }
-
-            QString saveErr;
-            if (!saveSettings(next, &saveErr, settingsFile_)) {
-                if (next.language != previousLanguage)
-                    installLanguage(previousLanguage);
-                if (startupChanged) {
-                    QString rollbackErr;
-                    if (!setLaunchAtLoginEnabled(wasRegistered, &rollbackErr))
-                        saveErr += tr("\n开机自启未能恢复：") + rollbackErr;
-                }
-                if (globalShortcutsChanged)
-                    saveErr += restoreShortcuts();
-                return saveErr;
-            }
-
-            settings_ = next;
-            trayClickTimer_.stop();
-            editor_.setPreferences(settings_);
-            editor_.setShortcuts(settings_.shortcuts);
-            applyTheme(settings_.theme);
-            if (next.language != previousLanguage)
-                retranslate();
-            else
-                updateTrayShortcut();
-            return {};
+        b2Window_->setSettingsApplyHandler([this](const AppSettings &next) {
+            return applySettingsTransaction(next);
         });
         connect(b2Window_.get(), &B2Window::agentSessionCompleted, this,
                 [this](const QString &output, int annotationCount, const QString &schemaVersion,
@@ -415,6 +341,7 @@ void Controller::openAnnotation() {
         menu->close();
     if (useB2Ui_) {
         showCurrentWindow();
+        b2Window_->openEmpty();
         return;
     }
     editor_.openEmpty();
@@ -448,8 +375,77 @@ void Controller::openSettings(bool updates, bool toolbar) {
     }
     openSettingsDialog(updates, toolbar);
 }
-    void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
-        trayClickTimer_.stop();
+QString Controller::applySettingsTransaction(const AppSettings &next, bool *shortcutsUnavailableOut) {
+    if (auto error = validateSettings(next); !error.isEmpty())
+        return error;
+
+    const auto previousLanguage = settings_.language;
+    const auto oldShortcut = shortcut_.sequence();
+    const auto oldAnnotateShortcut = annotateShortcut_.sequence();
+    const bool shortcutsChanged = next.shortcuts.value("capture") != oldShortcut ||
+                                  next.shortcuts.value("annotate") != oldAnnotateShortcut;
+    bool shortcutsApplied = false;
+    bool startupApplied = false;
+    QString startupError;
+    const bool wasRegistered = launchAtLoginEnabled(&startupError);
+    const auto rollback = [&](QString error) {
+        if (startupApplied) {
+            QString restoreError;
+            if (!setLaunchAtLoginEnabled(wasRegistered, &restoreError))
+                error += tr("\n开机自启未能恢复：") + restoreError;
+        }
+        if (shortcutsApplied) {
+            shortcut_.stop();
+            annotateShortcut_.stop();
+            if (!shortcut_.start(oldShortcut))
+                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
+            if (!annotateShortcut_.start(oldAnnotateShortcut))
+                error += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
+        }
+        if (next.language != previousLanguage) {
+            installLanguage(previousLanguage);
+            retranslate();
+        }
+        return error;
+    };
+
+    if (!startupError.isEmpty() && next.launchAtLogin != settings_.launchAtLogin)
+        return rollback(startupError);
+    if (!installLanguage(next.language))
+        return rollback(tr("界面语言加载失败，请重新安装 EditHere。"));
+    if (shortcutsChanged) {
+        shortcutsApplied = true;
+        shortcut_.stop();
+        annotateShortcut_.stop();
+        if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable())
+            return rollback(shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
+                                                            : shortcut_.lastError());
+        if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable())
+            return rollback(annotateShortcut_.lastError().isEmpty() ? tr("新建批注快捷键无法注册，请更换组合键。")
+                : tr("新建批注（空窗口）：") + annotateShortcut_.lastError());
+    }
+
+    QString error;
+    if (startupError.isEmpty() && wasRegistered != next.launchAtLogin) {
+        if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error))
+            return rollback(error);
+        startupApplied = true;
+    }
+    if (!saveSettings(next, &error, settingsFile_))
+        return rollback(error);
+
+    if (shortcutsUnavailableOut)
+        *shortcutsUnavailableOut = shortcut_.unavailable() || annotateShortcut_.unavailable();
+    settings_ = next;
+    trayClickTimer_.stop();
+    editor_.setPreferences(settings_);
+    editor_.setShortcuts(settings_.shortcuts);
+    applyTheme(settings_.theme);
+    retranslate();
+    return {};
+}
+void Controller::openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release, bool ai) {
+    trayClickTimer_.stop();
     if (capturing_ || QApplication::activeModalWidget())
         return;
     scheduleStartupUpdate();
@@ -481,11 +477,8 @@ void Controller::openSettings(bool updates, bool toolbar) {
     const auto unavailableNotice = tr("当前桌面不支持全局快捷键。设置仍可保存；请使用托盘菜单，或在系统快捷键设置中绑定 EditHere --capture。");
     if (shortcut_.unavailable() || annotateShortcut_.unavailable())
         dialog.setGlobalShortcutNotice(unavailableNotice);
-    dialog.setUpdatePreparationHandler([this] {
-        // Never discard an active agent session to make room for an update.
-        // allowReplace also commits inline edits and offers Save/Discard/Cancel.
-        return editor_.allowReplace();
-    });
+    dialog.setUpdatePreparationHandler([this] { return confirmUpdateExit(); });
+    dialog.setUpdateExitConfirmation([this, &dialog] { return canExitForUpdate(&dialog); });
     bool updateStarted = false;
     connect(&dialog, &SettingsDialog::updateInstallStarted, &dialog, [&] { updateStarted = true; });
     dialog.setLaunchAtLoginNotice(startupReadError.isEmpty() ? launchAtLoginNotice() : startupReadError);
@@ -503,72 +496,15 @@ void Controller::openSettings(bool updates, bool toolbar) {
     else if (ai)
         dialog.showAi();
     bool shortcutsUnavailable = false;
-    dialog.setApplyHandler([this, &dialog, &shortcutsUnavailable, unavailableNotice](const AppSettings &next) -> QString {
-        if (auto error = validateSettings(next); !error.isEmpty())
-            return error;
-        const auto previousLanguage = settings_.language;
-        if (!installLanguage(next.language))
-            return tr("界面语言加载失败，请重新安装 EditHere。");
-        QString startupError;
-        const bool wasRegistered = launchAtLoginEnabled(&startupError);
-        if (!startupError.isEmpty())
-            return startupError;
-        const auto oldShortcut = shortcut_.sequence();
-        const auto oldAnnotateShortcut = annotateShortcut_.sequence();
-        auto restoreShortcuts = [&] {
-            // Release both first so restoring swapped assignments cannot conflict.
-            shortcut_.stop();
-            annotateShortcut_.stop();
-            QString error;
-            if (!shortcut_.start(oldShortcut))
-                error += tr("\n原快捷键未能恢复，请重新设置截图快捷键。");
-            if (!annotateShortcut_.start(oldAnnotateShortcut))
-                error += tr("\n原快捷键未能恢复，请重新设置新建批注快捷键。");
-            return error;
-        };
-        shortcutsUnavailable = false;
-        if (!shortcut_.start(next.shortcuts.value("capture")) && !shortcut_.unavailable()) {
-            const auto error = shortcut_.lastError().isEmpty() ? tr("截图快捷键无法注册，请更换组合键。")
-                                                              : shortcut_.lastError();
-            return error + restoreShortcuts();
-        }
-        if (!annotateShortcut_.start(next.shortcuts.value("annotate")) && !annotateShortcut_.unavailable()) {
-            const auto error = annotateShortcut_.lastError().isEmpty()
-                                   ? tr("新建批注快捷键无法注册，请更换组合键。")
-                                   : tr("新建批注（空窗口）：") + annotateShortcut_.lastError();
-            return error + restoreShortcuts();
-        }
-        shortcutsUnavailable = shortcut_.unavailable() || annotateShortcut_.unavailable();
-        dialog.setGlobalShortcutNotice(shortcutsUnavailable ? unavailableNotice : QString());
-        QString error;
-        const bool startupChanged = wasRegistered != next.launchAtLogin;
-        if (!setLaunchAtLoginEnabled(next.launchAtLogin, &error)) {
-            return error + restoreShortcuts();
-        }
-        if (!saveSettings(next, &error, settingsFile_)) {
-            // Nothing was written, so the live language preview has to go back too.
-            if (next.language != previousLanguage)
-                installLanguage(previousLanguage);
-            QString rollbackError;
-            if (startupChanged && !setLaunchAtLoginEnabled(wasRegistered, &rollbackError))
-                error += tr("\n开机自启未能恢复：") + rollbackError;
-            return error + restoreShortcuts();
-        }
-        settings_ = next;
-        trayClickTimer_.stop();
-        editor_.setPreferences(settings_);
-        editor_.setShortcuts(settings_.shortcuts);
-        applyTheme(settings_.theme);
-        updateTrayShortcut();
-        return {};
+    dialog.setApplyHandler([this, &dialog, &shortcutsUnavailable, unavailableNotice](const AppSettings &next) {
+        const auto error = applySettingsTransaction(next, &shortcutsUnavailable);
+        if (error.isEmpty())
+            dialog.setGlobalShortcutNotice(shortcutsUnavailable ? unavailableNotice : QString());
+        return error;
     });
     const bool accepted = dialog.exec() == QDialog::Accepted;
     if (updateStarted) {
-        tray_.hide();
-        // The user has confirmed, and the maintenance worker has validated and
-        // prepared the update. Its ACK allows it to wait for this process to exit.
-        // Do not run the close-to-tray path or ask the same question a second time.
-        QCoreApplication::exit(0);
+        exitForUpdate();
         return;
     }
     if (!accepted) {
@@ -627,7 +563,6 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
     if (useB2Ui_) {
         if (!path.isEmpty()) {
             if (isVideoFile(path) || isVideoProjectFile(path)) {
-                useB2Ui_ = false;
                 editor_.openFile(path);
             } else {
                 try {
@@ -639,6 +574,8 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
         } else if (!background) {
             if (demo) {
                 ensureB2Window()->openCapturedDocument(fromImage(exampleImage(), "demo", tr("示例产品页面")));
+            } else if (settings_.captureOnStartup && screenCaptureAllowed()) {
+                capture();
             } else {
                 showCurrentWindow();
             }
@@ -705,6 +642,11 @@ void Controller::presentStartupUpdate() {
     }
     const auto release = std::move(*pendingStartupUpdate_);
     pendingStartupUpdate_.reset();
+    if (useB2Ui_) {
+        showCurrentWindow();
+        b2Window_->offerUpdate(release);
+        return;
+    }
     QMessageBox prompt(QMessageBox::Information, tr("EditHere 更新"),
                        tr("发现新版本 %1。").arg(release.tagName), QMessageBox::NoButton, &editor_);
     prompt.setObjectName("startupUpdatePrompt");
@@ -829,7 +771,8 @@ void Controller::beginCapture(bool fromTray) {
     editor_.dismissGuide();
     if (auto menu = tray_.contextMenu())
         menu->close();
-    if (!editor_.allowReplace()) {
+    if ((!useB2Ui_ && !editor_.allowReplace()) ||
+        (useB2Ui_ && b2Window_ && b2Window_->startsNewWorkspaceOnCapture() && !b2Window_->allowReplace())) {
         if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
             cancelAgentSession(agentSessionId_, "busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
         }
@@ -840,7 +783,8 @@ void Controller::beginCapture(bool fromTray) {
     // A new capture always starts on the screen, not on whatever was being browsed
     // before it.
     historyIndex_ = -1;
-    wasVisible_ = (useB2Ui_ && b2Window_ && b2Window_->isVisible()) || editor_.isVisible();
+    editorWasVisible_ = editor_.isVisible();
+    b2WasVisible_ = useB2Ui_ && b2Window_ && b2Window_->isVisible();
     if (b2Window_) b2Window_->hide();
     editor_.hide();
     const quint64 generation = ++captureGeneration_;
@@ -924,10 +868,8 @@ void Controller::beginCapture(bool fromTray) {
     }, fromTray);
 }
 void Controller::restoreAfterCapture() {
-    if (wasVisible_) {
-        if (useB2Ui_ && b2Window_) {
-            showCurrentWindow();
-        } else if (captureForeground_) {
+    if (editorWasVisible_) {
+        if (captureForeground_ || b2WasVisible_) {
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
             editor_.show();
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
@@ -939,6 +881,8 @@ void Controller::restoreAfterCapture() {
             raiseEditor();
         }
     }
+    if (b2WasVisible_ && useB2Ui_)
+        showCurrentWindow();
     restoreCaptureForegroundWindow(captureForeground_);
     captureForeground_ = 0;
 }
@@ -1995,6 +1939,11 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
         }
         clearOverlays();
         if (useB2Ui_) {
+            if (editorWasVisible_) {
+                editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
+                editor_.show();
+                editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
+            }
             auto *w = ensureB2Window();
             w->openCapturedDocument(std::move(doc), attachAgentSession);
             if (attachAgentSession) {
@@ -2024,15 +1973,45 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
         QMessageBox::warning(&editor_, tr("截图未完成"), QString::fromUtf8(e.what()));
     }
 }
+bool Controller::confirmUpdateExit() {
+    if (exitCheckInProgress_ || capturing_ || !agentSessionId_.isEmpty())
+        return false;
+    const QScopedValueRollback checking(exitCheckInProgress_, true);
+    updateExitConfirmed_ = false;
+    if (b2Window_ && !b2Window_->allowReplace())
+        return false;
+    if (editor_.hasUnsavedChanges() && !editor_.isVisible())
+        editor_.show();
+    if (!editor_.allowReplace())
+        return false;
+    if (b2Window_)
+        b2Window_->trackWorkspaceChanges();
+    updateExitConfirmed_ = true;
+    return true;
+}
+bool Controller::canExitForUpdate(const QWidget *updateDialog) const {
+    const auto *modal = QApplication::activeModalWidget();
+    return updateExitConfirmed_ && !exitCheckInProgress_ && !capturing_ && agentSessionId_.isEmpty() &&
+           (!modal || modal == updateDialog);
+}
+void Controller::exitForUpdate() {
+    if (b2Window_) b2Window_->hide();
+    tray_.hide();
+    QCoreApplication::exit(0);
+}
 void Controller::quit() {
+    if (exitCheckInProgress_ || QApplication::activeModalWidget())
+        return;
+    const QScopedValueRollback checking(exitCheckInProgress_, true);
     trayClickTimer_.stop();
+    if (b2Window_ && !b2Window_->allowReplace())
+        return;
     const bool pendingSession = !agentSessionId_.isEmpty();
     if (pendingSession)
         cancelAgentSession(agentSessionId_, "cancelled", "EditHere is exiting. No feedback was returned.");
     if (capturing_)
         cancelCapture();
-    // The update flow and installers ask a tray-resident instance to exit, so the
-    // save/discard/cancel prompt has to come to the front instead of hiding there.
+    // Tray and installer quit requests must surface the save prompt.
     if ((pendingSession || editor_.hasUnsavedChanges()) && !editor_.isVisible())
         raiseEditor();
     if (!editor_.allowReplace())
@@ -2042,7 +2021,7 @@ void Controller::quit() {
     qApp->quit();
 }
 bool Controller::hasAnyUnsavedChanges() {
-    return editor_.hasUnsavedChanges() || (useB2Ui_ && b2Window_ && b2Window_->hasUnsavedChanges());
+    return editor_.hasUnsavedChanges() || (b2Window_ && b2Window_->hasUnsavedChanges());
 }
 QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
     const auto command = request["command"].toString();
@@ -2317,7 +2296,8 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
         guidePending_ = false;
         if (routeToB2) {
             auto *w = ensureB2Window();
-            w->openMediaPath(input);
+            if (!w->openMediaPath(input))
+                return agentError("busy", "The current document has unsaved changes.");
             if (request.contains("pageContext")) w->setPageContext(request["pageContext"].toString());
         } else {
             editor_.loadMedia(input);

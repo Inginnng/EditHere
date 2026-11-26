@@ -519,6 +519,32 @@ class UpdateTests : public QObject {
         QCOMPARE(UpdateCheckerTestAccess::action(path).value("action").toString(), QString("cancel"));
         QVERIFY(!checker.downloading());
     }
+    void readyHandoffRequiresPermissionToCloseDocuments() {
+#ifndef Q_OS_WIN
+        QSKIP("Windows maintenance handoff");
+#endif
+        QTemporaryDir directory;
+        UpdateChecker checker;
+        QSignalSpy started(&checker, &UpdateChecker::installStarted);
+        QSignalSpy failed(&checker, &UpdateChecker::installFailed);
+        const auto path = UpdateCheckerTestAccess::prepareInstall(
+            checker, directory.path(), [](QProcess &) { return true; });
+        checker.setInstallConfirmation([] { return true; });
+        int confirmations = 0;
+        checker.setExitConfirmation([&] {
+            ++confirmations;
+            return false;
+        });
+
+        UpdateCheckerTestAccess::install(checker, path, payloadHash());
+        QCOMPARE(confirmations, 0);
+        QVERIFY(UpdateCheckerTestAccess::status(checker, path, "ready"));
+        QCOMPARE(confirmations, 1);
+        QCOMPARE(started.size(), 0);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(UpdateCheckerTestAccess::action(path).value("action").toString(), QString("cancel"));
+        QVERIFY(!checker.downloading());
+    }
     void pendingHandoffCancelsOnUserCancellationTimeoutOrDestruction_data() {
         QTest::addColumn<QString>("action");
         QTest::newRow("cancel") << "cancel";

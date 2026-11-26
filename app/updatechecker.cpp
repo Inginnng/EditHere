@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QStringList>
 #include <QTemporaryFile>
 #include <QVersionNumber>
@@ -22,6 +23,8 @@
 namespace h2d {
 namespace {
 constexpr int maximumResponse = 1024 * 1024;
+constexpr int releasePageSize = 30;
+constexpr int maximumReleasePages = 3;
 constexpr std::array downloadRetryDelaysMs{750, 2000};
 
 int httpStatus(const QNetworkReply &reply) {
@@ -283,51 +286,11 @@ UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent) {
     connect(&handoffTimer_, &QTimer::timeout, this, &UpdateChecker::pollHandoff);
     timeout_.setSingleShot(true);
     timeout_.setInterval(15000);
-    cliTimeout_.setSingleShot(true);
-    cliTimeout_.setInterval(3000);
-    connect(&cliTimeout_, &QTimer::timeout, this, [this] {
-        if (!busy_) return;
-        publicRequested_ = true;
-        process_.kill();
-        requestPublic();
-    });
-#ifdef Q_OS_WIN
-    process_.setCreateProcessArgumentsModifier(
-        [](QProcess::CreateProcessArguments *args) { args->flags |= CREATE_NO_WINDOW; });
-#endif
     connect(&timeout_, &QTimer::timeout, this, &UpdateChecker::completeCheck);
-    connect(&process_, &QProcess::readyReadStandardOutput, this, [this] {
-        if (!busy_ || publicRequested_ || githubResult_)
-            return;
-        output_ += process_.readAllStandardOutput();
-        if (output_.size() > maximumResponse) {
-            requestPublic();
-            process_.kill();
-        }
-    });
-    connect(&process_, &QProcess::readyReadStandardError, this, [this] { process_.readAllStandardError(); });
-    connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (busy_ && error == QProcess::FailedToStart)
-            requestPublic();
-    });
-    connect(&process_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this](int code, QProcess::ExitStatus status) {
-                if (!busy_ || githubResult_)
-                    return;
-                cliTimeout_.stop();
-                if (publicRequested_) return;
-                output_ += process_.readAllStandardOutput();
-                const auto result = parseRelease(output_, QStringLiteral(EDITHERE_VERSION));
-                if (code == 0 && status == QProcess::NormalExit && result.status != Failed)
-                    collectSource(GitHub, result);
-                else
-                    requestPublic();
-            });
 }
 UpdateChecker::~UpdateChecker() {
     cancelHandoff();
     busy_ = false;
-    process_.disconnect(this);
     for (auto *pointer : {&reply_, &giteeReply_, &atomgitReply_, &downloadReply_, &hashReply_}) {
         if (*pointer) {
             auto *reply = pointer->data();
@@ -337,28 +300,17 @@ UpdateChecker::~UpdateChecker() {
             reply->deleteLater();
         }
     }
-    if (process_.state() != QProcess::NotRunning) {
-        process_.kill();
-        process_.waitForFinished(1000);
-    }
 }
 void UpdateChecker::check() {
     if (busy_ || installing_)
         return;
-    if (process_.state() != QProcess::NotRunning) {
-        QTimer::singleShot(100, this, &UpdateChecker::check);
-        return;
-    }
     busy_ = true;
-    publicRequested_ = false;
     output_.clear();
     giteeOutput_.clear();
     atomgitOutput_.clear();
     githubResult_.reset();
     giteeResult_.reset();
     atomgitResult_.reset();
-    giteeCandidate_.reset();
-    atomgitCandidate_.reset();
     giteePage_ = 1;
     atomgitPage_ = 1;
     preferredSource_ = preferredSource(sourcePreference_);
@@ -367,40 +319,7 @@ void UpdateChecker::check() {
         preferredSource_ == Gitee ? AtomGit : Gitee} : QVector<Source>{preferredSource_};
     timeout_.start();
     for (const auto source : requestedSources_)
-        if (source != GitHub) requestSource(source);
-    if (!requestedSources_.contains(GitHub)) return;
-    auto gh = QStandardPaths::findExecutable("gh");
-#ifdef Q_OS_WIN
-    if (gh.isEmpty()) {
-        const auto installed = qEnvironmentVariable("ProgramFiles") + "/GitHub CLI/gh.exe";
-        if (QFileInfo::exists(installed))
-            gh = installed;
-    }
-#else
-    if (gh.isEmpty()) {
-        for (const auto &path : {"/opt/homebrew/bin/gh", "/usr/local/bin/gh"})
-            if (QFileInfo(path).isExecutable()) {
-                gh = path;
-                break;
-            }
-    }
-#endif
-    if (gh.isEmpty()) {
-        requestPublic();
-        return;
-    }
-    process_.start(gh, {"api", "repos/Inginnng/EditHere/releases/latest", "--hostname", "github.com"});
-    if (!publicRequested_) cliTimeout_.start();
-}
-void UpdateChecker::requestPublic() {
-    if (!busy_ || reply_ || githubResult_)
-        return;
-    publicRequested_ = true;
-    cliTimeout_.stop();
-    requestSource(GitHub);
-}
-void UpdateChecker::requestGitee() {
-    requestSource(Gitee);
+        requestSource(source);
 }
 void UpdateChecker::requestSource(Source source) {
     auto &pointer = source == GitHub ? reply_ : source == Gitee ? giteeReply_ : atomgitReply_;
@@ -410,8 +329,8 @@ void UpdateChecker::requestSource(Source source) {
     const QUrl url = source == GitHub
                          ? QUrl("https://api.github.com/repos/Inginnng/EditHere/releases/latest")
                          : source == Gitee
-                             ? QUrl(QString("https://gitee.com/api/v5/repos/InnGing/EditHere/releases?direction=desc&per_page=100&page=%1").arg(giteePage_))
-                             : QUrl(QString("https://api.atomgit.com/api/v5/repos/Inginnng/EditHere/releases?direction=desc&per_page=100&page=%1").arg(atomgitPage_));
+                             ? QUrl(QString("https://gitee.com/api/v5/repos/InnGing/EditHere/releases?direction=desc&per_page=%1&page=%2").arg(releasePageSize).arg(giteePage_))
+                             : QUrl(QString("https://api.atomgit.com/api/v5/repos/Inginnng/EditHere/releases?direction=desc&per_page=%1&page=%2").arg(releasePageSize).arg(atomgitPage_));
     QNetworkRequest request(url);
     request.setRawHeader("Accept", source == GitHub ? "application/vnd.github+json" : "application/json");
     request.setRawHeader("User-Agent", "EditHere/" EDITHERE_VERSION);
@@ -454,22 +373,18 @@ void UpdateChecker::requestSource(Source source) {
             return;
         }
         const auto page = parseReleases(buffer, QStringLiteral(EDITHERE_VERSION), source);
-        auto &candidate = source == Gitee ? giteeCandidate_ : atomgitCandidate_;
-        if (page.status != Failed &&
-            (!candidate || QVersionNumber::compare(releaseVersion(page), releaseVersion(*candidate)) > 0 ||
-             (releaseVersion(page) == releaseVersion(*candidate) && completeness(page) > completeness(*candidate))))
-            candidate = page;
-        // Gitee's "latest" means last edited and can be a preview. Read every
-        // page of releases instead of relying on its ordering or that endpoint.
-        if (document.array().size() == 100) {
+        auto &pageNumber = source == Gitee ? giteePage_ : atomgitPage_;
+        // A full page of previews may hide the latest stable release on the next page.
+        if (page.status == Failed && pageNumber < maximumReleasePages &&
+            document.array().size() == releasePageSize) {
             pointer = nullptr;
             reply->disconnect(this);
             reply->deleteLater();
-            ++(source == Gitee ? giteePage_ : atomgitPage_);
+            ++pageNumber;
             requestSource(source);
             return;
         }
-        collectSource(source, candidate.value_or(page));
+        collectSource(source, page);
     });
 }
 void UpdateChecker::collectSource(Source source, Result result) {
@@ -486,12 +401,6 @@ void UpdateChecker::collectSource(Source source, Result result) {
         reply->abort();
         reply->deleteLater();
     }
-    if (source == GitHub) {
-        cliTimeout_.stop();
-        publicRequested_ = true;
-        if (process_.state() != QProcess::NotRunning)
-            process_.kill();
-    }
     for (const auto requested : requestedSources_)
         if (!(requested == GitHub ? githubResult_ : requested == Gitee ? giteeResult_ : atomgitResult_))
             return;
@@ -504,8 +413,6 @@ void UpdateChecker::completeCheck() {
     if (requestedSources_.size() == 1) {
         const auto source = requestedSources_.front();
         finish((source == GitHub ? githubResult_ : source == Gitee ? giteeResult_ : atomgitResult_).value_or(timeout(source)));
-    } else if (requestedSources_.size() == 2) {
-        finish(selectRelease(githubResult_.value_or(timeout(GitHub)), giteeResult_.value_or(timeout(Gitee))));
     } else {
         finish(selectRelease({githubResult_.value_or(timeout(GitHub)), giteeResult_.value_or(timeout(Gitee)),
                               atomgitResult_.value_or(timeout(AtomGit))}, preferredSource_));
@@ -514,8 +421,6 @@ void UpdateChecker::completeCheck() {
 void UpdateChecker::cancelCheck() {
     busy_ = false;
     timeout_.stop();
-    cliTimeout_.stop();
-    publicRequested_ = true;
     for (auto *pointer : {&reply_, &giteeReply_, &atomgitReply_}) {
         if (*pointer) {
             auto *reply = pointer->data();
@@ -525,8 +430,6 @@ void UpdateChecker::cancelCheck() {
             reply->deleteLater();
         }
     }
-    if (process_.state() != QProcess::NotRunning)
-        process_.kill();
 }
 void UpdateChecker::finish(Result result) {
     if (!busy_) return;
@@ -588,7 +491,7 @@ void UpdateChecker::downloadPackage(const Asset &package, const Asset &hashAsset
     }
     // Download the package.
     QNetworkRequest request(package.url);
-    request.setTransferTimeout(30000);
+    request.setTransferTimeout(60000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     auto *reply = getDownloadReply(request);
     downloadReply_ = reply;
@@ -812,6 +715,10 @@ void UpdateChecker::pollHandoff() {
         failInstall(tr("安装器状态无效，更新已取消。"));
         return;
     }
+    if (confirmExit_ && !confirmExit_()) {
+        failInstall(tr("检测到新的修改或正在进行的操作，更新已取消。"));
+        return;
+    }
     if (!writeHandoffAction("ack")) {
         failInstall(tr("无法确认安装器已就绪，更新已取消。"));
         return;
@@ -848,6 +755,17 @@ QString UpdateChecker::installationResultMessage(const QJsonObject &receipt, con
         return tr("安装文件已切换，但当前运行版本与预期版本 %1 不一致。请检查启动路径。").arg(version);
     return {};
 }
+bool UpdateChecker::installedCopy() {
+#ifdef Q_OS_WIN
+    QSettings reg(R"(HKEY_CURRENT_USER\Software\EditHere\Installer)", QSettings::NativeFormat);
+    const QString registered = QFileInfo(reg.value("InstallDir").toString()).canonicalFilePath();
+    return !registered.isEmpty() && registered.compare(
+        QFileInfo(QCoreApplication::applicationDirPath()).canonicalFilePath(), Qt::CaseInsensitive) == 0;
+#else
+    return false;
+#endif
+}
+
 bool UpdateChecker::canAutoInstall(const Result &result, bool installed, bool windows) {
     return updateauth::installationConfigured() && compatibleInstallerAssets(result, installed, windows) &&
            (updateauth::certificateMode() || signedInstallerAssets(result));

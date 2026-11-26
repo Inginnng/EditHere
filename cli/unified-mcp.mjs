@@ -5,6 +5,7 @@
  * exposing `edithere_doctor`, `edithere_status`, `edithere_windows`, `edithere_capture`,
  * `edithere_annotate_start`, `edithere_annotate_poll`, and `edithere_convert_project`.
  */
+import { APP_VERSION } from './version.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -21,7 +22,7 @@ import {
 } from './router.mjs';
 
 export const SERVER_NAME = 'edithere-unified';
-export const SERVER_VERSION = '0.14.1';
+export const SERVER_VERSION = APP_VERSION;
 export const PROTOCOL_VERSION = '2025-06-18';
 
 export const UNIFIED_TOOLS = [

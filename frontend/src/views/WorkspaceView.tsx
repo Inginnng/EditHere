@@ -153,6 +153,9 @@ interface WorkspaceViewProps {
   onToggleOcr?: () => void;
   onCapture?: () => void;
   onSelectPage: (pageId: string) => void;
+  prepareWorkspaceSnapshot: (media: HTMLElement | null) => Promise<
+    Awaited<ReturnType<typeof attachRedactedPagesToPayload>> & { generation: number; changedSinceSnapshot: boolean }
+  >;
   onUpdatePages: (updater: (prev: GalleryPage[]) => GalleryPage[]) => void;
   onUpdateGroupNotes: (updater: (prev: GroupNote[]) => GroupNote[]) => void;
   onImportImage: (file: File) => void;
@@ -195,6 +198,7 @@ export default function WorkspaceView({
   onToggleOcr,
   onCapture,
   onSelectPage,
+  prepareWorkspaceSnapshot,
   onUpdatePages,
   onUpdateGroupNotes,
   onImportImage,
@@ -1527,10 +1531,10 @@ export default function WorkspaceView({
     const defaultName = `${activePage?.name || 'edithere-project'}.edithere`;
     if (isDesktopWebView()) {
       try {
-        const redactedPayload = await attachRedactedPagesToPayload(pages, groupNotes, artboardMediaRef.current);
+        const payload = await prepareWorkspaceSnapshot(artboardMediaRef.current);
         const res = await desktopRpc<{ saved?: boolean }>(
           'file.saveProject',
-          { defaultName, payload: redactedPayload },
+          { defaultName, payload },
           0
         );
         if (res.saved) onToast('已保存 EditHere 项目文件');

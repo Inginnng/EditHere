@@ -243,6 +243,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 | Linux x86_64 · 预览 | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后运行，目标环境 Ubuntu 24.04 |
 | 离线 Web | [Web ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | 解压后双击 `EditHere.html`，无需安装桌面程序 |
 | Web Agent | [Web Agent ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web-agent.zip) | 用于 MCP Apps 与本机浏览器会话，见[安装指南](web/AI-SETUP.md) |
+| DeepSeek Harness | [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip) | 含组图批注服务、CLI 和 `edithere-dsh` Skill，见 [DSH 安装说明](dsh/README.md) |
 
 以上为最新正式版下载入口，版本与资产以 [Releases](https://github.com/Inginnng/EditHere/releases/latest) 和包内 `version.txt` 为准；校验文件见 [SHA256SUMS.txt](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 

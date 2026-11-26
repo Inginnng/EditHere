@@ -154,6 +154,7 @@ export interface GeneralPreferences {
   scrollUltraLong: boolean;
   checkUpdatesOnStartup: boolean;
   autoSyncSkills: boolean;
+  showInstalledSkillsOnly: boolean;
   updateSource: UpdateSourceId;
   shortcuts: Record<string, string>;
   shortcutDefinitions: ShortcutDefinitionItem[];
@@ -170,6 +171,14 @@ export interface UpdateCheckResult {
   tagName?: string;
   currentVersion?: string;
   url?: string;
+  message?: string;
+  canInstall?: boolean;
+}
+
+export interface UpdateProgress {
+  phase: 'idle' | 'downloading' | 'preparing';
+  received?: number;
+  total?: number;
   message?: string;
 }
 

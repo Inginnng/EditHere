@@ -20,10 +20,17 @@ function UnderScope([string]$path,[string]$scope) {
     return $candidate -ieq $boundary -or $candidate.StartsWith($boundary+'\',[StringComparison]::OrdinalIgnoreCase)
 }
 function Get-EditHereProcesses {
-    $target=[IO.Path]::GetFullPath((Join-Path $InstallDirectory 'EditHere.exe'))
-    @(Get-Process -Name EditHere -ErrorAction SilentlyContinue | Where-Object {
-        if (!$_.Path) { throw 'Cannot determine the path of a running EditHere process.' }
-        [IO.Path]::GetFullPath($_.Path) -ieq $target
+    $targets=@(
+        [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'EditHere.exe'))
+        [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'edithere-cli.exe'))
+    )
+    @(Get-Process -Name EditHere,edithere-cli -ErrorAction SilentlyContinue | Where-Object {
+        try { $processPath=$_.Path } catch { $processPath=$null }
+        if (!$processPath) {
+            # An elevated instance may hide its path. Let it follow the normal close/wait path.
+            return [bool](Get-Process -Id $_.Id -ErrorAction SilentlyContinue)
+        }
+        $targets -icontains [IO.Path]::GetFullPath($processPath)
     })
 }
 function Test-QuitRequestSupported([string]$directory) {
@@ -40,6 +47,20 @@ function Wait-EditHereExit([int]$seconds) {
         Start-Sleep -Milliseconds 400
     }
     return $true
+}
+function Wait-WebViewLoader([string]$directory) {
+    $loader=Join-Path $directory 'WebView2Loader.dll'
+    $deadline=[Diagnostics.Stopwatch]::StartNew()
+    while ([IO.File]::Exists($loader)) {
+        try {
+            [IO.File]::Open($loader,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None).Dispose()
+            return
+        } catch {
+            $code=$_.Exception.GetBaseException().HResult -band 0xFFFF
+            if ($code -notin @(5,32,33) -or $deadline.ElapsedMilliseconds -ge 2000) { return }
+        }
+        Start-Sleep -Milliseconds 100
+    }
 }
 function Read-Value([string]$keyPath,[string]$name) {
     $key=$user.OpenSubKey($keyPath)
@@ -181,17 +202,18 @@ try {
         exit 0
     }
     if($Mode -eq 'Close') {
-        if(!(Get-EditHereProcesses).Count){exit 0}
-        $exe=Join-Path $root 'EditHere.exe'
-        if((Test-Path -LiteralPath $exe -PathType Leaf) -and (Test-QuitRequestSupported $root)) {
-            $asked=Start-Process -FilePath $exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
-            [void]$asked.WaitForExit(20000)
+        if((Get-EditHereProcesses).Count) {
+            $exe=Join-Path $root 'EditHere.exe'
+            if((Test-Path -LiteralPath $exe -PathType Leaf) -and (Test-QuitRequestSupported $root)) {
+                $asked=Start-Process -FilePath $exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
+                [void]$asked.WaitForExit(20000)
+            }
         }
         if(Wait-EditHereExit $TimeoutSeconds) {
-            Start-Sleep -Milliseconds 400
+            Wait-WebViewLoader $root
             if(!(Get-EditHereProcesses).Count){exit 0}
         }
-        [Console]::Error.WriteLine('EditHere 仍在运行，请右键系统托盘中的 EditHere 图标选择「退出」。')
+        [Console]::Error.WriteLine('EditHere 或命令行工具仍在运行。请从系统托盘退出 EditHere，并结束仍在使用 EditHere 的命令后重试。')
         exit 2
     }
     $user=[Microsoft.Win32.Registry]::CurrentUser

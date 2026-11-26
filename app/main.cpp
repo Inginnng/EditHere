@@ -9,11 +9,13 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QIcon>
 #include <QMessageBox>
 #include <functional>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalServer>
@@ -106,7 +108,35 @@ int main(int argc, char **argv) {
     }
     QLockFile lock(QDir(state).filePath("native.lock"));
     lock.setStaleLockTime(0);
-    const QString serverName = legacyDesktopServerName();
+    const QString serverName = desktopForwardServerName();
+    const QString legacyName = legacyDesktopServerName();
+    const QString elevatedFlagPath = QDir(state).filePath("elevated.flag");
+    const auto connectToDesktop = [&](QLocalSocket &socket, QByteArray &token) {
+        QElapsedTimer elapsed;
+        elapsed.start();
+        QString error;
+        do {
+            if (QFileInfo::exists(elevatedFlagPath))
+                return QCoreApplication::translate("h2d",
+                    "当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。");
+            error = readIpcCredentials(token);
+            if (error.isEmpty()) {
+                auto active = connectAgentSocket(socket, serverName, 150);
+                if (legacyName != serverName && active.error == QLocalSocket::ServerNotFoundError)
+                    active = connectAgentSocket(socket, legacyName, 150);
+                if (active.connected)
+                    return QString();
+                error = active.message;
+                if (active.error != QLocalSocket::ServerNotFoundError &&
+                    active.error != QLocalSocket::ConnectionRefusedError)
+                    break;
+            } else if (QFileInfo::exists(ipcCredentialPath())) {
+                break;
+            }
+            QThread::msleep(100);
+        } while (elapsed.elapsed() < 2500);
+        return error;
+    };
     const QStringList args = app.arguments();
     const bool agentStart = args.contains("--agent-start");
     const bool background = args.contains("--autostart") || agentStart;
@@ -152,18 +182,15 @@ int main(int argc, char **argv) {
         }
         QLocalSocket socket;
         QByteArray token;
-        if (const auto error = readIpcCredentials(token); !error.isEmpty()) {
-            diagnostics::write(diagnostics::Level::Error, "startup.quit_auth", error);
+        if (const auto error = connectToDesktop(socket, token); !error.isEmpty()) {
+            if (lock.tryLock(0))
+                return 0;
+            diagnostics::write(diagnostics::Level::Warning, "startup.quit_request", error);
             return 2;
         }
-        socket.connectToServer(serverName);
-        if (socket.waitForConnected(800)) {
-            if (const auto error = sendDesktopRequest(socket, "quit", token); !error.isEmpty()) {
-                diagnostics::write(diagnostics::Level::Error, "startup.quit_auth", error);
-                return 2;
-            }
-        } else {
-            diagnostics::write(diagnostics::Level::Warning, "startup.quit_request", socket.errorString());
+        if (const auto error = sendDesktopRequest(socket, "quit", token); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.quit_auth", error);
+            return 2;
         }
         for (int i = 0; i < 150; ++i) {
             if (lock.tryLock(0)) {
@@ -186,20 +213,14 @@ int main(int argc, char **argv) {
             return 0;
         QLocalSocket socket;
         QByteArray token;
-        if (const auto error = readIpcCredentials(token); !error.isEmpty()) {
-            diagnostics::write(diagnostics::Level::Error, "startup.forward_auth", error);
+        if (const auto error = connectToDesktop(socket, token); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.forward", error);
             QMessageBox::warning(nullptr, "EditHere", error);
             return 2;
         }
-        socket.connectToServer(serverName);
-        if (socket.waitForConnected(800)) {
-            if (const auto error = sendDesktopRequest(socket, path.isEmpty() ? QString("capture") : path, token); !error.isEmpty()) {
-                diagnostics::write(diagnostics::Level::Error, "startup.forward_auth", error);
-                return 2;
-            }
-        } else {
-            diagnostics::write(diagnostics::Level::Error, "startup.forward", socket.errorString());
-            QMessageBox::warning(nullptr, "EditHere", QCoreApplication::translate("h2d", "无法连接正在运行的 EditHere，请退出后重试。"));
+        if (const auto error = sendDesktopRequest(socket, path.isEmpty() ? QString("capture") : path, token); !error.isEmpty()) {
+            diagnostics::write(diagnostics::Level::Error, "startup.forward_auth", error);
+            QMessageBox::warning(nullptr, "EditHere", error);
             return 2;
         }
         return 0;
@@ -207,6 +228,12 @@ int main(int argc, char **argv) {
     QByteArray ipcToken;
     const auto policyError = ipcServerPolicyError();
     const bool ipcEnabled = policyError.isEmpty();
+    struct ElevatedFlagLifetime {
+        QString path;
+        ~ElevatedFlagLifetime() { if (!path.isEmpty()) QFile::remove(path); }
+    } elevatedFlag;
+    // We own native.lock, so an existing flag can only be from a past run.
+    QFile::remove(elevatedFlagPath);
     if (ipcEnabled) {
         if (const auto error = createIpcCredentials(ipcToken); !error.isEmpty()) {
             diagnostics::write(diagnostics::Level::Error, "startup.ipc_auth", error);
@@ -217,6 +244,13 @@ int main(int argc, char **argv) {
         // A manually launched elevated GUI remains usable, without accepting
         // requests from less privileged processes of the same Windows account.
         diagnostics::write(diagnostics::Level::Warning, "startup.ipc_disabled", policyError);
+        QFile flag(elevatedFlagPath);
+        if (flag.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+            flag.close();
+            elevatedFlag.path = elevatedFlagPath;
+        } else {
+            diagnostics::write(diagnostics::Level::Warning, "startup.elevated_flag", flag.errorString());
+        }
         QMessageBox::warning(nullptr, "EditHere", policyError);
     }
     struct IpcLifetime {
@@ -231,20 +265,29 @@ int main(int argc, char **argv) {
         QMessageBox::critical(nullptr, "EditHere", QCoreApplication::translate("h2d", "无法启动程序通信服务，请退出其他 EditHere 实例后重试。"));
         return 2;
     }
+    QLocalServer legacyServer;
+    if (ipcEnabled && legacyName != serverName) {
+        QLocalServer::removeServer(legacyName);
+        legacyServer.setSocketOptions(QLocalServer::UserAccessOption);
+        if (!legacyServer.listen(legacyName))
+            diagnostics::write(diagnostics::Level::Warning, "startup.legacy_server", legacyServer.errorString());
+    }
     Controller controller;
     AgentServer agentServer(controller, ipcToken, &app);
     if (ipcEnabled && !agentServer.start())
         diagnostics::write(diagnostics::Level::Error, "startup.agent_server", agentServer.errorString());
     app.openProject=[&controller](const QString &path) {controller.start(false,path);};
-    QObject::connect(&server, &QLocalServer::newConnection, &app, [&] {
-        while (auto socket = server.nextPendingConnection()) {
+    const auto receive = [&](QLocalServer &listener) {
+        while (auto socket = listener.nextPendingConnection()) {
             receiveDesktopRequest(*socket, controller, ipcToken, [&controller](const QString &text) {
                 if (text == "capture") controller.capture();
                 else if (text == "quit") controller.quit();
                 else if (!text.isEmpty()) controller.start(false, text);
             });
         }
-    });
+    };
+    QObject::connect(&server, &QLocalServer::newConnection, &app, [&] { receive(server); });
+    QObject::connect(&legacyServer, &QLocalServer::newConnection, &app, [&] { receive(legacyServer); });
     QTimer::singleShot(0, &app, [&] {
         controller.start(args.contains("--demo"), path, background || wasLaunchedAtLogin(), !agentStart && !hasSeenGuide());
         if (args.contains("--capture")) controller.capture();

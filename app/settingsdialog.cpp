@@ -27,7 +27,6 @@
 #include <QResizeEvent>
 #include <QScreen>
 #include <QScrollArea>
-#include <QSettings>
 #include <QSignalBlocker>
 #include <QTabWidget>
 #include <QTabBar>
@@ -38,16 +37,6 @@
 #include <QVBoxLayout>
 namespace h2d {
 namespace {
-bool installedCopy() {
-#ifdef Q_OS_WIN
-    QSettings reg("HKEY_CURRENT_USER\\Software\\EditHere\\Installer", QSettings::NativeFormat);
-    const QString registered = QFileInfo(reg.value("InstallDir").toString()).canonicalFilePath();
-    return !registered.isEmpty() && registered.compare(
-        QFileInfo(QCoreApplication::applicationDirPath()).canonicalFilePath(), Qt::CaseInsensitive) == 0;
-#else
-    return false;
-#endif
-}
 #ifdef Q_OS_WIN
 constexpr bool windowsUpdates = true;
 #else
@@ -591,7 +580,7 @@ SettingsDialog::SettingsDialog(const AppSettings &settings, QWidget *parent, AiC
     connect(releases, &QPushButton::clicked, this, [this, releases, status, progressBar, cancelUpdate] {
         if (releases->property("updateAvailable").toBool()) {
             const auto &result = updateResult_;
-            const bool isInstaller = installedCopy();
+            const bool isInstaller = UpdateChecker::installedCopy();
             if (!UpdateChecker::canAutoInstall(result, isInstaller, windowsUpdates)) {
                 if (!QDesktopServices::openUrl(result.url))
                     status->setText(tr("无法打开浏览器，请访问：%1").arg(result.url.toString()));
@@ -906,7 +895,7 @@ void SettingsDialog::offerUpdate(const UpdateChecker::Result &result, bool insta
     auto releases = findChild<QPushButton *>("openReleases");
     releases->setProperty("updateAvailable", result.status == UpdateChecker::Available);
     releases->setProperty("releaseUrl", result.url);
-    const bool automatic = UpdateChecker::canAutoInstall(result, installedCopy(), windowsUpdates);
+    const bool automatic = UpdateChecker::canAutoInstall(result, UpdateChecker::installedCopy(), windowsUpdates);
     if (windowsUpdates && result.status == UpdateChecker::Available && !automatic)
         findChild<QLabel *>("updateStatus")->setText(result.message +
             tr(" 此版本不满足可信安装条件，请前往发布页手动下载。"));
@@ -1008,6 +997,9 @@ void SettingsDialog::setApplyHandler(std::function<QString(const AppSettings &)>
 void SettingsDialog::setUpdatePreparationHandler(std::function<bool()> handler) {
     updater_->setInstallConfirmation(std::move(handler));
 }
+void SettingsDialog::setUpdateExitConfirmation(std::function<bool()> handler) {
+    updater_->setExitConfirmation(std::move(handler));
+}
 void SettingsDialog::resizeEvent(QResizeEvent *event) {
     QDialog::resizeEvent(event);
     updateNavigation();
@@ -1104,6 +1096,7 @@ void SettingsDialog::save() {
         }
         const auto error = guard->apply_ ? guard->apply_(draft) : QString();
         if (!error.isEmpty()) {
+            guard->applyLanguage(guard->languageOnEntry_);
             diagnostics::write(diagnostics::Level::Error, "settings.apply", error);
             guard->error_->setText(hadCredentialChanges
                 ? tr("密钥已保存；其他设置保存失败：%1").arg(error) : error);

@@ -6,9 +6,11 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QThread>
 #include <QUuid>
 
 #include <array>
@@ -17,8 +19,8 @@ namespace h2d {
 namespace {
 
 struct HostDef {
-    const char *id;
-    const char *name;
+    QString id;
+    QString name;
     QString hostRoot;
 };
 
@@ -61,18 +63,42 @@ bool sameNormalizedPath(const QString &a, const QString &b) {
 #endif
 }
 
-QString resolveRelativeTool(const QString &baseAppDir, const QString &relative) {
-    const QString direct = normPath(QDir(baseAppDir).filePath(relative));
-    if (QFileInfo::exists(direct)) {
-        const QString canonical = QFileInfo(direct).canonicalFilePath();
-        return canonical.isEmpty() ? direct : canonical;
-    }
-    const QString devFallback = normPath(QDir(baseAppDir).filePath("../" + relative));
-    if (QFileInfo::exists(devFallback)) {
-        const QString canonical = QFileInfo(devFallback).canonicalFilePath();
-        return canonical.isEmpty() ? devFallback : canonical;
+QStringList bundledDataDirectories(const QString &appDir) {
+    if (appDir.isEmpty())
+        return {};
+    const QDir dir(appDir);
+    QStringList directories{appDir};
+#ifdef Q_OS_MACOS
+    directories << dir.filePath("../Resources");
+#elif defined(Q_OS_LINUX)
+    directories << dir.filePath("../share/edithere");
+#endif
+    directories << dir.filePath("..");
+    return directories;
+}
+
+QString resolveBundledFile(const QString &appDir, const QString &relative) {
+    for (const auto &directory : bundledDataDirectories(appDir)) {
+        const QFileInfo file(QDir(directory).filePath(relative));
+        if (file.isFile()) {
+            const QString canonical = file.canonicalFilePath();
+            return canonical.isEmpty() ? normPath(file.absoluteFilePath()) : canonical;
+        }
     }
     return {};
+}
+
+bool renameSkillDirectory(const QString &source, const QString &target) {
+#ifdef Q_OS_WIN
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        if (QDir().rename(source, target))
+            return true;
+        if (!QFileInfo::exists(source) || QFileInfo::exists(target))
+            return false;
+        QThread::msleep(100);
+    }
+#endif
+    return QDir().rename(source, target);
 }
 
 QString pickExistingRoot(const QString &primary, const QString &fallback = {}) {
@@ -88,56 +114,32 @@ QString pickExistingRoot(const QString &primary, const QString &fallback = {}) {
     return p;
 }
 
-QString resolveEnvRoot(const QString &homeDir, const char *envVar, const QString &homeRelative) {
-    if (homeDir.isEmpty() && qEnvironmentVariableIsSet(envVar)) {
-        const QString envVal = normPath(qEnvironmentVariable(envVar));
-        if (!envVal.isEmpty()) return envVal;
-    }
-    const QString home = homeDir.isEmpty() ? normPath(QDir::homePath()) : normPath(homeDir);
-    return normPath(QDir(home).filePath(homeRelative));
-}
-
 QVector<HostDef> hostDefinitions(const QString &homeDir, const QString &codexHome) {
-    const QString home = homeDir.isEmpty() ? normPath(QDir::homePath()) : normPath(homeDir);
-    QString codexRoot = normPath(codexHome);
-    if (codexRoot.isEmpty()) {
-        codexRoot = resolveEnvRoot(homeDir, "CODEX_HOME", QStringLiteral(".codex"));
+    QFile file(QStringLiteral(":/shared/ai-hosts.json"));
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const auto hosts = QJsonDocument::fromJson(file.readAll()).array();
+    const QDir home(homeDir.isEmpty() ? normPath(QDir::homePath()) : normPath(homeDir));
+    QVector<HostDef> definitions;
+    definitions.reserve(hosts.size());
+    for (const auto &value : hosts) {
+        const auto host = value.toObject();
+        const auto id = host.value("id").toString();
+        const auto paths = host.value("paths").toArray();
+        const auto envVar = host.value("envVar").toString().toLatin1();
+        QString root;
+        if (id == "codex")
+            root = normPath(codexHome);
+        if (root.isEmpty() && homeDir.isEmpty() && !envVar.isEmpty())
+            root = normPath(qEnvironmentVariable(envVar.constData()));
+        if (root.isEmpty()) {
+            const auto primary = home.filePath(paths.at(0).toString());
+            const auto fallback = paths.size() > 1 ? home.filePath(paths.at(1).toString()) : QString{};
+            root = pickExistingRoot(primary, fallback);
+        }
+        definitions.append({id, host.value("name").toString(), root});
     }
-    const auto h = [&home](const QString &rel) { return normPath(QDir(home).filePath(rel)); };
-    return {
-        {"codex", "Codex", codexRoot},
-        {"agents", "Shared Agents (~/.agents)", h(".agents")},
-        {"claude", "Claude Code", h(".claude")},
-        {"cursor", "Cursor", h(".cursor")},
-        {"antigravity", "Antigravity", h(".gemini/antigravity")},
-        {"gemini", "Gemini CLI", h(".gemini")},
-        {"windsurf", "Windsurf", pickExistingRoot(h(".codeium/windsurf"), h(".windsurf"))},
-        {"kiro", "Kiro", h(".kiro")},
-        {"copilot", "GitHub Copilot", h(".copilot")},
-        {"trae", "Trae", h(".trae")},
-        {"trae-cn", "Trae CN", h(".trae-cn")},
-        {"workbuddy", "WorkBuddy", h(".workbuddy")},
-        {"codebuddy", "CodeBuddy", h(".codebuddy")},
-        {"qoder", "Qoder", h(".qoder")},
-        {"qoderwork", "QoderWork", h(".qoderwork")},
-        {"qoderwork-cn", "QoderWork CN", h(".qoderworkcn")},
-        {"dsh", "DeepSeek Harness (DSH)", resolveEnvRoot(homeDir, "DSH_HOME", QStringLiteral(".dsh"))},
-        {"grok", "Grok CLI", resolveEnvRoot(homeDir, "GROK_HOME", QStringLiteral(".grok"))},
-        {"zcode", "ZCode", h(".zcode")},
-        {"zed", "Zed", pickExistingRoot(h(".config/zed"), h(".zed"))},
-        {"opencode", "OpenCode", pickExistingRoot(h(".config/opencode"), h(".opencode"))},
-        {"cline", "Cline", h(".cline")},
-        {"roo", "Roo Code", h(".roo")},
-        {"kilocode", "Kilo Code", h(".kilocode")},
-        {"qwen", "Qwen Code", h(".qwen")},
-        {"kimi", "Kimi Code", pickExistingRoot(h(".kimi-code"), h(".kimi"))},
-        {"codearts", "CodeArts Doer", pickExistingRoot(h(".codeartsdoer"), h(".codearts-doer-for-coding"))},
-        {"augment", "Augment", h(".augment")},
-        {"continue", "Continue", h(".continue")},
-        {"factory", "Factory Droid", h(".factory")},
-        {"goose", "Goose", h(".config/goose")},
-        {"amp", "Amp", h(".config/amp")},
-    };
+    return definitions;
 }
 
 bool readSkillMetaFile(const QString &skillDir, QJsonObject *outMeta) {
@@ -151,14 +153,21 @@ bool readSkillMetaFile(const QString &skillDir, QJsonObject *outMeta) {
     return true;
 }
 
+QString withHostSkillSyncHint(const QString &reason) {
+    return reason + QLatin1Char('\n') + QCoreApplication::translate("h2d", "请让AI工具自行更新skills或刷新路径");
+}
+
 bool copyDirectoryTree(const QString &srcDir, const QString &dstDir, QString *error) {
     QDir rootSrc(srcDir);
     if (!rootSrc.exists()) {
-        if (error) *error = QString("Source skill directory does not exist: %1").arg(srcDir);
+        if (error) *error = QCoreApplication::translate("h2d", "找不到 Skill 源目录：%1")
+            .arg(QDir::toNativeSeparators(srcDir));
         return false;
     }
     if (!QDir().mkpath(dstDir)) {
-        if (error) *error = QString("Cannot create staging directory: %1").arg(dstDir);
+        if (error) *error = withHostSkillSyncHint(
+            QCoreApplication::translate("h2d", "无法创建 Skill 同步临时目录：%1")
+                .arg(QDir::toNativeSeparators(dstDir)));
         return false;
     }
     QDirIterator it(srcDir, QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
@@ -171,18 +180,23 @@ bool copyDirectoryTree(const QString &srcDir, const QString &dstDir, QString *er
         const QString targetPath = QDir(dstDir).filePath(rel);
         if (fi.isDir()) {
             if (!QDir().mkpath(targetPath)) {
-                if (error) *error = QString("Cannot create directory: %1").arg(targetPath);
+                if (error) *error = withHostSkillSyncHint(
+                    QCoreApplication::translate("h2d", "无法创建 Skill 同步子目录：%1")
+                        .arg(QDir::toNativeSeparators(targetPath)));
                 return false;
             }
         } else {
             const QString parent = QFileInfo(targetPath).absolutePath();
             if (!QDir().mkpath(parent)) {
-                if (error) *error = QString("Cannot create parent directory: %1").arg(parent);
+                if (error) *error = withHostSkillSyncHint(
+                    QCoreApplication::translate("h2d", "无法创建 Skill 同步子目录：%1")
+                        .arg(QDir::toNativeSeparators(parent)));
                 return false;
             }
             if (QFileInfo::exists(targetPath)) QFile::remove(targetPath);
             if (!QFile::copy(fi.filePath(), targetPath)) {
-                if (error) *error = QString("Cannot copy skill file: %1").arg(rel);
+                if (error) *error = QCoreApplication::translate("h2d", "无法复制 Skill 文件：%1")
+                    .arg(QDir::toNativeSeparators(rel));
                 return false;
             }
         }
@@ -242,16 +256,22 @@ QString buildLocalInstallationMarkdown(const SkillSyncSnapshot &snapshot) {
 bool writeTextUtf8(const QString &filePath, const QByteArray &bytes, QString *error) {
     const QString parent = QFileInfo(filePath).absolutePath();
     if (!QDir().mkpath(parent)) {
-        if (error) *error = QString("Cannot create directory: %1").arg(parent);
+        if (error) *error = withHostSkillSyncHint(
+            QCoreApplication::translate("h2d", "无法创建 Skill 同步子目录：%1")
+                .arg(QDir::toNativeSeparators(parent)));
         return false;
     }
     QFile f(filePath);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (error) *error = QString("Cannot write file %1: %2").arg(filePath, f.errorString());
+        if (error) *error = withHostSkillSyncHint(
+            QCoreApplication::translate("h2d", "无法打开 Skill 文件进行写入：%1")
+                .arg(QDir::toNativeSeparators(filePath)));
         return false;
     }
     if (f.write(bytes) != bytes.size()) {
-        if (error) *error = QString("Short write on %1").arg(filePath);
+        if (error) *error = withHostSkillSyncHint(
+            QCoreApplication::translate("h2d", "未能完整写入 Skill 文件：%1")
+                .arg(QDir::toNativeSeparators(filePath)));
         return false;
     }
     return true;
@@ -290,15 +310,8 @@ SkillVersionInfo bundledSkillVersionInfo(const QString &skillSourceDir) {
 
 QString resolveBundledSkillDir(const QString &appDir) {
     const QString base = appDir.isEmpty() ? normPath(QCoreApplication::applicationDirPath()) : normPath(appDir);
-    if (base.isEmpty()) return {};
-    for (const QString &rel : {QStringLiteral("skills/edithere"), QStringLiteral("../skills/edithere")}) {
-        const QString candidate = normPath(QDir(base).filePath(rel));
-        if (QFileInfo::exists(QDir(candidate).filePath("SKILL.md"))) {
-            const QString canonical = QFileInfo(candidate).canonicalFilePath();
-            return canonical.isEmpty() ? candidate : canonical;
-        }
-    }
-    return {};
+    const QString marker = resolveBundledFile(base, QStringLiteral("skills/edithere/SKILL.md"));
+    return marker.isEmpty() ? QString() : QFileInfo(marker).absolutePath();
 }
 
 SkillSyncSnapshot inspectHostSkills(const QString &homeDir, const QString &codexHome, const QString &appDir) {
@@ -313,19 +326,19 @@ SkillSyncSnapshot inspectHostSkills(const QString &homeDir, const QString &codex
     snapshot.minCompatibleSkillVersion = verInfo.minCompatibleSkillVersion;
 
 #ifdef Q_OS_WIN
-    snapshot.cliPath = resolveRelativeTool(base, QStringLiteral("edithere-cli.exe"));
+    snapshot.cliPath = resolveBundledFile(base, QStringLiteral("edithere-cli.exe"));
 #else
-    snapshot.cliPath = resolveRelativeTool(base, QStringLiteral("edithere-cli"));
+    snapshot.cliPath = resolveBundledFile(base, QStringLiteral("edithere-cli"));
 #endif
-    snapshot.unifiedCliPath = resolveRelativeTool(base, QStringLiteral("cli/edithere.mjs"));
-    snapshot.unifiedMcpPath = resolveRelativeTool(base, QStringLiteral("cli/unified-mcp.mjs"));
+    snapshot.unifiedCliPath = resolveBundledFile(base, QStringLiteral("cli/edithere.mjs"));
+    snapshot.unifiedMcpPath = resolveBundledFile(base, QStringLiteral("cli/unified-mcp.mjs"));
 
     const auto defs = hostDefinitions(homeDir, codexHome);
     snapshot.hosts.reserve(defs.size());
     for (const auto &def : defs) {
         SkillHostStatus st;
-        st.id = QString::fromLatin1(def.id);
-        st.name = QString::fromUtf8(def.name);
+        st.id = def.id;
+        st.name = def.name;
         st.hostRoot = def.hostRoot;
         st.skillDir = normPath(QDir(def.hostRoot).filePath("skills/edithere"));
         st.hostPresent = QFileInfo::exists(def.hostRoot) && QFileInfo(def.hostRoot).isDir();
@@ -435,7 +448,7 @@ QVector<SkillSyncActionResult> syncHostSkills(const QStringList &hostIds,
         }
         if (!snapshot.sourceAvailable) {
             res.state = QStringLiteral("failed");
-            res.error = QStringLiteral("Bundled skills/edithere directory was not found.");
+            res.error = QCoreApplication::translate("h2d", "找不到 EditHere 随附的 Skill 目录。");
             results.append(std::move(res));
             continue;
         }
@@ -443,7 +456,9 @@ QVector<SkillSyncActionResult> syncHostSkills(const QStringList &hostIds,
         const QString parentDir = QFileInfo(h.skillDir).absolutePath();
         if (!QDir().mkpath(parentDir)) {
             res.state = QStringLiteral("failed");
-            res.error = QString("Cannot create skills parent directory: %1").arg(parentDir);
+            res.error = withHostSkillSyncHint(
+                QCoreApplication::translate("h2d", "无法创建 AI 工具的 skills 目录：%1")
+                    .arg(QDir::toNativeSeparators(parentDir)));
             results.append(std::move(res));
             continue;
         }
@@ -484,28 +499,34 @@ QVector<SkillSyncActionResult> syncHostSkills(const QStringList &hostIds,
 
         const bool hadExisting = QFileInfo::exists(h.skillDir);
         if (hadExisting) {
-            if (!QDir().rename(h.skillDir, backup)) {
+            if (!renameSkillDirectory(h.skillDir, backup)) {
                 QDir(staging).removeRecursively();
                 res.state = QStringLiteral("failed");
-                res.error = QString("Cannot move existing skill directory aside: %1").arg(h.skillDir);
+                res.error = withHostSkillSyncHint(
+                    QCoreApplication::translate("h2d", "无法备份现有的 Skill 目录：%1")
+                        .arg(QDir::toNativeSeparators(h.skillDir)));
                 results.append(std::move(res));
                 continue;
             }
-            if (!QDir().rename(staging, h.skillDir)) {
-                QDir().rename(backup, h.skillDir);
+            if (!renameSkillDirectory(staging, h.skillDir)) {
+                renameSkillDirectory(backup, h.skillDir);
                 QDir(staging).removeRecursively();
                 res.state = QStringLiteral("failed");
-                res.error = QString("Cannot place updated skill directory: %1").arg(h.skillDir);
+                res.error = withHostSkillSyncHint(
+                    QCoreApplication::translate("h2d", "无法替换现有的 Skill 目录：%1")
+                        .arg(QDir::toNativeSeparators(h.skillDir)));
                 results.append(std::move(res));
                 continue;
             }
             QDir(backup).removeRecursively();
             res.state = QStringLiteral("updated");
         } else {
-            if (!QDir().rename(staging, h.skillDir)) {
+            if (!renameSkillDirectory(staging, h.skillDir)) {
                 QDir(staging).removeRecursively();
                 res.state = QStringLiteral("failed");
-                res.error = QString("Cannot place installed skill directory: %1").arg(h.skillDir);
+                res.error = withHostSkillSyncHint(
+                    QCoreApplication::translate("h2d", "无法安装 Skill 到目标目录：%1")
+                        .arg(QDir::toNativeSeparators(h.skillDir)));
                 results.append(std::move(res));
                 continue;
             }

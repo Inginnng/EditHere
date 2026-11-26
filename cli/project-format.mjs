@@ -4,6 +4,7 @@
  *   - `edithere-image-set-1` manifest <-> `edithere-project-2`
  *   - legacy `edithere-web-project-1` -> extracted `edithere-image-set-1` manifest + PNG/asset files
  */
+import { APP_VERSION } from './version.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,7 @@ const {
 } = require('../web/image-set.cjs');
 
 export const UNIFIED_SCHEMA_VERSION = 'edithere-project-2';
-export const TOOL_VERSION = '0.14.1';
+export const TOOL_VERSION = APP_VERSION;
 
 const MIME_MAP = {
   '.png': { mime: 'image/png', ext: '.png' },

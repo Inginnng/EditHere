@@ -41,7 +41,9 @@ class B2Window final : public QMainWindow {
     ~B2Window() override;
 
     void openCapturedDocument(Document doc, bool replaceExisting = false);
-    void openMediaPath(const QString &path);
+    bool openMediaPath(const QString &path);
+    bool allowReplace();
+    void openEmpty();
     void setPageContext(const QString &pageContext);
     void setAgentSession(bool active, const QString &outputPath = {},
                          const FeedbackExportOptions &options = {});
@@ -49,13 +51,21 @@ class B2Window final : public QMainWindow {
     using SettingsApplyHandler = std::function<QString(const AppSettings &)>;
     void setSettingsApplyHandler(SettingsApplyHandler handler) { settingsApplyHandler_ = std::move(handler); }
     void navigateToView(const QString &viewId);
+    void offerUpdate(const UpdateChecker::Result &result);
+    void setUpdatePreparationHandler(std::function<bool()> handler) {
+        updater_->setInstallConfirmation(std::move(handler));
+    }
+    void setUpdateExitConfirmation(std::function<bool()> handler) {
+        updater_->setExitConfirmation(std::move(handler));
+    }
+    void trackWorkspaceChanges();
     void triggerOpenDialog();
 
     bool hasDocument() const { return !pages_.isEmpty(); }
     bool hasImageSet() const { return isImageSetProject_ || pages_.size() > 1; }
     bool hasUnsavedChanges() const { return dirty_; }
+    bool startsNewWorkspaceOnCapture() const { return isImageSetProject_; }
     bool isAgentSessionActive() const { return agentSession_; }
-    void markFeedbackSubmitted() { dirty_ = false; }
 
   signals:
     void captureRequested();
@@ -66,6 +76,9 @@ class B2Window final : public QMainWindow {
                                const QString &previewFile);
     void agentSessionCancelled();
     void webviewFailed(const QString &reason);
+    void workspaceSnapshotReceived();
+    void workspaceChanged();
+    void updateInstallStarted();
 
   protected:
     void showEvent(QShowEvent *event) override;
@@ -77,6 +90,10 @@ class B2Window final : public QMainWindow {
                        const QString &error = {});
     void pushEvent(const QString &eventName, const QJsonObject &data);
     void pushSessionState();
+    void resetWorkspace();
+    void markWorkspaceDirty();
+    QJsonObject requestWorkspaceSnapshot();
+    QJsonObject updateResultJson() const;
 
     QJsonObject buildSessionStateJson() const;
     QJsonObject buildDoctorSnapshotJson() const;
@@ -103,6 +120,7 @@ class B2Window final : public QMainWindow {
     void handleUpdatePageImage(const QJsonValue &rpcId, const QJsonObject &params);
     void handleCopyImage(const QJsonValue &rpcId, const QJsonObject &params);
     void handleSaveImageDialog(const QJsonValue &rpcId, const QJsonObject &params);
+    QString saveProject(const QJsonObject &payload, const QString &suggested);
     void handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params);
     void handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObject &params);
     void handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &params);
@@ -129,6 +147,10 @@ class B2Window final : public QMainWindow {
     QJsonValue pendingAiTestId_;
     QJsonValue pendingAiAnalyzeId_;
     QJsonValue pendingUpdateCheckId_;
+    std::optional<UpdateChecker::Result> updateResult_;
+    QString pendingView_;
+    QString snapshotRequest_;
+    QJsonObject workspaceSnapshot_;
     qint64 lastInputTokens_ = 0;
     qint64 lastOutputTokens_ = 0;
 
@@ -144,6 +166,10 @@ class B2Window final : public QMainWindow {
     FeedbackExportOptions agentExportOptions_;
     bool jsReady_ = false;
     bool dirty_ = false;
+    bool checkingReplacement_ = false;
+    int workspaceGeneration_ = 0;
+    bool savingProject_ = false;
+    bool changedWhileSaving_ = false;
     bool uiDarkOverride_ = false;
     bool hasDarkOverride_ = false;
     bool startupSkillSyncChecked_ = false;

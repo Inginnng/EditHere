@@ -131,6 +131,7 @@ class GlobalShortcut final : public QObject, public QAbstractNativeEventFilter {
     void triggered();
 
   private:
+    friend class StartupFlowTestAccess;
     QKeySequence sequence_;
     QString lastError_;
     bool unavailable_ = false;

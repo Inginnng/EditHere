@@ -196,7 +196,11 @@ int main(int argc, char **argv) {
             }
             if (endpoint == AgentEndpoint::Agent) return connectAgentSocket(socket, agentServerName(), timeout);
             QLocalSocket desktop;
-            const auto result = connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+            auto result = connectAgentSocket(desktop, desktopForwardServerName(), timeout);
+#ifdef Q_OS_WIN
+            if (!result.connected && result.error == QLocalSocket::ServerNotFoundError)
+                result = connectAgentSocket(desktop, legacyDesktopServerName(), timeout);
+#endif
             if (result.connected || result.error != QLocalSocket::ServerNotFoundError) return result;
             // Detect an old GUI without sending any unauthenticated command.
             return connectAgentSocket(desktop, previousDesktopServerName(), timeout);

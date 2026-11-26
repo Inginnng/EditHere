@@ -12,6 +12,7 @@ struct AgentSocketResult {
 using AgentConnectAttempt = std::function<AgentSocketResult(AgentEndpoint, int)>;
 // An empty launch error means that the OS accepted the launch, not that the GUI is ready.
 using AgentLaunchAttempt = std::function<QString()>;
+QString desktopForwardServerName();
 QString legacyDesktopServerName();
 // For detecting an older running GUI only; never send commands to this endpoint.
 QString previousDesktopServerName();

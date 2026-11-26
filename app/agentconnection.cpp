@@ -3,6 +3,7 @@
 #include "localauth.h"
 #include <QDir>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QThread>
 #include <QTimer>
@@ -39,6 +40,14 @@ QJsonObject endpointUnavailable(const AgentSocketResult &result) {
     response["connection"] = diagnostic(result, AgentEndpoint::Agent, "connect");
     return response;
 }
+}
+QString desktopForwardServerName() {
+#ifdef Q_OS_WIN
+    const auto identity = QCryptographicHash::hash(agentStateLocation().toUtf8(), QCryptographicHash::Sha256);
+    return "EditHere-native-v3-" + QString::fromLatin1(identity.toHex().left(24));
+#else
+    return legacyDesktopServerName();
+#endif
 }
 QString legacyDesktopServerName() {
 #ifndef Q_OS_WIN

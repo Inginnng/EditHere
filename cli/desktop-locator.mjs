@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Look up an executable name on PATH.
@@ -58,13 +59,16 @@ export function resolveDesktopCli({ env = process.env } = {}) {
     return { found: true, path: path.resolve(onPath), source: 'PATH' };
   }
 
-  const candidates = [];
+  const bundleDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [[path.resolve(bundleDir, '..', exeName), 'bundled']];
   if (process.platform === 'win32' && env.LOCALAPPDATA) {
     candidates.push([path.join(env.LOCALAPPDATA, 'Programs', 'EditHere', 'edithere-cli.exe'), 'default-install']);
   } else if (process.platform === 'darwin') {
+    candidates.push([path.resolve(bundleDir, '../../MacOS', exeName), 'bundled']);
     candidates.push([path.join(os.homedir(), 'Applications', 'EditHere.app', 'Contents', 'MacOS', 'edithere-cli'), 'default-install']);
     candidates.push(['/Applications/EditHere.app/Contents/MacOS/edithere-cli', 'default-install']);
   } else if (process.platform === 'linux') {
+    candidates.push([path.resolve(bundleDir, '../../../bin', exeName), 'bundled']);
     candidates.push([path.join(os.homedir(), '.local', 'bin', 'edithere-cli'), 'default-install']);
     candidates.push(['/usr/local/bin/edithere-cli', 'default-install']);
   }

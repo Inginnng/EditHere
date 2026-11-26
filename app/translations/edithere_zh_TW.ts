@@ -70,6 +70,54 @@
 <context>
     <name>h2d</name>
     <message>
+        <source>请让AI工具自行更新skills或刷新路径</source>
+        <translation>請讓 AI 工具自行更新 skills 或重新整理路徑</translation>
+    </message>
+    <message>
+        <source>找不到 Skill 源目录：%1</source>
+        <translation>找不到 Skill 來源目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步临时目录：%1</source>
+        <translation>無法建立 Skill 同步暫存目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步子目录：%1</source>
+        <translation>無法建立 Skill 同步子目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法复制 Skill 文件：%1</source>
+        <translation>無法複製 Skill 檔案：%1</translation>
+    </message>
+    <message>
+        <source>无法打开 Skill 文件进行写入：%1</source>
+        <translation>無法開啟 Skill 檔案以進行寫入：%1</translation>
+    </message>
+    <message>
+        <source>未能完整写入 Skill 文件：%1</source>
+        <translation>未能完整寫入 Skill 檔案：%1</translation>
+    </message>
+    <message>
+        <source>找不到 EditHere 随附的 Skill 目录。</source>
+        <translation>找不到 EditHere 隨附的 Skill 目錄。</translation>
+    </message>
+    <message>
+        <source>无法创建 AI 工具的 skills 目录：%1</source>
+        <translation>無法建立 AI 工具的 skills 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法备份现有的 Skill 目录：%1</source>
+        <translation>無法備份現有的 Skill 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法替换现有的 Skill 目录：%1</source>
+        <translation>無法取代現有的 Skill 目錄：%1</translation>
+    </message>
+    <message>
+        <source>无法安装 Skill 到目标目录：%1</source>
+        <translation>無法將 Skill 安裝到目標目錄：%1</translation>
+    </message>
+    <message>
         <location filename="../autostart.cpp" line="46"/>
         <source>读取</source>
         <translation>讀取</translation>
@@ -1961,11 +2009,6 @@
         <translation>無法建立程式鎖，請檢查程式資料目錄的權限。</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="202"/>
-        <source>无法连接正在运行的 EditHere，请退出后重试。</source>
-        <translation>無法連線正在執行的 EditHere，請結束後重試。</translation>
-    </message>
-    <message>
         <location filename="../main.cpp" line="231"/>
         <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
         <translation>無法啟動程式通訊服務，請結束其他 EditHere 實例後重試。</translation>
@@ -2129,6 +2172,10 @@
         <location filename="../../features/ai-text/src/aifeedbackformat.cpp" line="140"/>
         <source>待确认：%1</source>
         <translation>待確認：%1</translation>
+    </message>
+    <message>
+        <source>当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。</source>
+        <translation>目前已有以系統管理員權限執行的 EditHere，請從系統匣結束後再試。</translation>
     </message>
 </context>
 <context>
@@ -3061,9 +3108,48 @@
         <translation>更新檢查器尚未初始化。</translation>
     </message>
     <message>
-        <location filename="../b2window.cpp" line="1655"/>
-        <source>正在检查更新，请稍候…</source>
-        <translation>正在檢查更新，請稍候…</translation>
+        <source>保存项目失败</source>
+        <translation>無法儲存專案</translation>
+    </message>
+    <message>
+        <source>保留当前修改？</source>
+        <translation>保留目前的變更？</translation>
+    </message>
+    <message>
+        <source>工作台已切换，请重新保存。</source>
+        <translation>工作區已切換，請重新儲存。</translation>
+    </message>
+    <message>
+        <source>工作台页面尚未同步，请重新保存。</source>
+        <translation>工作區頁面尚未同步，請重新儲存。</translation>
+    </message>
+    <message>
+        <source>当前工作台有未保存的截图或批注。是否先保存项目？</source>
+        <translation>目前的工作區有尚未儲存的螢幕擷取畫面或註解。要先儲存專案嗎？</translation>
+    </message>
+    <message>
+        <source>当前无法自动安装更新，请检查更新或打开发布页。</source>
+        <translation>目前無法自動安裝更新，請檢查更新或開啟發行頁面。</translation>
+    </message>
+    <message>
+        <source>无法保存当前图片上的涂绘或马赛克，请重试。</source>
+        <translation>無法儲存目前圖片上的繪圖或馬賽克，請再試一次。</translation>
+    </message>
+    <message>
+        <source>无法取得当前批注，请重试保存。</source>
+        <translation>無法取得目前的註解，請重試儲存。</translation>
+    </message>
+    <message>
+        <source>更新操作正在进行，请稍候…</source>
+        <translation>更新作業正在進行，請稍候…</translation>
+    </message>
+    <message>
+        <source>更新源已更改，请重新检查。</source>
+        <translation>更新來源已變更，請重新檢查更新。</translation>
+    </message>
+    <message>
+        <source>正在处理当前项目的保存确认，请稍候。</source>
+        <translation>正在處理目前專案的儲存確認，請稍候。</translation>
     </message>
 </context>
 <context>
@@ -6186,6 +6272,10 @@
         <location filename="../updatechecker.cpp" line="892"/>
         <source>无法读取并锁定已下载的安装包，已停止更新。</source>
         <translation>無法讀取並鎖定已下載的安裝套件，已停止更新。</translation>
+    </message>
+    <message>
+        <source>检测到新的修改或正在进行的操作，更新已取消。</source>
+        <translation>偵測到新的變更或正在進行的作業，更新已取消。</translation>
     </message>
 </context>
 <context>

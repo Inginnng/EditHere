@@ -16,6 +16,7 @@ class SkillSyncTests : public QObject {
     void inspectAllSixStatesAndPreventDowngrade();
     void syncUpdatesLegacyOutdatedAndPathStaleAtomically();
     void expandedCatalogFallbackRootsAndVariantsSafe();
+    void failedSyncSuggestsHostWorkaroundForDestinationErrors();
 };
 
 namespace {
@@ -262,6 +263,28 @@ void SkillSyncTests::expandedCatalogFallbackRootsAndVariantsSafe() {
     QVERIFY(!QFileInfo::exists(homeDir + "/.qoder/skills/edithere/SKILL.md"));
     QVERIFY(!QFileInfo::exists(homeDir + "/.grok/skills/edithere/SKILL.md"));
     QVERIFY(!QFileInfo::exists(homeDir + "/.zcode/skills/edithere/SKILL.md"));
+}
+
+void SkillSyncTests::failedSyncSuggestsHostWorkaroundForDestinationErrors() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const auto homeDir = tmp.filePath("home");
+    const auto appDir = tmp.filePath("app");
+    const auto blockedSkills = homeDir + "/.codex/skills";
+    QVERIFY(writeFile(blockedSkills, "An ordinary file in place of the skills directory."));
+
+    const auto missingBundle = syncHostSkills({"codex"}, false, false, homeDir, {}, appDir);
+    QCOMPARE(missingBundle.size(), 1);
+    QCOMPARE(missingBundle[0].state, QString("failed"));
+    QCOMPARE(missingBundle[0].error, QString("找不到 EditHere 随附的 Skill 目录。"));
+
+    QVERIFY(writeFile(appDir + "/skills/edithere/SKILL.md", "# EditHere"));
+    const auto blockedDestination = syncHostSkills({"codex"}, false, false, homeDir, {}, appDir);
+    QCOMPARE(blockedDestination.size(), 1);
+    QCOMPARE(blockedDestination[0].state, QString("failed"));
+    QCOMPARE(blockedDestination[0].error,
+             QString("无法创建 AI 工具的 skills 目录：%1\n请让AI工具自行更新skills或刷新路径")
+                 .arg(QDir::toNativeSeparators(blockedSkills)));
 }
 
 QTEST_MAIN(SkillSyncTests)

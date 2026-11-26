@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -28,6 +29,7 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <QSet>
+#include <QScopedValueRollback>
 #include <QShowEvent>
 #include <QStandardPaths>
 #include <QStyleHints>
@@ -44,6 +46,7 @@
 #endif
 
 #include <algorithm>
+#include <utility>
 
 namespace h2d {
 
@@ -177,7 +180,7 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
 
     setCentralWidget(webview_);
 
-    connect(webview_, &WebView2Host::messageReceived, this, &B2Window::handleWebMessage);
+    connect(webview_, &WebView2Host::messageReceived, this, &B2Window::handleWebMessage, Qt::QueuedConnection);
     connect(webview_, &WebView2Host::failed, this, [this](const QString &reason) {
         diagnostics::write(diagnostics::Level::Warning, "b2.window_webview_failed", reason);
         emit webviewFailed(reason);
@@ -251,22 +254,21 @@ B2Window::B2Window(const AppSettings &settings, const QString &settingsFile, QWi
     preloadAiCredentials();
 
     updater_ = new UpdateChecker(this);
-    connect(updater_, &UpdateChecker::finished, this, [this]() {
-        if (pendingUpdateCheckId_.isNull() || pendingUpdateCheckId_.isUndefined()) return;
-        const QJsonValue id = pendingUpdateCheckId_;
+    connect(updater_, &UpdateChecker::finished, this, [this] {
+        updateResult_ = updater_->lastResult();
+        sendRpcResult(pendingUpdateCheckId_, true, updateResultJson());
         pendingUpdateCheckId_ = QJsonValue();
-        const auto &res = updater_->lastResult();
-        QString statusStr = "failed";
-        if (res.status == UpdateChecker::Available) statusStr = "available";
-        else if (res.status == UpdateChecker::Current || res.status == UpdateChecker::NewerLocal) statusStr = "upToDate";
-        sendRpcResult(id, true, QJsonObject{
-            {"status", statusStr},
-            {"tagName", res.tagName},
-            {"currentVersion", EDITHERE_VERSION},
-            {"url", res.url.toString()},
-            {"message", res.message},
-        });
     });
+    connect(updater_, &UpdateChecker::downloadProgress, this, [this](qint64 received, qint64 total) {
+        pushEvent("updates.progress", {{"phase", "downloading"}, {"received", received}, {"total", total}});
+    });
+    connect(updater_, &UpdateChecker::installerPreparing, this, [this] {
+        pushEvent("updates.progress", {{"phase", "preparing"}});
+    });
+    connect(updater_, &UpdateChecker::installFailed, this, [this](const QString &message) {
+        pushEvent("updates.progress", {{"phase", "idle"}, {"message", message}});
+    });
+    connect(updater_, &UpdateChecker::installStarted, this, &B2Window::updateInstallStarted);
 
     QString serverError;
     if (!server_.start(&serverError)) {
@@ -321,17 +323,100 @@ void B2Window::closeEvent(QCloseEvent *event) {
     event->ignore();
 }
 
+void B2Window::resetWorkspace() {
+    resetBlockDetectionQueue();
+    pages_.clear();
+    groupNotes_ = QJsonArray();
+    server_.clearImages();
+    activePageId_.clear();
+    setTitle_.clear();
+    pageContext_.clear();
+    isImageSetProject_ = false;
+    dirty_ = false;
+    workspaceSnapshot_ = {};
+    ++workspaceGeneration_;
+}
+
+void B2Window::markWorkspaceDirty() {
+    dirty_ = true;
+    workspaceSnapshot_ = {};
+    if (savingProject_)
+        changedWhileSaving_ = true;
+    emit workspaceChanged();
+}
+
+void B2Window::trackWorkspaceChanges() {
+    if (jsReady_)
+        pushEvent("workspace.trackChanges", {{"generation", workspaceGeneration_}});
+}
+
+QJsonObject B2Window::requestWorkspaceSnapshot() {
+    if (!jsReady_ || pages_.isEmpty())
+        return {{"pages", buildPagesJson()}, {"groupNotes", groupNotes_},
+                {"generation", workspaceGeneration_}};
+
+    if (!workspaceSnapshot_.isEmpty())
+        return std::exchange(workspaceSnapshot_, {});
+
+    QEventLoop loop;
+    QTimer deadline;
+    deadline.setSingleShot(true);
+    connect(&deadline, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(this, &B2Window::workspaceSnapshotReceived, &loop, &QEventLoop::quit);
+    snapshotRequest_ = uniqueId();
+    pushEvent("workspace.requestSnapshot", {{"request", snapshotRequest_}});
+    deadline.start(5000);
+    loop.exec();
+    snapshotRequest_.clear();
+    return std::exchange(workspaceSnapshot_, {});
+}
+
+bool B2Window::allowReplace() {
+    if (checkingReplacement_ || savingProject_)
+        return false;
+    if (!dirty_)
+        return true;
+
+    const QScopedValueRollback guard(checkingReplacement_, true);
+    setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
+    raise();
+    activateWindow();
+    const auto choice = QMessageBox::question(
+        this, tr("保留当前修改？"), tr("当前工作台有未保存的截图或批注。是否先保存项目？"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (choice == QMessageBox::Discard)
+        return true;
+    if (choice != QMessageBox::Save)
+        return false;
+
+    const auto snapshot = requestWorkspaceSnapshot();
+    if (snapshot.isEmpty()) {
+        QMessageBox::warning(this, tr("保存项目失败"), tr("无法取得当前批注，请重试保存。"));
+        return false;
+    }
+    try {
+        return !saveProject(snapshot, QStringLiteral("edithere-project.edithere")).isEmpty() && !dirty_;
+    } catch (const std::exception &e) {
+        QMessageBox::warning(this, tr("保存项目失败"), QString::fromUtf8(e.what()));
+        return false;
+    }
+}
+
+void B2Window::openEmpty() {
+    if (agentSession_ || !allowReplace())
+        return;
+    resetWorkspace();
+    pushSessionState();
+    navigateToView("workspace");
+}
+
 void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     if (doc.image.isNull()) return;
     if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
 
-    if (replaceExisting || isImageSetProject_) {
-        resetBlockDetectionQueue();
-        pages_.clear();
-        groupNotes_ = QJsonArray();
-        server_.clearImages();
-        isImageSetProject_ = false;
-    }
+    if (replaceExisting || isImageSetProject_)
+        resetWorkspace();
 
     const QString pageId = doc.id.isEmpty() ? uniqueId() : doc.id;
     B2Page page;
@@ -346,7 +431,7 @@ void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
 
     pages_.append(std::move(page));
     activePageId_ = pageId;
-    dirty_ = true;
+    markWorkspaceDirty();
 
     pushSessionState();
     show();
@@ -356,17 +441,17 @@ void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     if (needsDetect) {
         enqueueBlockDetection({pageId}, true);
     }
+    navigateToView("workspace");
 }
 
-void B2Window::openMediaPath(const QString &path) {
+bool B2Window::openMediaPath(const QString &path) {
+    if (agentSession_ || !allowReplace())
+        return false;
     const QFileInfo fi(path);
     QStringList pagesNeedingDetect;
     if (isImageSetFile(path)) {
         ImageSet set = loadImageSet(path);
-        resetBlockDetectionQueue();
-        pages_.clear();
-        groupNotes_ = QJsonArray();
-        server_.clearImages();
+        resetWorkspace();
         isImageSetProject_ = true;
         setTitle_ = set.name;
 
@@ -400,12 +485,7 @@ void B2Window::openMediaPath(const QString &path) {
         if (doc.image.isNull()) throw std::runtime_error(tr("无法读取图片或项目文件").toStdString());
         if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
 
-        resetBlockDetectionQueue();
-        pages_.clear();
-        groupNotes_ = QJsonArray();
-        server_.clearImages();
-        isImageSetProject_ = false;
-        setTitle_.clear();
+        resetWorkspace();
 
         B2Page page;
         page.id = doc.id.isEmpty() ? uniqueId() : doc.id;
@@ -428,6 +508,8 @@ void B2Window::openMediaPath(const QString &path) {
     if (!pagesNeedingDetect.isEmpty()) {
         enqueueBlockDetection(pagesNeedingDetect, true);
     }
+    navigateToView("workspace");
+    return true;
 }
 
 void B2Window::setPageContext(const QString &pageContext) {
@@ -456,7 +538,31 @@ void B2Window::setPreferences(const AppSettings &settings) {
 }
 
 void B2Window::navigateToView(const QString &viewId) {
-    if (jsReady_) pushEvent("view.navigate", QJsonObject{{"view", viewId}});
+    if (jsReady_)
+        pushEvent("view.navigate", {{"view", viewId}});
+    else
+        pendingView_ = viewId;
+}
+
+QJsonObject B2Window::updateResultJson() const {
+    if (!updateResult_)
+        return {};
+    const auto &result = *updateResult_;
+    QString status = "failed";
+    if (result.status == UpdateChecker::Available) status = "available";
+    else if (result.status != UpdateChecker::Failed) status = "upToDate";
+    return {{"status", status}, {"tagName", result.tagName}, {"currentVersion", EDITHERE_VERSION},
+            {"url", result.url.toString()}, {"message", result.message},
+            {"canInstall", UpdateChecker::canAutoInstall(result, UpdateChecker::installedCopy(), true)}};
+}
+
+void B2Window::offerUpdate(const UpdateChecker::Result &result) {
+    if (updater_->busy() || updater_->downloading())
+        return;
+    updateResult_ = result;
+    navigateToView("diagnostics");
+    if (jsReady_)
+        pushEvent("updates.result", updateResultJson());
 }
 
 void B2Window::triggerOpenDialog() {
@@ -670,6 +776,7 @@ QJsonObject B2Window::buildPreferencesJson() const {
         {"scrollUltraLong", settings_.scrollUltraLong},
         {"checkUpdatesOnStartup", settings_.checkUpdatesOnStartup},
         {"autoSyncSkills", settings_.autoSyncSkills},
+        {"showInstalledSkillsOnly", settings_.showInstalledSkillsOnly},
         {"updateSource", settings_.updateSource},
         {"shortcuts", shortcutsObj},
         {"shortcutDefinitions", shortcutDefsArr},
@@ -781,6 +888,9 @@ QJsonObject B2Window::buildSessionStateJson() const {
         {"runtimeVersion", webview_->runtimeVersion()},
         {"agentMode", agentSession_},
         {"hasDesktopPages", !pages_.isEmpty()},
+        {"workspaceGeneration", workspaceGeneration_},
+        {"update", updateResultJson()},
+        {"view", pendingView_},
         {"activePageId", activePageId_},
         {"pages", buildPagesJson()},
         {"groupNotes", groupNotes_},
@@ -863,7 +973,24 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
                            "WebView2 JS bridge connected",
                            {{"pages", pages_.size()}, {"agentMode", agentSession_}});
         sendRpcResult(id, true, buildSessionStateJson());
+        pendingView_.clear();
         runStartupSkillCheckIfNeeded();
+        return;
+    }
+
+    if (method == "workspace.changed") {
+        if (!pages_.isEmpty() && params.value("generation").toInt(-1) == workspaceGeneration_)
+            markWorkspaceDirty();
+        sendRpcResult(id, true);
+        return;
+    }
+
+    if (method == "workspace.snapshot") {
+        if (!snapshotRequest_.isEmpty() && params.value("request").toString() == snapshotRequest_) {
+            workspaceSnapshot_ = params.value("payload").toObject();
+            emit workspaceSnapshotReceived();
+        }
+        sendRpcResult(id, true);
         return;
     }
 
@@ -1066,6 +1193,26 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
         return;
     }
 
+    if (method == "updates.downloadAndInstall") {
+        if (updater_->busy() || updater_->downloading() || agentSession_ || !updateResult_ ||
+            !UpdateChecker::canAutoInstall(*updateResult_, UpdateChecker::installedCopy(), true)) {
+            sendRpcResult(id, false, {}, tr("当前无法自动安装更新，请检查更新或打开发布页。"));
+            return;
+        }
+        const auto &result = *updateResult_;
+        pushEvent("updates.progress", {{"phase", "downloading"}});
+        updater_->downloadAndInstall(result.installer, result.installerHash, UpdateChecker::installedCopy(),
+                                     result.tagName, result.installerSignature);
+        sendRpcResult(id, true);
+        return;
+    }
+
+    if (method == "updates.cancel") {
+        updater_->cancelDownload();
+        sendRpcResult(id, true);
+        return;
+    }
+
     if (method == "skills.getStatus") {
         sendRpcResult(id, true, buildSkillsStateJson());
         return;
@@ -1152,7 +1299,10 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
 
     try {
         if (files.size() == 1 && (isImageSetFile(files.first()) || files.first().endsWith(".edithere", Qt::CaseInsensitive))) {
-            openMediaPath(files.first());
+            if (!openMediaPath(files.first())) {
+                sendRpcResult(rpcId, true, QJsonObject{{"cancelled", true}});
+                return;
+            }
         } else {
             QStringList addedNeedingDetect;
             for (const QString &file : files) {
@@ -1173,7 +1323,7 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
                 activePageId_ = pages_.last().id;
             }
             if (pages_.size() > 1) isImageSetProject_ = true;
-            dirty_ = true;
+            markWorkspaceDirty();
             pushSessionState();
             if (!addedNeedingDetect.isEmpty()) {
                 enqueueBlockDetection(addedNeedingDetect, true);
@@ -1413,7 +1563,7 @@ void B2Window::handleUpdatePageImage(const QJsonValue &rpcId, const QJsonObject 
             page.document.notes.clear();
             page.document.layout.reset();
             page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
-            dirty_ = true;
+            markWorkspaceDirty();
             sendRpcResult(rpcId, true, QJsonObject{
                 {"ok", true},
                 {"mediaUrl", page.mediaUrl},
@@ -1459,33 +1609,70 @@ void B2Window::handleSaveImageDialog(const QJsonValue &rpcId, const QJsonObject 
     }
 }
 
-void B2Window::handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params) {
-    if (pages_.isEmpty()) {
-        sendRpcResult(rpcId, false, {}, tr("请先截图或打开图片后再保存项目。"));
-        return;
+QString B2Window::saveProject(const QJsonObject &payload, const QString &suggested) {
+    if (savingProject_)
+        return {};
+    if (pages_.isEmpty())
+        throw std::runtime_error(tr("请先截图或打开图片后再保存项目。").toStdString());
+    const int generation = payload.value("generation").toInt(-1);
+    if (generation != workspaceGeneration_)
+        throw std::runtime_error(tr("工作台已切换，请重新保存。").toStdString());
+
+    const auto snapshotPages = payload.value("pages").toArray();
+    if (snapshotPages.size() != pages_.size())
+        throw std::runtime_error(tr("工作台页面尚未同步，请重新保存。").toStdString());
+    QSet<QString> snapshotIds;
+    for (const auto &value : snapshotPages) {
+        const auto page = value.toObject();
+        if ((!page.value("mosaics").toArray().isEmpty() || !page.value("brushStrokes").toArray().isEmpty()) &&
+            page.value("redactedPngBase64").toString().isEmpty())
+            throw std::runtime_error(tr("无法保存当前图片上的涂绘或马赛克，请重试。").toStdString());
+        snapshotIds.insert(page.value("id").toString());
     }
-    const QString suggested = params.value("defaultName").toString("edithere-project.edithere");
+    for (const auto &page : pages_) {
+        if (!snapshotIds.contains(page.id))
+            throw std::runtime_error(tr("工作台页面尚未同步，请重新保存。").toStdString());
+    }
+
+    QByteArray bytes;
+    if (hasImageSet()) {
+        bytes = serializeImageSet(buildImageSetFromPayload(payload));
+    } else {
+        const Document doc = buildDocumentFromJsPage(pages_.first(), snapshotPages.first().toObject());
+        bytes = serializeDocument(doc, true);
+    }
+
+    const QScopedValueRollback saving(savingProject_, true);
+    changedWhileSaving_ = payload.value("changedSinceSnapshot").toBool();
+    if (changedWhileSaving_)
+        markWorkspaceDirty();
     const QString dest = QFileDialog::getSaveFileName(
         this, tr("保存 EditHere 项目"), suggested,
         tr("EditHere 项目 (*.edithere);;JSON 文件 (*.json);;所有文件 (*.*)"));
     if (dest.isEmpty()) {
-        sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
+        if (!changedWhileSaving_ && generation == workspaceGeneration_)
+            workspaceSnapshot_ = payload;
+        return {};
+    }
+    if (generation != workspaceGeneration_)
+        throw std::runtime_error(tr("工作台已切换，请重新保存。").toStdString());
+
+    saveBytes(dest, bytes);
+    workspaceSnapshot_ = {};
+    if (!changedWhileSaving_)
+        dirty_ = false;
+    return dest;
+}
+
+void B2Window::handleSaveProjectDialog(const QJsonValue &rpcId, const QJsonObject &params) {
+    if (checkingReplacement_) {
+        sendRpcResult(rpcId, false, {}, tr("正在处理当前项目的保存确认，请稍候。"));
         return;
     }
     try {
-        const QJsonObject payload = params.value("payload").toObject();
-        QByteArray bytes;
-        if (isImageSetProject_ || pages_.size() > 1) {
-            bytes = serializeImageSet(buildImageSetFromPayload(payload));
-        } else {
-            const QJsonArray jsPages = payload.value("pages").toArray();
-            const QJsonObject firstJs = jsPages.isEmpty() ? QJsonObject() : jsPages.first().toObject();
-            const Document doc = buildDocumentFromJsPage(pages_.first(), firstJs);
-            bytes = serializeDocument(doc, true);
-        }
-        saveBytes(dest, bytes);
-        dirty_ = false;
-        sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", dest}});
+        const QString dest = saveProject(params.value("payload").toObject(),
+                                         params.value("defaultName").toString("edithere-project.edithere"));
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", !dest.isEmpty()}, {"path", dest}});
     } catch (const std::exception &e) {
         sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
     }
@@ -1549,6 +1736,7 @@ void B2Window::handleAgentComplete(const QJsonValue &rpcId, const QJsonObject &p
         const QString completedOutput = agentOutput_;
         writeNewFeedbackBundle(completedOutput, bundle);
         dirty_ = false;
+        trackWorkspaceChanges();
         agentSession_ = false;
         agentOutput_.clear();
 
@@ -1745,6 +1933,8 @@ void B2Window::handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &pa
         next.checkUpdatesOnStartup = params.value("checkUpdatesOnStartup").toBool();
     if (params.contains("autoSyncSkills"))
         next.autoSyncSkills = params.value("autoSyncSkills").toBool();
+    if (params.value("showInstalledSkillsOnly").isBool())
+        next.showInstalledSkillsOnly = params.value("showInstalledSkillsOnly").toBool();
     if (params.contains("updateSource"))
         next.updateSource = params.value("updateSource").toString();
 
@@ -1780,6 +1970,12 @@ void B2Window::handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &pa
         return;
     }
 
+    if (settings_.updateSource != next.updateSource) {
+        updater_->cancelCheck();
+        sendRpcResult(pendingUpdateCheckId_, false, {}, tr("更新源已更改，请重新检查。"));
+        pendingUpdateCheckId_ = QJsonValue();
+        updateResult_.reset();
+    }
     settings_ = next;
     hasDarkOverride_ = false;
     syncDwmTitleBar(isEffectiveDark());
@@ -1830,8 +2026,8 @@ void B2Window::handleUpdatesCheck(const QJsonValue &rpcId) {
         sendRpcResult(rpcId, false, {}, tr("更新检查器尚未初始化。"));
         return;
     }
-    if (updater_->busy()) {
-        sendRpcResult(rpcId, false, {}, tr("正在检查更新，请稍候…"));
+    if (updater_->busy() || updater_->downloading()) {
+        sendRpcResult(rpcId, false, {}, tr("更新操作正在进行，请稍候…"));
         return;
     }
     pendingUpdateCheckId_ = rpcId;

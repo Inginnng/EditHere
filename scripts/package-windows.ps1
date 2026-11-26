@@ -45,19 +45,25 @@ if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
 if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
     throw "B2 frontend dist (b2-ui/index.html) is missing. Build frontend/dist or rebuild EditHere first."
 }
+$webViewLoader = Join-Path $buildPath "WebView2Loader.dll"
+if (-not (Test-Path -LiteralPath $webViewLoader -PathType Leaf)) {
+    throw "WebView2Loader.dll is missing. Copy the x64 loader from the Microsoft.Web.WebView2 SDK into the build directory."
+}
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "EditHere.exe") -Destination $outputPath
 Copy-Item -LiteralPath $versionPath -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $outputPath
-$webViewLoader = Join-Path $buildPath "WebView2Loader.dll"
-if (Test-Path -LiteralPath $webViewLoader) { Copy-Item -LiteralPath $webViewLoader -Destination $outputPath }
+Copy-Item -LiteralPath $webViewLoader -Destination $outputPath
 Copy-Item -LiteralPath $b2UiSource -Destination (Join-Path $outputPath "b2-ui") -Recurse
 $packagedCliDir = Join-Path $outputPath "cli"
 $packagedScriptsDir = Join-Path $outputPath "scripts"
 $packagedWebDir = Join-Path $outputPath "web"
+$packagedSharedDir = Join-Path $outputPath "shared"
 [IO.Directory]::CreateDirectory($packagedCliDir) | Out-Null
 [IO.Directory]::CreateDirectory($packagedScriptsDir) | Out-Null
 [IO.Directory]::CreateDirectory($packagedWebDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedSharedDir) | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot "shared/ai-hosts.json") -Destination $packagedSharedDir
 Get-ChildItem -LiteralPath (Join-Path $projectRoot "cli") -Filter "*.mjs" -File | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $packagedCliDir
 }
@@ -116,7 +122,7 @@ try {
 }
 # A developer SDK on PATH can hide an incomplete video deployment. Require the
 # backend and each FFmpeg library beside the packaged executable before zipping.
-foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll", "b2-ui/index.html", "cli/unified-mcp.mjs", "cli/edithere.mjs", "scripts/capture-web.mjs", "web/image-set.cjs")) {
+foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll", "b2-ui/index.html", "WebView2Loader.dll", "cli/unified-mcp.mjs", "cli/edithere.mjs", "cli/version.mjs", "scripts/capture-web.mjs", "web/image-set.cjs", "shared/ai-hosts.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt or B2 runtime deployment is incomplete: $runtimeFile" }
 }
 $ffmpegLibraries = @()
@@ -148,6 +154,11 @@ $translationPath = Join-Path $outputPath "translations"
 Copy-Item -LiteralPath $qtTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_CN.qm")
 Copy-Item -LiteralPath $qtTraditionalTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_TW.qm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse
+$webViewLicenses = Join-Path $outputPath "licenses/webview2"
+[IO.Directory]::CreateDirectory($webViewLicenses) | Out-Null
+foreach ($name in @("LICENSE", "NOTICE")) {
+    Copy-Item -LiteralPath (Join-Path $buildPath "WebView2-$name.txt") -Destination (Join-Path $webViewLicenses "$name.txt")
+}
 $iconLicensePath = Join-Path $outputPath "licenses/ui-icons"
 [IO.Directory]::CreateDirectory($iconLicensePath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot "assets/ui-icons/LICENSE") -Destination $iconLicensePath
@@ -185,10 +196,7 @@ $manifest = Get-ChildItem -LiteralPath $outputPath -Recurse -File | ForEach-Obje
     [PSCustomObject]@{ path = $relativePath; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputPath "manifest.json") -Encoding utf8
-# Zip the CONTENTS of the package folder (no top-level directory): the in-app
-# updater extracts this archive straight onto the app directory with
-# "tar -xf <zip> -C <appdir>", and a wrapped folder would land the new files in
-# a nested subdirectory instead of replacing the app.
+# Put the portable executable and manifest at the archive root.
 if (-not $SkipArchive) {
     Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
 }

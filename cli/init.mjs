@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveDesktopCli } from './desktop-locator.mjs';
+import { APP_VERSION } from './version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CANONICAL_SKILL = path.join(ROOT, 'skills', 'edithere');
@@ -17,7 +18,22 @@ const SKILL_VERSION_FILE = path.join(ROOT, 'skills-src', 'skill-version.json');
 const UNIFIED_CLI = path.join(ROOT, 'cli', 'edithere.mjs');
 const UNIFIED_MCP = path.join(ROOT, 'cli', 'unified-mcp.mjs');
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const APP_VERSION = '0.14.1';
+const HOSTS_FILE = path.join(ROOT, 'shared', 'ai-hosts.json');
+
+const renameDelay = new Int32Array(new SharedArrayBuffer(4));
+
+function renameSkillDirectory(source, destination) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.renameSync(source, destination);
+      return;
+    } catch (error) {
+      const transient = error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES';
+      if (process.platform !== 'win32' || !transient || attempt === 4) throw error;
+      Atomics.wait(renameDelay, 0, 0, 100);
+    }
+  }
+}
 
 function isValidSemver(value) {
   return typeof value === 'string' && SEMVER_RE.test(value.trim());
@@ -151,52 +167,14 @@ export function resolveHostTargets({
     return [{ host: 'custom', name: 'Custom', destination: path.resolve(destination) }];
   }
 
-  const codexHome = env.CODEX_HOME ? path.resolve(env.CODEX_HOME) : path.join(homeDir, '.codex');
-  const dshHome = env.DSH_HOME ? path.resolve(env.DSH_HOME) : path.join(homeDir, '.dsh');
-  const grokHome = env.GROK_HOME ? path.resolve(env.GROK_HOME) : path.join(homeDir, '.grok');
-  const h = (...parts) => path.join(homeDir, ...parts);
-
-  const defs = [
-    ['codex', 'Codex', codexHome],
-    ['agents', 'Shared Agents (~/.agents)', h('.agents')],
-    ['claude', 'Claude Code', h('.claude')],
-    ['cursor', 'Cursor', h('.cursor')],
-    ['antigravity', 'Antigravity', h('.gemini', 'antigravity')],
-    ['gemini', 'Gemini CLI', h('.gemini')],
-    ['windsurf', 'Windsurf', pickExistingRoot(h('.codeium', 'windsurf'), h('.windsurf'))],
-    ['kiro', 'Kiro', h('.kiro')],
-    ['copilot', 'GitHub Copilot', h('.copilot')],
-    ['trae', 'Trae', h('.trae')],
-    ['trae-cn', 'Trae CN', h('.trae-cn')],
-    ['workbuddy', 'WorkBuddy', h('.workbuddy')],
-    ['codebuddy', 'CodeBuddy', h('.codebuddy')],
-    ['qoder', 'Qoder', h('.qoder')],
-    ['qoderwork', 'QoderWork', h('.qoderwork')],
-    ['qoderwork-cn', 'QoderWork CN', h('.qoderworkcn')],
-    ['dsh', 'DeepSeek Harness (DSH)', dshHome],
-    ['grok', 'Grok CLI', grokHome],
-    ['zcode', 'ZCode', h('.zcode')],
-    ['zed', 'Zed', pickExistingRoot(h('.config', 'zed'), h('.zed'))],
-    ['opencode', 'OpenCode', pickExistingRoot(h('.config', 'opencode'), h('.opencode'))],
-    ['cline', 'Cline', h('.cline')],
-    ['roo', 'Roo Code', h('.roo')],
-    ['kilocode', 'Kilo Code', h('.kilocode')],
-    ['qwen', 'Qwen Code', h('.qwen')],
-    ['kimi', 'Kimi Code', pickExistingRoot(h('.kimi-code'), h('.kimi'))],
-    ['codearts', 'CodeArts Doer', pickExistingRoot(h('.codeartsdoer'), h('.codearts-doer-for-coding'))],
-    ['augment', 'Augment', h('.augment')],
-    ['continue', 'Continue', h('.continue')],
-    ['factory', 'Factory Droid', h('.factory')],
-    ['goose', 'Goose', h('.config', 'goose')],
-    ['amp', 'Amp', h('.config', 'amp')],
-  ];
-
-  const map = Object.fromEntries(
-    defs.map(([id, name, root]) => [
-      id,
-      { host: id, name, root, destination: path.join(root, 'skills', 'edithere') },
-    ])
-  );
+  const defs = JSON.parse(fs.readFileSync(HOSTS_FILE, 'utf8'));
+  const map = Object.fromEntries(defs.map(({ id, name, envVar, paths: [primary, fallback] }) => {
+    const override = envVar && env[envVar];
+    const root = override
+      ? path.resolve(override)
+      : pickExistingRoot(path.join(homeDir, primary), fallback && path.join(homeDir, fallback));
+    return [id, { host: id, name, root, destination: path.join(root, 'skills', 'edithere') }];
+  }));
 
   if (host === 'all') {
     return Object.values(map);
@@ -206,7 +184,7 @@ export function resolveHostTargets({
     return detected.length ? detected : [map.codex];
   }
   if (!Object.hasOwn(map, host)) {
-    throw new Error(`Unsupported --host "${host}". Expected auto, ${defs.map((d) => d[0]).join(', ')}, or all.`);
+    throw new Error(`Unsupported --host "${host}". Expected auto, ${defs.map(({ id }) => id).join(', ')}, or all.`);
   }
   return [map[host]];
 }
@@ -406,12 +384,12 @@ function installOneTarget(
     );
 
     if (exists) {
-      fs.renameSync(dest, backup);
+      renameSkillDirectory(dest, backup);
       try {
-        fs.renameSync(staging, dest);
+        renameSkillDirectory(staging, dest);
       } catch (swapErr) {
         try {
-          fs.renameSync(backup, dest);
+          renameSkillDirectory(backup, dest);
         } catch {
           // leave backup path visible in error if recovery fails
         }
@@ -419,7 +397,7 @@ function installOneTarget(
       }
       fs.rmSync(backup, { recursive: true, force: true });
     } else {
-      fs.renameSync(staging, dest);
+      renameSkillDirectory(staging, dest);
     }
   } catch (error) {
     fs.rmSync(staging, { recursive: true, force: true });

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Assemble local distribution files without moving sources or publishing assets.
 
-The default run collects native packages, the two web packages and the integrations.
-`--web-only` builds just the web packages (the release workflow uses it with
-`--channel release`); neither mode tags, uploads or replaces installed files.
+The default run collects native packages, Web, Web Agent, DSH and integrations.
+`--web-only` and `--dsh-only` build their respective packages for local checks or
+release jobs. This script does not tag, upload or replace installed files.
 """
 from __future__ import annotations
 
@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION = re.compile(r"\d+\.\d+\.\d+")
 SKIP = {"AppDir", "licenses", "node_modules", ".git", "tests", "validation", "plugins", "qml"}
 LEGAL = ("LICENSE", "NOTICE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "TRADEMARK-POLICY.md", "packaging/THIRD-PARTY-NOTICES.md")
-WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "image-set.cjs", "EditHere.dsh.html", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "src/image-format.js", "src/bundle.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
+WEB_RUNTIME = ("EditHere.html", "EditHere.mcp.html", "agent.cjs", "agent-session.cjs", "image-set.cjs", "preview.cjs", "preview-server.cjs", "install-skill.cjs", "src/feedback.js", "src/layout.js", "src/image-format.js", "src/bundle.js", "mcp/server.bundle.cjs", "mcp/mcp.json", "mcp/build-info.json", "MCP-THIRD-PARTY-NOTICES.md")
+DSH_ARCHIVE = "EditHere-dsh.zip"
 MCP_REQUIRED_SOURCES = {"web/src/mcp-app.js", "web/mcp/server.mjs", "web/mcp/package-lock.json", "web/mcp/build.mjs",
                         "assets/ui-icons/manifest.json", "assets/ui-icons/LICENSE"}
 MCP_REQUIRED_ARTIFACTS = {"web/EditHere.mcp.html", "web/mcp/server.bundle.cjs", "web/MCP-THIRD-PARTY-NOTICES.md"}
@@ -50,6 +51,12 @@ PACKAGE_FILES = {
         "package.json", "connector.json", ".trae-plugin/plugin.json", "assets/edithere-icon.svg",
         *("skills/edithere/" + name for name in SKILL_SHARED_FILES))),
     "desktop-skill": tuple("skills/edithere/" + name for name in SKILL_SHARED_FILES),
+    "dsh": (
+        "dsh/README.md", "dsh/cli.mjs", "dsh/server.mjs", "dsh/capture.ps1",
+        *("dsh/skill/edithere-dsh/" + name for name in SKILL_SHARED_FILES),
+        "web/EditHere.dsh.html", "web/image-set.cjs", "web/src/feedback.js",
+        "web/src/image-format.js", "docs/PROJECT-REVIEW.md",
+    ),
 }
 GENERIC_WEB_INSTALLATION = """# 本机网页入口
 
@@ -253,20 +260,39 @@ def build_web(root: Path, node: str = "node") -> None:
     verify_mcp_build(root)
 
 
-def write_web_packages(root: Path, output: Path, source_version: str, commit: str, dirty: bool,
-                       *, channel: str = "local-preview") -> tuple[str, list[dict], dict[str, Path | str]]:
-    """Write the offline and web-agent ZIPs; return version, records and the shared entries.
-
-    The shared entries (licenses, the shared icon license and the build stamp) are
-    reused by the integrations packages.
-    """
-    short = commit[:8]
-    web_version = source_version + "-" + short
+def common_package_entries(root: Path, source_version: str, commit: str, dirty: bool,
+                           channel: str) -> dict[str, Path | str]:
     common: dict[str, Path | str] = {name: root / name for name in LEGAL}
     common["licenses/ui-icons/LICENSE"] = root / "assets/ui-icons/LICENSE"
     common["build-info.json"] = json.dumps({
         "productSourceVersion": source_version, "sourceCommit": commit, "sourceDirty": dirty,
-        "webRevision": short, "channel": channel, "published": channel == "release"}, ensure_ascii=False, indent=2) + "\n"
+        "webRevision": commit[:8], "channel": channel, "published": channel == "release"}, ensure_ascii=False, indent=2) + "\n"
+    return common
+
+
+def write_dsh_package(package: Path, sources: dict[str, Path], common: dict[str, Path | str]) -> None:
+    write_zip(package, {**common, **sources, "README.md": """# EditHere DSH
+
+DeepSeek Harness 组图批注包。将整个 ZIP 解压到长期保留的目录，使用 Node.js 20 或更新版本。
+在解压目录运行：
+
+```text
+node dsh/cli.mjs install-skill
+```
+
+回到 DeepSeek Harness 对话，让它使用 `edithere-dsh` 发起批注。按会话链接打开浏览器，
+完成后点击「完成并返回 AI」。命令行用法见 [DSH 使用说明](dsh/README.md)。
+
+包内包含构建好的批注页面。版本和来源见 `build-info.json`。
+"""})
+
+
+def write_web_packages(root: Path, output: Path, source_version: str, commit: str, dirty: bool,
+                       *, channel: str = "local-preview") -> tuple[str, list[dict], dict[str, Path | str]]:
+    """Write the offline and web-agent ZIPs and return their metadata."""
+    short = commit[:8]
+    web_version = source_version + "-" + short
+    common = common_package_entries(root, source_version, commit, dirty, channel)
     notes = WEB_CHANNEL_NOTES[channel]
     offline = output / "web" / web_version / f"EditHere-{source_version}-web-{short}.zip"
     write_zip(offline, {**common, "EditHere.html": root / "web/EditHere.html",
@@ -274,7 +300,6 @@ def write_web_packages(root: Path, output: Path, source_version: str, commit: st
     agent_entries = {**common, **{"web/" + name: root / "web" / name for name in WEB_RUNTIME},
                      **{name: root / "web" / name for name in WEB_GUIDES},
                      **archive_entries(root, "web-skill")}
-    agent_entries.update({"dsh/" + str(file.relative_to(root / "dsh")).replace("\\", "/"): file for file in (root / "dsh").rglob("*") if file.is_file() and "tests" not in file.parts})
     agent_entries["scripts/image-set.mjs"] = root / "scripts/image-set.mjs"
     agent_entries["docs/PROJECT-REVIEW.md"] = root / "docs/PROJECT-REVIEW.md"
     agent_entries["web/skills/edithere-web/references/local-installation.md"] = GENERIC_WEB_INSTALLATION
@@ -369,6 +394,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
         raise ValueError("Current native packages missing: " + ", ".join(missing))
     # Build before writing output, so a build failure leaves no misleading catalog.
     build_web(root, node)
+    dsh_sources = archive_entries(root, "dsh")
     commit, dirty = revision(root)
     short = commit[:8]
     output.mkdir(parents=True)
@@ -380,6 +406,9 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
 
     web_version, web_created, common = write_web_packages(root, output, source_version, commit, dirty)
     created.extend(web_created)
+    dsh_package = output / "dsh" / web_version / DSH_ARCHIVE
+    write_dsh_package(dsh_package, dsh_sources, common)
+    record(dsh_package, "dsh", web_version, "assembled-local-preview")
     integration_specs = (("desktop-mcp", "connector", "connector/package.json"),
                          ("trae-plugin", "trae-plugin", "trae-plugin/package.json"),
                          ("desktop-skill", "skills/edithere", None))
@@ -440,6 +469,7 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
 | 目录 | 用途 |
 | --- | --- |
 | web/{web_version}/ | 独立网页包与网页 Agent 包，按 Git 修订区分预览 |
+| dsh/{web_version}/ | DeepSeek Harness 组图批注包 |
 | windows/{source_version}/ | 当前桌面版本的 Windows x64 安装包与便携 ZIP |
 | macos/{source_version}/ | 当前桌面版本的 macOS Universal DMG |
 | linux/{source_version}/ | 当前桌面版本的 Linux x86_64 AppImage |
@@ -463,15 +493,34 @@ Web 文件名中的 {source_version} 表示对应源码基线，不表示它与�
     return report
 
 
-def assemble_web(root: Path, output: Path, *, channel: str = "local-preview", node: str = "node") -> dict:
-    """Build and package only the two web ZIPs, for local checks and release jobs."""
-    root, output = root.resolve(), output.resolve()
+def validate_standalone_output(root: Path, output: Path) -> None:
     if output.exists():
         raise ValueError(f"Output already exists; choose a fresh directory: {output}")
     if output == root or root.is_relative_to(output):
         raise ValueError("Output cannot contain the source repository")
     if output.is_relative_to(root) and output.parts[len(root.parts)] != "dist":
         raise ValueError("Inside the repository, output must be under dist/")
+
+
+def assemble_dsh(root: Path, output: Path, *, channel: str = "local-preview", node: str = "node") -> dict:
+    """Build the DSH editor and package its public runtime and skill."""
+    root, output = root.resolve(), output.resolve()
+    validate_standalone_output(root, output)
+    source_version = version(root)
+    subprocess.run([node, str(root / "web/build.cjs")], cwd=root, check=True, stdout=subprocess.PIPE, text=True)
+    sources = archive_entries(root, "dsh")
+    commit, dirty = revision(root)
+    package = output / DSH_ARCHIVE
+    write_dsh_package(package, sources, common_package_entries(root, source_version, commit, dirty, channel))
+    digest = sha256(package)
+    package.with_suffix(".zip.sha256").write_text(f"{digest}  {package.name}\n", encoding="utf-8")
+    return {"packages": [{"path": package.name, "product": "dsh", "sha256": digest}]}
+
+
+def assemble_web(root: Path, output: Path, *, channel: str = "local-preview", node: str = "node") -> dict:
+    """Build and package only the two web ZIPs, for local checks and release jobs."""
+    root, output = root.resolve(), output.resolve()
+    validate_standalone_output(root, output)
     source_version = version(root)
     build_web(root, node)
     commit, dirty = revision(root)
@@ -510,26 +559,33 @@ def main() -> None:
     parser.add_argument("--native-dir", action="append", default=[], type=Path,
                         help="Original build artifacts: versioned Windows/macOS names; Linux with adjacent version metadata")
     parser.add_argument("--require-all", action="store_true")
-    parser.add_argument("--web-only", action="store_true",
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--web-only", action="store_true",
                         help="Only build the two web packages (offline and web-agent) for the current source tree")
+    mode.add_argument("--dsh-only", action="store_true",
+                      help="Only build the standalone EditHere-dsh.zip package")
     parser.add_argument("--channel", choices=("local-preview", "release"), default="local-preview",
-                        help="Marks web packages as local previews or as release builds")
+                        help="Marks standalone packages as local previews or as release builds")
     parser.add_argument("--node", default="node")
     args = parser.parse_args()
-    if args.web_only and (args.include_history or args.native_dir or args.require_all):
-        parser.error("--web-only cannot be combined with --include-history, --native-dir or --require-all")
-    if args.channel != "local-preview" and not args.web_only:
-        parser.error("--channel release is only available together with --web-only")
+    standalone = args.web_only or args.dsh_only
+    if standalone and (args.include_history or args.native_dir or args.require_all):
+        parser.error("--web-only and --dsh-only cannot be combined with --include-history, --native-dir or --require-all")
+    if args.channel != "local-preview" and not standalone:
+        parser.error("--channel release requires --web-only or --dsh-only")
     try:
         if args.web_only:
             destination = args.output or ROOT / "dist" / f"web-{version(ROOT)}-{revision(ROOT)[0][:8]}"
             report = assemble_web(ROOT, destination, channel=args.channel, node=args.node)
+        elif args.dsh_only:
+            destination = args.output or ROOT / "dist" / f"dsh-{version(ROOT)}-{revision(ROOT)[0][:8]}"
+            report = assemble_dsh(ROOT, destination, channel=args.channel, node=args.node)
         else:
             destination = args.output or ROOT / "dist" / f"distribution-{version(ROOT)}-{revision(ROOT)[0][:8]}"
             report = assemble(ROOT, destination, include_history=args.include_history, native_dirs=args.native_dir, require_all=args.require_all, node=args.node)
     except (ValueError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         parser.exit(1, f"Distribution error: {error}\n")
-    print(json.dumps({"output": str(destination.resolve()), "mode": "web" if args.web_only else "full",
+    print(json.dumps({"output": str(destination.resolve()), "mode": "dsh" if args.dsh_only else "web" if args.web_only else "full",
                       "packages": len(report["packages"]), "missingCurrentNative": report.get("missingCurrentNative", []),
                       "channel": args.channel, "published": False}, ensure_ascii=False))
 

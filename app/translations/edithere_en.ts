@@ -70,6 +70,54 @@
 <context>
     <name>h2d</name>
     <message>
+        <source>请让AI工具自行更新skills或刷新路径</source>
+        <translation>Ask your AI tool to update its skills or refresh the paths.</translation>
+    </message>
+    <message>
+        <source>找不到 Skill 源目录：%1</source>
+        <translation>Skill source directory not found: %1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步临时目录：%1</source>
+        <translation>Cannot create the temporary Skill sync directory: %1</translation>
+    </message>
+    <message>
+        <source>无法创建 Skill 同步子目录：%1</source>
+        <translation>Cannot create a Skill sync subdirectory: %1</translation>
+    </message>
+    <message>
+        <source>无法复制 Skill 文件：%1</source>
+        <translation>Cannot copy the Skill file: %1</translation>
+    </message>
+    <message>
+        <source>无法打开 Skill 文件进行写入：%1</source>
+        <translation>Cannot open the Skill file for writing: %1</translation>
+    </message>
+    <message>
+        <source>未能完整写入 Skill 文件：%1</source>
+        <translation>Could not finish writing the Skill file: %1</translation>
+    </message>
+    <message>
+        <source>找不到 EditHere 随附的 Skill 目录。</source>
+        <translation>The Skill directory bundled with EditHere was not found.</translation>
+    </message>
+    <message>
+        <source>无法创建 AI 工具的 skills 目录：%1</source>
+        <translation>Cannot create the AI tool's skills directory: %1</translation>
+    </message>
+    <message>
+        <source>无法备份现有的 Skill 目录：%1</source>
+        <translation>Cannot back up the existing Skill directory: %1</translation>
+    </message>
+    <message>
+        <source>无法替换现有的 Skill 目录：%1</source>
+        <translation>Cannot replace the existing Skill directory: %1</translation>
+    </message>
+    <message>
+        <source>无法安装 Skill 到目标目录：%1</source>
+        <translation>Cannot install the Skill in the destination directory: %1</translation>
+    </message>
+    <message>
         <location filename="../autostart.cpp" line="46"/>
         <source>读取</source>
         <translation>read</translation>
@@ -1961,11 +2009,6 @@
         <translation>Could not create the instance lock. Check the app data folder permissions.</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="202"/>
-        <source>无法连接正在运行的 EditHere，请退出后重试。</source>
-        <translation>Could not connect to the running EditHere instance. Quit it and try again.</translation>
-    </message>
-    <message>
         <location filename="../main.cpp" line="231"/>
         <source>无法启动程序通信服务，请退出其他 EditHere 实例后重试。</source>
         <translation>Could not start the app communication service. Quit other EditHere instances and try again.</translation>
@@ -2129,6 +2172,10 @@
         <location filename="../../features/ai-text/src/aifeedbackformat.cpp" line="140"/>
         <source>待确认：%1</source>
         <translation>To clarify: %1</translation>
+    </message>
+    <message>
+        <source>当前已有管理员权限运行的 EditHere，请从系统托盘退出后重试。</source>
+        <translation>EditHere is already running as administrator. Quit it from the system tray and try again.</translation>
     </message>
 </context>
 <context>
@@ -3061,9 +3108,48 @@ Cancel this session and return?</translation>
         <translation>Update checker is not initialized yet.</translation>
     </message>
     <message>
-        <location filename="../b2window.cpp" line="1655"/>
-        <source>正在检查更新，请稍候…</source>
-        <translation>Checking for updates…</translation>
+        <source>保存项目失败</source>
+        <translation>Could not save the project</translation>
+    </message>
+    <message>
+        <source>保留当前修改？</source>
+        <translation>Keep the current changes?</translation>
+    </message>
+    <message>
+        <source>工作台已切换，请重新保存。</source>
+        <translation>The workspace has changed. Save again.</translation>
+    </message>
+    <message>
+        <source>工作台页面尚未同步，请重新保存。</source>
+        <translation>The workspace page has not synced yet. Try saving again.</translation>
+    </message>
+    <message>
+        <source>当前工作台有未保存的截图或批注。是否先保存项目？</source>
+        <translation>The workspace has unsaved screenshots or annotations. Save the project first?</translation>
+    </message>
+    <message>
+        <source>当前无法自动安装更新，请检查更新或打开发布页。</source>
+        <translation>The update cannot be installed automatically right now. Check for updates or open the release page.</translation>
+    </message>
+    <message>
+        <source>无法保存当前图片上的涂绘或马赛克，请重试。</source>
+        <translation>Could not save the drawings or pixelation on this image. Try again.</translation>
+    </message>
+    <message>
+        <source>无法取得当前批注，请重试保存。</source>
+        <translation>Could not retrieve the current annotations. Try saving again.</translation>
+    </message>
+    <message>
+        <source>更新操作正在进行，请稍候…</source>
+        <translation>An update operation is in progress. Please wait…</translation>
+    </message>
+    <message>
+        <source>更新源已更改，请重新检查。</source>
+        <translation>The update source has changed. Check for updates again.</translation>
+    </message>
+    <message>
+        <source>正在处理当前项目的保存确认，请稍候。</source>
+        <translation>The save confirmation for this project is already in progress. Please wait.</translation>
     </message>
 </context>
 <context>
@@ -6192,6 +6278,10 @@ If EditHere helps you, a star on GitHub matters a lot to me. Or just tell me abo
         <location filename="../updatechecker.cpp" line="892"/>
         <source>无法读取并锁定已下载的安装包，已停止更新。</source>
         <translation>The downloaded installer could not be opened and locked. The update was stopped.</translation>
+    </message>
+    <message>
+        <source>检测到新的修改或正在进行的操作，更新已取消。</source>
+        <translation>The update was canceled because there are new changes or an operation is in progress.</translation>
     </message>
 </context>
 <context>

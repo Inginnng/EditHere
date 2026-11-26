@@ -55,6 +55,14 @@ bool inJob(HANDLE process) {
     BOOL contained = FALSE;
     return IsProcessInJob(process, nullptr, &contained) && contained;
 }
+bool hasIndependentExplorer() {
+    const auto shell = GetShellWindow();
+    DWORD pid = 0;
+    if (!shell || !GetWindowThreadProcessId(shell, &pid)) return false;
+    OwnedHandle process(OpenProcess(PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    BOOL contained = FALSE;
+    return process.value && IsProcessInJob(process.value, nullptr, &contained) && !contained;
+}
 
 // Positive lifetime tests need a host outside test runner jobs. Follow their
 // permissions and skip those rows when isolation is unavailable. Negative
@@ -120,8 +128,8 @@ class AgentLaunchTests : public QObject {
         QTest::newRow("ordinary-no-job") << false << quint32(0) << false << false << true << true;
         QTest::newRow("breakaway-permitted") << true << quint32(JOB_OBJECT_LIMIT_BREAKAWAY_OK) << false << false << true << true;
         QTest::newRow("silent-breakaway-permitted") << true << quint32(JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK) << false << false << true << true;
-        QTest::newRow("restrictive-job-refuses-before-start") << true << quint32(0) << false << false << false << false;
-        QTest::newRow("nested-outer-job-refuses-before-start") << true << quint32(JOB_OBJECT_LIMIT_BREAKAWAY_OK) << true << false << false << false;
+        QTest::newRow("restrictive-job-uses-explorer") << true << quint32(0) << false << false << false << true;
+        QTest::newRow("nested-outer-job-uses-explorer") << true << quint32(JOB_OBJECT_LIMIT_BREAKAWAY_OK) << true << false << false << true;
         // A negative control runs the old production launch: detached alone is
         // not independent, and closing the caller's job kills its GUI child.
         QTest::newRow("old-detached-launch-is-killed") << true << quint32(JOB_OBJECT_LIMIT_BREAKAWAY_OK) << false << true << true << false;
@@ -173,7 +181,7 @@ class AgentLaunchTests : public QObject {
         QCOMPARE(result["hostInJob"].toBool(), useJob);
         const auto error = result["error"].toString();
         const auto pid = result["pid"].toInteger();
-        if (!success) {
+        if (!success && !hasIndependentExplorer()) {
             QVERIFY(!error.isEmpty());
             QVERIFY2(error.contains("Open EditHere manually"), qPrintable(error));
             QVERIFY2(error.contains("Windows error"), qPrintable(error));

@@ -43,6 +43,7 @@ struct AppSettings {
     bool confirmBeforeDiscard = true;
     bool checkUpdatesOnStartup = true;
     bool autoSyncSkills = false;
+    bool showInstalledSkillsOnly = false;
     QString updateSource = "auto";
     QString aiProviderId = "openai";
     QMap<QString, AiConnectionSettings> aiProviders;

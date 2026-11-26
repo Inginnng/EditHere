@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 endif()
-project(EditHere VERSION 0.14.1 LANGUAGES C CXX)
+project(EditHere VERSION 0.14.3 LANGUAGES C CXX)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/skills-src/skill-version.json")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/skills-src/skill-version.json" EDITHERE_SKILL_VERSION_JSON)
 string(JSON EDITHERE_SKILL_VERSION GET "${EDITHERE_SKILL_VERSION_JSON}" "skillVersion")
@@ -57,6 +57,10 @@ target_compile_definitions(h2d_core PUBLIC
   EDITHERE_SKILL_VERSION="${EDITHERE_SKILL_VERSION}"
   EDITHERE_MIN_SKILL_VERSION="${EDITHERE_MIN_SKILL_VERSION}")
 target_link_libraries(h2d_core PUBLIC Qt6::Gui)
+qt_add_resources(h2d_core ai_hosts
+  PREFIX "/shared"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shared"
+  FILES shared/ai-hosts.json)
 add_library(h2d_agent STATIC app/agentprotocol.cpp app/agentconnection.cpp app/agentlaunch.cpp app/localauth.cpp)
 target_include_directories(h2d_agent PUBLIC app)
 target_link_libraries(h2d_agent PUBLIC Qt6::Core Qt6::Network)
@@ -81,7 +85,7 @@ target_link_libraries(h2d_ui PRIVATE edithere_zlib)
 target_link_libraries(h2d_ui PUBLIC h2d_diagnostics)
 target_compile_definitions(h2d_ui PRIVATE
   EDITHERE_UPDATE_PUBLISHER_CERT_SHA256="${EDITHERE_UPDATE_PUBLISHER_CERT_SHA256}"
-  EDITHERE_FRONTEND_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist")
+  $<$<CONFIG:Debug>:EDITHERE_FRONTEND_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/frontend/dist">)
 # Desktop and Web consume these same semantic SVGs. They are embedded, so an
 # installed editor has no dependency on the source tree or a running web service.
 file(GLOB UI_ICON_SVGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ui-icons/icons/*.svg")
@@ -117,6 +121,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES packaging/linux/com.edithere.capture.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages)
   install(FILES assets/icons/edithere-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME edithere.png)
   install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/skills)
+  install(DIRECTORY cli/ DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/cli
+          FILES_MATCHING PATTERN "*.mjs")
+  install(FILES shared/ai-hosts.json DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/shared)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/version.txt" DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere)
+  install(FILES scripts/capture-web.mjs scripts/image-set.mjs
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/scripts)
+  install(FILES web/image-set.cjs DESTINATION ${CMAKE_INSTALL_DATADIR}/edithere/web)
   install(FILES docs/PROJECT-REVIEW.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
   install(FILES LICENSE packaging/THIRD-PARTY-NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/edithere)
 endif()
@@ -177,6 +188,8 @@ endif()
 if(WIN32)
   enable_language(RC)
   configure_file(packaging/edithere.rc.in "${CMAKE_CURRENT_BINARY_DIR}/edithere.rc" @ONLY)
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/edithere.rc" PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/edithere.ico")
   target_sources(EditHere PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/edithere.rc")
 elseif(APPLE)
   target_sources(EditHere PRIVATE assets/icons/edithere.icns)
@@ -465,6 +478,12 @@ add_test(NAME skill-sync COMMAND skillsync_tests)
 if(WIN32)
   set_target_properties(settings_tests PROPERTIES WIN32_EXECUTABLE FALSE)
   set_target_properties(i18n_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+  if(TARGET edithere_sync_b2_ui)
+    add_dependencies(startup_flow_tests edithere_sync_b2_ui)
+    add_test(NAME windows-capture-workbench COMMAND startup_flow_tests -platform windows
+      windowsCaptureHandsSelectionToLiveWorkbench -o "${CMAKE_CURRENT_BINARY_DIR}/windows-capture-workbench-test.log,txt")
+    set_tests_properties(windows-capture-workbench PROPERTIES TIMEOUT 35)
+  endif()
   qt_add_executable(platform_tests tests/platform_test.cpp)
   target_link_libraries(platform_tests PRIVATE h2d_ui Qt6::Test)
   set_target_properties(core_tests ui_tests layout_tests platform_tests PROPERTIES WIN32_EXECUTABLE FALSE)
