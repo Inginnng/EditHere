@@ -89,6 +89,15 @@ const RESIZE_HANDLES: Array<{ id: ResizeHandle; cursor: string }> = [
 ];
 
 const BRUSH_COLORS = ['#FF453A', '#FF9F0A', '#30D158', '#0A84FF', '#BF5AF2', '#FFFFFF'];
+const MIN_ZOOM = 25;
+const MAX_ZOOM = 1000;
+const ZOOM_STEP = 1.2;
+const FIT_VIEW = { zoom: 100, panOffset: { x: 0, y: 0 } };
+const TEXT_INPUT_SELECTOR = 'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]';
+
+function clampZoom(zoom: number) {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+}
 
 interface ExplodeDragSession {
   kind: 'move' | 'resize';
@@ -208,8 +217,7 @@ export default function WorkspaceView({
 }: WorkspaceViewProps) {
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0];
   const [tool, setTool] = useState<ToolMode>('box');
-  const [zoom, setZoom] = useState(100);
-  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [{ zoom, panOffset }, setCanvasView] = useState(FIT_VIEW);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
 
@@ -298,6 +306,7 @@ export default function WorkspaceView({
   const mosaicBtnRef = useRef<HTMLButtonElement>(null);
   const cropBtnRef = useRef<HTMLButtonElement>(null);
   const subbarRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const artboardMediaRef = useRef<HTMLDivElement>(null);
   const mosaicCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -527,7 +536,7 @@ export default function WorkspaceView({
     setSelectedBlockId(null);
     setLoupe(null);
     setCropRect(null);
-    setPanOffset({ x: 0, y: 0 });
+    setCanvasView((view) => ({ ...view, panOffset: FIT_VIEW.panOffset }));
     setVideoMode(false);
     setTool((t) => (t === 'crop' ? 'box' : t));
   }, [activePage?.id, activePage?.isVideo]);
@@ -670,15 +679,59 @@ export default function WorkspaceView({
       )
     );
     setCropRect(null);
-    setPanOffset({ x: 0, y: 0 });
+    setCanvasView((view) => ({ ...view, panOffset: FIT_VIEW.panOffset }));
     setTool('box');
     onToast(`已裁剪画布至 ${cropped.width} × ${cropped.height}`);
   };
 
+  const stepZoom = (factor: number) => {
+    setCanvasView((view) => ({ ...view, zoom: clampZoom(view.zoom * factor) }));
+  };
+
+  const resetCanvasView = () => {
+    setCanvasView(FIT_VIEW);
+  };
+
+  const hasActivePage = Boolean(activePage);
+  useEffect(() => {
+    const stage = stageRef.current;
+    const inner = artboardRef.current?.parentElement;
+    if (!stage || !inner) return;
+
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+
+      const bounds = inner.getBoundingClientRect();
+      const x = event.clientX - (bounds.left + bounds.width / 2);
+      const y = event.clientY - (bounds.top + bounds.height / 2);
+      const deltaUnit = event.deltaMode;
+      const deltaY = event.deltaY * (deltaUnit === WheelEvent.DOM_DELTA_LINE ? 16 :
+        deltaUnit === WheelEvent.DOM_DELTA_PAGE ? stage.clientHeight : 1);
+      const factor = ZOOM_STEP ** (-deltaY / 100);
+
+      setCanvasView((view) => {
+        const nextZoom = clampZoom(view.zoom * factor);
+        if (nextZoom === view.zoom) return view;
+        const ratio = nextZoom / view.zoom;
+        return {
+          zoom: nextZoom,
+          panOffset: {
+            x: x - (x - view.panOffset.x) * ratio,
+            y: y - (y - view.panOffset.y) * ratio,
+          },
+        };
+      });
+    };
+
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', onWheel);
+  }, [hasActivePage]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const inInput = Boolean(target?.closest('input, textarea, [contenteditable="true"]'));
+      const inInput = Boolean(target?.closest(TEXT_INPUT_SELECTOR));
 
       if (event.code === 'Space' && !inInput) {
         event.preventDefault();
@@ -703,6 +756,13 @@ export default function WorkspaceView({
         return;
       }
       if (inInput) return;
+
+      if ((event.ctrlKey || event.metaKey) && ['+', '=', '-', '0'].includes(event.key)) {
+        event.preventDefault();
+        if (event.key === '0') resetCanvasView();
+        else stepZoom(event.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP);
+        return;
+      }
 
       const lower = event.key.toLowerCase();
       if (event.key === 'Escape') {
@@ -751,11 +811,18 @@ export default function WorkspaceView({
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code === 'Space') setSpacePressed(false);
     };
+    const onBlur = () => {
+      setSpacePressed(false);
+      panDragRef.current = null;
+      setIsPanning(false);
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
     };
   }, [tool, cropRect, activePage?.id, selectedMosaicId, selectedNoteId]);
 
@@ -813,10 +880,13 @@ export default function WorkspaceView({
     const onWindowPointerMove = (event: PointerEvent) => {
       if (panDragRef.current) {
         const pd = panDragRef.current;
-        setPanOffset({
-          x: Math.round(pd.origX + (event.clientX - pd.startClientX)),
-          y: Math.round(pd.origY + (event.clientY - pd.startClientY)),
-        });
+        setCanvasView((view) => ({
+          ...view,
+          panOffset: {
+            x: pd.origX + event.clientX - pd.startClientX,
+            y: pd.origY + event.clientY - pd.startClientY,
+          },
+        }));
         return;
       }
 
@@ -1034,16 +1104,34 @@ export default function WorkspaceView({
     }
   };
 
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    panDragRef.current = {
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      origX: panOffset.x,
+      origY: panOffset.y,
+    };
+    setIsPanning(true);
+  };
+
+  const handleStagePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 1) return;
+    if ((event.target as Element).closest(`${TEXT_INPUT_SELECTOR}, .inline-note-popover:has(textarea)`)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startPan(event);
+  };
+
+  const preventMiddleClickDefault = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button === 1) event.preventDefault();
+  };
+
   const handleStagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (tool === 'pan' || spacePressed || event.button === 1) {
+    if (event.button === 1) return;
+    if (tool === 'pan' || spacePressed) {
       event.preventDefault();
-      panDragRef.current = {
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        origX: panOffset.x,
-        origY: panOffset.y,
-      };
-      setIsPanning(true);
+      startPan(event);
       return;
     }
     if (event.target === event.currentTarget || (event.target as HTMLElement).classList.contains('canvas-stage-inner')) {
@@ -1776,26 +1864,23 @@ export default function WorkspaceView({
                 <button
                   className="icon-button"
                   aria-label="缩小画布"
-                  onClick={() => setZoom((z) => Math.max(60, z - 15))}
+                  onClick={() => stepZoom(1 / ZOOM_STEP)}
                   {...tipProps('缩小画布', 'below')}
                 >
                   <MinusIcon size={14} />
                 </button>
-                <span>{zoom}%</span>
+                <span>{Math.round(zoom)}%</span>
                 <button
                   className="icon-button"
                   aria-label="放大画布"
-                  onClick={() => setZoom((z) => Math.min(180, z + 15))}
+                  onClick={() => stepZoom(ZOOM_STEP)}
                   {...tipProps('放大画布', 'below')}
                 >
                   <PlusIcon size={14} />
                 </button>
                 <button
                   className="button ghost sm"
-                  onClick={() => {
-                    setZoom(100);
-                    setPanOffset({ x: 0, y: 0 });
-                  }}
+                  onClick={resetCanvasView}
                   {...tipProps('适应窗口并复位画布位置', 'below')}
                 >
                   适应
@@ -1821,8 +1906,12 @@ export default function WorkspaceView({
           </div>
 
           <div
+            ref={stageRef}
             className={`canvas-stage-wrap ${canPanActive ? 'can-pan' : ''} ${isPanning ? 'is-panning' : ''}`}
+            onPointerDownCapture={handleStagePointerDownCapture}
             onPointerDown={handleStagePointerDown}
+            onMouseDownCapture={preventMiddleClickDefault}
+            onAuxClickCapture={preventMiddleClickDefault}
           >
             <div className="canvas-stage-inner">
               <div
@@ -1832,7 +1921,7 @@ export default function WorkspaceView({
                 }`}
                 style={{
                   aspectRatio: `${activePage.width} / ${activePage.height}`,
-                  width: `min(100cqw, 820px, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
+                  width: `min(100cqw, calc(100cqh * ${activePage.width} / ${activePage.height}))`,
                   transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`,
                 }}
                 onPointerDown={handleArtboardPointerDown}
@@ -2723,10 +2812,7 @@ export default function WorkspaceView({
                   <DropdownMenu.Separator className="dropdown-separator" />
                   <DropdownMenu.Item
                     className="dropdown-item"
-                    onSelect={() => {
-                      setZoom(100);
-                      setPanOffset({ x: 0, y: 0 });
-                    }}
+                    onSelect={resetCanvasView}
                   >
                     <FitCanvasIcon size={14} /> 适应并归位画布
                   </DropdownMenu.Item>

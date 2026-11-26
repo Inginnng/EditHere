@@ -103,7 +103,7 @@ void Canvas::setMode(Mode mode) {
     update();
 }
 void Canvas::setZoom(double value) {
-    zoom_ = std::clamp(value, .03, 4.0);
+    zoom_ = std::clamp(value, .03, 10.0);
     const auto size = imageSize();
     if (!size.isEmpty())
         setFixedSize(std::max(1, qRound(size.width() * zoom_)),
