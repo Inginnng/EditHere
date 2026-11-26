@@ -1,4 +1,6 @@
 *.sh text eol=lf
+packaging/linux/AppRun text eol=lf
+packaging/linux/edithere-cli text eol=lf
 *.yml text eol=lf
 # Native sources and their contract fixtures use the same bytes on every host.
 app/*.cpp text eol=lf

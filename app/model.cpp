@@ -364,13 +364,14 @@ QVector<const LayoutPiece *> visiblePieceOrder(const LayoutState &state) {
     // Match paintLayout: changed pieces cover the original background, including
     // components returned to their source after they were brought to the front.
     for (bool changed : {true, false})
-        for (auto it = state.pieces.crbegin(); it != state.pieces.crend(); ++it) {
-            const auto a = it->source, b = it->destination;
+        for (qsizetype index = state.pieces.size(); index > 0; --index) {
+            const auto &piece = state.pieces.at(index - 1);
+            const auto a = piece.source, b = piece.destination;
             const bool moved = std::abs(a.left() - b.left()) > 1e-7 || std::abs(a.top() - b.top()) > 1e-7 ||
                                std::abs(a.right() - b.right()) > 1e-7 ||
                                std::abs(a.bottom() - b.bottom()) > 1e-7;
             if (moved == changed)
-                order.append(&*it);
+                order.append(&piece);
         }
     return order;
 }
