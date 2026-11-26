@@ -34,8 +34,9 @@ connector/
 | 工具 | 对应 CLI 命令 | 说明 |
 | --- | --- | --- |
 | `edithere_status` | `status` | 查询 EditHere 运行与文档状态，不启动 GUI。响应中附带连接器版本与实际使用的 CLI 路径 |
+| `edithere_windows` | `windows` | 只读枚举桌面可见窗口（排除 EditHere 自身），用于精准指定窗口截屏或消歧 |
 | `edithere_open` | `open <path>` | 打开图片、视频或 `.edithere` 项目（含视频项目，仅请求受理） |
-| `edithere_capture` | `capture` | 唤起截图（仅请求受理） |
+| `edithere_capture` | `capture` | 无参唤起交互截图；指定 `source="screen"/"window"` 可后台抓拍 PNG；设 `annotate=true` 一步发起截屏标注会话（可用 `edithere_annotate_poll` 查询） |
 | `edithere_annotate_start` | `annotate` | 发起标注会话并**立即返回会话 ID**，不阻塞 |
 | `edithere_annotate_poll` | — | 查询会话；用户提交后返回反馈摘要 |
 | `edithere_annotate` | `annotate` | 发起标注会话并**阻塞等待**用户点击"完成并返回 AI" |
@@ -92,12 +93,12 @@ connector/
 
 然后在 WorkBuddy 的连接器管理页，通过自定义连接器入口"信任"并启用该 server，重新打开会话即可使用。免安装版或非默认位置可在配置中追加 `"env": {"EDITHERE_CLI": "D:\\Tools\\EditHere\\edithere-cli.exe"}`。
 
-更新时须替换宿主配置实际指向的 `mcp-server.mjs` 并重启连接器；MCP 初始化与 `edithere_status` 中的 `connector.version` 均应为 **0.2.1**。只升级桌面程序不会替换连接器源码。
+更新时须替换宿主配置实际指向的 `mcp-server.mjs` 并重启连接器；MCP 初始化与 `edithere_status` 中的 `connector.version` 均应为 **0.2.2**。只升级桌面程序不会替换连接器源码。
 
 ### 经 npm 安装（需要先发布对应版本）
 
 ```bash
-npx -y edithere-mcp@0.2.1
+npx -y edithere-mcp@0.2.2
 ```
 
 这也是 `mcp.json` 里给 WorkBuddy 市场的配置方式（`npx` 加 `-y` 以避免非交互环境下卡在确认提示）。
@@ -116,7 +117,7 @@ node connector/mcp-server.mjs
 
 [连接器规范](https://open.workbuddy.cn/docs/connector) 要求提交一个目录并打包后交审核，审核通过后进入连接器市场，更新通常在 10～15 分钟内同步。本目录已按规范组织，提交前需确认：
 
-- [ ] `edithere-mcp@0.2.1` 已发布到 npm（或修改 `mcp.json` 的 `args`）。**市场只读取 `mcp.json`，不会随包分发服务端代码**，所以 stdio 方案必须先把包发到 npm
+- [ ] `edithere-mcp@0.2.2` 已发布到 npm（或修改 `mcp.json` 的 `args`）。**市场只读取 `mcp.json`，不会随包分发服务端代码**，所以 stdio 方案必须先把包发到 npm
 - [ ] `connector-meta.json` 的 `source` 全局唯一（当前为 `edithere`）
 - [ ] `icon.svg` 在 64×64 小尺寸下可辨识
 - [ ] `mcp.json` 只配置一个 MCP Server，`npx` 参数带 `-y`
@@ -141,12 +142,13 @@ node connector/mcp-server.mjs
 
 ## 版本
 
+- 0.2.2：扩展 `edithere_capture` 单调用快路径（支持 `annotate`、`screen`/`window`/`windowId`、`pageContext` 与自动产出路径），新增只读窗口列表 `edithere_windows`，缩短 AI 截图决策链路。
 - 0.2.1：为回执中断恢复、失效会话恢复提供可核对的补丁版本，统一运行响应与分发元信息；图片反馈兼容 v4，视频仍使用 v1。
 - 0.2.0：新增 `edithere_annotate_start` / `edithere_annotate_poll` 非阻塞会话；CLI 缺失时附安装指引；补齐 WorkBuddy 连接器提交包（`connector-meta.json` / `mcp.json` / `icon.svg` / `skills`）。
 - 0.1.1：`EDITHERE_CLI` 失效时明确报错而非静默回退；必填参数前置校验；`edithere_status` 与失败信息回显实际使用的 CLI 路径与来源；`edithere_annotate` 说明并发限制。
 - 0.1.0：首次提供 `status` / `open` / `capture` / `annotate` / `export` 五个工具。
 
-连接器版本独立于 EditHere 程序版本（当前程序 0.13.7）；两者的版本号会同时出现在 `edithere_status` 响应中。
+连接器版本独立于 EditHere 程序版本（当前程序 0.14.3）；两者的版本号会同时出现在 `edithere_status` 响应中。
 
 ## 页面说明与采集上下文
 

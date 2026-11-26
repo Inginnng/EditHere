@@ -172,6 +172,21 @@ class WindowsCaptureFallbackTests final : public QObject {
         QVERIFY(!error.isEmpty());
         QCOMPARE(captureFallbackTest::gdiReads, 1);
     }
+    void scrollingCaptureFallsBackToGdiWhenHdrReadFails() {
+        const QRect region(nativeGeometry_.topLeft(), QSize(32, 16));
+        captureFallbackTest::gdiAvailable = true;
+        QVERIFY(h2d::beginScrollingCapture({}, region));
+        captureFallbackTest::frame = {};
+        QImage received;
+        QString error;
+        h2d::captureScrollRegion(region, [&](QImage image, QString problem) {
+            received = std::move(image);
+            error = std::move(problem);
+        });
+        QVERIFY(!received.isNull());
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(captureFallbackTest::gdiReads, 1);
+    }
 };
 
 QTEST_MAIN(WindowsCaptureFallbackTests)

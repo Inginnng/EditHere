@@ -1,0 +1,133 @@
+:root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.006em;
+  color: var(--ink);
+  background: var(--bg-shell);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+
+  /* 4-Tier Concentric Radius Scale (R_inner = R_outer - padding) */
+  --r-panel: 12px;
+  --r-card: 8px;
+  --r-control: 6px;
+  --r-micro: 4px;
+  --r-circle: 50%;
+
+  /* Typography & Ink */
+  --ink: #111318;
+  --secondary: #434752;
+  --muted: #6e7382;
+  --line: rgba(15, 23, 42, 0.075);
+  --line-strong: rgba(15, 23, 42, 0.14);
+  --fill: rgba(120, 120, 128, 0.10);
+  --fill-hover: rgba(120, 120, 128, 0.16);
+  --hover: rgba(120, 120, 128, 0.09);
+
+  /* 4-Level Architectural Luminance Hierarchy */
+  --bg-shell: #e6e9ef;
+  --stage: #f4f5f8;
+  --stage-bar: #eceef3;
+  --stage-dot: rgba(15, 23, 42, 0.065);
+  --surface: #ffffff;
+  --surface-subtle: #f7f8fb;
+  --surface-elevated: rgba(255, 255, 255, 0.86);
+  --glass: rgba(255, 255, 255, 0.84);
+  --glass-strong: rgba(255, 255, 255, 0.92);
+  --input-bg: #f5f6f8;
+  --border-panel: rgba(15, 23, 42, 0.095);
+  --border-float: rgba(15, 23, 42, 0.12);
+  --checker-a: #dcdfe6;
+  --checker-b: #f3f4f7;
+
+  /* Legacy aliases */
+  --canvas: var(--stage);
+  --sidebar: var(--bg-shell);
+
+  /* Accents & Status */
+  --accent: #007aff;
+  --accent-hover: #0066d6;
+  --accent-soft: rgba(0, 122, 255, 0.11);
+  --on-accent: #ffffff;
+
+  --explode: #5856d6;
+  --explode-soft: rgba(88, 86, 214, 0.12);
+
+  --success: #34c759;
+  --success-soft: rgba(52, 199, 89, 0.14);
+  --warning: #ff9500;
+  --warning-soft: rgba(255, 149, 0, 0.14);
+  --danger: #ff3b30;
+
+  /* Specular & Elevation Shadows */
+  --specular: inset 0 0.5px 0 rgba(255, 255, 255, 0.85);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-nav-active: 0 1px 2px rgba(15, 23, 42, 0.07), 0 0 0 0.5px rgba(15, 23, 42, 0.06);
+  --shadow-panel: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 0 0 0.5px rgba(15, 23, 42, 0.06);
+  --shadow-artboard: 0 14px 36px rgba(15, 23, 42, 0.10), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --shadow-float-sm: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-float: 0 10px 28px rgba(15, 23, 42, 0.11), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --shadow-dialog: 0 24px 64px rgba(15, 23, 42, 0.22);
+
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ink: #f4f6fa;
+  --secondary: #cfd5e0;
+  --muted: #8f96a6;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --fill: rgba(120, 120, 128, 0.22);
+  --fill-hover: rgba(120, 120, 128, 0.30);
+  --hover: rgba(120, 120, 128, 0.18);
+
+  --bg-shell: #0b0c0f;
+  --stage: #13151a;
+  --stage-bar: #101217;
+  --stage-dot: rgba(255, 255, 255, 0.06);
+  --surface: #1a1c23;
+  --surface-subtle: #14161c;
+  --surface-elevated: rgba(28, 30, 36, 0.86);
+  --glass: rgba(28, 30, 36, 0.84);
+  --glass-strong: rgba(32, 34, 40, 0.92);
+  --input-bg: #121317;
+  --border-panel: rgba(255, 255, 255, 0.095);
+  --border-float: rgba(255, 255, 255, 0.13);
+  --checker-a: #1a1c22;
+  --checker-b: #23262f;
+
+  --canvas: var(--stage);
+  --sidebar: var(--bg-shell);
+
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-soft: rgba(10, 132, 255, 0.18);
+  --on-accent: #ffffff;
+
+  --explode: #7d7aff;
+  --explode-soft: rgba(125, 122, 255, 0.20);
+
+  --success: #30d158;
+  --success-soft: rgba(48, 209, 88, 0.18);
+  --warning: #ff9f0a;
+  --warning-soft: rgba(255, 159, 10, 0.18);
+  --danger: #ff453a;
+
+  --specular: inset 0 0.5px 0 rgba(255, 255, 255, 0.09);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-nav-active: 0 1px 2px rgba(0, 0, 0, 0.38), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-artboard: 0 18px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-float-sm: 0 4px 12px rgba(0, 0, 0, 0.38);
+  --shadow-float: 0 14px 34px rgba(0, 0, 0, 0.52), 0 0 0 0.5px rgba(255, 255, 255, 0.09);
+  --shadow-dialog: 0 28px 72px rgba(0, 0, 0, 0.68);
+}

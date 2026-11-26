@@ -1,4 +1,4 @@
-# EditHere（改这里）使用许可
+# EditHere 使用许可
 
 EditHere 的原创软件代码与随附原创图标采用 **PolyForm Noncommercial License 1.0.0**，许可原文见 [LICENSE](LICENSE)。SPDX 标识为 `PolyForm-Noncommercial-1.0.0`。
 

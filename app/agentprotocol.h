@@ -17,7 +17,9 @@ AgentFrameState takeAgentMessage(QByteArray &buffer, QJsonObject &message, QStri
 QJsonObject agentError(const QString &code, const QString &message);
 int agentExitCode(const QJsonObject &response);
 QString validateNewFeedbackPath(const QString &path);
+QString validateNewCapturePath(const QString &path);
 // Publishes a fully written file without replacing any existing destination.
 void writeNewFeedback(const QString &path, const QByteArray &bytes);
+void writeNewCapturePng(const QString &path, const QByteArray &pngBytes);
 void writeNewFeedbackBundle(const QString &path, const FeedbackBundle &bundle);
 } // namespace h2d

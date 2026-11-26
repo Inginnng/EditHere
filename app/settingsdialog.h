@@ -26,6 +26,7 @@ class SettingsDialog final : public QDialog {
     void setGlobalShortcutNotice(const QString &notice);
     void setApplyHandler(std::function<QString(const AppSettings &)> handler);
     void setUpdatePreparationHandler(std::function<bool()> handler);
+    void setUpdateExitConfirmation(std::function<bool()> handler);
     void setUpdateSourceHandler(std::function<QString(const QString &)> handler) {
         updateSourceHandler_ = std::move(handler);
     }

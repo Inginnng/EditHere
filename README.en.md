@@ -26,7 +26,7 @@
   <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
-<p align="center">AtomGit mirror in China: <a href="https://atomgit.com/qq_30293075/EditHere">EditHere</a></p>
+<p align="center">AtomGit mirror in China: <a href="https://atomgit.com/Inginnng/EditHere">EditHere</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-en.gif" width="960" alt="EditHere with an AI agent: the agent opens a review, you mark up the dashboard, click Finish and return to AI, and the agent applies the changes">
@@ -175,7 +175,7 @@ Paste the matching prompt into an AI tool that can use your local terminal and f
 Desktop app:
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md to set up EditHere and the edithere skill for me.
 Reuse an existing installation or fully extracted ZIP package first; otherwise, install the appropriate version for my operating system.
 Verify that the CLI works and the skill is in a location recognized by my current AI tool, then explain how to start my first annotation session.
 Tell me when a system permission prompt requires my action.
@@ -184,7 +184,7 @@ Tell me when a system permission prompt requires my action.
 Web edition (MCP Apps or the browser-compatible entry point):
 
 ```text
-Follow https://github.com/Inginnng/EditHere/blob/codex/native/web/AI-SETUP.en.md to install EditHere Web Agent for me.
+Follow https://github.com/Inginnng/EditHere/blob/HEAD/web/AI-SETUP.en.md to install EditHere Web Agent for me.
 I will provide the web-agent ZIP location, or a local file plus its SHA-256: check for an existing install first, then extract the whole archive into a long-lived user directory.
 Prefer configuring the EditHere Web MCP for my current host, verify tool discovery and the embedded UI, and install the edithere-web skill.
 If the host does not support MCP Apps, explain the actual limitation and use the browser-compatible entry point instead.
@@ -206,10 +206,12 @@ See [AI and CLI · VS Code Remote SSH](docs/AGENT-CLI.en.md#vs-code-remote-ssh-r
 ## Download and install
 
 | Platform | Download | Notes |
+| --- | --- | --- |
 | **Windows x64 · Portable** | [ZIP archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-win-x64.zip) | Extract the whole archive and run `EditHere.exe`; keep the DLLs and plugin folders beside it. |
 | **macOS · Apple Silicon / Intel** | [Universal DMG](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-macos-universal.dmg) | Drag `EditHere.app` into Applications; grant Screen Recording before the first capture. |
 | **Linux x86_64 · Preview** | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | Make it executable and run it; targets Ubuntu 24.04. See the [Linux guide](docs/LINUX.en.md). |
 | **Web · No install** | [Web archive](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | Unzip and open `EditHere.html`, or host it on a static site; see the [web edition guide](web/README.en.md). |
+| **DeepSeek Harness** | [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip) | Image-set annotation service, CLI, and `edithere-dsh` skill. See the [DSH guide](dsh/README.md). |
 
 These links always point to the latest public release; check the [Releases](https://github.com/Inginnng/EditHere/releases) page and the package's `version.txt` for its version.
 <details>

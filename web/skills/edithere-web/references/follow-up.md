@@ -1,10 +1,10 @@
-# 兼容网页的交接与跟进
+# Browser Follow-Up & Handoff
 
-真实 MCP Apps 通过宿主消息桥请求返回对话，无需本指南中的调度。普通浏览器与 `agent.cjs` 兼容入口默认手动继续：打开批注后结束本轮，用户提交后回到对话说“继续”。CLI 没有宿主唤醒回调。
+True MCP Apps sessions notify the host via the UI message bridge without needing scheduled polling. Plain browser and `agent.cjs` compatibility sessions default to manual handoff: open the review URL, end your turn, and wait for the user to reply "continue".
 
-## 保存与读取原会话
+## 1. Persist & Read Session Records
 
-将实际 `sessionId/url/image/imageSource/node/cli/output/expiresAt/taskScope` 写入当前任务 `.edithere/sessions/<sessionId>.json`，同时登记：
+Save actual `sessionId`, `url`, `image`, `imageSource`, `node`, `cli`, `output`, `expiresAt`, and `taskScope` under `.edithere/sessions/<sessionId>.json`:
 
 ```json
 {
@@ -15,24 +15,18 @@
 }
 ```
 
-URL 含访问令牌，记录可保存在本机但不要完整打印或对外发布。读取记录中的路径作为参数，不拼接求值命令。
+URLs contain access tokens — store locally only, never print full URLs externally or construct shell-evaluated strings from paths.
 
-用户说“继续”时对原 ID `poll` 一次。已提交结果可以从持久记录和输出核验；服务进程停止不意味着结果丢失。pending 不进入循环等待；用户明确要求当场等待时可执行一次有界 `wait`，单次最多 55 秒。
+When the user says "continue", run `poll` once against the original `sessionId` (saved receipts remain readable on disk even if the background Node server exited). Never busy-poll pending sessions; only execute a single bounded `wait` (max 55s) if the user explicitly asks to wait inline.
 
-completed 时核对会话、输出、SHA 和反馈。记 `received`，清理已注册的关联任务；仅真正开始实施修改时记 `processing`。待澄清、读取批注或整理需求不算已经开始实施。成功后记 `handled`；失败保留实际变更、诊断与 SHA，记 `needs_review`。同 SHA 已 handled 不重做；processing / needs_review 先核对部分成果再恢复。
+On `completed`, verify `sessionId`, `output`, SHA-256, and payload; record `received` and clear any scheduled check. Mark `processing` **only when code edits actually begin** (reading feedback or asking clarifying questions does not count). Mark `handled` with SHA on completion, or `needs_review` on partial failure. Never re-run an already-`handled` SHA.
 
-## 用户明确选择定时跟进时
+## 2. Optional Scheduled Follow-Up (User Opt-In Only)
 
-默认不注册。只有用户为本次会话明确选择，且宿主提供实际调度工具时，才附着当前对话创建一次 heartbeat。调度可能在对话留下宿主消息，也有延迟；不能称为无痕或点击后立即唤醒。保存真实自动化 ID 与完整可更新配置，成功后才承诺跟进。
+Do not create heartbeats or cron tasks unless the user explicitly asks for timed follow-up and the host provides a real scheduler tool. Store the real job ID, query the same `sessionId` at most once per tick (no background sleep loops), stay quiet on `pending`, and clean up the job immediately on `completed`, `cancelled`, `expired`, or persistent error.
 
-优先复用本次已有任务；替换会话时清理旧调度，保留旧数据。每次触发对同一 sessionId 最多查询一次，不启动循环等待进程。pending 保持安静；completed 核验后清理任务并处理已授权工作；cancelled / expired 及持续查询失败清理任务并报告实际原因。已停止、已处理或存在需要核对的部分修改时，不自动恢复或重复实施。
+Never assume a tab was closed based on blur, hidden panel, tab switch, or a single read failure unless the host exposes a complete, exact tab inventory.
 
-只有可靠工具能取得完整相关标签清单并精确识别本次 tab 时，才可根据缺失判断它已关闭。失焦、面板隐藏、切换标签、一次读取失败和环境中的当前 URL 都不能证明关闭。没有可靠关闭检测时保持手动继续；若用户明确要求离开页面后仍定时跟进，说明它只能依靠提交、取消或到期停止。
+## 3. Stopping & Cleanup
 
-## 停止与清理
-
-用户明确关闭、取消或不再等待时，立即停止关联跟进，不要求重新打开页面按取消。通过宿主支持的删除操作清理原任务；仅支持暂停时保存完整配置并暂停，说明仍保留暂停条目。工具确认后记录 ID、回执、时间与原因。不能直接改宿主自动化文件，也不能用提示词或空回复代替删除。
-
-网页顶部“取消”会取消服务端会话；关闭标签本身没有可靠取消回执。停止跟进并不伪称已取消服务端。用户明确要求取消会话时再调用原 ID 的 `cancel`，调度清理不依赖它成功。保留原图、输出和记录；已有处理历史保留，待提交状态可记 `stopped`。
-
-用户主动停止任务后，不启动替代进程、任务或新会话来绕过停止。后来明确要求恢复时读取同一会话，默认仍手动继续。清理失败时报告真实错误与自动化 ID，不声称已停止。
+When the user asks to stop waiting or cancel, remove/pause the scheduled follow-up cleanly through the host's scheduler API without asking them to reopen the tab. Only call `cancel` on `agent.cjs` when the user asks to cancel the EditHere session itself. Never spawn replacement processes to bypass user cancellation.

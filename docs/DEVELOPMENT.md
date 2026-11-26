@@ -1,4 +1,4 @@
-# EditHere · 改这里：开发说明
+# EditHere：开发说明
 
 **简体中文** · [English](DEVELOPMENT.en.md)
 
@@ -14,14 +14,14 @@
 
 日常修复和小幅优化只增加末位补丁号，例如 `0.8.0 → 0.8.1 → 0.8.2`。中间位只在集中完成较大功能阶段、明确发布时增加；不再为每轮开发递增。第一位保留给明确的大版本发布，已有版本号和历史包保持不变。回退仅针对当次实现，不冻结后续版本；撤回的编号不复用。
 
-产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前版本为 **0.13.7**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
+产品版本唯一来源为 `CMakeLists.txt` 的 `project(... VERSION ...)`，当前版本为 **0.14.3**。运行时版本和 Mac 应用信息自动使用该值；成功链接后生成 `build/version.txt`（Mac 为 `build-macos/version.txt`），两平台打包脚本据此命名并随包附带 `version.txt`。修改版本后必须重新构建，避免将旧程序标记为新版本。产品版本与 JSON 格式独立管理：精简图片反馈的当前格式为 `feedback-minimal-4`，由 `feedback-minimal-v4.schema.json` 定义；兼容入口同时读取 v3、v2、无版本对象和旧并行数组；`feedback-minimal.schema.json` 是新旧兼容入口（`0.9.0` 起为 `objects` 对象结构，`0.8.21` 的 `annotations` / `changes` 并行数组见 `feedback-v0.7.schema.json`，仍可导入）；`feedback-v1` / `v1.1` / `v2` 描述早期**项目文档**格式，完整图片项目使用 `project-v3.schema.json`。视频反馈与项目分别使用 `video-feedback-v1.schema.json`（`video-feedback-1`）及 `video-project-v1.schema.json`（`video-project-1`）。文件名代表数据格式，不代表应用版本。
 
 ## 发布流程
 
 打 `vX.Y.Z` 标签并推送即触发 `.github/workflows/release.yml`：Windows、macOS 与 Linux 构建任务分别产出程序包，`build-web` 作业打包两种 Web 包，release 任务汇总后创建 GitHub Release。源码版本或本地包更新不等于公开最新版本已更新；GitHub 的 `/releases/latest` 依其正式 Release 元数据决定。应用内更新支持 GitHub、[AtomGit](https://atomgit.com/Inginnng/EditHere) 与 [Gitee](https://gitee.com/InnGing/EditHere)。自动模式按系统地区（非界面语言或 IP 定位）优先使用中国大陆的 AtomGit 或其他地区的 GitHub，再比较三处的正式版本号，同版本优先完整的安装包、SHA-256 和独立更新签名。手动模式仅检查指定来源；“关于与更新”中的选择立即保存，取消窗口不撤销来源选择，也不写入其他设置草稿。程序包、校验文件和签名必须属于同一来源和版本，切换来源先取消旧查询并清除旧结果。GitHub 发布工作流不会自动向其他站点发布，国内镜像的程序包仍需同步。
 
-- **发布必须带完整程序包**。release 任务在发布前检查 `EditHere-win-x64-setup.exe`、`EditHere-win-x64.zip`、`EditHere-macos-universal.dmg`、`EditHere-linux-x86_64.AppImage` 与两种 Web 包（`EditHere-web.zip`、`EditHere-web-agent.zip`）均存在且非空，任一缺失即令工作流失败；构建任务失败时不会产出只有源码的发布。Web 包由 `build-web` 作业调用 `python scripts/prepare-distribution.py --web-only --channel release` 生成；内嵌素材与随包法律文本的行尾由 `.gitattributes` 固定，各平台与 CI 重建出同样的 `web/EditHere.html` 与同样的两种 ZIP。发布前按下发给用户的字节复核两种 Web 包：`node scripts/web-package-check.cjs <ZIP 路径>`。
-- 资产名不含版本号（文档与更新检查使用 `/releases/latest/download/<固定名>`），随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`，Windows 安装器另附 `EditHere-win-x64-setup.exe.sig`；Web 包同样按无版本名发布为 `EditHere-web.zip` 与 `EditHere-web-agent.zip`。
+- **发布必须带完整程序包**。release 任务检查 Windows 安装器和免安装包、macOS DMG、Linux AppImage，以及 `EditHere-web.zip`、`EditHere-web-agent.zip` 和 `EditHere-dsh.zip` 均存在且非空。`build-web` 分别调用 `scripts/prepare-distribution.py --web-only` 与 `--dsh-only`，两者均使用 `--channel release`。内嵌素材与随包文本的行尾由 `.gitattributes` 固定。用 `node scripts/web-package-check.cjs <ZIP 路径>` 可复核两个 Web 包。
+- 资产名不含版本号，文档与更新检查使用 `/releases/latest/download/<固定名>`。随包附 `SHA256SUMS.txt` 与逐文件 `.sha256`，Windows 安装器另附 `EditHere-win-x64-setup.exe.sig`。
 - 包下载到 release 任务后所在目录由 `upload-artifact` 决定，不要预测：它只保留第一个通配符之前那段固定前缀之后的路径，`dist/linux-*/<文件>` 因此落在 `linux-<版本>/` 下而不是 `dist/linux-<版本>/`，Web 包落在 `web/<版本>-<短哈希>/` 下。release 任务按文件名在任意深度把原生包与 Web 包搬到归档根目录，改收集方式时不要退回"按目录搬"（REG-157）。
 - 发布说明优先取 `docs/releases/<版本>.md`（人工整理的面向用户说明）；该文件缺失时回落到 `CHANGELOG.md` 对应章节。整理说明时先写草稿交用户确认，再打标签。
 - 发布说明同时维护中英两份：`docs/releases/<版本>.md` 与 `docs/releases/<版本>.en.md`，由 release.yml 拼成「顶部语言切换 + 中文正文 + `## English` 英文正文」（发布页是单字段，没有语言切换；英文用真正的标题而不是折叠块，否则指向它的锚点点不开）。只写中文时 `check-packaging.py` 的检查会失败。
@@ -103,6 +103,8 @@ Linux 预览版的系统依赖、构建、AppImage 打包与 X11/Wayland 行为�
 0.13.0 桌面 API 功能通过 CMake FetchContent 获取并校验固定版本 QtKeychain 0.15.0，静态构建系统凭据库适配；首次配置需要网络，也可预先提供 FetchContent 源码缓存。Linux 需 `libsecret-1-dev`，运行时凭据服务由桌面会话提供。提供商来源、许可证和使用说明见 [API 预设](ai-providers.md)与[生成修改意见](AI-INSTRUCTIONS.md)。
 
 Windows PowerShell 7，CMake 在 PATH 中：
+
+先在 frontend 目录运行 npm ci 和 npm run build，再配置 CMake。打包前，将 Microsoft.Web.WebView2 1.0.3537.50 NuGet 包里的 x64 WebView2Loader.dll，以及对应的 LICENSE.txt、NOTICE.txt 复制到构建目录。许可证文件分别命名为 WebView2-LICENSE.txt 和 WebView2-NOTICE.txt。
 
 ```powershell
 ./scripts/build-windows.ps1 -QtRoot C:/Qt/6.8.3/mingw_64 -Compiler C:/Qt/Tools/mingw1310_64/bin/g++.exe -Ninja C:/Tools/ninja.exe

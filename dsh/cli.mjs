@@ -213,6 +213,18 @@ async function serve(opts) {
   print({service:SERVICE, url:'http://127.0.0.1:' + port + '/', dataDir:DATA_DIR});
   return new Promise(() => {});
 }
+// Copy the skill tree without fs.cpSync: on Windows, Node 22 fails silently
+// (empty destination, exit code 0) when the target path contains non-ASCII
+// characters, which is common for localized download folders.
+function copySkillTree(source, destination) {
+  fs.mkdirSync(destination, {recursive:true});
+  for (const entry of fs.readdirSync(source, {withFileTypes:true})) {
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) copySkillTree(from, to);
+    else fs.copyFileSync(from, to);
+  }
+}
 function installSkill(opts) {
   if (!fs.existsSync(path.join(SKILL, 'SKILL.md'))) throw new Error('The bundled edithere-dsh skill is missing.');
   let destination;
@@ -220,7 +232,7 @@ function installSkill(opts) {
   else if (opts.project) destination = path.join(process.cwd(), '.dsh', 'skills', 'edithere-dsh');
   else destination = path.join(DSH_HOME, 'skills', 'edithere-dsh');
   fs.mkdirSync(path.dirname(destination), {recursive:true});
-  fs.cpSync(SKILL, destination, {recursive:true, force:true});
+  copySkillTree(SKILL, destination);
   const local = [
     '# Local paths for edithere-dsh',
     '',

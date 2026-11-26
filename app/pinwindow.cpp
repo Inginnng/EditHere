@@ -430,13 +430,17 @@ QMenu *PinWindow::createContextMenu() {
     auto *menu = new QMenu(this);
     // 批注 is the reason the program exists, so it leads even here, where the picture
     // has already been taken off the screen.
-    menu->addAction(tr("批注"), this, [this] { emit annotateRequested(editableImage()); });
+    menu->addAction(glyph(QStringLiteral("edit"), accent()), tr("批注"), this,
+                    [this] { emit annotateRequested(editableImage()); });
     menu->addSeparator();
-    menu->addAction(tr("复制图像"), this, [this] { emit copyRequested(image_); });
-    menu->addAction(tr("保存图片"), this, [this] { emit saveRequested(image_); });
-    menu->addAction(tr("文字识别"), this, [this] { emit ocrRequested(image_); });
+    menu->addAction(glyph(QStringLiteral("image-copy")), tr("复制图像"), this,
+                    [this] { emit copyRequested(image_); });
+    menu->addAction(glyph(QStringLiteral("image-save")), tr("保存图片"), this,
+                    [this] { emit saveRequested(image_); });
+    menu->addAction(glyph(QStringLiteral("ocr")), tr("文字识别"), this,
+                    [this] { emit ocrRequested(image_); });
     menu->addSeparator();
-    auto *turn = menu->addMenu(tr("旋转"));
+    auto *turn = menu->addMenu(glyph(QStringLiteral("reset")), tr("旋转"));
     turn->addAction(tr("向左旋转 90°"), this, [this] { rotate(-1); });
     turn->addAction(tr("向右旋转 90°"), this, [this] { rotate(1); });
     // Turning the picture over is what a reference shot of a diagram needs, and a pin
@@ -451,7 +455,7 @@ QMenu *PinWindow::createContextMenu() {
         action->setChecked(qRound(transparency_ * 100) == percent);
         connect(action, &QAction::triggered, this, [this, percent] { setTransparency(percent / 100.0); });
     }
-    auto *shadow = menu->addAction(tr("阴影"));
+    auto *shadow = menu->addAction(glyph(QStringLiteral("shadow")), tr("阴影"));
     shadow->setCheckable(true);
     shadow->setChecked(style_.shadow);
     // A picture dropped on the screen out of nowhere has no shadow to turn off: only a
@@ -459,19 +463,19 @@ QMenu *PinWindow::createContextMenu() {
     shadow->setEnabled(canToggleShadow());
     connect(shadow, &QAction::triggered, this, [this](bool on) { setShadowEnabled(on); });
     menu->addSeparator();
-    auto *zoom = menu->addMenu(tr("缩放"));
-    zoom->addAction(tr("适应屏幕"), this, [this] { fitToScreen(); });
+    auto *zoom = menu->addMenu(glyph(QStringLiteral("magnifier")), tr("缩放"));
+    zoom->addAction(glyph(QStringLiteral("fit")), tr("适应屏幕"), this, [this] { fitToScreen(); });
     zoom->addAction(tr("原始大小"), this, [this] { setZoom(1.0); });
     if (!placement_.isEmpty()) {
         // Only offered when there is somewhere to go back to; a pin that was centred
         // has no original position to speak of.
-        menu->addAction(tr("回到截图位置"), this, [this] {
+        menu->addAction(glyph(QStringLiteral("reset")), tr("回到截图位置"), this, [this] {
             setZoom(placedZoom_);
             move(placement_.topLeft());
         });
     }
     menu->addSeparator();
-    menu->addAction(tr("关闭"), this, &QWidget::close);
+    menu->addAction(glyph(QStringLiteral("close")), tr("关闭"), this, &QWidget::close);
     return menu;
 }
 

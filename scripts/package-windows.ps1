@@ -38,10 +38,39 @@ if ($ValidationDirectory) { $ValidationDirectory = (Resolve-Path -LiteralPath (J
 foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTICE")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $notice))) { throw "Application license material is missing: $notice" }
 }
+$b2UiSource = Join-Path $buildPath "b2-ui"
+if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
+    $b2UiSource = Join-Path $projectRoot "frontend/dist"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $b2UiSource "index.html"))) {
+    throw "B2 frontend dist (b2-ui/index.html) is missing. Build frontend/dist or rebuild EditHere first."
+}
+$webViewLoader = Join-Path $buildPath "WebView2Loader.dll"
+if (-not (Test-Path -LiteralPath $webViewLoader -PathType Leaf)) {
+    throw "WebView2Loader.dll is missing. Copy the x64 loader from the Microsoft.Web.WebView2 SDK into the build directory."
+}
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $buildPath "EditHere.exe") -Destination $outputPath
 Copy-Item -LiteralPath $versionPath -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $buildPath "edithere-cli.exe") -Destination $outputPath
+Copy-Item -LiteralPath $webViewLoader -Destination $outputPath
+Copy-Item -LiteralPath $b2UiSource -Destination (Join-Path $outputPath "b2-ui") -Recurse
+$packagedCliDir = Join-Path $outputPath "cli"
+$packagedScriptsDir = Join-Path $outputPath "scripts"
+$packagedWebDir = Join-Path $outputPath "web"
+$packagedSharedDir = Join-Path $outputPath "shared"
+[IO.Directory]::CreateDirectory($packagedCliDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedScriptsDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedWebDir) | Out-Null
+[IO.Directory]::CreateDirectory($packagedSharedDir) | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot "shared/ai-hosts.json") -Destination $packagedSharedDir
+Get-ChildItem -LiteralPath (Join-Path $projectRoot "cli") -Filter "*.mjs" -File | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $packagedCliDir
+}
+foreach ($scriptFile in @("capture-web.mjs", "image-set.mjs")) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot "scripts/$scriptFile") -Destination $packagedScriptsDir
+}
+Copy-Item -LiteralPath (Join-Path $projectRoot "web/image-set.cjs") -Destination $packagedWebDir
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/integrate.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
@@ -93,8 +122,8 @@ try {
 }
 # A developer SDK on PATH can hide an incomplete video deployment. Require the
 # backend and each FFmpeg library beside the packaged executable before zipping.
-foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll")) {
-    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt runtime deployment is incomplete: $runtimeFile" }
+foreach ($runtimeFile in @("Qt6Svg.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "platforms/qwindows.dll", "multimedia/ffmpegmediaplugin.dll", "b2-ui/index.html", "WebView2Loader.dll", "cli/unified-mcp.mjs", "cli/edithere.mjs", "cli/version.mjs", "scripts/capture-web.mjs", "web/image-set.cjs", "shared/ai-hosts.json")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $outputPath $runtimeFile))) { throw "Qt or B2 runtime deployment is incomplete: $runtimeFile" }
 }
 $ffmpegLibraries = @()
 foreach ($component in @("avcodec", "avformat", "avutil", "swresample", "swscale")) {
@@ -125,6 +154,11 @@ $translationPath = Join-Path $outputPath "translations"
 Copy-Item -LiteralPath $qtTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_CN.qm")
 Copy-Item -LiteralPath $qtTraditionalTranslationSource -Destination (Join-Path $translationPath "qtbase_zh_TW.qm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/licenses") -Destination $outputPath -Recurse
+$webViewLicenses = Join-Path $outputPath "licenses/webview2"
+[IO.Directory]::CreateDirectory($webViewLicenses) | Out-Null
+foreach ($name in @("LICENSE", "NOTICE")) {
+    Copy-Item -LiteralPath (Join-Path $buildPath "WebView2-$name.txt") -Destination (Join-Path $webViewLicenses "$name.txt")
+}
 $iconLicensePath = Join-Path $outputPath "licenses/ui-icons"
 [IO.Directory]::CreateDirectory($iconLicensePath) | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot "assets/ui-icons/LICENSE") -Destination $iconLicensePath
@@ -141,10 +175,10 @@ foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTIC
     Copy-Item -LiteralPath (Join-Path $projectRoot $notice) -Destination $outputPath
 }
 $packagedGuide = Join-Path $outputPath "AGENT-CLI.md"
-$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/USER-GUIDE.md").Replace("AGENT-CLI.en.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/AGENT-CLI.en.md")
+$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/USER-GUIDE.md").Replace("AGENT-CLI.en.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/AGENT-CLI.en.md")
 [IO.File]::WriteAllText($packagedGuide, $guideText, [Text.UTF8Encoding]::new($false))
 $packagedVideoGuide = Join-Path $outputPath "VIDEO-ANNOTATION.md"
-$videoGuideText = [IO.File]::ReadAllText($packagedVideoGuide).Replace("../schema/", "schema/").Replace("VIDEO-ANNOTATION.en.md", "https://github.com/Inginnng/EditHere/blob/codex/native/docs/VIDEO-ANNOTATION.en.md")
+$videoGuideText = [IO.File]::ReadAllText($packagedVideoGuide).Replace("../schema/", "schema/").Replace("VIDEO-ANNOTATION.en.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/VIDEO-ANNOTATION.en.md")
 if ($ValidationDirectory) {
     $videoGuideText = $videoGuideText.Replace("../artifacts/video-acceptance/video-acceptance.json", "validation/video-acceptance.json").Replace("../artifacts/video-acceptance/connector-acceptance.json", "validation/connector-acceptance.json").Replace("../artifacts/video-independent-reader/report.md", "validation/independent-ai/report.md").Replace("../artifacts/video-independent-reader/result.json", "validation/independent-ai/result.json")
 }
@@ -162,10 +196,7 @@ $manifest = Get-ChildItem -LiteralPath $outputPath -Recurse -File | ForEach-Obje
     [PSCustomObject]@{ path = $relativePath; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputPath "manifest.json") -Encoding utf8
-# Zip the CONTENTS of the package folder (no top-level directory): the in-app
-# updater extracts this archive straight onto the app directory with
-# "tar -xf <zip> -C <appdir>", and a wrapped folder would land the new files in
-# a nested subdirectory instead of replacing the app.
+# Put the portable executable and manifest at the archive root.
 if (-not $SkipArchive) {
     Compress-Archive -Path (Join-Path $outputPath '*') -DestinationPath ($outputPath + ".zip") -CompressionLevel Optimal
 }

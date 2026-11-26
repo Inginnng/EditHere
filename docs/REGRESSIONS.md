@@ -1,4 +1,4 @@
-# EditHere · 改这里：问题归档与回归测试
+# EditHere：问题归档与回归测试
 
 [返回产品介绍](../README.md) · [开发说明](DEVELOPMENT.md) · [更新记录](../CHANGELOG.md)
 
@@ -14,6 +14,12 @@
 | 🆕 | 本次归档时新补的检查（见"新增检查清单"） |
 | ⚠️ | 只有部分覆盖，或测试在本机/CI 会被跳过，另有兜底手段 |
 | 📄 | 无法用自动化测试固化，只能靠流程与文档（本页已写明原因） |
+
+## Windows 工作台初始化崩溃（0.14.3）
+
+| 编号 | 问题与修复 | 回归检查 | 状态 |
+| --- | --- | --- | --- |
+| REG-248 | MinGW Release 构建将匿名命名空间中的 WebView2 COM 接口视为只有本地实现，优化后在环境初始化回调中跳到无效地址，导致截图入口启动的整个进程退出。接口声明改用外部链接，使调用通过 WebView2 的 COM 虚函数表分派 | `windows-capture-colors::webView2StartsAndReceivesPageMessages` 使用真实 WebView2 Runtime 和独立浏览器配置启动宿主，加载本地页面并检查 JS 消息。发布工作流另跑 `windows-capture-workbench`，用合成帧测试托盘入口、快捷键事件、框选、取消和再次截图，核对真实工作台通过 JS 桥返回的页面、PNG 尺寸和像素。无 Runtime 时跳过 | ⚠️ |
 
 ## macOS 长截图应用排除（0.13.5，#54）
 

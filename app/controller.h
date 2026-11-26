@@ -9,7 +9,9 @@
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
 #include <QTimer>
+#include <memory>
 namespace h2d {
+class B2Window;
 class OcrDialog;
 class PinWindow;
 class ScrollCapture;
@@ -21,6 +23,7 @@ class Controller final : public QObject {
   public:
     explicit Controller(QObject *parent = nullptr, const AppSettings &settings = loadSettings(),
                         const QString &settingsFile = {});
+    ~Controller() override;
     void start(bool demo, const QString &path = {}, bool background = false, bool firstUse = false);
     void showGuide();
     void capture();
@@ -43,6 +46,11 @@ class Controller final : public QObject {
     void trayActivated(QSystemTrayIcon::ActivationReason reason);
     void runTrayAction(const QString &id);
     void showCurrentWindow();
+    B2Window *ensureB2Window();
+    bool useB2Ui_ = false;
+    bool exitCheckInProgress_ = false;
+    bool updateExitConfirmed_ = false;
+    std::unique_ptr<B2Window> b2Window_;
     QTimer trayClickTimer_;
     bool trayActionRunning_ = false;
     void restoreAfterCapture();
@@ -58,8 +66,13 @@ class Controller final : public QObject {
     void clearOverlays();
     void cancelCapture();
     void raiseEditor();
+    bool hasAnyUnsavedChanges();
+    bool confirmUpdateExit();
+    bool canExitForUpdate(const QWidget *updateDialog = nullptr) const;
+    void exitForUpdate();
     void completeCapture(Overlay *source, QRect pixels, QVector<Candidate> candidates);
-    void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates);
+    void completeCapture(const ScreenFrame &frame, QRect pixels, QVector<Candidate> candidates,
+                         QImage picture = {});
     void updateTrayShortcut();
     void scheduleStartupUpdate();
     void startupUpdateFinished(const UpdateChecker::Result &result);
@@ -67,6 +80,7 @@ class Controller final : public QObject {
     void readInstallationReceipt();
     void presentInstallationReceipt();
     void openSettingsDialog(bool updates, bool toolbar, const UpdateChecker::Result *release = nullptr, bool ai = false);
+    QString applySettingsTransaction(const AppSettings &next, bool *shortcutsUnavailableOut = nullptr);
     // What the toolbar beside a finished region can do with it.
     void copyRegion(Overlay *source);
     void pinRegion(Overlay *source);
@@ -174,11 +188,15 @@ class Controller final : public QObject {
     QVector<Overlay *> overlays_;
     QString agentSessionId_, agentOutput_;
     FeedbackExportOptions agentExportOptions_;
+    bool agentCapturePending_ = false;
+    bool agentHasPageContext_ = false;
+    QString agentPageContext_;
     bool startupUpdateChecked_ = false;
     std::optional<UpdateChecker::Result> pendingStartupUpdate_;
     bool installationReceiptChecked_ = false;
     QJsonObject pendingInstallationReceipt_;
-    bool capturing_ = false, wasVisible_ = false;
+    bool capturing_ = false;
+    bool editorWasVisible_ = false, b2WasVisible_ = false;
     CaptureHistory history_;
     // Which earlier capture the capture windows are showing, or -1 for the screen.
     int historyIndex_ = -1;

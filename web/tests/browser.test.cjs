@@ -232,7 +232,7 @@ async function run() {
     await checkpoint('file:// opens with an offline context', async () => {
       await page.goto(pathToFileURL(bundle).href); await page.evaluate(()=>{const el=document.querySelector('#embed-image');el.checked=true;});
       await visible('#empty');
-      assert.equal(await page.title(), 'EditHere · 改这里');
+      assert.equal(await page.title(), 'EditHere');
       await page.screenshot({ path: path.join(output, '01-empty.png'), fullPage: true });
     });
     await checkpoint('demo loads at its original resolution', async () => {

@@ -1,9 +1,11 @@
 #include "controller.h"
 #include "autostart.h"
+#include "b2window.h"
 #include "overlay.h"
 #include "guide.h"
 #include "settingsdialog.h"
 #include "ui.h"
+#include "webview2host.h"
 #include <QApplication>
 #include <QDir>
 #include <QCheckBox>
@@ -12,6 +14,9 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QFile>
+#include <QEventLoop>
+#include <QFutureWatcherBase>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QSettings>
 #include <QFontDatabase>
@@ -19,7 +24,11 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QPainter>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -54,6 +63,22 @@ class StartupFlowTestAccess {
     static void receipt(Controller &controller) { controller.readInstallationReceipt(); }
     static void presentReceipt(Controller &controller) { controller.presentInstallationReceipt(); }
     static bool pendingReceipt(Controller &controller) { return !controller.pendingInstallationReceipt_.isEmpty(); }
+#ifdef Q_OS_WIN
+    static void useLegacyUi(Controller &controller) { controller.useB2Ui_ = false; }
+    static void captureFixture(Controller &controller, const ScreenFrame &frame, int &reads) {
+        controller.captureIo_.prepare = [](QObject *, std::function<void()> ready, bool) { ready(); };
+        controller.captureIo_.grab = [frame, &reads](CaptureCallback done) {
+            ++reads;
+            done({frame}, {});
+        };
+    }
+    static Overlay *overlay(const Controller &controller) { return controller.overlays_.value(0); }
+    static B2Window *workbench(const Controller &controller) { return controller.b2Window_.get(); }
+    static bool postHotkey(const GlobalShortcut &shortcut, WORD key) {
+        return PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, shortcut.shortcutId_,
+                                  MAKELPARAM(MOD_CONTROL | MOD_ALT | MOD_SHIFT, key));
+    }
+#endif
 };
 }
 
@@ -378,8 +403,9 @@ class StartupFlowTests : public QObject {
         const auto before=overlay.grab().toImage();
         QTest::qWait(320);
         const auto after=overlay.grab().toImage();
-        QVERIFY(after.pixelColor(227,250).lightness()<100);
-        QVERIFY(before.pixelColor(227,250).lightness()<100);
+        const QPoint probe = (QPointF(227, 250) * after.devicePixelRatio()).toPoint();
+        QVERIFY(before.pixelColor(probe).lightness() > 205);
+        QVERIFY(after.pixelColor(probe).lightness() > 205);
         QTest::mousePress(&overlay,Qt::LeftButton,Qt::NoModifier,QPoint(200,200));
         QMouseEvent drag(QEvent::MouseMove,QPointF(300,300),QPointF(300,300),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
         QApplication::sendEvent(&overlay,&drag);
@@ -404,6 +430,67 @@ class StartupFlowTests : public QObject {
         QTest::keyClick(&overlay,Qt::Key_Return);
         QCOMPARE(accepted.count(),1);
         QCOMPARE(accepted.first().first().toRect(),QRect(100,100,200,200));
+    }
+    void hybridWindowCapturePrefersRealOsWindow() {
+        QImage shot(800, 600, QImage::Format_RGB32);
+        shot.fill(QColor(220, 224, 232));
+        {
+            QPainter p(&shot);
+            // Draw App A window with header + inner visual panels that detectBlocks() will segment.
+            p.fillRect(QRect(80, 60, 520, 420), QColor(248, 249, 251));
+            p.fillRect(QRect(80, 60, 520, 44), QColor(36, 41, 52));
+            p.fillRect(QRect(110, 140, 210, 120), QColor(210, 225, 248));
+            p.fillRect(QRect(340, 140, 220, 260), QColor(232, 236, 242));
+        }
+        auto winTarget = manualTarget();
+        winTarget["source"] = "window";
+        winTarget["windowId"] = "42";
+
+        ScreenFrame frame;
+        frame.image = shot;
+        frame.logicalGeometry = QRect(0, 0, 800, 600);
+        frame.nativeGeometry = QRect(0, 0, 800, 600);
+        frame.nativePixels = true;
+        frame.windowScopeAvailable = true;
+        frame.elementProbingAllowed = false;
+        frame.frontWindows = {{QRect(80, 60, 520, 420), winTarget}};
+        frame.captureWindows = {{QRect(80, 60, 520, 420), QStringLiteral("App A"), QStringLiteral("appA.exe")}};
+
+        Overlay overlay(frame);
+        overlay.show();
+        overlay.setFixedSize(800, 600);
+        QTRY_VERIFY_WITH_TIMEOUT(overlay.findChildren<QFutureWatcherBase *>().isEmpty(), 5000);
+
+        // Hovering App A's titlebar or flat background selects the whole App A OS window.
+        QTest::mouseMove(&overlay, QPoint(200, 80));
+        QTest::qWait(40);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+
+        QTest::mouseMove(&overlay, QPoint(200, 420));
+        QTest::qWait(40);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+
+        // Hovering an inner pixel-bordered card inside App A detects that visual block.
+        QTest::mouseMove(&overlay, QPoint(215, 200));
+        QTest::qWait(40);
+        QVERIFY(overlay.hovered().has_value());
+        const QRect innerBounds = overlay.hovered()->bounds;
+        QVERIFY(innerBounds != QRect(80, 60, 520, 420));
+        QVERIFY(QRect(80, 60, 520, 420).contains(innerBounds));
+        QVERIFY(innerBounds.contains(QPoint(215, 200)));
+
+        // Pressing Tab toggles cleanly up to the whole window, and again back down to the visual block.
+        QTest::keyClick(&overlay, Qt::Key_Tab);
+        QTest::qWait(30);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, QRect(80, 60, 520, 420));
+        QTest::keyClick(&overlay, Qt::Key_Tab);
+        QTest::qWait(30);
+        QVERIFY(overlay.hovered().has_value());
+        QCOMPARE(overlay.hovered()->bounds, innerBounds);
+        overlay.hide();
     }
     void magnifierToggleDefaultsOn() {
         Editor editor;
@@ -878,6 +965,129 @@ class StartupFlowTests : public QObject {
         QVERIFY(controller.handleAgentRequest({{"command", "status"}}).value("capturing").toBool());
         QVERIFY(!editor->isVisible());
     }
+    void windowsCaptureHandsSelectionToLiveWorkbench() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != "windows" || !WebView2Host::runtimeAvailable())
+            QSKIP("Requires the native Windows platform and WebView2 Runtime");
+
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const char profileSetting[] = "WEBVIEW2_USER_DATA_FOLDER";
+        const auto originalProfile = qgetenv(profileSetting);
+        QVERIFY(qputenv(profileSetting, fixture.filePath("profile").toLocal8Bit()));
+        const auto restoreProfile = qScopeGuard([&] {
+            if (originalProfile.isNull()) qunsetenv(profileSetting);
+            else qputenv(profileSetting, originalProfile);
+        });
+
+        class HideTestWindows final : public QObject {
+            bool eventFilter(QObject *object, QEvent *event) override {
+                if (event->type() == QEvent::Polish || event->type() == QEvent::Show) {
+                    auto *widget = qobject_cast<QWidget *>(object);
+                    if (widget && widget->isWindow()) widget->setAttribute(Qt::WA_DontShowOnScreen);
+                }
+                return false;
+            }
+        } hideTestWindows;
+        qApp->installEventFilter(&hideTestWindows);
+
+        auto settings = quietSettings();
+        settings.shortcuts["capture"] = QKeySequence("Ctrl+Alt+Shift+F16", QKeySequence::PortableText);
+        settings.autoSyncSkills = false;
+        int reads = 0;
+        Controller controller(nullptr, settings, fixture.filePath("settings.ini"));
+        const auto *shortcut = controller.findChild<GlobalShortcut *>("captureShortcut");
+        auto *editor = editorOf(controller);
+        QVERIFY(shortcut && editor);
+        auto *trayCapture = editor->findChild<QAction *>("trayCapture");
+        QVERIFY(trayCapture);
+
+        ScreenFrame frame;
+        frame.image = QImage(640, 480, QImage::Format_RGB32);
+        frame.image.fill(QColor("#184b76"));
+        frame.image.setPixelColor(47, 41, QColor("#ffc35f"));
+        frame.logicalGeometry = frame.nativeGeometry = frame.image.rect();
+        frame.nativePixels = true;
+        StartupFlowTestAccess::captureFixture(controller, frame, reads);
+
+        trayCapture->trigger();
+        auto *overlay = StartupFlowTestAccess::overlay(controller);
+        QVERIFY(overlay && overlay->testAttribute(Qt::WA_DontShowOnScreen));
+        trayCapture->trigger();
+        QCOMPARE(reads, 1);
+        QTest::keyClick(overlay, Qt::Key_Escape);
+        QVERIFY(!StartupFlowTestAccess::overlay(controller));
+        QVERIFY(!StartupFlowTestAccess::workbench(controller));
+
+        QVERIFY(StartupFlowTestAccess::postHotkey(*shortcut, VK_F16));
+        QTRY_COMPARE_WITH_TIMEOUT(reads, 2, 2000);
+        overlay = StartupFlowTestAccess::overlay(controller);
+        QVERIFY(overlay);
+        const QPoint start(32, 32), end(190, 146);
+        QTest::mousePress(overlay, Qt::LeftButton, Qt::NoModifier, start);
+        QMouseEvent drag(QEvent::MouseMove, end, overlay->mapToGlobal(end), Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(overlay, &drag);
+        QTest::mouseRelease(overlay, Qt::LeftButton, Qt::NoModifier, end);
+        const QRect selection = overlay->selection();
+        QCOMPARE(selection, dragRect(start, end, frame.image.size()));
+        QVERIFY(!StartupFlowTestAccess::workbench(controller));
+        QTest::keyClick(overlay, Qt::Key_Return);
+
+        auto *workbench = StartupFlowTestAccess::workbench(controller);
+        QVERIFY(workbench && workbench->testAttribute(Qt::WA_DontShowOnScreen));
+        QVERIFY(workbench->hasDocument());
+        QVERIFY(!StartupFlowTestAccess::overlay(controller));
+        auto *host = workbench->findChild<WebView2Host *>();
+        QVERIFY(host);
+        QJsonObject page;
+        QEventLoop loop;
+        connect(host, &WebView2Host::failed, &loop, &QEventLoop::quit);
+        connect(host, &WebView2Host::messageReceived, &loop, [&](const QJsonObject &message) {
+            const auto method = message.value("method").toString();
+            if (method == "ai.getState") {
+                host->postJsonMessage({{"type", "event"}, {"event", "workspace.requestSnapshot"},
+                                       {"data", QJsonObject{{"request", "capture-flow"}}}});
+            } else if (method == "workspace.snapshot") {
+                const auto params = message.value("params").toObject();
+                if (params.value("request").toString() == "capture-flow") {
+                    const auto pages = params.value("payload").toObject().value("pages").toArray();
+                    if (pages.size() == 1) page = pages.first().toObject();
+                    loop.quit();
+                }
+            }
+        });
+        QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+        loop.exec();
+        QVERIFY2(!page.isEmpty(), "The workbench did not return the captured page through its JS bridge");
+        QCOMPARE(page.value("width").toInt(), selection.width());
+        QCOMPARE(page.value("height").toInt(), selection.height());
+
+        const QUrl imageUrl(page.value("imageUrl").toString());
+        QCOMPARE(imageUrl.host(), QStringLiteral("127.0.0.1"));
+        QNetworkAccessManager network;
+        auto *reply = network.get(QNetworkRequest(imageUrl));
+        QEventLoop download;
+        connect(reply, &QNetworkReply::finished, &download, &QEventLoop::quit);
+        QTimer::singleShot(3000, &download, &QEventLoop::quit);
+        if (!reply->isFinished()) download.exec();
+        QVERIFY(reply->isFinished());
+        QCOMPARE(reply->error(), QNetworkReply::NoError);
+        auto painted = QImage::fromData(reply->readAll(), "PNG");
+        QCOMPARE(painted.size(), selection.size());
+        QCOMPARE(painted.pixelColor(QPoint(47, 41) - selection.topLeft()), QColor("#ffc35f"));
+
+        trayCapture->trigger();
+        overlay = StartupFlowTestAccess::overlay(controller);
+        QVERIFY(overlay);
+        QTest::keyClick(overlay, Qt::Key_Escape);
+        QCOMPARE(reads, 3);
+        QVERIFY(!StartupFlowTestAccess::overlay(controller));
+        QVERIFY(workbench->isVisible() && workbench->hasDocument());
+#else
+        QSKIP("Requires the native Windows platform and WebView2 Runtime");
+#endif
+    }
     void annotationShortcutRespectsDiscardDecision_data() {
         QTest::addColumn<bool>("discard");
         QTest::addColumn<bool>("viaTray");
@@ -1024,8 +1234,6 @@ class StartupFlowTests : public QObject {
 #ifdef Q_OS_WIN
         QString startupError;
         const bool hasLoginItem = launchAtLoginEnabled(&startupError);
-        if (saveChanges && (!startupError.isEmpty() || hasLoginItem))
-            QSKIP("Settings save integration requires no existing login item to preserve the user's registration.");
         QTemporaryDir directory;
         const auto settingsFile = directory.filePath("settings.ini");
         const QKeySequence originalCapture("Ctrl+Alt+Shift+F17", QKeySequence::PortableText);
@@ -1034,10 +1242,12 @@ class StartupFlowTests : public QObject {
         const QKeySequence replacement("Ctrl+Alt+Shift+F20", QKeySequence::PortableText);
         auto settings = quietSettings();
         settings.language = LanguageMode::SimplifiedChinese;
+        settings.launchAtLogin = startupError.isEmpty() && hasLoginItem;
         settings.shortcuts["capture"] = originalCapture;
         settings.shortcuts["annotate"] = originalAnnotate;
         QVERIFY(saveSettings(settings, nullptr, settingsFile));
         Controller controller(nullptr, settings, settingsFile);
+        StartupFlowTestAccess::useLegacyUi(controller);
         auto editor = editorOf(controller);
         auto capture = controller.findChild<GlobalShortcut *>("captureShortcut");
         auto annotate = controller.findChild<GlobalShortcut *>("annotateShortcut");
@@ -1045,19 +1255,10 @@ class StartupFlowTests : public QObject {
         QVERIFY(editor && capture && annotate && trayAction);
         QCOMPARE(capture->sequence(), originalCapture);
         QCOMPARE(annotate->sequence(), originalAnnotate);
-        auto press = [](WORD key) {
-            const WORD keys[] = {VK_CONTROL, VK_MENU, VK_SHIFT, key};
-            INPUT inputs[8]{};
-            for (int index = 0; index < 4; ++index) {
-                inputs[index].type = INPUT_KEYBOARD;
-                inputs[index].ki.wVk = keys[index];
-                inputs[index + 4].type = INPUT_KEYBOARD;
-                inputs[index + 4].ki.wVk = keys[3 - index];
-                inputs[index + 4].ki.dwFlags = KEYEVENTF_KEYUP;
-            }
-            return SendInput(8, inputs, sizeof(INPUT));
-        };
-        QCOMPARE(press(VK_F18), UINT(8));
+        // Check the OS registration and deliver its native message without relying on keyboard focus.
+        GlobalShortcut verifier;
+        QVERIFY(!verifier.start(originalAnnotate));
+        QVERIFY(StartupFlowTestAccess::postHotkey(*annotate, VK_F18));
         QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible(), 1500);
         QVERIFY(!editor->hasDocument());
 
@@ -1129,7 +1330,8 @@ class StartupFlowTests : public QObject {
         picture.fill(Qt::blue);
         editor->setDocument(fromImage(picture, "file", "注册恢复后打开空窗口"));
         editor->hide();
-        QCOMPARE(press(VK_F17), UINT(8));
+        QVERIFY(!verifier.start(originalCapture));
+        QVERIFY(StartupFlowTestAccess::postHotkey(*annotate, VK_F17));
         QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible() && !editor->hasDocument(), 1500);
 
         editBindings(originalAnnotate, {}, true);

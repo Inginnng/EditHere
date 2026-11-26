@@ -2,7 +2,7 @@
   <img src="assets/icons/edithere-256.png" width="104" alt="EditHere 图标">
 </p>
 <h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/edithere-wordmark-light.svg"><img src="assets/brand/edithere-wordmark.svg" width="360" alt="EditHere"></picture></h1>
-<p align="center"><b>改这里 —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
+<p align="center"><b>EditHere —— 把修改意见直接标在画面上，让 AI 照着改。</b></p>
 <p align="center">面向 Vibe Coding 与视觉创作的本地优先反馈工作台。<br>圈出问题、拖动布局、多页评审，把「改哪里、怎么改」交给 AI。<br><sub>网页前端 · 桌面软件 · 游戏 HUD · AI 生图 · 视频与动画</sub></p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
-<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/qq_30293075/EditHere">AtomGit</a></p>
+<p align="center">代码托管：<a href="https://github.com/Inginnng/EditHere">GitHub</a> · <a href="https://gitee.com/InnGing/EditHere">Gitee</a> · <a href="https://atomgit.com/Inginnng/EditHere">AtomGit</a></p>
 
 <p align="center">
   <img src="assets/readme/hero-zh.gif" width="960" alt="AI 发起标注，用户在 EditHere 中圈出位置并写下意见，完成后 AI 读取反馈继续修改">
@@ -62,7 +62,7 @@ AI 已经生成了能运行的界面，细节却还差一点：按钮的位置�
 **先配置一次。** 将下面这段话复制给能操作本机终端与文件的 AI 工具：
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 和当前 AI 工具的 edithere skill。
 优先复用本机已有程序；没有时再安装。完成后验证 CLI 能运行、skill 能被发现，并告诉我如何开始标注。
 ```
 
@@ -243,6 +243,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 | Linux x86_64 · 预览 | [AppImage](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-linux-x86_64.AppImage) | 赋予执行权限后运行，目标环境 Ubuntu 24.04 |
 | 离线 Web | [Web ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web.zip) | 解压后双击 `EditHere.html`，无需安装桌面程序 |
 | Web Agent | [Web Agent ZIP](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-web-agent.zip) | 用于 MCP Apps 与本机浏览器会话，见[安装指南](web/AI-SETUP.md) |
+| DeepSeek Harness | [EditHere-dsh.zip](https://github.com/Inginnng/EditHere/releases/latest/download/EditHere-dsh.zip) | 含组图批注服务、CLI 和 `edithere-dsh` Skill，见 [DSH 安装说明](dsh/README.md) |
 
 以上为最新正式版下载入口，版本与资产以 [Releases](https://github.com/Inginnng/EditHere/releases/latest) 和包内 `version.txt` 为准；校验文件见 [SHA256SUMS.txt](https://github.com/Inginnng/EditHere/releases/latest/download/SHA256SUMS.txt)。
 
@@ -267,7 +268,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **希望免安装使用桌面版时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.md 帮我配置 EditHere 免安装版和 edithere skill。
 优先复用已有解压目录；需要时下载官方完整 ZIP。使用 CLI 的绝对路径，不运行安装器，不修改 PATH 或开机启动。
 完成后验证 CLI 与当前 AI 工具的技能配置。
 ```
@@ -275,7 +276,7 @@ macOS 的全局快捷键为 `Option + Shift + 2` 和 `Option + Shift + 1`。快�
 **使用 Web Agent 时：**
 
 ```text
-请按 https://github.com/Inginnng/EditHere/blob/codex/native/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
+请按 https://github.com/Inginnng/EditHere/blob/HEAD/web/AI-SETUP.md 帮我配置 EditHere Web Agent。
 先检查已有安装，需要时下载官方 Web Agent ZIP、核对 SHA-256，并完整解压到长期保留的目录。
 配置当前宿主的 Web MCP 和 edithere-web skill，验证实际工具发现与内嵌界面。
 宿主不支持 MCP Apps 时使用普通浏览器兼容入口，保留现有 MCP 与技能配置。

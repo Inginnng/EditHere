@@ -18,7 +18,8 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPalette>
+#include <QPainterPath>
+#include <QPointer>
 #include <QRegion>
 #include <QPushButton>
 #include <QScreen>
@@ -29,18 +30,195 @@
 #include <QSpinBox>
 #include <QStyle>
 #include <QVBoxLayout>
+#include <QWindow>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace h2d {
 namespace {
-// The two panels and the bar are all drawn by hand rather than by the style of the
-// day, so that a light theme cannot turn the controls into dark shapes on a dark
-// face. The colours are written down once here.
-const QColor kFace(28, 30, 36, 240);
-const QColor kEdge(255, 255, 255, 40);
-const QColor kInk(0xe8, 0xe9, 0xee);
-const QColor kGlyph(0xd4, 0xd5, 0xdd);
+constexpr int captureButtonSize = 32;
+constexpr int captureBarHeight = 44;
+
+struct ChromeApplyGuard {
+    QWidget *w;
+    bool entered;
+    explicit ChromeApplyGuard(QWidget *widget)
+        : w(widget), entered(widget != nullptr && !widget->property("_applyingChrome").toBool()) {
+        if (entered)
+            w->setProperty("_applyingChrome", true);
+    }
+    ~ChromeApplyGuard() {
+        if (entered && w != nullptr)
+            w->setProperty("_applyingChrome", false);
+    }
+};
+
+QString rgbaCss(const QColor &c) {
+    return QStringLiteral("rgba(%1, %2, %3, %4)")
+        .arg(c.red())
+        .arg(c.green())
+        .arg(c.blue())
+        .arg(c.alpha());
+}
+
+void styleCaptureToolButton(QPushButton *button, const QString &glyphName) {
+    const auto tokens = captureChromeTokens();
+    button->setProperty("glyphName", glyphName);
+    button->setProperty("captureChrome", true);
+    button->setProperty("tool", true);
+    QColor tint = tokens.glyph;
+    if (glyphName == QLatin1String("scroll-stop"))
+        tint = tokens.danger;
+    else if (button->property("primary").toBool())
+        tint = Qt::white;
+    else if (button->property("active").toBool() || button->isChecked())
+        tint = tokens.accent;
+    button->setProperty("glyphColor", tint);
+    button->setIcon(glyph(glyphName, tint));
+    button->setIconSize(QSize(18, 18));
+    button->setFixedSize(captureButtonSize, captureButtonSize);
+    button->setCursor(Qt::PointingHandCursor);
+}
+
+QString captureControlsStyle(const CaptureChromeTokens &t) {
+    return QStringLiteral(R"(
+QPushButton[captureChrome="true"] { background: transparent; border: 1px solid transparent;
+    border-radius: %1px; padding: 0; min-width: %2px; max-width: %2px; min-height: %2px; max-height: %2px; }
+QPushButton[captureChrome="true"]:hover { background: %3; }
+QPushButton[captureChrome="true"]:pressed { background: %4; }
+QPushButton[captureChrome="true"]:checked, QPushButton[captureChrome="true"][active="true"] { background: %5; }
+QPushButton[captureChrome="true"]:disabled { background: transparent; color: %6; }
+QPushButton[captureChrome="true"][primary="true"] { background: %7; }
+QPushButton[captureChrome="true"][primary="true"]:hover { background: %8; }
+QPushButton[captureChrome="true"][primary="true"]:pressed { background: %7; }
+QPushButton[captureChrome="true"][primary="true"]:disabled { background: %5; }
+)")
+        .arg(CaptureChromeTokens::cardRadius).arg(captureButtonSize - 2)
+        .arg(rgbaCss(t.hoverBg), rgbaCss(t.pressedBg), rgbaCss(t.activeBg),
+             t.textMuted.name(), t.accent.name(), t.accentHover.name());
+}
+
+QString captureBarStyle(const CaptureChromeTokens &t) {
+    return captureControlsStyle(t) + QStringLiteral(R"(
+QLabel[captureReadout="true"], QPushButton[captureReadout="true"] { color: %1; font-size: 12px; }
+QPushButton[captureReadout="true"], QPushButton[captureChoice="true"] {
+    background: transparent; border: 1px solid transparent; border-radius: %2px;
+    padding: 0 6px; min-width: 0; min-height: 26px; max-height: 26px; }
+QPushButton[captureReadout="true"]:hover, QPushButton[captureChoice="true"] { background: %3; color: %4; }
+QPushButton[captureChoice="true"] { padding: 0 22px 0 8px; font-size: 12px; }
+QPushButton[captureChoice="true"]:hover, QPushButton[captureReadout="true"]:pressed { background: %5; }
+QPushButton[captureReadout="true"]:disabled, QPushButton[captureChoice="true"]:disabled { color: %6; }
+QPushButton[captureChoice="true"]::menu-indicator { subcontrol-origin: border;
+    subcontrol-position: center right; right: 8px; width: 9px; height: 9px; }
+QLabel#captureBusyStatus { color: %1; font-size: 12px; padding: 0 4px; }
+QFrame#toolbarSeparator { background: %7; border: none; }
+)")
+        .arg(t.textSecondary.name()).arg(CaptureChromeTokens::controlRadius)
+        .arg(rgbaCss(t.hoverBg), t.text.name(), rgbaCss(t.pressedBg), t.textMuted.name(), rgbaCss(t.divider));
+}
+
+QFrame *captureSeparator(QWidget *parent) {
+    auto *separator = new QFrame(parent);
+    separator->setObjectName(QStringLiteral("toolbarSeparator"));
+    separator->setFixedSize(1, 16);
+    return separator;
+}
+
+QPoint captureBarPosition(const QRect &selection, const QRect &bounds, QSize size) {
+    constexpr int gap = 6;
+    const int x = std::clamp(selection.right() + 1 - size.width(), bounds.left(),
+                             std::max(bounds.left(), bounds.right() + 1 - size.width()));
+    const int below = selection.bottom() + 1 + gap;
+    const int above = selection.top() - size.height() - gap;
+    const int y = below + size.height() <= bounds.bottom() + 1 ? below : above;
+    return {x, std::clamp(y, bounds.top(), std::max(bounds.top(), bounds.bottom() + 1 - size.height()))};
+}
+
+class ToolbarGrip final : public QWidget {
+  public:
+    explicit ToolbarGrip(bool childBarMode, std::function<void(QPoint)> onMoved = {}, QWidget *parent = nullptr)
+        : QWidget(parent), childBarMode_(childBarMode), onMoved_(std::move(onMoved)) {
+        setObjectName(childBarMode ? QStringLiteral("captureDragBar") : QStringLiteral("scrollDragBar"));
+        setCursor(Qt::OpenHandCursor);
+        setFocusPolicy(Qt::NoFocus);
+        setFixedSize(18, captureButtonSize);
+        icon_ = new QLabel(this);
+        icon_->setProperty("glyphName", QStringLiteral("scroll-grip"));
+        icon_->setAlignment(Qt::AlignCenter);
+        icon_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        auto *box = new QHBoxLayout(this);
+        box->setContentsMargins(0, 0, 0, 0);
+        box->addWidget(icon_);
+        refreshTheme();
+    }
+    void refreshTheme() {
+        icon_->setPixmap(glyph(QStringLiteral("scroll-grip"), captureChromeTokens().textMuted).pixmap(16, 16));
+    }
+
+  protected:
+    void mousePressEvent(QMouseEvent *event) override {
+        if (event->button() != Qt::LeftButton) {
+            QWidget::mousePressEvent(event);
+            return;
+        }
+        if (childBarMode_) {
+            if (QWidget *bar = parentWidget()) {
+                dragging_ = true;
+                offset_ = event->globalPosition().toPoint() - bar->pos();
+                setCursor(Qt::ClosedHandCursor);
+                event->accept();
+                return;
+            }
+        } else {
+            if (auto *handle = window()->windowHandle(); handle && handle->startSystemMove()) {
+                dragging_ = false;
+                event->accept();
+                return;
+            }
+            dragging_ = true;
+            offset_ = event->globalPosition().toPoint() - window()->pos();
+            setCursor(Qt::ClosedHandCursor);
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+    void mouseMoveEvent(QMouseEvent *event) override {
+        if (!dragging_) {
+            QWidget::mouseMoveEvent(event);
+            return;
+        }
+        if (childBarMode_) {
+            if (onMoved_) {
+                onMoved_(event->globalPosition().toPoint() - offset_);
+                event->accept();
+                return;
+            }
+        } else {
+            window()->move(event->globalPosition().toPoint() - offset_);
+            event->accept();
+            return;
+        }
+        QWidget::mouseMoveEvent(event);
+    }
+    void mouseReleaseEvent(QMouseEvent *event) override {
+        if (dragging_) {
+            dragging_ = false;
+            setCursor(Qt::OpenHandCursor);
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
+  private:
+    bool childBarMode_ = true;
+    bool dragging_ = false;
+    QPoint offset_;
+    QLabel *icon_ = nullptr;
+    std::function<void(QPoint)> onMoved_;
+};
 
 class RoundedCropPopup final : public QWidget {
   public:
@@ -48,39 +226,49 @@ class RoundedCropPopup final : public QWidget {
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_AlwaysShowToolTips);
+        applyTheme();
+    }
+    void applyTheme() {
+        ChromeApplyGuard guard(this);
+        if (!guard.entered)
+            return;
+        const auto t = captureChromeTokens();
+        setStyleSheet(captureControlsStyle(t) + QStringLiteral(
+            "QWidget#scrollCropMenu QCheckBox { color: %1; font-size: 13px; spacing: 6px; }"
+            "QWidget#scrollCropMenu QCheckBox::indicator { width: 16px; height: 16px; }"
+            "QWidget#scrollCropMenu QFrame#toolbarSeparator { background: %2; border: none; }")
+            .arg(t.text.name(), rgbaCss(t.divider)));
+        update();
     }
   protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor(isDarkTheme() ? "#41434d" : "#dddde5"), 1));
-        painter.setBrush(palette().color(QPalette::Window));
-        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+        paintFloatingPanel(painter, rect());
+    }
+    void changeEvent(QEvent *event) override {
+        if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+            applyTheme();
+        QWidget::changeEvent(event);
     }
 };
 
-void setScrollGlyph(QPushButton *button, const QString &name) {
-    button->setProperty("glyphName", name);
-    button->setProperty("tool", true);
-    button->setIcon(glyph(name, button->objectName() == "scrollStop"
-        ? QColor(isDarkTheme() ? "#ff8991" : "#bd252f") : QColor()));
-    button->setIconSize(QSize(20, 20));
-    button->setCursor(Qt::PointingHandCursor);
-}
-
 QString panelStyleSheet() {
+    const auto t = captureChromeTokens();
     return QStringLiteral(R"(
-QWidget { color: #e8e9ee; }
-QPushButton { background: transparent; border: none; }
-QPushButton[tab="true"] { padding: 5px 12px; border-radius: 7px; }
-QPushButton[tab="true"]:hover { background: rgba(255, 255, 255, 0.12); }
-QPushButton[tab="true"][chosen="true"] { background: rgba(255, 255, 255, 0.20); }
-QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 0.18); border-radius: 2px; }
-QSlider::sub-page:horizontal { background: #d4d5dd; border-radius: 2px; }
-QSlider::handle:horizontal { width: 12px; height: 12px; margin: -5px 0; border-radius: 6px;
-    background: #f2f2f5; }
-QCheckBox { color: #c9cbd4; }
-)");
+QWidget#captureStylePanel { color: %1; }
+QWidget#captureStylePanel QLabel { color: %1; }
+QWidget#captureStylePanel QPushButton { background: transparent; border: 1px solid transparent; color: %2; }
+QWidget#captureStylePanel QPushButton[tab="true"] { padding: 5px 12px; border-radius: 8px; }
+QWidget#captureStylePanel QPushButton[tab="true"]:hover { background: %3; color: %1; }
+QWidget#captureStylePanel QPushButton[tab="true"][chosen="true"] { background: %4; color: %5; font-weight: 600; }
+QWidget#captureStylePanel QSlider::groove:horizontal { height: 4px; background: %6; border-radius: 2px; }
+QWidget#captureStylePanel QSlider::sub-page:horizontal { background: %5; border-radius: 2px; }
+QWidget#captureStylePanel QSlider::handle:horizontal { width: 14px; height: 14px; margin: -5px 0; border-radius: 7px;
+    background: #ffffff; border: 1px solid %7; }
+QWidget#captureStylePanel QCheckBox { color: %2; spacing: 7px; }
+)")
+        .arg(t.text.name(), t.textSecondary.name(), rgbaCss(t.hoverBg),
+             rgbaCss(t.activeBg), t.accent.name(), rgbaCss(t.divider), rgbaCss(t.panelBorder));
 }
 } // namespace
 
@@ -88,12 +276,15 @@ QCheckBox { color: #c9cbd4; }
 
 StylePanel::StylePanel(Mode mode, QWidget *parent)
     : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint), mode_(mode) {
+    setObjectName(QStringLiteral("captureStylePanel"));
     setAttribute(Qt::WA_TranslucentBackground, true);
-    setStyleSheet(panelStyleSheet());
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 10, 12, 12);
     layout->setSpacing(8);
     caption_ = new QLabel(this);
+    QFont captionFont = caption_->font();
+    captionFont.setWeight(QFont::DemiBold);
+    caption_->setFont(captionFont);
     layout->addWidget(caption_);
     if (mode_ == Mode::Shadow) {
         auto *tabs = new QHBoxLayout;
@@ -130,8 +321,17 @@ StylePanel::StylePanel(Mode mode, QWidget *parent)
     });
     setTab(0);
     setFixedWidth(232);
+    applyChromeTheme();
     retranslate();
     syncFromStyle();
+}
+
+void StylePanel::applyChromeTheme() {
+    ChromeApplyGuard guard(this);
+    if (!guard.entered)
+        return;
+    setStyleSheet(panelStyleSheet());
+    update();
 }
 
 void StylePanel::retranslate() {
@@ -151,8 +351,13 @@ void StylePanel::retranslate() {
 }
 
 void StylePanel::refresh() {
-    setStyleSheet(panelStyleSheet());
-    update();
+    applyChromeTheme();
+}
+
+void StylePanel::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyChromeTheme();
+    QWidget::changeEvent(event);
 }
 
 void StylePanel::setTab(int tab) {
@@ -241,102 +446,117 @@ void StylePanel::popupBeside(const QWidget *anchor, const QRect &bounds) {
 
 void StylePanel::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(kEdge, 1));
-    painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+    paintFloatingPanel(painter, rect());
 }
 
 // ------------------------------------------------------------- CaptureToolbar
 
 CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("captureToolbar"));
-    // The face of the bar is drawn by hand, so the controls on it are told to stay out
-    // of the way and the light glyphs stay readable whatever the application theme is.
-    // 批注 is why the program exists, so it gets the one coloured shape on an otherwise
-    // monochrome bar: a blue rounded rectangle around it, which is how a capture tool
-    // marks the thing it is for.
-    const QColor mark = accent();
-    setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; }"
-                                 "QPushButton[tool=\"true\"]:hover { background: rgba(255, 255, 255, 0.14);"
-                                 " border-radius: 8px; }"
-                                 "QPushButton[primary=\"true\"] { background: rgba(%1, %2, %3, 0.30);"
-                                 " border: 1px solid rgba(%1, %2, %3, 0.95); border-radius: 8px; }"
-                                 "QPushButton[primary=\"true\"]:hover { background: rgba(%1, %2, %3, 0.46); }"
-                                 "QPushButton:disabled { color: rgba(232, 233, 238, 0.4); }"
-                                 "QLabel { color: #e8e9ee; }")
-                      .arg(mark.red())
-                      .arg(mark.green())
-                      .arg(mark.blue()));
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 6, 8, 6);
-    layout->setSpacing(4);
-    size_ = new QPushButton(this);
-    size_->setProperty("flat", true);
+    setAttribute(Qt::WA_AlwaysShowToolTips);
+    setFixedHeight(captureBarHeight);
+    dockLayout_ = new QVBoxLayout(this);
+    dockLayout_->setContentsMargins(8, 5, 8, 5);
+    dockLayout_->setSpacing(4);
+    actions_ = new QHBoxLayout;
+    actions_->setContentsMargins(0, 0, 0, 0);
+    actions_->setSpacing(4);
+    dockLayout_->addLayout(actions_);
+    dragBar_ = new ToolbarGrip(true, [this](QPoint position) {
+        userMoved_ = true;
+        moveWithinBounds(position);
+        emit moved();
+    }, this);
+    actions_->addWidget(dragBar_);
+    readout_ = new QWidget(this);
+    auto *readoutLayout = new QHBoxLayout(readout_);
+    readoutLayout->setContentsMargins(0, 0, 0, 0);
+    readoutLayout->setSpacing(4);
+    size_ = new QPushButton(readout_);
+    size_->setObjectName(QStringLiteral("captureSize"));
+    size_->setProperty("captureReadout", true);
+    size_->setFixedHeight(28);
     size_->setCursor(Qt::PointingHandCursor);
-    size_->setStyleSheet(QStringLiteral("QPushButton { color: #c9cbd4; padding: 0 6px; }"));
-    layout->addWidget(size_);
-    ratio_ = new QPushButton(this);
-    ratio_->setProperty("flat", true);
+    readoutLayout->addWidget(size_);
+    ratio_ = new QPushButton(readout_);
+    ratio_->setObjectName(QStringLiteral("captureRatio"));
+    ratio_->setProperty("captureChoice", true);
+    ratio_->setFixedHeight(28);
     ratio_->setCursor(Qt::PointingHandCursor);
-    ratio_->setStyleSheet(QStringLiteral("QPushButton { color: #c9cbd4; padding: 0 6px; }"));
-    layout->addWidget(ratio_);
-    auto *divider = new QFrame(this);
-    divider->setFrameShape(QFrame::VLine);
-    divider->setStyleSheet(QStringLiteral("color: rgba(255, 255, 255, 0.16);"));
-    divider->setFixedHeight(20);
-    layout->addWidget(divider);
+    ratio_->setMenu(new QMenu(ratio_));
+    readoutLayout->addWidget(ratio_);
+    actions_->addWidget(readout_);
+    actions_->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
     status_ = new QLabel(this);
     status_->setObjectName(QStringLiteral("captureBusyStatus"));
-    layout->addWidget(status_);
+    actions_->addWidget(status_);
     status_->hide();
-    // The order is the order they are reached in: what the capture is for, then what
-    // can be read out of it, then the two that end the session.
-    (void)addButton(QStringLiteral("edit"), tr("批注"));
+    brush_ = addButton(QStringLiteral("brush"), tr("画笔（B）"));
+    mosaic_ = addButton(QStringLiteral("mosaic"), tr("马赛克（M）"));
+    for (auto *tool : {brush_, mosaic_})
+        tool->setCheckable(true);
+    markupSettings_ = addButton(QStringLiteral("layout-settings"), tr("绘制设置"));
+    undoMarkup_ = addButton(QStringLiteral("undo"), tr("撤销绘制（Ctrl+Z）"));
+    actions_->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
     (void)addButton(QStringLiteral("ocr"), tr("文字识别"));
     (void)addButton(QStringLiteral("scroll"), tr("长截图"));
+    actions_->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
+    (void)addButton(QStringLiteral("edit"), tr("批注"));
     (void)addButton(QStringLiteral("pin"), tr("贴图"));
     (void)addButton(QStringLiteral("image-save"), tr("保存图片"));
     (void)addButton(QStringLiteral("image-copy"), tr("复制图像"));
     more_ = new QPushButton(this);
-    more_->setIcon(glyph(QStringLiteral("more"), kGlyph));
-    more_->setIconSize({20, 20});
-    more_->setProperty("tool", true);
-    more_->setFixedSize(34, 34);
-    more_->setCursor(Qt::PointingHandCursor);
-    layout->addWidget(more_);
-    auto *close = new QPushButton(this);
-    close->setObjectName(QStringLiteral("captureClose"));
-    close->setIcon(glyph(QStringLiteral("close"), kGlyph));
-    close->setIconSize({20, 20});
-    close->setProperty("tool", true);
-    close->setFixedSize(34, 34);
-    close->setCursor(Qt::PointingHandCursor);
-    connect(close, &QPushButton::clicked, this, &CaptureToolbar::dismiss);
-    layout->addWidget(close);
+    more_->setObjectName(QStringLiteral("captureMore"));
+    styleCaptureToolButton(more_, QStringLiteral("more"));
+    actions_->addWidget(more_);
+    actions_->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
+    close_ = new QPushButton(this);
+    close_->setObjectName(QStringLiteral("captureClose"));
+    styleCaptureToolButton(close_, QStringLiteral("close"));
+    connect(close_, &QPushButton::clicked, this, &CaptureToolbar::dismiss);
+    actions_->addWidget(close_);
     connect(size_, &QPushButton::clicked, this, &CaptureToolbar::chooseSize);
-    connect(ratio_, &QPushButton::clicked, this, &CaptureToolbar::showMenu);
     connect(more_, &QPushButton::clicked, this, &CaptureToolbar::showMenu);
+    applyChromeTheme();
     retranslate();
+    updateActionAvailability();
+}
+
+void CaptureToolbar::applyChromeTheme() {
+    ChromeApplyGuard guard(this);
+    if (!guard.entered)
+        return;
+    setStyleSheet(captureBarStyle(captureChromeTokens()));
+    if (auto *grip = static_cast<ToolbarGrip *>(dragBar_))
+        grip->refreshTheme();
+    updateActionIcons();
+    adjustSize();
+    update();
+}
+
+void CaptureToolbar::updateActionIcons() {
+    for (auto *button : buttons_)
+        styleCaptureToolButton(button, button->property("glyphName").toString());
+    if (more_)
+        styleCaptureToolButton(more_, QStringLiteral("more"));
+    if (close_)
+        styleCaptureToolButton(close_, QStringLiteral("close"));
+}
+
+void CaptureToolbar::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyChromeTheme();
+    QWidget::changeEvent(event);
 }
 
 QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &label) {
-    // The bar keeps its own dark face whatever the application theme is, so the glyphs
-    // are built in a light colour instead of following the theme.
     auto *button = new QPushButton(this);
-    button->setProperty("glyphName", glyphName);
-    button->setProperty("glyphColor", kGlyph);
-    button->setIcon(glyph(glyphName, kGlyph));
-    button->setIconSize({20, 20});
+    const bool isPrimary = glyphName == QLatin1String("edit");
+    if (isPrimary)
+        button->setProperty("primary", true);
+    styleCaptureToolButton(button, glyphName);
     button->setToolTip(label);
     button->setAccessibleName(label);
-    button->setProperty("tool", true);
-    // The one action that is the point of the whole program is wrapped in a coloured
-    // rectangle rather than left as one glyph among seven.
-    if (glyphName == QLatin1String("edit"))
-        button->setProperty("primary", true);
-    button->setFixedSize(34, 34);
-    button->setCursor(Qt::PointingHandCursor);
     connect(button, &QPushButton::clicked, this, [this, glyphName] {
         if (glyphName == QLatin1String("image-copy"))
             copy();
@@ -350,8 +570,16 @@ QPushButton *CaptureToolbar::addButton(const QString &glyphName, const QString &
             annotate();
         else if (glyphName == QLatin1String("scroll"))
             scroll();
+        else if (glyphName == QLatin1String("brush"))
+            setMarkupTool(brush_->isChecked() ? CaptureMarkupTool::Brush : CaptureMarkupTool::None);
+        else if (glyphName == QLatin1String("mosaic"))
+            setMarkupTool(mosaic_->isChecked() ? CaptureMarkupTool::Mosaic : CaptureMarkupTool::None);
+        else if (glyphName == QLatin1String("layout-settings"))
+            showMarkupOptions();
+        else if (glyphName == QLatin1String("undo"))
+            emit undoMarkupRequested();
     });
-    layout()->addWidget(button);
+    actions_->addWidget(button);
     buttons_.append(button);
     return button;
 }
@@ -374,22 +602,37 @@ void CaptureToolbar::retranslate() {
             label = tr("批注");
         else if (name == QLatin1String("scroll"))
             label = tr("长截图");
+        else if (name == QLatin1String("brush"))
+            label = tr("画笔（B）");
+        else if (name == QLatin1String("mosaic"))
+            label = tr("马赛克（M）");
+        else if (name == QLatin1String("layout-settings"))
+            label = tr("绘制设置");
+        else if (name == QLatin1String("undo"))
+            label = tr("撤销绘制（Ctrl+Z）");
         if (!label.isEmpty()) {
             button->setToolTip(label);
             button->setAccessibleName(label);
         }
     }
+    if (dragBar_)
+        dragBar_->setToolTip(tr("拖动工具栏"));
     more_->setToolTip(tr("更多选项"));
     more_->setAccessibleName(tr("更多选项"));
-    if (auto *close = findChild<QPushButton *>(QStringLiteral("captureClose"))) {
-        close->setToolTip(tr("取消截图（Esc）"));
-        close->setAccessibleName(close->toolTip());
+    if (close_) {
+        close_->setToolTip(tr("取消截图（Esc）"));
+        close_->setAccessibleName(close_->toolTip());
     }
     size_->setToolTip(tr("点击输入精确尺寸"));
     ratio_->setToolTip(tr("点击选择固定比例"));
+    ratio_->setAccessibleName(tr("固定比例"));
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
+    ratio_->setFixedWidth(ratio_->fontMetrics().horizontalAdvance(ratio_->text()) + 34);
+    ratio_->menu()->clear();
+    populateRatioMenu(ratio_->menu());
     if (!message_.isEmpty())
         status_->setText(message_);
+    updateActionAvailability();
     adjustSize();
 }
 
@@ -398,6 +641,7 @@ void CaptureToolbar::setSelectionSize(QSize size) {
     // that adding the corner afterwards does not have to be told twice.
     size_->setProperty("pixels", size);
     size_->setText(tr("%1 × %2 px").arg(size.width()).arg(size.height()));
+    size_->setFixedWidth(size_->fontMetrics().horizontalAdvance(size_->text()) + 14);
     adjustSize();
 }
 
@@ -410,6 +654,7 @@ void CaptureToolbar::setSelectionOrigin(QPoint origin) {
                        .arg(origin.y())
                        .arg(pixels.width())
                        .arg(pixels.height()));
+    size_->setFixedWidth(size_->fontMetrics().horizontalAdvance(size_->text()) + 14);
     adjustSize();
 }
 
@@ -432,8 +677,11 @@ void CaptureToolbar::setHistoryIndex(int index) {
 void CaptureToolbar::showMenu() {
     if (busy_)
         return;
-    buildMenu();
-    more_->menu()->exec(more_->mapToGlobal(QPoint(0, more_->height())));
+    QPointer<QMenu> menu = new QMenu(more_);
+    buildMenu(menu);
+    menu->exec(more_->mapToGlobal(QPoint(0, more_->height())));
+    if (menu)
+        menu->deleteLater();
 }
 
 void CaptureToolbar::setBusy(bool busy, const QString &message) {
@@ -441,9 +689,7 @@ void CaptureToolbar::setBusy(bool busy, const QString &message) {
     message_ = message;
     status_->setText(message);
     status_->setVisible(!message.isEmpty());
-    for (auto *button : buttons_)
-        button->setEnabled(!busy && (button->property("glyphName").toString() != QLatin1String("scroll") ||
-                                    scrollAvailable_));
+    updateActionAvailability();
     more_->setEnabled(!busy);
     size_->setEnabled(!busy);
     ratio_->setEnabled(!busy);
@@ -453,34 +699,81 @@ void CaptureToolbar::setBusy(bool busy, const QString &message) {
 
 void CaptureToolbar::setScrollAvailable(bool available) {
     scrollAvailable_ = available;
-    for (auto *button : buttons_)
-        if (button->property("glyphName").toString() == QLatin1String("scroll"))
-            button->setEnabled(available && !busy_);
+    updateActionAvailability();
 }
 
-void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
-    adjustSize();
-    const int gap = 10;
-    // Above the selection, because what is under it is what the user just decided to
-    // keep; below only when the screen has no room left up there.
-    int y = selection.top() - gap - height();
-    if (y < bounds.top())
-        y = selection.bottom() + gap;
-    int x = selection.left();
-    // Near either edge of the screen the bar is pulled back inside rather than left
-    // half off it.
-    x = std::clamp(x, bounds.left() + gap, std::max(bounds.left() + gap, bounds.right() - width() - gap));
-    y = std::clamp(y, bounds.top() + gap, std::max(bounds.top() + gap, bounds.bottom() - height() - gap));
+void CaptureToolbar::setMarkupTool(CaptureMarkupTool tool) {
+    if (markupTool_ == tool)
+        return;
+    markupTool_ = tool;
+    brush_->setChecked(tool == CaptureMarkupTool::Brush);
+    mosaic_->setChecked(tool == CaptureMarkupTool::Mosaic);
+    updateActionIcons();
+    updateActionAvailability();
+    emit markupToolChanged();
+}
+
+void CaptureToolbar::setHasMarkup(bool hasMarkup) {
+    if (hasMarkup_ == hasMarkup)
+        return;
+    hasMarkup_ = hasMarkup;
+    updateActionAvailability();
+}
+
+void CaptureToolbar::updateActionAvailability() {
+    for (auto *button : buttons_) {
+        const auto name = button->property("glyphName").toString();
+        if (name == QLatin1String("scroll")) {
+            button->setEnabled(!busy_ && scrollAvailable_ && !hasMarkup_);
+            button->setToolTip(hasMarkup_ ? tr("撤销绘制后可开始长截图") : tr("长截图"));
+        } else if (button == undoMarkup_) {
+            button->setEnabled(!busy_ && hasMarkup_);
+        } else if (button == markupSettings_) {
+            button->setEnabled(!busy_ && markupTool_ != CaptureMarkupTool::None);
+        } else {
+            button->setEnabled(!busy_);
+        }
+    }
+}
+
+void CaptureToolbar::moveWithinBounds(QPoint position) {
+    const int x = std::clamp(position.x(), toolBounds_.left(),
+                            std::max(toolBounds_.left(), toolBounds_.right() + 1 - width()));
+    const int y = std::clamp(position.y(), toolBounds_.top(),
+                            std::max(toolBounds_.top(), toolBounds_.bottom() + 1 - height()));
     move(x, y);
     raise();
 }
 
+void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
+    toolBounds_ = bounds.adjusted(8, 0, -8, -8);
+    readout_->setFixedWidth(size_->width() + ratio_->width() + readout_->layout()->spacing());
+    actions_->invalidate();
+    const auto margins = dockLayout_->contentsMargins();
+    const int restoredReadout = readoutAbove_ ? readout_->width() + actions_->spacing() : 0;
+    const int inlineWidth = actions_->sizeHint().width() + restoredReadout + margins.left() + margins.right();
+    const bool needsSecondRow = inlineWidth > toolBounds_.width();
+    if (readoutAbove_ != needsSecondRow) {
+        readoutAbove_ = needsSecondRow;
+        if (readoutAbove_) {
+            actions_->removeWidget(readout_);
+            dockLayout_->insertWidget(0, readout_, 0, Qt::AlignRight);
+        } else {
+            dockLayout_->removeWidget(readout_);
+            actions_->insertWidget(1, readout_);
+        }
+        setFixedHeight(readoutAbove_ ? captureBarHeight + 32 : captureBarHeight);
+    }
+    dockLayout_->invalidate();
+    const QSize naturalSize = dockLayout_->sizeHint().expandedTo(dockLayout_->minimumSize());
+    resize(naturalSize.width(), height());
+    dockLayout_->activate();
+    moveWithinBounds(userMoved_ ? pos() : captureBarPosition(selection, toolBounds_, size()));
+}
+
 void CaptureToolbar::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(kEdge, 1));
-    painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+    paintFloatingPanel(painter, rect());
 }
 
 void CaptureToolbar::copy() {
@@ -514,7 +807,7 @@ void CaptureToolbar::dismiss() {
 }
 
 void CaptureToolbar::scroll() {
-    if (!busy_ && scrollAvailable_)
+    if (!busy_ && scrollAvailable_ && !hasMarkup_)
         emit scrollRequested();
 }
 
@@ -531,15 +824,39 @@ ScrollCaptureRegion::ScrollCaptureRegion(QWidget *parent)
     handle->setObjectName(QStringLiteral("scrollRegionHandle"));
     handle->setAttribute(Qt::WA_ShowWithoutActivating);
     handle->setAttribute(Qt::WA_AlwaysShowToolTips);
+    handle->setAttribute(Qt::WA_TranslucentBackground);
     handle->setFocusPolicy(Qt::NoFocus);
-    handle->setFixedSize(25, 30);
-    setScrollGlyph(handle, QStringLiteral("scroll-move-vertical"));
+    styleCaptureToolButton(handle, QStringLiteral("scroll-move-vertical"));
     handle->setCursor(Qt::SizeVerCursor);
     handle->installEventFilter(this);
     handle_ = handle;
+    applyChromeTheme();
 }
 
 ScrollCaptureRegion::~ScrollCaptureRegion() = default;
+
+void ScrollCaptureRegion::applyChromeTheme() {
+    ChromeApplyGuard guard(this);
+    if (!guard.entered)
+        return;
+    const auto t = captureChromeTokens();
+    if (handle_) {
+        const QColor handleBg = anchored_ ? t.stage : t.panelBg;
+        handle_->setStyleSheet(captureControlsStyle(t) + QStringLiteral(
+            "QPushButton#scrollRegionHandle { background: %1; border-color: %2; }"
+            "QPushButton#scrollRegionHandle:hover { background: %3; }"
+            "QPushButton#scrollRegionHandle:pressed { background: %4; }"
+            "QPushButton#scrollRegionHandle:disabled { background: %1; }")
+            .arg(rgbaCss(handleBg), rgbaCss(t.panelBorder), rgbaCss(t.hoverBg), rgbaCss(t.pressedBg)));
+    }
+    update();
+}
+
+void ScrollCaptureRegion::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyChromeTheme();
+    QWidget::changeEvent(event);
+}
 
 void ScrollCaptureRegion::setSelection(const QRect &selection, const QRect &bounds) {
     bounds_ = bounds;
@@ -563,7 +880,7 @@ void ScrollCaptureRegion::updateMask() {
 void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
     running_ = running;
     axis_ = axis;
-    setScrollGlyph(static_cast<QPushButton *>(handle_),
+    styleCaptureToolButton(static_cast<QPushButton *>(handle_),
         !running ? QStringLiteral("move") : axis == Qt::Vertical
             ? QStringLiteral("scroll-move-vertical") : QStringLiteral("scroll-move-horizontal"));
     if (windowFlags().testFlag(Qt::WindowTransparentForInput) != running) {
@@ -579,7 +896,7 @@ void ScrollCaptureRegion::setState(bool running, Qt::Orientation axis) {
     }
     handle_->setCursor(running ? (axis == Qt::Vertical ? Qt::SizeVerCursor : Qt::SizeHorCursor)
                                : Qt::SizeAllCursor);
-    handle_->setToolTip(running ? tr("拖动沿截图方向移动选区，保留已截取内容并继续追加") : tr("拖动移动选区；拖动蓝框边缘调整大小"));
+    handle_->setToolTip(running ? tr("拖动沿方向微调选区") : tr("拖动移动选区 · 拖边缘调整大小"));
     handle_->setAccessibleName(handle_->toolTip());
     update();
 }
@@ -602,24 +919,23 @@ void ScrollCaptureRegion::placeHandle() {
 }
 
 void ScrollCaptureRegion::setHandlePosition(QPoint global) {
+    const bool newlyAnchored = !anchored_;
     handleAnchor_ = global;
     anchored_ = true;
     handle_->move(global);
+    if (newlyAnchored)
+        applyChromeTheme();
     if (handle_->isVisible()) configureNativeWindow(handle_, true);
 }
 
 void ScrollCaptureRegion::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.setPen(QPen(QColor(running_ ? "#ffffff" : "#3489ff"), 1.5));
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(accent(), 1.5));
     painter.setBrush(Qt::NoBrush);
     painter.drawRect(QRectF(rect()).adjusted(1, 1, -1, -1));
-    if (!running_) {
-        painter.setBrush(Qt::white);
-        for (const QPointF point : {QPointF(3, 3), QPointF(width() / 2.0, 3), QPointF(width() - 3, 3),
-                QPointF(3, height() / 2.0), QPointF(width() - 3, height() / 2.0),
-                QPointF(3, height() - 3), QPointF(width() / 2.0, height() - 3), QPointF(width() - 3, height() - 3)})
-            painter.drawRect(QRectF(point - QPointF(2, 2), QSizeF(4, 4)));
-    }
+    if (!running_)
+        paintCaptureHandles(painter, QRectF(rect()).adjusted(4, 4, -4, -4));
 }
 
 void ScrollCaptureRegion::showEvent(QShowEvent *) {
@@ -733,7 +1049,7 @@ void ScrollCaptureShade::setSelection(const QRect &selection, const QRect &scree
 
 void ScrollCaptureShade::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.fillRect(rect(), QColor(0, 0, 0, 105));
+    painter.fillRect(rect(), captureChromeTokens().scrim);
     painter.setCompositionMode(QPainter::CompositionMode_Clear);
     painter.fillRect(selection_, Qt::transparent);
 }
@@ -841,7 +1157,12 @@ void ScrollCapturePreview::beginCrop(bool end) {
 
 void ScrollCapturePreview::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.fillRect(rect(), palette().color(QPalette::Base));
+    const auto t = captureChromeTokens();
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(rect()), t.controlRadius, t.controlRadius);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setClipPath(clip);
+    painter.fillRect(rect(), t.stage);
     const auto area = imageRect();
     if (area.isEmpty() || pixmap().isNull()) return;
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -870,11 +1191,13 @@ void ScrollCapturePreview::paintEvent(QPaintEvent *) {
     }
     painter.fillRect(begin, QColor(0, 0, 0, 155));
     painter.fillRect(end, QColor(0, 0, 0, 155));
-    painter.setBrush(QColor(matched_ ? 131 : 245, matched_ ? 229 : 155, matched_ ? 79 : 35, 35));
-    painter.setPen(QPen(QColor(matched_ ? "#83e54f" : "#f59b23"), 3));
-    painter.drawRect(viewportRect().adjusted(1.5, 1.5, -1.5, -1.5));
+    painter.setBrush(matched_ ? t.successSoft : t.warningSoft);
+    painter.setPen(QPen(matched_ ? t.success : t.warning, 2));
+    const QRectF locator = viewportRect().adjusted(1, 1, -1, -1);
+    if (!locator.isEmpty())
+        painter.drawRoundedRect(locator, 3, 3);
     if (cropBegin_ || cropEnd_ || cropEdge_ >= 0) {
-        painter.setPen(QPen(QColor("#47abff"), 2, Qt::DashLine));
+        painter.setPen(QPen(t.accent, 1.5, Qt::DashLine));
         if (axis_ == Qt::Vertical) {
             painter.drawLine(begin.bottomLeft(), begin.bottomRight());
             painter.drawLine(end.topLeft(), end.topRight());
@@ -925,48 +1248,31 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_AlwaysShowToolTips);
     setFocusPolicy(Qt::StrongFocus);
+    setFixedHeight(captureBarHeight);
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 5, 8, 5);
-    layout->setSpacing(3);
-    auto *dragBar = new DragBar(this);
-    dragBar->setObjectName(QStringLiteral("scrollDragBar"));
-    dragBar->setToolTip(tr("拖动工具栏"));
-    auto *dots = new QLabel(dragBar);
-    dots->setProperty("glyphName", QStringLiteral("scroll-grip"));
-    dots->setPixmap(glyph("scroll-grip", palette().color(QPalette::PlaceholderText)).pixmap(24, 24));
-    dots->setFixedSize(18, 24);
-    dots->setAlignment(Qt::AlignCenter);
-    dots->setAttribute(Qt::WA_TransparentForMouseEvents);
-    auto *dragLayout = new QHBoxLayout(dragBar);
-    dragLayout->setContentsMargins(0, 0, 0, 0);
-    dragLayout->addWidget(dots);
-    dragBar->setFixedSize(18, 30);
-    layout->addWidget(dragBar);
-    size_ = new QLabel(QStringLiteral("0 × 0"), this);
+    layout->setSpacing(4);
+    dragBar_ = new ToolbarGrip(false, {}, this);
+    dragBar_->setToolTip(tr("拖动工具栏"));
+    dragBar_->installEventFilter(this);
+    layout->addWidget(dragBar_);
+    size_ = new QLabel(QStringLiteral("0 × 0 px"), this);
     size_->setObjectName(QStringLiteral("scrollSize"));
     size_->setAlignment(Qt::AlignCenter);
-    size_->setMinimumWidth(76);
-    size_->setProperty("muted", true);
-    QFont sizeFont = size_->font();
-    sizeFont.setPixelSize(14);
-    size_->setFont(sizeFont);
-    size_->setToolTip(tr("已拼接长图的宽度和高度，单位为像素"));
+    size_->setMinimumWidth(72);
+    size_->setProperty("captureReadout", true);
+    size_->setToolTip(tr("当前长图尺寸（像素）"));
+    size_->installEventFilter(this);
     layout->addWidget(size_);
-    // The move handle is a separate native window owned by the region; this gap
-    // receives it so dragging the live selection never steals page input.
-    moveSlot_ = new QWidget(this);
-    moveSlot_->setFixedSize(25, 30);
-    layout->addWidget(moveSlot_);
-    auto *separator = new QFrame(this);
-    separator->setFixedSize(1, 18);
-    separator->setObjectName(QStringLiteral("toolbarSeparator"));
-    layout->addWidget(separator, 0, Qt::AlignVCenter);
+    layout->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
     direction_ = new QPushButton(this);
     direction_->setObjectName(QStringLiteral("scrollDirection"));
-    direction_->setToolTip(tr("切换垂直或水平截图；切换方向会重新开始拼接"));
-    direction_->setAccessibleName(tr("切换截图方向"));
+    direction_->setProperty("captureChoice", true);
+    direction_->setToolTip(tr("切换滚动方向"));
+    direction_->setAccessibleName(tr("切换滚动方向"));
     direction_->setCursor(Qt::PointingHandCursor);
-    direction_->setFixedSize(96, 26);
+    direction_->setFixedHeight(28);
+    direction_->installEventFilter(this);
     auto *axisMenu = new QMenu(direction_);
     direction_->setMenu(axisMenu);
     for (const auto axis : {Qt::Vertical, Qt::Horizontal}) {
@@ -980,83 +1286,88 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
         });
     }
     layout->addWidget(direction_);
+    // Reserve a slot for the selection handle's separate native window.
+    moveSlot_ = new QWidget(this);
+    moveSlot_->setFixedSize(captureButtonSize, captureButtonSize);
+    layout->addWidget(moveSlot_);
     automatic_ = new QCheckBox(this);
     automatic_->setObjectName(QStringLiteral("scrollAutomatic"));
-    automatic_->setToolTip(tr("自动向下滚动并拼接；再次点击切换为手动滚动"));
+    automatic_->setToolTip(tr("自动滚动"));
     automatic_->hide();
     automaticButton_ = new QPushButton(this);
     automaticButton_->setObjectName(QStringLiteral("scrollAutomaticButton"));
-    setScrollGlyph(automaticButton_, QStringLiteral("scroll-mouse"));
+    styleCaptureToolButton(automaticButton_, QStringLiteral("scroll-mouse"));
     automaticButton_->setCheckable(true);
     automaticButton_->setToolTip(automatic_->toolTip());
     automaticButton_->setAccessibleName(tr("自动滚动（默认手动滚动）"));
-    automaticButton_->setFixedSize(28, 30);
+    automaticButton_->installEventFilter(this);
     layout->addWidget(automaticButton_);
     connect(automaticButton_, &QPushButton::clicked, automatic_, &QCheckBox::setChecked);
     connect(automatic_, &QCheckBox::toggled, automaticButton_, &QPushButton::setChecked);
+    connect(automaticButton_, &QPushButton::toggled, this, [this](bool) {
+        styleCaptureToolButton(automaticButton_, QStringLiteral("scroll-mouse"));
+    });
     cropButton_ = new QPushButton(this);
     cropButton_->setObjectName(QStringLiteral("scrollCrop"));
-    setScrollGlyph(cropButton_, QStringLiteral("crop"));
-    cropButton_->setToolTip(tr("裁剪当前可见区域之前或之后的内容，裁剪后可继续截图"));
+    styleCaptureToolButton(cropButton_, QStringLiteral("crop"));
+    cropButton_->setToolTip(tr("裁剪长截图"));
     cropButton_->setAccessibleName(tr("裁剪长截图"));
-    cropButton_->setFixedSize(30, 30);
+    cropButton_->installEventFilter(this);
     layout->addWidget(cropButton_);
     stop_ = new QPushButton(this);
     stop_->setObjectName(QStringLiteral("scrollStop"));
-    setScrollGlyph(stop_, QStringLiteral("scroll-stop"));
-    stop_->setToolTip(tr("停止截图并清空本次结果；可调整选区后重新开始"));
-    stop_->setAccessibleName(tr("停止截图"));
-    stop_->setFixedSize(30, 30);
+    styleCaptureToolButton(stop_, QStringLiteral("scroll-stop"));
+    stop_->setToolTip(tr("停止长截图"));
+    stop_->setAccessibleName(tr("停止长截图"));
+    stop_->installEventFilter(this);
     layout->addWidget(stop_);
+    layout->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
     finish_ = new QPushButton(this);
     finish_->setObjectName(QStringLiteral("scrollFinish"));
-    setScrollGlyph(finish_, QStringLiteral("edit"));
-    finish_->setToolTip(tr("完成长截图并进入编辑器（Enter）"));
-    finish_->setAccessibleName(tr("完成并进入编辑器"));
-    finish_->setFixedSize(30, 30);
+    finish_->setProperty("primary", true);
+    styleCaptureToolButton(finish_, QStringLiteral("edit"));
+    finish_->setToolTip(tr("批注"));
+    finish_->setAccessibleName(tr("批注"));
     finish_->setEnabled(false);
+    finish_->installEventFilter(this);
     layout->addWidget(finish_);
     const QStringList labels = {QStringLiteral("pin"), QStringLiteral("image-save"), QStringLiteral("image-copy")};
-    const QStringList tips = {tr("将完整长图贴在桌面上"), tr("选择位置和格式，保存完整长图"),
-                             tr("复制完整长图到剪贴板并关闭长截图")};
-    const QStringList accessibleNames = {tr("贴图"), tr("保存"), tr("复制并关闭")};
+    const QStringList tips = {tr("贴图"), tr("保存图片"), tr("复制图像")};
+    const QStringList accessibleNames = {tr("贴图"), tr("保存图片"), tr("复制图像")};
     const QStringList names = {QStringLiteral("scrollPin"), QStringLiteral("scrollSave"),
                                QStringLiteral("scrollCopy")};
     for (int i = 0; i < labels.size(); ++i) {
         auto *button = new QPushButton(this);
         button->setObjectName(names[i]);
-        setScrollGlyph(button, labels[i]);
+        styleCaptureToolButton(button, labels[i]);
         button->setToolTip(tips[i]);
         button->setAccessibleName(accessibleNames[i]);
-        button->setFixedSize(29, 30);
         button->setEnabled(false);
+        button->installEventFilter(this);
         layout->addWidget(button);
         outputButtons_.append(button);
     }
-    auto *cancel = new QPushButton(this);
-    cancel->setObjectName(QStringLiteral("scrollCancel"));
-    setScrollGlyph(cancel, QStringLiteral("close"));
-    cancel->setToolTip(tr("关闭长截图并放弃本次结果（Esc）"));
-    cancel->setAccessibleName(tr("关闭长截图"));
-    cancel->setFixedSize(29, 30);
-    // The close action comes before the last copy action in the reference bar.
-    layout->removeWidget(outputButtons_.last());
-    layout->addWidget(cancel);
-    layout->addWidget(outputButtons_.last());
-    setFixedHeight(42);
+    layout->addWidget(captureSeparator(this), 0, Qt::AlignVCenter);
+    cancel_ = new QPushButton(this);
+    cancel_->setObjectName(QStringLiteral("scrollCancel"));
+    styleCaptureToolButton(cancel_, QStringLiteral("close"));
+    cancel_->setToolTip(tr("取消截图（Esc）"));
+    cancel_->setAccessibleName(tr("取消截图"));
+    cancel_->installEventFilter(this);
+    layout->addWidget(cancel_);
     adjustSize();
     setFixedWidth(std::max(536, sizeHint().width()));
 
-    // The thumbnail is its own top-level surface. It stays to the right of the
-    // capture frame while running and disappears when capture is stopped.
+    // The thumbnail is its own top-level surface. It stays beside the capture
+    // frame while running and sits strictly below this bar so tooltips never go behind it.
     previewArea_ = new QScrollArea(this);
     previewArea_->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
                                  Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
     previewArea_->setObjectName(QStringLiteral("scrollPreviewArea"));
     previewArea_->setAttribute(Qt::WA_ShowWithoutActivating);
+    previewArea_->setAttribute(Qt::WA_TranslucentBackground);
+    previewArea_->viewport()->setAutoFillBackground(false);
     previewArea_->setFixedSize(150, 260);
-    previewArea_->setStyleSheet(QStringLiteral(
-        "QScrollArea#scrollPreviewArea { border: 2px solid palette(highlight); background: palette(base); }"));
     previewArea_->setFrameShape(QFrame::NoFrame);
     previewArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewArea_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -1067,25 +1378,24 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
 
     cropMenu_ = new RoundedCropPopup(this);
     cropMenu_->setObjectName(QStringLiteral("scrollCropMenu"));
-    cropMenu_->setMinimumSize(194, 52);
+    cropMenu_->setMinimumSize(194, 48);
     auto *cropLayout = new QHBoxLayout(cropMenu_);
-    cropLayout->setContentsMargins(7, 4, 7, 4);
+    cropLayout->setContentsMargins(8, 5, 8, 5);
     cropLayout->setSpacing(4);
     cropBegin_ = new QPushButton(cropMenu_);
     cropBegin_->setObjectName(QStringLiteral("scrollCropBegin"));
     cropEnd_ = new QPushButton(cropMenu_);
     cropEnd_->setObjectName(QStringLiteral("scrollCropEnd"));
-    for (auto *button : {cropBegin_, cropEnd_}) button->setFixedSize(28, 28);
+    for (auto *button : {cropBegin_, cropEnd_})
+        button->installEventFilter(this);
     cropLayout->addWidget(cropBegin_);
     cropLayout->addWidget(cropEnd_);
-    auto *cropDivider = new QFrame(cropMenu_);
-    cropDivider->setFixedSize(1, 18);
-    cropDivider->setObjectName(QStringLiteral("toolbarSeparator"));
-    cropLayout->addWidget(cropDivider, 0, Qt::AlignVCenter);
+    cropLayout->addWidget(captureSeparator(cropMenu_), 0, Qt::AlignVCenter);
     autoCrop_ = new QCheckBox(tr("自动裁剪"), cropMenu_);
     autoCrop_->setObjectName(QStringLiteral("scrollAutoCrop"));
-    autoCrop_->setToolTip(tr("反向滚动时，自动裁去当前可见区域之外的长图内容"));
+    autoCrop_->setToolTip(tr("反向滚动时自动裁剪超出区域的内容"));
     autoCrop_->setAccessibleName(tr("自动裁剪"));
+    autoCrop_->installEventFilter(this);
     cropLayout->addWidget(autoCrop_);
     connect(autoCrop_, &QCheckBox::toggled, this, &ScrollCaptureProgress::autoCropChanged);
     connect(cropButton_, &QPushButton::clicked, this, [this] {
@@ -1101,17 +1411,20 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
         cropMenu_->move(position);
         cropMenu_->show();
         configureNativeWindow(cropMenu_, true);
+        if (previewArea_->isVisible())
+            orderWindowBelow(previewArea_, cropMenu_);
     });
     status_ = new QLabel(this);
     status_->setObjectName(QStringLiteral("scrollStatus"));
     status_->hide();
     setAxis(Qt::Vertical);
+    applyChromeTheme();
     connect(stop_, &QPushButton::clicked, this, [this] {
         if (stopped_) emit resumeRequested();
         else emit stopRequested();
     });
     connect(finish_, &QPushButton::clicked, this, &ScrollCaptureProgress::finishRequested);
-    connect(cancel, &QPushButton::clicked, this, &ScrollCaptureProgress::cancelRequested);
+    connect(cancel_, &QPushButton::clicked, this, &ScrollCaptureProgress::cancelRequested);
     connect(automatic_, &QCheckBox::toggled, this, &ScrollCaptureProgress::automaticChanged);
     connect(cropBegin_, &QPushButton::clicked, this, [this] {
         cropMenu_->hide();
@@ -1130,18 +1443,65 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     connect(outputButtons_[2], &QPushButton::clicked, this, &ScrollCaptureProgress::copyRequested);
 }
 
+void ScrollCaptureProgress::applyChromeTheme() {
+    ChromeApplyGuard guard(this);
+    if (!guard.entered)
+        return;
+    const auto t = captureChromeTokens();
+    setStyleSheet(captureBarStyle(t));
+    if (previewArea_) {
+        previewArea_->setStyleSheet(QStringLiteral(
+            "QScrollArea#scrollPreviewArea { border: 1px solid %1; background: %2;"
+            " border-radius: %3px; padding: 1px; }")
+            .arg(rgbaCss(t.panelBorder), t.stage.name()).arg(CaptureChromeTokens::cardRadius));
+        preview_->update();
+    }
+    if (auto *grip = static_cast<ToolbarGrip *>(dragBar_))
+        grip->refreshTheme();
+    if (cropMenu_)
+        static_cast<RoundedCropPopup *>(cropMenu_)->applyTheme();
+    for (QPushButton *button : {automaticButton_, cropButton_, stop_, finish_, cancel_, cropBegin_, cropEnd_}) {
+        if (button && !button->property("glyphName").toString().isEmpty())
+            styleCaptureToolButton(button, button->property("glyphName").toString());
+    }
+    for (auto *button : outputButtons_) {
+        if (button && !button->property("glyphName").toString().isEmpty())
+            styleCaptureToolButton(button, button->property("glyphName").toString());
+    }
+    update();
+}
+
+void ScrollCaptureProgress::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyChromeTheme();
+    QWidget::changeEvent(event);
+}
+
+void ScrollCaptureProgress::syncPreviewOverlay(bool ensureVisible) {
+    if (!previewArea_)
+        return;
+    if (ensureVisible && !previewArea_->isVisible()) {
+        previewArea_->show();
+        configureNativeWindow(previewArea_, true);
+    }
+    if (previewArea_->isVisible())
+        orderWindowBelow(previewArea_, cropMenu_ && cropMenu_->isVisible() ? cropMenu_ : this);
+}
+
+bool ScrollCaptureProgress::eventFilter(QObject *watched, QEvent *event) {
+    if ((event->type() == QEvent::Enter || event->type() == QEvent::ToolTip) &&
+        previewArea_ && previewArea_->isVisible()) {
+        orderWindowBelow(previewArea_, cropMenu_ && cropMenu_->isVisible() ? cropMenu_ : this);
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
 void ScrollCaptureProgress::placeBeside(const QRect &selection, const QRect &screen) {
     if (!captureSelection_.isEmpty() && !previewLastSize_.isEmpty())
         previewAnchor_ += selection.topLeft() - captureSelection_.topLeft();
     captureSelection_ = selection;
     captureScreen_ = screen;
-    const int gap = 6;
-    const int x = std::clamp(selection.right() + 1 - width(), screen.left(),
-                             std::max(screen.left(), screen.right() + 1 - width()));
-    const int below = selection.bottom() + gap;
-    const int y = below + height() <= screen.bottom() + 1
-        ? below : std::max(screen.top(), selection.top() - height() - gap);
-    move(x, y);
+    move(captureBarPosition(selection, screen, size()));
     previewMaximumWidth_ = 196;
     if (!previewLastSize_.isEmpty())
         previewSourceRect(previewLastSize_, previewLastViewport_, previewAxis_);
@@ -1243,19 +1603,17 @@ void ScrollCaptureProgress::setProgress(const QImage &image, int addedFrames, QS
     outputButtons_[0]->setEnabled(hasProgress_ && canEdit_);
     outputButtons_[2]->setEnabled(hasProgress_ && canEdit_);
     const QString largeNotice = tr("超大长图请使用 PNG 保存；当前尺寸超过复制、贴图和编辑的图像上限。");
-    finish_->setToolTip(canEdit_ ? tr("完成长截图并进入编辑器（Enter）") : largeNotice);
-    outputButtons_[0]->setToolTip(canEdit_ ? tr("将完整长图贴在桌面上") : largeNotice);
-    outputButtons_[2]->setToolTip(canEdit_ ? tr("复制完整长图到剪贴板并关闭长截图") : largeNotice);
+    finish_->setToolTip(canEdit_ ? tr("批注") : largeNotice);
+    outputButtons_[0]->setToolTip(canEdit_ ? tr("贴图") : largeNotice);
+    outputButtons_[2]->setToolTip(canEdit_ ? tr("复制图像") : largeNotice);
     if (size.isEmpty())
         size = image.size();
     if (!image.isNull()) {
         previewSourceRect(size, viewport, axis);
         preview_->resize(previewArea_->viewport()->size());
         preview_->setCapture(image, size, viewport, matched, axis, imageSource);
-        if (!stopped_ && isVisible()) {
-            previewArea_->show();
-            configureNativeWindow(previewArea_, true);
-        }
+        if (!stopped_ && isVisible())
+            syncPreviewOverlay(true);
     } else {
         preview_->setCapture({}, {}, {}, matched, axis);
         preview_->setVisibleRegion({});
@@ -1298,11 +1656,11 @@ void ScrollCaptureProgress::setStopped(const QString &message) {
     stopped_ = true;
     automatic_->setEnabled(false);
     automaticButton_->setEnabled(false);
-    automaticButton_->setToolTip(tr("重新开始截图后可启用自动滚动"));
+    automaticButton_->setToolTip(tr("重新开始长截图后可启用自动滚动"));
     stop_->setText({});
-    setScrollGlyph(stop_, QStringLiteral("scroll-play"));
-    stop_->setToolTip(tr("按当前选区开始新的长截图"));
-    stop_->setAccessibleName(tr("开始截图"));
+    styleCaptureToolButton(stop_, QStringLiteral("scroll-play"));
+    stop_->setToolTip(tr("重新开始长截图"));
+    stop_->setAccessibleName(tr("开始长截图"));
     setToolTip(message);
     previewArea_->hide();
     finish_->show();
@@ -1312,45 +1670,46 @@ void ScrollCaptureProgress::setStopped(const QString &message) {
 void ScrollCaptureProgress::setRunning(Qt::Orientation axis) {
     stopped_ = false;
     stop_->setText({});
-    setScrollGlyph(stop_, QStringLiteral("scroll-stop"));
-    stop_->setToolTip(tr("停止截图并清空本次结果；可调整选区后重新开始"));
-    stop_->setAccessibleName(tr("停止截图"));
+    styleCaptureToolButton(stop_, QStringLiteral("scroll-stop"));
+    stop_->setToolTip(tr("停止长截图"));
+    stop_->setAccessibleName(tr("停止长截图"));
     automatic_->setEnabled(axis == Qt::Vertical);
     setAxis(axis);
-    if (isVisible() && !preview_->pixmap().isNull()) {
-        previewArea_->show();
-        configureNativeWindow(previewArea_, true);
-    }
+    if (isVisible() && !preview_->pixmap().isNull())
+        syncPreviewOverlay(true);
 }
 
 void ScrollCaptureProgress::setAxis(Qt::Orientation axis) {
     direction_->setProperty("captureAxis", static_cast<int>(axis));
     direction_->setText(axis == Qt::Vertical ? tr("垂直") : tr("水平"));
+    const auto metrics = direction_->fontMetrics();
+    direction_->setFixedWidth(std::max(76, 40 + std::max(metrics.horizontalAdvance(tr("垂直")),
+                                                        metrics.horizontalAdvance(tr("水平")))));
     for (auto *action : direction_->menu()->actions())
         action->setChecked(action->data().toInt() == static_cast<int>(axis));
     cropBegin_->setText({});
     cropEnd_->setText({});
-    setScrollGlyph(cropBegin_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-top") : QStringLiteral("scroll-trim-left"));
-    setScrollGlyph(cropEnd_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-bottom") : QStringLiteral("scroll-trim-right"));
-    cropBegin_->setToolTip(axis == Qt::Vertical ? tr("裁去当前可见区域上方的内容，保留当前区域及其下方")
-                                              : tr("裁去当前可见区域左侧的内容，保留当前区域及其右侧"));
-    cropEnd_->setToolTip(axis == Qt::Vertical ? tr("裁去当前可见区域下方的内容，保留当前区域及其上方")
-                                            : tr("裁去当前可见区域右侧的内容，保留当前区域及其左侧"));
+    styleCaptureToolButton(cropBegin_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-top") : QStringLiteral("scroll-trim-left"));
+    styleCaptureToolButton(cropEnd_, axis == Qt::Vertical ? QStringLiteral("scroll-trim-bottom") : QStringLiteral("scroll-trim-right"));
+    cropBegin_->setToolTip(axis == Qt::Vertical ? tr("裁去上方内容，保留当前区域及下方")
+                                              : tr("裁去左侧内容，保留当前区域及右侧"));
+    cropEnd_->setToolTip(axis == Qt::Vertical ? tr("裁去下方内容，保留当前区域及上方")
+                                            : tr("裁去右侧内容，保留当前区域及左侧"));
     cropBegin_->setAccessibleName(axis == Qt::Vertical ? tr("上裁剪") : tr("左裁剪"));
     cropEnd_->setAccessibleName(axis == Qt::Vertical ? tr("下裁剪") : tr("右裁剪"));
     automatic_->setEnabled(!stopped_ && automaticSupported_ && axis == Qt::Vertical);
     automaticButton_->setEnabled(!stopped_ && automaticSupported_ && axis == Qt::Vertical);
-    automaticButton_->setToolTip(stopped_ ? tr("重新开始截图后可启用自动滚动") :
+    automaticButton_->setToolTip(stopped_ ? tr("重新开始长截图后可启用自动滚动") :
         !automaticSupported_ ? automaticUnavailableReason_ :
-        axis == Qt::Vertical ? tr("自动向下滚动并拼接；再次点击切换为手动滚动") :
-                              tr("水平截图请手动滚动或拖动水平滚动条"));
+        axis == Qt::Vertical ? tr("自动向下滚动并拼接") :
+                              tr("水平截图请手动滚动或拖动滚动条"));
     automatic_->setToolTip(automaticButton_->toolTip());
     if (axis == Qt::Horizontal) setAutomatic(false);
 }
 
 void ScrollCaptureProgress::setSelectionSize(QSize size) {
-    size_->setText(QStringLiteral("%1 × %2").arg(size.width()).arg(size.height()));
-    size_->setFixedWidth(std::max(76, size_->fontMetrics().horizontalAdvance(size_->text()) + 10));
+    size_->setText(QStringLiteral("%1 × %2 px").arg(size.width()).arg(size.height()));
+    size_->setFixedWidth(std::max(72, size_->fontMetrics().horizontalAdvance(size_->text()) + 10));
     setFixedWidth(std::max(536, layout()->sizeHint().width()));
     layout()->activate();
     if (!captureScreen_.isEmpty())
@@ -1375,10 +1734,7 @@ void ScrollCaptureProgress::clearCrop() { preview_->clearCrop(); }
 
 void ScrollCaptureProgress::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(QColor(isDarkTheme() ? "#41434d" : "#dddde5"), 1));
-    painter.setBrush(palette().color(QPalette::Window));
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+    paintFloatingPanel(painter, rect());
 }
 
 void ScrollCaptureProgress::moveEvent(QMoveEvent *event) {
@@ -1388,10 +1744,8 @@ void ScrollCaptureProgress::moveEvent(QMoveEvent *event) {
 
 void ScrollCaptureProgress::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
-    if (!stopped_ && !preview_->pixmap().isNull()) {
-        previewArea_->show();
-        configureNativeWindow(previewArea_, true);
-    }
+    if (!stopped_ && !preview_->pixmap().isNull())
+        syncPreviewOverlay(true);
 }
 
 void ScrollCaptureProgress::hideEvent(QHideEvent *event) {
@@ -1458,38 +1812,30 @@ void CaptureToolbar::setRatio(CaptureRatio ratio, int customWidth, int customHei
     customWidth_ = std::max(1, customWidth);
     customHeight_ = std::max(1, customHeight);
     ratio_->setText(captureRatioLabel(ratioChoice_, customWidth_, customHeight_));
+    ratio_->setFixedWidth(ratio_->fontMetrics().horizontalAdvance(ratio_->text()) + 34);
+    for (auto *action : ratio_->menu()->actions())
+        action->setChecked(action->data().toInt() == int(ratioChoice_));
     adjustSize();
     emit ratioChanged();
 }
 
-void CaptureToolbar::buildMenu() {
-    // The menu is rebuilt on every use so the ticks match the state the selection is
-    // actually in; the previous one is dropped at that point rather than collected.
-    if (auto *previous = more_->menu()) {
-        more_->setMenu(nullptr);
-        delete previous;
-    }
-    auto *menu = new QMenu(this);
-    more_->setMenu(menu);
-    // 批注 leads the menu as well: the bar can be hidden behind the pointer, and the
-    // menu is how the keyboard reaches it.
-    auto *annotate = menu->addAction(tr("批注"), this, &CaptureToolbar::annotate);
-    annotate->setIcon(glyph(QStringLiteral("edit"), accent()));
-    menu->addSeparator();
-    auto *ratios = menu->addMenu(tr("固定比例"));
+void CaptureToolbar::populateRatioMenu(QMenu *menu) {
     const QVector<CaptureRatio> choices{CaptureRatio::Free,    CaptureRatio::Square,
                                         CaptureRatio::FourThree, CaptureRatio::ThreeTwo,
                                         CaptureRatio::SixteenNine, CaptureRatio::NineSixteen};
     for (const auto choice : choices) {
-        auto *action = ratios->addAction(captureRatioLabel(choice, customWidth_, customHeight_));
+        auto *action = menu->addAction(captureRatioLabel(choice, customWidth_, customHeight_));
         action->setCheckable(true);
+        action->setData(int(choice));
         action->setChecked(ratioChoice_ == choice);
         connect(action, &QAction::triggered, this, [this, choice] { setRatio(choice); });
     }
-    auto *custom = ratios->addAction(tr("自定义…"));
+    auto *custom = menu->addAction(tr("自定义…"));
     custom->setCheckable(true);
+    custom->setData(int(CaptureRatio::Custom));
     custom->setChecked(ratioChoice_ == CaptureRatio::Custom);
-    connect(custom, &QAction::triggered, this, [this] {
+    connect(custom, &QAction::triggered, this, [this, custom] {
+        custom->setChecked(ratioChoice_ == CaptureRatio::Custom);
         bool accepted = false;
         const QString current = QStringLiteral("%1:%2").arg(customWidth_).arg(customHeight_);
         const QString text = QInputDialog::getText(this, tr("自定义比例"), tr("宽:高，例如 21:9"),
@@ -1505,6 +1851,51 @@ void CaptureToolbar::buildMenu() {
         if (left && right && width > 0 && height > 0)
             setRatio(CaptureRatio::Custom, width, height);
     });
+}
+
+void CaptureToolbar::showMarkupOptions() {
+    if (busy_ || markupTool_ == CaptureMarkupTool::None)
+        return;
+    QPointer<QMenu> menu = new QMenu(markupSettings_);
+    const auto choice = [this](QMenu *parent, const QString &label, bool selected, auto apply) {
+        auto *action = parent->addAction(label, this, std::move(apply));
+        action->setCheckable(true);
+        action->setChecked(selected);
+    };
+    if (markupTool_ == CaptureMarkupTool::Brush) {
+        choice(menu, tr("画笔"), !markupOptions_.highlighter,
+               [this] { markupOptions_.highlighter = false; });
+        choice(menu, tr("荧光笔"), markupOptions_.highlighter,
+               [this] { markupOptions_.highlighter = true; });
+        auto *colorMenu = menu->addMenu(tr("颜色"));
+        const QList<QPair<QString, QColor>> colors{
+            {tr("红色"), QColor("#ff453a")}, {tr("黄色"), QColor("#ffd60a")},
+            {tr("绿色"), QColor("#30d158")}, {tr("蓝色"), QColor("#0a84ff")},
+            {tr("白色"), Qt::white}, {tr("黑色"), Qt::black}};
+        for (const auto &[label, color] : colors)
+            choice(colorMenu, label, markupOptions_.brushColor == color,
+                   [this, color] { markupOptions_.brushColor = color; });
+        auto *widthMenu = menu->addMenu(tr("线宽"));
+        for (const int width : {2, 4, 8})
+            choice(widthMenu, QStringLiteral("%1 px").arg(width), width == markupOptions_.brushWidth,
+                   [this, width] { markupOptions_.brushWidth = width; });
+    } else {
+        choice(menu, tr("像素化"), !markupOptions_.blur, [this] { markupOptions_.blur = false; });
+        choice(menu, tr("模糊"), markupOptions_.blur, [this] { markupOptions_.blur = true; });
+        auto *strengthMenu = menu->addMenu(tr("强度"));
+        for (const int strength : {6, 12, 24})
+            choice(strengthMenu, QStringLiteral("%1 px").arg(strength), strength == markupOptions_.mosaicStrength,
+                   [this, strength] { markupOptions_.mosaicStrength = strength; });
+    }
+    menu->exec(markupSettings_->mapToGlobal(QPoint(0, markupSettings_->height())));
+    if (menu)
+        menu->deleteLater();
+}
+
+void CaptureToolbar::buildMenu(QMenu *menu) {
+    menu->addAction(tr("批注"), this, &CaptureToolbar::annotate);
+    menu->addSeparator();
+    populateRatioMenu(menu->addMenu(tr("固定比例")));
     menu->addSeparator();
     // Earlier work, offered where the rest of the extras are; an empty list says so
     // rather than showing a submenu that does nothing.
@@ -1553,6 +1944,9 @@ void CaptureToolbar::buildMenu() {
              {QStringLiteral("Ctrl+T / Ctrl+2 / P"), tr("贴图")},
              {QStringLiteral("Shift+C / T"), tr("文字识别")},
              {QStringLiteral("C"), tr("取色")},
+             {QStringLiteral("B"), tr("画笔")},
+             {QStringLiteral("M"), tr("马赛克")},
+             {QStringLiteral("Ctrl+Z"), tr("撤销绘制")},
              {QStringLiteral("R"), tr("恢复上次选区")},
              {QStringLiteral("H"), tr("更多选项")},
              {QStringLiteral("< / >"), tr("历史截图上一张 / 下一张")},
@@ -1569,30 +1963,16 @@ void CaptureToolbar::buildMenu() {
 
 CaptureSidebar::CaptureSidebar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("captureSidebar"));
-    setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; }"
-                                 "QPushButton[tool=\"true\"]:hover { background: rgba(255, 255, 255, 0.14);"
-                                 " border-radius: 8px; }"
-                                 "QPushButton[active=\"true\"] { background: rgba(255, 255, 255, 0.22);"
-                                 " border-radius: 8px; }"
-                                 "QPushButton:disabled { color: rgba(232, 233, 238, 0.4); }"));
+    setAttribute(Qt::WA_AlwaysShowToolTips);
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(5, 5, 5, 5);
+    layout->setContentsMargins(6, 6, 6, 6);
     layout->setSpacing(4);
     const auto add = [this, layout](const QString &glyphName) {
         auto *button = new QPushButton(this);
-        button->setProperty("glyphName", glyphName);
-        button->setProperty("glyphColor", kGlyph);
-        button->setIcon(glyph(glyphName, kGlyph));
-        button->setIconSize({20, 20});
-        button->setProperty("tool", true);
-        button->setFixedSize(32, 32);
-        button->setCursor(Qt::PointingHandCursor);
+        styleCaptureToolButton(button, glyphName);
         layout->addWidget(button);
         return button;
     };
-    // Only what the bar above the region does not already offer lives here. Pinning is
-    // one of the verbs up there, and offering it twice made the same action look like
-    // two different things.
     corner_ = add(QStringLiteral("corner"));
     shadow_ = add(QStringLiteral("shadow"));
     reset_ = add(QStringLiteral("reset"));
@@ -1605,8 +1985,31 @@ CaptureSidebar::CaptureSidebar(QWidget *parent) : QWidget(parent) {
         refreshButtons();
         emit styleChanged(style_);
     });
+    applyChromeTheme();
     retranslate();
     refreshButtons();
+}
+
+void CaptureSidebar::applyChromeTheme() {
+    ChromeApplyGuard guard(this);
+    if (!guard.entered)
+        return;
+    const auto t = captureChromeTokens();
+    setStyleSheet(captureControlsStyle(t));
+    for (auto *button : {corner_, shadow_, reset_}) {
+        if (button && !button->property("glyphName").toString().isEmpty())
+            styleCaptureToolButton(button, button->property("glyphName").toString());
+    }
+    if (panel_ != nullptr)
+        panel_->refresh();
+    adjustSize();
+    update();
+}
+
+void CaptureSidebar::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyChromeTheme();
+    QWidget::changeEvent(event);
 }
 
 void CaptureSidebar::retranslate() {
@@ -1624,6 +2027,7 @@ void CaptureSidebar::retranslate() {
 void CaptureSidebar::refreshButtons() {
     const auto mark = [](QPushButton *button, bool active) {
         button->setProperty("active", active);
+        styleCaptureToolButton(button, button->property("glyphName").toString());
         button->style()->unpolish(button);
         button->style()->polish(button);
     };
@@ -1700,9 +2104,6 @@ void CaptureSidebar::placeBeside(const QRect &selection, const QRect &bounds) {
 
 void CaptureSidebar::paintEvent(QPaintEvent *) {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(kEdge, 1));
-    painter.setBrush(kFace);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+    paintFloatingPanel(painter, rect());
 }
 } // namespace h2d

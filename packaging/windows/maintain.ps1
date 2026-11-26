@@ -433,6 +433,21 @@ function Ensure-PrivateParent([string]$path) {
     Assert-NoReparse $path
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
 }
+function Move-PayloadFile([string]$source,[string]$destination) {
+    for ($attempt=0; ; $attempt++) {
+        try {
+            [IO.File]::Move($source,$destination)
+            return
+        } catch {
+            $failure=$_.Exception.GetBaseException()
+            $win32Code=$failure.HResult -band 0xFFFF
+            if ($attempt -ge 4 -or $win32Code -notin @(5,32,33) -or
+                ![IO.File]::Exists($source) -or [IO.File]::Exists($destination)) { throw }
+            Start-Sleep -Milliseconds (100 * [Math]::Pow(2,$attempt))
+        }
+    }
+}
+
 function Apply-Files {
     $count=@($script:journal.plan).Count
     for ($index=0; $index -lt $count; $index++) {
@@ -446,7 +461,7 @@ function Apply-Files {
             if (![IO.File]::Exists($old) -or (Hash-File $old) -ne $entry.actualOldHash) { throw "程序文件在安装准备后发生变化：$relative" }
             Save-Journal 'OldFileMoveIntent'
             Ensure-PrivateParent $backup
-            [IO.File]::Move($old,$backup)
+            Move-PayloadFile $old $backup
             Test-Point 'AfterOldFileMove'
             Test-Point 'AfterOldRename'
         } elseif ([IO.File]::Exists($old) -or [IO.Directory]::Exists($old)) { throw "程序文件位置出现了新文件，未覆盖：$relative" }
@@ -456,7 +471,7 @@ function Apply-Files {
             if (![IO.File]::Exists($new) -or (Hash-File $new) -ne $entry.newHash) { throw "新程序文件在安装准备后发生变化：$relative" }
             Save-Journal 'NewFileMoveIntent'
             Ensure-TargetDirectory ([IO.Path]::GetDirectoryName($old))
-            [IO.File]::Move($new,$old)
+            Move-PayloadFile $new $old
             Test-Point 'AfterNewFileMove'
             Test-Point 'AfterNewRename'
         }

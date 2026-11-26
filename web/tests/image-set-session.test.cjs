@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {VERSION,readManifest,writeManifest,upsertPage,snapshotManifest,bundledProject} = require('../image-set.cjs');
+const {VERSION,MAX_PAGES,readManifest,writeManifest,upsertPage,upsertPages,snapshotManifest,bundledProject} = require('../image-set.cjs');
 const {AgentSessions,readSessionStatus,hydratedDraft} = require('../agent-session.cjs');
 const F = require('../src/feedback.js');
 const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
@@ -119,4 +119,68 @@ for (const [label,relative] of [
   assert.deepEqual(JSON.parse(fs.readFileSync(roundOne,'utf8')),firstProject,'the reviewed round remains intact');
   assert.deepEqual(run('remove',manifest,'--id','settings.ai').pages.map(page=>page.id),['home']);
   assert(fs.existsSync(replacement),'removing a page reference preserves its screenshot');
+});
+
+test('upsertPages and upsert-batch update multiple pages atomically with compact stdout and strict validation',context=>{
+  const {dir,image}=fixture(context),cli=path.resolve(__dirname,'../../scripts/image-set.mjs');
+  const secondImg=path.join(dir,'play.png');
+  fs.copyFileSync(path.resolve(__dirname,'../../tests/fixtures/ocr-small-url.png'),secondImg);
+  const run=(...args)=>JSON.parse(execFileSync(process.execPath,[cli,...args],{encoding:'utf8',windowsHide:true}));
+
+  const batchManifest=path.join(dir,'batch.json');
+  assert.throws(()=>upsertPages(batchManifest,[{id:'home',name:'Home',imagePath:image}]),/exist/i);
+  assert.throws(()=>upsertPages(batchManifest,[{id:'a',imagePath:image},{id:'a',imagePath:secondImg}],{createName:'Batch'}),/Duplicate page id/i);
+
+  const created=run('upsert-batch',batchManifest,'--name','Game Batch','--page',`menu=${image}=Main Menu`,'--page',`play=${secondImg}=Gameplay`);
+  assert.equal(created.ok,true);
+  assert.equal(created.name,'Game Batch');
+  assert.equal(created.pageCount,2);
+  assert.equal(created.updatedCount,2);
+  assert.deepEqual(created.pages.map(p=>p.id),['menu','play']);
+  assert.equal(created.pages[0].sha256,undefined,'compact CLI stdout omits sha256 hashes');
+
+  const onDisk=readManifest(batchManifest);
+  assert.equal(onDisk.pages.length,2);
+  assert.match(onDisk.pages[0].sha256,/^[a-f0-9]{64}$/);
+  assert.match(onDisk.pages[1].sha256,/^[a-f0-9]{64}$/);
+
+  const specPath=path.join(dir,'pages-spec.json');
+  fs.writeFileSync(specPath,JSON.stringify({pages:[{id:'menu',image:secondImg},{id:'shop',name:'Item Shop',image:image}]}));
+  const updated=run('sync',batchManifest,'--pages-json',specPath);
+  assert.equal(updated.pageCount,3);
+  assert.equal(updated.updatedCount,2);
+  assert.deepEqual(updated.pages.map(p=>p.id),['menu','play','shop']);
+  assert.equal(updated.pages[0].name,'Main Menu','updating without name preserves existing page name');
+
+  const stdinRes=JSON.parse(execFileSync(process.execPath,[cli,'upsert-batch',batchManifest,'--pages-json','-','--full'],{
+    input:JSON.stringify([{id:'play',name:'Battle HUD',image}]),
+    encoding:'utf8',
+    windowsHide:true,
+  }));
+  assert.equal(stdinRes.pages[1].name,'Battle HUD');
+  assert.match(stdinRes.pages[1].sha256,/^[a-f0-9]{64}$/,'--full returns full manifest hashes');
+
+  const scanDir=path.join(dir,'shots');
+  fs.mkdirSync(scanDir,{recursive:true});
+  fs.copyFileSync(image,path.join(scanDir,'02_Combat HUD.png'));
+  fs.copyFileSync(secondImg,path.join(scanDir,'01_Menu!1.png'));
+  fs.copyFileSync(image,path.join(scanDir,'01_Menu@1.png'));
+  fs.writeFileSync(path.join(scanDir,'notes.txt'),'ignored');
+  const dirManifest=path.join(dir,'from-dir.json');
+  const fromDir=run('upsert-batch',dirManifest,'--name','Scanned','--from-dir',scanDir);
+  assert.deepEqual(fromDir.pages.map(p=>p.id),['01_Menu-1','01_Menu-1-2','02_Combat-HUD']);
+  assert.equal(fromDir.pages[2].name,'02_Combat HUD');
+
+  assert.throws(()=>execFileSync(process.execPath,[cli,'upsert-batch',path.join(dir,'missing.json'),'--page',`x=${image}`],{encoding:'utf8',stdio:'pipe',windowsHide:true}));
+
+  const tooMany=Array.from({length:MAX_PAGES+1},(_,i)=>({id:`p${i}`,imagePath:image}));
+  assert.throws(()=>upsertPages(path.join(dir,'overflow.json'),tooMany,{createName:'TooBig'}),/Invalid EditHere image set manifest/i);
+
+  const portable=path.join(dir,'portable-skill');
+  fs.cpSync(path.resolve(__dirname,'../../skills/edithere'),portable,{recursive:true});
+  const portableCli=path.join(portable,'scripts/image-set.mjs');
+  const portableManifest=path.join(dir,'portable-batch.json');
+  const portableOut=JSON.parse(execFileSync(process.execPath,[portableCli,'upsert-batch',portableManifest,'--name','Portable','--page',`one=${image}=One`,'--page',`two=${secondImg}=Two`],{cwd:portable,encoding:'utf8',windowsHide:true}));
+  assert.equal(portableOut.ok,true);
+  assert.equal(portableOut.pageCount,2);
 });

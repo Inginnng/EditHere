@@ -87,6 +87,7 @@ class Editor final : public QWidget {
     void captureRequested();
     void agentFinishRequested();
     void agentCancelRequested();
+    void projectEdited();
     void guideDismissed();
     void hiddenToTray();
     void toolbarSettingsRequested();

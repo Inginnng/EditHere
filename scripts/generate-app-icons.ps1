@@ -107,12 +107,7 @@ public static class EditHereIconGenerator {
                 foreach(XmlNode n in svg.DocumentElement.ChildNodes) {
                     if(n.LocalName=="rect") {
                         float x=Attr(n,"x"), y=Attr(n,"y"), w=Attr(n,"width"), h=Attr(n,"height"), r=Attr(n,"rx");
-                        var stops=svg.GetElementsByTagName("stop");
-                        using(Brush fill=n.Attributes["fill"].Value.StartsWith("url(", StringComparison.Ordinal)
-                            ? (Brush)new LinearGradientBrush(new PointF(x,y),new PointF(x,y+h),
-                                ColorTranslator.FromHtml(stops[0].Attributes["stop-color"].Value),
-                                ColorTranslator.FromHtml(stops[1].Attributes["stop-color"].Value))
-                            : new SolidBrush(ColorTranslator.FromHtml(n.Attributes["fill"].Value)))
+                        using(var fill=PathFill(svg,n.Attributes["fill"].Value))
                         using(var path=RoundRect(x,y,w,h,r)) { g.FillPath(fill,path); }
                     } else if(n.LocalName=="path") {
                         using(var path=SvgPath(n.Attributes["d"].Value)) {
@@ -149,7 +144,7 @@ public static class EditHereIconGenerator {
         var pngs=new Dictionary<int,byte[]>();
         int[] sizes={16,20,24,32,48,64,128,256,512,1024};
         foreach(int size in sizes) {
-            using(var bitmap=Render(svg,size)) {
+            using(var bitmap=Render(macSvg,size)) {
                 string file=Path.Combine(output,"edithere-"+size+".png");
                 bitmap.Save(file,ImageFormat.Png); pngs[size]=File.ReadAllBytes(file);
             }

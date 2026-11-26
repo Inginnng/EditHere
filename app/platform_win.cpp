@@ -19,6 +19,7 @@
 #include <QWidget>
 #include <QtGui/qscreen_platform.h>
 #include <atomic>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <map>
@@ -451,6 +452,84 @@ void prepareScreenCapture(QObject *context, std::function<void()> ready, bool fr
         });
     });
 }
+QString readWindowTitleText(HWND hwnd) {
+    const int titleLength = qMin(GetWindowTextLengthW(hwnd), 1000);
+    if (titleLength <= 0)
+        return {};
+    wchar_t text[1001]{};
+    const int copied = GetWindowTextW(hwnd, text, titleLength + 1);
+    return copied > 0 ? QString::fromWCharArray(text, copied) : QString();
+}
+
+bool isIgnoredSystemWindowClass(const wchar_t *cls) {
+    if (!cls || !cls[0])
+        return false;
+    static constexpr const wchar_t *kIgnored[] = {
+        L"Progman",
+        L"WorkerW",
+        L"EdgeUiInputTopWndClass",
+        L"EdgeUiInputWndClass",
+        L"Shell_InputSwitchTopLevelWindow",
+        L"DummyDWMListenerWindow",
+        L"ForegroundStaging",
+        L"ApplicationManager_DesktopShellWindow",
+        L"MultitaskingViewFrame",
+        L"Windows.UI.Core.CoreWindow",
+        L"IME",
+        L"MSCTFIME UI",
+        L"CEF-OSC-WIDGET",
+        L"ScreenClippingHost",
+        L"NarratorHelperWindow",
+        L"SysShadow",
+        L"tooltips_class32",
+    };
+    for (const wchar_t *ignored : kIgnored) {
+        if (_wcsicmp(cls, ignored) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool isCapturableWindow(HWND hwnd, DWORD excludedPid, RECT *outBounds, QString *outTitle = nullptr) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == excludedPid || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+        return false;
+    DWORD cloaked = 0;
+    if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked != 0)
+        return false;
+    const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    const LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if (exStyle & WS_EX_TRANSPARENT)
+        return false;
+    if (exStyle & WS_EX_LAYERED) {
+        BYTE alpha = 255;
+        DWORD flags = 0;
+        if (GetLayeredWindowAttributes(hwnd, nullptr, &alpha, &flags) && (flags & LWA_ALPHA) && alpha < 16)
+            return false;
+    }
+    wchar_t name[128]{};
+    GetClassNameW(hwnd, name, 128);
+    if (isIgnoredSystemWindowClass(name))
+        return false;
+    const QString title = readWindowTitleText(hwnd);
+    if ((exStyle & WS_EX_TOOLWINDOW) && !(style & WS_CAPTION) && title.isEmpty())
+        return false;
+    if ((exStyle & WS_EX_NOACTIVATE) && !(style & WS_CAPTION) && title.isEmpty() &&
+        _wcsicmp(name, L"Shell_TrayWnd") != 0)
+        return false;
+    RECT r{};
+    if (FAILED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof(r))))
+        GetWindowRect(hwnd, &r);
+    if ((r.right - r.left) < 24 || (r.bottom - r.top) < 24)
+        return false;
+    if (outBounds)
+        *outBounds = r;
+    if (outTitle)
+        *outTitle = title;
+    return true;
+}
+
 void captureScreens(CaptureCallback callback) {
     QVector<ScreenFrame> frames;
     QStringList unavailable;
@@ -486,34 +565,19 @@ void captureScreens(CaptureCallback callback) {
         struct Windows { ScreenFrame *frame; DWORD excluded; } data{&frame, GetCurrentProcessId()};
         EnumWindows([](HWND hwnd, LPARAM param)->BOOL {
             auto &data=*reinterpret_cast<Windows *>(param);
-            DWORD pid=0; GetWindowThreadProcessId(hwnd,&pid);
-            if(pid==data.excluded || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return TRUE;
-            DWORD cloaked=0; DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED,&cloaked,sizeof(cloaked));
-            if(cloaked) return TRUE;
-            wchar_t name[128]{}; GetClassNameW(hwnd,name,128);
-            if(wcscmp(name,L"Progman")==0 || wcscmp(name,L"WorkerW")==0) return TRUE;
             RECT r{};
-            if(FAILED(DwmGetWindowAttribute(hwnd,DWMWA_EXTENDED_FRAME_BOUNDS,&r,sizeof(r)))) GetWindowRect(hwnd,&r);
+            QString title;
+            if (!isCapturableWindow(hwnd, data.excluded, &r, &title))
+                return TRUE;
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hwnd, &pid);
             auto &f=*data.frame;
             if(f.nativeGeometry.isEmpty()) return TRUE;
             double sx=double(f.image.width())/f.nativeGeometry.width(), sy=double(f.image.height())/f.nativeGeometry.height();
             QRect bounds(qRound((r.left-f.nativeGeometry.x())*sx),qRound((r.top-f.nativeGeometry.y())*sy),
                          qRound((r.right-r.left)*sx),qRound((r.bottom-r.top)*sy));
             bounds=bounds.intersected(f.image.rect());
-            if(!bounds.isEmpty()) {
-                auto target=manualTarget(); target["label"]=QT_TRANSLATE_NOOP("EditHere", "窗口");
-                target["source"]="window";
-                target["windowId"]=QString::number(quintptr(hwnd));
-                f.frontWindows.append({bounds,target});
-                // Window titles are separate capture metadata, never an accessibility
-                // component label. Read while the desktop snapshot still precedes us.
-                const int titleLength = qMin(GetWindowTextLengthW(hwnd), 1000);
-                QString title;
-                if (titleLength > 0) {
-                    wchar_t text[1001]{};
-                    const int copied = GetWindowTextW(hwnd, text, titleLength + 1);
-                    if (copied > 0) title = QString::fromWCharArray(text, copied);
-                }
+            if(bounds.width() >= 24 && bounds.height() >= 24) {
                 QString appName;
                 if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
                     wchar_t executable[32768]{}; DWORD length = 32768;
@@ -521,6 +585,12 @@ void captureScreens(CaptureCallback callback) {
                         appName = QFileInfo(QString::fromWCharArray(executable, int(length))).fileName().left(1000);
                     CloseHandle(process);
                 }
+                auto target = manualTarget();
+                target["label"] = QT_TRANSLATE_NOOP("EditHere", "窗口");
+                target["source"] = "window";
+                target["windowId"] = QString::number(quintptr(hwnd));
+                f.frontWindows.append({bounds, target});
+                // Window titles belong in captureWindows metadata only (governed by includeWindowTitle).
                 f.captureWindows.append({bounds, title, appName});
             }
             return TRUE;
@@ -540,29 +610,27 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
         POINT point;
         DWORD excluded;
         HWND window = nullptr;
+        RECT bounds{};
     } search{{point.x(), point.y()}, DWORD(excludedPid)};
     EnumWindows(
         [](HWND hwnd, LPARAM data) -> BOOL {
             auto s = reinterpret_cast<Search *>(data);
-            DWORD pid = 0;
-            GetWindowThreadProcessId(hwnd, &pid);
-            if (pid == s->excluded || !IsWindowVisible(hwnd) || IsIconic(hwnd))
-                return TRUE;
-            DWORD cloaked = 0;
-            DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
-            if (cloaked)
-                return TRUE;
             RECT r{};
-            GetWindowRect(hwnd, &r);
+            if (!isCapturableWindow(hwnd, s->excluded, &r))
+                return TRUE;
             if (!PtInRect(&r, s->point))
                 return TRUE;
             s->window = hwnd;
+            s->bounds = r;
             return FALSE;
         },
         reinterpret_cast<LPARAM>(&search));
     QVector<Candidate> result;
     if (!search.window)
         return result;
+    const QRect windowRect(search.bounds.left, search.bounds.top,
+                           search.bounds.right - search.bounds.left,
+                           search.bounds.bottom - search.bounds.top);
     HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IUIAutomation *automation = nullptr;
     if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_IUIAutomation,
@@ -587,6 +655,13 @@ QVector<Candidate> nativeElementsAt(QPoint point, qint64 excludedPid) {
                     target["controlType"] = bstrText(control);
                     target["automationId"] = bstrText(automationId);
                     QRect rect(r.left, r.top, r.right - r.left, r.bottom - r.top);
+                    if (depth == 0 && !windowRect.isEmpty()) {
+                        const QRect inter = rect.intersected(windowRect);
+                        const qint64 interArea = qint64(inter.width()) * inter.height();
+                        const qint64 winArea = qint64(windowRect.width()) * windowRect.height();
+                        if (winArea > 0 && double(interArea) / winArea >= 0.85)
+                            rect = windowRect;
+                    }
                     target["originalScreenBounds"] = rectJson(rect);
                     if (target["label"].toString().isEmpty())
                         target["label"] = target["controlType"];
@@ -630,14 +705,15 @@ bool usesNativeWindowControls() {
 bool screenCaptureAllowed(QString *) {
     return true;
 }
-void configureNativeWindow(QWidget *window, bool overlay) {
+void configureNativeWindow(QWidget *window, bool overlay, bool excludeFromCapture) {
     HWND hwnd = reinterpret_cast<HWND>(window->winId());
     SetWindowPos(hwnd, overlay ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     DWORD preference = overlay ? 1 : 2;
     DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
-    // Keep our overlay out of capture sources where Windows supports it.
-    if (overlay) {
+    // Exclude only live scroll-capture overlays from desktop capture; static snapshot
+    // overlays remain capturable so remote-desktop / screen-share sessions can use them.
+    if (overlay && excludeFromCapture) {
         SetLastError(ERROR_SUCCESS);
         const bool applied = SetWindowDisplayAffinity(hwnd, 0x00000011);
         const DWORD setError = applied ? ERROR_SUCCESS : GetLastError();
@@ -663,7 +739,31 @@ void configureNativeWindow(QWidget *window, bool overlay) {
                  {"affinity", QStringLiteral("0x%1").arg(affinity, 8, 16, QLatin1Char('0'))},
                  {"excluded", excluded}});
         }
+    } else if (overlay) {
+        SetWindowDisplayAffinity(hwnd, 0);
+        window->setProperty("_edithereDisplayAffinityState", QString());
     }
+}
+void configureRoundedPopupWindow(QWidget *window) {
+    if (!window || QGuiApplication::platformName() != "windows" || !window->testAttribute(Qt::WA_WState_Created))
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    if (!hwnd)
+        return;
+    // Tell DWM not to apply native rectangular/hardware rounding over alpha-layered
+    // QMenu/QTipLabel popups whose QSS border-radius draws its own anti-aliased shape.
+    DWORD preference = 1; // DWMWCP_DONOTROUND
+    DwmSetWindowAttribute(hwnd, 33, &preference, sizeof(preference));
+}
+void orderWindowBelow(QWidget *window, const QWidget *above) {
+    if (!window || !above || QGuiApplication::platformName() != "windows")
+        return;
+    if (!window->testAttribute(Qt::WA_WState_Created) || !above->testAttribute(Qt::WA_WState_Created))
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    HWND ref = reinterpret_cast<HWND>(above->winId());
+    if (hwnd && ref && hwnd != ref)
+        SetWindowPos(hwnd, ref, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 bool excludedFromCapture(const QWidget *window) {
     DWORD affinity = 0;
@@ -671,6 +771,335 @@ bool excludedFromCapture(const QWidget *window) {
            GetWindowDisplayAffinity(reinterpret_cast<HWND>(window->internalWinId()), &affinity) &&
            affinity == 0x00000011;
 }
+
+namespace {
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
+#ifndef DWMWA_EXTENDED_FRAME_BOUNDS
+#define DWMWA_EXTENDED_FRAME_BOUNDS 9
+#endif
+#ifndef DWMWA_CLOAKED
+#define DWMWA_CLOAKED 14
+#endif
+
+QString headlessWindowTitle(HWND hwnd) {
+    const int len = GetWindowTextLengthW(hwnd);
+    if (len <= 0 || len > 4096) return {};
+    QString text(len + 1, QChar());
+    const int copied = GetWindowTextW(hwnd, reinterpret_cast<wchar_t *>(text.data()), len + 1);
+    if (copied <= 0) return {};
+    text.truncate(copied);
+    text.remove(QChar::Null);
+    return text.trimmed().left(160);
+}
+
+QString headlessProcessName(DWORD pid) {
+    QString appName;
+    if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
+        wchar_t executable[32768]{};
+        DWORD length = 32768;
+        if (QueryFullProcessImageNameW(process, 0, executable, &length))
+            appName = QFileInfo(QString::fromWCharArray(executable, int(length))).fileName().left(80);
+        CloseHandle(process);
+    }
+    return appName;
+}
+
+bool isCloakedWin32Window(HWND hwnd) {
+    BOOL cloaked = FALSE;
+    return SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked;
+}
+
+bool isIgnoredHeadlessClass(HWND hwnd) {
+    wchar_t cls[256]{};
+    if (!GetClassNameW(hwnd, cls, 256)) return false;
+    return wcscmp(cls, L"Progman") == 0 ||
+           wcscmp(cls, L"WorkerW") == 0 ||
+           wcscmp(cls, L"Shell_TrayWnd") == 0 ||
+           wcscmp(cls, L"Shell_SecondaryTrayWnd") == 0 ||
+           wcscmp(cls, L"Windows.UI.Core.CoreWindow") == 0;
+}
+
+QRect headlessExtendedBounds(HWND hwnd) {
+    RECT ext{};
+    if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &ext, sizeof(ext))) &&
+        ext.right > ext.left && ext.bottom > ext.top) {
+        return QRect(ext.left, ext.top, ext.right - ext.left, ext.bottom - ext.top);
+    }
+    RECT wr{};
+    if (GetWindowRect(hwnd, &wr) && wr.right > wr.left && wr.bottom > wr.top) {
+        return QRect(wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top);
+    }
+    return {};
+}
+
+bool captureWin32WindowBitmap(HWND hwnd, QImage *outImage, QRect *outBounds) {
+    RECT wr{};
+    if (!GetWindowRect(hwnd, &wr)) return false;
+    const int width = wr.right - wr.left;
+    const int height = wr.bottom - wr.top;
+    if (width <= 0 || height <= 0 || qint64(width) * height > MaxPixels) return false;
+
+    const QRect ext = headlessExtendedBounds(hwnd);
+    if (outBounds) *outBounds = ext;
+
+    struct DcGuard {
+        HDC screen = nullptr;
+        HDC mem = nullptr;
+        HBITMAP bmp = nullptr;
+        HGDIOBJ prev = nullptr;
+        ~DcGuard() {
+            if (mem && prev && prev != HGDI_ERROR) SelectObject(mem, prev);
+            if (bmp) DeleteObject(bmp);
+            if (mem) DeleteDC(mem);
+            if (screen) ReleaseDC(nullptr, screen);
+        }
+    } gdi;
+
+    gdi.screen = GetDC(nullptr);
+    gdi.mem = gdi.screen ? CreateCompatibleDC(gdi.screen) : nullptr;
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void *pixels = nullptr;
+    gdi.bmp = gdi.mem ? CreateDIBSection(gdi.screen, &bmi, DIB_RGB_COLORS, &pixels, nullptr, 0) : nullptr;
+    gdi.prev = gdi.bmp ? SelectObject(gdi.mem, gdi.bmp) : nullptr;
+
+    auto extractCropped = [&](const void *raw) -> QImage {
+        QImage full = QImage(static_cast<const uchar *>(raw), width, height, width * 4, QImage::Format_RGB32).copy();
+        if (full.isNull()) return {};
+        if (!ext.isEmpty()) {
+            const QRect rel = QRect(ext.x() - wr.left, ext.y() - wr.top, ext.width(), ext.height())
+                                  .intersected(full.rect());
+            if (!rel.isEmpty() && rel != full.rect())
+                full = full.copy(rel);
+        }
+        full.setDevicePixelRatio(1);
+        full.setColorSpace(QColorSpace::SRgb);
+        return full;
+    };
+
+    if (gdi.bmp && pixels && gdi.prev && gdi.prev != HGDI_ERROR) {
+        const size_t byteSize = size_t(width) * size_t(height) * 4;
+        for (UINT flags : {UINT(PW_RENDERFULLCONTENT), UINT(0)}) {
+            std::memset(pixels, 0, byteSize);
+            if (!PrintWindow(hwnd, gdi.mem, flags)) continue;
+            GdiFlush();
+            QImage candidate = extractCropped(pixels);
+            if (!candidate.isNull() && !windowscapture::isBlankFrame(candidate)) {
+                *outImage = std::move(candidate);
+                return true;
+            }
+        }
+    }
+
+    if (!ext.isEmpty()) {
+        QImage desktopFallback = readDesktopRegion(ext);
+        if (!desktopFallback.isNull() && !windowscapture::isBlankFrame(desktopFallback)) {
+            desktopFallback.setDevicePixelRatio(1);
+            desktopFallback.setColorSpace(QColorSpace::SRgb);
+            *outImage = std::move(desktopFallback);
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+QVector<HeadlessWindowInfo> listHeadlessCaptureWindows() {
+    struct EnumState {
+        QVector<HeadlessWindowInfo> windows;
+        DWORD excludedPid = GetCurrentProcessId();
+    } state;
+
+    EnumWindows([](HWND hwnd, LPARAM param) -> BOOL {
+        auto &st = *reinterpret_cast<EnumState *>(param);
+        if (st.windows.size() >= 80) return FALSE;
+        if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return TRUE;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == 0 || pid == st.excludedPid) return TRUE;
+        if (isCloakedWin32Window(hwnd) || isIgnoredHeadlessClass(hwnd)) return TRUE;
+        const LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if ((exStyle & WS_EX_TOOLWINDOW) && !(exStyle & WS_EX_APPWINDOW)) return TRUE;
+        if (GetWindow(hwnd, GW_OWNER) != nullptr && !(exStyle & WS_EX_APPWINDOW)) return TRUE;
+        const QString title = headlessWindowTitle(hwnd);
+        if (title.isEmpty()) return TRUE;
+
+        const bool minimized = IsIconic(hwnd) != FALSE;
+        QRect bounds;
+        if (!minimized) {
+            bounds = headlessExtendedBounds(hwnd);
+            if (bounds.width() < 24 || bounds.height() < 24) return TRUE;
+        }
+        HeadlessWindowInfo info;
+        info.id = quint64(reinterpret_cast<quintptr>(hwnd));
+        info.pid = quint32(pid);
+        info.title = title;
+        info.appName = headlessProcessName(pid);
+        info.bounds = bounds;
+        info.minimized = minimized;
+        info.visible = !minimized;
+        st.windows.append(std::move(info));
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&state));
+
+    return state.windows;
+}
+
+HeadlessCaptureResult captureHeadlessScreen(int screenIndex) {
+    HeadlessCaptureResult res;
+    const auto screens = QGuiApplication::screens();
+    if (screens.isEmpty()) {
+        res.errorCode = "capture_failed";
+        res.message = "No active display screen found.";
+        return res;
+    }
+    if (screenIndex >= screens.size() || screenIndex < -1) {
+        res.errorCode = "invalid_arguments";
+        res.message = QString("Screen index %1 out of range.").arg(screenIndex);
+        return res;
+    }
+    QScreen *screen = screenIndex < 0 ? QGuiApplication::primaryScreen() : screens.at(screenIndex);
+    if (!screen) screen = screens.first();
+
+    QRect native;
+    HMONITOR monitor = nullptr;
+    if (auto handle = screen->nativeInterface<QNativeInterface::QWindowsScreen>()) {
+        monitor = handle->handle();
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(monitor, &info)) {
+            native = QRect(info.rcMonitor.left, info.rcMonitor.top,
+                           info.rcMonitor.right - info.rcMonitor.left,
+                           info.rcMonitor.bottom - info.rcMonitor.top);
+        }
+    }
+    const auto color = windowscapture::displayColor(monitor);
+    QImage image = color.advancedColor ? readHdrScreen(monitor, color.sdrWhiteLevel)
+                                       : readSdrScreen(screen->grabWindow(0).toImage(), native);
+    if (!image.isNull() && !native.isEmpty() && image.size() != native.size())
+        image = readDesktopRegion(native);
+    if (image.isNull() || native.isEmpty() || windowscapture::isBlankFrame(image)) {
+        res.errorCode = "capture_failed";
+        res.message = "Screen capture failed or produced a blank frame.";
+        return res;
+    }
+    image.setDevicePixelRatio(1);
+    image.setColorSpace(QColorSpace::SRgb);
+    res.ok = true;
+    res.image = std::move(image);
+    res.screenBounds = native;
+    return res;
+}
+
+HeadlessCaptureResult captureHeadlessWindow(const QString &titleQuery, quint64 windowId) {
+    HeadlessCaptureResult res;
+    const DWORD ownPid = GetCurrentProcessId();
+    HWND target = nullptr;
+    HeadlessWindowInfo chosen;
+
+    if (windowId != 0) {
+        target = reinterpret_cast<HWND>(quintptr(windowId));
+        if (!target || !IsWindow(target)) {
+            res.errorCode = "window_not_found";
+            res.message = QString("Window ID %1 does not exist.").arg(windowId);
+            return res;
+        }
+        DWORD pid = 0;
+        GetWindowThreadProcessId(target, &pid);
+        if (pid == ownPid) {
+            res.errorCode = "invalid_arguments";
+            res.message = "Refusing to capture EditHere's own window.";
+            return res;
+        }
+        if (!IsWindowVisible(target) || isCloakedWin32Window(target)) {
+            res.errorCode = "window_not_found";
+            res.message = QString("Window ID %1 is hidden or unavailable.").arg(windowId);
+            return res;
+        }
+        chosen.id = windowId;
+        chosen.pid = quint32(pid);
+        chosen.title = headlessWindowTitle(target);
+        chosen.appName = headlessProcessName(pid);
+        chosen.minimized = IsIconic(target) != FALSE;
+        chosen.bounds = chosen.minimized ? QRect() : headlessExtendedBounds(target);
+        chosen.visible = !chosen.minimized;
+    } else {
+        const QString query = titleQuery.trimmed();
+        if (query.isEmpty()) {
+            res.errorCode = "invalid_arguments";
+            res.message = "Window selector query cannot be empty.";
+            return res;
+        }
+        const auto all = listHeadlessCaptureWindows();
+        QVector<HeadlessWindowInfo> exactMatches, titleMatches, appMatches;
+        for (const auto &w : all) {
+            if (w.title.compare(query, Qt::CaseInsensitive) == 0)
+                exactMatches.append(w);
+            else if (w.title.contains(query, Qt::CaseInsensitive))
+                titleMatches.append(w);
+            else {
+                const QString stem = QFileInfo(w.appName).completeBaseName();
+                if (w.appName.compare(query, Qt::CaseInsensitive) == 0 ||
+                    stem.compare(query, Qt::CaseInsensitive) == 0 ||
+                    w.appName.contains(query, Qt::CaseInsensitive))
+                    appMatches.append(w);
+            }
+        }
+        const auto &bucket = !exactMatches.isEmpty() ? exactMatches
+                           : !titleMatches.isEmpty() ? titleMatches
+                                                     : appMatches;
+        if (bucket.isEmpty()) {
+            res.errorCode = "window_not_found";
+            res.message = QString("No capturable window matched \"%1\".").arg(query);
+            return res;
+        }
+        if (bucket.size() > 1) {
+            res.errorCode = "ambiguous_window";
+            res.message = QString("Multiple windows (%1) matched \"%2\"; pass a more specific --window title or --window-id.")
+                              .arg(bucket.size())
+                              .arg(query);
+            res.candidates = bucket;
+            return res;
+        }
+        chosen = bucket.first();
+        target = reinterpret_cast<HWND>(quintptr(chosen.id));
+        if (!target || !IsWindow(target)) {
+            res.errorCode = "window_not_found";
+            res.message = "Matched window is no longer available.";
+            return res;
+        }
+    }
+
+    if (chosen.minimized || IsIconic(target)) {
+        res.errorCode = "window_minimized";
+        res.message = QString("Window \"%1\" is minimized. Restore it before capturing.")
+                          .arg(chosen.title.isEmpty() ? QString::number(chosen.id) : chosen.title);
+        return res;
+    }
+
+    QImage img;
+    QRect bounds;
+    if (!captureWin32WindowBitmap(target, &img, &bounds)) {
+        res.errorCode = "capture_failed";
+        res.message = QString("Failed to capture window \"%1\" cleanly (blank or protected content).")
+                          .arg(chosen.title.isEmpty() ? QString::number(chosen.id) : chosen.title);
+        return res;
+    }
+    res.ok = true;
+    res.image = std::move(img);
+    res.windowTitle = chosen.title;
+    res.appName = chosen.appName;
+    res.screenBounds = bounds;
+    return res;
+}
+
 QString globalShortcutLabel() {
     return QKeySequence("Alt+Shift+2", QKeySequence::PortableText).toString(QKeySequence::NativeText);
 }

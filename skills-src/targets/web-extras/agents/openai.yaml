@@ -1,0 +1,4 @@
+interface:
+  display_name: "EditHere Web"
+  short_description: "Maintain project page galleries, apply scoped code changes from feedback, and refresh code-affected screenshots"
+  default_prompt: "Use $edithere-web to capture all accessible pages of this project into a gallery for my review, implement scoped fixes once submitted, and refresh affected screenshots for the next round."

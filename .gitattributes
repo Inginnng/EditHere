@@ -21,13 +21,17 @@ docs/*.md text eol=lf
 # The web build concatenates web/src sources and embeds the brand art and
 # shared icons verbatim, so their line endings are part of the bytes in
 # web/EditHere.html, web/EditHere.mcp.html and the published web packages.
-# Pin them so Windows, macOS, Linux and CI build the same files; the brand
-# art is embedded base64-encoded and therefore stays CRLF.
+# Pin the brand SVGs to the LF bytes stored in the original Git assets.
 web/** text eol=lf
+dsh/** text eol=lf
 assets/ui-icons/** text eol=lf
-assets/brand/edithere-lockup.svg text eol=crlf
-assets/brand/edithere-lockup-light.svg text eol=crlf
-assets/icons/edithere.svg text eol=crlf
+assets/brand/edithere-*.svg text eol=lf
+assets/brand/README.md text eol=lf
+assets/icons/*.svg text eol=lf
+frontend/public/brand/*.svg text eol=lf
+connector/icon.svg text eol=lf
+trae-plugin/assets/edithere-icon.svg text eol=lf
+shared/*.json text eol=lf
 # The legal texts are copied into the web packages byte for byte, so they are
 # pinned too; otherwise a Windows checkout (core.autocrlf) and Linux CI would
 # ship different ZIPs for the same source.

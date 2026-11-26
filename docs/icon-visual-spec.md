@@ -1,6 +1,6 @@
 # EditHere 图标视觉规范
 
-自 0.11.1 起适用：Windows、macOS、Linux 桌面操作图标及 Web / MCP 界面。品牌图和品牌文字使用现有资源。跨端共用 `assets/ui-icons/manifest.json` 及其 SVG 文件，不按操作系统维护不同图形。当前运行时清单包含 67 个图标：61 个 Lucide 官方图形及 6 个 EditHere 自有或改绘图形。
+自 0.11.1 起适用：Windows、macOS、Linux 桌面操作图标及 Web / MCP 界面。品牌图和品牌文字使用现有资源。跨端共用 `assets/ui-icons/manifest.json` 及其 SVG 文件，不按操作系统维护不同图形。当前运行时清单包含 69 个图标：62 个 Lucide 官方图形及 7 个 EditHere 自有或改绘图形。
 
 ## 来源与选择
 

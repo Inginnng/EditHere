@@ -1,0 +1,44 @@
+---
+name: edithere-dsh
+description: Review game, desktop, or web builds through the EditHere DSH gallery workbench. Capture accessible pages, maintain a manifest, apply scoped code edits from submitted annotations, and refresh only code-affected screenshots.
+---
+
+# EditHere Gallery Workbench (DSH)
+
+Run a local-only gallery review workbench where all images stay on disk. Once the user clicks **Finish and return to AI**, only pages with annotations or moves return via JSON, original (`sourcePath`), and numbered preview (`annotatedPath`).
+
+{{PARTIAL:workflow-core}}
+
+## DSH CLI & Core Loop
+
+Check `LOCAL.md` inside this skill directory if present for the resolved `cli.mjs` path; otherwise use `dsh/cli.mjs` (`$CLI`):
+
+1. **Start gallery session** (prefer passing `--project` managed by `image-set.mjs`):
+
+```powershell
+node "$CLI" start --project "<abs-manifest.json>" --output "C:\project\.edithere\feedback-1.json" --open
+```
+
+You may also pass `--name` with multiple `--image` flags (or omit `--image` for drag-and-drop). Save `sessionId`, `url`, `inbox`, and `output`, and inform the user they can drop screenshots into `<inbox>` or click add-page. On Windows, `node "$CLI" capture --output "<abs.png>" [--all] [--window "Exact Title"]` can assist window capture.
+
+2. **Wait for submission** (bounded `wait <= 55`s; never sleep-loop or read unsubmitted state):
+
+```powershell
+node "$CLI" wait --session "<sessionId>" --wait 50
+```
+
+- `pending`: keep waiting cleanly; `completed`: proceed to edits; `cancelled` / `expired`: stop without editing code.
+- **Hot-add pages mid-session**: Drop images into `inbox` (~1s auto-ingest) or run `node "$CLI" add --session "<sessionId>" --image "<abs.png>"`; never start a second concurrent session.
+
+3. **Inspect images before editing**: Read `groupNotes`, `pageIndex`, and `pages[]` from `output`, inspect each `pages[].annotatedPath` (and `sourcePath` for detail) with your image viewer, then follow [Layout Translation & Local vs. Design-System Guide](references/layout-translation.md) and refresh only code-affected pages.
+
+```text
+start  --name NAME [--project ABS | --image PATH ...] [--output ABS] [--timeout SEC] [--open]
+add    --session ID --image PATH [--image PATH ...]
+wait   --session ID [--wait 0..55]
+status / cancel --session ID
+capture --output ABS [--all] [--window TITLE]
+serve  [--port 4782]
+```
+
+{{PARTIAL:format-summary}}

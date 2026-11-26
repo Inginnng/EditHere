@@ -133,8 +133,10 @@ class CandidatePicker {
     // with the mouse: the block on offer stays the one on offer while the pointer is
     // still inside it, however far the tuning takes it. A mouse that travels is not
     // fine-tuning, and there the smallest block under the pointer is what is offered.
-    void update(const QVector<Candidate> &candidates, QPoint point, bool keep = false);
+    void update(const QVector<Candidate> &candidates, QPoint point, bool keep = false,
+                bool preferWindow = false);
     void step(int direction);
+    void toggleWindow();
     void reset();
     // Forgets the level the wheel picked, so the next look starts from the smallest
     // block again. Only a fresh start should do this: moving the pointer over the

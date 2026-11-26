@@ -1,4 +1,4 @@
-# EditHere · 改这里：使用指南
+# EditHere：使用指南
 
 **简体中文** · [English](USER-GUIDE.en.md)
 
