@@ -9,7 +9,7 @@ Manual file handoff defaults to JSON and a companion original; **Embed original 
 
 [简体中文](AGENT-CLI.md) · **English**
 
-[Back to the product introduction](../README.en.md) · [Let AI install it for you](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md) · [User guide](USER-GUIDE.en.md) · [Companion AI skill](../skills/edithere/SKILL.md)
+[Back to the product introduction](../README.en.md) · [Let AI install it for you](https://github.com/Inginnng/EditHere/blob/HEAD/docs/AI-SETUP.en.md) · [Companion AI skill](../skills/edithere/SKILL.md)
 
 EditHere provides a local command-line entry point that lets AI open a screenshot for you to annotate. You can write change requests and move or resize components; the command line hands this round's feedback to the AI only after you click “Finish and return to AI” (完成并返回 AI). The image, annotations and export are all handled on your machine; whether the file is later sent to an AI service is decided by the tool that uses it.
 
@@ -61,7 +61,7 @@ On macOS the command name is `edithere-cli`, deployed with the app at `EditHere.
 /Applications/EditHere.app/Contents/MacOS/edithere-cli --help
 ```
 
-If you keep the app in `~/Applications` or another stable location, adjust the path accordingly; you can also add the CLI to PATH yourself. For macOS Screen Recording and Accessibility permissions and the state of on-device acceptance testing, see [Platform boundaries](USER-GUIDE.en.md#recognition-and-platform-boundaries).
+If you keep the app in `~/Applications` or another stable location, adjust the path accordingly; you can also add the CLI to PATH yourself. macOS needs Screen Recording and Accessibility permissions, granted in System Settings.
 
 ## Desktop access for Windows agents
 

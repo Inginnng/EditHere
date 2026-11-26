@@ -4,7 +4,7 @@
 
 成熟功能优先使用 Lucide 1.55.0 官方 SVG。固定 Git revision 为 `70562c1ee1c4fdcf736fe97bc893fb8511927934`；来源是官方 `lucide-static` npm 发行包，包地址及已验证的 SHA-512 integrity 保存在 manifest。这里不需要 npm 运行依赖，不在构建时联网下载图标。保留的原始许可见 `LICENSE`（Lucide ISC，以及 Feather 衍生图形的 MIT 许可）。
 
-视觉规则见 [图标视觉规范](../../docs/icon-visual-spec.md)。所有几何使用 24×24 坐标、2 单位线宽、圆端、圆连接、单色 `currentColor`；通常显示为 20px，紧凑控件按现有布局显示 16–18px，独立展示 24px。不要为某个系统或页面重新画一份，也不要单独覆盖线宽。
+所有几何使用 24×24 坐标、2 单位线宽、圆端、圆连接、单色 `currentColor`；通常显示为 20px，紧凑控件按现有布局显示 16–18px，独立展示 24px。不要为某个系统或页面重新画一份，也不要单独覆盖线宽。
 
 `source: lucide` 表示官方 SVG；`source: edithere` 表示按同一规范补充的专用图形。圆角图形由 Lucide `square-round-corner` 改为单条连续外轮廓，长截图及四向裁剪图形是 EditHere 自有几何。所有修改都保留源图标与来源链接。
 

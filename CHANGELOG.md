@@ -1,6 +1,6 @@
 # 更新记录
 
-[返回产品介绍](README.md) · [使用指南](docs/USER-GUIDE.md) · [开发说明](docs/DEVELOPMENT.md)
+[返回产品介绍](README.md) · [开发说明](docs/DEVELOPMENT.md)
 
 以下保留各版本发布时的变更记录；旧版本中的名称、图标与实现描述反映当时状态，当前功能请以产品介绍与使用指南为准。原记录未提供发布日期，本页不补写日期。
 

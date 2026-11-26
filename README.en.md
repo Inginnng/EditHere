@@ -22,7 +22,6 @@
   <a href="#how-is-this-different-from-screenshot-markup">Vs. screenshot markup</a> ·
   <a href="#desktop-and-web-editions">Desktop and web</a> ·
   <a href="docs/AGENT-CLI.en.md">AI integration</a> ·
-  <a href="docs/USER-GUIDE.en.md">User guide</a> ·
   <a href="https://github.com/Inginnng/EditHere/releases">Release notes</a>
 </p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
@@ -96,8 +95,6 @@ Only frames you actually annotated are exported; simply pausing never produces a
 
 <p align="center"><img src="assets/readme/video-en.gif" width="760" alt="Video annotation: pause at two moments, annotate, revisit via timeline tags and export timestamped JSON"></p>
 
-See the [video annotation guide](docs/VIDEO-ANNOTATION.en.md) for the format.
-
 ### 🤖 Hand it to your AI
 
 EditHere provides structured feedback, with an optional API feature that turns annotations into plain text:
@@ -122,8 +119,6 @@ Press the global shortcut to freeze the screen. **Hover to get candidate regions
 - Fixed ratios (1:1, 4:3, 16:9, 9:16, custom); click the size to type an exact width and height.
 - The last 20 captures and 10 selections persist across sessions: `<` / `>` browse history, `R` restores the last selection.
 - Pins can be resized, rotated, flipped, made translucent, and sent straight to the editor from their context menu.
-
-See [User guide · Capture](docs/USER-GUIDE.en.md#capture) for every shortcut.
 </details>
 
 ### 🔤 Text recognition (OCR)
@@ -296,13 +291,10 @@ Yes. A `.edithere` project keeps the original image, notes and editing state; th
 
 | Document | What's inside |
 | --- | --- |
-| [User guide](docs/USER-GUIDE.en.md) | Capture, annotation, Explode, export, settings and shortcuts |
 | [AI integration and CLI](docs/AGENT-CLI.en.md) | `edithere-cli` commands, skill setup and agent integration |
 | [Generate instructions](docs/AI-INSTRUCTIONS.en.md) | Configure a model API to turn screenshots and annotations into plain text |
 | [AI setup guide](docs/AI-SETUP.en.md) | Let an AI install and configure EditHere for you |
 | [Web edition guide](web/README.en.md) | The standalone HTML, MCP Apps and the browser-compatible mode |
-| [Video annotation](docs/VIDEO-ANNOTATION.en.md) | The video feedback format and workflow |
-| [Scrolling capture](docs/LONG-CAPTURE.en.md) | Design and verification of scrolling capture |
 | [Linux guide](docs/LINUX.en.md) | AppImage, OCR dependencies and X11 / Wayland behaviour |
 | [Build and development](docs/DEVELOPMENT.en.md) | Building from source, tests and packaging |
 | [Platforms and distribution](docs/DISTRIBUTION.en.md) | Artefacts and layout for each platform |
