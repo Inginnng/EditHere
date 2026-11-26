@@ -116,11 +116,6 @@ Overlay::Overlay(ScreenFrame frame, QWidget *parent)
         applySelection(captureRectWithRatio(selected_, ratio_, bar_->customWidth(), bar_->customHeight()),
                        false);
     });
-    connect(bar_, &CaptureToolbar::moved, this, [this] {
-        if (captureNotice_ && captureNotice_->isVisible())
-            placeCaptureNotice();
-        update();
-    });
     sidebar_ = new CaptureSidebar(this);
     sidebar_->hide();
     // A style change alters what the region looks like, not where it is.
@@ -320,8 +315,6 @@ void Overlay::resetSelection() {
     // being kept: wanting the row rather than the cell is a wish about this look, not
     // a setting for the next one.
     picker_.forget();
-    if (bar_ != nullptr)
-        bar_->resetUserPosition();
     clearMarkup();
     hideTools();
     update();
@@ -383,7 +376,7 @@ void Overlay::drawScene(QPainter &p, const QRectF &viewport) {
     }
     p.setPen(QPen(accent(), 1.5));
     p.drawRoundedRect(outline, radius, radius);
-    // Compact PixPin-grade dimension readout while dragging or hovering a candidate/window.
+    // Compact dimension readout while dragging or hovering a candidate/window.
     if (!ready_) {
         QString dimText = QStringLiteral("%1 × %2").arg(active.width()).arg(active.height());
         if (!drawing_ && selected_.isEmpty()) {
@@ -656,7 +649,6 @@ void Overlay::mousePressEvent(QMouseEvent *e) {
     }
     emit selectionBegan();
     clearMarkup();
-    bar_->resetUserPosition();
     start_ = cursor_ = pixel;
     keyboardOffset_ = {};
     hoverTimer_.stop();

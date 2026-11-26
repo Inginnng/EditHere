@@ -60,8 +60,6 @@ connector/
 
 对于大量标注，摘要最多展开 128 帧、256 个对象、100000 字符，并明确提示未展开的内容及完整帧索引范围；AI 必须继续按索引读取反馈文件。连接器读取文件上限为 512 MiB。帧关联、时间戳或展开索引不一致时返回解析错误，避免 AI 把意见套用到错误时间点。
 
-完整交互与 JSON 示例见 [视频标注说明](../docs/VIDEO-ANNOTATION.md)。
-
 ## 前置条件：本机需已安装 EditHere
 
 连接器只是适配层，**不包含 EditHere 程序本体**。程序缺失时所有需要桌面的工具都会返回 `edithere-cli 不可用`，并附带安装指引。安装入口：<https://github.com/Inginnng/EditHere/releases/latest>。
@@ -148,7 +146,7 @@ node connector/mcp-server.mjs
 - 0.1.1：`EDITHERE_CLI` 失效时明确报错而非静默回退；必填参数前置校验；`edithere_status` 与失败信息回显实际使用的 CLI 路径与来源；`edithere_annotate` 说明并发限制。
 - 0.1.0：首次提供 `status` / `open` / `capture` / `annotate` / `export` 五个工具。
 
-连接器版本独立于 EditHere 程序版本（当前程序 0.14.3）；两者的版本号会同时出现在 `edithere_status` 响应中。
+连接器版本独立于 EditHere 程序版本（当前程序 0.14.4）；两者的版本号会同时出现在 `edithere_status` 响应中。
 
 ## 页面说明与采集上下文
 

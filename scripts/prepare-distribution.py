@@ -416,7 +416,6 @@ def assemble(root: Path, output: Path, *, include_history: bool = False, native_
         package_version = json.loads(text(root / metadata))["version"] if metadata else source_version
         entries = archive_entries(root, product)
         entries.update(common)
-        entries["docs/VIDEO-ANNOTATION.md"] = root / "docs/VIDEO-ANNOTATION.md"
         guide = {"desktop-skill": "skills/edithere/SKILL.md", "desktop-mcp": "connector/README.md", "trae-plugin": "trae-plugin/.trae-plugin/plugin.json"}[product]
         entries["README-distribution.md"] = f"# {product}\n\n组件版本 {package_version}，来自源码 {commit}。\n此包使用桌面 edithere-cli，需另行安装相应平台的 EditHere。它与 web-agent 是两个入口。\n\n入口说明或配置见 {guide}。本地整理包，未执行发布。\n"
         file = output / "integrations" / product / str(package_version) / f"EditHere-{product}-{package_version}-{short}.zip"

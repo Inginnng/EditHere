@@ -330,7 +330,7 @@
   overflow: hidden;
 }
 
-/* PixPin-Inspired Interactive Crop Overlay */
+/* Interactive Crop Overlay */
 .crop-overlay-layer {
   position: absolute;
   inset: 0;
@@ -373,7 +373,7 @@
   pointer-events: none;
 }
 
-/* PixPin Pixel Magnifier Loupe */
+/* Pixel Magnifier Loupe */
 .pixel-loupe {
   position: absolute;
   width: 132px;
@@ -813,7 +813,7 @@
   overflow: visible;
 }
 
-/* PixPin Two-Tier Contextual Sub-bar floating 8px above .floating-dock */
+/* Two-Tier Contextual Sub-bar floating 8px above .floating-dock */
 .dock-subbar {
   position: absolute;
   bottom: 60px;

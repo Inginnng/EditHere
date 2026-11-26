@@ -33,7 +33,7 @@ struct B2Page {
 
 // Native desktop shell window hosting the unified React/Radix B2 workbench
 // inside Microsoft Edge WebView2 (Windows), backed directly by EditHere's C++20
-// capture, block-detection, Windows OCR, PinWindow, and Agent feedback core.
+// capture, block-detection, Windows OCR, pinned image windows, and Agent feedback core.
 class B2Window final : public QMainWindow {
     Q_OBJECT
   public:

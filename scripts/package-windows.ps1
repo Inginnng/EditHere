@@ -28,7 +28,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/qtm
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "packaging/licenses/ffmpeg/COPYING.LGPLv2.1"))) { throw "FFmpeg license materials are missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/feedback-minimal.schema.json"))) { throw "The current feedback schema is missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "schema/project-v3.schema.json"))) { throw "The project schema is missing." }
-foreach ($videoFile in @("docs/VIDEO-ANNOTATION.md", "schema/video-feedback-v1.schema.json", "schema/video-project-v1.schema.json")) {
+foreach ($videoFile in @("schema/video-feedback-v1.schema.json", "schema/video-project-v1.schema.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $videoFile))) { throw "Video usage material is missing: $videoFile" }
 }
 foreach ($aiFile in @("docs/AI-INSTRUCTIONS.md", "docs/AI-INSTRUCTIONS.en.md", "docs/ai-providers.md", "packaging/licenses/qtkeychain/COPYING", "packaging/licenses/cc-switch/LICENSE", "packaging/licenses/lobehub-icons/LICENSE")) {
@@ -76,7 +76,6 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "packaging/windows/maintain.ps1")
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills") -Destination $outputPath -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/PROJECT-REVIEW.md") -Destination $outputPath
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs/AGENT-CLI.md") -Destination $outputPath
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs/VIDEO-ANNOTATION.md") -Destination $outputPath
 foreach ($aiGuide in @("AI-INSTRUCTIONS.md", "AI-INSTRUCTIONS.en.md", "ai-providers.md")) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "docs/$aiGuide") -Destination $outputPath
 }
@@ -175,14 +174,8 @@ foreach ($notice in @("LICENSE", "LICENSING.md", "COMMERCIAL-LICENSE.md", "NOTIC
     Copy-Item -LiteralPath (Join-Path $projectRoot $notice) -Destination $outputPath
 }
 $packagedGuide = Join-Path $outputPath "AGENT-CLI.md"
-$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("USER-GUIDE.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/USER-GUIDE.md").Replace("AGENT-CLI.en.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/AGENT-CLI.en.md")
+$guideText = [IO.File]::ReadAllText($packagedGuide).Replace("../skills/", "skills/").Replace("../schema/", "schema/").Replace("../README.md", "https://github.com/Inginnng/EditHere").Replace("AGENT-CLI.en.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/AGENT-CLI.en.md")
 [IO.File]::WriteAllText($packagedGuide, $guideText, [Text.UTF8Encoding]::new($false))
-$packagedVideoGuide = Join-Path $outputPath "VIDEO-ANNOTATION.md"
-$videoGuideText = [IO.File]::ReadAllText($packagedVideoGuide).Replace("../schema/", "schema/").Replace("VIDEO-ANNOTATION.en.md", "https://github.com/Inginnng/EditHere/blob/HEAD/docs/VIDEO-ANNOTATION.en.md")
-if ($ValidationDirectory) {
-    $videoGuideText = $videoGuideText.Replace("../artifacts/video-acceptance/video-acceptance.json", "validation/video-acceptance.json").Replace("../artifacts/video-acceptance/connector-acceptance.json", "validation/connector-acceptance.json").Replace("../artifacts/video-independent-reader/report.md", "validation/independent-ai/report.md").Replace("../artifacts/video-independent-reader/result.json", "validation/independent-ai/result.json")
-}
-[IO.File]::WriteAllText($packagedVideoGuide, $videoGuideText, [Text.UTF8Encoding]::new($false))
 $packagedLicensing = Join-Path $outputPath "LICENSING.md"
 [IO.File]::WriteAllText($packagedLicensing, [IO.File]::ReadAllText($packagedLicensing).Replace("packaging/THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md"), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $outputPath "qt.conf"), "[Paths]`nPrefix=.`nPlugins=.`n", [Text.UTF8Encoding]::new($false))

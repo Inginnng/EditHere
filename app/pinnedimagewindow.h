@@ -11,7 +11,7 @@ enum Side { SideNone = 0, SideLeft = 1, SideRight = 2, SideTop = 4, SideBottom =
 // A picture held on top of everything else, so a reference can sit beside the window
 // being worked on. It is frameless, movable, and scales with the wheel or by dragging
 // one of its edges.
-class PinWindow final : public QWidget {
+class PinnedImageWindow final : public QWidget {
     Q_OBJECT
   public:
     // `placement` is where the picture belongs, in global logical coordinates. A
@@ -19,7 +19,7 @@ class PinWindow final : public QWidget {
     // taken from, so the pin lands on top of the very thing it shows instead of in
     // the middle of the screen. An empty rectangle means "no opinion", which is what
     // the editor's pin action has, and that one is centred on the screen.
-    explicit PinWindow(QImage image, QRect placement = {}, QWidget *parent = nullptr);
+    explicit PinnedImageWindow(QImage image, QRect placement = {}, QWidget *parent = nullptr);
     const QImage &image() const {
         return image_;
     }
@@ -83,7 +83,7 @@ class PinWindow final : public QWidget {
     // The pinned picture handed back to the editor, which is what the whole program is
     // for: a pin is a place to keep a picture, not somewhere it has to stay.
     void annotateRequested(const QImage &image);
-    void closed(PinWindow *window);
+    void closed(PinnedImageWindow *window);
 
   protected:
     void paintEvent(QPaintEvent *) override;

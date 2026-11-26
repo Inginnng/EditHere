@@ -243,7 +243,7 @@ export default function WorkspaceView({
   // Anchored contextual subbar offset (Point 6)
   const [subbarLeft, setSubbarLeft] = useState<number | null>(null);
 
-  // PixPin-grade tool options & Brush state
+  // Tool options & Brush state
   const [hideAnnotations, setHideAnnotations] = useState(false);
   const [magnifierEnabled, setMagnifierEnabled] = useState(false);
   const [mosaicStyle, setMosaicStyle] = useState<'pixelate' | 'blur'>('pixelate');
@@ -2228,7 +2228,7 @@ export default function WorkspaceView({
                 {/* Live Rubber-Band Box / Mosaic Draft */}
                 {draftBox && <div className="box-draft-rect" style={rectStyle(draftBox)} />}
 
-                {/* PixPin-Style Pixel Loupe Overlay */}
+                {/* Pixel Loupe Overlay */}
                 {magnifierEnabled && loupe && tool !== 'explode' && (
                   <div
                     className="pixel-loupe"

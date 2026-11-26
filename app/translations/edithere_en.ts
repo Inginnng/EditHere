@@ -3301,11 +3301,6 @@ Cancel this session and return?</translation>
         <translation>Scrolling capture</translation>
     </message>
     <message>
-        <location filename="../capturetoolbar.cpp" line="538"/>
-        <source>拖动工具栏</source>
-        <translation>Drag toolbar</translation>
-    </message>
-    <message>
         <location filename="../capturetoolbar.cpp" line="565"/>
         <source>%1, %2 · %3 × %4 px</source>
         <translation>%1, %2 · %3 × %4 px</translation>
@@ -5125,94 +5120,94 @@ Scroll back a little; stitching continues once it lines up.</translation>
     </message>
 </context>
 <context>
-    <name>h2d::PinWindow</name>
+    <name>h2d::PinnedImageWindow</name>
     <message>
-        <location filename="../pinwindow.cpp" line="60"/>
+        <location filename="../pinnedimagewindow.cpp" line="60"/>
         <source>置顶图片 %1 × %2</source>
         <translation>Pinned picture %1 × %2</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="433"/>
+        <location filename="../pinnedimagewindow.cpp" line="433"/>
         <source>批注</source>
         <translation>Annotate</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="436"/>
+        <location filename="../pinnedimagewindow.cpp" line="436"/>
         <source>复制图像</source>
         <translation>Copy image</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="438"/>
+        <location filename="../pinnedimagewindow.cpp" line="438"/>
         <source>保存图片</source>
         <translation>Save image</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="440"/>
+        <location filename="../pinnedimagewindow.cpp" line="440"/>
         <source>文字识别</source>
         <translation>Text recognition</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="443"/>
+        <location filename="../pinnedimagewindow.cpp" line="443"/>
         <source>旋转</source>
         <translation>Turn</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="444"/>
+        <location filename="../pinnedimagewindow.cpp" line="444"/>
         <source>向左旋转 90°</source>
         <translation>Turn left 90°</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="445"/>
+        <location filename="../pinnedimagewindow.cpp" line="445"/>
         <source>向右旋转 90°</source>
         <translation>Turn right 90°</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="449"/>
+        <location filename="../pinnedimagewindow.cpp" line="449"/>
         <source>水平翻转</source>
         <translation>Flip horizontally</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="450"/>
+        <location filename="../pinnedimagewindow.cpp" line="450"/>
         <source>垂直翻转</source>
         <translation>Flip vertically</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="458"/>
+        <location filename="../pinnedimagewindow.cpp" line="458"/>
         <source>阴影</source>
         <translation>Shadow</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="466"/>
+        <location filename="../pinnedimagewindow.cpp" line="466"/>
         <source>缩放</source>
         <translation>Zoom</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="467"/>
+        <location filename="../pinnedimagewindow.cpp" line="467"/>
         <source>适应屏幕</source>
         <translation>Fit to screen</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="468"/>
+        <location filename="../pinnedimagewindow.cpp" line="468"/>
         <source>原始大小</source>
         <translation>Actual size</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="472"/>
+        <location filename="../pinnedimagewindow.cpp" line="472"/>
         <source>回到截图位置</source>
         <translation>Back to where it was captured</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="451"/>
+        <location filename="../pinnedimagewindow.cpp" line="451"/>
         <source>透明度</source>
         <translation>Transparency</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="61"/>
+        <location filename="../pinnedimagewindow.cpp" line="61"/>
         <source>拖动移动 · 拖边缘缩放 · 滚轮缩放 · 双击关闭 · Ctrl+C 复制 · 右键更多选项 · Esc 关闭</source>
         <translation>Drag to move · Drag an edge to resize · Scroll to zoom · Double click to close · Ctrl+C copies · Right click for more · Esc closes</translation>
     </message>
     <message>
-        <location filename="../pinwindow.cpp" line="478"/>
+        <location filename="../pinnedimagewindow.cpp" line="478"/>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
@@ -5364,11 +5359,6 @@ Scroll back a little; stitching continues once it lines up.</translation>
         <location filename="../capturetoolbar.cpp" line="1595"/>
         <source>水平截图请手动滚动或拖动滚动条</source>
         <translation>Scroll manually or drag the horizontal scrollbar</translation>
-    </message>
-    <message>
-        <location filename="../capturetoolbar.cpp" line="1112"/>
-        <source>拖动工具栏</source>
-        <translation>Drag the toolbar</translation>
     </message>
     <message>
         <location filename="../capturetoolbar.cpp" line="1145"/>

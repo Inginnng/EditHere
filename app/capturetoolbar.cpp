@@ -30,10 +30,8 @@
 #include <QSpinBox>
 #include <QStyle>
 #include <QVBoxLayout>
-#include <QWindow>
 #include <algorithm>
 #include <cmath>
-#include <functional>
 
 namespace h2d {
 namespace {
@@ -134,91 +132,6 @@ QPoint captureBarPosition(const QRect &selection, const QRect &bounds, QSize siz
     const int y = below + size.height() <= bounds.bottom() + 1 ? below : above;
     return {x, std::clamp(y, bounds.top(), std::max(bounds.top(), bounds.bottom() + 1 - size.height()))};
 }
-
-class ToolbarGrip final : public QWidget {
-  public:
-    explicit ToolbarGrip(bool childBarMode, std::function<void(QPoint)> onMoved = {}, QWidget *parent = nullptr)
-        : QWidget(parent), childBarMode_(childBarMode), onMoved_(std::move(onMoved)) {
-        setObjectName(childBarMode ? QStringLiteral("captureDragBar") : QStringLiteral("scrollDragBar"));
-        setCursor(Qt::OpenHandCursor);
-        setFocusPolicy(Qt::NoFocus);
-        setFixedSize(18, captureButtonSize);
-        icon_ = new QLabel(this);
-        icon_->setProperty("glyphName", QStringLiteral("scroll-grip"));
-        icon_->setAlignment(Qt::AlignCenter);
-        icon_->setAttribute(Qt::WA_TransparentForMouseEvents);
-        auto *box = new QHBoxLayout(this);
-        box->setContentsMargins(0, 0, 0, 0);
-        box->addWidget(icon_);
-        refreshTheme();
-    }
-    void refreshTheme() {
-        icon_->setPixmap(glyph(QStringLiteral("scroll-grip"), captureChromeTokens().textMuted).pixmap(16, 16));
-    }
-
-  protected:
-    void mousePressEvent(QMouseEvent *event) override {
-        if (event->button() != Qt::LeftButton) {
-            QWidget::mousePressEvent(event);
-            return;
-        }
-        if (childBarMode_) {
-            if (QWidget *bar = parentWidget()) {
-                dragging_ = true;
-                offset_ = event->globalPosition().toPoint() - bar->pos();
-                setCursor(Qt::ClosedHandCursor);
-                event->accept();
-                return;
-            }
-        } else {
-            if (auto *handle = window()->windowHandle(); handle && handle->startSystemMove()) {
-                dragging_ = false;
-                event->accept();
-                return;
-            }
-            dragging_ = true;
-            offset_ = event->globalPosition().toPoint() - window()->pos();
-            setCursor(Qt::ClosedHandCursor);
-            event->accept();
-            return;
-        }
-        QWidget::mousePressEvent(event);
-    }
-    void mouseMoveEvent(QMouseEvent *event) override {
-        if (!dragging_) {
-            QWidget::mouseMoveEvent(event);
-            return;
-        }
-        if (childBarMode_) {
-            if (onMoved_) {
-                onMoved_(event->globalPosition().toPoint() - offset_);
-                event->accept();
-                return;
-            }
-        } else {
-            window()->move(event->globalPosition().toPoint() - offset_);
-            event->accept();
-            return;
-        }
-        QWidget::mouseMoveEvent(event);
-    }
-    void mouseReleaseEvent(QMouseEvent *event) override {
-        if (dragging_) {
-            dragging_ = false;
-            setCursor(Qt::OpenHandCursor);
-            event->accept();
-            return;
-        }
-        QWidget::mouseReleaseEvent(event);
-    }
-
-  private:
-    bool childBarMode_ = true;
-    bool dragging_ = false;
-    QPoint offset_;
-    QLabel *icon_ = nullptr;
-    std::function<void(QPoint)> onMoved_;
-};
 
 class RoundedCropPopup final : public QWidget {
   public:
@@ -462,12 +375,6 @@ CaptureToolbar::CaptureToolbar(QWidget *parent) : QWidget(parent) {
     actions_->setContentsMargins(0, 0, 0, 0);
     actions_->setSpacing(4);
     dockLayout_->addLayout(actions_);
-    dragBar_ = new ToolbarGrip(true, [this](QPoint position) {
-        userMoved_ = true;
-        moveWithinBounds(position);
-        emit moved();
-    }, this);
-    actions_->addWidget(dragBar_);
     readout_ = new QWidget(this);
     auto *readoutLayout = new QHBoxLayout(readout_);
     readoutLayout->setContentsMargins(0, 0, 0, 0);
@@ -527,8 +434,6 @@ void CaptureToolbar::applyChromeTheme() {
     if (!guard.entered)
         return;
     setStyleSheet(captureBarStyle(captureChromeTokens()));
-    if (auto *grip = static_cast<ToolbarGrip *>(dragBar_))
-        grip->refreshTheme();
     updateActionIcons();
     adjustSize();
     update();
@@ -615,8 +520,6 @@ void CaptureToolbar::retranslate() {
             button->setAccessibleName(label);
         }
     }
-    if (dragBar_)
-        dragBar_->setToolTip(tr("拖动工具栏"));
     more_->setToolTip(tr("更多选项"));
     more_->setAccessibleName(tr("更多选项"));
     if (close_) {
@@ -736,23 +639,14 @@ void CaptureToolbar::updateActionAvailability() {
     }
 }
 
-void CaptureToolbar::moveWithinBounds(QPoint position) {
-    const int x = std::clamp(position.x(), toolBounds_.left(),
-                            std::max(toolBounds_.left(), toolBounds_.right() + 1 - width()));
-    const int y = std::clamp(position.y(), toolBounds_.top(),
-                            std::max(toolBounds_.top(), toolBounds_.bottom() + 1 - height()));
-    move(x, y);
-    raise();
-}
-
 void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
-    toolBounds_ = bounds.adjusted(8, 0, -8, -8);
+    const QRect toolBounds = bounds.adjusted(8, 0, -8, -8);
     readout_->setFixedWidth(size_->width() + ratio_->width() + readout_->layout()->spacing());
     actions_->invalidate();
     const auto margins = dockLayout_->contentsMargins();
     const int restoredReadout = readoutAbove_ ? readout_->width() + actions_->spacing() : 0;
     const int inlineWidth = actions_->sizeHint().width() + restoredReadout + margins.left() + margins.right();
-    const bool needsSecondRow = inlineWidth > toolBounds_.width();
+    const bool needsSecondRow = inlineWidth > toolBounds.width();
     if (readoutAbove_ != needsSecondRow) {
         readoutAbove_ = needsSecondRow;
         if (readoutAbove_) {
@@ -760,7 +654,7 @@ void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
             dockLayout_->insertWidget(0, readout_, 0, Qt::AlignRight);
         } else {
             dockLayout_->removeWidget(readout_);
-            actions_->insertWidget(1, readout_);
+            actions_->insertWidget(0, readout_);
         }
         setFixedHeight(readoutAbove_ ? captureBarHeight + 32 : captureBarHeight);
     }
@@ -768,7 +662,7 @@ void CaptureToolbar::placeNear(const QRect &selection, const QRect &bounds) {
     const QSize naturalSize = dockLayout_->sizeHint().expandedTo(dockLayout_->minimumSize());
     resize(naturalSize.width(), height());
     dockLayout_->activate();
-    moveWithinBounds(userMoved_ ? pos() : captureBarPosition(selection, toolBounds_, size()));
+    move(captureBarPosition(selection, toolBounds, size()));
 }
 
 void CaptureToolbar::paintEvent(QPaintEvent *) {
@@ -1252,10 +1146,6 @@ ScrollCaptureProgress::ScrollCaptureProgress(QWidget *parent)
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 5, 8, 5);
     layout->setSpacing(4);
-    dragBar_ = new ToolbarGrip(false, {}, this);
-    dragBar_->setToolTip(tr("拖动工具栏"));
-    dragBar_->installEventFilter(this);
-    layout->addWidget(dragBar_);
     size_ = new QLabel(QStringLiteral("0 × 0 px"), this);
     size_->setObjectName(QStringLiteral("scrollSize"));
     size_->setAlignment(Qt::AlignCenter);
@@ -1456,8 +1346,6 @@ void ScrollCaptureProgress::applyChromeTheme() {
             .arg(rgbaCss(t.panelBorder), t.stage.name()).arg(CaptureChromeTokens::cardRadius));
         preview_->update();
     }
-    if (auto *grip = static_cast<ToolbarGrip *>(dragBar_))
-        grip->refreshTheme();
     if (cropMenu_)
         static_cast<RoundedCropPopup *>(cropMenu_)->applyTheme();
     for (QPushButton *button : {automaticButton_, cropButton_, stop_, finish_, cancel_, cropBegin_, cropEnd_}) {

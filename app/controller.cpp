@@ -5,7 +5,7 @@
 #include "diagnostics.h"
 #include "i18n.h"
 #include "ocrdialog.h"
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "scrollcapture.h"
 #include "scrollstitch.h"
 #include "videoproject.h"
@@ -1788,24 +1788,24 @@ void Controller::recognizeRegion(Overlay *source, OcrLanguageMode language) {
     restoreAfterCapture();
     recognize(picture, language);
 }
-PinWindow *Controller::pinImage(const QImage &image, QRect placement) {
+PinnedImageWindow *Controller::pinImage(const QImage &image, QRect placement) {
     if (image.isNull())
         return nullptr;
-    auto *window = new PinWindow(image, placement);
+    auto *window = new PinnedImageWindow(image, placement);
     pins_.append(window);
     // A pin owns itself: the window has no parent, so the only thing that ever ends it
     // is the list dropping it.
-    connect(window, &PinWindow::closed, this, [this](PinWindow *which) {
+    connect(window, &PinnedImageWindow::closed, this, [this](PinnedImageWindow *which) {
         pins_.removeAll(which);
         which->deleteLater();
     });
-    connect(window, &PinWindow::copyRequested, this, [this](const QImage &picture) {
+    connect(window, &PinnedImageWindow::copyRequested, this, [this](const QImage &picture) {
         QApplication::clipboard()->setImage(picture);
     });
-    connect(window, &PinWindow::saveRequested, this, [this](const QImage &picture) { saveImage(picture); });
-    connect(window, &PinWindow::ocrRequested, this,
+    connect(window, &PinnedImageWindow::saveRequested, this, [this](const QImage &picture) { saveImage(picture); });
+    connect(window, &PinnedImageWindow::ocrRequested, this,
             [this](const QImage &picture) { recognize(picture, settings_.ocrLanguage); });
-    connect(window, &PinWindow::annotateRequested, this, [this](const QImage &picture) {
+    connect(window, &PinnedImageWindow::annotateRequested, this, [this](const QImage &picture) {
         // Pinning a picture is a way to park it; annotating it is why it was taken. The
         // pin stays where it is, so the picture can be looked at while it is marked up.
         if (capturing_ || QApplication::activeModalWidget())

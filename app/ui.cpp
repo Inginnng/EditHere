@@ -302,12 +302,8 @@ QToolTip { background:@tooltip@; color:@tooltipText@; padding:5px 10px; border:1
         }
         if (auto label = qobject_cast<QLabel *>(widget)) {
             const auto name = label->property("glyphName").toString();
-            if (!name.isEmpty()) {
-                const bool isGrip = name == QLatin1String("scroll-grip");
-                const QColor tint = isGrip ? chrome.textMuted : palette.color(QPalette::PlaceholderText);
-                const int iconDim = isGrip ? 16 : 24;
-                label->setPixmap(glyph(name, tint).pixmap(iconDim, iconDim));
-            }
+            if (!name.isEmpty())
+                label->setPixmap(glyph(name, palette.color(QPalette::PlaceholderText)).pixmap(24, 24));
         }
         if (auto input = qobject_cast<QKeySequenceEdit *>(widget))
             for (auto clear : input->findChildren<QToolButton *>())

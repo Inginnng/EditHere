@@ -727,8 +727,7 @@ FEEDBACK_DOCS = (
     ROOT / "skills" / "edithere" / "SKILL.md",
     ROOT / "connector" / "skills" / "edithere" / "SKILL.md",
     ROOT / "trae-plugin" / "skills" / "edithere" / "SKILL.md",
-    ROOT / "docs" / "USER-GUIDE.md",
-    ROOT / "docs" / "USER-GUIDE.en.md",
+    ROOT / "docs" / "FEEDBACK.md",
 )
 FEEDBACK_PRODUCER_KEYS = ("annotationSpace", "objects", "movement", "annotations")
 # These are the pages an agent may use to interpret feedback; the release that added video
@@ -902,9 +901,6 @@ def check_build_recipe() -> list[Problem]:
 # docs/releases/<version>.md is handled separately: it is a fragment assembled by
 # release.yml, not a standalone page with a switcher.
 TRANSLATED_DOCS = (
-    "docs/USER-GUIDE.md",
-    "docs/LONG-CAPTURE.md",
-    "docs/VIDEO-ANNOTATION.md",
     "docs/AGENT-CLI.md",
     "docs/AI-INSTRUCTIONS.md",
     "docs/AI-SETUP.md",

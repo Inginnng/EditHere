@@ -52,7 +52,6 @@ class DistributionTest(unittest.TestCase):
         self.write("trae-plugin/package.json", '{"version":"0.8.22"}')
         self.write("trae-plugin/.trae-plugin/plugin.json", "hidden required metadata")
         self.write("skills/edithere/SKILL.md", "desktop fixture")
-        self.write("docs/VIDEO-ANNOTATION.md", "video instructions")
         self.write("docs/PROJECT-REVIEW.md", "image-set review instructions")
         self.write("scripts/image-set.mjs", "public image-set CLI fixture")
         self.addCleanup(patch.stopall)

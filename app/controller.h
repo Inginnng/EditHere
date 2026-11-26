@@ -13,7 +13,7 @@
 namespace h2d {
 class B2Window;
 class OcrDialog;
-class PinWindow;
+class PinnedImageWindow;
 class ScrollCapture;
 class ScrollCaptureProgress;
 class ScrollCaptureRegion;
@@ -154,7 +154,7 @@ class Controller final : public QObject {
     void recoverAfterDialog();
     // Returns the window it made, so the caller can say how much of the picture is
     // shadow, which is the part the editor must not be handed.
-    PinWindow *pinImage(const QImage &image, QRect placement = {});
+    PinnedImageWindow *pinImage(const QImage &image, QRect placement = {});
     bool saveImage(const QImage &image);
     void recognize(const QImage &image, OcrLanguageMode language);
     void runRecognition(OcrLanguageMode language);
@@ -202,7 +202,7 @@ class Controller final : public QObject {
     int historyIndex_ = -1;
     // Pinned pictures are owned by nobody but this list: a pin outlives the region it
     // came from, which is the whole point of pinning it.
-    QVector<PinWindow *> pins_;
+    QVector<PinnedImageWindow *> pins_;
     OcrEngine *ocr_ = nullptr;
     QPointer<OcrDialog> ocrDialog_;
     QImage ocrPicture_;

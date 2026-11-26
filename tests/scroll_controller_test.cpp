@@ -1,7 +1,7 @@
 #include "capturetoolbar.h"
 #include "controller.h"
 #include "platform.h"
-#include "pinwindow.h"
+#include "pinnedimagewindow.h"
 #include "scrollcapture.h"
 #include "ui.h"
 #include <QApplication>
