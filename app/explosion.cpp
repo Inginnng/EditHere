@@ -197,7 +197,7 @@ void LayoutCanvas::cancelInteraction() {
     clearSelection();
 }
 void LayoutCanvas::setZoom(double value) {
-    zoom_ = std::clamp(value, .03, 4.0);
+    zoom_ = std::clamp(value, .03, 10.0);
     setFixedSize(std::max(1, qRound(state_.canvas.width() * zoom_)),
                  std::max(1, qRound(state_.canvas.height() * zoom_)));
     update();
