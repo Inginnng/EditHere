@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n';
 import { useEffect, useState } from 'react';
 import {
   AiSparkleIcon,
@@ -41,8 +42,9 @@ export default function AnalysisView({
   onBack,
   onToast,
 }: AnalysisViewProps) {
+  const t = useI18n();
   const [selectedPageId, setSelectedPageId] = useState(pages[0]?.id ?? 'home');
-  const [output, setOutput] = useState(() => generateAnalysisText(pages, groupNotes));
+  const [output, setOutput] = useState(() => generateAnalysisText(pages, groupNotes, t));
   const [busy, setBusy] = useState(false);
   const [sourceTab, setSourceTab] = useState<'image' | 'notes'>('image');
   const [redactedPreviewUrl, setRedactedPreviewUrl] = useState<string | null>(null);
@@ -53,8 +55,8 @@ export default function AnalysisView({
   const brushCount = selectedPage?.brushStrokes?.length ?? 0;
 
   useEffect(() => {
-    setOutput(generateAnalysisText(pages, groupNotes));
-  }, [pages, groupNotes]);
+    setOutput(generateAnalysisText(pages, groupNotes, t));
+  }, [pages, groupNotes, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,11 +107,11 @@ export default function AnalysisView({
         }
         const tokHint =
           res?.inputTokens || res?.outputTokens
-            ? `（输入 ${res.inputTokens ?? 0} / 输出 ${res.outputTokens ?? 0} tokens）`
+            ? t("analysis.tokenCounts", { input: res.inputTokens ?? 0, output: res.outputTokens ?? 0 })
             : '';
-        onToast(`已完成「${providerName}」视觉解析${tokHint}`);
+        onToast(t("analysis.complete", { provider: providerName, tokens: tokHint }));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : 'AI 解析失败，请检查模型配置与 Key');
+        onToast(err instanceof Error ? err.message : t("analysis.aiAnalysisFailedCheckTheModelSettings"));
       } finally {
         setBusy(false);
       }
@@ -118,12 +120,12 @@ export default function AnalysisView({
 
     setBusy(true);
     setTimeout(() => {
-      setOutput(generateAnalysisText(pages, groupNotes));
+      setOutput(generateAnalysisText(pages, groupNotes, t));
       setBusy(false);
       onToast(
         isDesktopWebView()
-          ? '当前为示例画面，已从工作台本地批注生成结构化清单（截图或导入图片后可调用真实模型）'
-          : '已结合工作台批注生成结构化修改清单'
+          ? t("analysis.generatedAChecklistFromLocalAnnotationsFor")
+          : t("analysis.revisionChecklistGeneratedFromWorkspaceAnnotations")
       );
     }, 550);
   };
@@ -135,9 +137,9 @@ export default function AnalysisView({
       } else {
         await navigator.clipboard.writeText(output);
       }
-      onToast('已复制修改说明纯文本');
+      onToast(t("analysis.revisionChecklistCopiedAsPlainText"));
     } catch {
-      onToast('剪贴板受限，请直接手动复制文本框内容');
+      onToast(t("analysis.clipboardAccessIsRestrictedCopyTheText"));
     }
   };
 
@@ -145,40 +147,39 @@ export default function AnalysisView({
     if (isDesktopWebView()) {
       try {
         const res = await desktopRpc<{ saved?: boolean }>('file.saveText', {
-          defaultName: 'EditHere-修改清单.md',
+          defaultName: t("analysis.edithereRevisionChecklistMd"),
           text: output,
         }, 0);
-        if (res.saved) onToast('已导出 EditHere-修改清单.md');
+        if (res.saved) onToast(t("analysis.exportedTheEdithereRevisionChecklist"));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : '导出失败');
+        onToast(err instanceof Error ? err.message : t("workspace.exportFailed"));
       }
       return;
     }
     const url = URL.createObjectURL(new Blob([output], { type: 'text/markdown;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'EditHere-修改清单.md';
+    a.download = t("analysis.edithereRevisionChecklistMd");
     a.click();
     URL.revokeObjectURL(url);
-    onToast('已导出 EditHere-修改清单.md');
+    onToast(t("analysis.exportedTheEdithereRevisionChecklist"));
   };
 
   return (
     <div className="page-container">
       <div className="page-heading">
         <div>
-          <h1>AI 解析</h1>
+          <h1>{t("app.aiAnalysis")}</h1>
         </div>
         <button className="button secondary sm" onClick={onBack}>
-          <BackIcon size={14} /> 返回工作台
-        </button>
+          <BackIcon size={14} />{t("settings.backToWorkspace")}</button>
       </div>
 
       <div className="analysis-layout">
         <section className="analysis-card">
           <div className="card-head">
-            <h2>输入上下文</h2>
-            <span className="badge neutral">{totalNotes} 条意见</span>
+            <h2>{t("analysis.inputContext")}</h2>
+            <span className="badge neutral">{t("app.noteCount", { count: totalNotes })}</span>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
@@ -197,14 +198,11 @@ export default function AnalysisView({
             <button
               className={`analysis-source-tab ${sourceTab === 'image' ? 'active' : ''}`}
               onClick={() => setSourceTab('image')}
-            >
-              画面预览
-            </button>
+            >{t("analysis.imagePreview")}</button>
             <button
               className={`analysis-source-tab ${sourceTab === 'notes' ? 'active' : ''}`}
               onClick={() => setSourceTab('notes')}
-            >
-              本页批注 ({selectedPage.annotations.length})
+            >{t("analysis.pageNotes", { count: selectedPage.annotations.length })}
             </button>
           </div>
 
@@ -219,12 +217,12 @@ export default function AnalysisView({
           ) : (
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 185 }}>
               {selectedPage.annotations.length === 0 ? (
-                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 12 }}>当前页面暂无批注。</p>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 12 }}>{t("workspace.thisPageHasNoAnnotationsYet")}</p>
               ) : (
                 selectedPage.annotations.map((n) => (
                   <div key={n.id} style={{ display: 'flex', gap: 8, fontSize: 12, lineHeight: 1.55 }}>
                     <span className="badge accent">{n.number}</span>
-                    <span>{n.text || '（纯布局位置调整）'}</span>
+                    <span>{n.text || t("analysis.layoutAdjustmentOnly")}</span>
                   </div>
                 ))
               )}
@@ -241,7 +239,7 @@ export default function AnalysisView({
               style={{ justifyContent: 'space-between', width: '100%' }}
               onClick={onOpenProviders}
             >
-              <span>解析模型：{providerName}</span>
+              <span>{t("analysis.analysisModel", { provider: providerName })}</span>
               <SettingsIcon size={14} />
             </button>
           </div>
@@ -249,13 +247,13 @@ export default function AnalysisView({
 
         <section className="analysis-card" style={{ position: 'relative' }}>
           <div className="card-head">
-            <h2>结构化修改清单</h2>
-            <span className="badge success">可编辑 · 实时同步工作台</span>
+            <h2>{t("analysis.revisionChecklist")}</h2>
+            <span className="badge success">{t("analysis.editableSyncedWithWorkspace")}</span>
           </div>
 
           <textarea
             className="analysis-textarea"
-            aria-label="可编辑的修改清单"
+            aria-label={t("analysis.editableRevisionChecklist")}
             spellCheck={false}
             value={output}
             onChange={(e) => setOutput(e.target.value)}
@@ -276,19 +274,17 @@ export default function AnalysisView({
               }}
             >
               <SpinnerIcon size={17} className="spin" />
-              <span>正在调用「{providerName}」分析画面与批注…</span>
+              <span>{t("analysis.analyzing", { provider: providerName })}</span>
             </div>
           )}
 
           <div className="card-foot">
-            <span>{output.replace(/\s/g, '').length} 字 · Markdown 纯文本</span>
+            <span>{t("analysis.characterCount", { count: output.replace(/\s/g, '').length })}</span>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="button ghost sm" onClick={() => setOutput(generateAnalysisText(pages, groupNotes))}>
-                <SyncIcon size={14} /> 从工作台同步
-              </button>
+              <button className="button ghost sm" onClick={() => setOutput(generateAnalysisText(pages, groupNotes, t))}>
+                <SyncIcon size={14} />{t("analysis.syncFromWorkspace")}</button>
               <button className="button ghost sm" onClick={() => void exportMarkdown()}>
-                <ExportFileIcon size={14} /> 导出 .md
-              </button>
+                <ExportFileIcon size={14} />{t("analysis.exportMd")}</button>
             </div>
           </div>
         </section>
@@ -297,11 +293,10 @@ export default function AnalysisView({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
         <button className="button secondary" onClick={() => void handleAnalyze()}>
           {busy ? <StopIcon size={14} /> : <AiSparkleIcon size={14} />}
-          {busy ? '停止解析' : isDesktopWebView() && hasDesktopPages ? 'AI 重新解析' : '本地生成清单'}
+          {busy ? t("analysis.stopAnalysis") : isDesktopWebView() && hasDesktopPages ? t("analysis.runAiAnalysisAgain") : t("analysis.generateChecklistLocally")}
         </button>
         <button className="button primary" onClick={() => void copyText()}>
-          <CopyTextIcon size={14} /> 复制修改说明
-        </button>
+          <CopyTextIcon size={14} />{t("analysis.copyRevisionChecklist")}</button>
       </div>
     </div>
   );

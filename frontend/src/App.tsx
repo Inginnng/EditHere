@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { createTranslator, I18nProvider, LANGUAGE_LABEL_KEYS, resolveLocale } from './i18n';
+import { canHandleShortcut, createShortcutMatcher } from './utils/shortcuts';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   CaptureIcon,
   CheckIcon,
@@ -20,11 +22,13 @@ import {
   createInitialPages,
   createInitialProviders,
   INITIAL_DIAGNOSTICS_INFO,
-  INITIAL_DOCTOR_SNAPSHOT,
-  INITIAL_GROUP_NOTES,
-  INITIAL_PREFERENCES,
+  initialDoctorSnapshot,
+  initialGroupNotes,
+  localizePreviewWorkspace,
+  initialPreferences,
   INITIAL_SKILLS_STATE,
   previewShellBridge,
+  providerPresets,
 } from './bridge/mockBridge';
 import type {
   DiagnosticsInfo,
@@ -48,13 +52,26 @@ import WorkspaceView from './views/WorkspaceView';
 import AnalysisView from './views/AnalysisView';
 import SettingsView from './views/SettingsView';
 
-const VIEW_TITLES: Record<ViewId, string> = {
-  workspace: '批注工作台',
-  analysis: 'AI 解析',
-  settings: '设置',
-};
+const VIEW_TITLES = {
+  workspace: 'app.workspace',
+  analysis: 'app.aiAnalysis',
+  settings: 'app.settings',
+} as const;
 
 export default function App() {
+  const [browserLocale, setBrowserLocale] = useState(() => navigator.language);
+  const [preferences, setPreferences] = useState<GeneralPreferences>(() =>
+    initialPreferences(createTranslator(resolveLocale('system', undefined, browserLocale)))
+  );
+  const locale = resolveLocale(preferences.language, preferences.effectiveLanguage, browserLocale);
+  const t = useMemo(() => createTranslator(locale), [locale]);
+  const localize = useMemo(() => ({
+    t,
+    list: new Intl.ListFormat(locale.replace('_', '-')),
+  }), [locale, t]);
+  const localizeRef = useRef(localize);
+  localizeRef.current = localize;
+  const previewDefaults = useMemo(() => initialPreferences(t), [t]);
   const [view, setView] = useState<ViewId>('workspace');
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>('general');
   const [agentMode, setAgentMode] = useState(true);
@@ -73,8 +90,8 @@ export default function App() {
   const isDark = theme === 'dark' || (theme === 'system' && systemDark);
 
   const [workspaceState, setWorkspaceState] = useState(() => ({
-    pages: isDesktopWebView() ? [] : createInitialPages(),
-    groupNotes: isDesktopWebView() ? [] : INITIAL_GROUP_NOTES,
+    pages: isDesktopWebView() ? [] : createInitialPages(t),
+    groupNotes: isDesktopWebView() ? [] : initialGroupNotes(t),
   }));
   const { pages, groupNotes } = workspaceState;
   const [activePageId, setActivePageId] = useState(() => isDesktopWebView() ? '' : 'home');
@@ -107,21 +124,38 @@ export default function App() {
 
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress>({ phase: 'idle' });
-  const [doctor, setDoctor] = useState<DoctorSnapshot>(INITIAL_DOCTOR_SNAPSHOT);
+  const [doctor, setDoctor] = useState<DoctorSnapshot>(() => initialDoctorSnapshot(t));
   const [skillsState, setSkillsState] = useState<SkillSyncState>(INITIAL_SKILLS_STATE);
   const [syncingSkills, setSyncingSkills] = useState(false);
   const [skillBannerDismissed, setSkillBannerDismissed] = useState(false);
   const [diagnosticsInfo, setDiagnosticsInfo] = useState<DiagnosticsInfo>(INITIAL_DIAGNOSTICS_INFO);
   const [desktopConnected, setDesktopConnected] = useState(false);
+  const desktopHandshake = useRef<Promise<Record<string, unknown>> | undefined>(undefined);
   const [hasDesktopPages, setHasDesktopPages] = useState(false);
 
-  const [providers, setProviders] = useState<ProviderConfig[]>(() => createInitialProviders());
+  const [providers, setProviders] = useState<ProviderConfig[]>(() => createInitialProviders(t));
   const [defaultProviderId, setDefaultProviderId] = useState('openai');
+  const previewLanguage = useRef(t);
 
-  const [preferences, setPreferences] = useState<GeneralPreferences>(() => ({
-    ...INITIAL_PREFERENCES,
-    shortcuts: { ...INITIAL_PREFERENCES.shortcuts },
-  }));
+  useLayoutEffect(() => {
+    if (isDesktopWebView() || previewLanguage.current === t) return;
+    const previous = previewLanguage.current;
+    previewLanguage.current = t;
+    updateWorkspace((current) => localizePreviewWorkspace(current, previous, t));
+    setProviders((current) => {
+      const previousNames = new Map(createInitialProviders(previous).map((provider) => [provider.id, provider.name]));
+      const nextNames = new Map(createInitialProviders(t).map((provider) => [provider.id, provider.name]));
+      return current.map((provider) => provider.name === previousNames.get(provider.id)
+        ? { ...provider, name: nextNames.get(provider.id) ?? provider.name }
+        : provider);
+    });
+  }, [t]);
+
+  useEffect(() => {
+    const onLanguageChange = () => setBrowserLocale(navigator.language);
+    window.addEventListener('languagechange', onLanguageChange);
+    return () => window.removeEventListener('languagechange', onLanguageChange);
+  }, []);
 
   const notify = (msg: string, duration = 3200) => {
     clearTimeout(toastTimer.current);
@@ -145,10 +179,93 @@ export default function App() {
     } catch {
       // ignore storage errors
     }
-    if (isDesktopWebView()) {
-      desktopRpc('theme.sync', { isDark, theme }).catch(() => {});
+    if (isDesktopWebView() && desktopConnected) {
+      void desktopRpc('theme.sync', { isDark }).catch(() => {});
     }
-  }, [theme, isDark]);
+  }, [theme, isDark, desktopConnected]);
+
+  const hydratePreferences = (p: Record<string, unknown>) => {
+    if (p.theme === 'light' || p.theme === 'dark' || p.theme === 'system') {
+      setTheme(p.theme);
+    }
+    if (p.doctor && typeof p.doctor === 'object') {
+      setDoctor(p.doctor as DoctorSnapshot);
+    }
+    setPreferences((prev) => ({
+      ...prev,
+      language:
+        p.language === 'system' || p.language === 'zh_CN' || p.language === 'zh_TW' || p.language === 'en'
+          ? p.language
+          : prev.language,
+      effectiveLanguage:
+        p.effectiveLanguage === 'zh_CN' || p.effectiveLanguage === 'zh_TW' || p.effectiveLanguage === 'en'
+          ? p.effectiveLanguage
+          : prev.effectiveLanguage,
+      includeCoordinates: typeof p.includeCoordinates === 'boolean' ? p.includeCoordinates : prev.includeCoordinates,
+      ocrLanguage:
+        p.ocrLanguage === 'system' || p.ocrLanguage === 'zh_CN' || p.ocrLanguage === 'en'
+          ? p.ocrLanguage
+          : prev.ocrLanguage,
+      captureOnStartup:
+        typeof p.captureOnStartup === 'boolean' ? p.captureOnStartup : prev.captureOnStartup,
+      launchAtLogin: typeof p.launchAtLogin === 'boolean' ? p.launchAtLogin : prev.launchAtLogin,
+      launchAtLoginNotice:
+        typeof p.launchAtLoginNotice === 'string' ? p.launchAtLoginNotice : prev.launchAtLoginNotice,
+      fitImageOnOpen: typeof p.fitImageOnOpen === 'boolean' ? p.fitImageOnOpen : prev.fitImageOnOpen,
+      confirmBeforeDiscard:
+        typeof p.confirmBeforeDiscard === 'boolean' ? p.confirmBeforeDiscard : prev.confirmBeforeDiscard,
+      defaultTool: typeof p.defaultTool === 'number' ? p.defaultTool : prev.defaultTool,
+      traySingleClick: typeof p.traySingleClick === 'string' ? p.traySingleClick : prev.traySingleClick,
+      trayDoubleClick: typeof p.trayDoubleClick === 'string' ? p.trayDoubleClick : prev.trayDoubleClick,
+      trayActions: Array.isArray(p.trayActions)
+        ? (p.trayActions as GeneralPreferences['trayActions'])
+        : prev.trayActions,
+      includeOcr: typeof p.includeOcr === 'boolean' ? p.includeOcr : prev.includeOcr,
+      includeRecognizedText:
+        typeof p.includeRecognizedText === 'boolean'
+          ? p.includeRecognizedText
+          : prev.includeRecognizedText,
+      includeWindowTitle:
+        typeof p.includeWindowTitle === 'boolean' ? p.includeWindowTitle : prev.includeWindowTitle,
+      exportMode:
+        p.exportMode === 'embedded' || p.exportMode === 'none' || p.exportMode === 'file'
+          ? p.exportMode
+          : prev.exportMode,
+      copyJsonTextWithImage:
+        typeof p.copyJsonTextWithImage === 'boolean'
+          ? p.copyJsonTextWithImage
+          : prev.copyJsonTextWithImage,
+      captureShadow: typeof p.captureShadow === 'boolean' ? p.captureShadow : prev.captureShadow,
+      captureCornerRadius:
+        typeof p.captureCornerRadius === 'number' ? p.captureCornerRadius : prev.captureCornerRadius,
+      feedbackDir: typeof p.feedbackDir === 'string' ? p.feedbackDir : prev.feedbackDir,
+      scrollAxis: p.scrollAxis === 'horizontal' ? 'horizontal' : p.scrollAxis === 'vertical' ? 'vertical' : prev.scrollAxis,
+      scrollAutoCrop: typeof p.scrollAutoCrop === 'boolean' ? p.scrollAutoCrop : prev.scrollAutoCrop,
+      scrollUltraLong: typeof p.scrollUltraLong === 'boolean' ? p.scrollUltraLong : prev.scrollUltraLong,
+      checkUpdatesOnStartup:
+        typeof p.checkUpdatesOnStartup === 'boolean'
+          ? p.checkUpdatesOnStartup
+          : prev.checkUpdatesOnStartup,
+      autoSyncSkills:
+        typeof p.autoSyncSkills === 'boolean' ? p.autoSyncSkills : prev.autoSyncSkills,
+      showInstalledSkillsOnly:
+        typeof p.showInstalledSkillsOnly === 'boolean' ? p.showInstalledSkillsOnly : prev.showInstalledSkillsOnly,
+      updateSource:
+        p.updateSource === 'auto' ||
+        p.updateSource === 'atomgit' ||
+        p.updateSource === 'github' ||
+        p.updateSource === 'gitee'
+          ? p.updateSource
+          : prev.updateSource,
+      shortcuts:
+        p.shortcuts && typeof p.shortcuts === 'object'
+          ? (p.shortcuts as Record<string, string>)
+          : prev.shortcuts,
+      shortcutDefinitions: Array.isArray(p.shortcutDefinitions)
+        ? (p.shortcutDefinitions as GeneralPreferences['shortcutDefinitions'])
+        : prev.shortcutDefinitions,
+    }));
+  };
 
   useEffect(() => {
     if (!isDesktopWebView()) return;
@@ -160,81 +277,6 @@ export default function App() {
       if (Array.isArray(ai.providers) && ai.providers.length > 0) {
         setProviders(ai.providers as ProviderConfig[]);
       }
-    };
-
-    const hydratePreferences = (p: Record<string, unknown>) => {
-      if (p.theme === 'light' || p.theme === 'dark' || p.theme === 'system') {
-        setTheme(p.theme);
-      }
-      setPreferences((prev) => ({
-        ...prev,
-        language:
-          p.language === 'system' || p.language === 'zh_CN' || p.language === 'zh_TW' || p.language === 'en'
-            ? p.language
-            : prev.language,
-        ocrLanguage:
-          p.ocrLanguage === 'system' || p.ocrLanguage === 'zh_CN' || p.ocrLanguage === 'en'
-            ? p.ocrLanguage
-            : prev.ocrLanguage,
-        captureOnStartup:
-          typeof p.captureOnStartup === 'boolean' ? p.captureOnStartup : prev.captureOnStartup,
-        launchAtLogin: typeof p.launchAtLogin === 'boolean' ? p.launchAtLogin : prev.launchAtLogin,
-        launchAtLoginNotice:
-          typeof p.launchAtLoginNotice === 'string' ? p.launchAtLoginNotice : prev.launchAtLoginNotice,
-        fitImageOnOpen: typeof p.fitImageOnOpen === 'boolean' ? p.fitImageOnOpen : prev.fitImageOnOpen,
-        confirmBeforeDiscard:
-          typeof p.confirmBeforeDiscard === 'boolean' ? p.confirmBeforeDiscard : prev.confirmBeforeDiscard,
-        defaultTool: typeof p.defaultTool === 'number' ? p.defaultTool : prev.defaultTool,
-        traySingleClick: typeof p.traySingleClick === 'string' ? p.traySingleClick : prev.traySingleClick,
-        trayDoubleClick: typeof p.trayDoubleClick === 'string' ? p.trayDoubleClick : prev.trayDoubleClick,
-        trayActions: Array.isArray(p.trayActions)
-          ? (p.trayActions as GeneralPreferences['trayActions'])
-          : prev.trayActions,
-        includeOcr: typeof p.includeOcr === 'boolean' ? p.includeOcr : prev.includeOcr,
-        includeRecognizedText:
-          typeof p.includeRecognizedText === 'boolean'
-            ? p.includeRecognizedText
-            : prev.includeRecognizedText,
-        includeWindowTitle:
-          typeof p.includeWindowTitle === 'boolean' ? p.includeWindowTitle : prev.includeWindowTitle,
-        exportMode:
-          p.exportMode === 'embedded' || p.exportMode === 'none' || p.exportMode === 'file'
-            ? p.exportMode
-            : prev.exportMode,
-        copyJsonTextWithImage:
-          typeof p.copyJsonTextWithImage === 'boolean'
-            ? p.copyJsonTextWithImage
-            : prev.copyJsonTextWithImage,
-        captureShadow: typeof p.captureShadow === 'boolean' ? p.captureShadow : prev.captureShadow,
-        captureCornerRadius:
-          typeof p.captureCornerRadius === 'number' ? p.captureCornerRadius : prev.captureCornerRadius,
-        feedbackDir: typeof p.feedbackDir === 'string' ? p.feedbackDir : prev.feedbackDir,
-        scrollAxis: p.scrollAxis === 'horizontal' ? 'horizontal' : p.scrollAxis === 'vertical' ? 'vertical' : prev.scrollAxis,
-        scrollAutoCrop: typeof p.scrollAutoCrop === 'boolean' ? p.scrollAutoCrop : prev.scrollAutoCrop,
-        scrollUltraLong: typeof p.scrollUltraLong === 'boolean' ? p.scrollUltraLong : prev.scrollUltraLong,
-        checkUpdatesOnStartup:
-          typeof p.checkUpdatesOnStartup === 'boolean'
-            ? p.checkUpdatesOnStartup
-            : prev.checkUpdatesOnStartup,
-        autoSyncSkills:
-          typeof p.autoSyncSkills === 'boolean' ? p.autoSyncSkills : prev.autoSyncSkills,
-        showInstalledSkillsOnly:
-          typeof p.showInstalledSkillsOnly === 'boolean' ? p.showInstalledSkillsOnly : prev.showInstalledSkillsOnly,
-        updateSource:
-          p.updateSource === 'auto' ||
-          p.updateSource === 'atomgit' ||
-          p.updateSource === 'github' ||
-          p.updateSource === 'gitee'
-            ? p.updateSource
-            : prev.updateSource,
-        shortcuts:
-          p.shortcuts && typeof p.shortcuts === 'object'
-            ? (p.shortcuts as Record<string, string>)
-            : prev.shortcuts,
-        shortcutDefinitions: Array.isArray(p.shortcutDefinitions)
-          ? (p.shortcutDefinitions as GeneralPreferences['shortcutDefinitions'])
-          : prev.shortcutDefinitions,
-      }));
     };
 
     const navigateFromDesktop = (v: unknown) => {
@@ -310,12 +352,13 @@ export default function App() {
       } else if (eventName === 'skills.state') {
         setSkillsState(data as unknown as SkillSyncState);
       } else if (eventName === 'skills.autoSynced') {
+        const { t, list } = localizeRef.current;
         const names = Array.isArray(data.updatedHosts)
-          ? (data.updatedHosts as string[]).join('、')
+          ? list.format(data.updatedHosts as string[])
           : '';
         const ver = typeof data.skillVersion === 'string' ? data.skillVersion : '';
         if (names) {
-          notify(`已自动同步 ${names} 的 Skill${ver ? ` 至 v${ver}` : ''}`);
+          notify(t("app.skillsAutoSynced", { hosts: names, versionSuffix: ver ? t("app.skillVersionSuffix", { version: ver }) : '' }));
         }
       } else if (eventName === 'workspace.trackChanges') {
         if (data.generation === workspaceGeneration.current) workspaceDirty.current = false;
@@ -335,47 +378,36 @@ export default function App() {
       }
     });
 
-    desktopRpc<Record<string, unknown>>('bridge.handshake')
-      .then((res) => {
-        setDesktopConnected(true);
+    let active = true;
+    desktopHandshake.current ??= desktopRpc<Record<string, unknown>>('bridge.handshake');
+    desktopHandshake.current.then((res) => {
+        if (!active) return;
         applyDesktopState(res);
+        setDesktopConnected(true);
         return desktopRpc<Record<string, unknown>>('ai.getState').then(applyAiState).catch(() => {});
       })
       .catch((err) => {
         console.warn('[EditHere Bridge] handshake failed:', err);
       });
 
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement | null)?.closest('.shortcut-capture-btn.recording')) {
-        return;
-      }
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key === '1') {
-          event.preventDefault();
-          setView('workspace');
-        } else if (event.key === '2') {
-          event.preventDefault();
-          setView('analysis');
-        } else if (event.key === '3' || event.key === ',') {
-          event.preventDefault();
-          setView('settings');
-        }
-      }
+    return () => {
+      active = false;
+      unsub();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleImportImage = (file: File) => {
+  const previewImportSequence = useRef(0);
+  const handleImportImage = (file: File, title?: string) => {
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const id = `import-${Date.now()}`;
-      const cleanName = file.name.replace(/\.[^.]+$/, '') || file.name;
+      const id = `import-${++previewImportSequence.current}`;
+      const baseName = title ?? (file.name.replace(/\.[^.]+$/, '') || file.name);
+      const names = new Set(workspace.current.pages.map((page) => page.name.toLowerCase()));
+      let cleanName = baseName;
+      for (let number = 2; names.has(cleanName.toLowerCase()); number++) {
+        cleanName = `${baseName} ${number}`;
+      }
       const naturalW = img.naturalWidth || 800;
       const naturalH = img.naturalHeight || 480;
       const blocks = detectImageRegions(img, naturalW, naturalH);
@@ -392,18 +424,31 @@ export default function App() {
       setPages((prev) => [...prev, newPage]);
       setActivePageId(id);
       setView('workspace');
-      notify(`已导入「${cleanName}」(${naturalW}×${naturalH}，识别到 ${blocks.length} 个候选区域)`);
+      notify(t("app.imageImported", { name: cleanName, width: naturalW, height: naturalH, count: blocks.length }));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      notify(t("app.couldNotOpenTheFile"));
     };
     img.src = objectUrl;
   };
 
   const handleChangeTheme = (nextTheme: ThemeMode) => {
-    setTheme(nextTheme);
     if (isDesktopWebView()) {
-      desktopRpc('settings.save', { theme: nextTheme }).catch((err) => {
-        notify(err instanceof Error ? err.message : '切换主题失败');
-      });
+      void handleSaveSettingsPatch({ theme: nextTheme });
+    } else {
+      setTheme(nextTheme);
     }
+  };
+
+  const notifyLanguageChange = (updated: Record<string, unknown>) => {
+    const language = updated.language;
+    if (language !== 'system' && language !== 'zh_CN' && language !== 'zh_TW' && language !== 'en') return;
+    const effective = updated.effectiveLanguage;
+    const effectiveLanguage = effective === 'zh_CN' || effective === 'zh_TW' || effective === 'en' ? effective : undefined;
+    const nextLocale = resolveLocale(language, effectiveLanguage, browserLocale);
+    const nextT = createTranslator(nextLocale);
+    notify(nextT("settings.displayLanguageChangedTo", { language: nextT(LANGUAGE_LABEL_KEYS[language]) }));
   };
 
   const handleSaveSettingsPatch = async (patch: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
@@ -412,104 +457,16 @@ export default function App() {
         ...prev,
         ...(patch as Partial<GeneralPreferences>),
       }));
+      if ('language' in patch) notifyLanguageChange(patch);
       return { ok: true };
     }
     try {
       const updated = await desktopRpc<Record<string, unknown>>('settings.save', patch);
-      setPreferences((prev) => ({
-        ...prev,
-        language:
-          updated.language === 'system' ||
-          updated.language === 'zh_CN' ||
-          updated.language === 'zh_TW' ||
-          updated.language === 'en'
-            ? updated.language
-            : prev.language,
-        ocrLanguage:
-          updated.ocrLanguage === 'system' ||
-          updated.ocrLanguage === 'zh_CN' ||
-          updated.ocrLanguage === 'en'
-            ? updated.ocrLanguage
-            : prev.ocrLanguage,
-        captureOnStartup:
-          typeof updated.captureOnStartup === 'boolean'
-            ? updated.captureOnStartup
-            : prev.captureOnStartup,
-        launchAtLogin:
-          typeof updated.launchAtLogin === 'boolean' ? updated.launchAtLogin : prev.launchAtLogin,
-        launchAtLoginNotice:
-          typeof updated.launchAtLoginNotice === 'string'
-            ? updated.launchAtLoginNotice
-            : prev.launchAtLoginNotice,
-        fitImageOnOpen:
-          typeof updated.fitImageOnOpen === 'boolean' ? updated.fitImageOnOpen : prev.fitImageOnOpen,
-        confirmBeforeDiscard:
-          typeof updated.confirmBeforeDiscard === 'boolean'
-            ? updated.confirmBeforeDiscard
-            : prev.confirmBeforeDiscard,
-        defaultTool: typeof updated.defaultTool === 'number' ? updated.defaultTool : prev.defaultTool,
-        traySingleClick:
-          typeof updated.traySingleClick === 'string' ? updated.traySingleClick : prev.traySingleClick,
-        trayDoubleClick:
-          typeof updated.trayDoubleClick === 'string' ? updated.trayDoubleClick : prev.trayDoubleClick,
-        includeOcr: typeof updated.includeOcr === 'boolean' ? updated.includeOcr : prev.includeOcr,
-        includeRecognizedText:
-          typeof updated.includeRecognizedText === 'boolean'
-            ? updated.includeRecognizedText
-            : prev.includeRecognizedText,
-        includeWindowTitle:
-          typeof updated.includeWindowTitle === 'boolean'
-            ? updated.includeWindowTitle
-            : prev.includeWindowTitle,
-        exportMode:
-          updated.exportMode === 'embedded' ||
-          updated.exportMode === 'none' ||
-          updated.exportMode === 'file'
-            ? updated.exportMode
-            : prev.exportMode,
-        copyJsonTextWithImage:
-          typeof updated.copyJsonTextWithImage === 'boolean'
-            ? updated.copyJsonTextWithImage
-            : prev.copyJsonTextWithImage,
-        captureShadow:
-          typeof updated.captureShadow === 'boolean' ? updated.captureShadow : prev.captureShadow,
-        captureCornerRadius:
-          typeof updated.captureCornerRadius === 'number'
-            ? updated.captureCornerRadius
-            : prev.captureCornerRadius,
-        feedbackDir: typeof updated.feedbackDir === 'string' ? updated.feedbackDir : prev.feedbackDir,
-        scrollAxis: updated.scrollAxis === 'horizontal' ? 'horizontal' : 'vertical',
-        scrollAutoCrop:
-          typeof updated.scrollAutoCrop === 'boolean' ? updated.scrollAutoCrop : prev.scrollAutoCrop,
-        scrollUltraLong:
-          typeof updated.scrollUltraLong === 'boolean' ? updated.scrollUltraLong : prev.scrollUltraLong,
-        checkUpdatesOnStartup:
-          typeof updated.checkUpdatesOnStartup === 'boolean'
-            ? updated.checkUpdatesOnStartup
-            : prev.checkUpdatesOnStartup,
-        autoSyncSkills:
-          typeof updated.autoSyncSkills === 'boolean'
-            ? updated.autoSyncSkills
-            : prev.autoSyncSkills,
-        showInstalledSkillsOnly:
-          typeof updated.showInstalledSkillsOnly === 'boolean'
-            ? updated.showInstalledSkillsOnly
-            : prev.showInstalledSkillsOnly,
-        updateSource:
-          updated.updateSource === 'auto' ||
-          updated.updateSource === 'atomgit' ||
-          updated.updateSource === 'github' ||
-          updated.updateSource === 'gitee'
-            ? updated.updateSource
-            : prev.updateSource,
-        shortcuts:
-          updated.shortcuts && typeof updated.shortcuts === 'object'
-            ? (updated.shortcuts as Record<string, string>)
-            : prev.shortcuts,
-      }));
+      hydratePreferences(updated);
+      if ('language' in patch) notifyLanguageChange(updated);
       return { ok: true };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '保存设置失败';
+      const msg = err instanceof Error ? err.message : t("app.couldNotSaveSettings");
       notify(msg);
       return { ok: false, error: msg };
     }
@@ -519,124 +476,36 @@ export default function App() {
     if (!isDesktopWebView()) {
       setPreferences((prev) => ({
         ...prev,
-        shortcuts: { ...INITIAL_PREFERENCES.shortcuts },
+        shortcuts: previewDefaults.shortcuts,
       }));
-      notify('已恢复默认快捷键');
+      notify(t("app.defaultShortcutsRestored"));
       return;
     }
     try {
       const updated = await desktopRpc<Record<string, unknown>>('settings.resetShortcuts');
-      if (updated.shortcuts && typeof updated.shortcuts === 'object') {
-        setPreferences((prev) => ({ ...prev, shortcuts: updated.shortcuts as Record<string, string> }));
-      }
-      notify('已恢复默认快捷键');
+      hydratePreferences(updated);
+      notify(t("app.defaultShortcutsRestored"));
     } catch (err) {
-      notify(err instanceof Error ? err.message : '恢复默认快捷键失败');
+      notify(err instanceof Error ? err.message : t("app.couldNotRestoreDefaultShortcuts"));
     }
   };
 
   const handleResetDefaults = async () => {
     if (!isDesktopWebView()) {
       setTheme('system');
-      setPreferences({ ...INITIAL_PREFERENCES, shortcuts: { ...INITIAL_PREFERENCES.shortcuts } });
-      notify('已恢复全部默认设置');
+      setPreferences(previewDefaults);
+      const defaultLocale = resolveLocale('system', undefined, browserLocale);
+      notify(createTranslator(defaultLocale)("app.allDefaultsRestored"));
       return;
     }
     try {
       const updated = await desktopRpc<Record<string, unknown>>('settings.resetDefaults');
-      if (updated.theme === 'light' || updated.theme === 'dark' || updated.theme === 'system') {
-        setTheme(updated.theme);
-      }
-      setPreferences((prev) => ({
-        ...prev,
-        language:
-          updated.language === 'system' ||
-          updated.language === 'zh_CN' ||
-          updated.language === 'zh_TW' ||
-          updated.language === 'en'
-            ? updated.language
-            : prev.language,
-        ocrLanguage:
-          updated.ocrLanguage === 'system' ||
-          updated.ocrLanguage === 'zh_CN' ||
-          updated.ocrLanguage === 'en'
-            ? updated.ocrLanguage
-            : prev.ocrLanguage,
-        captureOnStartup:
-          typeof updated.captureOnStartup === 'boolean'
-            ? updated.captureOnStartup
-            : prev.captureOnStartup,
-        launchAtLogin:
-          typeof updated.launchAtLogin === 'boolean' ? updated.launchAtLogin : prev.launchAtLogin,
-        fitImageOnOpen:
-          typeof updated.fitImageOnOpen === 'boolean' ? updated.fitImageOnOpen : prev.fitImageOnOpen,
-        confirmBeforeDiscard:
-          typeof updated.confirmBeforeDiscard === 'boolean'
-            ? updated.confirmBeforeDiscard
-            : prev.confirmBeforeDiscard,
-        defaultTool: typeof updated.defaultTool === 'number' ? updated.defaultTool : prev.defaultTool,
-        traySingleClick:
-          typeof updated.traySingleClick === 'string' ? updated.traySingleClick : prev.traySingleClick,
-        trayDoubleClick:
-          typeof updated.trayDoubleClick === 'string' ? updated.trayDoubleClick : prev.trayDoubleClick,
-        includeOcr: typeof updated.includeOcr === 'boolean' ? updated.includeOcr : prev.includeOcr,
-        includeRecognizedText:
-          typeof updated.includeRecognizedText === 'boolean'
-            ? updated.includeRecognizedText
-            : prev.includeRecognizedText,
-        includeWindowTitle:
-          typeof updated.includeWindowTitle === 'boolean'
-            ? updated.includeWindowTitle
-            : prev.includeWindowTitle,
-        exportMode:
-          updated.exportMode === 'embedded' ||
-          updated.exportMode === 'none' ||
-          updated.exportMode === 'file'
-            ? updated.exportMode
-            : prev.exportMode,
-        copyJsonTextWithImage:
-          typeof updated.copyJsonTextWithImage === 'boolean'
-            ? updated.copyJsonTextWithImage
-            : prev.copyJsonTextWithImage,
-        captureShadow:
-          typeof updated.captureShadow === 'boolean' ? updated.captureShadow : prev.captureShadow,
-        captureCornerRadius:
-          typeof updated.captureCornerRadius === 'number'
-            ? updated.captureCornerRadius
-            : prev.captureCornerRadius,
-        feedbackDir: typeof updated.feedbackDir === 'string' ? updated.feedbackDir : prev.feedbackDir,
-        scrollAxis: updated.scrollAxis === 'horizontal' ? 'horizontal' : 'vertical',
-        scrollAutoCrop:
-          typeof updated.scrollAutoCrop === 'boolean' ? updated.scrollAutoCrop : prev.scrollAutoCrop,
-        scrollUltraLong:
-          typeof updated.scrollUltraLong === 'boolean' ? updated.scrollUltraLong : prev.scrollUltraLong,
-        checkUpdatesOnStartup:
-          typeof updated.checkUpdatesOnStartup === 'boolean'
-            ? updated.checkUpdatesOnStartup
-            : prev.checkUpdatesOnStartup,
-        autoSyncSkills:
-          typeof updated.autoSyncSkills === 'boolean'
-            ? updated.autoSyncSkills
-            : prev.autoSyncSkills,
-        showInstalledSkillsOnly:
-          typeof updated.showInstalledSkillsOnly === 'boolean'
-            ? updated.showInstalledSkillsOnly
-            : prev.showInstalledSkillsOnly,
-        updateSource:
-          updated.updateSource === 'auto' ||
-          updated.updateSource === 'atomgit' ||
-          updated.updateSource === 'github' ||
-          updated.updateSource === 'gitee'
-            ? updated.updateSource
-            : prev.updateSource,
-        shortcuts:
-          updated.shortcuts && typeof updated.shortcuts === 'object'
-            ? (updated.shortcuts as Record<string, string>)
-            : prev.shortcuts,
-      }));
-      notify('已恢复全部默认设置');
+      hydratePreferences(updated);
+      const effective = updated.effectiveLanguage;
+      const defaultLocale = effective === 'zh_CN' || effective === 'zh_TW' || effective === 'en' ? effective : locale;
+      notify(createTranslator(defaultLocale)("app.allDefaultsRestored"));
     } catch (err) {
-      notify(err instanceof Error ? err.message : '恢复默认设置失败');
+      notify(err instanceof Error ? err.message : t("app.couldNotRestoreDefaults"));
     }
   };
 
@@ -663,14 +532,14 @@ export default function App() {
         setProviders(res.providers as ProviderConfig[]);
       }
     } catch (err) {
-      notify(err instanceof Error ? err.message : '保存模型服务配置失败');
+      notify(err instanceof Error ? err.message : t("app.couldNotSaveProviderSettings"));
     }
   };
 
   const handleTestProvider = async (cfg: ProviderConfig): Promise<{ ok: boolean; message: string }> => {
     if (!isDesktopWebView()) {
       await new Promise((r) => setTimeout(r, 550));
-      return { ok: true, message: '连通性演示校验通过（未消耗真实额度）' };
+      return { ok: true, message: t("app.previewConnectionTestPassedWithoutUsingAny") };
     }
     try {
       const res = await desktopRpc<{ ok?: boolean; reply?: string }>(
@@ -687,39 +556,132 @@ export default function App() {
       );
       return {
         ok: true,
-        message: res?.reply ? `连接成功（响应：${res.reply}）` : '接口连通性校验通过',
+        message: res?.reply ? t("app.connectedSuccessfullyReply", { reply: res.reply }) : t("app.connectionTestPassed"),
       };
     } catch (err) {
       return {
         ok: false,
-        message: err instanceof Error ? err.message : '连接校验失败',
+        message: err instanceof Error ? err.message : t("app.connectionTestFailed"),
       };
     }
   };
 
-  const handleCaptureStart = async () => {
+  const handleCaptureStart = async (append = false) => {
     if (!isDesktopWebView()) {
-      notify('桌面客户端里将隐藏主窗并唤起 C++ HDR / 零延迟全屏截图');
+      notify(t("app.theDesktopAppHidesThisWindowAnd"));
       return;
     }
     try {
-      await desktopRpc('capture.start');
+      await desktopRpc('capture.start', { append });
     } catch (err) {
-      notify(err instanceof Error ? err.message : '启动截图失败');
+      notify(err instanceof Error ? err.message : t("app.couldNotStartCapture"));
     }
+  };
+
+  const selectPage = (pageId: string) => {
+    setActivePageId(pageId);
+    if (isDesktopWebView()) {
+      void desktopRpc('page.select', { pageId }).catch(() => {});
+    }
+  };
+
+  const removePage = async (pageId: string): Promise<boolean> => {
+    if (isDesktopWebView()) {
+      try {
+        await desktopRpc('page.remove', { pageId });
+        return true;
+      } catch {
+        notify(t("workspace.couldNotRemovePage"));
+        return false;
+      }
+    }
+
+    const current = workspace.current.pages;
+    const index = current.findIndex((page) => page.id === pageId);
+    if (index === -1) return true;
+    const next = current.filter((page) => page.id !== pageId);
+    updateWorkspace((state) => ({ pages: next, groupNotes: next.length ? state.groupNotes : [] }));
+    setActivePageId((active) => active === pageId ? (next[index] ?? next[index - 1])?.id ?? '' : active);
+    const removedUrl = current[index].imageUrl;
+    if (removedUrl?.startsWith('blob:')) URL.revokeObjectURL(removedUrl);
+    return true;
   };
 
   const handleRequestOpenFiles = async (): Promise<boolean> => {
     if (!isDesktopWebView()) return false;
     try {
-      await desktopRpc('file.openDialog', {}, 0);
-      setView('workspace');
+      const result = await desktopRpc<{ cancelled?: boolean }>('file.openDialog', {}, 0);
+      if (!result.cancelled) setView('workspace');
       return true;
     } catch (err) {
-      notify(err instanceof Error ? err.message : '打开文件失败');
+      notify(err instanceof Error ? err.message : t("app.couldNotOpenTheFile"));
       return true;
     }
   };
+
+  const previewFileInput = useRef<HTMLInputElement>(null);
+  const openFiles = async () => {
+    if (!await handleRequestOpenFiles()) previewFileInput.current?.click();
+  };
+
+  const pasteImage = async () => {
+    try {
+      if (isDesktopWebView()) {
+        const result = await desktopRpc<{ pasted: boolean }>('clipboard.pasteImage');
+        if (result.pasted) return;
+      } else {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const type = item.types.find((format) => format.startsWith('image/'));
+          if (type) {
+            const image = await item.getType(type);
+            handleImportImage(new File([image], `clipboard.${type.split('/')[1]}`, { type }), 'Clipboard');
+            return;
+          }
+        }
+      }
+      notify(t("app.theClipboardHasNoImage"));
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t("app.couldNotPasteTheClipboardImage"));
+    }
+  };
+
+  const closeWorkspace = () => {
+    if (isDesktopWebView()) void desktopRpc('window.close').catch(() => {});
+  };
+
+  const appShortcutActions = useRef({ open: openFiles, paste: pasteImage, close: closeWorkspace });
+  appShortcutActions.current = { open: openFiles, paste: pasteImage, close: closeWorkspace };
+
+  const handleViewShortcut = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    const nextView = event.key === '1' ? 'workspace' : event.key === '2' ? 'analysis'
+      : event.key === '3' || event.key === ',' ? 'settings' : undefined;
+    if (!nextView) return;
+    event.preventDefault();
+    setView(nextView);
+  };
+
+  const workspaceIsOpen = view === 'workspace' && pages.length > 0;
+  const workspaceIsEmpty = view === 'workspace' && pages.length === 0;
+  useEffect(() => {
+    if (workspaceIsOpen) return;
+    const matchShortcut = createShortcutMatcher(
+      preferences.shortcuts,
+      workspaceIsEmpty ? ['open', 'paste', 'close'] as const : ['open', 'paste'] as const,
+    );
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!canHandleShortcut(event) || event.repeat) return;
+      const action = matchShortcut(event);
+      if (action) {
+        void appShortcutActions.current[action]();
+        return;
+      }
+      handleViewShortcut(event);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [preferences.shortcuts, workspaceIsEmpty, workspaceIsOpen]);
 
   const handleCompleteAgent = async () => {
     if (isDesktopWebView()) {
@@ -730,30 +692,34 @@ export default function App() {
           { payload: redactedPayload },
           0
         );
-        notify(`已写入批注并提交返回 AI（共 ${res.annotations ?? totalNotesCount} 条）`);
+        notify(t("app.returnedAnnotationsToTheAi", { count: res.annotations ?? totalNotesCount }));
       } catch (err) {
-        notify(err instanceof Error ? err.message : '提交返回失败');
+        notify(err instanceof Error ? err.message : t("app.couldNotReturnTheAnnotations"));
       }
       return;
     }
     const payload = buildFeedbackPayload(pages, groupNotes);
-    const receipt = await previewShellBridge.submitAgentSession(payload);
-    notify(`${receipt.message}（已带 ${payload.pages.length} 个有批注页 + ${payload.groupNotes.length} 条整组意见）`);
+    const receipt = await previewShellBridge(t).submitAgentSession(payload);
+    notify(t("app.annotatedPagesGroupNotes", {
+      message: receipt.message,
+      pages: 'pages' in payload ? payload.pages.length : Number(payload.objects.length > 0),
+      notes: 'groupNotes' in payload ? payload.groupNotes.length : 0,
+    }));
   };
 
   const handleCancelAgent = async () => {
     if (isDesktopWebView()) {
       await desktopRpc('agent.cancel').catch(() => {});
-      notify('已取消本次 AI 会话');
+      notify(t("app.aiSessionCanceled"));
       return;
     }
-    const receipt = await previewShellBridge.cancelAgentSession();
+    const receipt = await previewShellBridge(t).cancelAgentSession();
     notify(receipt.message);
   };
 
   const handleRefreshSkills = async () => {
     if (!isDesktopWebView()) {
-      onToastSkillSync('当前已在预览模式下刷新 Skill 状态');
+      onToastSkillSync(t("app.skillStatusRefreshedInPreview"));
       return;
     }
     try {
@@ -763,7 +729,7 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Failed to read Skill status', err);
-      notify('无法读取 Skill 状态，请重试。');
+      notify(t("app.couldNotLoadSkillStatusTryAgain"));
     }
   };
 
@@ -787,7 +753,7 @@ export default function App() {
           };
         }),
       }));
-      notify(`预览模式：已将 Skill 同步至 v${skillsState.bundledSkillVersion}`);
+      notify(t("app.previewSkillSyncedToV", { version: skillsState.bundledSkillVersion }));
       return;
     }
     setSyncingSkills(true);
@@ -807,19 +773,19 @@ export default function App() {
       const changed = list.filter((r) => r.state === 'updated' || r.state === 'installed');
       const failed = list.filter((r) => r.state === 'failed');
       if (failed.length > 0) {
-        notify(failed[0].error || `${failed[0].name} Skill 同步失败`, 7000);
+        notify(failed[0].error || t("app.skillSyncFailedFor", { host: failed[0].name }), 7000);
       } else if (changed.length > 0) {
-        const names = changed.map((r) => r.name).join('、');
+        const names = localizeRef.current.list.format(changed.map((r) => r.name));
         const ver = res?.skills?.bundledSkillVersion ?? skillsState.bundledSkillVersion;
-        notify(`已同步 ${names} 的 Skill 至 v${ver}`);
+        notify(t("app.syncedTheSkillForToV", { hosts: names, version: ver }));
       } else if (list.some((r) => r.state === 'skipped-newer')) {
-        notify('检测到 AI 宿主中已安装更高版本 Skill，已跳过覆盖');
+        notify(t("app.skippedAiAssistantsWithANewerSkill"));
       } else {
-        notify('AI 助手 Skill 已是最新且路径有效');
+        notify(t("app.assistantSkillsAreUpToDateAnd"));
       }
     } catch (err) {
       console.warn('Failed to get Skill sync results', err);
-      notify('无法获取 Skill 同步结果，请刷新状态后重试。', 7000);
+      notify(t("app.couldNotLoadSkillSyncResultsRefresh"), 7000);
     } finally {
       setSyncingSkills(false);
     }
@@ -829,224 +795,240 @@ export default function App() {
     (h) => h.status === 'outdated' || h.status === 'legacy' || h.status === 'path-stale'
   );
 
-  const defaultProvider = providers.find((p) => p.id === defaultProviderId) ?? providers[0];
+  const presets = providerPresets(t);
+  const visibleProviders = isDesktopWebView() ? providers.map((provider) => {
+    const preset = presets.find((item) => item.id === provider.id);
+    return preset ? { ...provider, name: preset.name } : provider;
+  }) : providers;
+  const defaultProvider = visibleProviders.find((p) => p.id === defaultProviderId) ?? visibleProviders[0];
   const totalNotesCount = pages.reduce((acc, p) => acc + p.annotations.length, 0) + groupNotes.length;
 
+  const viewTitle = t(VIEW_TITLES[view]);
   return (
-    <div className="app-shell">
-      {/* Full-Width Seamless Translucent Window Header (Zero Left Sidebar) */}
-      <header className="topbar">
-        <div className="topbar-left">
-          <button
-            className="brand-lockup-btn"
-            aria-label="EditHere 工作台"
-            title="回到批注工作台"
-            onClick={() => setView('workspace')}
-          >
-            <img className="brand-squircle" src="./brand/edithere.svg" alt="EditHere 图标" />
-            <img
-              className="brand-wordmark"
-              src={isDark ? './brand/edithere-wordmark-light.svg' : './brand/edithere-wordmark.svg'}
-              alt="EditHere"
-            />
-          </button>
-          <span className="topbar-divider" />
-          <span className="topbar-view-title">{VIEW_TITLES[view]}</span>
-          <span className="topbar-meta">
-            <span>{pages.length} 页组图</span>
-            <span>·</span>
-            <span>{totalNotesCount} 条意见</span>
-          </span>
-        </div>
-
-        <div className="topbar-right">
-          <button className="button secondary sm" onClick={handleCaptureStart} title="截取屏幕画面">
-            <CaptureIcon size={14} /> 屏幕截图
-          </button>
-
-          <div className="segmented-control" aria-label="工作模式切换">
-            <button className={agentMode ? 'selected' : ''} onClick={() => setAgentMode(true)}>
-              Agent 会话
-            </button>
-            <button className={!agentMode ? 'selected' : ''} onClick={() => setAgentMode(false)}>
-              独立模式
-            </button>
-          </div>
-
-          {agentMode && (
-            <>
-              <span className="session-pill">
-                <span className="session-dot" />
-                AI 等待你的批注
-              </span>
-              <button className="button secondary sm" onClick={handleCancelAgent}>
-                取消
-              </button>
-              <button className="button primary sm" onClick={handleCompleteAgent}>
-                <SendIcon size={14} /> 完成并返回 AI
-              </button>
-            </>
-          )}
-
-          <span className="topbar-divider" />
-
-          <button
-            className="icon-button"
-            aria-label={isDark ? '切换浅色' : '切换深色'}
-            title={isDark ? '切换浅色外观' : '切换深色外观'}
-            onClick={() => handleChangeTheme(isDark ? 'light' : 'dark')}
-          >
-            {isDark ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-          </button>
-
-          <button
-            className={`icon-button ${view === 'settings' ? 'is-active' : ''}`}
-            aria-label="设置与关于"
-            title="设置与关于 (Ctrl+,)"
-            onClick={() => setView((cur) => (cur === 'settings' ? 'workspace' : 'settings'))}
-          >
-            <SettingsIcon size={16} />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className={`app-main ${view === 'workspace' ? 'is-workspace' : 'is-page-view'}`}>
-        {!agentMode && !skillBannerDismissed && skillsState.sourceAvailable && actionableSkillHosts.length > 0 && (
-          <div className="skill-update-banner" role="region" aria-label="Skill 同步提示">
-            <div className="skill-update-banner-main">
-              <ShieldOkIcon size={15} style={{ color: 'var(--warning)' }} />
-              <span>
-                检测到 {actionableSkillHosts.length} 个 AI 工具中的 EditHere Skill 需要更新或刷新路径
-                （当前内置 v{skillsState.bundledSkillVersion}：{actionableSkillHosts.map((h) => h.name).join('、')}）
-              </span>
-            </div>
-            <div className="skill-update-banner-actions">
-              <button
-                className="button primary sm"
-                disabled={syncingSkills}
-                onClick={() => void handleSyncSkills({ onlyUpdateInstalled: true })}
-              >
-                {syncingSkills ? '同步中…' : '一键同步'}
-              </button>
-              <button
-                className="button secondary sm"
-                onClick={() => {
-                  setSettingsTab('diagnostics');
-                  setView('settings');
-                }}
-              >
-                管理
-              </button>
-              <button
-                className="icon-button"
-                aria-label="忽略本轮 Skill 提示"
-                onClick={() => setSkillBannerDismissed(true)}
-              >
-                <CloseIcon size={14} />
-              </button>
-            </div>
-          </div>
-        )}
-        {view === 'workspace' && pages.length === 0 && (
-          <section className="canvas-surface workspace-empty" aria-label="空白批注工作台">
-            <div>
-              <button className="button primary" onClick={() => void handleCaptureStart()}>
-                <CaptureIcon size={16} /> 截图
-              </button>
-              <button className="button secondary" onClick={() => void handleRequestOpenFiles()}>
-                <OpenFolderIcon size={16} /> 打开图片或项目
-              </button>
-            </div>
-          </section>
-        )}
-        {view === 'workspace' && pages.length > 0 && (
-          <WorkspaceView
-            key={workspaceGeneration.current}
-            prepareWorkspaceSnapshot={prepareWorkspaceSnapshot}
-            pages={pages}
-            activePageId={activePageId}
-            groupNotes={groupNotes}
-            includeOcr={preferences.includeOcr}
-            onToggleOcr={() =>
-              void handleSaveSettingsPatch({ includeOcr: !preferences.includeOcr })
-            }
-            onCapture={handleCaptureStart}
-            onSelectPage={setActivePageId}
-            onUpdatePages={(update) => {
-              reportWorkspaceChange();
-              setPages(update);
+    <I18nProvider locale={locale} viewTitle={viewTitle}>
+      <div className="app-shell">
+        {!isDesktopWebView() && (
+          <input
+            ref={previewFileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(event) => {
+              for (const file of Array.from(event.currentTarget.files ?? [])) handleImportImage(file);
+              event.currentTarget.value = '';
             }}
-            onUpdateGroupNotes={(update) => {
-              reportWorkspaceChange();
-              setGroupNotes(update);
-            }}
-            onImportImage={handleImportImage}
-            onRequestImport={handleRequestOpenFiles}
-            onAnalyze={() => setView('analysis')}
-            onToast={notify}
           />
         )}
-        {view !== 'workspace' && (
-          <div className="page-sheet">
-            {view === 'analysis' && (
-              <AnalysisView
-                pages={pages}
-                groupNotes={groupNotes}
-                providerId={defaultProvider?.id ?? 'openai'}
-                providerName={defaultProvider?.name ?? 'OpenAI'}
-                hasDesktopPages={hasDesktopPages}
-                onOpenProviders={() => {
-                  setSettingsTab('providers');
-                  setView('settings');
-                }}
-                onBack={() => setView('workspace')}
-                onToast={notify}
+        {/* Full-Width Seamless Translucent Window Header (Zero Left Sidebar) */}
+        <header className="topbar">
+          <div className="topbar-left">
+            <button
+              className="brand-lockup-btn"
+              aria-label={t("app.edithereWorkspace")}
+              title={t("app.returnToWorkspace")}
+              onClick={() => setView('workspace')}
+            >
+              <img className="brand-squircle" src="./brand/edithere.svg" alt={t("app.edithereIcon")} />
+              <img
+                className="brand-wordmark"
+                src={isDark ? './brand/edithere-wordmark-light.svg' : './brand/edithere-wordmark.svg'}
+                alt="EditHere"
               />
+            </button>
+            <span className="topbar-divider" />
+            <span className="topbar-view-title">{viewTitle}</span>
+            <span className="topbar-meta">
+              <span>{t("app.pageCount", { count: pages.length })}</span>
+              <span>·</span>
+              <span>{t("app.noteCount", { count: totalNotesCount })}</span>
+            </span>
+          </div>
+
+          <div className="topbar-right">
+            <button className="button secondary sm" onClick={() => void handleCaptureStart()} title={t("app.captureTheScreen")}>
+              <CaptureIcon size={14} />{t("app.screenshot")}</button>
+
+            <div className="segmented-control" aria-label={t("app.workMode")}>
+              <button className={agentMode ? 'selected' : ''} onClick={() => setAgentMode(true)}>{t("app.agentSession")}</button>
+              <button className={!agentMode ? 'selected' : ''} onClick={() => setAgentMode(false)}>{t("app.standalone")}</button>
+            </div>
+
+            {agentMode && (
+              <>
+                <span className="session-pill">
+                  <span className="session-dot" />{t("app.aiIsWaitingForYourAnnotations")}</span>
+                <button className="button secondary sm" onClick={handleCancelAgent}>{t("app.cancel")}</button>
+                <button className="button primary sm" onClick={handleCompleteAgent}>
+                  <SendIcon size={14} />{t("app.finishAndReturnToAi")}</button>
+              </>
             )}
-            {view === 'settings' && (
-              <SettingsView
-                activeTab={settingsTab}
-                onChangeTab={setSettingsTab}
-                onBack={() => setView('workspace')}
-                isDark={isDark}
-                theme={theme}
-                onChangeTheme={handleChangeTheme}
-                preferences={preferences}
-                onSavePatch={handleSaveSettingsPatch}
-                onResetShortcuts={handleResetShortcuts}
-                onResetDefaults={handleResetDefaults}
-                updateStatus={updateStatus}
-                onUpdateStatus={setUpdateStatus}
-                updateProgress={updateProgress}
-                diagnosticsInfo={diagnosticsInfo}
-                onUpdateDiagnosticsInfo={setDiagnosticsInfo}
-                doctor={doctor}
-                skillsState={skillsState}
-                syncingSkills={syncingSkills}
-                onRefreshSkills={handleRefreshSkills}
-                onSyncSkills={handleSyncSkills}
-                desktopConnected={desktopConnected}
-                providers={providers}
-                defaultProviderId={defaultProviderId}
-                onSaveProviders={handleSaveProviders}
-                onTestProvider={handleTestProvider}
-                onToast={notify}
-              />
-            )}
+
+            <span className="topbar-divider" />
+
+            <button
+              className="icon-button"
+              aria-label={isDark ? t("app.switchToLight") : t("app.switchToDark")}
+              title={isDark ? t("app.switchToLightAppearance") : t("app.switchToDarkAppearance")}
+              onClick={() => handleChangeTheme(isDark ? 'light' : 'dark')}
+            >
+              {isDark ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+            </button>
+
+            <button
+              className={`icon-button ${view === 'settings' ? 'is-active' : ''}`}
+              aria-label={t("app.settingsAndAbout")}
+              title={t("app.settingsAndAboutCtrl")}
+              onClick={() => setView((cur) => (cur === 'settings' ? 'workspace' : 'settings'))}
+            >
+              <SettingsIcon size={16} />
+            </button>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className={`app-main ${view === 'workspace' ? 'is-workspace' : 'is-page-view'}`}>
+          {!agentMode && !skillBannerDismissed && skillsState.sourceAvailable && actionableSkillHosts.length > 0 && (
+            <div className="skill-update-banner" role="region" aria-label={t("app.skillSyncReminder")}>
+              <div className="skill-update-banner-main">
+                <ShieldOkIcon size={15} style={{ color: 'var(--warning)' }} />
+                <span>{t("app.skillReminderDetail", {
+                  count: actionableSkillHosts.length,
+                  version: skillsState.bundledSkillVersion,
+                  hosts: localize.list.format(actionableSkillHosts.map((host) => host.name)),
+                })}
+                </span>
+              </div>
+              <div className="skill-update-banner-actions">
+                <button
+                  className="button primary sm"
+                  disabled={syncingSkills}
+                  onClick={() => void handleSyncSkills({ onlyUpdateInstalled: true })}
+                >
+                  {syncingSkills ? t("app.syncing") : t("app.syncAll")}
+                </button>
+                <button
+                  className="button secondary sm"
+                  onClick={() => {
+                    setSettingsTab('diagnostics');
+                    setView('settings');
+                  }}
+                >{t("app.manage")}</button>
+                <button
+                  className="icon-button"
+                  aria-label={t("app.dismissSkillReminder")}
+                  onClick={() => setSkillBannerDismissed(true)}
+                >
+                  <CloseIcon size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+          {view === 'workspace' && pages.length === 0 && (
+            <section className="canvas-surface workspace-empty" aria-label={t("app.emptyWorkspace")}>
+              <div>
+                <button className="button primary" onClick={() => void handleCaptureStart()}>
+                  <CaptureIcon size={16} />{t("app.screenshotTooltip")}</button>
+                <button className="button secondary" onClick={() => void openFiles()}>
+                  <OpenFolderIcon size={16} />{t("app.openImageOrProject")}</button>
+              </div>
+            </section>
+          )}
+          {view === 'workspace' && pages.length > 0 && (
+            <WorkspaceView
+              key={workspaceGeneration.current}
+              prepareWorkspaceSnapshot={prepareWorkspaceSnapshot}
+              pages={pages}
+              activePageId={activePageId}
+              groupNotes={groupNotes}
+              fitImageOnOpen={preferences.fitImageOnOpen}
+              defaultTool={preferences.defaultTool}
+              shortcuts={preferences.shortcuts}
+              onCapture={() => void handleCaptureStart()}
+              onAddPageCapture={() => void handleCaptureStart(true)}
+              onClose={closeWorkspace}
+              onSelectPage={selectPage}
+              onRemovePage={removePage}
+              onUpdatePages={(update) => {
+                reportWorkspaceChange();
+                setPages(update);
+              }}
+              onUpdateGroupNotes={(update) => {
+                reportWorkspaceChange();
+                setGroupNotes(update);
+              }}
+              onOpenFiles={openFiles}
+              onPasteImage={pasteImage}
+              onViewShortcut={handleViewShortcut}
+              onAnalyze={() => setView('analysis')}
+              onToast={notify}
+            />
+          )}
+          {view !== 'workspace' && (
+            <div className="page-sheet">
+              {view === 'analysis' && (
+                <AnalysisView
+                  pages={pages}
+                  groupNotes={groupNotes}
+                  providerId={defaultProvider?.id ?? 'openai'}
+                  providerName={defaultProvider?.name ?? 'OpenAI'}
+                  hasDesktopPages={hasDesktopPages}
+                  onOpenProviders={() => {
+                    setSettingsTab('providers');
+                    setView('settings');
+                  }}
+                  onBack={() => setView('workspace')}
+                  onToast={notify}
+                />
+              )}
+              {view === 'settings' && (
+                <SettingsView
+                  activeTab={settingsTab}
+                  onChangeTab={setSettingsTab}
+                  onBack={() => setView('workspace')}
+                  isDark={isDark}
+                  theme={theme}
+                  onChangeTheme={handleChangeTheme}
+                  preferences={isDesktopWebView() ? preferences : {
+                    ...preferences,
+                    trayActions: previewDefaults.trayActions,
+                    shortcutDefinitions: previewDefaults.shortcutDefinitions,
+                  }}
+                  onSavePatch={handleSaveSettingsPatch}
+                  onResetShortcuts={handleResetShortcuts}
+                  onResetDefaults={handleResetDefaults}
+                  updateStatus={updateStatus}
+                  onUpdateStatus={setUpdateStatus}
+                  updateProgress={updateProgress}
+                  diagnosticsInfo={diagnosticsInfo}
+                  onUpdateDiagnosticsInfo={setDiagnosticsInfo}
+                  doctor={isDesktopWebView() ? doctor : initialDoctorSnapshot(t)}
+                  skillsState={skillsState}
+                  syncingSkills={syncingSkills}
+                  onRefreshSkills={handleRefreshSkills}
+                  onSyncSkills={handleSyncSkills}
+                  desktopConnected={desktopConnected}
+                  providers={visibleProviders}
+                  defaultProviderId={defaultProviderId}
+                  onSaveProviders={handleSaveProviders}
+                  onTestProvider={handleTestProvider}
+                  onToast={notify}
+                />
+              )}
+            </div>
+          )}
+        </main>
+
+        {toast && (
+          <div className="toast" role="status">
+            <CheckIcon size={14} className="toast-ok" />
+            <span>{toast}</span>
+            <button className="icon-button" aria-label={t("app.dismissNotification")} onClick={() => setToast('')}>
+              <CloseIcon size={14} />
+            </button>
           </div>
         )}
-      </main>
-
-      {toast && (
-        <div className="toast" role="status">
-          <CheckIcon size={14} className="toast-ok" />
-          <span>{toast}</span>
-          <button className="icon-button" aria-label="关闭提示" onClick={() => setToast('')}>
-            <CloseIcon size={14} />
-          </button>
-        </div>
-      )}
-    </div>
+      </div>
+    </I18nProvider>
   );
 }

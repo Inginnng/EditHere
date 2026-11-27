@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashEncoding": "utf8-lf",
   "sources": {
-    "CMakeLists.txt": "b41608a3e55cbe531f939c42b6115792d8c2280ef27ab8117ab9fe095c3209e7",
+    "CMakeLists.txt": "46ca63d8b7b1c526c8cf188730e862f84846fbbe8eb227134a351f492e08cc13",
     "assets/brand/edithere-lockup-light.svg": "b72ec4ea0d71cf847bacfd2ac5b5420fe0b5f081bf50881c62a9789f8380049b",
     "assets/brand/edithere-lockup.svg": "9f767de272079f89a146619fb764662eb9c96b7fe20ea8472c3671538b2b69f2",
     "assets/icons/edithere.svg": "a24583e793eae6bf3c70308ff36de9cb363ef1b7d0e8c7cd9db2010f7bbd51e8",
@@ -100,8 +100,8 @@
     "web/src/ui.js": "423aaa951db069cd915fd777ff0df6cefa9fc1c97d917b004a5a196fb7e40957"
   },
   "artifacts": {
-    "web/EditHere.mcp.html": "d64ac270b37a345b6346edf3a3f97dd48c09a8aa133c373e8c3fc0421a4a3b0c",
-    "web/mcp/server.bundle.cjs": "5826a46950c1e08329a765ee34297aaccff40b5fb2843bcc103429093250d456",
+    "web/EditHere.mcp.html": "8b249d7f7df21f76a71959167fd949d15940e047fbdc961167cb9bf859f515e6",
+    "web/mcp/server.bundle.cjs": "af7a2c94cd0032bc2e8d26c5acb474a4a94c4a74980c2f3655a4ff62ae333850",
     "web/MCP-THIRD-PARTY-NOTICES.md": "507ce6aa295ec02125d556f2f1f7ee64790f79bba46b777e42931ddbfada6692"
   }
 }

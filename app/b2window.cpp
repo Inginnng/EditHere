@@ -17,7 +17,6 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QEventLoop>
-#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -374,6 +373,8 @@ QJsonObject B2Window::requestWorkspaceSnapshot() {
 bool B2Window::allowReplace() {
     if (checkingReplacement_ || savingProject_)
         return false;
+    if (!settings_.confirmBeforeDiscard)
+        return true;
     if (!dirty_)
         return true;
 
@@ -415,15 +416,38 @@ void B2Window::openCapturedDocument(Document doc, bool replaceExisting) {
     if (doc.image.isNull()) return;
     if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
 
-    if (replaceExisting || isImageSetProject_)
+    if (replaceExisting)
         resetWorkspace();
 
+    appendCapturedDocument(std::move(doc));
+}
+
+QString B2Window::uniquePageName(const QString &baseName) const {
+    QString name = baseName;
+    for (int number = 2; std::any_of(pages_.cbegin(), pages_.cend(), [&name](const B2Page &page) {
+             return page.name.compare(name, Qt::CaseInsensitive) == 0;
+         }); ++number) {
+        const QString suffix = QStringLiteral(" %1").arg(number);
+        name = baseName.left(200 - suffix.size()) + suffix;
+    }
+    return name;
+}
+
+void B2Window::appendCapturedDocument(Document doc) {
     const QString pageId = doc.id.isEmpty() ? uniqueId() : doc.id;
     B2Page page;
     page.id = pageId;
-    page.name = doc.title.isEmpty() ? tr("屏幕截图 %1").arg(pages_.size() + 1) : doc.title;
+    QString title = doc.title;
+    if (title.trimmed().isEmpty()) {
+        if (doc.source == "scroll") title = QStringLiteral("Scroll Capture");
+        else if (doc.source == "clipboard") title = QStringLiteral("Clipboard");
+        else if (doc.source == "demo") title = QStringLiteral("Demo Page");
+        else title = QStringLiteral("Screenshot");
+    }
+    page.name = uniquePageName(title);
+    doc.title = page.name;
     page.routeHint = doc.capture.value("windowTitle").toString();
-    if (page.routeHint.isEmpty()) page.routeHint = tr("桌面捕获");
+    if (page.routeHint.isEmpty()) page.routeHint = QStringLiteral("Desktop Capture");
     page.document = std::move(doc);
     page.blocksDetected = !page.document.candidates.isEmpty();
     page.mediaUrl = server_.registerImage(pageId, page.document.image, page.document.png);
@@ -460,7 +484,8 @@ bool B2Window::openMediaPath(const QString &path) {
             if (setPage.document.image.isNull()) continue;
             B2Page page;
             page.id = setPage.id.isEmpty() ? QString("page-%1").arg(i + 1) : setPage.id;
-            page.name = setPage.name.isEmpty() ? page.id : setPage.name;
+            page.name = uniquePageName(setPage.name.isEmpty() ? page.id : setPage.name);
+            setPage.document.title = page.name;
             page.routeHint = QFileInfo(setPage.document.imageFile).fileName();
             if (page.routeHint.isEmpty()) page.routeHint = page.id;
             page.document = std::move(setPage.document);
@@ -489,7 +514,9 @@ bool B2Window::openMediaPath(const QString &path) {
 
         B2Page page;
         page.id = doc.id.isEmpty() ? uniqueId() : doc.id;
-        page.name = doc.title.isEmpty() ? fi.completeBaseName() : doc.title;
+        const bool isImage = doc.source == "file" && doc.title == fi.fileName();
+        page.name = isImage || doc.title.trimmed().isEmpty() ? fi.completeBaseName() : doc.title;
+        doc.title = page.name;
         page.routeHint = fi.fileName();
         page.document = std::move(doc);
         page.blocksDetected = !page.document.candidates.isEmpty();
@@ -752,6 +779,7 @@ QJsonObject B2Window::buildPreferencesJson() const {
     return QJsonObject{
         {"theme", themeModeToString(settings_.theme)},
         {"language", languageModeToString(settings_.language)},
+        {"effectiveLanguage", resolveLanguage(settings_.language)},
         {"ocrLanguage", ocrLanguageModeToString(settings_.ocrLanguage)},
         {"captureOnStartup", settings_.captureOnStartup},
         {"launchAtLogin", effectiveLaunch},
@@ -995,14 +1023,67 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
     }
 
     if (method == "capture.start") {
-        hide();
-        QTimer::singleShot(140, this, [this]() { emit captureRequested(); });
+        const bool append = params.value("append").toBool();
+        QTimer::singleShot(0, this, [this, append]() { emit captureRequested(append); });
         sendRpcResult(id, true, QJsonObject{{"started", true}});
         return;
     }
 
     if (method == "file.openDialog") {
         handleOpenFilesDialog(id);
+        return;
+    }
+
+    if (method == "clipboard.pasteImage") {
+        const auto image = QGuiApplication::clipboard()->image();
+        if (image.isNull()) {
+            sendRpcResult(id, true, QJsonObject{{"pasted", false}});
+            return;
+        }
+        try {
+            appendCapturedDocument(fromImage(image, "clipboard", QStringLiteral("Clipboard")));
+            sendRpcResult(id, true, QJsonObject{{"pasted", true}});
+        } catch (const std::exception &e) {
+            sendRpcResult(id, false, {}, QString::fromUtf8(e.what()));
+        }
+        return;
+    }
+
+    if (method == "window.close") {
+        sendRpcResult(id, true);
+        QTimer::singleShot(0, this, [this]() { close(); });
+        return;
+    }
+
+    if (method == "page.select" || method == "page.remove") {
+        const QString pageId = params.value("pageId").toString();
+        const auto page = std::find_if(pages_.cbegin(), pages_.cend(),
+                                       [&pageId](const B2Page &p) { return p.id == pageId; });
+        if (page == pages_.cend()) {
+            sendRpcResult(id, false, {}, QStringLiteral("Page not found"));
+            return;
+        }
+        if (method == "page.select") {
+            activePageId_ = pageId;
+            sendRpcResult(id, true);
+            return;
+        }
+
+        const auto index = page - pages_.cbegin();
+        pages_.removeAt(index);
+        server_.removeImage(pageId);
+        detectPending_.remove(pageId);
+        detectQueue_.removeAll(pageId);
+        if (pages_.isEmpty()) {
+            resetWorkspace();
+            emit workspaceChanged();
+        } else {
+            if (activePageId_ == pageId)
+                activePageId_ = pages_.at(std::min(index, pages_.size() - 1)).id;
+            markWorkspaceDirty();
+        }
+        pushSessionState();
+        sendRpcResult(id, true);
         return;
     }
 
@@ -1100,6 +1181,23 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
         return;
     }
 
+    if (method == "clipboard.copyJsonText") {
+        try {
+            FeedbackExportOptions options;
+            options.mode = settings_.copyJsonTextWithImage ? ImageExportMode::Embedded : ImageExportMode::None;
+            options.includeRecognizedText = false;
+            options.includeWindowTitle = settings_.includeWindowTitle;
+            FeedbackBundle bundle;
+            int total = 0;
+            buildBundleFromPayload(params.value("payload").toObject(), options, &bundle, &total, nullptr);
+            QGuiApplication::clipboard()->setText(QString::fromUtf8(bundle.json));
+            sendRpcResult(id, true, QJsonObject{{"copied", true}, {"annotations", total}});
+        } catch (const std::exception &e) {
+            sendRpcResult(id, false, {}, QString::fromUtf8(e.what()));
+        }
+        return;
+    }
+
     if (method == "clipboard.copyText") {
         const QString text = params.value("text").toString();
         QGuiApplication::clipboard()->setText(text);
@@ -1115,10 +1213,6 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
     if (method == "theme.sync") {
         uiDarkOverride_ = params.value("isDark").toBool();
         hasDarkOverride_ = true;
-        const QString modeStr = params.value("theme").toString();
-        if (!modeStr.isEmpty()) {
-            settings_.theme = stringToThemeMode(modeStr);
-        }
         syncDwmTitleBar(uiDarkOverride_);
         sendRpcResult(id, true, QJsonObject{{"dark", uiDarkOverride_}});
         return;
@@ -1144,6 +1238,7 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
     }
 
     if (method == "settings.resetDefaults") {
+        const auto previousLanguage = settings_.language;
         AppSettings next = defaultSettings();
         next.aiProviderId = settings_.aiProviderId;
         next.aiProviders = settings_.aiProviders;
@@ -1157,7 +1252,10 @@ void B2Window::handleWebMessage(const QJsonObject &message) {
         settings_ = next;
         hasDarkOverride_ = false;
         syncDwmTitleBar(isEffectiveDark());
-        sendRpcResult(id, true, buildPreferencesJson());
+        auto preferences = buildPreferencesJson();
+        if (previousLanguage != next.language)
+            preferences.insert("doctor", buildDoctorSnapshotJson());
+        sendRpcResult(id, true, preferences);
         return;
     }
 
@@ -1304,27 +1402,40 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
                 return;
             }
         } else {
-            QStringList addedNeedingDetect;
+            QList<B2Page> addedPages;
+            QSet<QString> pageIds;
+            for (const auto &page : pages_) pageIds.insert(page.id);
             for (const QString &file : files) {
                 Document doc = loadDocument(file);
                 if (doc.image.isNull()) continue;
                 if (doc.png.isEmpty()) doc.png = encodePng(doc.image);
 
                 B2Page page;
-                page.id = doc.id.isEmpty() ? uniqueId() : doc.id;
+                page.id = doc.id.isEmpty() || pageIds.contains(doc.id) ? uniqueId() : doc.id;
+                pageIds.insert(page.id);
                 const QFileInfo fi(file);
-                page.name = doc.title.isEmpty() ? fi.completeBaseName() : doc.title;
+                const bool isImage = doc.source == "file" && doc.title == fi.fileName();
+                page.name = isImage || doc.title.trimmed().isEmpty() ? fi.completeBaseName() : doc.title;
                 page.routeHint = fi.fileName();
                 page.document = std::move(doc);
                 page.blocksDetected = !page.document.candidates.isEmpty();
+                addedPages.append(std::move(page));
+            }
+
+            QStringList addedNeedingDetect;
+            for (auto &page : addedPages) {
+                page.name = uniquePageName(page.name);
+                page.document.title = page.name;
                 page.mediaUrl = server_.registerImage(page.id, page.document.image, page.document.png);
                 if (!page.blocksDetected) addedNeedingDetect.append(page.id);
                 pages_.append(std::move(page));
                 activePageId_ = pages_.last().id;
             }
-            if (pages_.size() > 1) isImageSetProject_ = true;
-            markWorkspaceDirty();
-            pushSessionState();
+            if (!addedPages.isEmpty()) {
+                if (pages_.size() > 1) isImageSetProject_ = true;
+                markWorkspaceDirty();
+                pushSessionState();
+            }
             if (!addedNeedingDetect.isEmpty()) {
                 enqueueBlockDetection(addedNeedingDetect, true);
             }
@@ -1340,21 +1451,39 @@ void B2Window::handleOpenFilesDialog(const QJsonValue &rpcId) {
 }
 
 void B2Window::handleSaveTextDialog(const QJsonValue &rpcId, const QJsonObject &params) {
-    const QString suggested = params.value("defaultName").toString("edithere-output.txt");
-    const QString text = params.value("text").toString();
-    const QString dest = QFileDialog::getSaveFileName(this, tr("导出文本文件"), suggested, tr("全部文件 (*.*)"));
-    if (dest.isEmpty()) {
-        sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
-        return;
+    try {
+        const auto payload = params.value("payload");
+        const bool feedback = payload.isObject();
+        const QString suggested = params.value("defaultName").toString(
+            feedback ? "feedback.json" : "edithere-output.txt");
+        FeedbackBundle bundle;
+        if (feedback) {
+            FeedbackExportOptions options;
+            options.mode = settings_.imageExportMode;
+            options.includeRecognizedText = false;
+            options.includeWindowTitle = settings_.includeWindowTitle;
+            options.imageFile = "feedback-" + uniqueId() + ".png";
+            buildBundleFromPayload(payload.toObject(), options, &bundle, nullptr, nullptr);
+        } else {
+            bundle.json = params.value("text").toString().toUtf8();
+        }
+
+        const QString dest = QFileDialog::getSaveFileName(
+            this, feedback ? tr("导出反馈 JSON") : tr("导出文本文件"), suggested,
+            feedback ? tr("JSON 文件 (*.json)") : tr("全部文件 (*.*)"), nullptr,
+            bundle.files.isEmpty() ? QFileDialog::Options() : QFileDialog::DontConfirmOverwrite);
+        if (dest.isEmpty()) {
+            sendRpcResult(rpcId, true, QJsonObject{{"saved", false}});
+            return;
+        }
+        if (bundle.files.isEmpty())
+            saveBytes(dest, bundle.json);
+        else
+            writeNewFeedbackBundle(dest, bundle);
+        sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", dest}});
+    } catch (const std::exception &e) {
+        sendRpcResult(rpcId, false, {}, QString::fromUtf8(e.what()));
     }
-    QFile file(dest);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        sendRpcResult(rpcId, false, {}, file.errorString());
-        return;
-    }
-    file.write(text.toUtf8());
-    file.close();
-    sendRpcResult(rpcId, true, QJsonObject{{"saved", true}, {"path", dest}});
 }
 
 void B2Window::handleOcrRect(const QJsonValue &rpcId, const QJsonObject &params) {
@@ -1436,10 +1565,32 @@ Document B2Window::buildDocumentFromJsPage(const B2Page &basePage, const QJsonOb
         note.id = ann.value("id").toString();
         if (note.id.isEmpty()) note.id = uniqueId();
         note.comment = ann.value("text").toString();
-        const QString ocrText = ann.value("ocrtext").toString();
-        if (!ocrText.isEmpty()) note.recognizedText = QJsonObject{{"text", ocrText}};
-
         const QString kind = ann.value("kind").toString("region");
+        if (kind != "global") {
+            QString ocrText = ann.value("ocrtext").toString().trimmed();
+            if (ocrText.size() > 500)
+                ocrText.truncate(500);
+            if (!ocrText.isEmpty() && ocrText.back().isHighSurrogate())
+                ocrText.chop(1);
+            if (!ocrText.isEmpty()) {
+                const auto &baseNotes = basePage.document.notes;
+                const auto previous = std::find_if(baseNotes.cbegin(), baseNotes.cend(),
+                                                   [&note](const Note &baseNote) { return baseNote.id == note.id; });
+                if (previous != baseNotes.cend())
+                    note.recognizedText = previous->recognizedText;
+                if (note.recognizedText.value("engine").toString().trimmed().isEmpty()) {
+#if defined(Q_OS_WIN)
+                    note.recognizedText.insert("engine", "windows-ocr");
+#elif defined(Q_OS_MACOS)
+                    note.recognizedText.insert("engine", "apple-vision");
+#else
+                    note.recognizedText.insert("engine", "tesseract");
+#endif
+                }
+                note.recognizedText.insert("text", ocrText);
+            }
+        }
+
         if (kind == "global") {
             note.isGlobal = true;
             note.isPoint = false;
@@ -1500,7 +1651,7 @@ ImageSet B2Window::buildImageSetFromPayload(const QJsonObject &payload) const {
     const QJsonArray jsPages = payload.value("pages").toArray();
     const QJsonArray jsGroupNotes = payload.value("groupNotes").toArray();
     ImageSet set;
-    set.name = setTitle_.isEmpty() ? tr("EditHere 组图") : setTitle_;
+    set.name = setTitle_.isEmpty() ? QStringLiteral("EditHere Image Set") : setTitle_;
     for (const auto &gnVal : jsGroupNotes) {
         const auto obj = gnVal.toObject();
         const QString text = obj.value("text").toString().trimmed();
@@ -1529,8 +1680,29 @@ void B2Window::buildBundleFromPayload(const QJsonObject &payload, const Feedback
     if (pages_.isEmpty()) {
         throw std::runtime_error(tr("当前没有可导出的桌面截图页面。").toStdString());
     }
-    if (isImageSetProject_ || pages_.size() > 1) {
+    const QJsonArray groupNotes = payload.value("groupNotes").toArray();
+    const bool hasGroupNotes = std::any_of(groupNotes.cbegin(), groupNotes.cend(), [](const QJsonValue &note) {
+        return !note.toObject().value("text").toString().trimmed().isEmpty();
+    });
+    if (hasImageSet() || hasGroupNotes) {
         const ImageSet set = buildImageSetFromPayload(payload);
+        if (set.groupNotes.isEmpty()) {
+            const ImageSetPage *onlyPage = nullptr;
+            for (const auto &page : set.pages) {
+                if (exportFeedback(page.document)["objects"].toArray().isEmpty()) continue;
+                if (onlyPage) {
+                    onlyPage = nullptr;
+                    break;
+                }
+                onlyPage = &page;
+            }
+            if (onlyPage) {
+                if (outCount) *outCount = onlyPage->document.notes.size();
+                if (outSchema) *outSchema = FeedbackSchemaVersion;
+                if (outBundle) *outBundle = buildFeedbackBundle(onlyPage->document, options);
+                return;
+            }
+        }
         if (outCount) *outCount = imageSetAnnotationCount(set);
         if (outSchema) *outSchema = ImageSetFeedbackVersion;
         if (outBundle) *outBundle = buildImageSetFeedbackBundle(set, options);
@@ -1682,9 +1854,8 @@ void B2Window::handleCopyFeedbackBundle(const QJsonValue &rpcId, const QJsonObje
     try {
         const QJsonObject payload = params.value("payload").toObject();
         FeedbackExportOptions options;
-        options.mode = settings_.imageExportMode == ImageExportMode::None ? ImageExportMode::File
-                                                                           : settings_.imageExportMode;
-        options.includeRecognizedText = settings_.regionOcrEnabled;
+        options.mode = settings_.imageExportMode;
+        options.includeRecognizedText = false;
         options.includeWindowTitle = settings_.includeWindowTitle;
         FeedbackBundle bundle;
         int total = 0;
@@ -1855,7 +2026,7 @@ void B2Window::handleAiAnalyze(const QJsonValue &rpcId, const QJsonObject &param
         const QJsonObject payload = params.value("payload").toObject();
         FeedbackExportOptions options;
         options.mode = ImageExportMode::None;
-        options.includeRecognizedText = settings_.regionOcrEnabled;
+        options.includeRecognizedText = false;
         options.includeWindowTitle = settings_.includeWindowTitle;
 
         AiFeedbackInput input;
@@ -1976,12 +2147,16 @@ void B2Window::handleSaveSettings(const QJsonValue &rpcId, const QJsonObject &pa
         pendingUpdateCheckId_ = QJsonValue();
         updateResult_.reset();
     }
+    const bool languageChanged = settings_.language != next.language;
     settings_ = next;
     hasDarkOverride_ = false;
     syncDwmTitleBar(isEffectiveDark());
     if (!settingsApplyHandler_)
         emit preferencesUpdated(settings_);
-    sendRpcResult(rpcId, true, buildPreferencesJson());
+    auto preferences = buildPreferencesJson();
+    if (languageChanged)
+        preferences.insert("doctor", buildDoctorSnapshotJson());
+    sendRpcResult(rpcId, true, preferences);
 }
 
 void B2Window::handleDiagnosticsExport(const QJsonValue &rpcId) {

@@ -68,7 +68,7 @@ class B2Window final : public QMainWindow {
     bool isAgentSessionActive() const { return agentSession_; }
 
   signals:
-    void captureRequested();
+    void captureRequested(bool append);
     void pinImageRequested(const QImage &image);
     void preferencesUpdated(const AppSettings &settings);
     void agentSessionCompleted(const QString &outputPath, int annotationCount,
@@ -91,6 +91,8 @@ class B2Window final : public QMainWindow {
     void pushEvent(const QString &eventName, const QJsonObject &data);
     void pushSessionState();
     void resetWorkspace();
+    void appendCapturedDocument(Document doc);
+    QString uniquePageName(const QString &baseName) const;
     void markWorkspaceDirty();
     QJsonObject requestWorkspaceSnapshot();
     QJsonObject updateResultJson() const;
