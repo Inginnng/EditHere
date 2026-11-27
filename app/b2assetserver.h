@@ -27,6 +27,7 @@ class B2AssetServer final : public QObject {
     QUrl indexUrl() const;
 
     QString registerImage(const QString &pageId, const QImage &image, const QByteArray &preencodedPng = {});
+    void removeImage(const QString &pageId);
     void clearImages();
 
   private:

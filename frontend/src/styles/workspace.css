@@ -1054,12 +1054,21 @@
   overflow-x: auto;
 }
 
+.gallery-thumb {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.gallery-strip > .button {
+  flex-shrink: 0;
+}
+
 .gallery-thumb-btn {
   height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 0 9px;
+  padding: 0 29px 0 9px;
   border-radius: var(--r-control);
   border: 1px solid var(--line);
   background: var(--surface);
@@ -1074,6 +1083,12 @@
 .gallery-thumb-btn:hover {
   border-color: var(--line-strong);
   color: var(--ink);
+}
+
+.gallery-thumb-btn > span:first-child {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gallery-thumb-btn.active {
@@ -1094,6 +1109,102 @@
 .gallery-thumb-btn.active .gallery-count-pill {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+.gallery-remove-btn {
+  position: absolute;
+  top: -2px;
+  right: 1px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--muted);
+}
+
+.gallery-remove-btn:hover,
+.gallery-remove-btn:focus-visible {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.gallery-dialog {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.gallery-dialog-header,
+.gallery-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gallery-dialog-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.gallery-remove-description {
+  overflow-wrap: anywhere;
+}
+
+.gallery-remove-description > span {
+  display: block;
+  margin-top: 6px;
+}
+
+.button.gallery-confirm-remove {
+  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.button.gallery-confirm-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 20%, var(--surface));
+}
+
+.gallery-add-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gallery-add-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: start;
+}
+
+.gallery-add-option:hover,
+.gallery-add-option:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gallery-add-option > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.gallery-add-option > span {
+  display: grid;
+  gap: 3px;
+}
+
+.gallery-add-option > span > span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* Twin Rounded Right Inspector (separated by 8px spatial gutter) */

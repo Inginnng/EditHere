@@ -41,7 +41,8 @@ class Controller final : public QObject {
     friend class ScrollControllerTests;
     // tools/readme-demo/recorder.cpp feeds synthetic screens through the same seams.
     friend class ReadmeRecorder;
-    void beginCapture(bool fromTray);
+    void beginCapture(bool fromTray, bool append = false);
+    void openCaptureDocument(Document doc);
     void openAnnotation();
     void openFromTray();
     void trayActivated(QSystemTrayIcon::ActivationReason reason);
@@ -198,6 +199,7 @@ class Controller final : public QObject {
     QJsonObject pendingInstallationReceipt_;
     bool capturing_ = false;
     bool editorWasVisible_ = false, b2WasVisible_ = false;
+    bool appendCapture_ = false;
     CaptureHistory history_;
     // Which earlier capture the capture windows are showing, or -1 for the screen.
     int historyIndex_ = -1;

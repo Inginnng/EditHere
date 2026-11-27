@@ -1,6 +1,8 @@
+import { useI18n } from '../i18n';
 import { useId } from 'react';
 
 export function HomeSceneSvg({ stretch = false }: { stretch?: boolean }) {
+  const t = useI18n();
   const uid = useId().replace(/:/g, '');
   const shadowId = `eh-chair-shadow-${uid}`;
   const clipId = `eh-hero-clip-${uid}`;
@@ -11,7 +13,7 @@ export function HomeSceneSvg({ stretch = false }: { stretch?: boolean }) {
       viewBox="0 0 800 480"
       preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
       role="img"
-      aria-label="Morrow 首页首屏"
+      aria-label={t("demo.morrowLandingPageHero")}
     >
       <defs>
         <filter id={shadowId} x="-60%" y="-60%" width="220%" height="220%">
@@ -79,6 +81,7 @@ export function HomeSceneSvg({ stretch = false }: { stretch?: boolean }) {
 }
 
 export function InventoryHudSvg({ stretch = false }: { stretch?: boolean }) {
+  const t = useI18n();
   const slots = Array.from({ length: 18 }, (_, i) => {
     const col = i % 6;
     const row = Math.floor(i / 6);
@@ -95,14 +98,12 @@ export function InventoryHudSvg({ stretch = false }: { stretch?: boolean }) {
       viewBox="0 0 800 480"
       preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
       role="img"
-      aria-label="游戏物品栏 HUD"
+      aria-label={t("demo.gameInventoryHud")}
     >
       <rect width="800" height="480" fill="#131722" />
       <rect x="0" y="0" width="800" height="58" fill="#1b2131" />
       <path d="M0 58H800" stroke="#2d364d" />
-      <text x="30" y="36" fill="#f1f5f9" fontFamily="sans-serif" fontSize="16" fontWeight="700" letterSpacing="1">
-        INVENTORY · 物品栏
-      </text>
+      <text x="30" y="36" fill="#f1f5f9" fontFamily="sans-serif" fontSize="16" fontWeight="700" letterSpacing="1">{t("demo.inventory")}</text>
       <text x="642" y="35" fill="#fbbf24" fontFamily="monospace" fontSize="13" fontWeight="600">
         GOLD 14,820
       </text>
@@ -122,7 +123,7 @@ export function InventoryHudSvg({ stretch = false }: { stretch?: boolean }) {
         <text x="48" y="320">WEIGHT</text><text x="242" y="320" textAnchor="end" fill="#fbbf24">34 / 50</text>
       </g>
       <rect x="48" y="348" width="194" height="34" rx="6" fill="#243048" />
-      <text x="145" y="369" textAnchor="middle" fill="#cbd5e1" fontSize="11">装备对比已启用</text>
+      <text x="145" y="369" textAnchor="middle" fill="#cbd5e1" fontSize="11">{t("demo.equipmentComparisonEnabled")}</text>
 
       {/* Right Grid */}
       <rect x="280" y="76" width="492" height="268" rx="8" fill="#1a2030" stroke="#2d374e" />
@@ -151,32 +152,31 @@ export function InventoryHudSvg({ stretch = false }: { stretch?: boolean }) {
       {/* Bottom Action Bar */}
       <rect x="280" y="360" width="492" height="44" rx="8" fill="#1b2131" stroke="#2d374e" />
       <rect x="296" y="370" width="96" height="24" rx="5" fill="#253047" />
-      <text x="344" y="386" textAnchor="middle" fill="#cbd5e1" fontSize="11">仅看可装备</text>
+      <text x="344" y="386" textAnchor="middle" fill="#cbd5e1" fontSize="11">{t("demo.equippableOnly")}</text>
       <rect x="556" y="370" width="96" height="24" rx="5" fill="#334155" />
-      <text x="604" y="386" textAnchor="middle" fill="#f8fafc" fontSize="11">一键整理</text>
+      <text x="604" y="386" textAnchor="middle" fill="#f8fafc" fontSize="11">{t("demo.quickSort")}</text>
       <rect x="660" y="370" width="96" height="24" rx="5" fill="#2563eb" />
-      <text x="708" y="386" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="600">批量分解</text>
+      <text x="708" y="386" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="600">{t("demo.bulkSalvage")}</text>
 
-      <text x="28" y="446" fill="#64748b" fontFamily="monospace" fontSize="11">
-        ESC 返回游戏   ·   R 快速整理   ·   E 装备/卸下
-      </text>
+      <text x="28" y="446" fill="#64748b" fontFamily="monospace" fontSize="11">{t("demo.escBackToGameRQuickSort")}</text>
     </svg>
   );
 }
 
 export function SettingsMockSvg({ stretch = false }: { stretch?: boolean }) {
+  const t = useI18n();
   return (
     <svg
       className="artboard-svg"
       viewBox="0 0 800 480"
       preserveAspectRatio={stretch ? 'none' : 'xMidYMid meet'}
       role="img"
-      aria-label="应用设置页示例"
+      aria-label={t("demo.sampleSettingsPage")}
     >
       <rect width="800" height="480" fill="#fafafa" />
       <rect x="20" y="20" width="165" height="440" rx="10" fill="#f3f4f6" stroke="#e5e7eb" />
-      <text x="38" y="54" fill="#18181b" fontSize="15" fontWeight="700">偏好设置</text>
-      {['通用外观', '快捷键', '本地 OCR', '更新与安全'].map((label, idx) => (
+      <text x="38" y="54" fill="#18181b" fontSize="15" fontWeight="700">{t("demo.preferences")}</text>
+      {[t("demo.appearance"), t("settings.shortcuts"), t("demo.layoutAnnotations"), t("demo.updatesAndSecurity")].map((label, idx) => (
         <g key={label}>
           <rect
             x="30"
@@ -197,12 +197,12 @@ export function SettingsMockSvg({ stretch = false }: { stretch?: boolean }) {
           </text>
         </g>
       ))}
-      <text x="212" y="50" fill="#18181b" fontSize="20" fontWeight="600">通用外观</text>
+      <text x="212" y="50" fill="#18181b" fontSize="20" fontWeight="600">{t("demo.appearance")}</text>
       {[
-        { title: '主题配色', desc: '选择浅色、深色或跟随系统主题' },
-        { title: '自动附带区域文字', desc: '新建框选批注时在本地执行 OCR 并写入 ocrtext' },
-        { title: '高 DPI 原图导出', desc: '保留设备真实像素尺寸，不压缩 PNG' },
-        { title: '截图阴影与圆角', desc: '桌面快速截图时保留柔和窗口投影' },
+        { title: t("demo.theme"), desc: t("demo.chooseLightDarkOrSystemAppearance") },
+        { title: t("demo.windowTitleExport"), desc: t("demo.windowTitleExportDetail") },
+        { title: t("demo.highDpiImageExport"), desc: t("demo.keepNativePixelDimensionsAndExportLossless") },
+        { title: t("demo.screenshotShadowsAndCorners"), desc: t("demo.keepSoftWindowShadowsInQuickDesktop") },
       ].map((row, idx) => (
         <g key={row.title}>
           <rect
@@ -226,9 +226,9 @@ export function SettingsMockSvg({ stretch = false }: { stretch?: boolean }) {
       ))}
       <rect x="212" y="408" width="552" height="44" rx="8" fill="#ffffff" stroke="#e4e4e7" />
       <rect x="614" y="416" width="64" height="28" rx="6" fill="#f4f4f5" stroke="#d4d4d8" />
-      <text x="646" y="434" textAnchor="middle" fill="#18181b" fontSize="12">取消</text>
+      <text x="646" y="434" textAnchor="middle" fill="#18181b" fontSize="12">{t("app.cancel")}</text>
       <rect x="688" y="416" width="64" height="28" rx="6" fill="#0067c0" />
-      <text x="720" y="434" textAnchor="middle" fill="#ffffff" fontSize="12">保存</text>
+      <text x="720" y="434" textAnchor="middle" fill="#ffffff" fontSize="12">{t("demo.save")}</text>
     </svg>
   );
 }
@@ -242,13 +242,14 @@ export function SceneArtwork({
   imageUrl?: string;
   stretch?: boolean;
 }) {
+  const t = useI18n();
   if (imageUrl) {
     return (
       <img
         className="artboard-img"
         style={{ objectFit: stretch ? 'fill' : 'contain' }}
         src={imageUrl}
-        alt="已导入的页面截图"
+        alt={t("demo.importedPageScreenshot")}
       />
     );
   }

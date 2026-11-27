@@ -198,7 +198,10 @@ B2Window *Controller::ensureB2Window() {
         b2Window_->setUpdateExitConfirmation([this] { return canExitForUpdate(); });
         connect(b2Window_.get(), &B2Window::workspaceChanged, this, [this] { updateExitConfirmed_ = false; });
         connect(b2Window_.get(), &B2Window::updateInstallStarted, this, &Controller::exitForUpdate);
-        connect(b2Window_.get(), &B2Window::captureRequested, this, &Controller::capture);
+        connect(b2Window_.get(), &B2Window::captureRequested, this, [this](bool append) {
+            scheduleStartupUpdate();
+            beginCapture(false, append);
+        });
         connect(b2Window_.get(), &B2Window::pinImageRequested, this, [this](const QImage &img) {
             pinImage(img);
         });
@@ -581,7 +584,7 @@ void Controller::start(bool demo, const QString &path, bool background, bool fir
             }
         } else if (!background) {
             if (demo) {
-                ensureB2Window()->openCapturedDocument(fromImage(exampleImage(), "demo", tr("示例产品页面")));
+                ensureB2Window()->openCapturedDocument(fromImage(exampleImage(), "demo", QStringLiteral("Demo Page")));
             } else if (settings_.captureOnStartup && screenCaptureAllowed()) {
                 capture();
             } else {
@@ -767,11 +770,11 @@ void Controller::capture() {
     scheduleStartupUpdate();
     beginCapture(false);
 }
-void Controller::beginCapture(bool fromTray) {
+void Controller::beginCapture(bool fromTray, bool append) {
     trayClickTimer_.stop();
     if (fromTray)
         scheduleStartupUpdate();
-    if (!agentSessionId_.isEmpty() && !agentCapturePending_) { activate(); return; }
+    if (!append && !agentSessionId_.isEmpty() && !agentCapturePending_) { activate(); return; }
     if (capturing_ || QApplication::activeModalWidget()) {
         if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
             cancelAgentSession(agentSessionId_, "busy", "EditHere is busy with another request, capture or dialog.");
@@ -787,13 +790,14 @@ void Controller::beginCapture(bool fromTray) {
     if (auto menu = tray_.contextMenu())
         menu->close();
     if ((!useB2Ui_ && !editor_.allowReplace()) ||
-        (useB2Ui_ && b2Window_ && b2Window_->startsNewWorkspaceOnCapture() && !b2Window_->allowReplace())) {
+        (useB2Ui_ && !append && b2Window_ && b2Window_->startsNewWorkspaceOnCapture() && !b2Window_->allowReplace())) {
         if (agentCapturePending_ && !agentSessionId_.isEmpty()) {
             cancelAgentSession(agentSessionId_, "busy", "The current document has unsaved changes. Save or close it in EditHere, then retry.");
         }
         return;
     }
     capturing_ = true;
+    appendCapture_ = append;
     captureForeground_ = fromTray ? 0 : foreground;
     // A new capture always starts on the screen, not on whatever was being browsed
     // before it.
@@ -883,6 +887,7 @@ void Controller::beginCapture(bool fromTray) {
     }, fromTray);
 }
 void Controller::restoreAfterCapture() {
+    appendCapture_ = false;
     if (editorWasVisible_) {
         if (captureForeground_ || b2WasVisible_) {
             editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
@@ -904,6 +909,7 @@ void Controller::restoreAfterCapture() {
 void Controller::clearOverlays() {
     ++captureGeneration_;
     capturing_ = false;
+    appendCapture_ = false;
     discardScrollRun();
     for (auto overlay : overlays_) {
         overlay->hide();
@@ -1596,15 +1602,20 @@ void Controller::finishScrollCapture() {
     if (picture.isNull())
         return;
     try {
-        auto doc = fromImage(picture, "scroll", tr("长截图"));
+        const bool appendToB2 = useB2Ui_ && appendCapture_;
+        auto doc = fromImage(picture, "scroll", appendToB2 ? QStringLiteral("Scroll Capture") : tr("长截图"));
         doc.capture = scrollRun_.capture; doc.createdAt = doc.capture["capturedAt"].toString();
         // Long screenshots carry the exact stitched pixels. Decorations can push
         // an image at the capture limit beyond the editor's supported dimensions.
         remember(picture, selection);
-        clearOverlays();
+        if (appendToB2) {
+            openCaptureDocument(std::move(doc));
+        } else {
+            clearOverlays();
+            editor_.setDocument(std::move(doc));
+            raiseEditor();
+        }
         captureForeground_ = 0;
-        editor_.setDocument(std::move(doc));
-        raiseEditor();
     } catch (const std::exception &error) {
         abortScrollCapture(QString::fromUtf8(error.what()));
     }
@@ -1924,7 +1935,7 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
     try {
         if (picture.isNull())
             picture = frame.image.copy(area);
-        auto doc = fromImage(picture, "screen", tr("屏幕截图"));
+        auto doc = fromImage(picture, "screen", useB2Ui_ ? QStringLiteral("Screenshot") : tr("屏幕截图"));
         if (!frame.capturedAt.isEmpty()) {
             doc.createdAt = frame.capturedAt;
             doc.capture["capturedAt"] = frame.capturedAt;
@@ -1945,38 +1956,7 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
             c.bounds = intersection.translated(-area.topLeft());
             doc.candidates.append(c);
         }
-        const bool attachAgentSession = agentCapturePending_ && !agentSessionId_.isEmpty();
-        const QString pendingContext = agentPageContext_;
-        const bool hasPendingContext = agentHasPageContext_;
-        if (attachAgentSession && hasPendingContext) {
-            doc.capture["page"] = pendingContext;
-            doc.capture["pageSource"] = "agent";
-        }
-        clearOverlays();
-        if (useB2Ui_) {
-            if (editorWasVisible_) {
-                editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
-                editor_.show();
-                editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
-            }
-            auto *w = ensureB2Window();
-            w->openCapturedDocument(std::move(doc), attachAgentSession);
-            if (attachAgentSession) {
-                if (hasPendingContext) w->setPageContext(pendingContext);
-                w->setAgentSession(true, agentOutput_, agentExportOptions_);
-            }
-        } else {
-            editor_.setDocument(std::move(doc));
-            if (attachAgentSession) {
-                if (hasPendingContext) editor_.setPageContext(pendingContext);
-                editor_.setAgentSession(true);
-            }
-        }
-        if (attachAgentSession) {
-            agentCapturePending_ = false;
-            agentHasPageContext_ = false;
-            agentPageContext_.clear();
-        }
+        openCaptureDocument(std::move(doc));
     } catch (const std::exception &e) {
         clearOverlays();
         restoreAfterCapture();
@@ -1988,6 +1968,43 @@ void Controller::completeCapture(const ScreenFrame &frame, QRect area, QVector<C
         QMessageBox::warning(&editor_, tr("截图未完成"), QString::fromUtf8(e.what()));
     }
 }
+
+void Controller::openCaptureDocument(Document doc) {
+    const bool append = appendCapture_;
+    const bool attachAgentSession = !append && agentCapturePending_ && !agentSessionId_.isEmpty();
+    const QString pendingContext = agentPageContext_;
+    const bool hasPendingContext = agentHasPageContext_;
+    if (attachAgentSession && hasPendingContext) {
+        doc.capture["page"] = pendingContext;
+        doc.capture["pageSource"] = "agent";
+    }
+    clearOverlays();
+    if (useB2Ui_) {
+        if (editorWasVisible_) {
+            editor_.setAttribute(Qt::WA_ShowWithoutActivating, true);
+            editor_.show();
+            editor_.setAttribute(Qt::WA_ShowWithoutActivating, false);
+        }
+        auto *w = ensureB2Window();
+        w->openCapturedDocument(std::move(doc), attachAgentSession || (!append && w->startsNewWorkspaceOnCapture()));
+        if (attachAgentSession) {
+            if (hasPendingContext) w->setPageContext(pendingContext);
+            w->setAgentSession(true, agentOutput_, agentExportOptions_);
+        }
+    } else {
+        editor_.setDocument(std::move(doc));
+        if (attachAgentSession) {
+            if (hasPendingContext) editor_.setPageContext(pendingContext);
+            editor_.setAgentSession(true);
+        }
+    }
+    if (attachAgentSession) {
+        agentCapturePending_ = false;
+        agentHasPageContext_ = false;
+        agentPageContext_.clear();
+    }
+}
+
 bool Controller::confirmUpdateExit() {
     if (exitCheckInProgress_ || capturing_ || !agentSessionId_.isEmpty())
         return false;
@@ -2222,7 +2239,7 @@ QJsonObject Controller::handleAgentRequest(const QJsonObject &request) {
                     err.insert("candidates", windowCandidatesJson(captured.candidates));
                 return err;
             }
-            const QString defaultTitle = captured.windowTitle.isEmpty() ? tr("屏幕截图") : captured.windowTitle;
+            const QString defaultTitle = captured.windowTitle.isEmpty() ? QStringLiteral("Screenshot") : captured.windowTitle;
             Document doc = fromImage(captured.image, (hasWindow || hasWindowId) ? "window" : "screen", defaultTitle);
             doc.screenBounds = captured.screenBounds;
             if (!captured.windowTitle.isEmpty()) doc.capture["windowTitle"] = captured.windowTitle.left(1000);

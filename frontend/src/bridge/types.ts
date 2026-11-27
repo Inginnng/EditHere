@@ -130,6 +130,7 @@ export interface TrayActionDefinitionItem {
 
 export interface GeneralPreferences {
   language: LanguageCode;
+  effectiveLanguage?: Exclude<LanguageCode, 'system'>;
   ocrLanguage: OcrLanguageCode;
   captureOnStartup: boolean;
   launchAtLogin: boolean;

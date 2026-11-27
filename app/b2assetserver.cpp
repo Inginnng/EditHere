@@ -106,6 +106,10 @@ QString B2AssetServer::registerImage(const QString &pageId, const QImage &image,
         .arg(v);
 }
 
+void B2AssetServer::removeImage(const QString &pageId) {
+    images_.remove(pageId);
+}
+
 void B2AssetServer::clearImages() {
     images_.clear();
 }

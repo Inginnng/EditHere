@@ -1,5 +1,7 @@
+import { LANGUAGE_LABEL_KEYS, useI18n } from '../i18n';
+import { keyEventToPortable } from '../utils/shortcuts';
 import { version as productVersion } from '../../package.json';
-import { useState, type KeyboardEvent } from 'react';
+import { useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Switch from '@radix-ui/react-switch';
 import {
@@ -20,7 +22,6 @@ import {
   JsonFileIcon,
   KeyboardIcon,
   LanguageIcon,
-  OcrIcon,
   OpenFolderIcon,
   PowerIcon,
   ResetIcon,
@@ -41,7 +42,6 @@ import type {
   DoctorSnapshot,
   GeneralPreferences,
   LanguageCode,
-  OcrLanguageCode,
   ProviderConfig,
   SettingsTabId,
   SkillSyncState,
@@ -82,71 +82,6 @@ interface SettingsViewProps {
   onToast: (message: string) => void;
 }
 
-const LANGUAGE_LABELS: Record<LanguageCode, string> = {
-  system: '跟随系统',
-  zh_CN: '简体中文',
-  zh_TW: '繁體中文',
-  en: 'English',
-};
-
-const OCR_LANGUAGE_LABELS: Record<OcrLanguageCode, string> = {
-  system: '跟随系统',
-  zh_CN: '简体中文',
-  en: 'English',
-};
-
-const TOOL_LABELS = ['智能选块', '点批注', '框选批注', '选择与移动'];
-
-const UPDATE_SOURCE_LABELS: Record<UpdateSourceId, string> = {
-  auto: '自动',
-  atomgit: 'AtomGit',
-  github: 'GitHub',
-  gitee: 'Gitee',
-};
-
-function keyEventToPortable(event: KeyboardEvent<HTMLButtonElement>): string | null {
-  const modifierKeys = new Set(['Control', 'Shift', 'Alt', 'Meta', 'OS', 'AltGraph']);
-  if (modifierKeys.has(event.key)) return null;
-
-  let keyName = '';
-  if (event.code.startsWith('Key') && event.code.length === 4) {
-    keyName = event.code.slice(3).toUpperCase();
-  } else if (event.code.startsWith('Digit') && event.code.length === 6) {
-    keyName = event.code.slice(5);
-  } else if (/^F([1-9]|1\d|2[0-4])$/.test(event.key)) {
-    keyName = event.key;
-  } else {
-    const special: Record<string, string> = {
-      ArrowUp: 'Up',
-      ArrowDown: 'Down',
-      ArrowLeft: 'Left',
-      ArrowRight: 'Right',
-      Delete: 'Del',
-      Escape: 'Esc',
-      Insert: 'Ins',
-      Backspace: 'Backspace',
-      Enter: 'Return',
-      Tab: 'Tab',
-      Home: 'Home',
-      End: 'End',
-      PageUp: 'PgUp',
-      PageDown: 'PgDown',
-      PrintScreen: 'Print',
-      Pause: 'Pause',
-      ' ': 'Space',
-    };
-    keyName = special[event.key] ?? (event.key.length === 1 ? event.key.toUpperCase() : '');
-  }
-  if (!keyName) return null;
-
-  const mods: string[] = [];
-  if (event.ctrlKey) mods.push('Ctrl');
-  if (event.altKey) mods.push('Alt');
-  if (event.shiftKey) mods.push('Shift');
-  if (event.metaKey) mods.push('Meta');
-  return [...mods, keyName].join('+');
-}
-
 export default function SettingsView({
   activeTab,
   onChangeTab,
@@ -175,6 +110,16 @@ export default function SettingsView({
   onUpdateStatus,
   updateProgress,
 }: SettingsViewProps) {
+  const t = useI18n();
+  const TOOL_LABELS = [t("settings.smartSelect"), t("settings.pointAnnotation"), t("settings.boxAnnotation"), t("settings.selectAndMove")];
+
+  const UPDATE_SOURCE_LABELS: Record<UpdateSourceId, string> = {
+    auto: t("settings.automatic"),
+    atomgit: 'AtomGit',
+    github: 'GitHub',
+    gitee: 'Gitee',
+  };
+
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [shortcutError, setShortcutError] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -209,40 +154,40 @@ export default function SettingsView({
       setShortcutError(res.error);
     } else {
       setShortcutError('');
-      onToast(sequence ? `已设置快捷键 ${sequence}` : '已停用该快捷键');
+      onToast(sequence ? t("settings.shortcutSetTo", { keys: sequence }) : t("settings.shortcutDisabled"));
     }
   };
 
   const handleChooseFeedbackDir = async () => {
     if (!isDesktopWebView()) {
-      onToast('请在桌面客户端中选择反馈目录');
+      onToast(t("settings.chooseTheFeedbackFolderInTheDesktop"));
       return;
     }
     try {
       const res = await desktopRpc<{ cancelled?: boolean; path?: string }>('settings.chooseFeedbackDir', {}, 0);
       if (!res.cancelled && typeof res.path === 'string') {
-        await commitPatch({ feedbackDir: res.path }, '已更新反馈临时目录');
+        await commitPatch({ feedbackDir: res.path }, t("settings.feedbackFolderUpdated"));
       }
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '选择目录失败');
+      onToast(err instanceof Error ? err.message : t("settings.couldNotSelectTheFolder"));
     }
   };
 
   const handleExportDiagnostics = async () => {
     if (!isDesktopWebView()) {
-      onToast('请在桌面客户端中导出诊断日志');
+      onToast(t("settings.exportDiagnosticLogsInTheDesktopApp"));
       return;
     }
     setExportingDiag(true);
     try {
       const res = await desktopRpc<{ saved?: boolean; path?: string }>('diagnostics.export', {}, 0);
       if (res.saved && res.path) {
-        onToast(`已导出诊断日志：${res.path}`);
+        onToast(t("settings.diagnosticLogsExportedTo", { path: res.path }));
       }
       const fresh = await desktopRpc<DiagnosticsInfo>('diagnostics.getInfo').catch(() => null);
       if (fresh) onUpdateDiagnosticsInfo(fresh);
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '导出诊断日志失败');
+      onToast(err instanceof Error ? err.message : t("settings.couldNotExportDiagnosticLogs"));
     } finally {
       setExportingDiag(false);
     }
@@ -250,19 +195,19 @@ export default function SettingsView({
 
   const handleOpenDiagnosticsFolder = async () => {
     if (!isDesktopWebView()) {
-      onToast('请在桌面客户端中打开日志目录');
+      onToast(t("settings.openTheLogFolderInTheDesktop"));
       return;
     }
     try {
       await desktopRpc('diagnostics.openFolder');
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '打开日志目录失败');
+      onToast(err instanceof Error ? err.message : t("settings.couldNotOpenTheLogFolder"));
     }
   };
 
   const handleCheckUpdates = async () => {
     if (!isDesktopWebView()) {
-      onUpdateStatus({ status: 'upToDate', message: '预览环境已是最新前端资源。' });
+      onUpdateStatus({ status: 'upToDate', message: t("settings.thePreviewIsUpToDate") });
       return;
     }
     setCheckingUpdate(true);
@@ -271,7 +216,7 @@ export default function SettingsView({
       onUpdateStatus(res);
       if (res.message) onToast(res.message);
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '检查更新失败');
+      onToast(err instanceof Error ? err.message : t("settings.couldNotCheckForUpdates"));
     } finally {
       setCheckingUpdate(false);
     }
@@ -281,7 +226,7 @@ export default function SettingsView({
     try {
       await desktopRpc(method);
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '更新操作失败');
+      onToast(err instanceof Error ? err.message : t("settings.updateFailed"));
     }
   };
 
@@ -289,7 +234,7 @@ export default function SettingsView({
     const targetUrl = updateStatus?.url || '';
     if (isDesktopWebView()) {
       await desktopRpc('updates.openReleases', { url: targetUrl }).catch((err) => {
-        onToast(err instanceof Error ? err.message : '无法打开发布页');
+        onToast(err instanceof Error ? err.message : t("settings.couldNotOpenTheReleasesPage"));
       });
     } else if (targetUrl) {
       window.open(targetUrl, '_blank', 'noopener,noreferrer');
@@ -299,17 +244,17 @@ export default function SettingsView({
   const skillStatusBadge = (status: SkillSyncStatus) => {
     switch (status) {
       case 'up-to-date':
-        return { label: '已最新', cls: 'success' };
+        return { label: t("settings.upToDate"), cls: 'success' };
       case 'outdated':
-        return { label: '可更新', cls: 'warning' };
+        return { label: t("settings.updateAvailable"), cls: 'warning' };
       case 'legacy':
-        return { label: '旧版', cls: 'warning' };
+        return { label: t("settings.legacy"), cls: 'warning' };
       case 'path-stale':
-        return { label: '路径变更', cls: 'warning' };
+        return { label: t("settings.pathChanged"), cls: 'warning' };
       case 'newer':
-        return { label: '版本更高', cls: 'accent' };
+        return { label: t("settings.newerVersion"), cls: 'accent' };
       default:
-        return { label: '未安装', cls: 'neutral' };
+        return { label: t("settings.notInstalled"), cls: 'neutral' };
     }
   };
 
@@ -329,9 +274,9 @@ export default function SettingsView({
       } else {
         await navigator.clipboard.writeText(doctor.unifiedMcpSnippet);
       }
-      onToast('已复制 MCP 配置 JSON');
+      onToast(t("settings.mcpConfigurationCopied"));
     } catch {
-      onToast('剪贴板访问受限');
+      onToast(t("settings.clipboardAccessRestricted"));
     }
   };
 
@@ -345,17 +290,17 @@ export default function SettingsView({
     <div className="page-container">
       <div className="page-heading">
         <div>
-          <h1>设置</h1>
+          <h1>{t("app.settings")}</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div className="segmented-control" role="tablist" aria-label="设置分页">
+          <div className="segmented-control" role="tablist" aria-label={t("settings.settingsTabs")}>
             {(
               [
-                { id: 'general', label: '常规' },
-                { id: 'shortcuts', label: '快捷键' },
-                { id: 'capture', label: '截图与导出' },
-                { id: 'providers', label: '模型服务' },
-                { id: 'diagnostics', label: '诊断与关于' },
+                { id: 'general', label: t("settings.general") },
+                { id: 'shortcuts', label: t("settings.shortcuts") },
+                { id: 'capture', label: t("settings.captureAndExport") },
+                { id: 'providers', label: t("settings.modelProviders") },
+                { id: 'diagnostics', label: t("settings.diagnosticsAndAbout") },
               ] as const
             ).map((tab) => (
               <button
@@ -368,26 +313,25 @@ export default function SettingsView({
             ))}
           </div>
           <button className="button secondary sm" onClick={onBack}>
-            <BackIcon size={14} /> 返回工作台
-          </button>
+            <BackIcon size={14} />{t("settings.backToWorkspace")}</button>
         </div>
       </div>
 
       {activeTab === 'general' && (
         <>
           <section className="settings-group" style={{ marginTop: 0 }}>
-            <h2>外观与语言</h2>
+            <h2>{t("settings.appearanceAndLanguage")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><ThemeIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>应用主题</strong>
+                  <strong>{t("settings.appTheme")}</strong>
                 </div>
-                <div className="segmented-control" aria-label="应用主题">
+                <div className="segmented-control" aria-label={t("settings.appTheme")}>
                   {([
-                    { id: 'light', label: '浅色' },
-                    { id: 'dark', label: '深色' },
-                    { id: 'system', label: '跟随系统' },
+                    { id: 'light', label: t("settings.light") },
+                    { id: 'dark', label: t("settings.dark") },
+                    { id: 'system', label: t("settings.followSystem") },
                   ] as const).map((opt) => (
                     <button
                       key={opt.id}
@@ -403,12 +347,12 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><LanguageIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>界面语言</strong>
+                  <strong>{t("settings.displayLanguage")}</strong>
                 </div>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
                     <button className="button secondary sm">
-                      <span>{LANGUAGE_LABELS[preferences.language]}</span>
+                      <span>{t(LANGUAGE_LABEL_KEYS[preferences.language])}</span>
                       <ChevronDownIcon size={14} />
                     </button>
                   </DropdownMenu.Trigger>
@@ -418,9 +362,9 @@ export default function SettingsView({
                         <DropdownMenu.Item
                           key={code}
                           className="dropdown-item"
-                          onSelect={() => void commitPatch({ language: code }, `已切换界面语言：${LANGUAGE_LABELS[code]}`)}
+                          onSelect={() => void commitPatch({ language: code })}
                         >
-                          {LANGUAGE_LABELS[code]}
+                          {t(LANGUAGE_LABEL_KEYS[code])}
                         </DropdownMenu.Item>
                       ))}
                     </DropdownMenu.Content>
@@ -428,43 +372,16 @@ export default function SettingsView({
                 </DropdownMenu.Root>
               </div>
 
-              <div className="settings-row">
-                <span className="settings-row-icon"><OcrIcon size={18} /></span>
-                <div className="settings-row-label">
-                  <strong>文字识别语言</strong>
-                </div>
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger asChild>
-                    <button className="button secondary sm">
-                      <span>{OCR_LANGUAGE_LABELS[preferences.ocrLanguage]}</span>
-                      <ChevronDownIcon size={14} />
-                    </button>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content className="dropdown-menu" align="end" sideOffset={6}>
-                      {(['system', 'zh_CN', 'en'] as OcrLanguageCode[]).map((code) => (
-                        <DropdownMenu.Item
-                          key={code}
-                          className="dropdown-item"
-                          onSelect={() => void commitPatch({ ocrLanguage: code })}
-                        >
-                          {OCR_LANGUAGE_LABELS[code]}
-                        </DropdownMenu.Item>
-                      ))}
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu.Root>
-              </div>
             </div>
           </section>
 
           <section className="settings-group">
-            <h2>启动与窗口行为</h2>
+            <h2>{t("settings.startupAndWindowBehavior")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><CaptureIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>启动后立即截图</strong>
+                  <strong>{t("settings.captureOnStartup")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -478,7 +395,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><PowerIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>开机时启动 EditHere</strong>
+                  <strong>{t("settings.launchEdithereAtLogin")}</strong>
                   {preferences.launchAtLoginNotice && <p>{preferences.launchAtLoginNotice}</p>}
                 </div>
                 <Switch.Root
@@ -493,7 +410,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><FitCanvasIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>打开图片时自动适应窗口</strong>
+                  <strong>{t("settings.fitImagesToWindowOnOpen")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -507,7 +424,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><ConfirmDiscardIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>关闭批注窗口时询问是否保存</strong>
+                  <strong>{t("settings.askToSaveBeforeClosingTheAnnotation")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -521,7 +438,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><EditIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>默认标注工具</strong>
+                  <strong>{t("settings.defaultAnnotationTool")}</strong>
                 </div>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
@@ -549,12 +466,12 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>系统托盘</h2>
+            <h2>{t("settings.systemTray")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><ClickActionIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>托盘图标单击</strong>
+                  <strong>{t("settings.singleClickTrayIcon")}</strong>
                 </div>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
@@ -582,7 +499,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><SelectToolIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>托盘图标双击</strong>
+                  <strong>{t("settings.doubleClickTrayIcon")}</strong>
                 </div>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
@@ -614,9 +531,7 @@ export default function SettingsView({
       {activeTab === 'shortcuts' && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
-            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
-              点击录制新快捷键，清空则停用。
-            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t("settings.clickToRecordAShortcutClearIt")}</span>
             <button
               className="button secondary sm"
               onClick={() => {
@@ -624,17 +539,16 @@ export default function SettingsView({
                 void onResetShortcuts();
               }}
             >
-              <ResetIcon size={14} /> 恢复默认快捷键
-            </button>
+              <ResetIcon size={14} />{t("settings.restoreDefaultShortcuts")}</button>
           </div>
 
           {shortcutError && <div className="settings-error-banner">{shortcutError}</div>}
 
           {[
-            { title: '全局快捷键', list: globalShortcuts },
-            { title: '应用内快捷键', list: localShortcuts },
+            { title: t("settings.globalShortcuts"), list: globalShortcuts },
+            { title: t("settings.inAppShortcuts"), list: localShortcuts },
           ].map((group) => (
-            <section key={group.title} className="settings-group" style={group.title === '全局快捷键' ? { marginTop: 0 } : undefined}>
+            <section key={group.title} className="settings-group" style={group.title === t("settings.globalShortcuts") ? { marginTop: 0 } : undefined}>
               <h2>{group.title}</h2>
               <div className="settings-card-stack">
                 {group.list.map((def) => {
@@ -665,19 +579,19 @@ export default function SettingsView({
                               void applyShortcut(def.id, '');
                               return;
                             }
-                            const combo = keyEventToPortable(e);
+                            const combo = keyEventToPortable(e.nativeEvent);
                             if (!combo) return;
                             setRecordingId(null);
                             void applyShortcut(def.id, combo);
                           }}
                         >
-                          {recording ? '请按下组合键…' : val || '未绑定'}
+                          {recording ? t("settings.pressAShortcut") : val || t("settings.unassigned")}
                         </button>
                         {val && (
                           <button
                             type="button"
                             className="icon-button"
-                            aria-label={`清空 ${def.label} 快捷键`}
+                            aria-label={t("settings.clearTheShortcut", { label: def.label })}
                             onClick={() => void applyShortcut(def.id, '')}
                           >
                             <CloseIcon size={14} />
@@ -696,26 +610,13 @@ export default function SettingsView({
       {activeTab === 'capture' && (
         <>
           <section className="settings-group" style={{ marginTop: 0 }}>
-            <h2>批注导出与 OCR</h2>
+            <h2>{t("settings.annotationExport")}</h2>
             <div className="settings-card-stack">
-              <div className="settings-row">
-                <span className="settings-row-icon"><OcrIcon size={18} /></span>
-                <div className="settings-row-label">
-                  <strong>导出时附带区域识别文字</strong>
-                </div>
-                <Switch.Root
-                  className="ui-switch"
-                  checked={preferences.includeOcr}
-                  onCheckedChange={(v) => void commitPatch({ includeOcr: v, includeRecognizedText: v })}
-                >
-                  <Switch.Thumb className="ui-switch-thumb" />
-                </Switch.Root>
-              </div>
 
               <div className="settings-row">
                 <span className="settings-row-icon"><WindowTitleIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>导出时附带窗口标题</strong>
+                  <strong>{t("settings.includeWindowTitleInExports")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -729,34 +630,28 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><JsonFileIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>默认反馈导出模式</strong>
+                  <strong>{t("settings.defaultFeedbackExportMode")}</strong>
                 </div>
                 <div className="segmented-control">
                   <button
                     className={preferences.exportMode === 'file' ? 'selected' : ''}
                     onClick={() => void commitPatch({ exportMode: 'file' })}
-                  >
-                    JSON + 原图文件
-                  </button>
+                  >{t("settings.jsonImageFile")}</button>
                   <button
                     className={preferences.exportMode === 'embedded' ? 'selected' : ''}
                     onClick={() => void commitPatch({ exportMode: 'embedded' })}
-                  >
-                    内嵌原图
-                  </button>
+                  >{t("settings.embedImage")}</button>
                   <button
                     className={preferences.exportMode === 'none' ? 'selected' : ''}
                     onClick={() => void commitPatch({ exportMode: 'none' })}
-                  >
-                    仅 JSON
-                  </button>
+                  >{t("settings.jsonOnly")}</button>
                 </div>
               </div>
 
               <div className="settings-row">
                 <span className="settings-row-icon"><CopyTextIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>复制 JSON 文本时携带原图信息</strong>
+                  <strong>{t("settings.embedTheOriginalImageWhenCopyingJson")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -770,34 +665,32 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><OpenFolderIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>反馈临时目录</strong>
-                  <p>{preferences.feedbackDir || '默认缓存目录'}</p>
+                  <strong>{t("settings.temporaryFeedbackFolder")}</strong>
+                  <p>{preferences.feedbackDir || t("settings.defaultCacheFolder")}</p>
                 </div>
                 <div className="settings-inline-controls">
                   {preferences.feedbackDir && (
                     <button
                       className="icon-button"
-                      aria-label="恢复默认目录"
-                      onClick={() => void commitPatch({ feedbackDir: '' }, '已恢复默认反馈目录')}
+                      aria-label={t("settings.restoreDefaultFolder")}
+                      onClick={() => void commitPatch({ feedbackDir: '' }, t("settings.defaultFeedbackFolderRestored"))}
                     >
                       <DeleteIcon size={14} />
                     </button>
                   )}
-                  <button className="button secondary sm" onClick={() => void handleChooseFeedbackDir()}>
-                    选择目录…
-                  </button>
+                  <button className="button secondary sm" onClick={() => void handleChooseFeedbackDir()}>{t("settings.chooseFolder")}</button>
                 </div>
               </div>
             </div>
           </section>
 
           <section className="settings-group">
-            <h2>截屏外观与长截图</h2>
+            <h2>{t("settings.captureAppearanceAndScrollingCapture")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><ShadowIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>桌面截图柔和投影</strong>
+                  <strong>{t("settings.softShadowOnDesktopCaptures")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -811,7 +704,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><CornerRadiusIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>截图默认圆角（{preferences.captureCornerRadius} px）</strong>
+                  <strong>{t("settings.cornerRadius", { radius: preferences.captureCornerRadius })}</strong>
                 </div>
                 <input
                   type="range"
@@ -827,28 +720,24 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><ScrollAxisIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>长截图默认滚动方向</strong>
+                  <strong>{t("settings.scrollingCaptureDirection")}</strong>
                 </div>
                 <div className="segmented-control">
                   <button
                     className={preferences.scrollAxis === 'vertical' ? 'selected' : ''}
                     onClick={() => void commitPatch({ scrollAxis: 'vertical' })}
-                  >
-                    纵向
-                  </button>
+                  >{t("settings.vertical")}</button>
                   <button
                     className={preferences.scrollAxis === 'horizontal' ? 'selected' : ''}
                     onClick={() => void commitPatch({ scrollAxis: 'horizontal' })}
-                  >
-                    横向
-                  </button>
+                  >{t("settings.horizontal")}</button>
                 </div>
               </div>
 
               <div className="settings-row">
                 <span className="settings-row-icon"><CropToolIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>长截图自动裁掉固定页眉与页脚</strong>
+                  <strong>{t("settings.removeFixedHeadersAndFootersFromScrolling")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -862,7 +751,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><ScrollCaptureIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>超长截图分段拼接模式</strong>
+                  <strong>{t("settings.stitchExtraLongCapturesInSegments")}</strong>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -891,17 +780,16 @@ export default function SettingsView({
       {activeTab === 'diagnostics' && (
         <>
           <section className="settings-group" style={{ marginTop: 0 }}>
-            <h2>诊断日志</h2>
+            <h2>{t("settings.diagnosticLogs")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><ExportFileIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>本机运行日志与错误报告</strong>
+                  <strong>{t("settings.localLogsAndErrorReports")}</strong>
                   <p>
-                    <code>{diagnosticsInfo.directory || '尚未初始化'}</code> · {diagnosticsInfo.fileCount} 个日志文件
-                  </p>
+                    <code>{diagnosticsInfo.directory || t("settings.notInitialized")}</code> · {t("settings.logCount", { count: diagnosticsInfo.fileCount })}</p>
                   {diagnosticsInfo.lastError && (
-                    <p style={{ color: 'var(--danger)' }}>最近写入异常：{diagnosticsInfo.lastError}</p>
+                    <p style={{ color: 'var(--danger)' }}>{t("settings.lastLogError", { message: diagnosticsInfo.lastError })}</p>
                   )}
                 </div>
                 <div className="settings-inline-controls">
@@ -909,14 +797,13 @@ export default function SettingsView({
                     className="button secondary sm"
                     onClick={() => void handleOpenDiagnosticsFolder()}
                   >
-                    <OpenFolderIcon size={14} /> 打开日志目录
-                  </button>
+                    <OpenFolderIcon size={14} />{t("settings.openLogFolder")}</button>
                   <button
                     className="button primary sm"
                     disabled={exportingDiag}
                     onClick={() => void handleExportDiagnostics()}
                   >
-                    <ExportFileIcon size={14} /> {exportingDiag ? '导出中…' : '导出诊断日志…'}
+                    <ExportFileIcon size={14} /> {exportingDiag ? t("settings.exporting") : t("settings.exportDiagnosticLogs")}
                   </button>
                 </div>
               </div>
@@ -924,17 +811,17 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>版本与更新</h2>
+            <h2>{t("settings.versionAndUpdates")}</h2>
             <div className="settings-card-stack">
               <div className="settings-row">
                 <span className="settings-row-icon"><StatusOkIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>启动时自动检查更新</strong>
+                  <strong>{t("settings.checkForUpdatesOnStartup")}</strong>
                   {updateStatus?.message && <p>{updateStatus.message}</p>}
                   {applyingUpdate && (
                     <p role="status">
-                      {updateProgress.phase === 'preparing' ? '安装器正在预检…'
-                        : updatePercent === undefined ? '正在下载安装器…' : `正在下载安装器… ${updatePercent}%`}
+                      {updateProgress.phase === 'preparing' ? t("settings.checkingInstallerRequirements")
+                        : updatePercent === undefined ? t("settings.downloadingInstaller") : t("settings.downloadingInstallerTooltip", { percent: updatePercent })}
                     </p>
                   )}
                   {!applyingUpdate && updateProgress.message && <p role="status">{updateProgress.message}</p>}
@@ -951,7 +838,7 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><LanguageIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>更新源</strong>
+                  <strong>{t("settings.updateSource")}</strong>
                 </div>
                 <div className="settings-inline-controls">
                   <DropdownMenu.Root>
@@ -983,21 +870,14 @@ export default function SettingsView({
                     disabled={checkingUpdate || applyingUpdate}
                     onClick={() => void handleCheckUpdates()}
                   >
-                    {checkingUpdate && <SpinnerIcon size={14} className="spin" />}
-                    检查更新
-                  </button>
+                    {checkingUpdate && <SpinnerIcon size={14} className="spin" />}{t("settings.checkForUpdates")}</button>
                   {applyingUpdate ? (
-                    <button className="button secondary sm" onClick={() => void runUpdateAction('updates.cancel')}>
-                      取消更新
-                    </button>
+                    <button className="button secondary sm" onClick={() => void runUpdateAction('updates.cancel')}>{t("settings.cancelUpdate")}</button>
                   ) : updateStatus?.canInstall && (
                     <button className="button primary sm" disabled={checkingUpdate}
-                      onClick={() => void runUpdateAction('updates.downloadAndInstall')}>
-                      立即更新
-                    </button>
+                      onClick={() => void runUpdateAction('updates.downloadAndInstall')}>{t("settings.updateNow")}</button>
                   )}
-                  <button className="button ghost sm" onClick={() => void handleOpenReleases()}>
-                    打开发布页 <ExternalLinkIcon size={14} />
+                  <button className="button ghost sm" onClick={() => void handleOpenReleases()}>{t("settings.openReleasesPage")}<ExternalLinkIcon size={14} />
                   </button>
                 </div>
               </div>
@@ -1005,7 +885,7 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>运行环境与 MCP 接入</h2>
+            <h2>{t("settings.runtimeAndMcpSetup")}</h2>
             <div className="settings-card-stack">
               {doctor.checks.map((item) => (
                 <div key={item.id} className="settings-row">
@@ -1021,7 +901,7 @@ export default function SettingsView({
                     <p>{item.detail}</p>
                   </div>
                   <span className={`badge ${item.status === 'ok' ? 'success' : 'warning'}`}>
-                    {item.status === 'ok' ? '已就绪' : desktopConnected ? '待检查' : '预览模式'}
+                    {item.status === 'ok' ? t("settings.ready") : desktopConnected ? t("settings.needsCheck") : t("settings.preview")}
                   </span>
                 </div>
               ))}
@@ -1029,12 +909,11 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><TerminalIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>统一 MCP 配置</strong>
-                  <p>执行 <code>node cli/edithere.mjs init</code> 安装 AI 编程助手 Skill。</p>
+                  <strong>{t("settings.unifiedMcpConfiguration")}</strong>
+                  <p>{t("settings.installSkillCommand")} <code>node cli/edithere.mjs init</code></p>
                 </div>
                 <button className="button secondary sm" onClick={() => void copyMcpSnippet()}>
-                  <CopyTextIcon size={14} /> 复制 MCP 配置
-                </button>
+                  <CopyTextIcon size={14} />{t("settings.copyMcpConfiguration")}</button>
               </div>
             </div>
           </section>
@@ -1042,27 +921,23 @@ export default function SettingsView({
           <section className="settings-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0 }}>AI 助手 Skill 版本与同步</h2>
-                <span className="badge accent">当前程序内置 Skill v{skillsState.bundledSkillVersion}</span>
-                <span className="badge neutral">
-                  已检测到 {detectedSkills.length} 个（支持 {skillsState.hosts.length} 种）
-                </span>
+                <h2 style={{ margin: 0 }}>{t("settings.aiAssistantSkillVersionsAndSync")}</h2>
+                <span className="badge accent">{t("settings.bundledSkillVersion", { version: skillsState.bundledSkillVersion })}</span>
+                <span className="badge neutral">{t("settings.detectedSkillsCount", { count: detectedSkills.length, total: skillsState.hosts.length })}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <div className="segmented-control" aria-label="Agent 筛选">
+                <div className="segmented-control" aria-label={t("settings.filterAssistants")}>
                   <button
                     className={showInstalledSkillsOnly ? '' : 'selected'}
                     aria-pressed={!showInstalledSkillsOnly}
                     onClick={() => void commitPatch({ showInstalledSkillsOnly: false })}
-                  >
-                    已检测到 ({detectedSkills.length})
+                  >{t("settings.detectedFilter", { count: detectedSkills.length })}
                   </button>
                   <button
                     className={showInstalledSkillsOnly ? 'selected' : ''}
                     aria-pressed={showInstalledSkillsOnly}
                     onClick={() => void commitPatch({ showInstalledSkillsOnly: true })}
-                  >
-                    仅已安装 ({installedSkills.length})
+                  >{t("settings.installedFilter", { count: installedSkills.length })}
                   </button>
                 </div>
                 <button
@@ -1070,15 +945,13 @@ export default function SettingsView({
                   disabled={syncingSkills}
                   onClick={() => void onRefreshSkills?.()}
                 >
-                  <ResetIcon size={14} /> 刷新状态
-                </button>
+                  <ResetIcon size={14} />{t("settings.refreshStatus")}</button>
                 <button
                   className="button primary sm"
                   disabled={syncingSkills || !skillsState.sourceAvailable || actionableSkills.length === 0}
                   onClick={() => void onSyncSkills?.({ onlyUpdateInstalled: true })}
                 >
-                  {syncingSkills && <SpinnerIcon size={14} className="spin" />}
-                  一键同步全部旧版{actionableSkills.length > 0 ? ` (${actionableSkills.length})` : ''}
+                  {syncingSkills && <SpinnerIcon size={14} className="spin" />}{t("settings.syncAllOutdatedSkills")}{actionableSkills.length > 0 ? ` (${actionableSkills.length})` : ''}
                 </button>
               </div>
             </div>
@@ -1086,8 +959,8 @@ export default function SettingsView({
               <div className="settings-row">
                 <span className="settings-row-icon"><ShieldOkIcon size={18} /></span>
                 <div className="settings-row-label">
-                  <strong>软件启动时自动同步旧版 Skill</strong>
-                  <p>仅自动更新已安装 EditHere Skill 且版本落后或路径变更的 Agent，不向未安装的 Agent 写入，也不降级覆盖更高版本。</p>
+                  <strong>{t("settings.syncOutdatedSkillsOnStartup")}</strong>
+                  <p>{t("settings.automaticallyUpdatesInstalledEdithereSkillsWhenTheir")}</p>
                 </div>
                 <Switch.Root
                   className="ui-switch"
@@ -1102,8 +975,8 @@ export default function SettingsView({
                 <div className="settings-row">
                   <span className="settings-row-icon"><ShieldOkIcon size={18} style={{ color: 'var(--warning)' }} /></span>
                   <div className="settings-row-label">
-                    <strong>未找到内置 Skill 目录（skills/edithere）</strong>
-                    <p>请保留完整程序目录下的 skills 文件夹后再执行同步。</p>
+                    <strong>{t("settings.bundledSkillFolderSkillsEdithereMissing")}</strong>
+                    <p>{t("settings.keepTheSkillsFolderInTheApp")}</p>
                   </div>
                 </div>
               )}
@@ -1114,19 +987,17 @@ export default function SettingsView({
                   <div className="settings-row-label">
                     <strong>
                       {showInstalledSkillsOnly
-                        ? '尚未在已检测到的 Agent 中安装 EditHere Skill'
-                        : '当前用户目录下未检测到受支持的 AI 助手'}
+                        ? t("settings.theEdithereSkillIsMissingFromAll")
+                        : t("settings.noSupportedAiAssistantsFoundInThe")}
                     </strong>
                     <p>
                       {showInstalledSkillsOnly && detectedSkills.length > 0
-                        ? `已检测到 ${detectedSkills.length} 个 Agent 目录，可切回“已检测到”列表按需点击安装。`
-                        : '支持 Codex、Claude Code、Cursor、Antigravity、Windsurf、Kiro、Trae / Trae CN、WorkBuddy、CodeBuddy、Qoder / QoderWork、DSH、Grok、ZCode、OpenCode、Cline 等；安装后点击“刷新状态”即可识别。'}
+                        ? t("settings.foundAssistantFoldersSwitchToDetectedTo", { count: detectedSkills.length })
+                        : t("settings.supportedAssistantsIncludeCodexClaudeCodeCursor")}
                     </p>
                   </div>
                   {showInstalledSkillsOnly && detectedSkills.length > 0 && (
-                    <button className="button secondary sm" onClick={() => void commitPatch({ showInstalledSkillsOnly: false })}>
-                      查看已检测 Agent
-                    </button>
+                    <button className="button secondary sm" onClick={() => void commitPatch({ showInstalledSkillsOnly: false })}>{t("settings.viewDetectedAssistants")}</button>
                   )}
                 </div>
               ) : (
@@ -1134,23 +1005,23 @@ export default function SettingsView({
                   const badge = skillStatusBadge(host.status);
                   const versionDetail = host.installed
                     ? host.installedVersion
-                      ? `已安装 v${host.installedVersion}`
-                      : '旧版安装（无版本记录）'
-                    : '已检测到 Agent，尚未安装 EditHere Skill';
+                      ? t("settings.installedV", { version: host.installedVersion })
+                      : t("settings.legacyInstallationVersionUnknown")
+                    : t("settings.assistantDetectedEdithereSkillIsMissing");
                   const variantsNote =
                     host.otherVariants && host.otherVariants.length > 0
-                      ? ` · 另检测到 ${host.otherVariants.join('、')}`
+                      ? t("settings.alsoFound", { variants: host.otherVariants.join('、') })
                       : '';
                   const actionLabel =
                     host.status === 'outdated' || host.status === 'legacy'
-                      ? '更新'
+                      ? t("settings.update")
                       : host.status === 'path-stale'
-                        ? '刷新路径'
+                        ? t("settings.refreshPath")
                         : host.status === 'not-installed'
-                          ? '安装'
+                          ? t("settings.install")
                           : host.status === 'newer'
-                            ? '强制切换'
-                            : '重装';
+                            ? t("settings.forceSwitch")
+                            : t("settings.reinstall");
                   const actionOpts =
                     host.status === 'outdated' || host.status === 'legacy' || host.status === 'path-stale'
                       ? { hostIds: [host.id], onlyUpdateInstalled: true, force: false }
@@ -1189,7 +1060,7 @@ export default function SettingsView({
           </section>
 
           <section className="settings-group">
-            <h2>关于 EditHere</h2>
+            <h2>{t("settings.aboutEdithere")}</h2>
             <div className="settings-card-stack" style={{ padding: 20, gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <img
@@ -1212,7 +1083,7 @@ export default function SettingsView({
                     <button
                       key={repo.label}
                       className="button secondary sm"
-                      title={`打开 ${repo.label} 仓库`}
+                      title={t("settings.openTheRepository", { repository: repo.label })}
                       onClick={() => openExternalUrl(repo.url)}
                     >
                       {repo.label} <ExternalLinkIcon size={14} />
@@ -1220,8 +1091,7 @@ export default function SettingsView({
                   ))}
                 </div>
                 <button className="button ghost sm" onClick={() => void onResetDefaults()}>
-                  <ResetIcon size={14} /> 恢复全部默认设置
-                </button>
+                  <ResetIcon size={14} />{t("settings.restoreAllDefaults")}</button>
               </div>
             </div>
           </section>

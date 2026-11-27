@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n';
+import { canHandleShortcut, createShortcutMatcher, TEXT_INPUT_SELECTOR } from '../utils/shortcuts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -26,7 +28,6 @@ import {
   MoreIcon,
   MosaicToolIcon,
   NoteAddIcon,
-  OcrIcon,
   PanToolIcon,
   PauseIcon,
   PinIcon,
@@ -49,7 +50,7 @@ import { desktopRpc, isDesktopWebView } from '../bridge/desktopBridge';
 import { SceneArtwork } from '../components/DemoScenes';
 import {
   buildFeedbackPayload,
-  INITIAL_VIDEO_MARKERS,
+  initialVideoMarkers,
   isBlockTransformed,
 } from '../bridge/mockBridge';
 import type {
@@ -92,8 +93,12 @@ const BRUSH_COLORS = ['#FF453A', '#FF9F0A', '#30D158', '#0A84FF', '#BF5AF2', '#F
 const MIN_ZOOM = 25;
 const MAX_ZOOM = 1000;
 const ZOOM_STEP = 1.2;
+const WORKSPACE_SHORTCUT_IDS = [
+  'open', 'paste', 'save', 'export', 'copy', 'copyJson', 'saveImage', 'hideAnnotations', 'addGlobalNote',
+  'undo', 'redo', 'fit', 'delete', 'close', 'smart', 'point', 'rectangle', 'adjust', 'explode', 'component',
+] as const;
+const DEFAULT_TOOLS: readonly ToolMode[] = ['smart', 'point', 'box', 'select'];
 const FIT_VIEW = { zoom: 100, panOffset: { x: 0, y: 0 } };
-const TEXT_INPUT_SELECTOR = 'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]';
 
 function clampZoom(zoom: number) {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
@@ -158,17 +163,22 @@ interface WorkspaceViewProps {
   pages: GalleryPage[];
   activePageId: string;
   groupNotes: GroupNote[];
-  includeOcr?: boolean;
-  onToggleOcr?: () => void;
+  fitImageOnOpen: boolean;
+  defaultTool: number;
+  shortcuts: Record<string, string>;
   onCapture?: () => void;
+  onAddPageCapture: () => void;
+  onClose: () => void;
   onSelectPage: (pageId: string) => void;
+  onRemovePage: (pageId: string) => Promise<boolean>;
   prepareWorkspaceSnapshot: (media: HTMLElement | null) => Promise<
     Awaited<ReturnType<typeof attachRedactedPagesToPayload>> & { generation: number; changedSinceSnapshot: boolean }
   >;
   onUpdatePages: (updater: (prev: GalleryPage[]) => GalleryPage[]) => void;
   onUpdateGroupNotes: (updater: (prev: GroupNote[]) => GroupNote[]) => void;
-  onImportImage: (file: File) => void;
-  onRequestImport?: () => Promise<boolean>;
+  onOpenFiles: () => void;
+  onPasteImage: () => void;
+  onViewShortcut: (event: KeyboardEvent) => void;
   onAnalyze: () => void;
   onToast: (message: string) => void;
 }
@@ -203,20 +213,43 @@ export default function WorkspaceView({
   pages,
   activePageId,
   groupNotes,
-  includeOcr = true,
-  onToggleOcr,
+  fitImageOnOpen,
+  defaultTool,
+  shortcuts,
   onCapture,
+  onAddPageCapture,
+  onClose,
   onSelectPage,
+  onRemovePage,
   prepareWorkspaceSnapshot,
   onUpdatePages,
   onUpdateGroupNotes,
-  onImportImage,
-  onRequestImport,
+  onOpenFiles,
+  onPasteImage,
+  onViewShortcut,
   onAnalyze,
   onToast,
 }: WorkspaceViewProps) {
+  const t = useI18n();
+  const shortcutLabel = (label: string, id: string) => {
+    const keys = shortcuts[id];
+    return keys ? t("workspace.shortcutTooltip", { label, keys }) : label;
+  };
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0];
-  const [tool, setTool] = useState<ToolMode>('box');
+  const [addPageOpen, setAddPageOpen] = useState(false);
+  const [removePageId, setRemovePageId] = useState<string | null>(null);
+  const [removingPage, setRemovingPage] = useState(false);
+  const removePageTarget = pages.find((page) => page.id === removePageId);
+  const removeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const removeCancelRef = useRef<HTMLButtonElement>(null);
+  const addPageTriggerRef = useRef<HTMLButtonElement>(null);
+  const confirmRemovePage = async () => {
+    if (!removePageTarget || removingPage) return;
+    setRemovingPage(true);
+    if (await onRemovePage(removePageTarget.id)) setRemovePageId(null);
+    setRemovingPage(false);
+  };
+  const [tool, setTool] = useState<ToolMode>(() => DEFAULT_TOOLS[defaultTool] ?? 'smart');
   const [{ zoom, panOffset }, setCanvasView] = useState(FIT_VIEW);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
@@ -310,7 +343,6 @@ export default function WorkspaceView({
   const artboardRef = useRef<HTMLDivElement>(null);
   const artboardMediaRef = useRef<HTMLDivElement>(null);
   const mosaicCanvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const sourceBitmapRef = useRef<HTMLImageElement | null>(null);
   const [bitmapReadyTick, setBitmapReadyTick] = useState(0);
 
@@ -487,7 +519,7 @@ export default function WorkspaceView({
     onUpdatePages(() => prevSnap);
     setHistoryTick((t) => t + 1);
     void syncDesktopPageAfterUndoRedo(prevSnap);
-    onToast('已撤销');
+    onToast(t("workspace.undone"));
   };
 
   const handleRedo = () => {
@@ -498,7 +530,7 @@ export default function WorkspaceView({
     onUpdatePages(() => nextSnap);
     setHistoryTick((t) => t + 1);
     void syncDesktopPageAfterUndoRedo(nextSnap);
-    onToast('已重做');
+    onToast(t("workspace.redone"));
   };
 
   useEffect(() => {
@@ -541,15 +573,23 @@ export default function WorkspaceView({
     setTool((t) => (t === 'crop' ? 'box' : t));
   }, [activePage?.id, activePage?.isVideo]);
 
-  const triggerImport = () => {
-    if (onRequestImport) {
-      onRequestImport().then((handled) => {
-        if (!handled) fileInputRef.current?.click();
-      });
-    } else {
-      fileInputRef.current?.click();
+  useLayoutEffect(() => {
+    setTool(DEFAULT_TOOLS[defaultTool] ?? 'smart');
+  }, [defaultTool]);
+
+  useLayoutEffect(() => {
+    const container = artboardRef.current?.parentElement;
+    const width = activePage?.width;
+    const height = activePage?.height;
+    if (fitImageOnOpen || !container || !width || !height) {
+      setCanvasView(FIT_VIEW);
+      return;
     }
-  };
+
+    // The artboard fits the image in this container before applying the zoom transform.
+    const fitScale = Math.min(container.clientWidth / width, container.clientHeight / height);
+    setCanvasView(fitScale > 0 ? { ...FIT_VIEW, zoom: 100 / fitScale } : FIT_VIEW);
+  }, [activePage?.id, activePage?.width, activePage?.height, fitImageOnOpen]);
 
   const enterCropMode = () => {
     if (!activePage) return;
@@ -593,7 +633,7 @@ export default function WorkspaceView({
     const bmp =
       sourceBitmapRef.current ?? (await loadBitmapForPage(activePage, artboardMediaRef.current));
     if (!bmp) {
-      onToast('当前页面位图尚未就绪，请稍后再试');
+      onToast(t("workspace.thisImageIsStillLoadingTryAgain"));
       return;
     }
     const cropped = cropPageBitmap(bmp, activePage.width, activePage.height, cropRect);
@@ -681,7 +721,7 @@ export default function WorkspaceView({
     setCropRect(null);
     setCanvasView((view) => ({ ...view, panOffset: FIT_VIEW.panOffset }));
     setTool('box');
-    onToast(`已裁剪画布至 ${cropped.width} × ${cropped.height}`);
+    onToast(t("workspace.canvasCroppedTo", { width: cropped.width, height: cropped.height }));
   };
 
   const stepZoom = (factor: number) => {
@@ -727,104 +767,6 @@ export default function WorkspaceView({
     stage.addEventListener('wheel', onWheel, { passive: false });
     return () => stage.removeEventListener('wheel', onWheel);
   }, [hasActivePage]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const inInput = Boolean(target?.closest(TEXT_INPUT_SELECTOR));
-
-      if (event.code === 'Space' && !inInput) {
-        event.preventDefault();
-        setSpacePressed(true);
-        return;
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
-        event.preventDefault();
-        triggerImport();
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !inInput) {
-        event.preventDefault();
-        if (event.shiftKey) handleRedo();
-        else handleUndo();
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y' && !inInput) {
-        event.preventDefault();
-        handleRedo();
-        return;
-      }
-      if (inInput) return;
-
-      if ((event.ctrlKey || event.metaKey) && ['+', '=', '-', '0'].includes(event.key)) {
-        event.preventDefault();
-        if (event.key === '0') resetCanvasView();
-        else stepZoom(event.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP);
-        return;
-      }
-
-      const lower = event.key.toLowerCase();
-      if (event.key === 'Escape') {
-        setInlineEditNoteId(null);
-        setHoveredNoteId(null);
-        if (tool === 'crop') {
-          setCropRect(null);
-          setTool('box');
-        } else if (tool === 'explode') {
-          setSelectedBlockId(null);
-          setManualCutBox(null);
-          manualCutStartRef.current = null;
-        }
-      } else if (event.key === 'Enter' && tool === 'crop' && cropRect) {
-        event.preventDefault();
-        void confirmCrop();
-      } else if ((event.key === 'Delete' || event.key === 'Backspace') && activePage) {
-        if (selectedMosaicId) {
-          commitPages((prev) =>
-            prev.map((p) =>
-              p.id !== activePage.id
-                ? p
-                : { ...p, mosaics: (p.mosaics ?? []).filter((m) => m.id !== selectedMosaicId) }
-            )
-          );
-          setSelectedMosaicId(null);
-        } else if (selectedNoteId) {
-          const targetNote = activePage.annotations.find((a) => a.id === selectedNoteId);
-          if (targetNote) {
-            deleteNote(targetNote);
-          }
-        }
-      } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-        if (lower === 'v') setTool('select');
-        else if (lower === 'g') setTool('pan');
-        else if (lower === 's') setTool('smart');
-        else if (lower === 'p') setTool('point');
-        else if (lower === 'r') setTool('box');
-        else if (lower === 'b') setTool('brush');
-        else if (lower === 'e') toggleExplodeMode();
-        else if (lower === 'm') setTool('mosaic');
-        else if (lower === 'c') enterCropMode();
-        else if (lower === 'h') setHideAnnotations((h) => !h);
-      }
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code === 'Space') setSpacePressed(false);
-    };
-    const onBlur = () => {
-      setSpacePressed(false);
-      panDragRef.current = null;
-      setIsPanning(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, [tool, cropRect, activePage?.id, selectedMosaicId, selectedNoteId]);
 
   useEffect(() => {
     if (!videoMode || !videoPlaying) return;
@@ -1073,35 +1015,6 @@ export default function WorkspaceView({
       setHoveredNoteId(newId);
       setInlineEditNoteId(newId);
     }
-
-    if (partial.kind === 'region' && partial.rect && includeOcr && isDesktopWebView()) {
-      desktopRpc<{ ok?: boolean; text?: string }>(
-        'ocr.recognizeRect',
-        {
-          pageId: targetPageId,
-          rect: partial.rect,
-          mosaics: (activePage.mosaics ?? []).map((m) => m.rect),
-        },
-        30000
-      )
-        .then((res) => {
-          const recognized = (res?.text || '').trim();
-          if (!recognized) return;
-          onUpdatePages((prev) =>
-            prev.map((page) =>
-              page.id !== targetPageId
-                ? page
-                : {
-                    ...page,
-                    annotations: page.annotations.map((a) =>
-                      a.id === newId ? { ...a, ocrtext: recognized } : a
-                    ),
-                  }
-            )
-          );
-        })
-        .catch(() => {});
-    }
   };
 
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1188,7 +1101,7 @@ export default function WorkspaceView({
       if (hit) {
         appendAnnotation({ kind: 'region', text: '', rect: { ...hit.dest } });
       } else {
-        onToast('未命中检测区域，可切换到「框批注」自由拉框');
+        onToast(t("workspace.noDetectedRegionHereSwitchToBox"));
       }
       return;
     }
@@ -1351,7 +1264,7 @@ export default function WorkspaceView({
           )
         );
         setSelectedBlockId(manualId);
-        onToast('已手动切分选区，可直接拖动或拖拽角点缩放');
+        onToast(t("workspace.regionSplitDragItToMoveIt"));
       }
     }
   };
@@ -1462,7 +1375,7 @@ export default function WorkspaceView({
             }
       )
     );
-    onToast('已复位组件布局位置');
+    onToast(t("workspace.componentPositionReset"));
   };
 
   const resetAllExplodeBlocks = () => {
@@ -1477,7 +1390,7 @@ export default function WorkspaceView({
             }
       )
     );
-    onToast('已复位本页所有切片位置');
+    onToast(t("workspace.allComponentsOnThisPageReset"));
   };
 
   const deleteNote = (note: AnnotationItem) => {
@@ -1528,7 +1441,7 @@ export default function WorkspaceView({
       setExplosionWaveKey((k) => k + 1);
       setShowExplosionWave(true);
       explosionWaveTimerRef.current = setTimeout(() => setShowExplosionWave(false), 950);
-      onToast('已进入大爆炸布局拆解模式');
+      onToast(t("workspace.explodedViewEnabled"));
     } else {
       setShowExplosionWave(false);
       setSelectedBlockId(null);
@@ -1545,15 +1458,15 @@ export default function WorkspaceView({
   const handleCopyAnnotatedImage = async () => {
     const rendered = await buildRenderedPngForActivePage();
     if (!rendered || !rendered.pngBase64) {
-      onToast('当前画布图像暂不可编码');
+      onToast(t("workspace.thisCanvasImageCouldnTBeEncoded"));
       return;
     }
     if (isDesktopWebView()) {
       try {
         await desktopRpc('clipboard.copyImage', { pngBase64: rendered.pngBase64 });
-        onToast('已复制带批注图片');
+        onToast(t("workspace.annotatedImageCopied"));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : '复制图片失败');
+        onToast(err instanceof Error ? err.message : t("workspace.couldNotCopyTheImage"));
       }
       return;
     }
@@ -1561,20 +1474,20 @@ export default function WorkspaceView({
       const res = await fetch(rendered.dataUrl);
       const blob = await res.blob();
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      onToast('已复制合成图片到剪贴板');
+      onToast(t("workspace.compositedImageCopiedToTheClipboard"));
     } catch {
       const a = document.createElement('a');
       a.href = rendered.dataUrl;
       a.download = `${activePage.name || 'edithere'}-annotated.png`;
       a.click();
-      onToast('已直接下载合成 PNG 图片');
+      onToast(t("workspace.compositedPngDownloaded"));
     }
   };
 
   const handleSaveAnnotatedImage = async () => {
     const rendered = await buildRenderedPngForActivePage();
     if (!rendered || !rendered.pngBase64) {
-      onToast('没有可保存的图像内容');
+      onToast(t("workspace.noImageToSave"));
       return;
     }
     const defaultName = `${activePage.name || 'edithere'}-annotated.png`;
@@ -1585,9 +1498,9 @@ export default function WorkspaceView({
           { defaultName, pngBase64: rendered.pngBase64 },
           0
         );
-        if (res.saved) onToast('已保存带批注 PNG 图片');
+        if (res.saved) onToast(t("workspace.annotatedPngSaved"));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : '保存图片失败');
+        onToast(err instanceof Error ? err.message : t("workspace.couldNotSaveTheImage"));
       }
       return;
     }
@@ -1595,12 +1508,12 @@ export default function WorkspaceView({
     a.href = rendered.dataUrl;
     a.download = defaultName;
     a.click();
-    onToast('已导出合成 PNG 图片');
+    onToast(t("workspace.compositedPngExported"));
   };
 
   const handlePinCurrentPage = async () => {
     if (!isDesktopWebView()) {
-      onToast('请在 Windows 桌面端中使用置顶贴图窗');
+      onToast(t("workspace.pinningImagesIsAvailableInTheWindows"));
       return;
     }
     const rendered = await buildRenderedPngForActivePage();
@@ -1609,9 +1522,9 @@ export default function WorkspaceView({
         pageId: activePage.id,
         pngBase64: rendered?.pngBase64 ?? '',
       });
-      onToast('已生成桌面置顶贴图窗');
+      onToast(t("workspace.imagePinnedInAFloatingWindow"));
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '当前页面无法贴图');
+      onToast(err instanceof Error ? err.message : t("workspace.couldNotPinThisPage"));
     }
   };
 
@@ -1625,9 +1538,9 @@ export default function WorkspaceView({
           { defaultName, payload },
           0
         );
-        if (res.saved) onToast('已保存 EditHere 项目文件');
+        if (res.saved) onToast(t("workspace.edithereProjectSaved"));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : '保存项目失败');
+        onToast(err instanceof Error ? err.message : t("workspace.couldNotSaveTheProject"));
       }
       return;
     }
@@ -1638,7 +1551,7 @@ export default function WorkspaceView({
     a.download = `${activePage?.name || 'edithere-project'}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    onToast('已导出项目 JSON');
+    onToast(t("workspace.projectJsonExported"));
   };
 
   const liveJson = JSON.stringify(buildFeedbackPayload(pages, groupNotes), null, 2);
@@ -1646,13 +1559,16 @@ export default function WorkspaceView({
   const copyJson = async () => {
     try {
       if (isDesktopWebView()) {
-        await desktopRpc('clipboard.copyText', { text: liveJson });
+        const payload = await prepareWorkspaceSnapshot(artboardMediaRef.current);
+        await desktopRpc('clipboard.copyJsonText', { payload });
       } else {
         await navigator.clipboard.writeText(liveJson);
       }
-      onToast('已复制实时 image-set-feedback-1 JSON');
-    } catch {
-      onToast('浏览器拒绝访问剪贴板，请使用导出功能');
+      onToast(t("workspace.feedbackJsonCopied"));
+    } catch (err) {
+      onToast(isDesktopWebView()
+        ? (err instanceof Error ? err.message : t("workspace.copyJsonTextFailed"))
+        : t("workspace.clipboardAccessWasBlockedUseExportTo"));
     }
   };
 
@@ -1667,23 +1583,24 @@ export default function WorkspaceView({
         'clipboard.copyFeedbackBundle',
         { payload: redactedPayload }
       );
-      onToast(`已复制 JSON 与原图（共 ${res.files ?? 2} 项）`);
+      onToast(t("workspace.copiedJsonImageItems", { count: res.files ?? 2 }));
     } catch (err) {
-      onToast(err instanceof Error ? err.message : '复制 JSON 文件包失败');
+      onToast(err instanceof Error ? err.message : t("workspace.couldNotCopyTheJsonBundle"));
     }
   };
 
   const downloadJson = async () => {
     if (isDesktopWebView()) {
       try {
+        const payload = await prepareWorkspaceSnapshot(artboardMediaRef.current);
         const res = await desktopRpc<{ saved?: boolean }>(
           'file.saveText',
-          { defaultName: 'edithere-gallery-feedback.json', text: liveJson },
+          { payload, defaultName: 'feedback.json' },
           0
         );
-        if (res.saved) onToast('已导出实时反馈 JSON');
+        if (res.saved) onToast(t("workspace.feedbackJsonExported"));
       } catch (err) {
-        onToast(err instanceof Error ? err.message : '导出失败');
+        onToast(err instanceof Error ? err.message : t("workspace.exportFailed"));
       }
       return;
     }
@@ -1693,8 +1610,118 @@ export default function WorkspaceView({
     a.download = 'edithere-gallery-feedback.json';
     a.click();
     URL.revokeObjectURL(url);
-    onToast('已下载实时反馈 JSON');
+    onToast(t("workspace.feedbackJsonDownloaded"));
   };
+
+  const shortcutActions: Record<(typeof WORKSPACE_SHORTCUT_IDS)[number], () => void> = {
+    open: onOpenFiles,
+    paste: onPasteImage,
+    save: () => void handleSaveProject(),
+    export: () => setJsonOpen(true),
+    copy: () => void handleCopyAnnotatedImage(),
+    copyJson: () => void handleCopyFeedbackBundle(),
+    saveImage: () => void handleSaveAnnotatedImage(),
+    hideAnnotations: () => setHideAnnotations((hidden) => !hidden),
+    addGlobalNote: addGlobalGroupNote,
+    undo: handleUndo,
+    redo: handleRedo,
+    fit: resetCanvasView,
+    delete: () => {
+      if (selectedMosaicId) {
+        commitPages((prev) => prev.map((page) => page.id === activePage.id
+          ? { ...page, mosaics: (page.mosaics ?? []).filter((mosaic) => mosaic.id !== selectedMosaicId) }
+          : page));
+        setSelectedMosaicId(null);
+        return;
+      }
+      const note = activePage.annotations.find((item) => item.id === selectedNoteId);
+      if (note) deleteNote(note);
+    },
+    close: () => {
+      if (jsonOpen) {
+        setJsonOpen(false);
+      } else if (inlineEditNoteId || hoveredNoteId || editingNoteId) {
+        setInlineEditNoteId(null);
+        setHoveredNoteId(null);
+        setEditingNoteId(null);
+      } else if (tool === 'crop') {
+        setCropRect(null);
+        setTool('box');
+      } else if (tool === 'explode') {
+        if (selectedBlockId || manualCutBox) {
+          setSelectedBlockId(null);
+          setManualCutBox(null);
+          manualCutStartRef.current = null;
+        } else {
+          toggleExplodeMode();
+        }
+      } else {
+        onClose();
+      }
+    },
+    smart: () => setTool('smart'),
+    point: () => setTool('point'),
+    rectangle: () => setTool('box'),
+    adjust: () => setTool('select'),
+    explode: toggleExplodeMode,
+    component: () => {
+      if (tool === 'explode') {
+        setSelectedBlockId(hoverBlockId ?? selectedBlockId ?? activePage.blocks[0]?.id ?? null);
+      }
+    },
+  };
+
+  const shortcutActionsRef = useRef(shortcutActions);
+  shortcutActionsRef.current = shortcutActions;
+  const shortcutDialogOpenRef = useRef(jsonOpen);
+  shortcutDialogOpenRef.current = jsonOpen;
+  const galleryDialogOpenRef = useRef(false);
+  galleryDialogOpenRef.current = addPageOpen || removePageTarget !== undefined;
+  const handleCanvasKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  handleCanvasKeyRef.current = (event) => {
+    if (jsonOpen) return;
+    onViewShortcut(event);
+    if (event.defaultPrevented) return;
+    if (event.code === 'Space' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      setSpacePressed(true);
+    } else if ((event.ctrlKey || event.metaKey) && ['+', '=', '-'].includes(event.key)) {
+      event.preventDefault();
+      stepZoom(event.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP);
+    } else if (event.key === 'Enter' && tool === 'crop' && cropRect) {
+      event.preventDefault();
+      void confirmCrop();
+    }
+  };
+
+  useEffect(() => {
+    const matchShortcut = createShortcutMatcher(shortcuts, WORKSPACE_SHORTCUT_IDS);
+    const matchDialogShortcut = createShortcutMatcher(shortcuts, ['close']);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (galleryDialogOpenRef.current || !canHandleShortcut(event) || event.repeat) return;
+      if ((event.key === 'Enter' || event.code === 'Space') &&
+          event.target instanceof Element && event.target.closest('.gallery-strip button')) return;
+      const action = shortcutDialogOpenRef.current ? matchDialogShortcut(event) : matchShortcut(event);
+      if (action) shortcutActionsRef.current[action]();
+      else if (!event.defaultPrevented) handleCanvasKeyRef.current(event);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpacePressed(false);
+    };
+    const onBlur = () => {
+      setSpacePressed(false);
+      panDragRef.current = null;
+      setIsPanning(false);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [shortcuts]);
 
   const pctX = (px: number) => `${(px / activePage.width) * 100}%`;
   const pctY = (px: number) => `${(px / activePage.height) * 100}%`;
@@ -1725,15 +1752,15 @@ export default function WorkspaceView({
           </span>
           <span className="badge neutral">
             {note.movement
-              ? `位移 ${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}, ${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}`
+              ? t("workspace.offset", { xSign: note.movement.dx >= 0 ? '+' : '', x: note.movement.dx, ySign: note.movement.dy >= 0 ? '+' : '', y: note.movement.dy })
               : note.kind === 'point'
-                ? '点定位'
-                : '框选批注'}
+                ? t("workspace.point")
+                : t("settings.boxAnnotation")}
           </span>
           <div className="inline-note-actions">
             <button
               className="icon-button"
-              title="编辑批注"
+              title={t("workspace.editAnnotation")}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setInlineEditNoteId(isEditing ? null : note.id)}
             >
@@ -1742,7 +1769,7 @@ export default function WorkspaceView({
             {note.blockId && (
               <button
                 className="icon-button"
-                title="复位组件位移"
+                title={t("workspace.resetComponentPosition")}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => resetBlockMovement(note.blockId!)}
               >
@@ -1751,7 +1778,7 @@ export default function WorkspaceView({
             )}
             <button
               className="icon-button"
-              title="删除批注"
+              title={t("workspace.deleteAnnotation")}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => deleteNote(note)}
             >
@@ -1765,7 +1792,7 @@ export default function WorkspaceView({
             autoFocus
             className="note-textarea"
             style={{ minHeight: 58 }}
-            placeholder="输入修改说明，回车或点击空白保存…"
+            placeholder={t("workspace.enterANotePressEnterOrClick")}
             value={note.text}
             onChange={(e) => updateNoteText(note.id, e.target.value)}
             onKeyDown={(e) => {
@@ -1784,11 +1811,10 @@ export default function WorkspaceView({
             className={`inline-note-body ${!note.text ? 'placeholder' : ''}`}
             onClick={() => setInlineEditNoteId(note.id)}
           >
-            {note.text || '点击直接输入修改意见…'}
+            {note.text || t("workspace.clickToEnterFeedback")}
           </button>
         )}
 
-        {note.ocrtext && <div className="inline-note-ocr">OCR: {note.ocrtext}</div>}
       </div>
     );
   };
@@ -1806,18 +1832,6 @@ export default function WorkspaceView({
 
   return (
     <div className={`workspace-root ${!inspectorOpen ? 'inspector-collapsed' : ''}`}>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onImportImage(file);
-          e.target.value = '';
-        }}
-      />
-
       {/* Main Canvas Architecture */}
       <section className="canvas-surface">
         <div className="canvas-column" ref={canvasColRef}>
@@ -1836,8 +1850,8 @@ export default function WorkspaceView({
                   className="icon-button"
                   disabled={!canUndo}
                   onClick={handleUndo}
-                  aria-label="撤销"
-                  {...tipProps('撤销 (Ctrl+Z)', 'below')}
+                  aria-label={t("workspace.undo")}
+                  {...tipProps(shortcutLabel(t("workspace.undoTooltip"), 'undo'), 'below')}
                 >
                   <UndoIcon size={14} />
                 </button>
@@ -1845,16 +1859,16 @@ export default function WorkspaceView({
                   className="icon-button"
                   disabled={!canRedo}
                   onClick={handleRedo}
-                  aria-label="重做"
-                  {...tipProps('重做 (Ctrl+Y)', 'below')}
+                  aria-label={t("workspace.redo")}
+                  {...tipProps(shortcutLabel(t("workspace.redoTooltip"), 'redo'), 'below')}
                 >
                   <RedoIcon size={14} />
                 </button>
                 <button
                   className={`icon-button ${hideAnnotations ? 'is-active' : ''}`}
                   onClick={() => setHideAnnotations((h) => !h)}
-                  aria-label={hideAnnotations ? '显示批注' : '隐藏批注'}
-                  {...tipProps(hideAnnotations ? '显示批注标记 (H)' : '隐藏批注标记 (H)', 'below')}
+                  aria-label={hideAnnotations ? t("workspace.showAnnotations") : t("workspace.hideAnnotations")}
+                  {...tipProps(shortcutLabel(hideAnnotations ? t("workspace.showAnnotationMarkers") : t("workspace.hideAnnotationMarkers"), 'hideAnnotations'), 'below')}
                 >
                   {hideAnnotations ? <HideIcon size={14} /> : <ShowIcon size={14} />}
                 </button>
@@ -1863,42 +1877,40 @@ export default function WorkspaceView({
               <div className="canvas-zoom-pill">
                 <button
                   className="icon-button"
-                  aria-label="缩小画布"
+                  aria-label={t("workspace.zoomOut")}
                   onClick={() => stepZoom(1 / ZOOM_STEP)}
-                  {...tipProps('缩小画布', 'below')}
+                  {...tipProps(t("workspace.zoomOut"), 'below')}
                 >
                   <MinusIcon size={14} />
                 </button>
                 <span>{Math.round(zoom)}%</span>
                 <button
                   className="icon-button"
-                  aria-label="放大画布"
+                  aria-label={t("workspace.zoomIn")}
                   onClick={() => stepZoom(ZOOM_STEP)}
-                  {...tipProps('放大画布', 'below')}
+                  {...tipProps(t("workspace.zoomIn"), 'below')}
                 >
                   <PlusIcon size={14} />
                 </button>
                 <button
                   className="button ghost sm"
                   onClick={resetCanvasView}
-                  {...tipProps('适应窗口并复位画布位置', 'below')}
-                >
-                  适应
-                </button>
+                  {...tipProps(shortcutLabel(t("workspace.fitAndCenterCanvas"), 'fit'), 'below')}
+                >{t("workspace.fit")}</button>
               </div>
 
               <div className="canvas-zoom-pill">
                 <button
                   className={`inspector-toggle-btn ${inspectorOpen ? 'is-open' : ''}`}
-                  aria-label={inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏'}
+                  aria-label={inspectorOpen ? t("workspace.collapseAnnotationPanel") : t("workspace.expandAnnotationPanel")}
                   onClick={() => {
                     setInspectorOpen((o) => !o);
                     setInlineEditNoteId(null);
                   }}
-                  {...tipProps(inspectorOpen ? '收起右侧批注栏' : '展开右侧批注栏', 'below')}
+                  {...tipProps(inspectorOpen ? t("workspace.collapseAnnotationPanel") : t("workspace.expandAnnotationPanel"), 'below')}
                 >
                   {inspectorOpen ? <InspectorCloseIcon size={14} /> : <InspectorOpenIcon size={14} />}
-                  <span>批注栏</span>
+                  <span>{t("workspace.annotationPanel")}</span>
                   <span className="inspector-toggle-count">{activePage.annotations.length}</span>
                 </button>
               </div>
@@ -2326,7 +2338,7 @@ export default function WorkspaceView({
                       top: loupe.pctY > 64 ? `calc(${loupe.pctY}% - 160px)` : `calc(${loupe.pctY}% + 16px)`,
                     }}
                   >
-                    <img className="pixel-loupe-img" src={loupe.dataUrl} alt="像素放大镜" />
+                    <img className="pixel-loupe-img" src={loupe.dataUrl} alt={t("workspace.pixelMagnifier")} />
                     <div className="pixel-loupe-meta">
                       <span>({loupe.px}, {loupe.py})</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -2346,22 +2358,18 @@ export default function WorkspaceView({
               ref={subbarRef}
               className="dock-subbar"
               role="region"
-              aria-label="画笔工具选项"
+              aria-label={t("workspace.brushOptions")}
               style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
             >
               <div className="segmented-control">
                 <button
                   className={brushMode === 'pen' ? 'selected' : ''}
                   onClick={() => setBrushMode('pen')}
-                >
-                  画笔
-                </button>
+                >{t("workspace.brush")}</button>
                 <button
                   className={brushMode === 'highlighter' ? 'selected' : ''}
                   onClick={() => setBrushMode('highlighter')}
-                >
-                  荧光笔
-                </button>
+                >{t("workspace.highlighter")}</button>
               </div>
               <span className="dock-subbar-sep" />
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -2371,7 +2379,7 @@ export default function WorkspaceView({
                     type="button"
                     className={`brush-swatch-btn ${brushColor === hex ? 'active' : ''}`}
                     style={{ background: hex }}
-                    aria-label={`画笔颜色 ${hex}`}
+                    aria-label={t("workspace.brushColor", { color: hex })}
                     onClick={() => setBrushColor(hex)}
                   />
                 ))}
@@ -2379,9 +2387,9 @@ export default function WorkspaceView({
               <span className="dock-subbar-sep" />
               <div className="segmented-control">
                 {([
-                  { w: 2, label: '细' },
-                  { w: 4, label: '中' },
-                  { w: 8, label: '粗' },
+                  { w: 2, label: t("workspace.fine") },
+                  { w: 4, label: t("workspace.medium") },
+                  { w: 8, label: t("workspace.thick") },
                 ] as const).map((sz) => (
                   <button
                     key={sz.w}
@@ -2395,7 +2403,7 @@ export default function WorkspaceView({
               {pageStrokes.length > 0 && (
                 <>
                   <span className="dock-subbar-sep" />
-                  <span>{pageStrokes.length} 笔</span>
+                  <span>{t("workspace.strokeCount", { count: pageStrokes.length })}</span>
                   <button
                     className="button ghost sm"
                     onClick={() =>
@@ -2407,20 +2415,16 @@ export default function WorkspaceView({
                         )
                       )
                     }
-                  >
-                    撤销一笔
-                  </button>
+                  >{t("workspace.undoLastStroke")}</button>
                   <button
                     className="button ghost sm"
                     onClick={() => {
                       commitPages((prev) =>
                         prev.map((p) => (p.id !== activePage.id ? p : { ...p, brushStrokes: [] }))
                       );
-                      onToast('已清空本页画笔笔迹');
+                      onToast(t("workspace.brushStrokesClearedFromThisPage"));
                     }}
-                  >
-                    清空
-                  </button>
+                  >{t("workspace.clear")}</button>
                 </>
               )}
             </div>
@@ -2431,7 +2435,7 @@ export default function WorkspaceView({
               ref={subbarRef}
               className="dock-subbar"
               role="region"
-              aria-label="马赛克工具选项"
+              aria-label={t("workspace.mosaicOptions")}
               style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
             >
               <div className="segmented-control">
@@ -2454,9 +2458,7 @@ export default function WorkspaceView({
                       );
                     }
                   }}
-                >
-                  像素块
-                </button>
+                >{t("workspace.pixelate")}</button>
                 <button
                   className={mosaicStyle === 'blur' ? 'selected' : ''}
                   onClick={() => {
@@ -2476,12 +2478,10 @@ export default function WorkspaceView({
                       );
                     }
                   }}
-                >
-                  高斯模糊
-                </button>
+                >{t("workspace.gaussianBlur")}</button>
               </div>
               <span className="dock-subbar-sep" />
-              <span>强度 {mosaicStrength}</span>
+              <span>{t("workspace.strength")}{mosaicStrength}</span>
               <input
                 className="dock-subbar-slider"
                 type="range"
@@ -2492,12 +2492,11 @@ export default function WorkspaceView({
                 onChange={(e) => setMosaicStrength(Number(e.target.value))}
               />
               <span className="badge success">
-                <ShieldOkIcon size={12} /> AI 不可见
-              </span>
+                <ShieldOkIcon size={12} />{t("workspace.hiddenFromAi")}</span>
               {pageMosaics.length > 0 && (
                 <>
                   <span className="dock-subbar-sep" />
-                  <span>{pageMosaics.length} 处</span>
+                  <span>{t("workspace.regionCount", { count: pageMosaics.length })}</span>
                   {selectedMosaicId && (
                     <button
                       className="button ghost sm"
@@ -2514,9 +2513,7 @@ export default function WorkspaceView({
                         );
                         setSelectedMosaicId(null);
                       }}
-                    >
-                      删除选中
-                    </button>
+                    >{t("workspace.deleteSelected")}</button>
                   )}
                   <button
                     className="button ghost sm"
@@ -2525,11 +2522,9 @@ export default function WorkspaceView({
                         prev.map((p) => (p.id !== activePage.id ? p : { ...p, mosaics: [] }))
                       );
                       setSelectedMosaicId(null);
-                      onToast('已清空本页马赛克');
+                      onToast(t("workspace.mosaicRegionsClearedFromThisPage"));
                     }}
-                  >
-                    清空
-                  </button>
+                  >{t("workspace.clear")}</button>
                 </>
               )}
             </div>
@@ -2540,7 +2535,7 @@ export default function WorkspaceView({
               ref={subbarRef}
               className="dock-subbar"
               role="region"
-              aria-label="裁剪选项"
+              aria-label={t("workspace.cropOptions")}
               style={subbarLeft !== null ? { left: subbarLeft, transform: 'none' } : undefined}
             >
               <code style={{ fontFamily: 'var(--mono)' }}>
@@ -2554,7 +2549,7 @@ export default function WorkspaceView({
                     className={cropRatio === r ? 'selected' : ''}
                     onClick={() => applyCropRatioPreset(r)}
                   >
-                    {r === 'free' ? '自由' : r}
+                    {r === 'free' ? t("workspace.free") : r}
                   </button>
                 ))}
               </div>
@@ -2565,24 +2560,19 @@ export default function WorkspaceView({
                   setCropRect(null);
                   setTool('box');
                 }}
-              >
-                取消
-              </button>
-              <button className="button primary sm" onClick={() => void confirmCrop()}>
-                确认裁剪
-              </button>
+              >{t("app.cancel")}</button>
+              <button className="button primary sm" onClick={() => void confirmCrop()}>{t("workspace.applyCrop")}</button>
             </div>
           )}
 
           {!videoMode && tool === 'explode' && (
-            <div className="dock-subbar" role="region" aria-label="大爆炸操作提示">
-              <span>选块 · 拖动 · 8角缩放 · 空处拉框手动切分</span>
+            <div className="dock-subbar" role="region" aria-label={t("workspace.explodedViewControls")}>
+              <span>{t("workspace.selectOrDragAComponentResizeWith")}</span>
               {hasTransformedBlocks && (
                 <>
                   <span className="dock-subbar-sep" />
                   <button className="button ghost sm" onClick={resetAllExplodeBlocks}>
-                    <ResetIcon size={12} /> 复位全部
-                  </button>
+                    <ResetIcon size={12} />{t("workspace.resetAll")}</button>
                 </>
               )}
             </div>
@@ -2593,7 +2583,7 @@ export default function WorkspaceView({
             <div className="video-timeline-bar">
               <button
                 className="icon-button"
-                aria-label={videoPlaying ? '暂停' : '播放'}
+                aria-label={videoPlaying ? t("workspace.pause") : t("workspace.play")}
                 onClick={() => setVideoPlaying((p) => !p)}
               >
                 {videoPlaying ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
@@ -2615,7 +2605,7 @@ export default function WorkspaceView({
                 />
               </div>
               <div className="video-markers-row">
-                {INITIAL_VIDEO_MARKERS.map((m) => (
+                {initialVideoMarkers(t).map((m) => (
                   <button
                     key={m.id}
                     className={`video-marker-chip ${Math.abs(videoTimeMs - m.timestampMs) < 350 ? 'active' : ''}`}
@@ -2633,21 +2623,21 @@ export default function WorkspaceView({
           )}
 
           {/* Reorganized Concentric Bottom Dock by Category */}
-          <div className="floating-dock" role="toolbar" aria-label="工具栏">
+          <div className="floating-dock" role="toolbar" aria-label={t("workspace.toolbar")}>
             {/* Group 1: Selection & Navigation */}
             <button
               className={`dock-tool icon-only ${tool === 'select' ? 'active' : ''}`}
               onClick={() => setTool('select')}
-              aria-label="选择与移动"
-              {...tipProps('选择与移动 (V)')}
+              aria-label={t("settings.selectAndMove")}
+              {...tipProps(shortcutLabel(t("workspace.selectAndMove"), 'adjust'))}
             >
               <SelectToolIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'pan' ? 'active' : ''}`}
               onClick={() => setTool('pan')}
-              aria-label="拖动画布"
-              {...tipProps('拖动画布 (G / Space)')}
+              aria-label={t("workspace.pan")}
+              {...tipProps(t("workspace.panSpace"))}
             >
               <PanToolIcon size={16} />
             </button>
@@ -2658,24 +2648,24 @@ export default function WorkspaceView({
             <button
               className={`dock-tool icon-only ${tool === 'smart' ? 'active' : ''}`}
               onClick={() => setTool('smart')}
-              aria-label="智能选块"
-              {...tipProps('智能选块 (S)')}
+              aria-label={t("settings.smartSelect")}
+              {...tipProps(shortcutLabel(t("workspace.smartSelect"), 'smart'))}
             >
               <SmartSelectIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'point' ? 'active' : ''}`}
               onClick={() => setTool('point')}
-              aria-label="点批注"
-              {...tipProps('点批注 (P)')}
+              aria-label={t("settings.pointAnnotation")}
+              {...tipProps(shortcutLabel(t("workspace.pointAnnotation"), 'point'))}
             >
               <PointToolIcon size={16} />
             </button>
             <button
               className={`dock-tool icon-only ${tool === 'box' ? 'active' : ''}`}
               onClick={() => setTool('box')}
-              aria-label="框批注"
-              {...tipProps('框批注 (R)')}
+              aria-label={t("workspace.boxAnnotation")}
+              {...tipProps(shortcutLabel(t("workspace.boxAnnotationTooltip"), 'rectangle'))}
             >
               <RectToolIcon size={16} />
             </button>
@@ -2683,25 +2673,25 @@ export default function WorkspaceView({
               ref={brushBtnRef}
               className={`dock-tool icon-only ${tool === 'brush' ? 'active' : ''}`}
               onClick={() => setTool((t) => (t === 'brush' ? 'box' : 'brush'))}
-              aria-label="画笔"
-              {...tipProps('画笔与荧光笔 (B)')}
+              aria-label={t("workspace.brush")}
+              {...tipProps(t("workspace.brushAndHighlighter"))}
             >
               <BrushToolIcon size={16} />
             </button>
             <button
               className={`dock-tool explode-btn ${tool === 'explode' ? 'active' : ''}`}
               onClick={toggleExplodeMode}
-              {...tipProps('大爆炸布局拆解 (E)')}
+              {...tipProps(shortcutLabel(t("workspace.explodedView"), 'explode'))}
             >
               <ExplodeIcon size={16} />
-              <span>大爆炸</span>
+              <span>{t("workspace.explodedViewTooltip")}</span>
             </button>
             <button
               ref={mosaicBtnRef}
               className={`dock-tool icon-only ${tool === 'mosaic' ? 'active' : ''}`}
               onClick={() => setTool((t) => (t === 'mosaic' ? 'box' : 'mosaic'))}
-              aria-label="马赛克"
-              {...tipProps('马赛克 / 模糊 (M)')}
+              aria-label={t("workspace.mosaic")}
+              {...tipProps(t("workspace.pixelateOrBlur"))}
             >
               <MosaicToolIcon size={16} />
             </button>
@@ -2709,8 +2699,8 @@ export default function WorkspaceView({
               ref={cropBtnRef}
               className={`dock-tool icon-only ${tool === 'crop' ? 'active' : ''}`}
               onClick={() => (tool === 'crop' ? (setCropRect(null), setTool('box')) : enterCropMode())}
-              aria-label="裁剪"
-              {...tipProps('裁剪画布 (C)')}
+              aria-label={t("workspace.crop")}
+              {...tipProps(t("workspace.cropCanvas"))}
             >
               <CropToolIcon size={16} />
             </button>
@@ -2720,28 +2710,17 @@ export default function WorkspaceView({
                 setMagnifierEnabled((v) => !v);
                 setLoupe(null);
               }}
-              aria-label="像素放大镜"
-              {...tipProps('像素放大镜与取色')}
+              aria-label={t("workspace.pixelMagnifier")}
+              {...tipProps(t("workspace.pixelMagnifierAndColorPicker"))}
             >
               <MagnifierIcon size={16} />
-            </button>
-            <button
-              className={`dock-tool icon-only ${includeOcr ? 'active' : ''}`}
-              onClick={() => {
-                onToggleOcr?.();
-                onToast(includeOcr ? '已关闭自动 OCR' : '已开启自动 OCR');
-              }}
-              aria-label="切换自动 OCR"
-              {...tipProps(includeOcr ? '区域自动 OCR：开启' : '区域自动 OCR：关闭')}
-            >
-              <OcrIcon size={16} />
             </button>
             {onCapture && (
               <button
                 className="dock-tool icon-only"
                 onClick={onCapture}
-                aria-label="重新截图"
-                {...tipProps('重新截图')}
+                aria-label={t("workspace.retakeScreenshot")}
+                {...tipProps(t("workspace.retakeScreenshot"))}
               >
                 <CaptureIcon size={16} />
               </button>
@@ -2750,8 +2729,8 @@ export default function WorkspaceView({
               <button
                 className={`dock-tool icon-only ${videoMode ? 'active' : ''}`}
                 onClick={() => setVideoMode((v) => !v)}
-                aria-label="视频时间轴"
-                {...tipProps('视频时间轴批注条')}
+                aria-label={t("workspace.videoTimeline")}
+                {...tipProps(t("workspace.videoTimelineAnnotations"))}
               >
                 <VideoIcon size={16} />
               </button>
@@ -2763,24 +2742,24 @@ export default function WorkspaceView({
             <button
               className="dock-tool icon-only"
               onClick={() => void handleSaveAnnotatedImage()}
-              aria-label="保存图片"
-              {...tipProps('保存图片 (PNG)')}
+              aria-label={t("workspace.saveImage")}
+              {...tipProps(shortcutLabel(t("workspace.saveImagePng"), 'saveImage'))}
             >
               <SaveImageIcon size={16} />
             </button>
             <button
               className="dock-tool icon-only"
               onClick={() => void handlePinCurrentPage()}
-              aria-label="贴图"
-              {...tipProps('桌面置顶贴图窗')}
+              aria-label={t("workspace.pinImage")}
+              {...tipProps(t("workspace.pinImageInAFloatingWindow"))}
             >
               <PinIcon size={16} />
             </button>
             <button
               className="dock-tool icon-only"
-              onClick={triggerImport}
-              aria-label="导入图片"
-              {...tipProps('导入图片或项目 (Ctrl+I)')}
+              onClick={onOpenFiles}
+              aria-label={t("workspace.importImage")}
+              {...tipProps(shortcutLabel(t("workspace.openImageOrProject"), 'open'))}
             >
               <ImportImageIcon size={16} />
             </button>
@@ -2789,8 +2768,8 @@ export default function WorkspaceView({
               <DropdownMenu.Trigger asChild>
                 <button
                   className="dock-tool icon-only"
-                  aria-label="更多操作"
-                  {...tipProps('更多操作')}
+                  aria-label={t("workspace.moreActions")}
+                  {...tipProps(t("workspace.moreActions"))}
                 >
                   <MoreIcon size={16} />
                 </button>
@@ -2798,24 +2777,19 @@ export default function WorkspaceView({
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="dropdown-menu" side="top" sideOffset={8} align="end">
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleSaveProject()}>
-                    <SaveProjectIcon size={14} /> 保存项目 (.edithere)
-                  </DropdownMenu.Item>
+                    <SaveProjectIcon size={14} />{t("workspace.saveProjectEdithere")}</DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void handleCopyFeedbackBundle()}>
-                    <CopyBundleIcon size={14} /> 复制 JSON 与原图
-                  </DropdownMenu.Item>
+                    <CopyBundleIcon size={14} />{t("workspace.copyJsonImage")}</DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void copyJson()}>
-                    <CopyTextIcon size={14} /> 复制 JSON 文本
-                  </DropdownMenu.Item>
+                    <CopyTextIcon size={14} />{t("workspace.copyJsonText")}</DropdownMenu.Item>
                   <DropdownMenu.Item className="dropdown-item" onSelect={() => setJsonOpen(true)}>
-                    <JsonFileIcon size={14} /> 查看 / 导出 JSON
-                  </DropdownMenu.Item>
+                    <JsonFileIcon size={14} />{t("workspace.viewOrExportJson")}</DropdownMenu.Item>
                   <DropdownMenu.Separator className="dropdown-separator" />
                   <DropdownMenu.Item
                     className="dropdown-item"
                     onSelect={resetCanvasView}
                   >
-                    <FitCanvasIcon size={14} /> 适应并归位画布
-                  </DropdownMenu.Item>
+                    <FitCanvasIcon size={14} />{t("workspace.fitAndCenterCanvasTooltip")}</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -2823,19 +2797,19 @@ export default function WorkspaceView({
             <button
               className="dock-tool copy-cta"
               onClick={() => void handleCopyAnnotatedImage()}
-              {...tipProps('复制带批注与图片到剪贴板')}
+              {...tipProps(shortcutLabel(t("workspace.copyAnnotatedImageToClipboard"), 'copy'))}
             >
               <CopyImageIcon size={15} />
-              <span>复制带批注与图片</span>
+              <span>{t("workspace.copyAnnotatedImage")}</span>
             </button>
 
             <button
               className="dock-tool analyze-cta"
               onClick={onAnalyze}
-              {...tipProps('打开 AI 解析视图')}
+              {...tipProps(t("workspace.openAiAnalysis"))}
             >
               <AiSparkleIcon size={15} />
-              <span>AI 解析</span>
+              <span>{t("app.aiAnalysis")}</span>
             </button>
           </div>
 
@@ -2852,24 +2826,68 @@ export default function WorkspaceView({
         </div>
 
         {/* Multi-Page Gallery Strip */}
-        <div className="gallery-strip" role="tablist" aria-label="项目组图页面">
-          <span className="badge neutral">组图 · {pages.length} 页</span>
+        <div className="gallery-strip" role="group" aria-label={t("workspace.projectPages")}>
+          <span className="badge neutral">{t("workspace.projectPageCount", { count: pages.length })}</span>
           {pages.map((page) => {
             const count = page.annotations.length;
             return (
-              <button
-                key={page.id}
-                className={`gallery-thumb-btn ${page.id === activePage.id ? 'active' : ''}`}
-                onClick={() => onSelectPage(page.id)}
-              >
-                <span>{page.name}</span>
-                <span className="gallery-count-pill">{count}</span>
-              </button>
+              <div className="gallery-thumb" key={page.id}>
+                <button
+                  className={`gallery-thumb-btn ${page.id === activePage.id ? 'active' : ''}`}
+                  aria-pressed={page.id === activePage.id}
+                  title={page.name}
+                  onClick={() => onSelectPage(page.id)}
+                >
+                  <span>{page.name}</span>
+                  <span className="gallery-count-pill">{count}</span>
+                </button>
+                <button
+                  className="gallery-remove-btn"
+                  aria-label={t("workspace.removePageLabel", { name: page.name })}
+                  aria-haspopup="dialog"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeTriggerRef.current = event.currentTarget;
+                    setRemovePageId(page.id);
+                  }}
+                >
+                  <CloseIcon size={12} />
+                </button>
+              </div>
             );
           })}
-          <button className="button ghost sm" onClick={triggerImport}>
-            <PlusIcon size={14} /> 添加页面
-          </button>
+          <Dialog.Root open={addPageOpen} onOpenChange={setAddPageOpen}>
+            <Dialog.Trigger ref={addPageTriggerRef} className="button ghost sm">
+              <PlusIcon size={14} />{t("workspace.addPage")}
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Overlay className="dialog-overlay" />
+              <Dialog.Content className="dialog-content gallery-dialog" aria-describedby={undefined}>
+                <div className="gallery-dialog-header">
+                  <Dialog.Title className="dialog-title">{t("workspace.addPage")}</Dialog.Title>
+                  <Dialog.Close className="icon-button" aria-label={t("workspace.close")}>
+                    <CloseIcon size={16} />
+                  </Dialog.Close>
+                </div>
+                <div className="gallery-add-options">
+                  <Dialog.Close className="gallery-add-option" onClick={onOpenFiles}>
+                    <ImportImageIcon size={20} />
+                    <span>
+                      <strong>{t("workspace.importImage")}</strong>
+                      <span>{t("workspace.addPageImportDescription")}</span>
+                    </span>
+                  </Dialog.Close>
+                  <Dialog.Close className="gallery-add-option" onClick={onAddPageCapture}>
+                    <CaptureIcon size={20} />
+                    <span>
+                      <strong>{t("workspace.addPageCapture")}</strong>
+                      <span>{t("workspace.addPageCaptureDescription")}</span>
+                    </span>
+                  </Dialog.Close>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         </div>
       </section>
 
@@ -2881,31 +2899,26 @@ export default function WorkspaceView({
           onValueChange={(v) => setInspectorTab(v as 'page' | 'group')}
         >
           <div className="inspector-tabs-wrap">
-            <Tabs.List className="inspector-tabs-list" aria-label="批注面板视图">
-              <Tabs.Trigger className="inspector-tab-trigger" value="page">
-                本页批注 <span className="tab-count">{activePage.annotations.length}</span>
+            <Tabs.List className="inspector-tabs-list" aria-label={t("workspace.annotationPanelView")}>
+              <Tabs.Trigger className="inspector-tab-trigger" value="page">{t("workspace.pageNotes")}<span className="tab-count">{activePage.annotations.length}</span>
               </Tabs.Trigger>
-              <Tabs.Trigger className="inspector-tab-trigger" value="group">
-                整组意见 <span className="tab-count">{groupNotes.length}</span>
+              <Tabs.Trigger className="inspector-tab-trigger" value="group">{t("workspace.groupNotes")}<span className="tab-count">{groupNotes.length}</span>
               </Tabs.Trigger>
             </Tabs.List>
           </div>
 
           <Tabs.Content value="page" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="inspector-subbar">
-              <span>在画面拉框、放点或拖动切片</span>
+              <span>{t("workspace.drawABoxPlaceAPointOr")}</span>
               <button
                 className="button ghost sm"
                 onClick={() => appendAnnotation({ kind: 'global', text: '' })}
               >
-                <NoteAddIcon size={14} /> 全局意见
-              </button>
+                <NoteAddIcon size={14} />{t("workspace.generalNotes")}</button>
             </div>
             <div className="inspector-list">
               {activePage.annotations.length === 0 ? (
-                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
-                  当前页面暂无批注。<br />选择「框批注」或「画笔 / 马赛克 / 裁剪」直接编辑画面。
-                </div>
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>{t("workspace.thisPageHasNoAnnotationsYet")}<br />{t("workspace.useBoxAnnotationBrushMosaicOrCrop")}</div>
               ) : (
                 activePage.annotations.map((note) => (
                   <article
@@ -2922,18 +2935,18 @@ export default function WorkspaceView({
                       <span className={`note-num ${note.movement ? 'explode' : ''}`}>{note.number}</span>
                       <span className="badge neutral">
                         {note.movement
-                          ? `位移 ${note.movement.dx >= 0 ? '+' : ''}${note.movement.dx}, ${note.movement.dy >= 0 ? '+' : ''}${note.movement.dy}`
+                          ? t("workspace.offset", { xSign: note.movement.dx >= 0 ? '+' : '', x: note.movement.dx, ySign: note.movement.dy >= 0 ? '+' : '', y: note.movement.dy })
                           : note.kind === 'point'
-                            ? '点定位'
+                            ? t("workspace.point")
                             : note.kind === 'global'
-                              ? '整页意见'
-                              : '框选区域'}
+                              ? t("workspace.pageWideNote")
+                              : t("workspace.selectedRegion")}
                       </span>
                       <div className="note-card-actions">
                         {note.blockId && (
                           <button
                             className="icon-button"
-                            title="复位组件位移"
+                            title={t("workspace.resetComponentPosition")}
                             onClick={(e) => {
                               e.stopPropagation();
                               resetBlockMovement(note.blockId!);
@@ -2944,7 +2957,7 @@ export default function WorkspaceView({
                         )}
                         <button
                           className="icon-button"
-                          title="删除批注"
+                          title={t("workspace.deleteAnnotation")}
                           onClick={(e) => {
                             e.stopPropagation();
                             deleteNote(note);
@@ -2959,7 +2972,7 @@ export default function WorkspaceView({
                       <textarea
                         autoFocus
                         className="note-textarea"
-                        placeholder="输入具体的修改意见…"
+                        placeholder={t("workspace.enterSpecificFeedback")}
                         value={note.text}
                         onChange={(e) => updateNoteText(note.id, e.target.value)}
                         onBlur={() => setEditingNoteId(null)}
@@ -2973,11 +2986,11 @@ export default function WorkspaceView({
                           setEditingNoteId(note.id);
                         }}
                       >
-                        {note.text || '点击补充文字说明（仅拖动位置也是有效布局意见）'}
+                        {note.text || t("workspace.clickToAddANoteAPosition")}
                       </button>
                     )}
 
-                    {(note.rect || note.point || note.ocrtext) && (
+                    {(note.rect || note.point) && (
                       <div className="note-meta-foot">
                         <span>
                           {note.rect
@@ -2986,7 +2999,6 @@ export default function WorkspaceView({
                               ? `(${note.point.x},${note.point.y})`
                               : ''}
                         </span>
-                        {note.ocrtext && <span>OCR: {note.ocrtext.slice(0, 18)}</span>}
                       </div>
                     )}
                   </article>
@@ -2997,21 +3009,20 @@ export default function WorkspaceView({
 
           <Tabs.Content value="group" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="inspector-subbar">
-              <span>跨页面共用修改意见</span>
+              <span>{t("workspace.feedbackThatAppliesAcrossPages")}</span>
               <button className="button ghost sm" onClick={addGlobalGroupNote}>
-                <PlusIcon size={14} /> 添加整组意见
-              </button>
+                <PlusIcon size={14} />{t("workspace.addGroupNote")}</button>
             </div>
             <div className="inspector-list">
               {groupNotes.map((g) => (
                 <article key={g.id} className="note-card">
                   <div className="note-card-head">
                     <span className="note-num">{g.number}</span>
-                    <span className="badge accent">整组规范</span>
+                    <span className="badge accent">{t("workspace.groupGuidelines")}</span>
                     <div className="note-card-actions">
                       <button
                         className="icon-button"
-                        title="删除整组意见"
+                        title={t("workspace.deleteGroupNote")}
                         onClick={() => onUpdateGroupNotes((prev) => prev.filter((item) => item.id !== g.id))}
                       >
                         <DeleteIcon size={14} />
@@ -3022,7 +3033,7 @@ export default function WorkspaceView({
                     <textarea
                       autoFocus
                       className="note-textarea"
-                      placeholder="输入跨页面统一修改意见…"
+                      placeholder={t("workspace.enterFeedbackThatAppliesAcrossPages")}
                       value={g.text}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -3037,7 +3048,7 @@ export default function WorkspaceView({
                       className={`note-body-btn ${!g.text ? 'note-body-placeholder' : ''}`}
                       onClick={() => setEditingNoteId(g.id)}
                     >
-                      {g.text || '点击填写整组设计或布局意见…'}
+                      {g.text || t("workspace.clickToEnterGroupDesignOrLayout")}
                     </button>
                   )}
                 </article>
@@ -3047,37 +3058,68 @@ export default function WorkspaceView({
 
           <div className="inspector-footer">
             <button className="button secondary" onClick={() => void handleCopyFeedbackBundle()}>
-              <CopyBundleIcon size={15} /> 复制 JSON 与图片
-            </button>
+              <CopyBundleIcon size={15} />{t("workspace.copyJsonImageTooltip")}</button>
 
             <button className="button primary" onClick={onAnalyze}>
-              <AiSparkleIcon size={15} /> AI 解析
-            </button>
+              <AiSparkleIcon size={15} />{t("app.aiAnalysis")}</button>
           </div>
         </Tabs.Root>
       )}
 
+      <Dialog.Root open={Boolean(removePageTarget)} onOpenChange={(open) => {
+        if (!open && !removingPage) setRemovePageId(null);
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="dialog-overlay" />
+          <Dialog.Content
+            className="dialog-content gallery-dialog"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              removeCancelRef.current?.focus();
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              const trigger = removeTriggerRef.current;
+              if (trigger?.isConnected) trigger.focus();
+              else addPageTriggerRef.current?.focus();
+            }}
+          >
+            <Dialog.Title className="dialog-title">{t("workspace.removePageTitle")}</Dialog.Title>
+            <Dialog.Description className="dialog-desc gallery-remove-description">
+              {removePageTarget && t("workspace.removePageDescription", { name: removePageTarget.name })}
+              {removePageTarget && removePageTarget.annotations.length > 0 && (
+                <span>{t("workspace.removePageAnnotationCount", { count: removePageTarget.annotations.length })}</span>
+              )}
+            </Dialog.Description>
+            <div className="gallery-dialog-actions">
+              <Dialog.Close ref={removeCancelRef} className="button secondary" disabled={removingPage}>
+                {t("app.cancel")}
+              </Dialog.Close>
+              <button className="button gallery-confirm-remove" disabled={removingPage} onClick={() => void confirmRemovePage()}>
+                {t("workspace.confirmRemovePage")}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       <Dialog.Root open={jsonOpen} onOpenChange={setJsonOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="dialog-overlay" />
-          <Dialog.Content className="dialog-content">
+          <Dialog.Content className="dialog-content" onEscapeKeyDown={(event) => event.preventDefault()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Dialog.Title className="dialog-title">实时反馈 JSON</Dialog.Title>
-              <Dialog.Close className="icon-button" aria-label="关闭">
+              <Dialog.Title className="dialog-title">{t("workspace.liveFeedbackJson")}</Dialog.Title>
+              <Dialog.Close className="icon-button" aria-label={t("workspace.close")}>
                 <CloseIcon size={16} />
               </Dialog.Close>
             </div>
-            <Dialog.Description className="dialog-desc">
-              仅导出包含批注或布局调整的页面。
-            </Dialog.Description>
+            <Dialog.Description className="dialog-desc">{t("workspace.exportsPagesWithAnnotationsOrLayoutAdjustments")}</Dialog.Description>
             <pre className="json-preview-pre">{liveJson}</pre>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
               <button className="button secondary" onClick={downloadJson}>
-                <ExportFileIcon size={14} /> 导出 JSON
-              </button>
+                <ExportFileIcon size={14} />{t("workspace.exportJson")}</button>
               <button className="button primary" onClick={copyJson}>
-                <CopyTextIcon size={14} /> 复制 JSON
-              </button>
+                <CopyTextIcon size={14} />{t("workspace.copyJson")}</button>
             </div>
           </Dialog.Content>
         </Dialog.Portal>
